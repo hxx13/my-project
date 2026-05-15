@@ -28,6 +28,7 @@ import java.util.Set;
  *   <li>所有「自动离开」最终须走 {@link DahuaAutoSignoutService#autoSignout}：先 ARO 离开；是否再大华 revoke 与冻结由门禁联动规则 {@code autoRiskActionEnabled} 唯一控制。</li>
  *   <li>人工扫码离开(accessType=2) 成功后必须 {@link #clearActivationStatesForUser}，避免定时任务重复签退。</li>
  *   <li>{@link TwinCardMappingService#isLinkageRuleExempt(String)} 为 true 时跳过全部联动（不写入状态、不触发自动签退）；豁免标记不由联动消耗。</li>
+ *   <li>同一物理门可同时出现在「激活卡片」与「激活后再刷门签退」：未激活时须先按激活门处理，不得因仅命中后者而丢弃刷卡。</li>
  * </ul>
  */
 @Service
@@ -203,8 +204,10 @@ public class DahuaSwingRuleEngineService {
             );
             return;
         }
-        // 仅配置了「激活后签退」门且人员尚未激活：忽略（避免误把该门当作激活门去累加 counter）
-        if (hitActivatedReswipeExitRule) {
+        // 仅「激活后再刷门签退」独有（未同时配置为激活门）、且人员尚未激活：忽略。
+        // 若该通道也在 toggleChannelCodes 中（同一物理门双角色），须继续走下方激活逻辑以清除 __PENDING_ACTIVATION__。
+        if (hitActivatedReswipeExitRule && !hitToggleRule) {
+            log.info("[swing-rule] skip-reswipe-exit-only-until-activated userId={} channel={}", userId, channelCode);
             return;
         }
 

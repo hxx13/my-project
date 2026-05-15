@@ -7,6 +7,7 @@ import com.example.demo.modules.twin.entity.TwinCardMapping;
 import com.example.demo.modules.twin.support.TwinSwingLinkageDetailBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -36,6 +37,7 @@ public class DahuaAutoSignoutService {
     private final AroMiniPenetrationSyncService miniPenetrationSyncService;
     private final TwinAccessLogCorrelationService twinAccessLogCorrelationService;
     private final TwinAccessRuleScanConfigService twinAccessRuleScanConfigService;
+    private final DahuaSwingRuleEngineService dahuaSwingRuleEngineService;
 
     public DahuaAutoSignoutService(
             AroService aroService,
@@ -45,7 +47,8 @@ public class DahuaAutoSignoutService {
             TwinAutomationLogService automationLogService,
             AroMiniPenetrationSyncService miniPenetrationSyncService,
             TwinAccessLogCorrelationService twinAccessLogCorrelationService,
-            TwinAccessRuleScanConfigService twinAccessRuleScanConfigService
+            TwinAccessRuleScanConfigService twinAccessRuleScanConfigService,
+            @Lazy DahuaSwingRuleEngineService dahuaSwingRuleEngineService
     ) {
         this.aroService = aroService;
         this.twinCardMappingService = twinCardMappingService;
@@ -55,6 +58,7 @@ public class DahuaAutoSignoutService {
         this.miniPenetrationSyncService = miniPenetrationSyncService;
         this.twinAccessLogCorrelationService = twinAccessLogCorrelationService;
         this.twinAccessRuleScanConfigService = twinAccessRuleScanConfigService;
+        this.dahuaSwingRuleEngineService = dahuaSwingRuleEngineService;
     }
 
     public boolean autoSignout(String userId) {
@@ -96,6 +100,7 @@ public class DahuaAutoSignoutService {
                 EMPTY_ARO_SYNC_LOG_AT_MS.put(userId, nowMs);
                 writeAutoLog(userId, triggerType, reasonForLog, true, shortDetail);
             }
+            clearSwingLinkageAfterAroLeaveResolved(userId);
             return true;
         }
         Map<String, Object> first = noLeaveRooms.get(0);
@@ -121,6 +126,7 @@ public class DahuaAutoSignoutService {
         }
         log.info("[auto-signout] aro signout success userId={} roomId={}", userId, roomId);
         triggerMiniAroPenetrationRequest(userId, 2);
+        clearSwingLinkageAfterAroLeaveResolved(userId);
 
         if (!postAutoLeaveLinkageEnabled()) {
             log.info("[auto-signout] post-leave linkage disabled userId={} roomId={} (aro-only mode)", userId, roomId);
@@ -161,6 +167,18 @@ public class DahuaAutoSignoutService {
         Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
         registerSignoutCorrelation(userId, roomId, auditId, msg);
         return true;
+    }
+
+    /** ARO 离开已落地后清空大华刷卡联动占位，避免影响下一段入馆。 */
+    private void clearSwingLinkageAfterAroLeaveResolved(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return;
+        }
+        try {
+            dahuaSwingRuleEngineService.clearActivationStatesForUser(userId.trim());
+        } catch (Exception e) {
+            log.warn("[auto-signout] clear swing linkage failed userId={} err={}", userId, e.getMessage());
+        }
     }
 
     private void registerSignoutCorrelation(String userId, String roomId, Long automationLogId, String detailForMatch) {

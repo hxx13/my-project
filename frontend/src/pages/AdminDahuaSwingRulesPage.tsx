@@ -135,40 +135,28 @@ export default function AdminDahuaSwingRulesPage() {
     <div className="space-y-4">
       <div className="rounded-xl border bg-white p-3 space-y-2">
         <h2 className="text-base font-semibold text-slate-800">门禁联动规则</h2>
-        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-          <label className="flex items-start gap-2 cursor-pointer">
+        <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2">
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-800">
             <input
               type="checkbox"
-              className="mt-0.5 shrink-0"
+              className="shrink-0"
               checked={form.autoRiskActionEnabled}
               onChange={(e) => setForm((p) => ({ ...p, autoRiskActionEnabled: e.target.checked }))}
             />
-            <span>
-              <span className="font-semibold">自动签退后续联动（大华 revoke + 卡片冻结）</span>
-              <span className="block mt-1 text-[11px] leading-relaxed text-amber-950/90">
-                <strong className="font-semibold text-amber-950">仅此一处开关</strong>
-                控制「定时/刷卡触发的自动签退」在 ARO 登记离开<strong>之后</strong>是否继续：撤销本房间大华门禁联动权限、并按映射冻结卡片。
-                关闭后：自动签退<strong>仅完成 ARO 离开登记</strong>（仍会做流水小穿甲同步），
-                <strong>不会</strong>调用大华 revoke、<strong>不会</strong>冻结卡片。
-                Web 扫码弹窗的人工离开等其它入口不受此开关约束。
-              </span>
-            </span>
+            <span>自动签退后续联动（大华 revoke + 卡片冻结）</span>
           </label>
         </div>
         <div className="grid gap-2 xl:grid-cols-3">
           <div className="rounded border p-2 space-y-2 flex flex-col h-full">
-            <div className="text-[11px] font-semibold text-slate-600">刷门即签退规则</div>
-            <div className="rounded border border-slate-100 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-600">
-              命中后按「签退延时」调度自动离开流程：始终会先完成 ARO 离开；是否再 revoke 大华权限并冻结卡片由页面顶部「自动签退后续联动」开关决定。与其它门上的联动任务互斥，只保留当前门上的延时任务。
-            </div>
-            <div className="space-y-1.5 text-[11px] flex-1 flex flex-col">
+            <div className="text-sm font-semibold text-slate-800">刷门即签退规则</div>
+            <div className="space-y-1.5 text-sm flex-1 flex flex-col">
               <div className="flex items-center gap-2">
                 <span className="w-24 shrink-0 text-slate-600">签退延时(秒)</span>
-                <input className="h-8 flex-1 rounded border px-2 text-[11px]" type="number" value={form.autoExitDelaySeconds} onChange={(e) => setForm((p) => ({ ...p, autoExitDelaySeconds: Math.max(1, Number(e.target.value || 10)) }))} />
+                <input className="h-8 flex-1 rounded border px-2 text-sm" type="number" value={form.autoExitDelaySeconds} onChange={(e) => setForm((p) => ({ ...p, autoExitDelaySeconds: Math.max(1, Number(e.target.value || 10)) }))} />
               </div>
               <div className="space-y-1 flex-1 flex flex-col">
-                <div className="text-[11px] text-slate-600">触发门组</div>
-                <input className="h-8 w-full rounded border px-2 text-[11px]" placeholder="搜索门名称/编码" value={exitChannelKeyword} onChange={(e) => setExitChannelKeyword(e.target.value)} />
+                <div className="text-sm text-slate-700">触发门组</div>
+                <input className="h-8 w-full rounded border px-2 text-sm" placeholder="搜索门名称/编码" value={exitChannelKeyword} onChange={(e) => setExitChannelKeyword(e.target.value)} />
                 <div className="h-full min-h-[180px] max-h-[300px] overflow-auto rounded border border-slate-100 p-1">
                   {channelOptions.filter((ch) => {
                     const code = normalizeChannelCode(ch.channelCode);
@@ -217,32 +205,21 @@ export default function AdminDahuaSwingRulesPage() {
           </div>
 
           <div className="rounded border p-2 space-y-2 flex flex-col">
-            <div className="text-[11px] font-semibold text-slate-600">激活卡片规则</div>
-            <div className="space-y-1.5 text-[11px] flex-1 flex flex-col">
-              <div className="rounded border border-slate-200 px-2 py-2 text-[11px] text-slate-700">
-                仅用于激活卡片；离开用「刷门即签退」或「激活后再刷门签退」。
-              </div>
+            <div className="text-sm font-semibold text-slate-800">激活卡片规则</div>
+            <div className="space-y-1.5 text-sm flex-1 flex flex-col">
               <div className="flex items-center gap-2">
                 <span className="w-24 shrink-0 text-slate-600">进入防抖(秒)</span>
-                <input className="h-8 flex-1 rounded border px-2 text-[11px]" type="number" value={form.enterDebounceSeconds} onChange={(e) => setForm((p) => ({ ...p, enterDebounceSeconds: Math.max(0, Number(e.target.value || 0)) }))} />
+                <input className="h-8 flex-1 rounded border px-2 text-sm" type="number" value={form.enterDebounceSeconds} onChange={(e) => setForm((p) => ({ ...p, enterDebounceSeconds: Math.max(0, Number(e.target.value || 0)) }))} />
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="w-24 shrink-0 text-slate-600">激活超时(秒)</span>
-                  <input className="h-8 flex-1 rounded border px-2 text-[11px]" type="number" value={form.activationExpireSeconds} onChange={(e) => setForm((p) => ({ ...p, activationExpireSeconds: Math.max(1, Number(e.target.value || 120)) }))} />
+                  <input className="h-8 flex-1 rounded border px-2 text-sm" type="number" value={form.activationExpireSeconds} onChange={(e) => setForm((p) => ({ ...p, activationExpireSeconds: Math.max(1, Number(e.target.value || 120)) }))} />
                 </div>
               </div>
-              <label className="flex items-center gap-2 rounded border border-slate-200 px-2 py-2 text-[11px] text-slate-700">
-                <input type="checkbox" checked={form.requireOtherRoomSuccess} onChange={(e) => setForm((p) => ({ ...p, requireOtherRoomSuccess: e.target.checked }))} />
-                需要其他房间成功记录
-              </label>
-              <div className="flex items-center gap-2">
-                <span className="w-24 shrink-0 text-slate-600">其他房间时限(秒)</span>
-                <input className="h-8 flex-1 rounded border px-2 text-[11px]" type="number" value={form.otherRoomWithinSeconds} onChange={(e) => setForm((p) => ({ ...p, otherRoomWithinSeconds: Math.max(1, Number(e.target.value || 120)) }))} />
-              </div>
               <div className="space-y-1">
-                <div className="text-[11px] text-slate-600">触发门组</div>
-                <input className="h-8 w-full rounded border px-2 text-[11px]" placeholder="搜索门名称/编码" value={toggleChannelKeyword} onChange={(e) => setToggleChannelKeyword(e.target.value)} />
+                <div className="text-sm text-slate-700">触发门组</div>
+                <input className="h-8 w-full rounded border px-2 text-sm" placeholder="搜索门名称/编码" value={toggleChannelKeyword} onChange={(e) => setToggleChannelKeyword(e.target.value)} />
                 <div className="h-[180px] max-h-[180px] overflow-auto rounded border border-slate-100 p-1">
                   {channelOptions.filter((ch) => {
                     const code = normalizeChannelCode(ch.channelCode);
@@ -291,14 +268,11 @@ export default function AdminDahuaSwingRulesPage() {
           </div>
 
           <div className="rounded border p-2 space-y-2 flex flex-col">
-            <div className="text-[11px] font-semibold text-slate-600">激活后再次刷门即签退规则</div>
-            <div className="space-y-1.5 text-[11px] flex-1 flex flex-col">
-              <div className="rounded border border-slate-200 px-2 py-2 text-[11px] text-slate-700">
-                当人员已在任一激活门完成激活后，再次刷下列门组中的任意一扇，按「签退延时」调度自动离开（不必与激活门同一通道）；后续 revoke/冻结同样服从顶部「自动签退后续联动」开关。
-              </div>
+            <div className="text-sm font-semibold text-slate-800">激活后再次刷门即签退规则</div>
+            <div className="space-y-1.5 text-sm flex-1 flex flex-col">
               <div className="space-y-1">
-                <div className="text-[11px] text-slate-600">触发门组</div>
-                <input className="h-8 w-full rounded border px-2 text-[11px]" placeholder="搜索门名称/编码" value={activatedReswipeExitKeyword} onChange={(e) => setActivatedReswipeExitKeyword(e.target.value)} />
+                <div className="text-sm text-slate-700">触发门组</div>
+                <input className="h-8 w-full rounded border px-2 text-sm" placeholder="搜索门名称/编码" value={activatedReswipeExitKeyword} onChange={(e) => setActivatedReswipeExitKeyword(e.target.value)} />
                 <div className="h-[180px] max-h-[180px] overflow-auto rounded border border-slate-100 p-1">
                   {channelOptions.filter((ch) => {
                     const code = normalizeChannelCode(ch.channelCode);
