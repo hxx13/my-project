@@ -1,0 +1,16 @@
+version: '3.8'
+services:
+  mysql8:
+    image: mysql:8.0
+    container_name: twin_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: SuperAdmin@2026  # 你的数据库密码，这里为了本地开发设为 root
+      MYSQL_DATABASE: twin_system # 自动为你建好这个空库！
+    ports:
+      - "3306:3306"
+    volumes:
+      - twin_mysql_data:/var/lib/mysql # 数据持久化挂载，重启不丢数据
+
+volumes:
+  twin_mysql_data:

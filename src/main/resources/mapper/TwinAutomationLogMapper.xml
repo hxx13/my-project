@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.TwinAutomationLogMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.entity.TwinAutomationLog">
+        <id property="id" column="id"/>
+        <result property="automationType" column="automation_type"/>
+        <result property="eventKey" column="event_key"/>
+        <result property="triggerType" column="trigger_type"/>
+        <result property="triggerReason" column="trigger_reason"/>
+        <result property="userId" column="user_id"/>
+        <result property="targetId" column="target_id"/>
+        <result property="success" column="success"/>
+        <result property="detail" column="detail"/>
+        <result property="eventTime" column="event_time"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="userName" column="user_name"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.example.demo.modules.twin.entity.TwinAutomationLog" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_automation_log
+        (automation_type, event_key, trigger_type, trigger_reason, user_id, target_id, success, detail, event_time, created_by)
+        VALUES
+        (#{automationType}, #{eventKey}, #{triggerType}, #{triggerReason}, #{userId}, #{targetId}, #{success}, #{detail}, #{eventTime}, #{createdBy})
+    </insert>
+
+    <sql id="FilterWhere">
+        <where>
+            <if test="automationType != null and automationType != ''">
+                AND automation_type = #{automationType}
+            </if>
+            <if test="triggerType != null and triggerType != ''">
+                AND trigger_type = #{triggerType}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    user_id LIKE CONCAT('%', #{keyword}, '%')
+                    OR event_key LIKE CONCAT('%', #{keyword}, '%')
+                    OR trigger_reason LIKE CONCAT('%', #{keyword}, '%')
+                    OR detail LIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+            <if test="startTime != null">
+                AND event_time <![CDATA[>=]]> #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND event_time <![CDATA[<=]]> #{endTime}
+            </if>
+            <if test="excludePenetrationPoll != null and excludePenetrationPoll == true">
+                AND NOT (automation_type = 'SCHEDULER' AND event_key = 'ARO_PENETRATION_POLL')
+            </if>
+        </where>
+    </sql>
+
+    <sql id="FilterWhereL">
+        <where>
+            <if test="automationType != null and automationType != ''">
+                AND l.automation_type = #{automationType}
+            </if>
+            <if test="triggerType != null and triggerType != ''">
+                AND l.trigger_type = #{triggerType}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    l.user_id LIKE CONCAT('%', #{keyword}, '%')
+                    OR l.event_key LIKE CONCAT('%', #{keyword}, '%')
+                    OR l.trigger_reason LIKE CONCAT('%', #{keyword}, '%')
+                    OR l.detail LIKE CONCAT('%', #{keyword}, '%')
+                    OR p.name LIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+            <if test="startTime != null">
+                AND l.event_time <![CDATA[>=]]> #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND l.event_time <![CDATA[<=]]> #{endTime}
+            </if>
+            <if test="excludePenetrationPoll != null and excludePenetrationPoll == true">
+                AND NOT (l.automation_type = 'SCHEDULER' AND l.event_key = 'ARO_PENETRATION_POLL')
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectPage" resultMap="BaseMap">
+        SELECT l.id, l.automation_type, l.event_key, l.trigger_type, l.trigger_reason,
+               l.user_id, l.target_id, l.success, l.detail, l.event_time, l.created_by,
+               p.name AS user_name
+        FROM twin_automation_log l
+        LEFT JOIN aro_personnel p ON l.user_id = p.user_id
+        <include refid="FilterWhereL"/>
+        ORDER BY l.event_time DESC, l.id DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(1)
+        FROM twin_automation_log
+        <include refid="FilterWhere"/>
+    </select>
+
+    <select id="selectNearUserTime" resultMap="BaseMap">
+        SELECT l.id, l.automation_type, l.event_key, l.trigger_type, l.trigger_reason,
+               l.user_id, l.target_id, l.success, l.detail, l.event_time, l.created_by,
+               p.name AS user_name
+        FROM twin_automation_log l
+        LEFT JOIN aro_personnel p ON l.user_id = p.user_id
+        WHERE l.user_id = #{userId}
+          AND l.event_time <![CDATA[>=]]> #{fromTime}
+          AND l.event_time <![CDATA[<=]]> #{toTime}
+          <if test="excludePenetrationPoll != null and excludePenetrationPoll == true">
+              AND NOT (l.automation_type = 'SCHEDULER' AND l.event_key = 'ARO_PENETRATION_POLL')
+          </if>
+        ORDER BY l.event_time DESC, l.id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

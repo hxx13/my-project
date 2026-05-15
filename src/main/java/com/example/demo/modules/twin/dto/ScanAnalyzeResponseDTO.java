@@ -1,0 +1,21 @@
+package com.example.demo.modules.twin.dto;
+
+import com.example.demo.modules.twin.dto.scan.ScanUserInfoDTO;
+import lombok.Data;
+
+import java.util.List;
+import java.util.Map;
+
+@Data
+public class ScanAnalyzeResponseDTO {
+    private boolean success;
+    private String message;
+    private String currentState;
+    private List<Map<String, Object>> pendingRooms;
+    private List<Map<String, Object>> allowedRooms;
+    private Integer globalUserState;
+    private List<Map<String, Object>> disciplinaryRecords;
+    private ScanUserInfoDTO userInfo;
+    /** 是否在 twin_card_mapping 中有该人员的物理卡映射（有则前端指示「自带校园卡」，无则「领用公卡」） */
+    private Boolean hasPhysicalCardMapping;
+}

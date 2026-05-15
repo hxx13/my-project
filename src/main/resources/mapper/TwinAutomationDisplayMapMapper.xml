@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.TwinAutomationDisplayMapMapper">
+
+    <select id="selectAll" resultType="com.example.demo.modules.twin.entity.TwinAutomationDisplayMap">
+        SELECT id,
+               code_type AS codeType,
+               code_value AS codeValue,
+               label_zh AS labelZh,
+               remark,
+               update_time AS updateTime
+        FROM twin_automation_display_map
+        ORDER BY code_type, code_value
+    </select>
+
+    <insert id="insert" parameterType="com.example.demo.modules.twin.entity.TwinAutomationDisplayMap" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_automation_display_map (code_type, code_value, label_zh, remark, update_time)
+        VALUES (#{codeType}, #{codeValue}, #{labelZh}, #{remark}, NOW())
+    </insert>
+
+    <update id="updateById" parameterType="com.example.demo.modules.twin.entity.TwinAutomationDisplayMap">
+        UPDATE twin_automation_display_map
+        SET code_type = #{codeType},
+            code_value = #{codeValue},
+            label_zh = #{labelZh},
+            remark = #{remark},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM twin_automation_display_map WHERE id = #{id}
+    </delete>
+</mapper>

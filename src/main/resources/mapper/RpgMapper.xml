@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.RpgMapper">
+
+    <select id="getDistinctAccessLogUserIds" resultType="string">
+        SELECT DISTINCT user_id
+        FROM aro_access_log
+    </select>
+
+    <select id="getUserLogsForRecalc" resultType="map">
+        SELECT create_time, accessType AS action
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+        ORDER BY create_time ASC
+    </select>
+
+    <update id="updatePersonnelTotalExp">
+        UPDATE aro_personnel
+        SET total_exp = #{totalExp}
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="recalculateAllExpByEntryCount">
+        UPDATE aro_personnel p
+        LEFT JOIN (
+            SELECT name, COUNT(*) * 10 AS total_exp
+            FROM aro_access_log
+            WHERE accessType = 1
+            GROUP BY name
+        ) l ON l.name = p.name
+        SET p.total_exp = COALESCE(l.total_exp, 0)
+    </update>
+
+</mapper>

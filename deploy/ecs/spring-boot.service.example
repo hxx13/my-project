@@ -1,0 +1,18 @@
+# 复制到 /etc/systemd/system/spring-demo.service 后按需修改 WorkingDirectory、ExecStart、User
+# sudo systemctl daemon-reload && sudo systemctl enable --now spring-demo
+
+[Unit]
+Description=Spring Boot demo (twin_system)
+After=network.target
+
+[Service]
+Type=simple
+User=ecs-user
+WorkingDirectory=/opt/spring-demo
+ExecStart=/usr/bin/java -jar /opt/spring-demo/demo.jar --spring.profiles.active=prod
+Restart=on-failure
+RestartSec=10
+Environment=JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+
+[Install]
+WantedBy=multi-user.target

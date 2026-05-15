@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.supplies.mapper.SupplyClaimLineMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.supplies.entity.SupplyClaimLine">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="itemId" column="item_id"/>
+        <result property="qty" column="qty"/>
+        <result property="snapshotName" column="snapshot_name"/>
+        <result property="fulfilledQty" column="fulfilled_qty"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO supply_claim_line(order_id, item_id, qty, snapshot_name, fulfilled_qty)
+        VALUES (#{orderId}, #{itemId}, #{qty}, #{snapshotName}, #{fulfilledQty})
+    </insert>
+
+    <select id="listByOrderId" resultMap="Base">
+        SELECT * FROM supply_claim_line WHERE order_id = #{orderId} ORDER BY id ASC
+    </select>
+
+    <update id="updateFulfilledQty">
+        UPDATE supply_claim_line SET fulfilled_qty = #{fulfilledQty} WHERE id = #{id}
+    </update>
+
+    <delete id="deleteByOrderId">
+        DELETE FROM supply_claim_line
+        WHERE order_id = #{orderId}
+    </delete>
+
+    <select id="listFulfilledHistoryByItemId" resultType="com.example.demo.modules.supplies.dto.SupplyAuditRestoredRow">
+        SELECT DATE_FORMAT(o.fulfilled_at, '%Y-%m-%d %H:%i:%s') AS outboundTime,
+               l.order_id AS claimId,
+               l.snapshot_name AS itemName,
+               l.qty AS applyQty,
+               l.fulfilled_qty AS outboundQty,
+               o.user_id AS applicantUserId,
+               o.fulfilled_by AS fulfilledByUserId
+        FROM supply_claim_line l
+        INNER JOIN supply_claim_order o ON o.id = l.order_id
+        WHERE l.item_id = #{itemId}
+          AND IFNULL(o.deleted, 0) = 0
+          AND o.status = 'FULFILLED'
+          AND IFNULL(l.fulfilled_qty, 0) &gt; 0
+        ORDER BY o.fulfilled_at DESC, l.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countFulfilledHistoryByItemId" resultType="int">
+        SELECT COUNT(1)
+        FROM supply_claim_line l
+        INNER JOIN supply_claim_order o ON o.id = l.order_id
+        WHERE l.item_id = #{itemId}
+          AND IFNULL(o.deleted, 0) = 0
+          AND o.status = 'FULFILLED'
+          AND IFNULL(l.fulfilled_qty, 0) &gt; 0
+    </select>
+</mapper>

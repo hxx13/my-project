@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper">
+
+    <insert id="upsert" parameterType="com.example.demo.modules.roommapping.entity.RoomMappingRoom">
+        INSERT INTO room_mapping_room (
+            rule_no, shelf_id, region_id, region_name, floor_id, floor_name,
+            room_id, room_name, rack_name, tags, source_row_hash
+        ) VALUES (
+            #{ruleNo}, #{shelfId}, #{regionId}, #{regionName}, #{floorId}, #{floorName},
+            #{roomId}, #{roomName}, #{rackName}, #{tags}, #{sourceRowHash}
+        )
+        ON DUPLICATE KEY UPDATE
+            rule_no = VALUES(rule_no),
+            shelf_id = VALUES(shelf_id),
+            region_id = VALUES(region_id),
+            region_name = VALUES(region_name),
+            floor_id = VALUES(floor_id),
+            floor_name = VALUES(floor_name),
+            room_name = VALUES(room_name),
+            rack_name = VALUES(rack_name),
+            tags = VALUES(tags),
+            source_row_hash = VALUES(source_row_hash)
+    </insert>
+
+    <select id="selectByRoomId" resultType="com.example.demo.modules.roommapping.entity.RoomMappingRoom">
+        SELECT id, rule_no AS ruleNo, shelf_id AS shelfId, region_id AS regionId, region_name AS regionName,
+               floor_id AS floorId, floor_name AS floorName, room_id AS roomId, room_name AS roomName,
+               rack_name AS rackName, tags, source_row_hash AS sourceRowHash,
+               official_permission_level AS officialPermissionLevel, updated_at AS updatedAt
+        FROM room_mapping_room
+        WHERE room_id = #{roomId}
+    </select>
+
+    <sql id="ListWhere">
+        <where>
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    room_id LIKE CONCAT('%', #{keyword}, '%')
+                    OR room_name LIKE CONCAT('%', #{keyword}, '%')
+                    OR IFNULL(tags, '') LIKE CONCAT('%', #{keyword}, '%')
+                    OR IFNULL(region_name, '') LIKE CONCAT('%', #{keyword}, '%')
+                    OR IFNULL(floor_name, '') LIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+            <if test="regionName != null and regionName != ''">
+                AND IFNULL(region_name, '') LIKE CONCAT('%', #{regionName}, '%')
+            </if>
+            <if test="floorName != null and floorName != ''">
+                AND IFNULL(floor_name, '') LIKE CONCAT('%', #{floorName}, '%')
+            </if>
+            <if test="tagFilter != null and tagFilter != ''">
+                AND IFNULL(tags, '') LIKE CONCAT('%', #{tagFilter}, '%')
+            </if>
+        </where>
+    </sql>
+
+    <select id="countList" resultType="long">
+        SELECT COUNT(*) FROM room_mapping_room
+        <include refid="ListWhere"/>
+    </select>
+
+    <select id="selectPage" resultType="com.example.demo.modules.roommapping.entity.RoomMappingRoom">
+        SELECT id, rule_no AS ruleNo, shelf_id AS shelfId, region_id AS regionId, region_name AS regionName,
+               floor_id AS floorId, floor_name AS floorName, room_id AS roomId, room_name AS roomName,
+               rack_name AS rackName, tags, source_row_hash AS sourceRowHash,
+               official_permission_level AS officialPermissionLevel, updated_at AS updatedAt
+        FROM room_mapping_room
+        <include refid="ListWhere"/>
+        ORDER BY IFNULL(rule_no, 99999999), room_id
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <update id="mergeOfficialPermissionLevel">
+        UPDATE room_mapping_room
+        SET official_permission_level = LEAST(COALESCE(official_permission_level, #{level}), #{level})
+        WHERE room_id = #{roomId}
+    </update>
+
+    <update id="updateOfficialPermissionLevel">
+        UPDATE room_mapping_room
+        SET official_permission_level = #{level,jdbcType=INTEGER}
+        WHERE room_id = #{roomId}
+    </update>
+
+    <select id="selectMaxOfficialPermissionLevelInCatalog" resultType="java.lang.Integer">
+        SELECT MAX(official_permission_level)
+        FROM room_mapping_room
+        WHERE official_permission_level IS NOT NULL
+    </select>
+
+    <select id="selectMaxStrictLevelStrictlyBelow" resultType="java.lang.Integer">
+        SELECT MAX(official_permission_level)
+        FROM room_mapping_room
+        WHERE official_permission_level IS NOT NULL
+          AND official_permission_level &lt; #{level}
+    </select>
+
+    <select id="selectDistinctRegionNames" resultType="java.lang.String">
+        SELECT DISTINCT region_name FROM room_mapping_room
+        WHERE region_name IS NOT NULL AND TRIM(region_name) != ''
+        ORDER BY region_name
+    </select>
+
+    <select id="selectDistinctFloorNames" resultType="java.lang.String">
+        SELECT DISTINCT floor_name FROM room_mapping_room
+        WHERE floor_name IS NOT NULL AND TRIM(floor_name) != ''
+        <if test="regionName != null and regionName != ''">
+            AND region_name = #{regionName}
+        </if>
+        ORDER BY floor_name
+    </select>
+</mapper>

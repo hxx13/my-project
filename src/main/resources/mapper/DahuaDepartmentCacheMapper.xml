@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.dahua.mapper.DahuaDepartmentCacheMapper">
+
+    <insert id="upsert" parameterType="com.example.demo.modules.dahua.entity.DahuaDepartmentCache">
+        INSERT INTO dahua_department_cache (id, parent_id, name, memo, sort, parent_ids, department_sn, domain_id)
+        VALUES (#{id}, #{parentId}, #{name}, #{memo}, #{sort}, #{parentIds}, #{departmentSn}, #{domainId})
+        ON DUPLICATE KEY UPDATE
+            parent_id = VALUES(parent_id),
+            name = VALUES(name),
+            memo = VALUES(memo),
+            sort = VALUES(sort),
+            parent_ids = VALUES(parent_ids),
+            department_sn = VALUES(department_sn),
+            domain_id = VALUES(domain_id)
+    </insert>
+
+    <select id="list" resultType="com.example.demo.modules.dahua.entity.DahuaDepartmentCache">
+        SELECT id,
+               parent_id AS parentId,
+               name,
+               memo,
+               sort,
+               parent_ids AS parentIds,
+               department_sn AS departmentSn,
+               domain_id AS domainId,
+               DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+        FROM dahua_department_cache
+        <where>
+            <if test="keyword != null and keyword != ''">
+                <bind name="pattern" value="'%' + keyword + '%'" />
+                (name LIKE #{pattern}
+                OR department_sn LIKE #{pattern}
+                OR CAST(id AS CHAR) LIKE #{pattern})
+            </if>
+        </where>
+        ORDER BY updated_at DESC, id DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="count" resultType="int">
+        SELECT COUNT(*)
+        FROM dahua_department_cache
+        <where>
+            <if test="keyword != null and keyword != ''">
+                <bind name="pattern" value="'%' + keyword + '%'" />
+                (name LIKE #{pattern}
+                OR department_sn LIKE #{pattern}
+                OR CAST(id AS CHAR) LIKE #{pattern})
+            </if>
+        </where>
+    </select>
+
+</mapper>

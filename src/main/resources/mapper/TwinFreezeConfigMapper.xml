@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.TwinFreezeConfigMapper">
+
+    <select id="countSecondFreezeColumn" resultType="java.lang.Integer">
+        SELECT COUNT(1)
+        FROM information_schema.COLUMNS
+        WHERE table_schema = DATABASE()
+          AND table_name = 'twin_freeze_config'
+          AND column_name = 'second_freeze_time'
+    </select>
+
+    <update id="addSecondFreezeColumn">
+        ALTER TABLE twin_freeze_config
+        ADD COLUMN second_freeze_time VARCHAR(5) NULL COMMENT '第二触发时刻 HH:mm（可选）'
+    </update>
+
+    <select id="countSecondFreezeAutoSignoutColumn" resultType="java.lang.Integer">
+        SELECT COUNT(1)
+        FROM information_schema.COLUMNS
+        WHERE table_schema = DATABASE()
+          AND table_name = 'twin_freeze_config'
+          AND column_name = 'second_freeze_auto_signout_enabled'
+    </select>
+
+    <update id="addSecondFreezeAutoSignoutColumn">
+        ALTER TABLE twin_freeze_config
+        ADD COLUMN second_freeze_auto_signout_enabled TINYINT NOT NULL DEFAULT 0 COMMENT '第二次冻结命中时：今日曾豁免且仍在馆者自动执行完整离开'
+    </update>
+
+    <resultMap id="TwinFreezeConfigMap" type="com.example.demo.modules.twin.entity.TwinFreezeConfigRow">
+        <id column="id" property="id"/>
+        <result column="enabled" property="enabled"/>
+        <result column="freeze_time" property="freezeTime"/>
+        <result column="second_freeze_time" property="secondFreezeTime"/>
+        <result column="second_freeze_auto_signout_enabled" property="secondFreezeAutoSignoutEnabled"/>
+        <result column="timezone" property="timezone"/>
+        <result column="updated_by" property="updatedBy"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="last_auto_freeze_run_date" property="lastAutoFreezeRunDate"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="TwinFreezeConfigMap">
+        SELECT id, enabled, freeze_time, second_freeze_time, second_freeze_auto_signout_enabled, timezone, updated_by, updated_at, last_auto_freeze_run_date
+        FROM twin_freeze_config
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insertIgnoreDefault">
+        INSERT IGNORE INTO twin_freeze_config (id, enabled, freeze_time, second_freeze_time, second_freeze_auto_signout_enabled, timezone, updated_by)
+        VALUES (#{id}, 1, '18:00', NULL, 0, 'Asia/Shanghai', 'system')
+    </insert>
+
+    <update id="updateConfig">
+        UPDATE twin_freeze_config
+        SET enabled = #{enabled},
+            freeze_time = #{freezeTime},
+            second_freeze_time = #{secondFreezeTime},
+            second_freeze_auto_signout_enabled = #{secondFreezeAutoSignoutEnabled},
+            timezone = #{timezone},
+            updated_by = #{updatedBy},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateLastAutoFreezeRunDate">
+        UPDATE twin_freeze_config
+        SET last_auto_freeze_run_date = #{runDate},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+</mapper>

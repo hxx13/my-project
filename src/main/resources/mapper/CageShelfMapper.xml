@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageShelfMapper">
+
+    <resultMap id="CageShelfIndexMap" type="com.example.demo.modules.cageshelf.entity.CageShelfIndex">
+        <id property="id" column="id"/>
+        <result property="campusId" column="campus_id"/>
+        <result property="campusName" column="campus_name"/>
+        <result property="areaId" column="area_id"/>
+        <result property="areaName" column="area_name"/>
+        <result property="floorId" column="floor_id"/>
+        <result property="floorName" column="floor_name"/>
+        <result property="roomId" column="room_id"/>
+        <result property="roomName" column="room_name"/>
+        <result property="shelveId" column="shelve_id"/>
+        <result property="shelveName" column="shelve_name"/>
+        <result property="orders" column="orders"/>
+        <result property="deleted" column="deleted"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <select id="countByShelveId" resultType="int">
+        SELECT COUNT(1)
+        FROM cage_shelf_index
+        WHERE shelve_id = #{shelveId}
+    </select>
+
+    <insert id="upsertIndex" parameterType="com.example.demo.modules.cageshelf.entity.CageShelfIndex">
+        INSERT INTO cage_shelf_index (
+            campus_id, campus_name, area_id, area_name, floor_id, floor_name,
+            room_id, room_name, shelve_id, shelve_name, orders, deleted
+        ) VALUES (
+            #{campusId}, #{campusName}, #{areaId}, #{areaName}, #{floorId}, #{floorName},
+            #{roomId}, #{roomName}, #{shelveId}, #{shelveName}, #{orders}, 0
+        )
+        ON DUPLICATE KEY UPDATE
+            campus_id = VALUES(campus_id),
+            campus_name = VALUES(campus_name),
+            area_id = VALUES(area_id),
+            area_name = VALUES(area_name),
+            floor_id = VALUES(floor_id),
+            floor_name = VALUES(floor_name),
+            room_id = VALUES(room_id),
+            room_name = VALUES(room_name),
+            shelve_name = VALUES(shelve_name),
+            orders = VALUES(orders),
+            deleted = 0,
+            update_time = NOW()
+    </insert>
+
+    <update id="clearAll">
+        UPDATE cage_shelf_index
+        SET deleted = 1,
+            update_time = NOW()
+        WHERE deleted = 0
+    </update>
+
+    <select id="listCampuses" resultType="map">
+        SELECT campus_id AS campusId,
+               campus_name AS campusName
+        FROM cage_shelf_index
+        WHERE deleted = 0
+        GROUP BY campus_id, campus_name
+        ORDER BY campus_id ASC
+    </select>
+
+    <select id="listAreas" resultType="map">
+        SELECT CAST(area_id AS CHAR) AS areaId,
+               area_name AS areaName
+        FROM cage_shelf_index
+        WHERE deleted = 0
+          <if test="campusId != null">AND campus_id = #{campusId}</if>
+        GROUP BY area_id, area_name
+        ORDER BY area_id ASC
+    </select>
+
+    <select id="listFloors" resultType="map">
+        SELECT CAST(floor_id AS CHAR) AS floorId,
+               floor_name AS floorName
+        FROM cage_shelf_index
+        WHERE deleted = 0
+          <if test="campusId != null">AND campus_id = #{campusId}</if>
+          <if test="areaId != null and areaId != ''">AND CAST(area_id AS CHAR) = #{areaId}</if>
+          <if test="areaName != null and areaName != ''">AND area_name = #{areaName}</if>
+        GROUP BY floor_id, floor_name
+        ORDER BY floor_id ASC
+    </select>
+
+    <select id="listRooms" resultType="map">
+        SELECT CAST(room_id AS CHAR) AS roomId,
+               room_name AS roomName
+        FROM cage_shelf_index
+        WHERE deleted = 0
+          <if test="campusId != null">AND campus_id = #{campusId}</if>
+          <if test="areaId != null and areaId != ''">AND CAST(area_id AS CHAR) = #{areaId}</if>
+          <if test="areaName != null and areaName != ''">AND area_name = #{areaName}</if>
+          <if test="floorId != null and floorId != ''">AND CAST(floor_id AS CHAR) = #{floorId}</if>
+          <if test="floorName != null and floorName != ''">AND floor_name = #{floorName}</if>
+        GROUP BY room_id, room_name
+        ORDER BY room_id ASC
+    </select>
+
+    <select id="listShelves" resultType="map">
+        SELECT CAST(shelve_id AS CHAR) AS shelveId,
+               shelve_name AS shelveName
+        FROM cage_shelf_index
+        WHERE deleted = 0
+          <if test="campusId != null">AND campus_id = #{campusId}</if>
+          <if test="areaId != null and areaId != ''">AND CAST(area_id AS CHAR) = #{areaId}</if>
+          <if test="areaName != null and areaName != ''">AND area_name = #{areaName}</if>
+          <if test="floorId != null and floorId != ''">AND CAST(floor_id AS CHAR) = #{floorId}</if>
+          <if test="floorName != null and floorName != ''">AND floor_name = #{floorName}</if>
+          <if test="roomId != null and roomId != ''">AND CAST(room_id AS CHAR) = #{roomId}</if>
+          <if test="roomName != null and roomName != ''">AND room_name = #{roomName}</if>
+        GROUP BY shelve_id, shelve_name
+        ORDER BY shelve_id ASC
+    </select>
+
+    <select id="findByShelveId" resultMap="CageShelfIndexMap">
+        SELECT *
+        FROM cage_shelf_index
+        WHERE CAST(shelve_id AS CHAR) = #{shelveId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="listIndexes" resultType="map">
+        SELECT CAST(campus_id AS CHAR) AS campusId,
+               campus_name AS campusName,
+               CAST(area_id AS CHAR) AS areaId,
+               area_name AS areaName,
+               CAST(floor_id AS CHAR) AS floorId,
+               floor_name AS floorName,
+               CAST(room_id AS CHAR) AS roomId,
+               room_name AS roomName,
+               CAST(shelve_id AS CHAR) AS shelveId,
+               shelve_name AS shelveName,
+               orders,
+               DATE_FORMAT(update_time, '%Y-%m-%d %H:%i:%s') AS updateTime
+        FROM cage_shelf_index
+        WHERE deleted = 0
+          <if test="campusId != null">AND campus_id = #{campusId}</if>
+          <if test="areaId != null and areaId != ''">AND CAST(area_id AS CHAR) = #{areaId}</if>
+          <if test="floorId != null and floorId != ''">AND CAST(floor_id AS CHAR) = #{floorId}</if>
+          <if test="roomId != null and roomId != ''">AND CAST(room_id AS CHAR) = #{roomId}</if>
+        ORDER BY campus_id, area_id, floor_id, room_id, shelve_id
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countIndexes" resultType="int">
+        SELECT COUNT(1)
+        FROM cage_shelf_index
+        WHERE deleted = 0
+          <if test="campusId != null">AND campus_id = #{campusId}</if>
+          <if test="areaId != null and areaId != ''">AND CAST(area_id AS CHAR) = #{areaId}</if>
+          <if test="floorId != null and floorId != ''">AND CAST(floor_id AS CHAR) = #{floorId}</if>
+          <if test="roomId != null and roomId != ''">AND CAST(room_id AS CHAR) = #{roomId}</if>
+    </select>
+</mapper>

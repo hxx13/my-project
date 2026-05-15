@@ -1,0 +1,510 @@
+/**
+ * 动物房温湿度监测（/animal-room-telemetry）与动物房驾驶舱（/animal-room-cockpit）：科幻深色壳。
+ * 读数：非高超/低超/越限为纯霓虹字（无底色块）；报警三类保留渐变底 + 呼吸。
+ * 卡片环境光与按名称粒子：见 twinChromeAnimalTelemetryRoomFx.css（无旋转流光）。
+ */
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] {
+    background: linear-gradient(185deg, rgb(15 23 42) 0%, rgb(2 6 23) 45%, rgb(15 23 42) 100%) !important;
+    color: rgb(226 232 240) !important;
+    box-shadow: inset 0 0 80px rgba(14, 165, 233, 0.04);
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] > header {
+    border-color: rgba(56, 189, 248, 0.22) !important;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.78)) !important;
+    box-shadow: 0 1px 0 rgba(56, 189, 248, 0.12);
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] h1 {
+    color: rgb(240 249 255) !important;
+    text-shadow: 0 0 18px rgba(56, 189, 248, 0.2);
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] p.text-zinc-500,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .text-zinc-500 {
+    color: rgb(165 243 254) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .text-zinc-600 {
+    color: rgb(186 230 253) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .text-zinc-400 {
+    color: rgb(125 211 252) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .text-zinc-700 {
+    color: rgb(224 242 254) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    .text-zinc-900:not([class*="telemetry-alarm"]):not([data-animal-telemetry-value]) {
+    color: rgb(248 250 252) !important;
+}
+
+/* 顶栏时间戳、控件 */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .bg-zinc-100\/90,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .bg-white,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .bg-white\/90 {
+    background: rgba(15, 23, 42, 0.75) !important;
+    border-color: rgba(56, 189, 248, 0.25) !important;
+    color: rgb(224 242 254) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .ring-zinc-200\/80,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .ring-zinc-900\/5 {
+    --tw-ring-color: rgba(56, 189, 248, 0.25) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .border-zinc-200\/90,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .border-zinc-300 {
+    border-color: rgba(51, 65, 85, 0.85) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .hover\:bg-zinc-50:hover {
+    background: rgba(56, 189, 248, 0.1) !important;
+}
+
+/* 分区 Tab：未选中 */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .bg-zinc-100\/90.text-zinc-600 {
+    background: rgba(30, 41, 59, 0.85) !important;
+    color: rgb(186 230 253) !important;
+    border-color: rgba(56, 189, 248, 0.2) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .hover\:bg-zinc-200\/85:hover {
+    background: rgba(56, 189, 248, 0.14) !important;
+    color: rgb(240 249 255) !important;
+}
+
+/* 楼层 / 机房分区条：压浅色渐变，与深色壳一体（与 TSX data-animal-telemetry-zone-band 双保险） */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-telemetry-zone-band] {
+    background: linear-gradient(
+        90deg,
+        rgba(2, 6, 23, 0.92),
+        rgba(15, 23, 42, 0.88),
+        rgba(2, 6, 23, 0.92)
+    ) !important;
+    border-color: rgba(34, 211, 238, 0.22) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(56, 189, 248, 0.1),
+        0 1px 0 rgba(0, 0, 0, 0.35);
+    --tw-ring-color: rgba(34, 211, 238, 0.12) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-telemetry-zone-band]
+    .text-zinc-500 {
+    color: rgb(125 211 252) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-telemetry-zone-band]
+    .text-zinc-900 {
+    color: rgb(248 250 252) !important;
+}
+
+/* 半幅前置分区条：与双栏左列同宽，右格留白对齐接力栅格 */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-telemetry-zone-band-wrap="lead-half"]
+    [data-animal-telemetry-zone-band="lead-half"] {
+    box-shadow:
+        inset 0 1px 0 rgba(56, 189, 248, 0.08),
+        0 0 0 1px rgba(34, 211, 238, 0.06);
+}
+
+/* 分区标识卡（与套间同列 pack）：科幻壳压光 */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-telemetry-zone-card] {
+    background: linear-gradient(
+        125deg,
+        rgba(2, 6, 23, 0.94),
+        rgba(15, 23, 42, 0.88),
+        rgba(2, 6, 23, 0.92)
+    ) !important;
+    border-color: rgba(34, 211, 238, 0.26) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(56, 189, 248, 0.1),
+        0 0 14px rgba(34, 211, 238, 0.08);
+}
+
+/* 选中 Tab 保持 sky-600（工业冷色 = 温湿度可读性） */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .bg-sky-600 {
+    box-shadow: 0 0 16px rgba(2, 132, 199, 0.45);
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] article.border-zinc-200\/90 {
+    background: linear-gradient(165deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.88)) !important;
+    border-color: rgba(56, 189, 248, 0.22) !important;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    section.rounded-xl.border {
+    background: linear-gradient(165deg, rgba(15, 23, 42, 0.94), rgba(2, 6, 23, 0.9)) !important;
+    border-color: rgba(56, 189, 248, 0.24) !important;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.38);
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] article header {
+    border-color: rgba(56, 189, 248, 0.12) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] article h3 {
+    color: rgb(240 249 255) !important;
+}
+
+/* 指标行底边（温湿度行） */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .border-b.border-zinc-100 {
+    border-color: rgba(30, 58, 138, 0.35) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .text-zinc-500:not([class*="telemetry-alarm"]) {
+    color: rgb(125 211 252) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] button.hover\:bg-sky-50\/80:hover {
+    background: rgba(56, 189, 248, 0.12) !important;
+    border-color: rgba(56, 189, 248, 0.35) !important;
+}
+
+/* 主内容区若仍有 zinc 浅底碎片 */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .bg-zinc-50,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] .bg-zinc-100 {
+    background-color: rgba(15, 23, 42, 0.65) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] h1 {
+        text-shadow: none;
+    }
+
+}
+
+/* ---------- 套间 section（MAU/PAU 大块）：去掉浅灰顶栏；名称光效见 twinChromeAnimalTelemetryRoomFx.css ---------- */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    section
+    > div[class*="bg-zinc-50/80"] {
+    background: linear-gradient(90deg, rgba(15, 23, 42, 0.95), rgba(30, 58, 138, 0.22), rgba(15, 23, 42, 0.95)) !important;
+    border-bottom-color: rgba(56, 189, 248, 0.18) !important;
+    box-shadow: inset 0 -1px 0 rgba(56, 189, 248, 0.12);
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    section
+    h2.text-zinc-900 {
+    color: rgb(240 249 255) !important;
+    text-shadow: 0 0 14px rgba(56, 189, 248, 0.15);
+}
+
+/* 设定值/状态胶囊（SuiteTitleMetricPill 等）：避免白灰药丸 */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    .border-zinc-200\/80.bg-white\/90,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [class*="border-zinc-200/80"][class*="bg-white/90"] {
+    background: rgba(15, 23, 42, 0.82) !important;
+    border-color: rgba(56, 189, 248, 0.32) !important;
+    color: rgb(224 242 254) !important;
+    box-shadow: 0 0 12px rgba(14, 165, 233, 0.08);
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    .bg-white\/60,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    .bg-white\/80,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [class*="bg-white/60"],
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [class*="bg-white/80"] {
+    background: rgba(15, 23, 42, 0.72) !important;
+    border-color: rgba(56, 189, 248, 0.22) !important;
+    color: rgb(224 242 254) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [class*="bg-zinc-50/30"][class*="border-dashed"] {
+    background: rgba(2, 6, 23, 0.55) !important;
+    border-color: rgba(56, 189, 248, 0.28) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    .bg-zinc-200 {
+    background-color: rgba(30, 58, 138, 0.45) !important;
+}
+
+/* 内层小卡片（送排风等）：白底改深透 + 霓虹边 */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    .rounded-lg.border.border-zinc-200\/90.bg-white,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [class*="border-zinc-200/90"][class*="bg-white"][class*="rounded-lg"] {
+    background: linear-gradient(160deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.85)) !important;
+    border-color: rgba(56, 189, 248, 0.2) !important;
+    box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.06);
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    button.hover\:bg-zinc-100:hover,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    button[class*="hover:bg-zinc-100"]:hover {
+    background: rgba(56, 189, 248, 0.14) !important;
+    color: rgb(224 242 254) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    .ring-zinc-200\/75,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [class*="ring-zinc-200/75"] {
+    --tw-ring-color: rgba(56, 189, 248, 0.35) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [class*="ring-zinc-950/"] {
+    --tw-ring-color: rgba(14, 165, 233, 0.12) !important;
+}
+
+/* 归档小窗等 zinc-50/80 块 */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    .border-zinc-200.bg-zinc-50\/80,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [class*="bg-zinc-50/80"] {
+    background: rgba(15, 23, 42, 0.78) !important;
+    border-color: rgba(56, 189, 248, 0.22) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    .border-zinc-200.bg-zinc-50,
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    span.flex.w-full.flex-wrap[class*="bg-zinc-50"] {
+    background: rgba(15, 23, 42, 0.65) !important;
+    border-color: rgba(51, 65, 85, 0.9) !important;
+}
+
+/* ---------- Portal（createPortal → body）：依赖 html[data-twin-animal-telemetry-scifi] ---------- */
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] {
+    background-color: rgba(2, 6, 23, 0.78) !important;
+    backdrop-filter: blur(8px);
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .rounded-xl.border.border-zinc-200,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .rounded-xl.border {
+    background: linear-gradient(165deg, rgba(15, 23, 42, 0.97), rgba(2, 6, 23, 0.94)) !important;
+    border-color: rgba(56, 189, 248, 0.3) !important;
+    box-shadow:
+        0 0 28px rgba(14, 165, 233, 0.14),
+        0 16px 48px rgba(0, 0, 0, 0.5) !important;
+    color: rgb(226 232 240) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .text-zinc-900,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .text-zinc-800 {
+    color: rgb(248 250 252) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .text-zinc-500,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .text-zinc-600,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .text-zinc-700 {
+    color: rgb(165 243 254) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .border-zinc-200,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .border-zinc-300 {
+    border-color: rgba(56, 189, 248, 0.22) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .bg-white,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] button.border-zinc-200.bg-white {
+    background: rgba(15, 23, 42, 0.88) !important;
+    color: rgb(224 242 254) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] button.hover\:bg-zinc-50:hover {
+    background: rgba(56, 189, 248, 0.12) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] .ring-zinc-950\/5,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-overlay] [class*="ring-zinc-950"] {
+    --tw-ring-color: rgba(56, 189, 248, 0.2) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-popover] {
+    background: linear-gradient(165deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.95)) !important;
+    background-color: rgba(15, 23, 42, 0.96) !important;
+    border-color: rgba(56, 189, 248, 0.35) !important;
+    color: rgb(226 232 240) !important;
+    box-shadow:
+        0 0 24px rgba(14, 165, 233, 0.18),
+        0 12px 40px rgba(0, 0, 0, 0.45) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-popover] .border-zinc-100,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-popover] .border-zinc-300 {
+    border-color: rgba(30, 58, 138, 0.55) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-popover] .text-zinc-900 {
+    color: rgb(248 250 252) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-popover] .text-zinc-500,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-popover] .text-zinc-600,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-popover] .text-zinc-700,
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-popover] .text-zinc-800 {
+    color: rgb(186 230 253) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-popover] .text-zinc-400 {
+    color: rgb(125 211 252) !important;
+}
+
+html[data-twin-animal-telemetry-scifi="1"] [data-twin-animal-telemetry-popover] input {
+    border-color: rgba(56, 189, 248, 0.25) !important;
+    background: rgba(2, 6, 23, 0.55) !important;
+    color: rgb(224 242 254) !important;
+}
+
+/* ---------- 读数霓虹 + 赛博报警（index.css 全局类在本根下被更高特异性覆盖） ---------- */
+@keyframes twin-animal-scifi-alarm-magenta-breathe {
+    0%,
+    100% {
+        color: #ffc9ee;
+        background: linear-gradient(135deg, rgba(255, 0, 120, 0.42), rgba(55, 0, 35, 0.9));
+        text-shadow:
+            0 0 2px rgba(0, 0, 0, 0.9),
+            0 0 10px rgba(255, 77, 166, 0.85),
+            0 0 22px rgba(255, 0, 85, 0.35);
+        box-shadow: inset 0 0 0 1px rgba(255, 0, 170, 0.5);
+    }
+    50% {
+        color: #ffffff;
+        background: linear-gradient(135deg, rgba(255, 0, 200, 0.58), rgba(30, 0, 24, 0.94));
+        text-shadow:
+            0 0 2px rgba(0, 0, 0, 0.85),
+            0 0 16px rgba(255, 160, 220, 0.95),
+            0 0 30px rgba(255, 0, 140, 0.45);
+        box-shadow: inset 0 0 0 1px rgba(255, 120, 210, 0.75);
+    }
+}
+
+@keyframes twin-animal-scifi-alarm-cyan-breathe {
+    0%,
+    100% {
+        color: #b9f6ff;
+        background: linear-gradient(135deg, rgba(0, 200, 255, 0.45), rgba(0, 25, 55, 0.9));
+        text-shadow:
+            0 0 2px rgba(0, 0, 0, 0.9),
+            0 0 10px rgba(56, 189, 248, 0.8);
+        box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.55);
+    }
+    50% {
+        color: #f0fdff;
+        background: linear-gradient(135deg, rgba(56, 189, 248, 0.5), rgba(15, 23, 42, 0.94));
+        text-shadow:
+            0 0 2px rgba(0, 0, 0, 0.85),
+            0 0 16px rgba(165, 243, 254, 0.95);
+        box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.85);
+    }
+}
+
+/* 读数默认霓虹字（背景仅由高超/低超/越限动画或下方 :not 规则显式关掉） */
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-value] {
+    color: #5dffc4 !important;
+    font-weight: 800 !important;
+    text-shadow:
+        0 0 1px rgba(0, 0, 0, 0.96),
+        0 0 10px rgba(0, 255, 200, 0.75),
+        0 0 22px rgba(45, 212, 191, 0.45),
+        0 0 36px rgba(52, 211, 153, 0.22) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"]
+    [data-twin-animal-telemetry-root]
+    [data-animal-telemetry-value]:not(.telemetry-alarm-high):not(.telemetry-alarm-low):not(.telemetry-alarm-value) {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-value].telemetry-alarm-ok {
+    color: #e8ff9a !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    text-shadow:
+        0 0 1px rgba(0, 0, 0, 0.94),
+        0 0 10px rgba(220, 255, 120, 0.78),
+        0 0 22px rgba(190, 242, 100, 0.4) !important;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-value].telemetry-alarm-high {
+    animation: twin-animal-scifi-alarm-magenta-breathe 1.35s ease-in-out infinite;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-value].telemetry-alarm-value {
+    animation: twin-animal-scifi-alarm-magenta-breathe 1.35s ease-in-out infinite;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-value].telemetry-alarm-low {
+    animation: twin-animal-scifi-alarm-cyan-breathe 1.35s ease-in-out infinite;
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-trend="up"] {
+    color: #39ffb1 !important;
+    filter: drop-shadow(0 0 5px rgba(57, 255, 177, 0.9)) drop-shadow(0 0 12px rgba(16, 185, 129, 0.5));
+}
+
+.twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-trend="down"] {
+    color: #67f8ff !important;
+    filter: drop-shadow(0 0 5px rgba(103, 248, 255, 0.95)) drop-shadow(0 0 12px rgba(56, 189, 248, 0.5));
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-trend="up"],
+    .twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-trend="down"] {
+        filter: none;
+    }
+
+    .twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-value].telemetry-alarm-high,
+    .twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-value].telemetry-alarm-value {
+        animation: none;
+        color: #ffd0ec !important;
+        background: linear-gradient(135deg, rgba(255, 0, 130, 0.48), rgba(40, 0, 28, 0.92)) !important;
+        text-shadow: 0 0 10px rgba(255, 100, 180, 0.75) !important;
+        box-shadow: inset 0 0 0 1px rgba(255, 80, 170, 0.55);
+    }
+
+    .twin-chrome-animal-telemetry-scifi[data-twin-chrome-theme="dashboardSciFi"] [data-twin-animal-telemetry-root] [data-animal-telemetry-value].telemetry-alarm-low {
+        animation: none;
+        color: #d4f8ff !important;
+        background: linear-gradient(135deg, rgba(0, 190, 255, 0.48), rgba(10, 25, 48, 0.92)) !important;
+        text-shadow: 0 0 10px rgba(56, 189, 248, 0.75) !important;
+        box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.55);
+    }
+}

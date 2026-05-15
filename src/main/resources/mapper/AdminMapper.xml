@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.admin.mapper.AdminMapper">
+
+    <select id="getPersonnelWithAuth" resultType="map">
+        SELECT
+            ap.user_id AS id,
+            ap.name,
+            ap.job_number AS jobNumber,
+            ap.department_name AS departmentName,
+            ap.project_group_name AS projectGroupName,
+            su.username,
+            su.password,
+            su.role,
+            su.open_id AS openId,
+            su.status
+        FROM aro_personnel ap
+        LEFT JOIN sys_user su ON su.id = ap.user_id
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (
+                    ap.user_id LIKE CONCAT('%', #{keyword}, '%')
+                    OR ap.name LIKE CONCAT('%', #{keyword}, '%')
+                    OR ap.job_number LIKE CONCAT('%', #{keyword}, '%')
+                    OR su.username LIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+        </where>
+        ORDER BY ap.update_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countPersonnelWithAuth" resultType="int">
+        SELECT COUNT(1)
+        FROM aro_personnel ap
+        LEFT JOIN sys_user su ON su.id = ap.user_id
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (
+                    ap.user_id LIKE CONCAT('%', #{keyword}, '%')
+                    OR ap.name LIKE CONCAT('%', #{keyword}, '%')
+                    OR ap.job_number LIKE CONCAT('%', #{keyword}, '%')
+                    OR su.username LIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+        </where>
+    </select>
+
+    <select id="getSystemOnlyUsers" resultType="map">
+        SELECT
+            su.id,
+            su.username,
+            su.password,
+            su.role,
+            su.open_id AS openId,
+            su.status,
+            su.create_time AS createTime,
+            su.display_nickname AS displayNickname,
+            su.mini_bind_type AS miniBindType
+        FROM sys_user su
+        WHERE NOT EXISTS (
+            SELECT 1 FROM aro_personnel ap WHERE ap.user_id = su.id
+        )
+        <if test="keyword != null and keyword != ''">
+            AND (
+                su.id LIKE CONCAT('%', #{keyword}, '%')
+                OR su.username LIKE CONCAT('%', #{keyword}, '%')
+                OR su.display_nickname LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        ORDER BY su.create_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countSystemOnlyUsers" resultType="int">
+        SELECT COUNT(1)
+        FROM sys_user su
+        WHERE NOT EXISTS (
+            SELECT 1 FROM aro_personnel ap WHERE ap.user_id = su.id
+        )
+        <if test="keyword != null and keyword != ''">
+            AND (
+                su.id LIKE CONCAT('%', #{keyword}, '%')
+                OR su.username LIKE CONCAT('%', #{keyword}, '%')
+                OR su.display_nickname LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+    </select>
+
+</mapper>

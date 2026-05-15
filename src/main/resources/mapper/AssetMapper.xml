@@ -1,0 +1,565 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.asset.mapper.AssetMapper">
+
+    <resultMap id="AssetRecordResultMap" type="com.example.demo.modules.asset.entity.AssetRecord">
+        <id property="id" column="id"/>
+        <result property="assetCode" column="asset_code"/>
+        <result property="assetName" column="asset_name"/>
+        <result property="status" column="status"/>
+        <result property="location" column="location"/>
+        <result property="locked" column="locked"/>
+        <result property="note" column="note"/>
+        <result property="createBy" column="create_by"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="latestTransferRequestId" column="latest_transfer_request_id"/>
+        <result property="deleted" column="deleted"/>
+        <result property="deletedTime" column="deleted_time"/>
+        <result property="deletedBy" column="deleted_by"/>
+        <result property="purgeAfterTime" column="purge_after_time"/>
+    </resultMap>
+
+    <resultMap id="AssetColumnDefResultMap" type="com.example.demo.modules.asset.entity.AssetColumnDef">
+        <id property="id" column="id"/>
+        <result property="columnKey" column="column_key"/>
+        <result property="columnLabel" column="column_label"/>
+        <result property="valueType" column="value_type"/>
+        <result property="sortable" column="sortable"/>
+        <result property="searchable" column="searchable"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="AssetTransferRequestResultMap" type="com.example.demo.modules.asset.entity.AssetTransferRequest">
+        <id property="id" column="id"/>
+        <result property="assetId" column="asset_id"/>
+        <result property="assetCode" column="asset_code"/>
+        <result property="assetName" column="asset_name"/>
+        <result property="applicantId" column="applicant_id"/>
+        <result property="applicantName" column="applicant_name"/>
+        <result property="transferTime" column="transfer_time"/>
+        <result property="transferLocation" column="transfer_location"/>
+        <result property="fromLocation" column="from_location"/>
+        <result property="remark" column="remark"/>
+        <result property="photoUrl" column="photo_url"/>
+        <result property="photoUrlsBefore" column="photo_urls_before"/>
+        <result property="photoUrlsAfter" column="photo_urls_after"/>
+        <result property="status" column="status"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <resultMap id="AssetTransferExportFileResultMap" type="com.example.demo.modules.asset.entity.AssetTransferExportFile">
+        <id property="id" column="id"/>
+        <result property="requestId" column="request_id"/>
+        <result property="fileName" column="file_name"/>
+        <result property="storageKey" column="storage_key"/>
+        <result property="downloadToken" column="download_token"/>
+        <result property="status" column="status"/>
+        <result property="expireAt" column="expire_at"/>
+        <result property="summaryText" column="summary_text"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdTime" column="created_time"/>
+    </resultMap>
+
+    <select id="listColumnDefs" resultMap="AssetColumnDefResultMap">
+        SELECT *
+        FROM asset_column_def
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="findColumnDefByKey" resultMap="AssetColumnDefResultMap">
+        SELECT *
+        FROM asset_column_def
+        WHERE column_key = #{columnKey}
+        LIMIT 1
+    </select>
+
+    <insert id="insertColumnDef" parameterType="com.example.demo.modules.asset.entity.AssetColumnDef" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO asset_column_def(
+            column_key, column_label, value_type, sortable, searchable, sort_order, create_by
+        ) VALUES (
+            #{columnKey}, #{columnLabel}, #{valueType}, #{sortable}, #{searchable}, #{sortOrder}, #{createBy}
+        )
+    </insert>
+
+    <update id="updateColumnDefLabel">
+        UPDATE asset_column_def
+        SET column_label = #{columnLabel},
+            update_time = NOW()
+        WHERE column_key = #{columnKey}
+    </update>
+
+    <select id="findAssetById" resultMap="AssetRecordResultMap">
+        SELECT *
+        FROM asset_record
+        WHERE id = #{id} AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="findAssetByCode" resultMap="AssetRecordResultMap">
+        SELECT *
+        FROM asset_record
+        WHERE asset_code = #{assetCode} AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <insert id="insertAsset" parameterType="com.example.demo.modules.asset.entity.AssetRecord">
+        INSERT INTO asset_record(
+            id, asset_code, asset_name, status, location, locked, note, create_by, update_by
+        ) VALUES (
+            #{id}, #{assetCode}, #{assetName}, #{status}, #{location}, #{locked}, #{note}, #{createBy}, #{updateBy}
+        )
+    </insert>
+
+    <update id="updateAssetBase" parameterType="com.example.demo.modules.asset.entity.AssetRecord">
+        UPDATE asset_record
+        SET asset_name = #{assetName},
+            status = #{status},
+            location = #{location},
+            note = #{note},
+            update_by = #{updateBy},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateAssetNote">
+        UPDATE asset_record
+        SET note = #{note},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateAssetLock">
+        UPDATE asset_record
+        SET locked = #{locked},
+            update_by = #{operatorId},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateLatestTransferRequest">
+        UPDATE asset_record
+        SET latest_transfer_request_id = #{requestId},
+            update_by = #{operatorId},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <sql id="assetFilterSql">
+        AND a.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (
+                a.asset_code LIKE CONCAT('%', #{keyword}, '%')
+                OR a.asset_name LIKE CONCAT('%', #{keyword}, '%')
+                OR a.location LIKE CONCAT('%', #{keyword}, '%')
+                OR a.note LIKE CONCAT('%', #{keyword}, '%')
+                OR EXISTS (
+                    SELECT 1 FROM asset_record_value v
+                    WHERE v.asset_id = a.id
+                      AND v.column_value LIKE CONCAT('%', #{keyword}, '%')
+                )
+            )
+        </if>
+        <if test="lockStatus != null">
+            AND a.locked = #{lockStatus}
+        </if>
+        <if test="status != null and status != ''">
+            AND a.status = #{status}
+        </if>
+        <if test="assetName != null and assetName != ''">
+            AND a.asset_name LIKE CONCAT('%', #{assetName}, '%')
+        </if>
+        <if test="campus != null and campus != ''">
+            AND EXISTS (
+                SELECT 1 FROM asset_record_value cv
+                WHERE cv.asset_id = a.id
+                  <choose>
+                      <when test="campusKeys != null and campusKeys.size() > 0">
+                          AND cv.column_key IN
+                          <foreach collection="campusKeys" item="key" open="(" close=")" separator=",">
+                              #{key}
+                          </foreach>
+                      </when>
+                      <otherwise>
+                          AND cv.column_key = 'col_校区'
+                      </otherwise>
+                  </choose>
+                  AND cv.column_value LIKE CONCAT('%', #{campus}, '%')
+            )
+        </if>
+        <if test="user != null and user != ''">
+            AND EXISTS (
+                SELECT 1 FROM asset_record_value uv
+                WHERE uv.asset_id = a.id
+                  <choose>
+                      <when test="userKeys != null and userKeys.size() > 0">
+                          AND uv.column_key IN
+                          <foreach collection="userKeys" item="key" open="(" close=")" separator=",">
+                              #{key}
+                          </foreach>
+                      </when>
+                      <otherwise>
+                          AND uv.column_key = 'col_使用人'
+                      </otherwise>
+                  </choose>
+                  AND uv.column_value LIKE CONCAT('%', #{user}, '%')
+            )
+        </if>
+        <if test="model != null and model != ''">
+            AND EXISTS (
+                SELECT 1 FROM asset_record_value mv
+                WHERE mv.asset_id = a.id
+                  <choose>
+                      <when test="modelKeys != null and modelKeys.size() > 0">
+                          AND mv.column_key IN
+                          <foreach collection="modelKeys" item="key" open="(" close=")" separator=",">
+                              #{key}
+                          </foreach>
+                      </when>
+                      <otherwise>
+                          AND mv.column_key = 'col_型号'
+                      </otherwise>
+                  </choose>
+                  AND mv.column_value LIKE CONCAT('%', #{model}, '%')
+            )
+        </if>
+    </sql>
+
+    <select id="listAssets" resultMap="AssetRecordResultMap">
+        SELECT a.*
+        FROM asset_record a
+        WHERE 1=1
+        <include refid="assetFilterSql"/>
+        ORDER BY
+        <choose>
+            <when test="sortBy == 'assetCode'">a.asset_code</when>
+            <when test="sortBy == 'assetName'">a.asset_name</when>
+            <when test="sortBy == 'status'">a.status</when>
+            <when test="sortBy == 'location'">a.location</when>
+            <when test="sortBy == 'locked'">a.locked</when>
+            <otherwise>a.update_time</otherwise>
+        </choose>
+        <choose>
+            <when test="sortDirection == 'asc'">ASC</when>
+            <otherwise>DESC</otherwise>
+        </choose>
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countAssets" resultType="int">
+        SELECT COUNT(1)
+        FROM asset_record a
+        WHERE 1=1
+        <include refid="assetFilterSql"/>
+    </select>
+
+    <select id="listAssetsAll" resultMap="AssetRecordResultMap">
+        SELECT a.*
+        FROM asset_record a
+        WHERE 1=1
+        <include refid="assetFilterSql"/>
+        ORDER BY a.update_time DESC
+    </select>
+
+    <select id="listAssetValuesByAssetIds" resultType="map">
+        SELECT asset_id, column_key, column_value
+        FROM asset_record_value
+        WHERE asset_id IN
+        <foreach collection="assetIds" item="assetId" open="(" close=")" separator=",">
+            #{assetId}
+        </foreach>
+    </select>
+
+    <select id="listAssetValuesByAssetId" resultType="map">
+        SELECT asset_id, column_key, column_value
+        FROM asset_record_value
+        WHERE asset_id = #{assetId}
+    </select>
+
+    <insert id="upsertAssetValue">
+        INSERT INTO asset_record_value(asset_id, column_key, column_value)
+        VALUES (#{assetId}, #{columnKey}, #{columnValue})
+        ON DUPLICATE KEY UPDATE
+            column_value = VALUES(column_value),
+            update_time = NOW()
+    </insert>
+
+    <select id="searchAssetsForPicker" resultMap="AssetRecordResultMap">
+        SELECT a.*
+        FROM asset_record a
+        WHERE a.deleted = 0
+          AND (
+            a.asset_code LIKE CONCAT('%', #{keyword}, '%')
+            OR a.asset_name LIKE CONCAT('%', #{keyword}, '%')
+            OR a.location LIKE CONCAT('%', #{keyword}, '%')
+            OR EXISTS (
+                SELECT 1 FROM asset_record_value v
+                WHERE v.asset_id = a.id
+                AND v.column_value LIKE CONCAT('%', #{keyword}, '%')
+            )
+        )
+        ORDER BY a.update_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <insert id="insertTransferRequest" parameterType="com.example.demo.modules.asset.entity.AssetTransferRequest">
+        INSERT INTO asset_transfer_request(
+            id, asset_id, asset_code, asset_name, applicant_id, applicant_name, transfer_time,
+            transfer_location, from_location, remark, photo_url, photo_urls_before, photo_urls_after, status, create_time
+        ) VALUES (
+            #{id}, #{assetId}, #{assetCode}, #{assetName}, #{applicantId}, #{applicantName}, #{transferTime},
+            #{transferLocation}, #{fromLocation}, #{remark}, #{photoUrl}, #{photoUrlsBefore}, #{photoUrlsAfter}, #{status}, #{createTime}
+        )
+    </insert>
+
+    <select id="findTransferRequestById" resultMap="AssetTransferRequestResultMap">
+        SELECT *
+        FROM asset_transfer_request
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <update id="updateTransferRequestAfterPhotos">
+        UPDATE asset_transfer_request
+        SET photo_urls_after = #{photoUrlsAfterJson}
+        WHERE id = #{id}
+          AND status = 'IN_PROGRESS'
+    </update>
+
+    <update id="updateTransferRequestStatus">
+        UPDATE asset_transfer_request
+        SET status = #{status}
+        WHERE id = #{id}
+          AND status = #{expectedCurrentStatus}
+    </update>
+
+    <insert id="insertTransferLog">
+        INSERT INTO asset_transfer_log(
+            id, request_id, asset_id, action_type, operator_id, remark, create_time
+        ) VALUES (
+            #{id}, #{requestId}, #{assetId}, #{actionType}, #{operatorId}, #{remark}, #{createdTime}
+        )
+    </insert>
+
+    <select id="listTransferRequests" resultMap="AssetTransferRequestResultMap">
+        SELECT r.*
+        FROM asset_transfer_request r
+        WHERE 1=1
+        <if test="keyword != null and keyword != ''">
+            AND (
+                r.asset_code LIKE CONCAT('%', #{keyword}, '%')
+                OR r.asset_name LIKE CONCAT('%', #{keyword}, '%')
+                OR r.transfer_location LIKE CONCAT('%', #{keyword}, '%')
+                OR r.applicant_name LIKE CONCAT('%', #{keyword}, '%')
+                OR r.remark LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        ORDER BY r.create_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countTransferRequests" resultType="int">
+        SELECT COUNT(1)
+        FROM asset_transfer_request r
+        WHERE 1=1
+        <if test="keyword != null and keyword != ''">
+            AND (
+                r.asset_code LIKE CONCAT('%', #{keyword}, '%')
+                OR r.asset_name LIKE CONCAT('%', #{keyword}, '%')
+                OR r.transfer_location LIKE CONCAT('%', #{keyword}, '%')
+                OR r.applicant_name LIKE CONCAT('%', #{keyword}, '%')
+                OR r.remark LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+    </select>
+
+    <select id="listTransferRequestsByIds" resultMap="AssetTransferRequestResultMap">
+        SELECT *
+        FROM asset_transfer_request
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="selectLatestActiveTransferRequestId" resultType="string">
+        SELECT id
+        FROM asset_transfer_request
+        WHERE asset_id = #{assetId}
+          AND status IN ('IN_PROGRESS', 'COMPLETED')
+        ORDER BY create_time DESC
+        LIMIT 1
+    </select>
+
+    <update id="updateAssetLatestTransferPointer">
+        UPDATE asset_record
+        SET latest_transfer_request_id = #{requestId},
+            update_by = #{operatorId},
+            update_time = NOW()
+        WHERE id = #{assetId}
+    </update>
+
+    <delete id="deleteTransferRequestById">
+        DELETE FROM asset_transfer_request WHERE id = #{id}
+    </delete>
+
+    <insert id="insertTransferExportFile" parameterType="com.example.demo.modules.asset.entity.AssetTransferExportFile">
+        INSERT INTO asset_transfer_export_file(
+            id, request_id, file_name, storage_key, download_token, status, expire_at, summary_text, created_by, created_time
+        ) VALUES (
+            #{id}, #{requestId}, #{fileName}, #{storageKey}, #{downloadToken}, #{status}, #{expireAt}, #{summaryText}, #{createdBy}, #{createdTime}
+        )
+    </insert>
+
+    <select id="selectLatestValidTransferExportFile" resultMap="AssetTransferExportFileResultMap">
+        SELECT *
+        FROM asset_transfer_export_file
+        WHERE request_id = #{requestId}
+          AND status = 'READY'
+          AND expire_at > #{now}
+        ORDER BY created_time DESC
+        LIMIT 1
+    </select>
+
+    <select id="listTransferExportFiles" resultMap="AssetTransferExportFileResultMap">
+        SELECT *
+        FROM asset_transfer_export_file
+        WHERE request_id = #{requestId}
+        ORDER BY created_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findTransferExportFileByToken" resultMap="AssetTransferExportFileResultMap">
+        SELECT *
+        FROM asset_transfer_export_file
+        WHERE download_token = #{downloadToken}
+        LIMIT 1
+    </select>
+
+    <update id="markExpiredTransferExportFiles">
+        UPDATE asset_transfer_export_file
+        SET status = 'EXPIRED'
+        WHERE status = 'READY'
+          AND expire_at <![CDATA[ <= ]]> #{now}
+    </update>
+
+    <select id="listDistinctAssetNames" resultType="string">
+        SELECT DISTINCT asset_name
+        FROM asset_record
+        WHERE deleted = 0
+          AND asset_name IS NOT NULL
+          AND asset_name != ''
+        ORDER BY asset_name ASC
+    </select>
+
+    <select id="listDistinctDynamicValuesByKey" resultType="string">
+        SELECT DISTINCT column_value
+        FROM asset_record_value
+        WHERE column_key = #{columnKey}
+          AND column_value IS NOT NULL
+          AND column_value != ''
+        ORDER BY column_value ASC
+    </select>
+
+    <select id="listDistinctDynamicValuesByKeys" resultType="string">
+        SELECT DISTINCT column_value
+        FROM asset_record_value
+        WHERE column_key IN
+        <foreach collection="columnKeys" item="key" open="(" close=")" separator=",">
+            #{key}
+        </foreach>
+          AND column_value IS NOT NULL
+          AND column_value != ''
+        ORDER BY column_value ASC
+    </select>
+
+    <delete id="deleteAllAssetValues">
+        DELETE FROM asset_record_value
+    </delete>
+
+    <delete id="deleteAllTransferLogs">
+        DELETE FROM asset_transfer_log
+    </delete>
+
+    <delete id="deleteAllTransferRequests">
+        DELETE FROM asset_transfer_request
+    </delete>
+
+    <delete id="deleteAllAssets">
+        DELETE FROM asset_record
+    </delete>
+
+    <delete id="deleteAllColumnDefs">
+        DELETE FROM asset_column_def
+    </delete>
+
+    <update id="moveAssetToRecycle">
+        UPDATE asset_record
+        SET deleted = 1,
+            deleted_time = #{deletedTime},
+            deleted_by = #{operatorId},
+            purge_after_time = #{purgeAfterTime},
+            update_by = #{operatorId},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND deleted = 0
+    </update>
+
+    <update id="restoreRecycledAsset">
+        UPDATE asset_record
+        SET deleted = 0,
+            deleted_time = NULL,
+            deleted_by = NULL,
+            purge_after_time = NULL,
+            update_by = #{operatorId},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND deleted = 1
+    </update>
+
+    <delete id="purgeAssetById">
+        DELETE FROM asset_record
+        WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteAssetValuesByAssetId">
+        DELETE FROM asset_record_value
+        WHERE asset_id = #{assetId}
+    </delete>
+
+    <select id="listRecycledAssets" resultMap="AssetRecordResultMap">
+        SELECT *
+        FROM asset_record
+        WHERE deleted = 1
+        <if test="keyword != null and keyword != ''">
+            AND (
+                asset_code LIKE CONCAT('%', #{keyword}, '%')
+                OR asset_name LIKE CONCAT('%', #{keyword}, '%')
+                OR location LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+        ORDER BY deleted_time DESC, update_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countRecycledAssets" resultType="int">
+        SELECT COUNT(1)
+        FROM asset_record
+        WHERE deleted = 1
+        <if test="keyword != null and keyword != ''">
+            AND (
+                asset_code LIKE CONCAT('%', #{keyword}, '%')
+                OR asset_name LIKE CONCAT('%', #{keyword}, '%')
+                OR location LIKE CONCAT('%', #{keyword}, '%')
+            )
+        </if>
+    </select>
+
+</mapper>
+

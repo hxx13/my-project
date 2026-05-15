@@ -1,0 +1,74 @@
+# Windows 本机运行（与新版 frp 一致）:
+#   frpc.exe -c frpc.toml
+#
+# 须与云上 frps 使用相同大版本；token 与 frps 配置必须一致。
+# 所有字符串值须用英文双引号；无引号如 auth.method = token 可能导致:
+#   json: cannot unmarshal string into Go value of type v1.ClientConfig
+# 与 frpc.ini（remote_port=18080 + Nginx 反代）二选一，勿混用。
+#
+# ========== 须在「阿里云安全组 + 宝塔防火墙」放行的端口 ==========
+# 7000   frpc→frps；8080 Spring；9092 Socket.IO
+# 21115–21119 TCP + 21116 UDP：RustDesk 自建 hbbs/hbbr（未在本机跑服务可删 rustdesk-*）
+# ================================================================
+serverAddr = "47.101.61.184"
+serverPort = 7000
+
+auth.method = "token"
+auth.token = "change_me_to_a_long_random_secret"
+
+[[proxies]]
+name = "springboot-proxy"
+type = "tcp"
+localIP = "127.0.0.1"
+# 本机 Spring 监听端口须与此一致（与 application.properties server.port 对齐，默认 8080）
+localPort = 8080
+remotePort = 8080
+
+[[proxies]]
+name = "socketio-proxy"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 9092
+remotePort = 9092
+
+[[proxies]]
+name = "rustdesk-hbbs-nat"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 21115
+remotePort = 21115
+
+[[proxies]]
+name = "rustdesk-hbbs-id-tcp"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 21116
+remotePort = 21116
+
+[[proxies]]
+name = "rustdesk-hbbs-id-udp"
+type = "udp"
+localIP = "127.0.0.1"
+localPort = 21116
+remotePort = 21116
+
+[[proxies]]
+name = "rustdesk-hbbr-relay"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 21117
+remotePort = 21117
+
+[[proxies]]
+name = "rustdesk-web-http"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 21118
+remotePort = 21118
+
+[[proxies]]
+name = "rustdesk-web-https"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 21119
+remotePort = 21119

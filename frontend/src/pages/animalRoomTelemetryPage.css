@@ -1,0 +1,153 @@
+/**
+ * 动物房温湿度页：主区滚动条配色；分区切换已迁至左下角浮层（见 AnimalRoomTelemetryPartitionDock）。
+ * 科幻壳见 [data-animal-telemetry-ui="scifi"]。
+ */
+
+[data-animal-telemetry-scroll="main"] {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(56 189 248 / 0.55) rgb(244 244 245);
+}
+
+[data-animal-telemetry-scroll="main"]::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+[data-animal-telemetry-scroll="main"]::-webkit-scrollbar-track {
+    background: rgb(244 244 245);
+    border-radius: 9999px;
+}
+
+[data-animal-telemetry-scroll="main"]::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgb(14 165 233), rgb(2 132 199));
+    border-radius: 9999px;
+    border: 2px solid rgb(244 244 245);
+}
+
+[data-animal-telemetry-scroll="main"]::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgb(56 189 248), rgb(14 165 233));
+}
+
+[data-animal-telemetry-scroll="tabs"] {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(56 189 248 / 0.5) transparent;
+}
+
+[data-animal-telemetry-scroll="tabs"]::-webkit-scrollbar {
+    height: 8px;
+}
+
+[data-animal-telemetry-scroll="tabs"]::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+[data-animal-telemetry-scroll="tabs"]::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, rgb(14 165 233 / 0.85), rgb(2 132 199 / 0.85));
+    border-radius: 9999px;
+}
+
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-telemetry-scroll="main"] {
+    scrollbar-color: rgb(34 211 238 / 0.45) rgb(15 23 42 / 0.75);
+}
+
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-telemetry-scroll="main"]::-webkit-scrollbar-track {
+    background: rgb(15 23 42 / 0.55);
+}
+
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-telemetry-scroll="main"]::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgb(34 211 238 / 0.75), rgb(14 165 233 / 0.55));
+    border-color: rgb(15 23 42 / 0.55);
+}
+
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-telemetry-scroll="tabs"]::-webkit-scrollbar-thumb {
+    background: linear-gradient(90deg, rgb(34 211 238 / 0.7), rgb(56 189 248 / 0.45));
+}
+
+/* 标题轻量「艺术字」层次（渐变由 Tailwind bg-clip-text 负责，此处补字间距与微阴影） */
+.animal-telemetry-page-title {
+    letter-spacing: 0.02em;
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.25);
+}
+
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] .animal-telemetry-page-title {
+    text-shadow: 0 0 24px rgb(34 211 238 / 0.22);
+}
+
+/* 科幻主题：锅炉房套间 / 标题含「锅炉房」卡片 — 蒸汽上升、沸腾烟雾感 */
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-suite-boiler-steam="1"] > *,
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-boiler-steam-scifi="1"] > * {
+    position: relative;
+    z-index: 1;
+}
+
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-suite-boiler-steam="1"]::before,
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-boiler-steam-scifi="1"]::before {
+    content: "";
+    position: absolute;
+    inset-inline: -5%;
+    bottom: -8%;
+    height: 55%;
+    z-index: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse 70% 55% at 22% 100%, rgb(255 255 255 / 0.16) 0%, transparent 58%),
+        radial-gradient(ellipse 65% 50% at 78% 100%, rgb(207 250 254 / 0.12) 0%, transparent 55%),
+        radial-gradient(ellipse 90% 45% at 50% 100%, rgb(165 243 252 / 0.09) 0%, transparent 60%);
+    filter: blur(10px);
+    opacity: 0.55;
+    animation: animal-telemetry-boiler-steam-rise 4.2s ease-in-out infinite;
+}
+
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-suite-boiler-steam="1"]::after,
+[data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-boiler-steam-scifi="1"]::after {
+    content: "";
+    position: absolute;
+    inset-inline: -3%;
+    bottom: 0;
+    height: 42%;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse 55% 40% at 50% 100%, rgb(34 211 238 / 0.14) 0%, transparent 62%);
+    filter: blur(14px);
+    opacity: 0.4;
+    animation: animal-telemetry-boiler-steam-boil 2.8s ease-in-out infinite;
+}
+
+@keyframes animal-telemetry-boiler-steam-rise {
+    0%,
+    100% {
+        opacity: 0.38;
+        transform: translateY(2px) scaleY(1);
+    }
+    50% {
+        opacity: 0.72;
+        transform: translateY(-10px) scaleY(1.06);
+    }
+}
+
+@keyframes animal-telemetry-boiler-steam-boil {
+    0%,
+    100% {
+        opacity: 0.32;
+        transform: translateY(0) scale(1);
+    }
+    40% {
+        opacity: 0.58;
+        transform: translateY(-4px) scale(1.04);
+    }
+    70% {
+        opacity: 0.48;
+        transform: translateY(-2px) scale(1.02);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-suite-boiler-steam="1"]::before,
+    [data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-suite-boiler-steam="1"]::after,
+    [data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-boiler-steam-scifi="1"]::before,
+    [data-twin-animal-telemetry-root][data-animal-telemetry-ui="scifi"] [data-animal-boiler-steam-scifi="1"]::after {
+        animation: none !important;
+        opacity: 0.35;
+        transform: none;
+    }
+}

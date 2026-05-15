@@ -1,0 +1,726 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.TwinDashboardMapper">
+
+    <select id="getTodayAllRecords" resultType="map">
+        SELECT area_name AS areaName, create_time AS createTime
+        FROM aro_access_log
+        WHERE DATE(create_time) = CURDATE()
+          AND area_name IS NOT NULL
+    </select>
+
+    <select id="getPudongRoomRanking" resultType="map">
+        SELECT room_name AS name, COUNT(*) AS value
+        FROM aro_access_log
+        WHERE DATE(create_time) = CURDATE()
+          AND area_name LIKE '%浦东%'
+          AND room_name IS NOT NULL
+        GROUP BY room_name
+        ORDER BY value DESC
+        LIMIT 5
+    </select>
+
+    <select id="getPuxiRoomRanking" resultType="map">
+        SELECT room_name AS name, COUNT(*) AS value
+        FROM aro_access_log
+        WHERE DATE(create_time) = CURDATE()
+          AND area_name LIKE '%浦西%'
+          AND room_name IS NOT NULL
+        GROUP BY room_name
+        ORDER BY value DESC
+        LIMIT 5
+    </select>
+
+    <select id="getDebugLogs" resultType="map">
+        SELECT id, accessType, create_time, name, user_type_names, project_group_names, area_name, room_name
+        FROM aro_access_log
+        ORDER BY create_time DESC
+        LIMIT 99999
+    </select>
+
+    <select id="getDebugPersonnelList" resultType="map">
+        SELECT *
+        FROM aro_personnel
+        ORDER BY has_official_room_permission DESC,
+                 total_exp DESC,
+                 name ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="getPersonnelTotalCount" resultType="int">
+        SELECT COUNT(*)
+        FROM aro_personnel
+    </select>
+
+    <select id="getDebugLogList" resultType="map">
+        SELECT id, accessType, create_time, name, user_type_names, project_group_names, area_name, room_name,
+               is_shared_card, is_keep_card, is_borrowed_card
+        FROM aro_access_log
+        ORDER BY create_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="getLogTotalCount" resultType="int">
+        SELECT COUNT(*)
+        FROM aro_access_log
+    </select>
+
+    <select id="getRealtimeFeed" resultType="map">
+        SELECT id, accessType, create_time, user_id, name, user_type_names, project_group_names, area_name, floor_name, room_id, room_name,
+               is_shared_card, is_keep_card, is_borrowed_card,
+               feed_source, feed_summary_zh, feed_detail_zh, device_display_name
+        FROM aro_access_log
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchAccessLogs" resultType="map">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT id, accessType, create_time, user_id, name, user_type_names, project_group_names, area_name, floor_name, room_id, room_name,
+               is_shared_card, is_keep_card, is_borrowed_card,
+               feed_source, feed_summary_zh, feed_detail_zh, device_display_name
+        FROM aro_access_log
+        WHERE name LIKE #{pattern}
+           OR user_id LIKE #{pattern}
+           OR project_group_names LIKE #{pattern}
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="searchPersonnel" resultType="map">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT *
+        FROM aro_personnel
+        WHERE name LIKE #{pattern}
+           OR user_id LIKE #{pattern}
+           OR project_group_name LIKE #{pattern}
+        ORDER BY has_official_room_permission DESC,
+                 total_exp DESC,
+                 name ASC
+        LIMIT #{limit}
+    </select>
+
+    <update id="addPersonExp">
+        UPDATE aro_personnel
+        SET total_exp = COALESCE(total_exp, 0) + #{expToAdd}
+        WHERE name = #{name}
+    </update>
+
+    <update id="updateUserAllowedRoomsJson">
+        UPDATE aro_personnel
+        SET allowed_rooms_json = #{roomsJson}
+        WHERE user_id = #{userId}
+    </update>
+
+    <select id="getPersonnelBasicInfo" resultType="map">
+        SELECT name, head, project_group_name
+        FROM aro_personnel
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <select id="getDebugPredictionList" resultType="map">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT *
+        FROM aro_behavior_prediction
+        <where>
+            <if test="keyword != null and keyword != ''">
+                user_id LIKE #{pattern}
+                OR room_id LIKE #{pattern}
+                OR user_name LIKE #{pattern}
+                OR room_name LIKE #{pattern}
+            </if>
+        </where>
+        ORDER BY user_name ASC, user_id ASC, room_name ASC, update_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="getPredictionTotalCount" resultType="int">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT COUNT(1)
+        FROM aro_behavior_prediction
+        <where>
+            <if test="keyword != null and keyword != ''">
+                user_id LIKE #{pattern}
+                OR room_id LIKE #{pattern}
+                OR user_name LIKE #{pattern}
+                OR room_name LIKE #{pattern}
+            </if>
+        </where>
+    </select>
+
+    <insert id="saveOrUpdateAnimalOrder">
+        INSERT INTO aro_animal_order (sn, area_name, project_name, pi_name, quantity, male_quantity, female_quantity, order_state, create_time, arrival_date)
+        VALUES (#{sn}, #{areaName}, #{projectName}, #{piName}, #{quantity}, #{maleQuantity}, #{femaleQuantity}, #{orderState}, #{createTime}, #{arrivalDate})
+        ON DUPLICATE KEY UPDATE
+            area_name = VALUES(area_name),
+            project_name = VALUES(project_name),
+            pi_name = VALUES(pi_name),
+            quantity = VALUES(quantity),
+            male_quantity = VALUES(male_quantity),
+            female_quantity = VALUES(female_quantity),
+            order_state = VALUES(order_state),
+            create_time = VALUES(create_time),
+            arrival_date = VALUES(arrival_date)
+    </insert>
+
+    <select id="getMonthlyOrderRanking" resultType="map">
+        SELECT project_name AS projectName, SUM(male_qty + female_qty) AS totalQuantity
+        FROM aro_animal_order
+        WHERE DATE_FORMAT(create_time, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')
+        <if test="region == 'PUDONG'"> AND area_name LIKE '%浦东%' </if>
+        <if test="region == 'PUXI'"> AND area_name LIKE '%浦西%' </if>
+        <if test="blacklist != null and blacklist.size() > 0">
+            AND pi_name NOT IN
+            <foreach item="item" collection="blacklist" open="(" separator="," close=")">
+                #{item}
+            </foreach>
+            AND project_name NOT IN
+            <foreach item="item" collection="blacklist" open="(" separator="," close=")">
+                #{item}
+            </foreach>
+        </if>
+        GROUP BY project_name
+        ORDER BY totalQuantity DESC
+        LIMIT 10
+    </select>
+
+    <insert id="saveOrUpdateOrderDetail">
+        INSERT INTO aro_animal_order (
+            item_id, sn, area_name, project_name, pi_name, create_time, arrival_date, supplier_name, strain_name, spec_name,
+            male_qty, female_qty, collector_name, collector_tel, order_state_name, consume_location, memo
+        )
+        VALUES (
+            #{itemId}, #{sn}, #{areaName}, #{projectName}, #{piName}, #{createTime}, #{arrivalDate}, #{supplierName}, #{strainName}, #{specName},
+            #{maleQty}, #{femaleQty}, #{collectorName}, #{collectorTel}, #{orderStateName}, #{consumeLocation}, #{memo}
+        )
+        ON DUPLICATE KEY UPDATE
+            sn = VALUES(sn),
+            area_name = VALUES(area_name),
+            project_name = VALUES(project_name),
+            pi_name = VALUES(pi_name),
+            create_time = VALUES(create_time),
+            arrival_date = VALUES(arrival_date),
+            supplier_name = VALUES(supplier_name),
+            strain_name = VALUES(strain_name),
+            spec_name = VALUES(spec_name),
+            male_qty = VALUES(male_qty),
+            female_qty = VALUES(female_qty),
+            collector_name = VALUES(collector_name),
+            collector_tel = VALUES(collector_tel),
+            order_state_name = VALUES(order_state_name),
+            consume_location = VALUES(consume_location),
+            memo = VALUES(memo)
+    </insert>
+
+    <select id="getResearchGroupInfoByRank" resultType="map">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT project_name AS projectName, pi_name AS piName
+        FROM aro_animal_order
+        <where>
+            <if test="keyword != null and keyword != ''">
+                project_name LIKE #{pattern}
+                OR pi_name LIKE #{pattern}
+            </if>
+        </where>
+        GROUP BY project_name, pi_name
+        ORDER BY SUM(male_qty + female_qty) DESC
+        LIMIT 1 OFFSET #{offset}
+    </select>
+
+    <select id="getResearchGroupRow1Summary" resultType="map">
+        SELECT project_name AS projectName,
+               SUM(male_qty + female_qty) AS totalQty,
+               SUM(male_qty) AS maleQty,
+               SUM(female_qty) AS femaleQty,
+               SUM(CASE WHEN DATE_FORMAT(create_time, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m') THEN (male_qty + female_qty) ELSE 0 END) AS monthQty
+        FROM aro_animal_order
+        WHERE project_name = #{projectName}
+          AND pi_name = #{piName}
+    </select>
+
+    <select id="getResearchGroupDetailLog" resultType="map">
+        SELECT *
+        FROM aro_animal_order
+        WHERE project_name = #{projectName}
+          AND pi_name = #{piName}
+        ORDER BY arrival_date DESC
+    </select>
+
+    <select id="getGroupedStatsPageTotalCount" resultType="int">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT COUNT(DISTINCT CONCAT(project_name, pi_name))
+        FROM aro_animal_order
+        <where>
+            <if test="keyword != null and keyword != ''">
+                project_name LIKE #{pattern}
+                OR pi_name LIKE #{pattern}
+            </if>
+        </where>
+    </select>
+
+    <select id="getActiveRetentionWarnings" resultType="map">
+        <bind name="areaPattern" value="'%' + areaName + '%'" />
+        SELECT log.id AS logId,
+               log.user_id AS userId,
+               log.name AS userName,
+               log.project_group_names AS groupName,
+               log.area_name AS areaName,
+               log.room_name AS roomName,
+               log.room_id AS roomId,
+               log.create_time AS enterTime,
+               ai.median_duration_mins AS aiDurationMins,
+               ai.overtime_prob AS aiOvertimeProb,
+               log.is_shared_card,
+               log.is_keep_card,
+               log.is_borrowed_card,
+               CASE
+                   WHEN m.aro_user_id IS NULL THEN 0
+                   ELSE 1
+               END AS has_physical_card_mapping,
+               CASE
+                   WHEN m.aro_user_id IS NOT NULL AND COALESCE(log.is_borrowed_card, 0) = 0 THEN 1
+                   ELSE 0
+               END AS is_own_card,
+               COALESCE(m.freeze_exempt_flag, 0) AS freeze_exempt_flag
+        FROM aro_access_log log
+        LEFT JOIN twin_card_mapping m
+               ON m.aro_user_id = log.user_id
+        LEFT JOIN aro_behavior_prediction ai
+               ON log.user_id = ai.user_id
+              AND log.room_id = ai.room_id
+              AND ai.day_type = 'ALL_DAYS'
+        WHERE log.accessType = 1
+          AND log.create_time >= CONCAT(CURDATE(), ' 00:00:00')
+          AND log.area_name LIKE #{areaPattern}
+          AND NOT EXISTS (
+              SELECT 1
+              FROM aro_access_log out_log
+              WHERE out_log.user_id = log.user_id
+                AND out_log.room_id = log.room_id
+                AND out_log.accessType IN (2, 3)
+                AND out_log.create_time > log.create_time
+          )
+        ORDER BY log.create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="getRoomCardStatusList" resultType="map">
+        SELECT rs.room_id AS roomId,
+               CASE
+                   WHEN rs.room_id LIKE 'SUITE_%' THEN REPLACE(REPLACE(rs.room_id, 'SUITE_', ''), '_', ' ')
+                   ELSE COALESCE(
+                           (
+                               SELECT CONCAT(COALESCE(area_name, ''), IF(area_name IS NULL OR area_name = '', '', ' '), room_name)
+                               FROM aro_access_log
+                               WHERE room_id = rs.room_id
+                                 AND room_name IS NOT NULL
+                               LIMIT 1
+                           ),
+                           rs.room_id
+                        )
+               END AS roomName,
+               MAX(rs.max_capacity) AS maxCapacity,
+               SUM(COALESCE(stat.currentPeople, 0)) AS currentPeople,
+               SUM(COALESCE(stat.borrowedCards, 0)) AS borrowedCards
+        FROM aro_room_settings rs
+        LEFT JOIN (
+            SELECT a.room_id,
+                   a.room_name,
+                   a.area_name,
+                   SUM(CASE WHEN a.accessType = 1 THEN 1 ELSE 0 END) AS currentPeople,
+                   SUM(CASE
+                           WHEN a.accessType = 1 AND COALESCE(a.is_shared_card, 0) = 0 THEN 1
+                           WHEN a.accessType IN (2, 3) AND COALESCE(a.is_keep_card, 0) = 1 THEN 1
+                           ELSE 0
+                       END) AS borrowedCards
+            FROM aro_access_log a
+            INNER JOIN (
+                SELECT room_id, user_id, MAX(create_time) AS max_time
+                FROM aro_access_log
+                WHERE create_time >= CONCAT(CURDATE(), ' 00:00:00')
+                GROUP BY room_id, user_id
+            ) latest ON a.room_id = latest.room_id
+                    AND a.user_id = latest.user_id
+                    AND a.create_time = latest.max_time
+            GROUP BY a.room_id, a.room_name, a.area_name
+        ) stat ON (
+            rs.room_id = stat.room_id
+            OR rs.room_id = stat.room_name
+            OR (
+                rs.room_id LIKE 'SUITE_%'
+                AND rs.room_id LIKE CONCAT('SUITE_', stat.area_name, '_%')
+                AND stat.room_name LIKE CONCAT('%', REPLACE(rs.room_id, CONCAT('SUITE_', stat.area_name, '_'), ''), '%')
+            )
+        )
+        <where>
+            <if test="roomId != null and roomId != ''">
+                rs.room_id = #{roomId}
+            </if>
+        </where>
+        GROUP BY rs.room_id
+    </select>
+
+    <delete id="deleteBehaviorPrediction">
+        DELETE FROM aro_behavior_prediction
+        <if test="userId != 'ALL'">
+            WHERE user_id = #{userId}
+        </if>
+    </delete>
+
+    <insert id="insertBehaviorPrediction">
+        INSERT INTO aro_behavior_prediction (
+            id, user_id, user_name, room_id, room_name, day_type, median_duration_mins, peak_entry_time,
+            overtime_prob, entry_curve_json, exit_curve_json, next_room_prob_json, companion_impact_json,
+            is_cold_start, update_time, weekly_entry_curve_json, weekly_exit_curve_json
+        )
+        VALUES (
+            #{id}, #{userId}, #{userName}, #{roomId}, #{roomName}, #{dayType}, #{medianDurationMins}, #{peakEntryTime},
+            #{overtimeProb}, #{entryCurveJson}, #{exitCurveJson}, #{nextRoomProbJson}, #{companionImpactJson},
+            #{isColdStart}, #{updateTime}, #{weeklyEntryCurveJson}, #{weeklyExitCurveJson}
+        )
+    </insert>
+
+    <delete id="deleteGroupRoomPrediction">
+        DELETE FROM aro_group_room_prediction
+        <if test="groupName != 'ALL'">
+            WHERE group_name = #{groupName}
+        </if>
+    </delete>
+
+    <insert id="insertGroupRoomPrediction">
+        INSERT INTO aro_group_room_prediction (
+            id, group_name, room_id, room_name, peak_entry_time, peak_exit_time, heatmap_matrix_json, update_time
+        )
+        VALUES (
+            #{id}, #{groupName}, #{roomId}, #{roomName}, #{peakEntryTime}, #{peakExitTime}, #{heatmapMatrixJson}, #{updateTime}
+        )
+    </insert>
+
+    <select id="getLatestPredictionsForConsole" resultType="map">
+        SELECT *
+        FROM aro_behavior_prediction
+        ORDER BY update_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="getDistinctUserIds" resultType="string">
+        SELECT DISTINCT user_id
+        FROM aro_access_log
+        WHERE user_id IS NOT NULL
+    </select>
+
+    <select id="getUserLogsForPrediction" resultType="map">
+        SELECT user_id, name, room_id, room_name, accessType AS access_type, create_time
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+          AND create_time IS NOT NULL
+          AND room_id IS NOT NULL
+        ORDER BY create_time ASC
+    </select>
+
+    <select id="getDistinctGroupNames" resultType="string">
+        SELECT DISTINCT project_group_names
+        FROM aro_access_log
+        WHERE project_group_names IS NOT NULL
+          AND project_group_names != ''
+    </select>
+
+    <select id="getGroupLogsForPrediction" resultType="map">
+        SELECT user_id, room_id, room_name, area_name, accessType AS access_type, create_time
+        FROM aro_access_log
+        WHERE project_group_names = #{groupName}
+          AND create_time IS NOT NULL
+          AND room_id IS NOT NULL
+        ORDER BY create_time ASC
+    </select>
+
+    <select id="getGroupRankingByTimeAndRegion" resultType="map">
+        SELECT project_group_names AS name, COUNT(*) AS value
+        FROM aro_access_log
+        WHERE create_time &gt;= #{startTime}
+        <if test="region == 'PUDONG'"> AND area_name LIKE '%浦东%' </if>
+        <if test="region == 'PUXI'"> AND area_name LIKE '%浦西%' </if>
+        AND project_group_names IS NOT NULL
+        AND project_group_names != ''
+        AND project_group_names NOT LIKE '%卢今%'
+        AND accessType = 1
+        GROUP BY project_group_names
+        ORDER BY value DESC
+        LIMIT 50
+    </select>
+
+    <select id="getRoomPieStats" resultType="map">
+        SELECT room_name AS name, COUNT(*) AS value
+        FROM aro_access_log
+        WHERE create_time >= #{todayStart}
+          AND area_name LIKE CONCAT('%', #{area}, '%')
+          AND room_name IS NOT NULL
+          AND accessType = 1
+        GROUP BY room_name
+        ORDER BY value DESC
+        LIMIT 8
+    </select>
+
+    <select id="getDailyTotalCountByArea" resultType="int">
+        SELECT COUNT(*)
+        FROM aro_access_log
+        WHERE create_time >= #{todayStart}
+          AND area_name LIKE CONCAT('%', #{area}, '%')
+          AND accessType = 1
+    </select>
+
+    <select id="getTodayEntryLogs" resultType="map">
+        SELECT create_time, area_name
+        FROM aro_access_log
+        WHERE create_time >= #{todayStart}
+          AND accessType = 1
+    </select>
+
+    <select id="getFilteredDebugLogs" resultType="map">
+        SELECT log.id,
+               log.user_id,
+               log.accessType,
+               log.create_time,
+               log.name,
+               log.user_type_names,
+               log.project_group_names,
+               log.area_name,
+               log.room_name,
+               log.feed_source,
+               log.feed_summary_zh,
+               log.feed_detail_zh,
+               log.is_shared_card,
+               log.is_keep_card,
+               log.is_borrowed_card,
+               CASE
+                   WHEN m.aro_user_id IS NULL THEN 0
+                   ELSE 1
+               END AS has_physical_card_mapping,
+               CASE
+                   WHEN m.aro_user_id IS NOT NULL AND COALESCE(log.is_borrowed_card, 0) = 0 THEN 1
+                   ELSE 0
+               END AS is_own_card,
+               COALESCE(m.freeze_exempt_flag, 0) AS freeze_exempt_flag
+        FROM aro_access_log log
+        LEFT JOIN twin_card_mapping m
+               ON m.aro_user_id = log.user_id
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+            <bind name="keywordPattern" value="'%' + keyword + '%'" />
+            AND (
+                log.name LIKE #{keywordPattern}
+                OR log.user_id LIKE #{keywordPattern}
+                OR log.project_group_names LIKE #{keywordPattern}
+            )
+        </if>
+        <if test="startTime != null and startTime != ''"> AND log.create_time &gt;= #{startTime} </if>
+        <if test="endTime != null and endTime != ''"> AND log.create_time &lt;= #{endTime} </if>
+        <if test="actionType != null"> AND log.accessType = #{actionType} </if>
+        <if test="campus != null and campus != ''">
+            <bind name="campusPattern" value="'%' + campus + '%'" />
+            AND log.area_name LIKE #{campusPattern}
+        </if>
+        <if test="floor != null and floor != ''"> AND log.room_name LIKE CONCAT(#{floor}, '%') </if>
+        <if test="roomName != null and roomName != ''">
+            <bind name="roomPattern" value="'%' + roomName + '%'" />
+            AND log.room_name LIKE #{roomPattern}
+        </if>
+        <if test="excludeBlacklist != null and excludeBlacklist == true">
+            AND log.user_id NOT IN (SELECT user_id FROM twin_blacklist)
+        </if>
+        ORDER BY log.create_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="getFilteredDebugStats" resultType="map">
+        SELECT COUNT(id) AS totalLogs,
+               SUM(CASE WHEN accessType = 1 THEN 1 ELSE 0 END) AS totalEnter,
+               SUM(CASE WHEN accessType = 2 THEN 1 ELSE 0 END) AS totalExit,
+               SUM(CASE WHEN is_borrowed_card = 1 THEN 1 ELSE 0 END) AS totalBorrowed,
+               SUM(CASE WHEN is_keep_card = 1 THEN 1 ELSE 0 END) AS totalKeep
+        FROM aro_access_log
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+            <bind name="keywordPattern" value="'%' + keyword + '%'" />
+            AND (
+                name LIKE #{keywordPattern}
+                OR user_id LIKE #{keywordPattern}
+                OR project_group_names LIKE #{keywordPattern}
+            )
+        </if>
+        <if test="startTime != null and startTime != ''"> AND create_time &gt;= #{startTime} </if>
+        <if test="endTime != null and endTime != ''"> AND create_time &lt;= #{endTime} </if>
+        <if test="actionType != null"> AND accessType = #{actionType} </if>
+        <if test="campus != null and campus != ''">
+            <bind name="campusPattern" value="'%' + campus + '%'" />
+            AND area_name LIKE #{campusPattern}
+        </if>
+        <if test="floor != null and floor != ''"> AND room_name LIKE CONCAT(#{floor}, '%') </if>
+        <if test="roomName != null and roomName != ''">
+            <bind name="roomPattern" value="'%' + roomName + '%'" />
+            AND room_name LIKE #{roomPattern}
+        </if>
+        <if test="excludeBlacklist != null and excludeBlacklist == true">
+            AND user_id NOT IN (SELECT user_id FROM twin_blacklist)
+        </if>
+    </select>
+
+    <select id="getBlacklist" resultType="map">
+        SELECT user_id AS userId, name, reason, create_time AS createTime
+        FROM twin_blacklist
+        ORDER BY create_time DESC
+    </select>
+
+    <insert id="addBlacklist">
+        INSERT INTO twin_blacklist (user_id, name, reason)
+        VALUES (#{userId}, #{name}, #{reason})
+        ON DUPLICATE KEY UPDATE
+            name = VALUES(name),
+            reason = VALUES(reason)
+    </insert>
+
+    <delete id="removeBlacklist">
+        DELETE FROM twin_blacklist
+        WHERE user_id = #{userId}
+    </delete>
+
+    <select id="getTodayActiveUsersForRoomStatus" resultType="map">
+        SELECT a.user_id,
+               a.name AS userName,
+               a.room_id AS roomId,
+               a.room_name AS roomName,
+               a.area_name AS areaName,
+               a.is_borrowed_card,
+               DATE_FORMAT(a.create_time, '%H:%i:%s') AS entryTime
+        FROM aro_access_log a
+        INNER JOIN (
+            SELECT user_id, MAX(create_time) AS max_time
+            FROM aro_access_log
+            WHERE DATE(create_time) = CURDATE()
+            GROUP BY user_id
+        ) latest ON a.user_id = latest.user_id AND a.create_time = latest.max_time
+        WHERE a.accessType = 1
+          AND a.room_name IS NOT NULL
+        ORDER BY a.area_name, a.room_name, a.create_time DESC
+    </select>
+
+    <select id="countTodayPuxiVisits" resultType="int">
+        SELECT COUNT(*)
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+          AND area_name LIKE '%浦西%'
+          AND create_time LIKE #{todayPrefix}
+    </select>
+
+    <select id="countTodayCampusEntries" resultType="map">
+        SELECT
+            COALESCE(SUM(CASE WHEN area_name LIKE '%浦东%' THEN 1 ELSE 0 END), 0) AS pudongCnt,
+            COALESCE(SUM(CASE WHEN area_name LIKE '%浦西%' THEN 1 ELSE 0 END), 0) AS puxiCnt
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+          AND create_time LIKE #{todayPrefix}
+    </select>
+
+    <select id="selectTodayOfficialLevelVisitAgg" resultType="map">
+        SELECT
+            MIN(r.official_permission_level) AS minLvl,
+            MAX(r.official_permission_level) AS maxLvl
+        FROM aro_access_log a
+        INNER JOIN room_mapping_room r ON a.room_id = r.room_id
+        WHERE a.user_id = #{userId}
+          AND a.accessType = 1
+          AND a.create_time LIKE #{todayPrefix}
+          AND r.official_permission_level IS NOT NULL
+    </select>
+
+    <update id="updateAccessLogCardFlags">
+        UPDATE aro_access_log
+        SET is_shared_card = #{sharedVal},
+            is_keep_card = #{keepVal},
+            is_borrowed_card = #{borrowedVal}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateAccessLogFeedProvenance">
+        UPDATE aro_access_log
+        SET feed_source = #{feedSource},
+            feed_summary_zh = #{feedSummaryZh},
+            feed_detail_zh = #{feedDetailZh},
+            device_display_name = #{deviceDisplayName}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateAccessLogFeedProvenanceIfBlank">
+        UPDATE aro_access_log
+        SET feed_source = #{feedSource},
+            feed_summary_zh = #{feedSummaryZh},
+            feed_detail_zh = #{feedDetailZh},
+            device_display_name = COALESCE(#{deviceDisplayName}, device_display_name)
+        WHERE id = #{id}
+          AND (feed_source IS NULL OR TRIM(feed_source) = '')
+    </update>
+
+    <select id="selectAccessLogFeedById" resultType="map">
+        SELECT feed_source AS feedSource,
+               feed_summary_zh AS feedSummaryZh,
+               feed_detail_zh AS feedDetailZh,
+               device_display_name AS deviceDisplayName
+        FROM aro_access_log
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="getPredictionDashboardRecords" resultType="map">
+        SELECT *
+        FROM aro_behavior_prediction
+        WHERE user_id = #{userId}
+          AND room_id = #{roomId}
+          AND day_type = #{dayType}
+    </select>
+
+    <select id="getPredictionRoomsByUser" resultType="map">
+        SELECT room_id, room_name
+        FROM aro_behavior_prediction
+        WHERE user_id = #{userId}
+          AND day_type = #{dayType}
+        GROUP BY room_id, room_name
+        ORDER BY room_name ASC, room_id ASC
+    </select>
+
+    <select id="getRoomListForPrediction" resultType="map">
+        SELECT DISTINCT room_id, room_name
+        FROM aro_group_room_prediction
+        WHERE room_id NOT LIKE 'SUITE_%'
+        ORDER BY room_name ASC
+    </select>
+
+    <select id="getGroupRoomNameById" resultType="string">
+        SELECT room_name
+        FROM aro_group_room_prediction
+        WHERE room_id = #{roomId}
+        LIMIT 1
+    </select>
+
+    <select id="getGroupHeatmapByRoomIds" resultType="map">
+        SELECT group_name, room_id, room_name, peak_entry_time, peak_exit_time, heatmap_matrix_json
+        FROM aro_group_room_prediction
+        WHERE room_id IN (#{roomId}, #{suiteId})
+    </select>
+
+    <select id="getRoomCapacityByRoomId" resultType="int">
+        SELECT max_capacity
+        FROM aro_room_settings
+        WHERE room_id = #{roomId}
+    </select>
+
+    <insert id="upsertRoomCapacity">
+        INSERT INTO aro_room_settings (room_id, max_capacity)
+        VALUES (#{roomId}, #{capacity})
+        ON DUPLICATE KEY UPDATE
+            max_capacity = VALUES(max_capacity)
+    </insert>
+
+</mapper>

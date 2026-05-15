@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.TwinJobScheduleConfigMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.entity.TwinJobScheduleConfig">
+        <id property="jobKey" column="job_key"/>
+        <result property="jobName" column="job_name"/>
+        <result property="enabled" column="enabled"/>
+        <result property="scheduleType" column="schedule_type"/>
+        <result property="scheduleTime" column="schedule_time"/>
+        <result property="scheduleStartTime" column="schedule_start_time"/>
+        <result property="scheduleEndTime" column="schedule_end_time"/>
+        <result property="weekDays" column="week_days"/>
+        <result property="pollIntervalSeconds" column="poll_interval_seconds"/>
+        <result property="lastRunAt" column="last_run_at"/>
+        <result property="lastSuccessAt" column="last_success_at"/>
+        <result property="lastStatus" column="last_status"/>
+        <result property="lastError" column="last_error"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <select id="selectAll" resultMap="BaseMap">
+        SELECT * FROM twin_job_schedule_config ORDER BY job_key ASC
+    </select>
+
+    <select id="selectByJobKey" resultMap="BaseMap">
+        SELECT * FROM twin_job_schedule_config WHERE job_key = #{jobKey}
+    </select>
+
+    <insert id="upsertBase" parameterType="com.example.demo.modules.twin.entity.TwinJobScheduleConfig">
+        INSERT INTO twin_job_schedule_config
+        (job_key, job_name, enabled, schedule_type, schedule_time, schedule_start_time, schedule_end_time, week_days, poll_interval_seconds, updated_by)
+        VALUES
+        (#{jobKey}, #{jobName}, #{enabled}, #{scheduleType}, #{scheduleTime}, #{scheduleStartTime}, #{scheduleEndTime}, #{weekDays}, #{pollIntervalSeconds}, #{updatedBy})
+        ON DUPLICATE KEY UPDATE
+            job_name = VALUES(job_name),
+            updated_by = VALUES(updated_by)
+    </insert>
+
+    <update id="updateSchedule" parameterType="com.example.demo.modules.twin.entity.TwinJobScheduleConfig">
+        UPDATE twin_job_schedule_config
+        SET enabled = #{enabled},
+            schedule_type = #{scheduleType},
+            schedule_time = #{scheduleTime},
+            schedule_start_time = #{scheduleStartTime},
+            schedule_end_time = #{scheduleEndTime},
+            week_days = #{weekDays},
+            poll_interval_seconds = #{pollIntervalSeconds},
+            updated_by = #{updatedBy}
+        WHERE job_key = #{jobKey}
+    </update>
+
+    <update id="markRunning">
+        UPDATE twin_job_schedule_config
+        SET last_status = 'RUNNING',
+            last_run_at = #{runAt},
+            last_error = NULL,
+            updated_by = #{updatedBy}
+        WHERE job_key = #{jobKey}
+    </update>
+
+    <update id="markSuccess">
+        UPDATE twin_job_schedule_config
+        SET last_status = 'SUCCESS',
+            last_run_at = #{runAt},
+            last_success_at = #{runAt},
+            last_error = NULL,
+            updated_by = #{updatedBy}
+        WHERE job_key = #{jobKey}
+    </update>
+
+    <update id="markFailed">
+        UPDATE twin_job_schedule_config
+        SET last_status = 'FAILED',
+            last_run_at = #{runAt},
+            last_error = #{error},
+            updated_by = #{updatedBy}
+        WHERE job_key = #{jobKey}
+    </update>
+
+    <delete id="deleteByJobKey">
+        DELETE FROM twin_job_schedule_config WHERE job_key = #{jobKey}
+    </delete>
+</mapper>

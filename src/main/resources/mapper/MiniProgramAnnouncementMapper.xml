@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.mp.mapper.MiniProgramAnnouncementMapper">
+
+    <resultMap id="AnnMap" type="com.example.demo.modules.mp.entity.MiniProgramAnnouncement">
+        <id property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="summary" column="summary"/>
+        <result property="bodyHtml" column="body_html"/>
+        <result property="publishedAt" column="published_at"/>
+        <result property="enabled" column="enabled"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="AnnMap">
+        SELECT * FROM mini_program_announcement WHERE id = #{id} LIMIT 1
+    </select>
+
+    <select id="selectAllForAdmin" resultMap="AnnMap">
+        SELECT * FROM mini_program_announcement
+        ORDER BY sort_order DESC, published_at DESC, id DESC
+    </select>
+
+    <select id="selectPublishedEnabled" resultMap="AnnMap">
+        SELECT * FROM mini_program_announcement
+        WHERE enabled = 1
+        ORDER BY sort_order DESC, published_at DESC, id DESC
+    </select>
+
+    <insert id="insert">
+        INSERT INTO mini_program_announcement (id, title, summary, body_html, published_at, enabled, sort_order, created_by)
+        VALUES (#{id}, #{title}, #{summary}, #{bodyHtml}, #{publishedAt}, IFNULL(#{enabled}, 1), IFNULL(#{sortOrder}, 0), #{createdBy})
+    </insert>
+
+    <update id="update">
+        UPDATE mini_program_announcement
+        SET title = #{title},
+            summary = #{summary},
+            body_html = #{bodyHtml},
+            published_at = #{publishedAt},
+            enabled = IFNULL(#{enabled}, 1),
+            sort_order = IFNULL(#{sortOrder}, 0)
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM mini_program_announcement WHERE id = #{id}
+    </delete>
+</mapper>

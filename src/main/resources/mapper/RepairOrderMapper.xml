@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.repair.mapper.RepairOrderMapper">
+
+    <resultMap id="RepairOrderResultMap" type="com.example.demo.modules.repair.entity.RepairOrder">
+        <id property="id" column="id"/>
+        <result property="applicantId" column="applicant_id"/>
+        <result property="applicantName" column="applicant_name"/>
+        <result property="location" column="location"/>
+        <result property="content" column="content"/>
+        <result property="status" column="status"/>
+        <result property="requestImagesJson" column="request_images_json"/>
+        <result property="resultImagesJson" column="result_images_json"/>
+        <result property="resultRemark" column="result_remark"/>
+        <result property="processorId" column="processor_id"/>
+        <result property="createTime" column="create_time"/>
+        <result property="startTime" column="start_time"/>
+        <result property="finishTime" column="finish_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="deleted" column="deleted"/>
+        <result property="deletedTime" column="deleted_time"/>
+        <result property="deletedBy" column="deleted_by"/>
+        <result property="purgeAfterTime" column="purge_after_time"/>
+        <result property="isPublic" column="is_public"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.example.demo.modules.repair.entity.RepairOrder">
+        INSERT INTO repair_order(
+            id, applicant_id, applicant_name, location, content, status,
+            request_images_json, result_images_json, result_remark, processor_id,
+            create_time, start_time, finish_time, is_public
+        ) VALUES (
+            #{id}, #{applicantId}, #{applicantName}, #{location}, #{content}, #{status},
+            #{requestImagesJson}, #{resultImagesJson}, #{resultRemark}, #{processorId},
+            #{createTime}, #{startTime}, #{finishTime}, #{isPublic}
+        )
+    </insert>
+
+    <select id="findById" resultMap="RepairOrderResultMap">
+        SELECT *
+        FROM repair_order
+        WHERE id = #{id}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <select id="listForApplicant" resultMap="RepairOrderResultMap">
+        SELECT *
+        FROM repair_order
+        WHERE applicant_id = #{applicantId}
+          AND deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        ORDER BY create_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countForApplicant" resultType="int">
+        SELECT COUNT(1)
+        FROM repair_order
+        WHERE applicant_id = #{applicantId}
+          AND deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+    </select>
+
+    <select id="listAll" resultMap="RepairOrderResultMap">
+        SELECT *
+        FROM repair_order
+        WHERE deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        ORDER BY create_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countAll" resultType="int">
+        SELECT COUNT(1)
+        FROM repair_order
+        WHERE deleted = 0
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+    </select>
+
+    <select id="listVisible" resultMap="RepairOrderResultMap">
+        SELECT *
+        FROM repair_order
+        WHERE deleted = 0
+          AND (applicant_id = #{applicantId} OR is_public = 1)
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+        ORDER BY create_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countVisible" resultType="int">
+        SELECT COUNT(1)
+        FROM repair_order
+        WHERE deleted = 0
+          AND (applicant_id = #{applicantId} OR is_public = 1)
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        <if test="startTime != null">
+            AND create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND create_time &lt;= #{endTime}
+        </if>
+    </select>
+
+    <update id="markProcessing">
+        UPDATE repair_order
+        SET status = 'PROCESSING',
+            processor_id = #{processorId},
+            start_time = #{startTime},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status = 'PENDING'
+    </update>
+
+    <update id="markCompleted">
+        UPDATE repair_order
+        SET status = 'COMPLETED',
+            result_remark = #{resultRemark},
+            result_images_json = #{resultImagesJson},
+            finish_time = #{finishTime},
+            update_time = NOW()
+        WHERE id = #{id}
+          AND status = 'PROCESSING'
+    </update>
+
+    <update id="deleteById">
+        UPDATE repair_order
+        SET deleted = 1,
+            deleted_time = NOW(),
+            deleted_by = #{operatorId},
+            purge_after_time = DATE_ADD(NOW(), INTERVAL 7 DAY),
+            update_time = NOW()
+        WHERE id = #{id}
+          AND deleted = 0
+    </update>
+
+    <update id="withdrawPendingByApplicant">
+        UPDATE repair_order
+        SET deleted = 1,
+            deleted_time = NOW(),
+            deleted_by = #{applicantId},
+            purge_after_time = DATE_ADD(NOW(), INTERVAL 7 DAY),
+            update_time = NOW()
+        WHERE id = #{id}
+          AND applicant_id = #{applicantId}
+          AND status = 'PENDING'
+          AND deleted = 0
+    </update>
+
+    <select id="listRecycle" resultMap="RepairOrderResultMap">
+        SELECT *
+        FROM repair_order
+        WHERE deleted = 1
+        ORDER BY deleted_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countRecycle" resultType="int">
+        SELECT COUNT(1)
+        FROM repair_order
+        WHERE deleted = 1
+    </select>
+
+    <update id="restoreById">
+        UPDATE repair_order
+        SET deleted = 0,
+            deleted_time = NULL,
+            deleted_by = NULL,
+            purge_after_time = NULL,
+            update_time = NOW()
+        WHERE id = #{id}
+          AND deleted = 1
+    </update>
+
+    <delete id="hardDeleteById">
+        DELETE FROM repair_order
+        WHERE id = #{id}
+          AND deleted = 1
+    </delete>
+
+    <delete id="hardDeleteByIds">
+        DELETE FROM repair_order
+        WHERE deleted = 1
+        <if test="ids != null and ids.size() > 0">
+            AND id IN
+            <foreach collection="ids" item="id" open="(" close=")" separator=",">
+                #{id}
+            </foreach>
+        </if>
+    </delete>
+
+    <select id="listDueForPurge" resultMap="RepairOrderResultMap">
+        SELECT *
+        FROM repair_order
+        WHERE deleted = 1
+          AND purge_after_time IS NOT NULL
+          AND purge_after_time &lt;= #{now}
+        ORDER BY purge_after_time ASC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

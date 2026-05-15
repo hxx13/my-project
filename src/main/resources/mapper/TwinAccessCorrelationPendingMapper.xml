@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.TwinAccessCorrelationPendingMapper">
+
+    <insert id="insert" parameterType="com.example.demo.modules.twin.entity.TwinAccessCorrelationPending" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_access_correlation_pending
+        (access_type, user_id, room_id, source_tag, automation_log_id, summary_zh, detail_zh, op_time, consumed)
+        VALUES
+        (#{accessType}, #{userId}, #{roomId}, #{sourceTag}, #{automationLogId}, #{summaryZh}, #{detailZh}, #{opTime}, COALESCE(#{consumed}, 0))
+    </insert>
+
+    <select id="selectOldestMatching" resultType="com.example.demo.modules.twin.entity.TwinAccessCorrelationPending">
+        SELECT id, access_type AS accessType, user_id AS userId, room_id AS roomId, source_tag AS sourceTag,
+               automation_log_id AS automationLogId, summary_zh AS summaryZh, detail_zh AS detailZh,
+               op_time AS opTime, consumed AS consumed
+        FROM twin_access_correlation_pending
+        WHERE consumed = 0
+          AND user_id = #{userId}
+          AND room_id = #{roomId}
+          AND access_type = #{accessType}
+          AND op_time <![CDATA[>=]]> #{opTimeMin}
+          AND op_time <![CDATA[<=]]> #{opTimeMax}
+        ORDER BY op_time ASC, id ASC
+        LIMIT 1
+    </select>
+
+    <update id="markConsumed">
+        UPDATE twin_access_correlation_pending
+        SET consumed = 1
+        WHERE id = #{id}
+    </update>
+</mapper>

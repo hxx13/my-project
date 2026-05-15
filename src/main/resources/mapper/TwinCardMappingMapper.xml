@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.TwinCardMappingMapper">
+
+    <select id="findByCardNo" resultType="com.example.demo.modules.twin.entity.TwinCardMapping">
+        SELECT id,
+               card_no AS cardNo,
+               dahua_seq AS dahuaSeq,
+               dahua_person_code AS dahuaPersonCode,
+               aro_user_id AS aroUserId,
+               card_status AS cardStatus,
+               freeze_exempt_flag AS freezeExemptFlag,
+               freeze_exempt_grant_date AS freezeExemptGrantDate,
+               exempt_granted_at AS exemptGrantedAt,
+               last_modified_time AS lastModifiedTime
+        FROM twin_card_mapping
+        WHERE card_no = #{cardNo}
+    </select>
+
+    <select id="findByAroUserId" resultType="com.example.demo.modules.twin.entity.TwinCardMapping">
+        SELECT id,
+               card_no AS cardNo,
+               dahua_seq AS dahuaSeq,
+               dahua_person_code AS dahuaPersonCode,
+               aro_user_id AS aroUserId,
+               card_status AS cardStatus,
+               freeze_exempt_flag AS freezeExemptFlag,
+               freeze_exempt_grant_date AS freezeExemptGrantDate,
+               exempt_granted_at AS exemptGrantedAt,
+               last_modified_time AS lastModifiedTime
+        FROM twin_card_mapping
+        WHERE aro_user_id = #{aroUserId}
+    </select>
+
+    <insert id="insertMapping" parameterType="com.example.demo.modules.twin.entity.TwinCardMapping">
+        INSERT INTO twin_card_mapping (card_no, dahua_seq, dahua_person_code, aro_user_id, card_status, freeze_exempt_flag, last_modified_time)
+        VALUES (#{cardNo}, #{dahuaSeq}, #{dahuaPersonCode}, #{aroUserId}, #{cardStatus}, #{freezeExemptFlag}, #{lastModifiedTime})
+    </insert>
+
+    <update id="updateExemptFlag">
+        UPDATE twin_card_mapping
+        SET freeze_exempt_flag = #{flag},
+            freeze_exempt_grant_date = CASE WHEN #{flag} = 1 THEN CURDATE() ELSE freeze_exempt_grant_date END,
+            exempt_granted_at = CASE WHEN #{flag} = 1 THEN NOW() ELSE exempt_granted_at END,
+            last_modified_time = #{updateTime}
+        WHERE card_no = #{cardNo}
+    </update>
+
+    <update id="updateCardStatus">
+        UPDATE twin_card_mapping
+        SET card_status = #{status},
+            last_modified_time = #{updateTime}
+        WHERE card_no = #{cardNo}
+    </update>
+
+    <select id="findAllWithUserInfo" resultType="com.example.demo.modules.twin.entity.TwinCardMapping">
+        SELECT m.id,
+               m.card_no AS cardNo,
+               m.dahua_seq AS dahuaSeq,
+               m.dahua_person_code AS dahuaPersonCode,
+               m.aro_user_id AS aroUserId,
+               m.card_status AS cardStatus,
+               m.freeze_exempt_flag AS freezeExemptFlag,
+               m.freeze_exempt_grant_date AS freezeExemptGrantDate,
+               m.exempt_granted_at AS exemptGrantedAt,
+               m.last_modified_time AS lastModifiedTime,
+               p.name AS userName,
+               p.job_number AS jobNumber,
+               p.project_group_name AS projectGroupName
+        FROM twin_card_mapping m
+        LEFT JOIN aro_personnel p ON m.aro_user_id = p.user_id
+        ORDER BY m.last_modified_time DESC
+    </select>
+
+    <select id="findAll" resultType="com.example.demo.modules.twin.entity.TwinCardMapping">
+        SELECT id,
+               card_no AS cardNo,
+               dahua_seq AS dahuaSeq,
+               dahua_person_code AS dahuaPersonCode,
+               aro_user_id AS aroUserId,
+               card_status AS cardStatus,
+               freeze_exempt_flag AS freezeExemptFlag,
+               freeze_exempt_grant_date AS freezeExemptGrantDate,
+               exempt_granted_at AS exemptGrantedAt,
+               last_modified_time AS lastModifiedTime
+        FROM twin_card_mapping
+    </select>
+
+    <delete id="deleteMapping">
+        DELETE FROM twin_card_mapping
+        WHERE card_no = #{cardNo}
+    </delete>
+
+    <select id="findTodayStrandedUserIds" resultType="string">
+        SELECT user_id
+        FROM aro_access_log
+        WHERE create_time LIKE #{todayPrefix}
+        GROUP BY user_id
+        HAVING SUM(CASE WHEN accessType = 1 THEN 1 ELSE -1 END) > 0
+    </select>
+
+    <select id="findTodayExemptedThenRevokedUserIds" resultType="string">
+        SELECT aro_user_id
+        FROM twin_card_mapping
+        WHERE freeze_exempt_grant_date = CURDATE()
+          AND (freeze_exempt_flag IS NULL OR freeze_exempt_flag != 1)
+    </select>
+
+    <update id="updateExemptFlagByUserId">
+        UPDATE twin_card_mapping
+        SET freeze_exempt_flag = #{flag},
+            freeze_exempt_grant_date = CASE WHEN #{flag} = 1 THEN CURDATE() ELSE freeze_exempt_grant_date END,
+            exempt_granted_at = CASE WHEN #{flag} = 1 THEN NOW() ELSE exempt_granted_at END,
+            last_modified_time = NOW()
+        WHERE aro_user_id = #{aroUserId}
+    </update>
+
+    <update id="resetDailyExemptions">
+        UPDATE twin_card_mapping
+        SET freeze_exempt_flag = 0,
+            freeze_exempt_grant_date = NULL,
+            exempt_granted_at = NULL
+        WHERE freeze_exempt_flag = 1
+          AND (freeze_exempt_grant_date IS NULL OR freeze_exempt_grant_date &lt; CURDATE())
+    </update>
+
+    <update id="clearAllExemptFlagsKeepGrantTrace">
+        UPDATE twin_card_mapping
+        SET freeze_exempt_flag = 0,
+            last_modified_time = NOW()
+        WHERE freeze_exempt_flag = 1
+    </update>
+
+    <update id="revokeExpiredExemptionsByTodayKeepCard">
+        UPDATE twin_card_mapping
+        SET freeze_exempt_flag = 0,
+            freeze_exempt_grant_date = NULL,
+            exempt_granted_at = NULL
+        WHERE freeze_exempt_flag = 1
+          AND (freeze_exempt_grant_date IS NULL OR freeze_exempt_grant_date &lt; CURDATE())
+          AND aro_user_id NOT IN (
+            SELECT DISTINCT user_id
+            FROM aro_access_log
+            WHERE DATE(create_time) = CURDATE()
+              AND is_keep_card = 1
+        )
+    </update>
+
+</mapper>

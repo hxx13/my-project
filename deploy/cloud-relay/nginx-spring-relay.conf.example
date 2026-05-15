@@ -1,0 +1,44 @@
+# 复制到阿里云 ECS，例如 /etc/nginx/conf.d/spring-relay.conf
+# 修改 server_name、证书路径后: nginx -t && systemctl reload nginx
+#
+# 【旧架构专用】前置：frps 的 proxy_bind_addr=127.0.0.1，且 frpc.ini 使用 remote_port=18080，
+# 使本机 127.0.0.1:18080 经隧道连到 Windows 上 Spring。
+#
+# 若你已改用「公网 8080 + frpc.toml」直连穿透，则 HTTPS 可由宝塔单独配置，
+# 不必再经本文件 upstream 到 18080；此时云函数可指向 http://EIP:8080 或宝塔反代后的 https 域名。
+
+upstream spring_frp_tunnel {
+    server 127.0.0.1:18080;
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    # 建议使用备案域名；若仅用 IP，请同步证书 SAN
+    server_name 47.101.61.184;
+
+    ssl_certificate     /etc/nginx/ssl/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
+
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+
+    location / {
+        proxy_http_version 1.1;
+        proxy_pass http://spring_frp_tunnel;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout    300s;
+        proxy_read_timeout    300s;
+    }
+}
+
+# 可选：80 跳转 HTTPS
+# server {
+#     listen 80;
+#     server_name 47.101.61.184;
+#     return 301 https://$host$request_uri;
+# }

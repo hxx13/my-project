@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.TwinAccessRuleScanConfigMapper">
+
+    <resultMap id="TwinAccessRuleScanConfigMap" type="com.example.demo.modules.twin.entity.TwinAccessRuleScanConfigRow">
+        <id column="id" property="id"/>
+        <result column="enter_dispatch_enabled" property="enterDispatchEnabled"/>
+        <result column="exit_dispatch_enabled" property="exitDispatchEnabled"/>
+        <result column="updated_by" property="updatedBy"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <select id="selectById" resultMap="TwinAccessRuleScanConfigMap">
+        SELECT id, enter_dispatch_enabled, exit_dispatch_enabled, updated_by, updated_at
+        FROM twin_access_rule_scan_config
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insertIgnoreDefault">
+        INSERT IGNORE INTO twin_access_rule_scan_config (id, enter_dispatch_enabled, exit_dispatch_enabled, updated_by)
+        VALUES (#{id}, 1, 1, 'system')
+    </insert>
+
+    <update id="updateConfig">
+        UPDATE twin_access_rule_scan_config
+        SET enter_dispatch_enabled = #{enterDispatchEnabled},
+            exit_dispatch_enabled = #{exitDispatchEnabled},
+            updated_by = #{updatedBy},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+</mapper>

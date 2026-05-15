@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.auth.mapper.UserMapper">
+
+    <resultMap id="UserResultMap" type="com.example.demo.modules.auth.entity.User">
+        <id property="id" column="id"/>
+        <result property="username" column="username"/>
+        <result property="password" column="password"/>
+        <result property="openId" column="open_id"/>
+        <result property="role" column="role"/>
+        <result property="status" column="status"/>
+        <result property="passwordResetRequired" column="password_reset_required"/>
+        <result property="displayNickname" column="display_nickname"/>
+        <result property="miniBindType" column="mini_bind_type"/>
+        <result property="miniPreferencesJson" column="mini_preferences_json"/>
+        <result property="authProfile" column="auth_profile"/>
+    </resultMap>
+
+    <sql id="User_Column_List">
+        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile
+    </sql>
+
+    <select id="findByUsername" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE username = #{username}
+        LIMIT 1
+    </select>
+
+    <select id="findByUsernameAndPassword" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE username = #{username}
+          AND password = #{password}
+        LIMIT 1
+    </select>
+
+    <select id="findByOpenId" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE open_id = #{openId}
+        LIMIT 1
+    </select>
+
+    <select id="findById" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <select id="findByIdAndPassword" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE id = #{id}
+          AND password = #{password}
+        LIMIT 1
+    </select>
+
+    <insert id="insertUser" parameterType="com.example.demo.modules.auth.entity.User">
+        INSERT INTO sys_user(id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile)
+        VALUES (#{id}, #{username}, #{password}, #{openId}, #{role}, #{status}, #{passwordResetRequired}, #{displayNickname}, #{miniBindType}, #{miniPreferencesJson}, #{authProfile})
+    </insert>
+
+    <update id="updateOpenIdById">
+        UPDATE sys_user
+        SET open_id = #{openId},
+        <if test="miniBindType != null and miniBindType != ''">
+            mini_bind_type = #{miniBindType},
+        </if>
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateDisplayNicknameById">
+        UPDATE sys_user
+        SET display_nickname = #{displayNickname},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateMiniPreferencesJsonById">
+        UPDATE sys_user
+        SET mini_preferences_json = #{miniPreferencesJson},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateAuthProfileById">
+        UPDATE sys_user
+        SET auth_profile = #{authProfile},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="clearOpenIdById">
+        UPDATE sys_user
+        SET open_id = NULL,
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateRoleById">
+        UPDATE sys_user
+        SET role = #{role},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatusById">
+        UPDATE sys_user
+        SET status = #{status},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updatePasswordById">
+        UPDATE sys_user
+        SET password = #{password},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updatePasswordAndResetRequiredById">
+        UPDATE sys_user
+        SET password = #{password},
+            password_reset_required = #{passwordResetRequired},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <insert id="insertBindAudit">
+        INSERT INTO auth_bind_audit(open_id, identifier, bind_type, client_ip, status, message)
+        VALUES (#{openId}, #{identifier}, #{bindType}, #{clientIp}, #{status}, #{message})
+    </insert>
+
+    <select id="existsPersonnelById" resultType="int">
+        SELECT COUNT(1)
+        FROM aro_personnel
+        WHERE user_id = #{id}
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM sys_user WHERE id = #{id}
+    </delete>
+
+    <select id="listEnabledUsersByMinRoleLevel" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE status = 1
+          AND (
+            CASE role
+              WHEN 'STUDENT' THEN 1
+              WHEN 'STAFF' THEN 2
+              WHEN 'SENIOR' THEN 3
+              WHEN 'ADMIN' THEN 4
+              WHEN 'SUPER_ADMIN' THEN 5
+              WHEN 'PLATFORM_OWNER' THEN 6
+              ELSE 0
+            END
+          ) >= #{minRoleLevel}
+    </select>
+
+</mapper>

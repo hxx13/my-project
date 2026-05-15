@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!--
+      控制台仅输出日志正文（无前缀）。会覆盖 application.properties 里的 logging.pattern.console。
+      需要恢复时间/级别/类名时：删除本文件或改下方 pattern。
+      logging.level.* 仍由 Spring Boot 从 application.properties 注入，不受影响。
+    -->
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

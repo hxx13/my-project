@@ -1,0 +1,128 @@
+/**
+ * Debug 路由科幻「画框」：仅挂在 .twin-chrome-debug-root 下的 .twin-debug-scifi-shell，不误伤 Dashboard。
+ */
+
+.twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell {
+    --twin-debug-shell-accent: rgba(56, 189, 248, 0.55);
+    --twin-debug-shell-accent-dim: rgba(34, 211, 238, 0.2);
+    --twin-debug-shell-glow: 0 0 42px rgba(56, 189, 248, 0.12);
+    position: relative;
+    min-height: 0;
+    padding: 0.65rem 0.75rem 0.75rem;
+}
+
+@media (min-width: 768px) {
+    .twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell {
+        padding: 0.85rem 1rem 1rem;
+    }
+}
+
+.twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__frame {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(51, 65, 85, 0.65);
+    background: linear-gradient(165deg, rgb(15 23 42 / 0.92) 0%, rgb(2 6 23 / 0.88) 55%, rgb(15 23 42 / 0.85) 100%);
+    box-shadow: var(--twin-debug-shell-glow), inset 0 1px 0 rgba(148, 163, 184, 0.06);
+}
+
+/* 顶栏：细线 + 弱发光 */
+.twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__header {
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.22);
+    background: linear-gradient(90deg, rgba(8, 47, 73, 0.5), rgba(15, 23, 42, 0.2));
+    padding: 0.4rem 0.75rem 0.45rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(165 243 252);
+    text-shadow: 0 0 18px rgba(56, 189, 248, 0.35);
+}
+
+/* 角标装饰（L 形） */
+.twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__corners {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: inherit;
+}
+
+.twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__corners::before,
+.twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__corners::after {
+    content: "";
+    position: absolute;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-color: var(--twin-debug-shell-accent);
+    border-style: solid;
+    opacity: 0.85;
+}
+
+.twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__corners::before {
+    top: 0.35rem;
+    left: 0.35rem;
+    border-width: 2px 0 0 2px;
+    border-radius: 2px 0 0 0;
+}
+
+.twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__corners::after {
+    right: 0.35rem;
+    bottom: 0.35rem;
+    border-width: 0 2px 2px 0;
+    border-radius: 0 0 2px 0;
+}
+
+.twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__body {
+    position: relative;
+    z-index: 1;
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    padding: 0.5rem 0.6rem 0.65rem;
+}
+
+@media (min-width: 768px) {
+    .twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__body {
+        padding: 0.65rem 0.85rem 0.85rem;
+    }
+}
+
+/* 极低对比扫描线（终端感） */
+.twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__scanlines {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    border-radius: inherit;
+    opacity: 0.045;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.35) 2px,
+        rgba(0, 0, 0, 0.35) 3px
+    );
+    animation: twin-debug-shell-scan-drift 14s linear infinite;
+}
+
+@keyframes twin-debug-shell-scan-drift {
+    from {
+        transform: translateY(0);
+    }
+    to {
+        transform: translateY(12px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .twin-chrome-debug-root[data-twin-chrome-theme="dashboardSciFi"] .twin-debug-scifi-shell__scanlines {
+        animation: none;
+        opacity: 0.03;
+    }
+}

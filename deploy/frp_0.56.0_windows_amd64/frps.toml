@@ -1,0 +1,8 @@
+# ECS / 服务端示例（frp 0.56+ TOML）。启动: ./frps -c frps.toml
+# auth.token 必须与各 frpc.toml 中 auth.token 完全一致（勿留首尾空格）。
+bindAddr = "0.0.0.0"
+bindPort = 7000
+proxyBindAddr = "0.0.0.0"
+
+auth.method = "token"
+auth.token = "change_me_to_a_long_random_secret"

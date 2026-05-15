@@ -1,0 +1,157 @@
+/**
+ * 仅作用于 .dashboard-home-root--scifi 后代，避免污染其它页面。
+ * 动画时长变量由 SciFiDashboardChrome 内联注入：--scifi-aurora-s、--scifi-border-flow-s
+ */
+
+.dashboard-home-root--scifi {
+    --scifi-bg-deep: rgba(2, 6, 23, 0.88);
+    --scifi-aurora-a: rgba(56, 189, 248, 0.16);
+    --scifi-aurora-b: rgba(168, 85, 247, 0.14);
+    --scifi-aurora-c: rgba(34, 211, 238, 0.1);
+    --scifi-flow-line: rgba(125, 211, 252, 0.5);
+    --scifi-flow-soft: rgba(99, 102, 241, 0.35);
+    --scifi-text: rgb(226 232 240);
+    --scifi-text-muted: rgb(148 163 184);
+    color: var(--scifi-text);
+}
+
+/* 覆盖首页根上 Tailwind 文字色 */
+.dashboard-home-root--scifi.text-slate-800 {
+    color: var(--scifi-text);
+}
+
+.dashboard-home-root--scifi .text-slate-800 {
+    color: var(--scifi-text);
+}
+
+.dashboard-home-root--scifi .text-slate-500,
+.dashboard-home-root--scifi .text-slate-600 {
+    color: var(--scifi-text-muted);
+}
+
+.dashboard-home-root--scifi .text-blue-500 {
+    color: rgb(125 211 252);
+}
+
+/* GlassCard：去白边、冷色描边、压暗底；覆盖 styled 整段 border */
+.dashboard-home-root--scifi [data-glass-card] .card-body {
+    background: linear-gradient(155deg, rgba(15, 23, 42, 0.88), rgba(30, 27, 75, 0.55));
+    border: 1px solid rgba(125, 211, 252, 0.32) !important;
+    box-shadow:
+        0 0 0 1px rgba(56, 189, 248, 0.12),
+        0 0 40px rgba(56, 189, 248, 0.08) inset,
+        0 24px 56px -16px rgba(0, 0, 0, 0.55) !important;
+}
+
+.dashboard-home-root--scifi [data-glass-card] .sweep {
+    opacity: 0.05;
+}
+
+.dashboard-home-root--scifi [data-glass-card] .grid-overlay {
+    background-image: linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+}
+
+/* 背景叠层 */
+.dashboard-home-root--scifi .scifi-layer--base {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse 120% 80% at 50% 0%, var(--scifi-bg-deep), transparent 70%),
+        radial-gradient(circle at 20% 30%, var(--scifi-aurora-a), transparent 42%),
+        radial-gradient(circle at 80% 60%, var(--scifi-aurora-b), transparent 45%),
+        linear-gradient(165deg, rgb(2 6 23), rgb(15 23 42) 55%, rgb(15 23 42));
+}
+
+.dashboard-home-root--scifi .scifi-layer--aurora {
+    position: absolute;
+    inset: -40%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.55;
+    background: conic-gradient(
+        from 0deg at 50% 50%,
+        transparent 0deg,
+        var(--scifi-aurora-c) 80deg,
+        transparent 160deg,
+        var(--scifi-aurora-a) 240deg,
+        transparent 320deg,
+        var(--scifi-aurora-b) 360deg
+    );
+    animation: scifi-aurora-spin var(--scifi-aurora-s, 22s) linear infinite;
+}
+
+.dashboard-home-root--scifi .scifi-layer--flowring {
+    position: absolute;
+    inset: 8px;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: 18px;
+    opacity: 0.85;
+    box-shadow:
+        0 0 0 1px rgba(125, 211, 252, 0.18),
+        0 0 48px rgba(56, 189, 248, 0.12) inset;
+    animation: scifi-pulse-glow var(--scifi-border-flow-s, 6s) ease-in-out infinite alternate;
+}
+
+.dashboard-home-root--scifi[data-scifi-scanlines="1"] .scifi-layer--scanlines {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.12;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(148, 163, 184, 0.07) 0px,
+        rgba(148, 163, 184, 0.07) 1px,
+        transparent 1px,
+        transparent 4px
+    );
+    mix-blend-mode: overlay;
+}
+
+.dashboard-home-root--scifi .scifi-content {
+    position: relative;
+    z-index: 1;
+    box-sizing: border-box;
+    padding: 15px;
+    min-height: 0;
+}
+
+@keyframes scifi-aurora-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes scifi-pulse-glow {
+    from {
+        opacity: 0.45;
+        box-shadow:
+            0 0 0 1px rgba(125, 211, 252, 0.12),
+            0 0 32px rgba(56, 189, 248, 0.08) inset;
+    }
+    to {
+        opacity: 0.95;
+        box-shadow:
+            0 0 0 1px rgba(167, 139, 250, 0.35),
+            0 0 56px rgba(99, 102, 241, 0.18) inset;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-home-root--scifi .scifi-layer--aurora {
+        animation: none;
+        opacity: 0.35;
+    }
+
+    .dashboard-home-root--scifi .scifi-layer--flowring {
+        animation: none;
+        opacity: 0.55;
+    }
+
+    .dashboard-home-root--scifi[data-scifi-scanlines="1"] .scifi-layer--scanlines {
+        opacity: 0.04;
+    }
+}

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.roommapping.mapper.RoomMappingChannelMapper">
+
+    <delete id="deleteByRoomId">
+        DELETE FROM room_mapping_channel WHERE room_id = #{roomId}
+    </delete>
+
+    <insert id="insertBatch">
+        INSERT INTO room_mapping_channel (room_id, channel_code, sort_order, label)
+        VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (#{r.roomId}, #{r.channelCode}, #{r.sortOrder}, #{r.label})
+        </foreach>
+    </insert>
+
+    <select id="selectByRoomId" resultType="com.example.demo.modules.roommapping.entity.RoomMappingChannel">
+        SELECT id, room_id AS roomId, channel_code AS channelCode, sort_order AS sortOrder, label,
+               created_at AS createdAt
+        FROM room_mapping_channel
+        WHERE room_id = #{roomId}
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectByRoomIds" resultType="com.example.demo.modules.roommapping.entity.RoomMappingChannel">
+        SELECT id, room_id AS roomId, channel_code AS channelCode, sort_order AS sortOrder, label,
+               created_at AS createdAt
+        FROM room_mapping_channel
+        WHERE room_id IN
+        <foreach collection="roomIds" item="rid" open="(" separator="," close=")">
+            #{rid}
+        </foreach>
+        ORDER BY room_id, sort_order ASC, id ASC
+    </select>
+</mapper>

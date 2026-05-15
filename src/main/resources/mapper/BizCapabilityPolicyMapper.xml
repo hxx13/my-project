@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.policy.mapper.BizCapabilityPolicyMapper">
+
+    <resultMap id="PolicyMap" type="com.example.demo.modules.policy.entity.BizCapabilityPolicy">
+        <id property="id" column="id"/>
+        <result property="bizDomain" column="biz_domain"/>
+        <result property="minRoleSubmit" column="min_role_submit"/>
+        <result property="minRoleProcess" column="min_role_process"/>
+        <result property="minRoleViewAllPending" column="min_role_view_all_pending"/>
+        <result property="applicantListMode" column="applicant_list_mode"/>
+        <result property="visibilityPublicAllowed" column="visibility_public_allowed"/>
+        <result property="extensionJson" column="extension_json"/>
+        <result property="enabled" column="enabled"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="policyVersion" column="policy_version"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectAll" resultMap="PolicyMap">
+        SELECT *
+        FROM biz_capability_policy
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectByDomain" resultMap="PolicyMap">
+        SELECT *
+        FROM biz_capability_policy
+        WHERE biz_domain = #{bizDomain}
+        LIMIT 1
+    </select>
+
+    <select id="sumPolicyVersions" resultType="long">
+        SELECT COALESCE(SUM(policy_version), 0)
+        FROM biz_capability_policy
+    </select>
+
+    <update id="updatePolicy">
+        UPDATE biz_capability_policy
+        SET min_role_submit = #{row.minRoleSubmit},
+            min_role_process = #{row.minRoleProcess},
+            min_role_view_all_pending = #{row.minRoleViewAllPending},
+            applicant_list_mode = #{row.applicantListMode},
+            visibility_public_allowed = #{row.visibilityPublicAllowed},
+            extension_json = #{row.extensionJson},
+            enabled = #{row.enabled},
+            sort_order = #{row.sortOrder},
+            policy_version = #{row.policyVersion}
+        WHERE biz_domain = #{row.bizDomain}
+    </update>
+</mapper>

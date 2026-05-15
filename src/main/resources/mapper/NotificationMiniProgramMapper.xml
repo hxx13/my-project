@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.notification.mapper.NotificationMiniProgramMapper">
+
+    <insert id="upsertSubscription">
+        INSERT INTO sys_mini_subscribe(user_id, template_key, accepted, update_time)
+        VALUES (#{userId}, #{templateKey}, #{accepted}, NOW())
+        ON DUPLICATE KEY UPDATE
+        accepted = VALUES(accepted),
+        update_time = NOW()
+    </insert>
+
+    <select id="listSubscriptionsByUser" resultType="com.example.demo.modules.notification.entity.MiniSubscribeRecord">
+        SELECT id,
+               user_id AS userId,
+               template_key AS templateKey,
+               accepted,
+               update_time AS updateTime
+        FROM sys_mini_subscribe
+        WHERE user_id = #{userId}
+        ORDER BY template_key
+    </select>
+
+    <select id="findSubscription" resultType="com.example.demo.modules.notification.entity.MiniSubscribeRecord">
+        SELECT id,
+               user_id AS userId,
+               template_key AS templateKey,
+               accepted,
+               update_time AS updateTime
+        FROM sys_mini_subscribe
+        WHERE user_id = #{userId}
+          AND template_key = #{templateKey}
+        LIMIT 1
+    </select>
+
+    <insert id="insertDeliveryLog" parameterType="com.example.demo.modules.notification.entity.NotifyDeliveryLog" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO sys_notify_delivery_log(notification_id, recipient_user_id, channel, template_key, status, create_time, update_time)
+        VALUES (#{notificationId}, #{recipientUserId}, #{channel}, #{templateKey}, #{status}, NOW(), NOW())
+    </insert>
+
+    <update id="markDeliverySuccess">
+        UPDATE sys_notify_delivery_log
+        SET status = 'SUCCESS',
+            provider_msg_id = #{providerMsgId},
+            error_code = NULL,
+            error_msg = NULL,
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="markDeliveryFailed">
+        UPDATE sys_notify_delivery_log
+        SET status = 'FAILED',
+            error_code = #{errorCode},
+            error_msg = #{errorMsg},
+            retry_count = retry_count + 1,
+            next_retry_time = DATE_ADD(NOW(), INTERVAL 5 MINUTE),
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+</mapper>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.aro.mapper.AroPersonnelMapper">
+
+    <insert id="upsertPersonnelBatch">
+        INSERT INTO aro_personnel(
+            user_id, name, job_number, id_number, head, gender, mobile_phone, email,
+            department_name, project_group_name, user_type_names, user_class_name, is_school, state,
+            join_room_name, allowed_rooms_json, total_exp, update_time
+        )
+        VALUES
+        <foreach collection="list" item="p" separator=",">
+            (
+                #{p.id}, #{p.name}, #{p.jobNumber}, #{p.idNumber}, #{p.head}, #{p.gender}, #{p.mobilePhone}, #{p.email},
+                #{p.departmentName}, #{p.resolvedProjectGroupNames}, #{p.userTypeNames}, #{p.userClassName}, #{p.isSchool}, #{p.state},
+                #{p.joinRoomName}, #{p.allowedRoomsJson}, COALESCE(#{p.totalExp}, 0), #{currentTime}
+            )
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            name = VALUES(name),
+            job_number = VALUES(job_number),
+            id_number = VALUES(id_number),
+            head = VALUES(head),
+            gender = VALUES(gender),
+            mobile_phone = VALUES(mobile_phone),
+            email = VALUES(email),
+            department_name = VALUES(department_name),
+            project_group_name = VALUES(project_group_name),
+            user_type_names = VALUES(user_type_names),
+            user_class_name = VALUES(user_class_name),
+            is_school = VALUES(is_school),
+            state = VALUES(state),
+            join_room_name = VALUES(join_room_name),
+            allowed_rooms_json = COALESCE(VALUES(allowed_rooms_json), aro_personnel.allowed_rooms_json),
+            update_time = VALUES(update_time)
+    </insert>
+
+    <update id="updateAllowedRoomsDisplayZh">
+        UPDATE aro_personnel
+        SET allowed_rooms_display_zh = #{text},
+            has_official_room_permission = #{hasOfficialRoomPermission},
+            update_time = #{currentTime}
+        WHERE user_id = #{userId}
+    </update>
+
+</mapper>

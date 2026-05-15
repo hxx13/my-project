@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.supplies.mapper.SupplyItemMapper">
+
+    <resultMap id="Base" type="com.example.demo.modules.supplies.entity.SupplyItem">
+        <id property="id" column="id"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="name" column="name"/>
+        <result property="subtitle" column="subtitle"/>
+        <result property="coverUrl" column="cover_url"/>
+        <result property="shelfStatus" column="shelf_status"/>
+        <result property="stockMode" column="stock_mode"/>
+        <result property="stockQty" column="stock_qty"/>
+        <result property="deleted" column="deleted"/>
+        <result property="deletedTime" column="deleted_time"/>
+        <result property="deletedBy" column="deleted_by"/>
+        <result property="purgeAfterTime" column="purge_after_time"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+        <result property="lastInboundAt" column="last_inbound_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO supply_item(category_id, name, subtitle, cover_url, shelf_status, stock_mode, stock_qty, last_inbound_at)
+        VALUES (#{categoryId}, #{name}, #{subtitle}, #{coverUrl}, #{shelfStatus}, #{stockMode}, #{stockQty}, NOW())
+    </insert>
+
+    <update id="update">
+        UPDATE supply_item
+        SET category_id = #{categoryId},
+            name = #{name},
+            subtitle = #{subtitle},
+            cover_url = #{coverUrl},
+            shelf_status = #{shelfStatus},
+            stock_mode = #{stockMode},
+            stock_qty = #{stockQty}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        UPDATE supply_item
+        SET deleted = 1,
+            deleted_time = NOW(),
+            deleted_by = 'system',
+            purge_after_time = DATE_ADD(NOW(), INTERVAL 7 DAY),
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND deleted = 0
+    </delete>
+
+    <update id="restoreById">
+        UPDATE supply_item
+        SET deleted = 0,
+            deleted_time = NULL,
+            deleted_by = NULL,
+            purge_after_time = NULL,
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND deleted = 1
+    </update>
+
+    <delete id="hardDeleteById">
+        DELETE FROM supply_item
+        WHERE id = #{id}
+          AND deleted = 1
+    </delete>
+
+    <delete id="hardDeleteByIds">
+        DELETE FROM supply_item
+        WHERE deleted = 1
+        <if test="ids != null and ids.size() > 0">
+            AND id IN
+            <foreach collection="ids" item="id" open="(" close=")" separator=",">
+                #{id}
+            </foreach>
+        </if>
+    </delete>
+
+    <select id="findById" resultMap="Base">
+        SELECT * FROM supply_item WHERE id = #{id} AND deleted = 0 LIMIT 1
+    </select>
+
+    <select id="findRecycleById" resultMap="Base">
+        SELECT * FROM supply_item WHERE id = #{id} AND deleted = 1 LIMIT 1
+    </select>
+
+    <select id="listOnShelf" resultMap="Base">
+        SELECT * FROM supply_item
+        WHERE shelf_status = 'ON_SHELF'
+          AND deleted = 0
+        <if test="categoryId != null">
+            AND category_id = #{categoryId}
+        </if>
+        ORDER BY id ASC
+    </select>
+
+    <select id="listAllForAdmin" resultMap="Base">
+        SELECT * FROM supply_item
+        <where>
+            deleted = 0
+            <if test="categoryId != null">
+                AND category_id = #{categoryId}
+            </if>
+        </where>
+        ORDER BY id DESC
+    </select>
+
+    <select id="listRecycle" resultMap="Base">
+        SELECT * FROM supply_item
+        WHERE deleted = 1
+        ORDER BY deleted_time DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countRecycle" resultType="int">
+        SELECT COUNT(1) FROM supply_item WHERE deleted = 1
+    </select>
+
+    <update id="decreaseStockIfEnough">
+        UPDATE supply_item
+        SET stock_qty = stock_qty - #{qty}
+        WHERE id = #{id}
+          AND stock_mode = 'QUANTIFIED'
+          AND stock_qty &gt;= #{qty}
+    </update>
+
+    <update id="increaseStock">
+        UPDATE supply_item
+        SET stock_qty = stock_qty + #{qty},
+            last_inbound_at = NOW()
+        WHERE id = #{id}
+          AND stock_mode = 'QUANTIFIED'
+    </update>
+
+    <update id="adjustStock">
+        UPDATE supply_item SET stock_qty = #{newQty} WHERE id = #{id}
+    </update>
+
+    <update id="touchInboundAt">
+        UPDATE supply_item
+        SET last_inbound_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectItemIdsHavingAuditRecords" resultType="long">
+        SELECT DISTINCT i.id
+        FROM supply_item i
+        WHERE i.deleted = 0
+        <if test="categoryId != null">
+            AND i.category_id = #{categoryId}
+        </if>
+        AND (
+            EXISTS (SELECT 1 FROM supply_inventory_movement m WHERE m.item_id = i.id)
+            OR EXISTS (
+                SELECT 1
+                FROM supply_claim_line l
+                INNER JOIN supply_claim_order o ON o.id = l.order_id
+                WHERE l.item_id = i.id
+                  AND IFNULL(o.deleted, 0) = 0
+                  AND o.status = 'FULFILLED'
+                  AND IFNULL(l.fulfilled_qty, 0) &gt; 0
+            )
+        )
+        ORDER BY i.id DESC
+    </select>
+</mapper>

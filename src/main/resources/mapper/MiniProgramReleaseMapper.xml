@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.mp.mapper.MiniProgramReleaseMapper">
+
+    <resultMap id="MiniProgramReleaseMap" type="com.example.demo.modules.mp.entity.MiniProgramRelease">
+        <id property="id" column="id"/>
+        <result property="versionCode" column="version_code"/>
+        <result property="title" column="title"/>
+        <result property="summary" column="summary"/>
+        <result property="bodyHtml" column="body_html"/>
+        <result property="publishedAt" column="published_at"/>
+        <result property="showOnLaunch" column="show_on_launch"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectSplash" resultMap="MiniProgramReleaseMap">
+        SELECT *
+        FROM mini_program_release
+        WHERE show_on_launch = 1
+        ORDER BY published_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectAllPublished" resultMap="MiniProgramReleaseMap">
+        SELECT *
+        FROM mini_program_release
+        ORDER BY published_at DESC, id DESC
+    </select>
+
+    <select id="selectById" resultMap="MiniProgramReleaseMap">
+        SELECT *
+        FROM mini_program_release
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
+    <insert id="insert">
+        INSERT INTO mini_program_release (id, version_code, title, summary, body_html, published_at, show_on_launch, created_by)
+        VALUES (#{id}, #{versionCode}, #{title}, #{summary}, #{bodyHtml}, #{publishedAt}, IFNULL(#{showOnLaunch}, 0), #{createdBy})
+    </insert>
+
+    <update id="update">
+        UPDATE mini_program_release
+        SET version_code = #{versionCode},
+            title = #{title},
+            summary = #{summary},
+            body_html = #{bodyHtml},
+            published_at = #{publishedAt},
+            show_on_launch = IFNULL(#{showOnLaunch}, 0)
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM mini_program_release WHERE id = #{id}
+    </delete>
+
+    <update id="clearShowOnLaunch">
+        UPDATE mini_program_release SET show_on_launch = 0
+    </update>
+
+    <update id="setShowOnLaunch">
+        UPDATE mini_program_release SET show_on_launch = 1 WHERE id = #{id}
+    </update>
+</mapper>

@@ -1,0 +1,289 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/figtree";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.809 0.105 251.813);
+    --chart-2: oklch(0.623 0.214 259.815);
+    --chart-3: oklch(0.546 0.245 262.881);
+    --chart-4: oklch(0.488 0.243 264.376);
+    --chart-5: oklch(0.424 0.199 265.638);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+    /* 后台工具栏密度（Fluent 命令栏轻量对齐） */
+    --admin-toolbar-gap: 0.5rem;
+    --admin-toolbar-row-gap: 0.75rem;
+    --admin-control-height: 2.25rem;
+    --admin-radius-sm: 0.5rem;
+    --admin-radius-md: 0.625rem;
+    --admin-radius-lg: 0.75rem;
+    /* 与 --ring 同系，供登录页/原生控件焦点环叙事 */
+    --admin-focus-ring: oklch(0.708 0 0 / 0.45);
+    --admin-z-command-overlay: 1300;
+    --admin-z-command-content: 1301;
+  }
+  .dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.809 0.105 251.813);
+    --chart-2: oklch(0.623 0.214 259.815);
+    --chart-3: oklch(0.546 0.245 262.881);
+    --chart-4: oklch(0.488 0.243 264.376);
+    --chart-5: oklch(0.424 0.199 265.638);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0)
+  }
+  .theme {
+    --font-sans: 'Figtree Variable', sans-serif
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+.admin-sidebar-scrollbar-hidden::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 动物房温湿度页：超限报警——数字保持深红可读，仅光晕强弱呼吸（与小程序 art-metric-oor-breathe 一致） */
+@keyframes telemetry-alarm-breathe {
+  0%,
+  100% {
+    color: #b91c1c;
+    text-shadow: 0 0 3px rgba(220, 38, 38, 0.28), 0 0 8px rgba(239, 68, 68, 0.22);
+  }
+  50% {
+    color: #b91c1c;
+    text-shadow: 0 0 8px rgba(239, 68, 68, 0.5), 0 0 14px rgba(220, 38, 38, 0.35);
+  }
+}
+
+.telemetry-alarm-value {
+  font-weight: 800;
+  color: #991b1b;
+  background: rgba(254, 215, 215, 0.75);
+  border-radius: 0.25rem;
+  padding: 0 0.15rem;
+  box-decoration-break: clone;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .telemetry-alarm-value {
+    animation: telemetry-alarm-breathe 1.35s ease-in-out infinite;
+  }
+}
+
+@keyframes telemetry-alarm-low-breathe {
+  0%,
+  100% {
+    color: #1d4ed8;
+    text-shadow: 0 0 3px rgba(37, 99, 235, 0.28), 0 0 8px rgba(59, 130, 246, 0.22);
+  }
+  50% {
+    color: #1d4ed8;
+    text-shadow: 0 0 8px rgba(59, 130, 246, 0.45), 0 0 14px rgba(37, 99, 235, 0.32);
+  }
+}
+
+.telemetry-alarm-high {
+  font-weight: 800;
+  color: #991b1b;
+  background: rgba(254, 202, 202, 0.88);
+  border-radius: 0.25rem;
+  padding: 0 0.15rem;
+  box-decoration-break: clone;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .telemetry-alarm-high {
+    animation: telemetry-alarm-breathe 1.35s ease-in-out infinite;
+  }
+}
+
+.telemetry-alarm-low {
+  font-weight: 800;
+  color: #1e40af;
+  background: rgba(191, 219, 254, 0.88);
+  border-radius: 0.25rem;
+  padding: 0 0.15rem;
+  box-decoration-break: clone;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .telemetry-alarm-low {
+    animation: telemetry-alarm-low-breathe 1.35s ease-in-out infinite;
+  }
+}
+
+.telemetry-alarm-ok {
+  font-weight: 700;
+  color: #15803d;
+}
+
+/* 后台数据表：AdminTableShell（.admin-table-shell-inner）与 AdminDataTableWrap（.admin-data-table-wrap）共用 */
+.admin-table-shell-inner table,
+.admin-data-table-wrap table {
+  @apply min-w-full border-collapse text-sm text-neutral-800;
+}
+
+.admin-table-shell-inner thead th,
+.admin-data-table-wrap thead th {
+  @apply border-b border-neutral-200 bg-neutral-50 px-3 py-2.5 text-left text-xs font-semibold tracking-wide text-neutral-600;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: 0 1px 0 0 rgb(229 231 235 / 0.9);
+}
+
+.admin-table-shell-inner tbody td,
+.admin-data-table-wrap tbody td {
+  @apply border-b border-neutral-100 align-middle;
+}
+
+.admin-table-shell-inner tbody tr:nth-child(even),
+.admin-data-table-wrap tbody tr:nth-child(even) {
+  @apply bg-neutral-50/55;
+}
+
+.admin-table-shell-inner tbody tr:hover,
+.admin-data-table-wrap tbody tr:hover {
+  @apply bg-neutral-100/75;
+}
+
+/* 表格内可编辑控件：与 ADMIN_UI_STYLE 中链接/焦点色一致 */
+.admin-table-shell-inner tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea),
+.admin-data-table-wrap tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea) {
+  @apply max-w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-sm text-neutral-900 shadow-sm outline-none transition placeholder:text-neutral-400;
+}
+
+.admin-table-shell-inner tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea):focus-visible,
+.admin-data-table-wrap tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea):focus-visible {
+  @apply border-neutral-300 ring-2 ring-[#0070f3]/25;
+}
+
+/* 登录页与 Admin 表单共用叙事：docs/admin-ui-design-system.md */
+.admin-login-input {
+  min-height: 44px;
+  border-radius: var(--admin-radius-lg);
+}
+.admin-login-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--admin-focus-ring);
+}
+.admin-login-button-primary {
+  min-height: 44px;
+  border-radius: var(--admin-radius-lg);
+}
+.admin-login-button-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--admin-focus-ring);
+}
+.admin-login-card {
+  border-radius: var(--admin-radius-lg);
+}
+
+/* 登录落地页：入场动画（仅登录路由使用） */
+@keyframes login-landing-fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 1.25rem, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes login-landing-fade-left {
+  from {
+    opacity: 0;
+    transform: translate3d(-1rem, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+@keyframes login-landing-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.login-landing-animate-up {
+  animation: login-landing-fade-up 0.85s ease-out both;
+}
+.login-landing-animate-left {
+  animation: login-landing-fade-left 0.85s ease-out both;
+}
+.login-landing-animate-in {
+  animation: login-landing-fade-in 1s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-landing-animate-up,
+  .login-landing-animate-left,
+  .login-landing-animate-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

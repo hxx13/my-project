@@ -1,0 +1,10 @@
+{
+  "name": "twin-workspace",
+  "private": true,
+  "scripts": {
+    "build:mp-model": "node scripts/build-mp-telemetry-model.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.5"
+  }
+}

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.RoomConfigMapper">
+
+    <select id="selectAllActive" resultType="com.example.demo.modules.twin.entity.RoomConfig">
+        SELECT id,
+               campus,
+               room_name AS roomName,
+               capacity,
+               mapping_aliases AS mappingAliases,
+               capacity_bind_room_id AS capacityBindRoomId
+        FROM room_config
+        WHERE is_active = 1
+    </select>
+
+    <insert id="insert" parameterType="com.example.demo.modules.twin.entity.RoomConfig">
+        INSERT INTO room_config (campus, room_name, capacity, mapping_aliases, capacity_bind_room_id, is_active)
+        VALUES (#{campus}, #{roomName}, #{capacity}, #{mappingAliases}, #{capacityBindRoomId}, 1)
+    </insert>
+
+    <delete id="deleteLogic">
+        DELETE FROM room_config
+        WHERE id = #{id}
+    </delete>
+
+    <update id="updateCapacity">
+        UPDATE room_config
+        SET capacity = #{capacity}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateCapacityBindRoomId">
+        UPDATE room_config
+        SET capacity_bind_room_id = #{capacityBindRoomId}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

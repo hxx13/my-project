@@ -1,0 +1,43 @@
+---
+description: 新增/变更数据库表时必须同步 schema.sql、提供 scripts DDL，并写明上线执行方式（避免缺表 BadSqlGrammar）
+alwaysApply: true
+---
+
+# 数据库表变更必须与上线 DDL 同步
+
+本仓库后端使用 **Spring + MyBatis**，**未启用 Flyway/Liquibase**；仅改 Java/XML **不会**自动在 MySQL 中建表。缺表会在运行时表现为 `BadSqlGrammarException` / `Table '…' doesn't exist`。
+
+## 何时必须遵守
+
+在以下任一情况发生时，**同一提交/同一任务内**完成 DDL 侧交付，不得只写代码：
+
+- 新增或修改 `src/main/resources/mapper/**/*.xml` 中的表名/SQL；
+- 新增或修改与库表对应的 Entity、`@Table` 映射；
+- 在 `schema.sql` 中新增 `CREATE TABLE`。
+
+## 必须做的事（按顺序）
+
+1. **`src/main/resources/schema.sql`**：追加或修正 **`CREATE TABLE IF NOT EXISTS …`**（或安全的 `ALTER`，须注明一次性执行说明），作为全量/文档层面的**权威定义**。
+2. **`scripts/`**下新增或更新**可独立执行**的增量脚本，命名建议 `scripts/<主题>_*.ddl.sql`（例如 `scripts/mini_program_release.ddl.sql`），内容与本任务涉及的 DDL **一致**，便于 DBA/运维或本地用客户端执行。
+3. **在回复用户或 PR 说明中明确一句**：目标库（默认配置见 `application.properties` 的 `spring.datasource.url`，库名如 `twin_system`）需执行哪个脚本或哪段 SQL；若仅本地开发，说明「启动应用前先在目标库执行该 DDL」。
+
+## 对 Agent / Code Review 的约束
+
+- 禁止「只合并 Mapper/Entity 而不提供可执行 DDL」作为任务完成状态。
+- 若用户环境无 `mysql` 命令行，仍须提供 **`scripts/*.ddl.sql`**，不得假定对方已跑过全量 `schema.sql`。
+
+## 例外
+
+- 纯查询已有表、不改表结构：无需新 DDL。
+- 若项目日后引入 Flyway/Liquibase，以迁移文件为准，同时保持 `schema.sql` 或文档与迁移一致（届时可修订本规则）。
+
+## SQL 占位符与 JDBC 参数必须一致（与 DDL 变更同属「改 SQL 必自检」）
+
+在 **`JdbcTemplate` / `NamedParameterJdbcTemplate` / MyBatis `@Insert` XML** 等手写 SQL 中：
+
+- `VALUES(?,?,…)`（或 `SET a=?,b=?`）里 **`?` 的个数**必须与代码中 **`setString` / `ps.setX` / `args` 数组长度**完全一致；少写一个 `?` 会在运行时报 `Parameter index out of range`，且**不会**在编译期暴露。
+- 若使用字面量占位（如 `VALUES(?,?,?,0,?,?,?)`），每处字面量对应一列，**禁止**用字面量顶替了某一列却在绑定里仍传该列的值（反之亦然）。
+
+**曾踩坑示例**：`registration_invite` 插入语句曾写成 `VALUES(?,?,?,?,0,?,?,0)`（仅 6 个 `?`）却绑定 7 个参数，导致生成注册邀请码失败；合并 Mapper/Java 后应顺带用接口或单测跑一遍该路径。
+
+**Agent / Code Review**：凡修改带 `?` 的 INSERT/UPDATE，在提交说明中注明已核对占位符数量，或附一条调用链自检说明。

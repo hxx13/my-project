@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.notification.mapper.NotificationMapper">
+
+    <insert id="insertNotification" parameterType="com.example.demo.modules.notification.entity.Notification">
+        INSERT INTO sys_notification(id, event_type, title, content, sender_id, biz_type, biz_id, create_time)
+        VALUES (#{id}, #{eventType}, #{title}, #{content}, #{senderId}, #{bizType}, #{bizId}, #{createTime})
+    </insert>
+
+    <insert id="insertRecipient">
+        INSERT INTO sys_notification_recipient(notification_id, recipient_user_id)
+        VALUES (#{notificationId}, #{recipientUserId})
+        ON DUPLICATE KEY UPDATE notification_id = VALUES(notification_id)
+    </insert>
+
+    <select id="listForUser" resultType="com.example.demo.modules.notification.dto.NotificationView">
+        SELECT n.id,
+               n.event_type  AS eventType,
+               n.title,
+               n.content,
+               n.sender_id   AS senderId,
+               n.biz_type    AS bizType,
+               n.biz_id      AS bizId,
+               r.is_read     AS isRead,
+               r.read_time   AS readTime,
+               n.create_time AS createTime
+        FROM sys_notification n
+        JOIN sys_notification_recipient r ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+        <if test="onlyUnread != null and onlyUnread">
+            AND (r.is_read IS NULL OR r.is_read = 0)
+        </if>
+        <if test="bizType != null and bizType != ''">
+            AND n.biz_type = #{bizType}
+        </if>
+        <if test="excludeBizType != null and excludeBizType != ''">
+            AND n.biz_type != #{excludeBizType}
+        </if>
+        <if test="excludeBizTypes != null and excludeBizTypes.size() &gt; 0">
+            AND n.biz_type NOT IN
+            <foreach collection="excludeBizTypes" item="bt" open="(" separator="," close=")">
+                #{bt}
+            </foreach>
+        </if>
+        ORDER BY n.create_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="listForUserFeed" resultType="com.example.demo.modules.notification.dto.NotificationView">
+        SELECT n.id,
+               n.event_type  AS eventType,
+               n.title,
+               n.content,
+               n.sender_id   AS senderId,
+               n.biz_type    AS bizType,
+               n.biz_id      AS bizId,
+               r.is_read     AS isRead,
+               r.read_time   AS readTime,
+               n.create_time AS createTime
+        FROM sys_notification n
+        JOIN sys_notification_recipient r ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+        <if test="excludeBizTypes != null and excludeBizTypes.size() &gt; 0">
+            AND n.biz_type NOT IN
+            <foreach collection="excludeBizTypes" item="bt" open="(" separator="," close=")">
+                #{bt}
+            </foreach>
+        </if>
+        <if test="beforeTime != null">
+            AND n.create_time &lt; #{beforeTime}
+        </if>
+        ORDER BY n.create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countForUser" resultType="int">
+        SELECT COUNT(1)
+        FROM sys_notification_recipient r
+        INNER JOIN sys_notification n ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+        <if test="onlyUnread != null and onlyUnread">
+            AND (r.is_read IS NULL OR r.is_read = 0)
+        </if>
+        <if test="bizType != null and bizType != ''">
+            AND n.biz_type = #{bizType}
+        </if>
+        <if test="excludeBizType != null and excludeBizType != ''">
+            AND n.biz_type != #{excludeBizType}
+        </if>
+        <if test="excludeBizTypes != null and excludeBizTypes.size() &gt; 0">
+            AND n.biz_type NOT IN
+            <foreach collection="excludeBizTypes" item="bt" open="(" separator="," close=")">
+                #{bt}
+            </foreach>
+        </if>
+    </select>
+
+    <update id="markRead">
+        UPDATE sys_notification_recipient
+        SET is_read = 1,
+            read_time = #{readTime}
+        WHERE recipient_user_id = #{userId}
+          AND notification_id = #{notificationId}
+          AND (is_read IS NULL OR is_read = 0)
+    </update>
+
+    <update id="markAllRead">
+        UPDATE sys_notification_recipient
+        SET is_read = 1,
+            read_time = #{readTime}
+        WHERE recipient_user_id = #{userId}
+          AND (is_read IS NULL OR is_read = 0)
+    </update>
+
+    <select id="countUnread" resultType="int">
+        SELECT COUNT(1)
+        FROM sys_notification_recipient
+        WHERE recipient_user_id = #{userId}
+          AND (is_read IS NULL OR is_read = 0)
+    </select>
+
+    <select id="countUnreadForSidebarBadge" resultType="int">
+        SELECT COUNT(1)
+        FROM sys_notification_recipient r
+        INNER JOIN sys_notification n ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+          AND (r.is_read IS NULL OR r.is_read = 0)
+        <choose>
+            <when test="excludeBizTypes != null and excludeBizTypes.size() &gt; 0">
+                AND (
+                n.biz_type NOT IN
+                <foreach collection="excludeBizTypes" item="bt" open="(" separator="," close=")">
+                    #{bt}
+                </foreach>
+                OR (
+                UPPER(TRIM(COALESCE(n.event_type, ''))) = 'COMPLETED'
+                AND UPPER(TRIM(n.biz_type)) = 'REPAIR'
+                AND EXISTS (
+                SELECT 1 FROM repair_order o
+                WHERE o.id = n.biz_id AND IFNULL(o.deleted, 0) = 0 AND o.applicant_id = #{userId}
+                )
+                )
+                OR (
+                UPPER(TRIM(COALESCE(n.event_type, ''))) = 'COMPLETED'
+                AND UPPER(TRIM(n.biz_type)) = 'PURCHASE'
+                AND EXISTS (
+                SELECT 1 FROM purchase_order o
+                WHERE o.id = n.biz_id AND IFNULL(o.deleted, 0) = 0 AND o.applicant_id = #{userId}
+                )
+                )
+                OR (
+                UPPER(TRIM(COALESCE(n.event_type, ''))) = 'COMPLETED'
+                AND UPPER(TRIM(n.biz_type)) = 'SUPPLIES_CLAIM'
+                AND EXISTS (
+                SELECT 1 FROM supply_claim_order o
+                WHERE o.id = n.biz_id AND IFNULL(o.deleted, 0) = 0 AND o.user_id = #{userId}
+                )
+                )
+                )
+            </when>
+            <otherwise>
+                AND (
+                n.biz_type IS NULL OR TRIM(n.biz_type) = ''
+                OR UPPER(TRIM(n.biz_type)) NOT IN ('REPAIR', 'PURCHASE', 'SUPPLIES_CLAIM')
+                OR (
+                UPPER(TRIM(n.biz_type)) = 'REPAIR'
+                AND EXISTS (
+                SELECT 1 FROM repair_order o
+                WHERE o.id = n.biz_id AND IFNULL(o.deleted, 0) = 0 AND o.applicant_id = #{userId}
+                )
+                )
+                OR (
+                UPPER(TRIM(n.biz_type)) = 'PURCHASE'
+                AND EXISTS (
+                SELECT 1 FROM purchase_order o
+                WHERE o.id = n.biz_id AND IFNULL(o.deleted, 0) = 0 AND o.applicant_id = #{userId}
+                )
+                )
+                OR (
+                UPPER(TRIM(n.biz_type)) = 'SUPPLIES_CLAIM'
+                AND EXISTS (
+                SELECT 1 FROM supply_claim_order o
+                WHERE o.id = n.biz_id AND IFNULL(o.deleted, 0) = 0 AND o.user_id = #{userId}
+                )
+                )
+                )
+            </otherwise>
+        </choose>
+    </select>
+
+    <delete id="deleteForUser">
+        DELETE FROM sys_notification_recipient
+        WHERE recipient_user_id = #{userId}
+          AND notification_id = #{notificationId}
+    </delete>
+
+    <select id="countUnreadCompletionReceipts" resultType="int">
+        SELECT COUNT(1)
+        FROM sys_notification_recipient r
+        INNER JOIN sys_notification n ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+          AND (r.is_read IS NULL OR r.is_read = 0)
+          AND UPPER(TRIM(COALESCE(n.event_type, ''))) = 'COMPLETED'
+          AND UPPER(TRIM(n.biz_type)) IN ('REPAIR', 'PURCHASE', 'SUPPLIES_CLAIM')
+    </select>
+
+    <select id="listUnreadCompletionReceipts" resultType="com.example.demo.modules.notification.dto.NotificationView">
+        SELECT n.id,
+               n.event_type  AS eventType,
+               n.title,
+               n.content,
+               n.sender_id   AS senderId,
+               n.biz_type    AS bizType,
+               n.biz_id      AS bizId,
+               r.is_read     AS isRead,
+               r.read_time   AS readTime,
+               n.create_time AS createTime
+        FROM sys_notification n
+        INNER JOIN sys_notification_recipient r ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+          AND (r.is_read IS NULL OR r.is_read = 0)
+          AND UPPER(TRIM(COALESCE(n.event_type, ''))) = 'COMPLETED'
+          AND UPPER(TRIM(n.biz_type)) IN ('REPAIR', 'PURCHASE', 'SUPPLIES_CLAIM')
+        ORDER BY n.create_time DESC
+        LIMIT #{limit}
+    </select>
+</mapper>
