@@ -4,6 +4,8 @@ import { X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { ExpToaster } from "./ExpToaster";
 import AIPredictionCard from "./AIPredictionCard";
+import { authStorage } from "@/features/auth/authStorage";
+import { hasMinRole } from "@/features/auth/roleAccess";
 import { useProfilePopup } from "./useProfilePopup";
 import { ProfileHeader } from "./components/ProfileHeader";
 import { CapacityStatusList } from "./components/CapacityStatusList";
@@ -83,6 +85,7 @@ const WeeklyRoutineMatrixChart = ({ predictions, themeColor }: { predictions: an
 export function UiverseProfilePopup(props: PopupProps) {
     const { result, onClose, autoActionRoomId = "", executeErrorMessage } = props;
     const { state, actions } = useProfilePopup(props);
+    const canOperateRiskState = hasMinRole(authStorage.getRole(), "STAFF");
     const themeColor = String(state.user?.gender) === "2" ? "#fbb9b6" : "#2d5cf7";
     const popupMessage = (state.inlineMessage || executeErrorMessage || "").trim();
 
@@ -108,6 +111,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                     records={state.disciplinaryRecords}
                     onClose={() => actions.setShowRiskModal(false)}
                     onToggle={actions.executeToggleState}
+                    showStateToggle={canOperateRiskState}
                 />
             </AnimatePresence>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#050A15]/85 backdrop-blur-sm overflow-hidden">

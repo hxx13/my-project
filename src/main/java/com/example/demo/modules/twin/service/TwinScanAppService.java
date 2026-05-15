@@ -6,13 +6,16 @@ import com.example.demo.modules.twin.dto.scan.ScanUserInfoDTO;
 import com.example.demo.modules.twin.dto.scan.ScanUserRpgDTO;
 import com.example.demo.modules.twin.entity.TwinCardMapping;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
+import com.example.demo.modules.twin.support.ScanPopupEntryWindowEvaluator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +40,12 @@ public class TwinScanAppService {
 
     @Autowired
     private AroService aroService;
+
+    @Autowired
+    private DahuaSwingRuleConfigService dahuaSwingRuleConfigService;
+
+    @Value("${app.business-timezone:Asia/Shanghai}")
+    private String businessTimeZone;
 
     public ScanAnalyzeResponseDTO analyzeScan(String rawInput) {
         ScanAnalyzeResponseDTO result = new ScanAnalyzeResponseDTO();
@@ -142,6 +151,15 @@ public class TwinScanAppService {
 
             userInfo.setDahuaSeq(mappedDahuaSeq);
             result.setUserInfo(userInfo);
+            Map<String, Object> swingCfg = dahuaSwingRuleConfigService.getConfig();
+            ZoneId winZone;
+            try {
+                winZone = ZoneId.of(businessTimeZone != null ? businessTimeZone : "Asia/Shanghai");
+            } catch (Exception e) {
+                winZone = ZoneId.systemDefault();
+            }
+            result.setScanPopupEntryWindowEnabled(ScanPopupEntryWindowEvaluator.isWindowEnabled(swingCfg));
+            result.setScanPopupEntryAllowedNow(ScanPopupEntryWindowEvaluator.isExecuteAllowedNow(swingCfg, winZone));
             result.setSuccess(true);
             long costPre = Duration.between(startAt, LocalDateTime.now()).toMillis();
             log.info(

@@ -5,7 +5,6 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchHintHelper;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchResult;
-import com.example.demo.modules.accessrule.service.AccessRuleDispatchService;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.twin.entity.TwinCardMapping;
@@ -13,6 +12,7 @@ import com.example.demo.modules.twin.service.DahuaSwingRuleEngineService;
 import com.example.demo.modules.twin.service.TwinCardMappingService;
 import com.example.demo.modules.twin.service.TwinAuditService;
 import com.example.demo.modules.twin.service.TwinScanService;
+import com.example.demo.modules.twin.service.WebScanExitDahuaLinkageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -40,7 +40,7 @@ public class TwinAuditController {
     private final DahuaSwingRuleEngineService dahuaSwingRuleEngineService;
     private final TwinScanService twinScanService;
     private final TwinCardMappingService twinCardMappingService;
-    private final AccessRuleDispatchService accessRuleDispatchService;
+    private final WebScanExitDahuaLinkageService webScanExitDahuaLinkageService;
 
     public TwinAuditController(
             AuthContextService authContextService,
@@ -49,14 +49,14 @@ public class TwinAuditController {
             DahuaSwingRuleEngineService dahuaSwingRuleEngineService,
             TwinScanService twinScanService,
             TwinCardMappingService twinCardMappingService,
-            AccessRuleDispatchService accessRuleDispatchService) {
+            WebScanExitDahuaLinkageService webScanExitDahuaLinkageService) {
         this.authContextService = authContextService;
         this.twinAuditService = twinAuditService;
         this.aroService = aroService;
         this.dahuaSwingRuleEngineService = dahuaSwingRuleEngineService;
         this.twinScanService = twinScanService;
         this.twinCardMappingService = twinCardMappingService;
-        this.accessRuleDispatchService = accessRuleDispatchService;
+        this.webScanExitDahuaLinkageService = webScanExitDahuaLinkageService;
     }
 
     @GetMapping("/pending-by-floor")
@@ -110,25 +110,16 @@ public class TwinAuditController {
             return Result.error("离开登记失败，官方系统拒绝操作");
         }
         // 对齐 web 扫码离开：规则命中后执行大华权限回收
-        AccessRuleDispatchResult dispatchResult = accessRuleDispatchService.tryRevokeAccessForScanExit(officialRoomId, userId);
-        // 对齐 web 扫码离开：正常离开回收豁免并冻结物理卡
-        if (physicalCardNo != null && !physicalCardNo.isBlank()) {
-            twinCardMappingService.updateExemptFlagByUserId(userId, 0);
-            try {
-                twinCardMappingService.updateCardStatus(physicalCardNo, "FROZEN");
-            } catch (Exception e) {
-                log.warn("[twin] audit manual-exit freeze failed operator={} userId={} cardNo={} err={}",
-                        operator.getId(), userId, physicalCardNo, e.getMessage());
-                return Result.error("官方系统离开登记成功，但物理卡冻结失败，请联系管理员处理");
-            }
-        }
+        int defer = webScanExitDahuaLinkageService.resolveDeferSeconds();
+        AccessRuleDispatchResult dispatchResult = webScanExitDahuaLinkageService.revokeAndFreezeAfterExit(
+                userId, officialRoomId, physicalCardNo, false, defer);
         // 文档约束：所有离开成功入口必须清理联动状态，避免后续定时任务重复签退
         dahuaSwingRuleEngineService.clearActivationStatesForUser(userId);
         log.info("[twin] audit manual-exit success operator={} userId={} officialRoomId={} roomId={} roomName={} userName={}",
                 operator.getId(), userId, officialRoomId, roomId, roomName, userName);
         Map<String, Object> resp = new HashMap<>();
         resp.put("success", true);
-        resp.put("message", "已确认其离开");
+        resp.put("message", defer > 0 ? ("已确认其离开；大华回收与卡冻结将在 " + defer + " 秒后执行") : "已确认其离开");
         resp.put("officialRoomId", officialRoomId);
         resp.put("dispatchResult", dispatchResult != null ? dispatchResult.name() : null);
         resp.put("dahuaHint", AccessRuleDispatchHintHelper.humanHint(dispatchResult, 2));

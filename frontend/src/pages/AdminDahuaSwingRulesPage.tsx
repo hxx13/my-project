@@ -4,7 +4,12 @@ import { getDahuaSwingRuleConfig, saveDahuaSwingRuleConfig } from "@/api/domains
 import { fetchDahuaDeviceChannels, type DahuaDeviceChannelRow } from "@/api/twinApi";
 import { normalizeChannelCode, resolveChannelLabelsByCodes } from "@/utils/dahuaChannelUtils";
 
+type TimeBand = { startHm: string; endHm: string };
+
 type RuleForm = {
+  scanPopupEntryWindowEnabled: boolean;
+  scanPopupEntryWindows: TimeBand[];
+  scanLeaveDahuaDeferSeconds: number;
   exitChannelCodes: string[];
   toggleChannelCodes: string[];
   activatedReswipeExitChannelCodes: string[];
@@ -17,6 +22,9 @@ type RuleForm = {
 };
 
 const defaultForm = (): RuleForm => ({
+  scanPopupEntryWindowEnabled: false,
+  scanPopupEntryWindows: [{ startHm: "09:00", endHm: "18:00" }],
+  scanLeaveDahuaDeferSeconds: 0,
   exitChannelCodes: [],
   toggleChannelCodes: [],
   activatedReswipeExitChannelCodes: [],
@@ -41,6 +49,21 @@ export default function AdminDahuaSwingRulesPage() {
         const cfg = await getDahuaSwingRuleConfig();
         if (!cfg) return;
         setForm({
+          scanPopupEntryWindowEnabled: Boolean(cfg.scanPopupEntryWindowEnabled),
+          scanPopupEntryWindows: (() => {
+            if (!Array.isArray(cfg.scanPopupEntryWindows)) return defaultForm().scanPopupEntryWindows;
+            const mapped = (cfg.scanPopupEntryWindows as TimeBand[])
+              .map((b) => ({
+                startHm: String((b as TimeBand)?.startHm ?? "09:00").trim() || "09:00",
+                endHm: String((b as TimeBand)?.endHm ?? "18:00").trim() || "18:00",
+              }))
+              .filter((b) => b.startHm && b.endHm);
+            return mapped.length > 0 ? mapped : defaultForm().scanPopupEntryWindows;
+          })(),
+          scanLeaveDahuaDeferSeconds: Math.max(
+            0,
+            Math.min(3600, Number(cfg.scanLeaveDahuaDeferSeconds ?? 0))
+          ),
           exitChannelCodes: Array.isArray(cfg.exitChannelCodes)
             ? cfg.exitChannelCodes.map((x: string) => normalizeChannelCode(x)).filter(Boolean)
             : [],
@@ -133,6 +156,106 @@ export default function AdminDahuaSwingRulesPage() {
 
   return (
     <div className="space-y-4">
+      <div className="rounded-xl border bg-white p-3 space-y-3">
+        <h2 className="text-base font-semibold text-slate-800">Web 扫码弹窗与离开联动</h2>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded border border-slate-200 p-2 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-800">
+              <input
+                type="checkbox"
+                className="shrink-0"
+                checked={form.scanPopupEntryWindowEnabled}
+                onChange={(e) => setForm((p) => ({ ...p, scanPopupEntryWindowEnabled: e.target.checked }))}
+              />
+              <span>启用扫码弹窗入口时段限制</span>
+            </label>
+            <p className="text-xs text-slate-500">
+              启用后，所有房间的进入/离开按钮仅在下列时段内可用；时区与服务器配置 app.business-timezone（默认 Asia/Shanghai）一致。
+            </p>
+            <div className="space-y-1">
+              {form.scanPopupEntryWindows.map((band, idx) => (
+                <div key={`band-${idx}`} className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-slate-600">时段 {idx + 1}</span>
+                  <input
+                    className="h-8 w-24 rounded border px-2 font-mono text-sm"
+                    value={band.startHm}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        scanPopupEntryWindows: p.scanPopupEntryWindows.map((b, i) =>
+                          i === idx ? { ...b, startHm: e.target.value } : b
+                        ),
+                      }))
+                    }
+                    placeholder="09:00"
+                  />
+                  <span className="text-slate-500">至</span>
+                  <input
+                    className="h-8 w-24 rounded border px-2 font-mono text-sm"
+                    value={band.endHm}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        scanPopupEntryWindows: p.scanPopupEntryWindows.map((b, i) =>
+                          i === idx ? { ...b, endHm: e.target.value } : b
+                        ),
+                      }))
+                    }
+                    placeholder="18:00"
+                  />
+                  <button
+                    type="button"
+                    className="h-8 rounded border px-2 text-xs text-slate-600"
+                    onClick={() =>
+                      setForm((p) => ({
+                        ...p,
+                        scanPopupEntryWindows: p.scanPopupEntryWindows.filter((_, i) => i !== idx),
+                      }))
+                    }
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="h-8 rounded border px-2 text-xs text-slate-700"
+                onClick={() =>
+                  setForm((p) => ({
+                    ...p,
+                    scanPopupEntryWindows: [...p.scanPopupEntryWindows, { startHm: "09:00", endHm: "18:00" }],
+                  }))
+                }
+              >
+                添加时段
+              </button>
+            </div>
+          </div>
+          <div className="rounded border border-slate-200 p-2 space-y-2">
+            <div className="text-sm font-semibold text-slate-800">扫码离开后大华回收 / 冻结延迟</div>
+            <p className="text-xs text-slate-500">
+              ARO 离开登记成功后立即生效；大华门禁权限回收与物理卡冻结可延后执行（秒），0 表示与原先一致立即执行。
+            </p>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="w-32 shrink-0 text-slate-600">延迟(秒)</span>
+              <input
+                className="h-8 flex-1 rounded border px-2 text-sm"
+                type="number"
+                min={0}
+                max={3600}
+                value={form.scanLeaveDahuaDeferSeconds}
+                onChange={(e) =>
+                  setForm((p) => ({
+                    ...p,
+                    scanLeaveDahuaDeferSeconds: Math.max(0, Math.min(3600, Number(e.target.value || 0))),
+                  }))
+                }
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-xl border bg-white p-3 space-y-2">
         <h2 className="text-base font-semibold text-slate-800">门禁联动规则</h2>
         <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2">

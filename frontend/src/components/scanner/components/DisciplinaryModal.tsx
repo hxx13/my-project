@@ -10,9 +10,18 @@ interface DisciplinaryModalProps {
     currentState: number;
     onClose: () => void;
     onToggle: (newValid: boolean) => Promise<void>;
+    /** 学生等低权限角色不展示封禁/解禁开关，仅可查看记录 */
+    showStateToggle?: boolean;
 }
 
-export const DisciplinaryModal = ({ isOpen, records, currentState, onClose, onToggle }: DisciplinaryModalProps) => {
+export const DisciplinaryModal = ({
+    isOpen,
+    records,
+    currentState,
+    onClose,
+    onToggle,
+    showStateToggle = true,
+}: DisciplinaryModalProps) => {
     const [isToggling, setIsToggling] = useState(false);
     const isBlocked = currentState === 3;
     if (!isOpen) return null;
@@ -44,31 +53,33 @@ export const DisciplinaryModal = ({ isOpen, records, currentState, onClose, onTo
                         </div>
                     ))}
                 </div>
-                <div className="px-6 py-5 border-t border-red-900/30 flex items-center justify-between">
-                    <span className="text-sm font-bold text-white">
-                        强制接管 ARO 底层状态
-                        <span className={`ml-2 text-xs ${isBlocked ? "text-red-300" : "text-emerald-300"}`}>
-                            {isBlocked ? "当前：已封禁" : "当前：正常"}
+                {showStateToggle ? (
+                    <div className="px-6 py-5 border-t border-red-900/30 flex items-center justify-between">
+                        <span className="text-sm font-bold text-white">
+                            强制接管 ARO 底层状态
+                            <span className={`ml-2 text-xs ${isBlocked ? "text-red-300" : "text-emerald-300"}`}>
+                                {isBlocked ? "当前：已封禁" : "当前：正常"}
+                            </span>
                         </span>
-                    </span>
-                    <button
-                        disabled={isToggling}
-                        onClick={handleToggle}
-                        className={`relative flex items-center w-16 h-8 rounded-full border transition-colors ${
-                            isBlocked
-                                ? "bg-red-500/20 border-red-500/50"
-                                : "bg-emerald-500/20 border-emerald-500/50"
-                        }`}
-                    >
-                        <div
-                            className={`absolute w-6 h-6 rounded-full flex items-center justify-center transition-transform ${
-                                isBlocked ? "bg-red-500 translate-x-1" : "bg-emerald-500 translate-x-9"
+                        <button
+                            disabled={isToggling}
+                            onClick={handleToggle}
+                            className={`relative flex items-center w-16 h-8 rounded-full border transition-colors ${
+                                isBlocked
+                                    ? "bg-red-500/20 border-red-500/50"
+                                    : "bg-emerald-500/20 border-emerald-500/50"
                             }`}
                         >
-                            {isToggling ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" /> : <PowerOff className="w-3 h-3 text-white" />}
-                        </div>
-                    </button>
-                </div>
+                            <div
+                                className={`absolute w-6 h-6 rounded-full flex items-center justify-center transition-transform ${
+                                    isBlocked ? "bg-red-500 translate-x-1" : "bg-emerald-500 translate-x-9"
+                                }`}
+                            >
+                                {isToggling ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" /> : <PowerOff className="w-3 h-3 text-white" />}
+                            </div>
+                        </button>
+                    </div>
+                ) : null}
             </motion.div>
         </motion.div>,
         document.body

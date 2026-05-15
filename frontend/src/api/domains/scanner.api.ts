@@ -18,6 +18,7 @@ export interface ExecuteResult {
     unboundForDahuaRule?: boolean;
     dahuaHint?: string;
     accessRuleDebug?: string;
+    deferredDahuaSeconds?: number;
 }
 
 const toExecuteResult = (raw: unknown): ExecuteResult => {
@@ -40,6 +41,7 @@ const toExecuteResult = (raw: unknown): ExecuteResult => {
         unboundForDahuaRule: data.unboundForDahuaRule === true,
         dahuaHint: typeof data.dahuaHint === "string" ? data.dahuaHint : undefined,
         accessRuleDebug: typeof data.accessRuleDebug === "string" ? data.accessRuleDebug : undefined,
+        deferredDahuaSeconds: typeof data.deferredDahuaSeconds === "number" ? data.deferredDahuaSeconds : undefined,
     };
 };
 
@@ -112,6 +114,14 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             ? (safe.disciplinaryRecords as AnalyzeResponse["disciplinaryRecords"])
             : [],
         hasPhysicalCardMapping,
+        scanPopupEntryWindowEnabled:
+            asBooleanLike(safe.scanPopupEntryWindowEnabled) ??
+            asBooleanLike(safe.scan_popup_entry_window_enabled) ??
+            false,
+        scanPopupEntryAllowedNow:
+            asBooleanLike(safe.scanPopupEntryAllowedNow) ??
+            asBooleanLike(safe.scan_popup_entry_allowed_now) ??
+            true,
     };
 };
 

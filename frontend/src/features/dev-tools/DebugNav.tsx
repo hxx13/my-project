@@ -160,6 +160,9 @@ export default function DebugNav() {
         }, 120000);
     };
 
+    const role = authStorage.getRole();
+    const isStudentTwinDock = !hasMinRole(role || 'STUDENT', 'STAFF');
+
     useEffect(() => {
         let buffer = '';
         let lastKeyTime = Date.now();
@@ -196,25 +199,41 @@ export default function DebugNav() {
         // eslint-disable-next-line react-hooks/exhaustive-deps -- 扫码枪缓冲逻辑稳定，仅依赖 handleScanAction 闭包最新实现
     }, []);
 
-    const role = authStorage.getRole();
     const handleLogout = () => {
         authStorage.clear();
         navigate('/login');
     };
-    const links = [
-        {name: '主大屏', path: '/', icon: LayoutDashboard},
-        {name: '流水线', path: '/debug', icon: ScrollText},
-        {name: '档案库', path: '/debug-personnel', icon: Users},
-        {name: 'AI推演', path: '/debug-prediction', icon: BrainCircuit},
-        { name: '空间雷达', path: '/debug-heatmap', icon: MapIcon }, // 注意这里用 MapIcon 防命名冲突
-        { name: '退出登录', path: '/login', icon: LogOut, onClick: handleLogout },
-    ];
-    if (hasMinRole(role || 'STUDENT', 'STAFF')) {
-        links.splice(3, 0, {name: '房卡调度', path: '/debug-cards', icon: CreditCard});
-        links.splice(5, 0, {name: '订单库', path: '/debug-order', icon: ShoppingCart});
-    }
-    if (hasMinRole(role || 'STUDENT', 'STAFF')) {
-        links.push({name: '后台管理', path: '/admin', icon: Sparkles});
+
+    type DockLink = {
+        key: string;
+        name: string;
+        path: string;
+        icon: typeof LayoutDashboard;
+        onClick?: () => void;
+    };
+
+    let links: DockLink[];
+    if (isStudentTwinDock) {
+        links = [
+            { key: 'home', name: '主大屏', path: '/', icon: LayoutDashboard },
+            { key: 'logout', name: '退出登录', path: '/_dock-logout', icon: LogOut, onClick: handleLogout },
+        ];
+    } else {
+        links = [
+            { key: 'home', name: '主大屏', path: '/', icon: LayoutDashboard },
+            { key: 'debug', name: '流水线', path: '/debug', icon: ScrollText },
+            { key: 'personnel', name: '档案库', path: '/debug-personnel', icon: Users },
+            { key: 'ai', name: 'AI推演', path: '/debug-prediction', icon: BrainCircuit },
+            { key: 'heatmap', name: '空间雷达', path: '/debug-heatmap', icon: MapIcon },
+            { key: 'logout', name: '退出登录', path: '/_dock-logout', icon: LogOut, onClick: handleLogout },
+        ];
+        if (hasMinRole(role || 'STUDENT', 'STAFF')) {
+            links.splice(3, 0, { key: 'cards', name: '房卡调度', path: '/debug-cards', icon: CreditCard });
+            links.splice(5, 0, { key: 'order', name: '订单库', path: '/debug-order', icon: ShoppingCart });
+        }
+        if (hasMinRole(role || 'STUDENT', 'STAFF')) {
+            links.push({ key: 'admin', name: '后台管理', path: '/admin', icon: Sparkles });
+        }
     }
 
     return (
@@ -336,13 +355,13 @@ export default function DebugNav() {
                         const Icon = link.icon;
                         return (
                             <div
-                                key={link.path}
+                                key={link.key}
                                 className="relative flex items-center justify-center"
-                                onMouseEnter={() => setHoveredPath(link.path)}
+                                onMouseEnter={() => setHoveredPath(link.key)}
                                 onMouseLeave={() => setHoveredPath(null)}
                             >
                                 <AnimatePresence>
-                                    {hoveredPath === link.path && !isScannerOpen && (
+                                    {hoveredPath === link.key && !isScannerOpen && (
                                         <motion.div
                                             initial={{opacity: 0, y: 10, scale: 0.9}}
                                             animate={{opacity: 1, y: 0, scale: 1}}

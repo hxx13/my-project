@@ -11,6 +11,7 @@ import DebugCardMappingPage from "@/pages/DebugCardMappingPage.tsx";
 import { TwinDebugRouteShell } from "@/features/twin-chrome/TwinDebugRouteShell";
 import LoginPage from "@/pages/LoginPage";
 import AuthGuard from "@/router/AuthGuard";
+import TwinDebugStaffGuard from "@/router/TwinDebugStaffGuard";
 import RegisterStaffPage from "@/pages/RegisterStaffPage";
 import AdminLayout from "@/layouts/AdminLayout";
 import AdminPersonnelPage from "@/pages/AdminPersonnelPage";
@@ -87,6 +88,9 @@ export const router = createHashRouter([
                         element: <DashboardPage/>,
                     },
                     {
+                        element: <TwinDebugStaffGuard />,
+                        children: [
+                    {
                         path: "debug", // 注意这里去掉了开头的斜杠
                         element: (
                             <TwinDebugRouteShell title="流水线日志">
@@ -134,6 +138,8 @@ export const router = createHashRouter([
                                 <DebugCardStatusPage />
                             </TwinDebugRouteShell>
                         ),
+                    },
+                        ],
                     },
                     {path: "animal-room-telemetry", element: <AnimalRoomTelemetryPage/>},
                     {path: "animal-room-cockpit", element: <AnimalRoomCockpitPage/>},

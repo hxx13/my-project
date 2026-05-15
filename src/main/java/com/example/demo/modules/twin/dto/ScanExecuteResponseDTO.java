@@ -17,4 +17,6 @@ public class ScanExecuteResponseDTO {
     private String dahuaHint;
     /** 调试阶段用于回显门禁规则派发细节 */
     private String accessRuleDebug;
+    /** Web 扫码离开：大华回收与冻结已延后执行的秒数；null 或 0 表示未延后 */
+    private Integer deferredDahuaSeconds;
 }

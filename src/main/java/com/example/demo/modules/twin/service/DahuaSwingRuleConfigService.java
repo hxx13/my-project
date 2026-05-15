@@ -63,6 +63,12 @@ public class DahuaSwingRuleConfigService {
         m.put("otherRoomWithinSeconds", 120);
         // 自动签退后：是否撤销大华联动权限并冻结卡；false=仅 ARO 离开（DahuaAutoSignoutService）
         m.put("autoRiskActionEnabled", true);
+        /** Web 扫码弹窗：限制「进入/离开」按钮可用时段；false=不限制 */
+        m.put("scanPopupEntryWindowEnabled", false);
+        /** 每日重复时段，元素形如 {"startHm":"08:00","endHm":"18:00"}；可跨午夜如 22:00-06:00 */
+        m.put("scanPopupEntryWindows", new java.util.ArrayList<>());
+        /** Web 扫码离开：ARO 成功后延迟多少秒再执行大华回收 + 冻结物理卡；0=立即（兼容旧行为） */
+        m.put("scanLeaveDahuaDeferSeconds", 0);
         return m;
     }
 

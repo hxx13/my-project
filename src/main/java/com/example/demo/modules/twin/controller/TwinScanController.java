@@ -13,6 +13,9 @@ import com.example.demo.modules.twin.service.DahuaSwingRuleEngineService;
 import com.example.demo.modules.twin.service.RpgEngineService;
 import com.example.demo.modules.twin.service.TwinScanService;
 import com.example.demo.modules.twin.service.TwinAutomationLogService;
+import com.example.demo.modules.twin.service.DahuaSwingRuleConfigService;
+import com.example.demo.modules.twin.service.WebScanExitDahuaLinkageService;
+import com.example.demo.modules.twin.support.ScanPopupEntryWindowEvaluator;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,8 +59,17 @@ public class TwinScanController {
     @Autowired
     private TwinAutomationLogService twinAutomationLogService;
 
+    @Autowired
+    private DahuaSwingRuleConfigService dahuaSwingRuleConfigService;
+
+    @Autowired
+    private WebScanExitDahuaLinkageService webScanExitDahuaLinkageService;
+
     @Value("${app.access-rule-dahua-debug:false}")
     private boolean accessRuleDahuaDebug;
+
+    @Value("${app.business-timezone:Asia/Shanghai}")
+    private String businessTimeZone;
 
 
     /**
@@ -108,6 +121,19 @@ public class TwinScanController {
                     accessType == 1 ? "进入" : "离开",
                     isBorrowedCard ? "是" : "否");
 
+            Map<String, Object> swingCfg = dahuaSwingRuleConfigService.getConfig();
+            ZoneId winZone;
+            try {
+                winZone = ZoneId.of(businessTimeZone != null ? businessTimeZone : "Asia/Shanghai");
+            } catch (Exception e) {
+                winZone = ZoneId.systemDefault();
+            }
+            if (!ScanPopupEntryWindowEvaluator.isExecuteAllowedNow(swingCfg, winZone)) {
+                result.setSuccess(false);
+                result.setMessage("当前不在允许使用扫码打卡的时段内，请稍后再试");
+                return Result.success(result);
+            }
+
             // =================================================================
             // 💥 第一关：先让 ARO 官方系统确认并落库！
             // =================================================================
@@ -152,18 +178,42 @@ public class TwinScanController {
                 twinCardMappingService.updateExemptFlagByUserId(userId, 1);
             }
 
+            int deferSec = 0;
             AccessRuleDispatchResult dispatchResult = null;
-            if (accessType == 1) {
-                dispatchResult = accessRuleDispatchService.tryApplyAccessForScanEnter(effectiveRoomId, userId);
-                // 待激活倒计时：与 enter_dispatch 是否 batch 无关；仅对已大华发卡落库（twin_card_mapping 完整）且未豁免者起算（见 DahuaSwingRuleEngineService）
-                if (!twinCardMappingService.isLinkageRuleExempt(userId)) {
-                    dahuaSwingRuleEngineService.startPendingActivationAfterAccessRuleGrant(userId);
+            try {
+                if (accessType == 1) {
+                    dispatchResult = accessRuleDispatchService.tryApplyAccessForScanEnter(effectiveRoomId, userId);
+                    // 待激活倒计时：与 enter_dispatch 是否 batch 无关；仅对已大华发卡落库（twin_card_mapping 完整）且未豁免者起算（见 DahuaSwingRuleEngineService）
+                    if (!twinCardMappingService.isLinkageRuleExempt(userId)) {
+                        dahuaSwingRuleEngineService.startPendingActivationAfterAccessRuleGrant(userId);
+                    }
+                } else if (accessType == 2) {
+                    deferSec = webScanExitDahuaLinkageService.resolveDeferSeconds();
+                    dispatchResult = webScanExitDahuaLinkageService.revokeAndFreezeAfterExit(
+                            userId, effectiveRoomId, physicalCardNo, isKeepCard, deferSec);
                 }
-            } else if (accessType == 2) {
-                dispatchResult = accessRuleDispatchService.tryRevokeAccessForScanExit(effectiveRoomId, userId);
+                applyDispatchHint(result, dispatchResult, effectiveRoomId, userId, accessType);
+                if (accessType == 2 && deferSec > 0) {
+                    result.setDeferredDahuaSeconds(deferSec);
+                    String deferHint = "大华门禁权限回收与物理卡冻结将在 " + deferSec + " 秒后执行。";
+                    String merged = result.getDahuaHint();
+                    if (merged != null && !merged.isBlank()) {
+                        result.setDahuaHint(merged + " " + deferHint);
+                    } else {
+                        result.setDahuaHint(deferHint);
+                    }
+                }
+            } catch (Exception linkageEx) {
+                if (accessType == 2) {
+                    log.error("[scan-exec] exit-dahua-linkage failed userId={} err={}", userId, linkageEx.getMessage(), linkageEx);
+                    result.setSuccess(false);
+                    String detail = linkageEx.getMessage() != null ? linkageEx.getMessage() : linkageEx.getClass().getSimpleName();
+                    result.setMessage("官方系统离开登记成功，但大华联动（权限回收/冻结）失败，请联系管理员。详情：" + detail);
+                    return Result.success(result);
+                }
+                throw linkageEx;
             }
-            applyDispatchHint(result, dispatchResult, effectiveRoomId, userId, accessType);
-            log.info("[scan-exec] 3/4 🔐 门禁联动已处理 userId={} 房间={}", userId, roomLabel);
+            log.info("[scan-exec] 3/4 🔐 门禁联动已处理 userId={} 房间={} exitDeferSec={}", userId, roomLabel, deferSec);
 
             // =================================================================
             // 🎯 第三关：使用 RPG 引擎返回本次操作真实经验增量
@@ -171,25 +221,10 @@ public class TwinScanController {
             int expAdded = Math.max(0, rpgEngineService.predictActionReward(userId, accessType));
             result.setExpAdded(expAdded);
 
-            // =================================================================
-            // 🚨 Plan A：长期保管卡豁免已在派发前写入；此处仅「正常离开还卡」关闭豁免
-            // =================================================================
-            if (!isKeepCard && physicalCardNo != null && accessType == 2) {
-                log.info("[scan-exec] 联动豁免 已关闭 userId={} 姓名={} 原因=正常离开还卡", userId, userName);
-                twinCardMappingService.updateExemptFlagByUserId(userId, 0);
-            }
-
-            // =================================================================
-            // 💥 第二关：立刻触发大华物理网关的解冻/冻结！
-            // =================================================================
-            String newStatus = (accessType == 1) ? "NORMAL" : "FROZEN";
+            // EXIT：大华回收 + 豁免关闭 + 冻结已由 WebScanExitDahuaLinkageService 处理（可配置延迟）；ENTER 无此处冻结
 
             if (physicalCardNo != null) {
                 try {
-                    // ENTER 已在下发前完成预解冻，这里避免重复调用导致噪音日志
-                    if (accessType == 2) {
-                        twinCardMappingService.updateCardStatus(physicalCardNo, newStatus);
-                    }
                     result.setSuccess(true);
                     if (healedNoLeaveConflict) {
                         result.setMessage("ARO 显示当前已无待离开房间，系统已完成状态自愈同步。");
@@ -197,6 +232,8 @@ public class TwinScanController {
                         String actMsg;
                         if (accessType == 1) {
                             actMsg = "打卡成功！物理门禁已解锁。";
+                        } else if (deferSec > 0) {
+                            actMsg = "离开登记成功！大华门禁回收与物理卡冻结将在 " + deferSec + " 秒后执行。";
                         } else if (dispatchResult == AccessRuleDispatchResult.SCAN_LINKAGE_EXIT_DISABLED) {
                             actMsg = "离开登记成功！（大华门禁权限回收已按全局开关跳过）";
                         } else {
@@ -216,12 +253,14 @@ public class TwinScanController {
                     result.setMessage("ARO 显示当前已无待离开房间，系统已完成状态自愈同步。");
                 } else {
                     String exitExtra = "";
-                    if (accessType == 2 && dispatchResult == AccessRuleDispatchResult.SCAN_LINKAGE_EXIT_DISABLED) {
+                    if (accessType == 2 && deferSec <= 0 && dispatchResult == AccessRuleDispatchResult.SCAN_LINKAGE_EXIT_DISABLED) {
                         exitExtra = "（已跳过门禁权限回收：全局开关关闭）";
                     }
                     String base = accessType == 1
                             ? "纯数字打卡成功！(未绑定大华物理卡)"
-                            : "离开登记成功！(未绑定大华物理卡)" + exitExtra;
+                            : (accessType == 2 && deferSec > 0
+                            ? "离开登记成功！大华门禁回收与物理卡冻结将在 " + deferSec + " 秒后执行。"
+                            : "离开登记成功！(未绑定大华物理卡)" + exitExtra);
                     result.setMessage(base + " 本次经验 +" + expAdded);
                 }
             }
@@ -334,23 +373,19 @@ public class TwinScanController {
         if (!ok) {
             return Result.error("离开登记失败，官方系统拒绝操作");
         }
-        // 对齐 web 扫码离开：规则命中后执行大华权限回收
-        AccessRuleDispatchResult dispatchResult = accessRuleDispatchService.tryRevokeAccessForScanExit(officialRoomId, userId);
-        // 对齐 web 扫码离开：正常离开回收豁免并冻结物理卡
-        if (physicalCardNo != null && !physicalCardNo.isBlank()) {
-            twinCardMappingService.updateExemptFlagByUserId(userId, 0);
-            try {
-                twinCardMappingService.updateCardStatus(physicalCardNo, "FROZEN");
-            } catch (Exception e) {
-                return Result.error("官方系统离开登记成功，但物理卡冻结失败，请联系管理员处理");
-            }
-        }
+        // 对齐 web 扫码离开：规则命中后执行大华权限回收（可配置延迟）
+        int defer = webScanExitDahuaLinkageService.resolveDeferSeconds();
+        AccessRuleDispatchResult dispatchResult = webScanExitDahuaLinkageService.revokeAndFreezeAfterExit(
+                userId, officialRoomId, physicalCardNo, false, defer);
         // 文档约束：所有离开成功入口必须清理联动状态，避免后续定时任务重复签退
         dahuaSwingRuleEngineService.clearActivationStatesForUser(userId);
 
         Map<String, Object> resp = new HashMap<>();
         resp.put("success", true);
-        resp.put("message", "已确认其离开");
+        String msg = defer > 0
+                ? ("已确认其离开；大华回收与卡冻结将在 " + defer + " 秒后执行")
+                : "已确认其离开";
+        resp.put("message", msg);
         resp.put("officialRoomId", officialRoomId);
         resp.put("dispatchResult", dispatchResult != null ? dispatchResult.name() : null);
         resp.put("dahuaHint", AccessRuleDispatchHintHelper.humanHint(dispatchResult, 2));

@@ -442,32 +442,42 @@ export default function DebugCardMappingPage() {
         }, 1200);
     };
 
-    const handleCardInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        const nativeEvt = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
-        if (nativeEvt.isComposing) return;
-        if (e.ctrlKey || e.altKey || e.metaKey) return;
-        const key = e.key;
-        if (key === "Tab") return;
-        if (key === "Enter") {
+    /** 与首页程序坞扫码一致：window capture 处理按键，避免中文输入法抢占读卡器字符 */
+    useEffect(() => {
+        if (!isAddModalOpen) return;
+        const onWinKeyDown = (e: KeyboardEvent) => {
+            const el = cardInputRef.current;
+            if (!el || document.activeElement !== el) return;
+            if (e.isComposing || e.key === "Process" || (e as KeyboardEvent & { keyCode?: number }).keyCode === 229) {
+                return;
+            }
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            const key = e.key;
+            if (key === "Tab") return;
+            if (key === "Enter") {
+                e.preventDefault();
+                return;
+            }
+            if (key === "Backspace") {
+                e.preventDefault();
+                updateCardNoWithBuffer(cardScanBufferRef.current.slice(0, -1));
+                return;
+            }
+            if (key.length !== 1) {
+                e.preventDefault();
+                return;
+            }
+            if (!/[0-9A-Za-z]/.test(key)) {
+                e.preventDefault();
+                return;
+            }
             e.preventDefault();
-            return;
-        }
-        if (key === "Backspace") {
-            e.preventDefault();
-            updateCardNoWithBuffer(cardScanBufferRef.current.slice(0, -1));
-            return;
-        }
-        if (key.length !== 1) {
-            e.preventDefault();
-            return;
-        }
-        if (!/[0-9A-Za-z]/.test(key)) {
-            e.preventDefault();
-            return;
-        }
-        e.preventDefault();
-        updateCardNoWithBuffer(`${cardScanBufferRef.current}${key}`);
-    };
+            updateCardNoWithBuffer(`${cardScanBufferRef.current}${key}`);
+        };
+        window.addEventListener("keydown", onWinKeyDown, true);
+        return () => window.removeEventListener("keydown", onWinKeyDown, true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅随弹窗开关重绑；updateCardNoWithBuffer 内用 ref/稳定 setState
+    }, [isAddModalOpen]);
 
     const handleSaveFreezeConfig = async () => {
         setFreezeSaving(true);
@@ -1030,9 +1040,15 @@ export default function DebugCardMappingPage() {
                         <label className="block text-xs font-bold text-slate-500 mb-1.5">2. 扫描物理卡号 (鼠标点入后刷卡)</label>
                         <input
                             ref={cardInputRef}
+                            id="dahua-issue-card-scan-input"
                             type="text"
+                            lang="en"
+                            inputMode="text"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            autoCapitalize="off"
+                            spellCheck={false}
                             value={bindForm.cardNo}
-                            onKeyDown={handleCardInputKeyDown}
                             onPaste={(e) => {
                                 e.preventDefault();
                                 const pasted = sanitizeCardNo(e.clipboardData.getData("text"));
@@ -1042,9 +1058,6 @@ export default function DebugCardMappingPage() {
                                 const clean = sanitizeCardNo(e.target.value);
                                 updateCardNoWithBuffer(clean);
                             }}
-                            autoCorrect="off"
-                            autoCapitalize="off"
-                            spellCheck={false}
                             className="w-full border-2 border-slate-200 focus:border-indigo-500 p-2.5 rounded-xl mb-4 font-mono text-indigo-600 font-bold outline-none transition-colors"
                             placeholder="等待读卡器输入..."
                         />

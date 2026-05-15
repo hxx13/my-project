@@ -43,6 +43,10 @@ export interface AnalyzeResponse {
     disciplinaryRecords?: DisciplinaryRecord[];
     /** 后端 twin_card_mapping 是否存在该人员；用于指示自带校园卡 / 领用公卡 */
     hasPhysicalCardMapping?: boolean;
+    /** 是否启用扫码弹窗入口时段限制 */
+    scanPopupEntryWindowEnabled?: boolean;
+    /** 当前时间是否在允许打卡的时段内 */
+    scanPopupEntryAllowedNow?: boolean;
 }
 
 export interface ExecutePayload {

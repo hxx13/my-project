@@ -7,6 +7,8 @@ import { PersonnelSearchDropdown } from "@/components/ui/PersonnelSearchDropdown
 import { Info, LogIn, LogOut, Activity } from "lucide-react"; // 💥 引入 Activity 图标作为标题Icon
 import { detailTextToLines } from "@/utils/detailTextToLines";
 import { useDashboardSciFiVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { authStorage } from "@/features/auth/authStorage";
+import { hasMinRole } from "@/features/auth/roleAccess";
 
 function DetailParagraphs({ text, emptyLabel, sciFi }: { text: string; emptyLabel?: string; sciFi?: boolean }) {
     const trimmed = (text ?? "").trim();
@@ -280,6 +282,7 @@ export function TimelineWaterfall() {
     const setEvents = useEventStore((state) => state.setEvents);
     const [provOpen, setProvOpen] = useState<{ evt: UniversalEvent; rect: DOMRect } | null>(null);
     const sf = useDashboardSciFiVisual();
+    const showPersonnelSearch = hasMinRole(authStorage.getRole() || "STUDENT", "STAFF");
 
     const openProvenance = useCallback((evt: UniversalEvent, el: HTMLElement | null) => {
         if (!el) return;
@@ -363,10 +366,13 @@ export function TimelineWaterfall() {
                     </span>
                 </div>
 
-                {/* 💥 修复：提升 z-index 突破遮挡限制 */}
-                <div className="relative w-[40px] h-[40px] shrink-0 z-[100] mr-1">
-                    <PersonnelSearchDropdown />
-                </div>
+                {showPersonnelSearch ? (
+                    <div className="relative w-[40px] h-[40px] shrink-0 z-[100] mr-1">
+                        <PersonnelSearchDropdown />
+                    </div>
+                ) : (
+                    <div className="w-[40px] shrink-0 mr-1" aria-hidden />
+                )}
             </div>
 
             {/* 瀑布流不再受搜索干扰，永远展示最新的进出动态 */}

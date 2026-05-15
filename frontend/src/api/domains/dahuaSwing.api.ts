@@ -18,6 +18,9 @@ export interface DahuaSwingTask {
 
 export interface DahuaSwingRuleConfig {
   mode?: "EXIT_ONLY" | "TOGGLE_IN_OUT";
+  scanPopupEntryWindowEnabled?: boolean;
+  scanPopupEntryWindows?: Array<{ startHm: string; endHm: string }>;
+  scanLeaveDahuaDeferSeconds?: number;
   exitChannelCodes: string[];
   toggleChannelCodes: string[];
   activatedReswipeExitChannelCodes: string[];
