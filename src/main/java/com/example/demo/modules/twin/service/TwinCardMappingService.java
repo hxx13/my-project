@@ -142,6 +142,26 @@ public class TwinCardMappingService {
         return mapping != null && mapping.getFreezeExemptFlag() != null && mapping.getFreezeExemptFlag() == 1;
     }
 
+    /**
+     * 是否属于「大华孪生发卡库」人员：{@code twin_card_mapping} 存在该 ARO 用户，
+     * 且同时具备物理卡号、大华人员主键 {@code dahua_seq}、大华人员编码 {@code dahua_person_code}
+     *（与 {@link com.example.demo.modules.twin.service.DahuaIssueCardOrchestratorService} 落库一致）。
+     * 未发卡或未完整映射者不得参与待激活门禁联动计时（无平台侧 person 无法完成激活链路）。
+     */
+    public boolean hasDahuaIssuedTwinMapping(String aroUserId) {
+        TwinCardMapping m = getByAroUserId(aroUserId);
+        if (m == null) {
+            return false;
+        }
+        if (m.getCardNo() == null || m.getCardNo().trim().isEmpty()) {
+            return false;
+        }
+        if (m.getDahuaSeq() == null || m.getDahuaSeq().trim().isEmpty()) {
+            return false;
+        }
+        return m.getDahuaPersonCode() != null && !m.getDahuaPersonCode().trim().isEmpty();
+    }
+
     // ================== 2. 双写一致性写入 (专供前端管理台调用) ==================
 
     public synchronized void addMapping(TwinCardMapping mapping) {

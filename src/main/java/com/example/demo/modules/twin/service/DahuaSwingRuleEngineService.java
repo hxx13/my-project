@@ -63,8 +63,11 @@ public class DahuaSwingRuleEngineService {
 
     /**
      * 扫码进房（ARO 已成功）后调用：若配置了「激活卡片规则」门组，则启动「待激活」超时倒计时。
-     * 与 {@link com.example.demo.modules.accessrule.service.AccessRuleDispatchService#tryApplyAccessForScanEnter} 是否实际调用大华 batch 无关；
-     * 全局关闭「进入时门禁联动」时仍应起算本倒计时，避免仅靠大华下发开关误伤联动规则。
+     * <p>前置条件：人员须在孪生「大华发卡」映射表 {@code twin_card_mapping} 中存在且具备
+     * 卡号、{@code dahua_seq}、{@code dahua_person_code}（见 {@link TwinCardMappingService#hasDahuaIssuedTwinMapping}）；
+     * 纯 ARO 选用、未大华发卡落库者不起算，避免无效计时与误触发自动签退。</p>
+     * <p>与 {@link com.example.demo.modules.accessrule.service.AccessRuleDispatchService#tryApplyAccessForScanEnter} 是否实际调用大华 batch 无关；
+     * 全局关闭「进入时门禁联动」时仍可对已发卡人员起算本倒计时。</p>
      * 超时时刻到达时由 {@link #processDueStates} 触发完整自动离开（无额外签退延时，直接按预定时刻执行）。
      */
     public void startPendingActivationAfterAccessRuleGrant(String userId) {
@@ -73,6 +76,10 @@ public class DahuaSwingRuleEngineService {
             return;
         }
         if (twinCardMappingService.isLinkageRuleExempt(uid)) {
+            return;
+        }
+        if (!twinCardMappingService.hasDahuaIssuedTwinMapping(uid)) {
+            log.info("[swing-rule] skip-pending-activation no-dahua-issued-mapping userId={}", uid);
             return;
         }
         Map<String, Object> rules = dahuaSwingRuleConfigService.getConfig();

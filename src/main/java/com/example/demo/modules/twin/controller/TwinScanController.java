@@ -155,7 +155,7 @@ public class TwinScanController {
             AccessRuleDispatchResult dispatchResult = null;
             if (accessType == 1) {
                 dispatchResult = accessRuleDispatchService.tryApplyAccessForScanEnter(effectiveRoomId, userId);
-                // 待激活倒计时与「进入时是否大华 batch 下发」解耦：全局关闭 enter_dispatch 时仍起算激活超时（见 twin_access_rule_scan_config.enter_dispatch_enabled）
+                // 待激活倒计时：与 enter_dispatch 是否 batch 无关；仅对已大华发卡落库（twin_card_mapping 完整）且未豁免者起算（见 DahuaSwingRuleEngineService）
                 if (!twinCardMappingService.isLinkageRuleExempt(userId)) {
                     dahuaSwingRuleEngineService.startPendingActivationAfterAccessRuleGrant(userId);
                 }
