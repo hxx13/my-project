@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { authHttp } from '@/api/core/authHttp';
+import { http as twinHttp } from '@/api/core/http';
 
 const api = axios.create({ baseURL: '/api/v1/twin/dashboard' });
 
@@ -143,12 +144,12 @@ export interface ExecutePayload {
 
 // 💥 1. 发起扫码身份解析
 export const analyzeScan = async (userId: string): Promise<AnalyzeResponse> => {
-    const response = await axios.get(`/api/v1/twin/scan/analyze?userId=${userId}`);
+    const response = await twinHttp.get(`/scan/analyze`, { params: { userId } });
     return asData<AnalyzeResponse>(response.data, {} as AnalyzeResponse);
 };
 
 export const executeAccess = async (payload: ExecutePayload) => {
-    const response = await axios.post('/api/v1/twin/scan/execute', payload);
+    const response = await twinHttp.post('/scan/execute', payload);
     // 💥 兼容市面最常规的 code 200 判断逻辑，以及 success 字段双重保险
     if (response.data.code !== 200 && response.data.success !== true) {
         throw new Error(response.data.msg || response.data.message || '官方接口拒绝操作');

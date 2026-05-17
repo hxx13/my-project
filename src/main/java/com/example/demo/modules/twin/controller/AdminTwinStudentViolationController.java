@@ -5,7 +5,9 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
+import com.example.demo.modules.twin.dto.UnboundCardNoticeSettingsDTO;
 import com.example.demo.modules.twin.entity.TwinStudentViolation;
+import com.example.demo.modules.twin.service.TwinStudentViolationNoticeConfigService;
 import com.example.demo.modules.twin.service.TwinStudentViolationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,17 +28,47 @@ import java.util.stream.Collectors;
 public class AdminTwinStudentViolationController {
 
     private final TwinStudentViolationService violationService;
+    private final TwinStudentViolationNoticeConfigService unboundNoticeConfigService;
     private final AuthContextService authContextService;
     private final UserDisplayNameService userDisplayNameService;
 
     public AdminTwinStudentViolationController(
             TwinStudentViolationService violationService,
+            TwinStudentViolationNoticeConfigService unboundNoticeConfigService,
             AuthContextService authContextService,
             UserDisplayNameService userDisplayNameService
     ) {
         this.violationService = violationService;
+        this.unboundNoticeConfigService = unboundNoticeConfigService;
         this.authContextService = authContextService;
         this.userDisplayNameService = userDisplayNameService;
+    }
+
+    @GetMapping("/unbound-notice-settings")
+    @Operation(summary = "未绑卡扫码提示全局配置")
+    public Result<?> getUnboundNoticeSettings(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        return Result.success(unboundNoticeConfigService.getSettings());
+    }
+
+    @PutMapping("/unbound-notice-settings")
+    @Operation(summary = "保存未绑卡扫码提示全局配置")
+    public Result<?> saveUnboundNoticeSettings(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody UnboundCardNoticeSettingsDTO body
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        User admin = authContextService.resolveUserFromBearer(authorization);
+        unboundNoticeConfigService.saveSettings(body, admin == null ? null : admin.getId());
+        return Result.success(unboundNoticeConfigService.getSettings());
     }
 
     @GetMapping

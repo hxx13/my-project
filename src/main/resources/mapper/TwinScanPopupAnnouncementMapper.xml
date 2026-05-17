@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.TwinScanPopupAnnouncementMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.entity.TwinScanPopupAnnouncement">
+        <id property="id" column="id"/>
+        <result property="title" column="title"/>
+        <result property="contentHtml" column="content_html"/>
+        <result property="enabled" column="enabled"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="status" column="status"/>
+        <result property="publishAt" column="publish_at"/>
+        <result property="expireAt" column="expire_at"/>
+        <result property="createdByUserId" column="created_by_user_id"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, title, content_html, enabled, sort_order, status, publish_at, expire_at,
+        created_by_user_id, created_at, updated_at
+    </sql>
+
+    <select id="selectActiveForScan" resultMap="BaseMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM twin_scan_popup_announcement
+        WHERE status = 'ACTIVE'
+          AND enabled = 1
+          AND (publish_at IS NULL OR publish_at &lt;= NOW())
+          AND (expire_at IS NULL OR expire_at &gt; NOW())
+        ORDER BY sort_order DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectAllForAdmin" resultMap="BaseMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM twin_scan_popup_announcement
+        WHERE status &lt;&gt; 'DELETED'
+        ORDER BY sort_order DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectById" resultMap="BaseMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM twin_scan_popup_announcement
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_scan_popup_announcement (
+            title, content_html, enabled, sort_order, status, publish_at, expire_at, created_by_user_id
+        ) VALUES (
+            #{title}, #{contentHtml}, #{enabled}, #{sortOrder}, #{status}, #{publishAt}, #{expireAt}, #{createdByUserId}
+        )
+    </insert>
+
+    <update id="updateById">
+        UPDATE twin_scan_popup_announcement
+        SET title = #{title},
+            content_html = #{contentHtml},
+            enabled = #{enabled},
+            sort_order = #{sortOrder},
+            status = #{status},
+            publish_at = #{publishAt},
+            expire_at = #{expireAt}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM twin_scan_popup_announcement WHERE id = #{id}
+    </delete>
+</mapper>

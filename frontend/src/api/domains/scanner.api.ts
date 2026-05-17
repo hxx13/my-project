@@ -84,7 +84,12 @@ const normalizeRoomInfo = (raw: unknown): RoomInfo => {
         areaName: typeof r.areaName === "string" ? r.areaName : undefined,
         floorName: typeof r.floorName === "string" ? r.floorName : undefined,
         regionName: typeof r.regionName === "string" ? r.regionName : undefined,
-        campusTag: typeof r.campusTag === "string" ? r.campusTag : undefined,
+        campusTag:
+            typeof r.campusTag === "string"
+                ? r.campusTag
+                : typeof r.campus_tag === "string"
+                  ? r.campus_tag
+                  : undefined,
         isDisabled: asBool(r.isDisabled),
         disableReason: typeof r.disableReason === "string" ? r.disableReason : undefined,
         enterBlocked: asBool(r.enterBlocked),
@@ -135,28 +140,59 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
         safe.currentState === "INSIDE"
             ? "INSIDE"
             : (safe.currentState === "UNKNOWN" ? "UNKNOWN" : "OUTSIDE");
-    const nRaw = safe.studentViolationNotice ?? safe.student_violation_notice;
-    let studentViolationNotice: AnalyzeResponse["studentViolationNotice"] | undefined;
-    if (nRaw && typeof nRaw === "object") {
-        const n = nRaw as Record<string, unknown>;
+    const parseViolationNotice = (raw: unknown): AnalyzeResponse["studentViolationNotice"] | undefined => {
+        if (!raw || typeof raw !== "object") return undefined;
+        const n = raw as Record<string, unknown>;
         const idNum = typeof n.id === "number" ? n.id : Number(n.id);
-        if (Number.isFinite(idNum)) {
-            const urlsRaw = n.imageUrls ?? n.image_urls;
-            const imageUrls = Array.isArray(urlsRaw)
-                ? urlsRaw.filter((x): x is string => typeof x === "string")
-                : [];
-            const remRaw = n.remainingEnterAllowance ?? n.remaining_enter_allowance;
-            let remainingEnterAllowance: number | null | undefined;
-            if (remRaw === null) remainingEnterAllowance = null;
-            else if (typeof remRaw === "number" && Number.isFinite(remRaw)) remainingEnterAllowance = remRaw;
-            else remainingEnterAllowance = undefined;
-            studentViolationNotice = {
-                id: idNum as number,
-                violationText: asString(n.violationText ?? n.violation_text),
-                imageUrls,
-                showNoticeEveryScan: asBooleanLike(n.showNoticeEveryScan ?? n.show_notice_every_scan) ?? true,
-                enterLocked: asBooleanLike(n.enterLocked ?? n.enter_locked) ?? false,
-                remainingEnterAllowance,
+        if (!Number.isFinite(idNum)) return undefined;
+        const urlsRaw = n.imageUrls ?? n.image_urls;
+        const imageUrls = Array.isArray(urlsRaw)
+            ? urlsRaw.filter((x): x is string => typeof x === "string")
+            : [];
+        const remRaw = n.remainingEnterAllowance ?? n.remaining_enter_allowance;
+        let remainingEnterAllowance: number | null | undefined;
+        if (remRaw === null) remainingEnterAllowance = null;
+        else if (typeof remRaw === "number" && Number.isFinite(remRaw)) remainingEnterAllowance = remRaw;
+        else remainingEnterAllowance = undefined;
+        return {
+            id: idNum as number,
+            violationText: asString(n.violationText ?? n.violation_text),
+            imageUrls,
+            showNoticeEveryScan: asBooleanLike(n.showNoticeEveryScan ?? n.show_notice_every_scan) ?? true,
+            enterLocked: asBooleanLike(n.enterLocked ?? n.enter_locked) ?? false,
+            remainingEnterAllowance,
+        };
+    };
+    const studentViolationNotice = parseViolationNotice(
+        safe.studentViolationNotice ?? safe.student_violation_notice
+    );
+    const unboundCardNotice = parseViolationNotice(safe.unboundCardNotice ?? safe.unbound_card_notice);
+    const annRaw = safe.scanPopupAnnouncements ?? safe.scan_popup_announcements;
+    let scanPopupAnnouncements: AnalyzeResponse["scanPopupAnnouncements"];
+    if (annRaw && typeof annRaw === "object") {
+        const a = annRaw as Record<string, unknown>;
+        const itemsRaw = a.items;
+        const items = Array.isArray(itemsRaw)
+            ? itemsRaw
+                  .map((it) => {
+                      if (!it || typeof it !== "object") return null;
+                      const row = it as Record<string, unknown>;
+                      const idNum = typeof row.id === "number" ? row.id : Number(row.id);
+                      if (!Number.isFinite(idNum)) return null;
+                      return {
+                          id: idNum as number,
+                          title: asString(row.title),
+                          contentHtml: asString(row.contentHtml ?? row.content_html),
+                      };
+                  })
+                  .filter((x): x is NonNullable<typeof x> => x !== null)
+            : [];
+        if (items.length > 0 || asBooleanLike(a.enabled)) {
+            scanPopupAnnouncements = {
+                enabled: asBooleanLike(a.enabled) ?? true,
+                showNoticeEveryScan: asBooleanLike(a.showNoticeEveryScan ?? a.show_notice_every_scan) ?? true,
+                total: typeof a.total === "number" ? a.total : items.length,
+                items,
             };
         }
     }
@@ -192,6 +228,8 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             asBooleanLike(safe.scan_popup_entry_allowed_now) ??
             true,
         studentViolationNotice,
+        unboundCardNotice,
+        scanPopupAnnouncements,
     };
 };
 

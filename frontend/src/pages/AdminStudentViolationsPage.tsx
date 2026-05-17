@@ -5,16 +5,25 @@ import {
   clearStudentViolation,
   createStudentViolation,
   deleteStudentViolation,
+  getUnboundCardNoticeSettings,
   listStudentViolations,
   markStudentViolationProcessed,
+  saveUnboundCardNoticeSettings,
+  UNBOUND_APPLY_ROLE_OPTIONS,
   updateStudentViolation,
   type StudentViolationRow,
+  type UnboundApplyRoleCode,
 } from "@/api/domains/studentViolation.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { searchPersonnel } from "@/api/twinApi";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { cn } from "@/lib/utils";
+import { ScanPopupAnnouncementSection } from "@/features/admin/ScanPopupAnnouncementSection";
+import {
+  SCAN_OPERATOR_ROLE_HINT_UNBOUND,
+  SCAN_OPERATOR_ROLE_LABEL,
+} from "@/features/admin/scanOperatorRoleHint";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 
 type PickUser = { userId: string; name: string };
@@ -72,6 +81,32 @@ export default function AdminStudentViolationsPage() {
   const [editExpireDays, setEditExpireDays] = useState("");
   const [editUploading, setEditUploading] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [unboundEnabled, setUnboundEnabled] = useState(true);
+  const [unboundShowEvery, setUnboundShowEvery] = useState(true);
+  const [unboundForbidEnter, setUnboundForbidEnter] = useState(false);
+  const [unboundApplyRoles, setUnboundApplyRoles] = useState<UnboundApplyRoleCode[]>(["STUDENT"]);
+  const [unboundText, setUnboundText] = useState("");
+  const [unboundUrls, setUnboundUrls] = useState<string[]>([]);
+  const [unboundUploading, setUnboundUploading] = useState(false);
+  const [unboundLoading, setUnboundLoading] = useState(false);
+  const [unboundSaving, setUnboundSaving] = useState(false);
+
+  const loadUnboundSettings = useCallback(async () => {
+    setUnboundLoading(true);
+    try {
+      const s = await getUnboundCardNoticeSettings();
+      setUnboundEnabled(s.enabled);
+      setUnboundShowEvery(s.showNoticeEveryScan);
+      setUnboundForbidEnter(Boolean(s.forbidEnter));
+      setUnboundApplyRoles(s.applyRoleCodes ?? ["STUDENT"]);
+      setUnboundText(s.violationText ?? "");
+      setUnboundUrls(s.imageUrls ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "未绑卡提示配置加载失败");
+    } finally {
+      setUnboundLoading(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,6 +126,56 @@ export default function AdminStudentViolationsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadUnboundSettings();
+  }, [loadUnboundSettings]);
+
+  const uploadUnboundImages = useCallback(async (files: File[]) => {
+    const imgs = files.filter((f) => f.type.startsWith("image/"));
+    if (!imgs.length) {
+      toast.error("未识别到图片");
+      return;
+    }
+    setUnboundUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const f of imgs) {
+        urls.push(await uploadSingleImage(f));
+      }
+      setUnboundUrls((prev) => [...prev, ...urls]);
+      toast.success(`已上传 ${urls.length} 张`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "上传失败");
+    } finally {
+      setUnboundUploading(false);
+    }
+  }, []);
+
+  const saveUnboundSettings = async () => {
+    setUnboundSaving(true);
+    try {
+      const saved = await saveUnboundCardNoticeSettings({
+        enabled: unboundEnabled,
+        showNoticeEveryScan: unboundShowEvery,
+        forbidEnter: unboundForbidEnter,
+        applyRoleCodes: unboundApplyRoles,
+        violationText: unboundText.trim(),
+        imageUrls: unboundUrls,
+      });
+      setUnboundEnabled(saved.enabled);
+      setUnboundShowEvery(saved.showNoticeEveryScan);
+      setUnboundForbidEnter(Boolean(saved.forbidEnter));
+      setUnboundApplyRoles(saved.applyRoleCodes ?? ["STUDENT"]);
+      setUnboundText(saved.violationText ?? "");
+      setUnboundUrls(saved.imageUrls ?? []);
+      toast.success("未绑卡提示已保存");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setUnboundSaving(false);
+    }
+  };
 
   const handleSearchPersonnel = useCallback(async (keyword: string) => {
     const q = keyword.trim();
@@ -354,6 +439,137 @@ export default function AdminStudentViolationsPage() {
         </AdminButton>
       }
     >
+      <AdminFormCard
+        title="未绑卡扫码提示"
+        description="扫描到尚未绑定物理卡的人员时展示警示；按当前网页登录人员的 sys_user 角色决定是否生效（与被扫人员身份无关）。"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 text-sm text-neutral-800">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-neutral-300"
+                checked={unboundEnabled}
+                disabled={unboundLoading}
+                onChange={(e) => setUnboundEnabled(e.target.checked)}
+              />
+              启用未绑卡提示
+            </label>
+            <label className="flex items-center gap-2 text-sm text-neutral-800">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-neutral-300"
+                checked={unboundShowEvery}
+                disabled={unboundLoading}
+                onChange={(e) => setUnboundShowEvery(e.target.checked)}
+              />
+              每次扫码都自动展开提示
+            </label>
+            <label className="flex items-center gap-2 text-sm text-neutral-800">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-neutral-300"
+                checked={unboundForbidEnter}
+                disabled={unboundLoading || !unboundEnabled}
+                onChange={(e) => setUnboundForbidEnter(e.target.checked)}
+              />
+              禁止扫码进入（未绑卡时，离开不受影响）
+            </label>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-neutral-600">{SCAN_OPERATOR_ROLE_LABEL}</label>
+            <p className="mt-0.5 text-[11px] text-neutral-500">{SCAN_OPERATOR_ROLE_HINT_UNBOUND}</p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              {UNBOUND_APPLY_ROLE_OPTIONS.map((opt) => {
+                const checked = unboundApplyRoles.includes(opt.code);
+                return (
+                  <label
+                    key={opt.code}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm",
+                      checked ? "border-indigo-300 bg-indigo-50 text-indigo-900" : "border-neutral-200 bg-white text-neutral-700",
+                      (unboundLoading || !unboundEnabled) && "cursor-not-allowed opacity-60"
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-neutral-300"
+                      checked={checked}
+                      disabled={unboundLoading || !unboundEnabled}
+                      onChange={(e) => {
+                        setUnboundApplyRoles((prev) => {
+                          if (e.target.checked) {
+                            return prev.includes(opt.code) ? prev : [...prev, opt.code];
+                          }
+                          const next = prev.filter((c) => c !== opt.code);
+                          return next.length ? next : ["STUDENT"];
+                        });
+                      }}
+                    />
+                    {opt.label}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-neutral-600">提示文案</label>
+            <textarea
+              className={cn(inputBase, "mt-1.5 min-h-[88px] resize-y")}
+              value={unboundText}
+              disabled={unboundLoading}
+              onChange={(e) => setUnboundText(e.target.value)}
+              placeholder="例如：您尚未绑定校园卡，请先完成绑卡…"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-neutral-600">提示附图（可选）</label>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <label className={cn(filePickTriggerClass, "text-xs py-1.5")}>
+                <span>选择图片</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={unboundUploading || unboundLoading}
+                  className="sr-only"
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files?.length) void uploadUnboundImages(Array.from(files));
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {unboundUploading ? <span className="text-xs text-neutral-500">上传中…</span> : null}
+            </div>
+            {unboundUrls.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {unboundUrls.map((u) => (
+                  <div key={u} className="relative h-16 w-16 overflow-hidden rounded-lg border border-neutral-200">
+                    <img src={u} alt="" className="h-full w-full object-cover" />
+                    <AdminButton
+                      type="button"
+                      tone="destructive"
+                      size="sm"
+                      className="absolute right-0 top-0 h-6 min-h-0 rounded-none rounded-bl px-1.5 py-0 text-xs"
+                      onClick={() => setUnboundUrls((prev) => prev.filter((x) => x !== u))}
+                      aria-label="移除图片"
+                    >
+                      ×
+                    </AdminButton>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <AdminButton type="button" disabled={unboundSaving || unboundLoading} onClick={() => void saveUnboundSettings()}>
+            {unboundSaving ? "保存中…" : "保存未绑卡提示"}
+          </AdminButton>
+        </div>
+      </AdminFormCard>
+
+      <ScanPopupAnnouncementSection />
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <AdminFormCard
           title="新建违规"

@@ -13,7 +13,7 @@ import { ActionButtons } from "./components/ActionButtons";
 import { DisciplinaryModal } from "./components/DisciplinaryModal";
 import { ScanAccessNoticeOverlay } from "./ScanAccessNoticeOverlay";
 import type { PopupProps } from "./components/types";
-import { ViolationNoticeBanner } from "./ViolationNoticeBanner";
+import { ScanPopupNoticeCoordinator } from "./ScanPopupNoticeCoordinator";
 
 const WeeklyRoutineMatrixChart = ({ predictions, themeColor }: { predictions: any[]; themeColor: string }) => {
     const isPink = themeColor === "#fbb9b6";
@@ -143,9 +143,11 @@ export function UiverseProfilePopup(props: PopupProps) {
                         当前未绑卡，点我绑定卡
                     </button>
                 ) : null}
-                <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2 overflow-hidden p-10 pb-20">
-                    {result.studentViolationNotice ? <ViolationNoticeBanner notice={result.studentViolationNotice} /> : null}
-                    <div className="grid min-h-0 w-full max-w-[1920px] flex-1 grid-cols-[25fr_50fr_25fr] gap-8 overflow-hidden">
+                <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-hidden p-10 pb-20">
+                    <div className="flex w-full max-w-[min(96vw,1120px)] shrink-0 justify-center px-1 pt-1">
+                        <ScanPopupNoticeCoordinator result={result} />
+                    </div>
+                    <div className="grid min-h-0 w-full max-w-[1920px] flex-1 min-h-0 grid-cols-[25fr_50fr_25fr] gap-8 overflow-hidden">
                     <div className="flex flex-col h-full min-h-0 pt-6 pb-6 gap-4">
                         <div className="w-full h-[60px] mb-1">
                             <div className="relative w-[280px] h-[52px] z-[200] flex items-center">
@@ -208,13 +210,14 @@ export function UiverseProfilePopup(props: PopupProps) {
                                 </div>
                             </div>
                         )}
-                        <div className="basis-1/2 min-h-0 flex items-center justify-center rounded-2xl border border-white/5">
-                            <div className="h-[220px] w-full flex items-center justify-center">
+                        {/* 上 2/5：面包机区缩小并贴底；下 3/5 较原 50% 多约 20% 给操作按钮 */}
+                        <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-white/5 pb-0.5">
+                            <div className="pointer-events-none flex h-[200px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">
                                 <ExpToaster key={state.toastData.nonce} expAdded={state.toastData.exp} play={state.toastData.play} />
                             </div>
                         </div>
-                        <div className="basis-1/2 min-h-0 flex flex-col overflow-hidden">
-                            <div className="w-full max-w-[340px] mx-auto mb-3 space-y-1.5 shrink-0">
+                        <div className="flex min-h-0 flex-[3] flex-col overflow-hidden">
+                            <div className="w-full max-w-[340px] mx-auto mb-2 space-y-1 shrink-0">
                                 <div className="bg-black/40 p-1.5 rounded-xl border border-white/10 flex gap-1" title="由 twin_card_mapping 自动判定，打卡将写入流水">
                                     <div
                                         className={`flex-1 py-2 text-[11px] font-black rounded-lg text-center pointer-events-none select-none ${

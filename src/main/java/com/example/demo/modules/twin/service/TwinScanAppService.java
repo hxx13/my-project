@@ -1,6 +1,7 @@
 package com.example.demo.modules.twin.service;
 
 import com.example.demo.modules.aro.service.AroService;
+import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.twin.dto.ScanAnalyzeResponseDTO;
 import com.example.demo.modules.twin.dto.scan.ScanUserInfoDTO;
 import com.example.demo.modules.twin.dto.scan.ScanUserRpgDTO;
@@ -47,10 +48,16 @@ public class TwinScanAppService {
     @Autowired
     private TwinStudentViolationService twinStudentViolationService;
 
+    @Autowired
+    private TwinStudentViolationNoticeConfigService unboundNoticeConfigService;
+
+    @Autowired
+    private TwinScanPopupAnnouncementService scanPopupAnnouncementService;
+
     @Value("${app.business-timezone:Asia/Shanghai}")
     private String businessTimeZone;
 
-    public ScanAnalyzeResponseDTO analyzeScan(String rawInput) {
+    public ScanAnalyzeResponseDTO analyzeScan(String rawInput, User operator, String operatorRoleHint) {
         ScanAnalyzeResponseDTO result = new ScanAnalyzeResponseDTO();
         String cleanInput = rawInput.trim();
         String traceId = "SCAN-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmssSSS"));
@@ -167,6 +174,22 @@ public class TwinScanAppService {
                 result.setStudentViolationNotice(twinStudentViolationService.buildNotice(realPhysicalId));
             } catch (Exception e) {
                 log.warn("[scan-flow:{}] 违规通告加载失败 userId={} err={}", traceId, realPhysicalId, e.getMessage());
+            }
+            if (Boolean.FALSE.equals(result.getHasPhysicalCardMapping())) {
+                try {
+                    result.setUnboundCardNotice(
+                            unboundNoticeConfigService.buildUnboundNotice(operator, operatorRoleHint)
+                    );
+                } catch (Exception e) {
+                    log.warn("[scan-flow:{}] 未绑卡提示加载失败 userId={} err={}", traceId, realPhysicalId, e.getMessage());
+                }
+            }
+            try {
+                result.setScanPopupAnnouncements(
+                        scanPopupAnnouncementService.buildBundleForScan(operator, operatorRoleHint)
+                );
+            } catch (Exception e) {
+                log.warn("[scan-flow:{}] 扫码公告加载失败 userId={} err={}", traceId, realPhysicalId, e.getMessage());
             }
             result.setSuccess(true);
             long costPre = Duration.between(startAt, LocalDateTime.now()).toMillis();

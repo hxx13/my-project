@@ -56,6 +56,23 @@ export interface AnalyzeResponse {
     scanPopupEntryAllowedNow?: boolean;
     /** 管理员下发的违规通告（扫码弹窗覆盖展示） */
     studentViolationNotice?: StudentViolationNotice;
+    /** 未绑卡人员扫码提示（全局配置） */
+    unboundCardNotice?: StudentViolationNotice;
+    /** 扫码弹窗公告（多条翻页） */
+    scanPopupAnnouncements?: ScanPopupAnnouncementBundle;
+}
+
+export interface ScanPopupAnnouncementItem {
+    id: number;
+    title?: string;
+    contentHtml?: string;
+}
+
+export interface ScanPopupAnnouncementBundle {
+    enabled?: boolean;
+    showNoticeEveryScan?: boolean;
+    total?: number;
+    items?: ScanPopupAnnouncementItem[];
 }
 
 export interface StudentViolationNotice {

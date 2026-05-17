@@ -1,6 +1,8 @@
 package com.example.demo.modules.twin.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchHintHelper;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchResult;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchService;
@@ -15,6 +17,7 @@ import com.example.demo.modules.twin.service.TwinScanService;
 import com.example.demo.modules.twin.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.service.DahuaSwingRuleConfigService;
 import com.example.demo.modules.twin.service.TwinStudentViolationService;
+import com.example.demo.modules.twin.service.TwinStudentViolationNoticeConfigService;
 import com.example.demo.modules.twin.service.WebScanExitDahuaLinkageService;
 import com.example.demo.modules.twin.service.TwinAccessRuleScanConfigService;
 import com.example.demo.modules.twin.service.DahuaIssueAccessRulePrefillService;
@@ -80,10 +83,16 @@ public class TwinScanController {
     private TwinStudentViolationService twinStudentViolationService;
 
     @Autowired
+    private TwinStudentViolationNoticeConfigService unboundNoticeConfigService;
+
+    @Autowired
     private DahuaIssueCardOrchestratorService dahuaIssueCardOrchestratorService;
 
     @Autowired
     private DahuaIssueAccessRulePrefillService dahuaIssueAccessRulePrefillService;
+
+    @Autowired
+    private AuthContextService authContextService;
 
     private static final long STUDENT_DAHUA_BIND_DEPT_ID = 26L;
     private static final java.util.List<Long> STUDENT_DAHUA_BIND_DOOR_GROUP_IDS = java.util.List.of(58L, 59L);
@@ -99,9 +108,14 @@ public class TwinScanController {
      * ⚡ 接口一：扫码决断引擎 (The Analyzer) - 升级为【柔性智能路由网关】
      */
     @GetMapping("/analyze")
-    public Result<ScanAnalyzeResponseDTO> analyzeScan(@RequestParam("userId") String rawInput) {
+    public Result<ScanAnalyzeResponseDTO> analyzeScan(
+            @RequestParam("userId") String rawInput,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Scan-Operator-Role", required = false) String operatorRoleHint
+    ) {
         try {
-            return Result.success(twinScanAppService.analyzeScan(rawInput));
+            User operator = authContextService.resolveUserFromBearer(authorization);
+            return Result.success(twinScanAppService.analyzeScan(rawInput, operator, operatorRoleHint));
         } catch (Exception e) {
             ScanAnalyzeResponseDTO fallback = new ScanAnalyzeResponseDTO();
             fallback.setSuccess(false);
@@ -111,8 +125,13 @@ public class TwinScanController {
     }
 
     @PostMapping("/execute")
-    public Result<ScanExecuteResponseDTO> executeScan(@RequestBody Map<String, Object> payload) {
+    public Result<ScanExecuteResponseDTO> executeScan(
+            @RequestBody Map<String, Object> payload,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestHeader(value = "X-Scan-Operator-Role", required = false) String operatorRoleHint
+    ) {
         ScanExecuteResponseDTO result = new ScanExecuteResponseDTO();
+        User operator = authContextService.resolveUserFromBearer(authorization);
         try {
             String userId = (String) payload.get("userId");
             String roomId = (String) payload.get("roomId");
@@ -160,6 +179,12 @@ public class TwinScanController {
             if (accessType == 1 && twinStudentViolationService.isEnterBlocked(userId)) {
                 result.setSuccess(false);
                 result.setMessage("违规处理中：已被禁止进入或进入次数已达上限，请联系管理员在「学生违规管理」中解除。");
+                return Result.success(result);
+            }
+
+            if (accessType == 1 && unboundNoticeConfigService.isUnboundEnterForbidden(mapping != null, operator, operatorRoleHint)) {
+                result.setSuccess(false);
+                result.setMessage("未绑定校园卡：当前策略禁止扫码进入，请先完成绑卡或在「学生违规管理」中调整未绑卡提示设置。");
                 return Result.success(result);
             }
 
