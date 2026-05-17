@@ -16,6 +16,8 @@ public interface UserMapper {
 
     User findById(@Param("id") String id);
 
+    List<User> findByIds(@Param("ids") List<String> ids);
+
     User findByIdAndPassword(@Param("id") String id, @Param("password") String password);
 
     int insertUser(User user);

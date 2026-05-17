@@ -12,7 +12,7 @@ import { CapacityStatusList } from "./components/CapacityStatusList";
 import { ActionButtons } from "./components/ActionButtons";
 import { DisciplinaryModal } from "./components/DisciplinaryModal";
 import type { PopupProps } from "./components/types";
-import "./UiverseProfilePopup.css";
+import { ViolationNoticeBanner } from "./ViolationNoticeBanner";
 
 const WeeklyRoutineMatrixChart = ({ predictions, themeColor }: { predictions: any[]; themeColor: string }) => {
     const isPink = themeColor === "#fbb9b6";
@@ -114,11 +114,17 @@ export function UiverseProfilePopup(props: PopupProps) {
                     showStateToggle={canOperateRiskState}
                 />
             </AnimatePresence>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#050A15]/85 backdrop-blur-sm overflow-hidden">
-                <button className="absolute top-6 right-6 w-10 h-10 flex items-center justify-center z-[10000] bg-white/10 border border-white/20 text-white hover:bg-red-500/80 hover:border-red-500 rounded-full" onClick={onClose} title="关闭 Esc">
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="fixed inset-0 z-[99999] flex flex-col overflow-hidden bg-[#050A15]/85 backdrop-blur-sm"
+            >
+                <button className="absolute top-6 right-6 z-[10000] flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white hover:border-red-500 hover:bg-red-500/80" onClick={onClose} title="关闭 Esc">
                     <X className="w-5 h-5" />
                 </button>
-                <div className="w-full h-full max-w-[1920px] p-10 grid grid-cols-[25fr_50fr_25fr] gap-8">
+                <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2 overflow-hidden p-10">
+                    {result.studentViolationNotice ? <ViolationNoticeBanner notice={result.studentViolationNotice} /> : null}
+                    <div className="grid min-h-0 w-full max-w-[1920px] flex-1 grid-cols-[25fr_50fr_25fr] gap-8 overflow-hidden">
                     <div className="flex flex-col h-full min-h-0 pt-6 pb-6 gap-4">
                         <div className="w-full h-[60px] mb-1">
                             <div className="relative w-[280px] h-[52px] z-[200] flex items-center">
@@ -227,6 +233,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                                 />
                             </div>
                         </div>
+                    </div>
                     </div>
                 </div>
             </motion.div>

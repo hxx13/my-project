@@ -180,29 +180,56 @@ public class DahuaSwingRuleEngineService {
         // 激活后再次刷门签退：必须按 userId 识别「已激活」，不能只看当前 channel 行（否则换一扇门永远不命中）
         if (hitActivatedReswipeExitRule && userActivatedElsewhere) {
             LocalDateTime now = LocalDateTime.now();
-            dahuaSwingMapper.deleteActivationStatesByUserId(userId);
-            DahuaActivationState state = newStateRow(userId, channelCode);
-            state.setState("AUTO_EXIT_SCHEDULED");
-            state.setScheduledExitAt(fmt(now.plusSeconds(Math.max(0, exitDelay))));
-            state.setLastSwipeAt(fmt(now));
-            state.setLastRecordId(record.getRecordId());
-            state.setCounter(0);
-            state.setDebounceUntil(fmt(now.plusSeconds(Math.max(1, exitDebounceSeconds))));
-            dahuaSwingMapper.upsertActivationState(state);
-            String doorLabelAr = resolveChannelDisplayName(channelCode);
-            twinAutomationLogService.write(
-                    TwinAutomationLogService.TYPE_ACCESS_TRACE,
-                    "LINKAGE_STEP",
-                    "SYSTEM",
-                    TwinAutomationLogService.SWING_ACTIVATED_RESWIPE_EXIT_TIMER_STARTED,
-                    userId,
-                    channelCode,
-                    true,
-                    "延时签退：" + exitDelay + " 秒；计划「" + state.getScheduledExitAt() + "」；"
-                            + (doorLabelAr.isBlank() ? "channel=" + channelCode : doorLabelAr),
-                    "dahua-swing-record"
-            );
-            return;
+            // 同一物理门同时配置「激活门」与「激活后再刷签退门」时：激活门防抖窗内不处理签退侧，
+            // 避免首刷激活后紧接的重复刷卡先命中签退逻辑、删掉 ACTIVATED 行再误排程延时签退。
+            boolean allowActivatedReswipeExit = true;
+            if (hitToggleRule) {
+                DahuaActivationState toggleRow =
+                        dahuaSwingMapper.findActivationState(GLOBAL_RULE_TASK_ID, userId, channelCode);
+                if (toggleRow != null && "ACTIVATED".equalsIgnoreCase(str(toggleRow.getState()))) {
+                    LocalDateTime toggleDebounceUntil = parse(toggleRow.getDebounceUntil());
+                    if (toggleDebounceUntil != null && now.isBefore(toggleDebounceUntil)) {
+                        allowActivatedReswipeExit = false;
+                        log.info("[swing-rule] skip-reswipe-exit-under-toggle-debounce userId={} channel={} until={}",
+                                userId, channelCode, toggleRow.getDebounceUntil());
+                    }
+                }
+            }
+            if (allowActivatedReswipeExit) {
+                DahuaActivationState existingSameChannel =
+                        dahuaSwingMapper.findActivationState(GLOBAL_RULE_TASK_ID, userId, channelCode);
+                if (existingSameChannel != null && "AUTO_EXIT_SCHEDULED".equalsIgnoreCase(str(existingSameChannel.getState()))) {
+                    LocalDateTime exitDebounceUntil = parse(existingSameChannel.getDebounceUntil());
+                    if (exitDebounceUntil != null && now.isBefore(exitDebounceUntil)) {
+                        log.info("[swing-rule] skip-activated-reswipe-exit-debounce userId={} channel={} until={}",
+                                userId, channelCode, existingSameChannel.getDebounceUntil());
+                        return;
+                    }
+                }
+                dahuaSwingMapper.deleteActivationStatesByUserId(userId);
+                DahuaActivationState state = newStateRow(userId, channelCode);
+                state.setState("AUTO_EXIT_SCHEDULED");
+                state.setScheduledExitAt(fmt(now.plusSeconds(Math.max(0, exitDelay))));
+                state.setLastSwipeAt(fmt(now));
+                state.setLastRecordId(record.getRecordId());
+                state.setCounter(0);
+                state.setDebounceUntil(fmt(now.plusSeconds(Math.max(1, exitDebounceSeconds))));
+                dahuaSwingMapper.upsertActivationState(state);
+                String doorLabelAr = resolveChannelDisplayName(channelCode);
+                twinAutomationLogService.write(
+                        TwinAutomationLogService.TYPE_ACCESS_TRACE,
+                        "LINKAGE_STEP",
+                        "SYSTEM",
+                        TwinAutomationLogService.SWING_ACTIVATED_RESWIPE_EXIT_TIMER_STARTED,
+                        userId,
+                        channelCode,
+                        true,
+                        "延时签退：" + exitDelay + " 秒；计划「" + state.getScheduledExitAt() + "」；"
+                                + (doorLabelAr.isBlank() ? "channel=" + channelCode : doorLabelAr),
+                        "dahua-swing-record"
+                );
+                return;
+            }
         }
         // 仅「激活后再刷门签退」独有（未同时配置为激活门）、且人员尚未激活：忽略。
         // 若该通道也在 toggleChannelCodes 中（同一物理门双角色），须继续走下方激活逻辑以清除 __PENDING_ACTIVATION__。

@@ -14,6 +14,7 @@ import com.example.demo.modules.twin.service.RpgEngineService;
 import com.example.demo.modules.twin.service.TwinScanService;
 import com.example.demo.modules.twin.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.service.DahuaSwingRuleConfigService;
+import com.example.demo.modules.twin.service.TwinStudentViolationService;
 import com.example.demo.modules.twin.service.WebScanExitDahuaLinkageService;
 import com.example.demo.modules.twin.support.ScanPopupEntryWindowEvaluator;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
@@ -64,6 +65,9 @@ public class TwinScanController {
 
     @Autowired
     private WebScanExitDahuaLinkageService webScanExitDahuaLinkageService;
+
+    @Autowired
+    private TwinStudentViolationService twinStudentViolationService;
 
     @Value("${app.access-rule-dahua-debug:false}")
     private boolean accessRuleDahuaDebug;
@@ -134,6 +138,12 @@ public class TwinScanController {
                 return Result.success(result);
             }
 
+            if (accessType == 1 && twinStudentViolationService.isEnterBlocked(userId)) {
+                result.setSuccess(false);
+                result.setMessage("违规处理中：已被禁止进入或进入次数已达上限，请联系管理员在「学生违规管理」中解除。");
+                return Result.success(result);
+            }
+
             // =================================================================
             // 💥 第一关：先让 ARO 官方系统确认并落库！
             // =================================================================
@@ -154,6 +164,11 @@ public class TwinScanController {
             // 避免 twin_dahua_activation_state 残留导致定时器重复探测/重复签退。
             if (accessType == 2) {
                 dahuaSwingRuleEngineService.clearActivationStatesForUser(userId);
+            }
+
+            // ENTER：取消尚未执行的「离开延迟冻结」，避免换房进入解冻后被旧计时器再次冻结
+            if (accessType == 1) {
+                webScanExitDahuaLinkageService.cancelPendingDeferredExitForUser(userId);
             }
 
             // ENTER 必须先解冻，再调用大华 batchAuthority；否则大华会返回“冻结人员不能授权”
@@ -266,6 +281,14 @@ public class TwinScanController {
             }
 
             log.info("[scan-exec] 4/4 ✅ 打卡请求收尾 userId={} 物理卡号={}", userId, physicalCardNo != null ? physicalCardNo : "无");
+
+            if (result.isSuccess() && accessType == 1 && userId != null && !userId.isBlank()) {
+                try {
+                    twinStudentViolationService.recordSuccessfulEnter(userId);
+                } catch (Exception ve) {
+                    log.warn("[scan-exec] 违规进入计数失败 userId={} err={}", userId, ve.getMessage());
+                }
+            }
 
             if (result.isSuccess() && userId != null && !userId.isBlank()) {
                 com.example.demo.modules.twin.entity.TwinCardMapping traceMapping = twinCardMappingService.getByAroUserId(userId);

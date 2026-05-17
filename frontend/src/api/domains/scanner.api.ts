@@ -91,6 +91,31 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
         safe.currentState === "INSIDE"
             ? "INSIDE"
             : (safe.currentState === "UNKNOWN" ? "UNKNOWN" : "OUTSIDE");
+    const nRaw = safe.studentViolationNotice ?? safe.student_violation_notice;
+    let studentViolationNotice: AnalyzeResponse["studentViolationNotice"] | undefined;
+    if (nRaw && typeof nRaw === "object") {
+        const n = nRaw as Record<string, unknown>;
+        const idNum = typeof n.id === "number" ? n.id : Number(n.id);
+        if (Number.isFinite(idNum)) {
+            const urlsRaw = n.imageUrls ?? n.image_urls;
+            const imageUrls = Array.isArray(urlsRaw)
+                ? urlsRaw.filter((x): x is string => typeof x === "string")
+                : [];
+            const remRaw = n.remainingEnterAllowance ?? n.remaining_enter_allowance;
+            let remainingEnterAllowance: number | null | undefined;
+            if (remRaw === null) remainingEnterAllowance = null;
+            else if (typeof remRaw === "number" && Number.isFinite(remRaw)) remainingEnterAllowance = remRaw;
+            else remainingEnterAllowance = undefined;
+            studentViolationNotice = {
+                id: idNum as number,
+                violationText: asString(n.violationText ?? n.violation_text),
+                imageUrls,
+                showNoticeEveryScan: asBooleanLike(n.showNoticeEveryScan ?? n.show_notice_every_scan) ?? true,
+                enterLocked: asBooleanLike(n.enterLocked ?? n.enter_locked) ?? false,
+                remainingEnterAllowance,
+            };
+        }
+    }
     return {
         message: typeof safe.message === "string" ? safe.message : "",
         success: Boolean(safe.success),
@@ -122,6 +147,7 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             asBooleanLike(safe.scanPopupEntryAllowedNow) ??
             asBooleanLike(safe.scan_popup_entry_allowed_now) ??
             true,
+        studentViolationNotice,
     };
 };
 

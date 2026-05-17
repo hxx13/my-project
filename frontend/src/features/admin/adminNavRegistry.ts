@@ -6,6 +6,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  AlertTriangle,
   Archive,
   ArrowLeftRight,
   BarChart3,
@@ -387,6 +388,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         fallbackMinRole: "ADMIN",
         sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/dahua-swing-records", "ADMIN"),
       },
+      {
+        id: "student-violations",
+        path: "/admin/student-violations",
+        label: "学生违规管理",
+        icon: AlertTriangle,
+        homeTone: "from-amber-600 to-orange-700",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/student-violations", "ADMIN"),
+      },
     ],
   },
   {
@@ -550,7 +560,8 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p === "/admin/aro-rooms" ||
     p.startsWith("/admin/access-rules") ||
     p.startsWith("/admin/schedule-manager") ||
-    p.startsWith("/admin/dahua-swing-")
+    p.startsWith("/admin/dahua-swing-") ||
+    p === "/admin/student-violations"
   ) {
     return "ARO 房间与联动";
   }

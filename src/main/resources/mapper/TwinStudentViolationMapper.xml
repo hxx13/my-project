@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.TwinStudentViolationMapper">
+
+    <resultMap id="TwinStudentViolationMap" type="com.example.demo.modules.twin.entity.TwinStudentViolation">
+        <id column="id" property="id"/>
+        <result column="target_user_id" property="targetUserId"/>
+        <result column="violation_text" property="violationText"/>
+        <result column="image_urls" property="imageUrls"/>
+        <result column="forbid_enter" property="forbidEnter"/>
+        <result column="max_enter_success" property="maxEnterSuccess"/>
+        <result column="enter_success_count" property="enterSuccessCount"/>
+        <result column="show_notice_every_scan" property="showNoticeEveryScan"/>
+        <result column="expire_at" property="expireAt"/>
+        <result column="status" property="status"/>
+        <result column="created_by_user_id" property="createdByUserId"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+        <result column="cleared_at" property="clearedAt"/>
+        <result column="cleared_by_user_id" property="clearedByUserId"/>
+    </resultMap>
+
+    <update id="expireActivePastDue">
+        UPDATE twin_student_violation
+        SET status = 'EXPIRED', updated_at = NOW()
+        WHERE status = 'ACTIVE'
+          AND expire_at IS NOT NULL
+          AND expire_at &lt; NOW()
+    </update>
+
+    <update id="supersedeActiveByTargetUserId">
+        UPDATE twin_student_violation
+        SET status = 'SUPERSEDED',
+            cleared_at = NOW(),
+            cleared_by_user_id = 'SYSTEM',
+            updated_at = NOW()
+        WHERE target_user_id = #{targetUserId}
+          AND status = 'ACTIVE'
+    </update>
+
+    <select id="selectActiveByTargetUserId" resultMap="TwinStudentViolationMap">
+        SELECT *
+        FROM twin_student_violation
+        WHERE target_user_id = #{targetUserId}
+          AND status = 'ACTIVE'
+          AND (expire_at IS NULL OR expire_at &gt; NOW())
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO twin_student_violation (
+            target_user_id, violation_text, image_urls,
+            forbid_enter, max_enter_success, enter_success_count, show_notice_every_scan,
+            expire_at, status, created_by_user_id
+        ) VALUES (
+            #{targetUserId}, #{violationText}, #{imageUrls},
+            #{forbidEnter}, #{maxEnterSuccess}, #{enterSuccessCount}, #{showNoticeEveryScan},
+            #{expireAt}, #{status}, #{createdByUserId}
+        )
+    </insert>
+
+    <update id="updateClearById">
+        UPDATE twin_student_violation
+        SET status = 'CLEARED',
+            cleared_at = NOW(),
+            cleared_by_user_id = #{clearedByUserId},
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status = 'ACTIVE'
+    </update>
+
+    <update id="markProcessedById">
+        UPDATE twin_student_violation
+        SET status = 'PROCESSED',
+            cleared_at = NOW(),
+            cleared_by_user_id = #{operatorUserId},
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status = 'ACTIVE'
+    </update>
+
+    <update id="incrementEnterSuccess">
+        UPDATE twin_student_violation
+        SET enter_success_count = enter_success_count + 1,
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status = 'ACTIVE'
+    </update>
+
+    <select id="selectRecent" resultMap="TwinStudentViolationMap">
+        SELECT *
+        FROM twin_student_violation
+        <where>
+            <if test="targetUserId != null and targetUserId != ''">
+                AND target_user_id = #{targetUserId}
+            </if>
+        </where>
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectById" resultMap="TwinStudentViolationMap">
+        SELECT * FROM twin_student_violation WHERE id = #{id}
+    </select>
+
+    <update id="updateEditableById">
+        UPDATE twin_student_violation
+        SET violation_text = #{violationText},
+            image_urls = #{imageUrls},
+            forbid_enter = #{forbidEnter},
+            max_enter_success = #{maxEnterSuccess},
+            show_notice_every_scan = #{showNoticeEveryScan},
+            expire_at = #{expireAt},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM twin_student_violation WHERE id = #{id}
+    </delete>
+</mapper>

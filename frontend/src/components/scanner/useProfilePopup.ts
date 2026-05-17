@@ -104,6 +104,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     const entryTimeBlocked = Boolean(
         result?.scanPopupEntryWindowEnabled && result?.scanPopupEntryAllowedNow === false
     );
+    const violationEnterLocked = Boolean(result?.studentViolationNotice?.enterLocked);
 
     const [showRiskModal, setShowRiskModal] = useState(false);
     const [isAvatarLoaded, setAvatarLoaded] = useState(true);
@@ -394,7 +395,8 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
                 room.isDisabled ||
                 globalUserState === 3 ||
                 (action === "ENTER" && isRoomFull(room)) ||
-                (action === "ENTER" && entryTimeBlocked)
+                (action === "ENTER" && entryTimeBlocked) ||
+                (action === "ENTER" && violationEnterLocked)
         );
     const getButtonText = (room: RoomInfo, roomId: string): string => {
         const isActed = actedRoomId === roomId || autoActionRoomId === roomId;
@@ -407,6 +409,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         if (globalUserState === 3) return action === "EXIT" ? `[滞留封禁] 无法操作 ${room.displayName}` : `[已封禁] 拒绝进入 ${room.displayName}`;
         if (action === "ENTER" && isRoomFull(room)) return `[满员] 无法进入 ${room.displayName}`;
         if (action === "ENTER" && entryTimeBlocked) return `[非开放时段] 无法进入 ${room.displayName}`;
+        if (action === "ENTER" && violationEnterLocked) return `[违规处理] 禁止进入 ${room.displayName}`;
         if (room.isDisabled) return `[禁入] ${room.displayName}`;
         return action === "ENTER" ? `进入 ${room.displayName}` : `离开 ${room.displayName}`;
     };

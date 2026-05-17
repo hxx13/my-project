@@ -61,6 +61,16 @@
         LIMIT 1
     </select>
 
+    <select id="findPersonnelNamesByUserIds" resultType="java.util.HashMap">
+        SELECT user_id AS userId, MIN(name) AS name
+        FROM aro_personnel
+        WHERE user_id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        GROUP BY user_id
+    </select>
+
     <select id="countAccessLogsOnDay" resultType="int">
         SELECT COUNT(*)
         FROM aro_access_log

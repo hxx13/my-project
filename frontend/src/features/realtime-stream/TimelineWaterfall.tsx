@@ -282,7 +282,8 @@ export function TimelineWaterfall() {
     const setEvents = useEventStore((state) => state.setEvents);
     const [provOpen, setProvOpen] = useState<{ evt: UniversalEvent; rect: DOMRect } | null>(null);
     const sf = useDashboardSciFiVisual();
-    const showPersonnelSearch = hasMinRole(authStorage.getRole() || "STUDENT", "STAFF");
+    /** 学生首页仅浏览流水；人员预检与单条「溯源详情」仅员工及以上 */
+    const showStaffFeedTools = hasMinRole(authStorage.getRole() || "STUDENT", "STAFF");
 
     const openProvenance = useCallback((evt: UniversalEvent, el: HTMLElement | null) => {
         if (!el) return;
@@ -366,7 +367,7 @@ export function TimelineWaterfall() {
                     </span>
                 </div>
 
-                {showPersonnelSearch ? (
+                {showStaffFeedTools ? (
                     <div className="relative w-[40px] h-[40px] shrink-0 z-[100] mr-1">
                         <PersonnelSearchDropdown />
                     </div>
@@ -522,22 +523,24 @@ export function TimelineWaterfall() {
                                         </span>
                                     )}
 
-                                    <button
-                                        type="button"
-                                        className={`relative z-10 ml-auto shrink-0 rounded-full p-1 transition-colors ${
-                                            sf
-                                                ? "text-cyan-400/80 hover:bg-cyan-500/15 hover:text-cyan-200"
-                                                : "text-slate-400 hover:bg-slate-200/80 hover:text-slate-700"
-                                        }`}
-                                        title="溯源详情（锚点弹窗）"
-                                        aria-label="溯源详情"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            openProvenance(evt, e.currentTarget);
-                                        }}
-                                    >
-                                        <Info className="h-3.5 w-3.5" />
-                                    </button>
+                                    {showStaffFeedTools ? (
+                                        <button
+                                            type="button"
+                                            className={`relative z-10 ml-auto shrink-0 rounded-full p-1 transition-colors ${
+                                                sf
+                                                    ? "text-cyan-400/80 hover:bg-cyan-500/15 hover:text-cyan-200"
+                                                    : "text-slate-400 hover:bg-slate-200/80 hover:text-slate-700"
+                                            }`}
+                                            title="溯源详情（锚点弹窗）"
+                                            aria-label="溯源详情"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                openProvenance(evt, e.currentTarget);
+                                            }}
+                                        >
+                                            <Info className="h-3.5 w-3.5" />
+                                        </button>
+                                    ) : null}
                                 </div>
                             </motion.div>
                         );

@@ -48,6 +48,7 @@ import AdminScheduleManagerPage from "@/pages/AdminScheduleManagerPage";
 import AdminDahuaSwingTasksPage from "@/pages/AdminDahuaSwingTasksPage";
 import AdminDahuaSwingRecordsPage from "@/pages/AdminDahuaSwingRecordsPage";
 import AdminDahuaSwingRulesPage from "@/pages/AdminDahuaSwingRulesPage";
+import AdminStudentViolationsPage from "@/pages/AdminStudentViolationsPage";
 import AdminDoorControlPage from "@/pages/AdminDoorControlPage";
 import AdminCageShelfPage from "@/pages/AdminCageShelfPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
@@ -188,6 +189,7 @@ export const router = createHashRouter([
                                     { path: "dahua-swing-tasks", element: <AdminDahuaSwingTasksPage/>},
                                     { path: "dahua-swing-rules", element: <AdminDahuaSwingRulesPage/>},
                                     { path: "dahua-swing-records", element: <AdminDahuaSwingRecordsPage/>},
+                                    { path: "student-violations", element: <AdminStudentViolationsPage/>},
                                     { path: "supplies", element: <AdminSuppliesMallPage/>},
                                     { path: "supplies/mine", element: <AdminSuppliesMinePage/>},
                                     { path: "supplies/claim-export", element: <AdminSuppliesClaimExportPage/>},

@@ -47,6 +47,18 @@ export interface AnalyzeResponse {
     scanPopupEntryWindowEnabled?: boolean;
     /** 当前时间是否在允许打卡的时段内 */
     scanPopupEntryAllowedNow?: boolean;
+    /** 管理员下发的违规通告（扫码弹窗覆盖展示） */
+    studentViolationNotice?: StudentViolationNotice;
+}
+
+export interface StudentViolationNotice {
+    id: number;
+    violationText?: string;
+    imageUrls?: string[];
+    showNoticeEveryScan?: boolean;
+    enterLocked?: boolean;
+    /** 剩余允许成功进入次数；未配置上限时为 undefined */
+    remainingEnterAllowance?: number | null;
 }
 
 export interface ExecutePayload {

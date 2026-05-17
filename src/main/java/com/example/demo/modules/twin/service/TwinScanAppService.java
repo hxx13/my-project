@@ -44,6 +44,9 @@ public class TwinScanAppService {
     @Autowired
     private DahuaSwingRuleConfigService dahuaSwingRuleConfigService;
 
+    @Autowired
+    private TwinStudentViolationService twinStudentViolationService;
+
     @Value("${app.business-timezone:Asia/Shanghai}")
     private String businessTimeZone;
 
@@ -160,6 +163,11 @@ public class TwinScanAppService {
             }
             result.setScanPopupEntryWindowEnabled(ScanPopupEntryWindowEvaluator.isWindowEnabled(swingCfg));
             result.setScanPopupEntryAllowedNow(ScanPopupEntryWindowEvaluator.isExecuteAllowedNow(swingCfg, winZone));
+            try {
+                result.setStudentViolationNotice(twinStudentViolationService.buildNotice(realPhysicalId));
+            } catch (Exception e) {
+                log.warn("[scan-flow:{}] 违规通告加载失败 userId={} err={}", traceId, realPhysicalId, e.getMessage());
+            }
             result.setSuccess(true);
             long costPre = Duration.between(startAt, LocalDateTime.now()).toMillis();
             log.info(

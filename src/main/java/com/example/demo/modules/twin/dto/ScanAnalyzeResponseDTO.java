@@ -22,4 +22,6 @@ public class ScanAnalyzeResponseDTO {
     private Boolean scanPopupEntryWindowEnabled;
     /** 当前是否处于允许打卡的时段内（未启用限制时为 true） */
     private Boolean scanPopupEntryAllowedNow;
+    /** 学生违规通告（管理员下发）；无则 null */
+    private ScanStudentViolationNoticeDTO studentViolationNotice;
 }
