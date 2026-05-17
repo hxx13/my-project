@@ -13,6 +13,10 @@ public class TwinAccessRuleScanConfigRow {
     private Integer enterDispatchEnabled;
     /** 1=离开扫码时执行门禁规则回收 */
     private Integer exitDispatchEnabled;
+    /** 1=进入扫码时解冻物理卡 */
+    private Integer enterUnfreezeEnabled;
+    /** 1=离开扫码/自动签退时冻结物理卡 */
+    private Integer exitFreezeEnabled;
     private String updatedBy;
     private LocalDateTime updatedAt;
 }

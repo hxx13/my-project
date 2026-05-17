@@ -1,0 +1,26 @@
+# 新增 Twin 业务模块时复制本模板到 skills/modules/{module}/skill-{module}.yaml
+
+skill:
+  id: "skill-{module}"
+  name: "{模块中文名}"
+  version: "1.0.0"
+  module_path: "src/main/java/com/example/demo/modules/{module}"
+  created_at: ""
+
+philosophy:
+  business_position: ""
+  design_principles: []
+
+architecture:
+  controllers: []
+  services: []
+  mappers: []
+  depends_on: []
+
+data_model:
+  tables: []
+
+code_patterns:
+  examples: []
+
+cautions: []

@@ -9,14 +9,25 @@ import {
 import { useAnalyzeScanMutation, useExecuteAccessMutation } from '@/api/hooks/useScanner';
 import type { AnalyzeResponse, RoomInfo } from '@/api/types/scanner';
 import {UiverseProfilePopup} from '@/components/scanner/UiverseProfilePopup';
+import { StudentDahuaBindPanel } from '@/components/scanner/StudentDahuaBindPanel';
 import { PopupErrorBoundary } from '@/components/scanner/PopupErrorBoundary';
 import {CreditCard } from 'lucide-react';
 import { authStorage } from '@/features/auth/authStorage';
 import { hasMinRole } from '@/features/auth/roleAccess';
 import { TwinThemePickerPanel } from '@/features/twin-chrome/TwinThemePickerPanel';
 import { useTwinChromeTheme } from '@/features/twin-chrome/TwinChromeThemeContext';
+import type { ExecutePayload } from '@/api/types/scanner';
+import {
+    cancelScheduledAutoExit,
+    canScheduleAutoExit,
+    noteScanExecuteSuccess,
+    scheduleAutoExit,
+    setScanExecutePending,
+    setScanPopupSession,
+    tryBeginScanChannel,
+} from '@/components/scanner/scanSessionGuard';
 
-const DEBUG_NAV_RUNTIME_STAMP = "debug-nav-runtime-2026-04-16-r3";
+const DEBUG_NAV_RUNTIME_STAMP = "debug-nav-runtime-2026-04-16-r4";
 
 export default function DebugNav() {
     const navigate = useNavigate();
@@ -31,8 +42,11 @@ export default function DebugNav() {
     const [errorMsg, setErrorMsg] = useState('');
     const [executeErrorMessage, setExecuteErrorMessage] = useState('');
     const [lastScannedId, setLastScannedId] = useState('');
+    const lastScannedIdRef = useRef('');
 
     const [activeResult, setActiveResult] = useState<AnalyzeResponse | null>(null);
+    const [studentBindOpen, setStudentBindOpen] = useState(false);
+    const [studentBindTarget, setStudentBindTarget] = useState<{ userId: string; userName: string } | null>(null);
     const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // =========================================================
@@ -71,6 +85,8 @@ export default function DebugNav() {
             }
             setActiveResult(data);
             resetCloseTimer();
+            const uid = data.userInfo?.userId ? String(data.userInfo.userId) : "";
+            setScanPopupSession(uid || null, lastScannedIdRef.current);
             // 每次扫码清空上一个视觉钢印
             setAutoActionRoomId('');
 
@@ -80,8 +96,14 @@ export default function DebugNav() {
             const isBanned = Number(data.globalUserState) === 3;
 
             // 💥 终极拦截：只有真实硬件扫码 + 在馆内 + 【绝对没有被封禁】，才允许触发全自动签退！
-            // 只要被封禁了，哪怕他困在里面，也必须老老实实面对红黑风控面板，别想偷偷溜走！
-            if (data.currentState === 'INSIDE' && isHardwareScanRef.current && !isBanned) {
+            // 刚完成「进入」或弹窗内重复扫：canScheduleAutoExit / tryBeginScanChannel 已拦截，避免手抖连扫误离开
+            if (
+                data.currentState === 'INSIDE'
+                && isHardwareScanRef.current
+                && !isBanned
+                && uid
+                && canScheduleAutoExit(uid, lastScannedIdRef.current)
+            ) {
                 const targetRoom = data.pendingRooms?.[0];
                 if (targetRoom) {
                     const roomId = (targetRoom as RoomInfo).officialRoomId || targetRoom.id;
@@ -89,11 +111,14 @@ export default function DebugNav() {
                     // 在倒计时开始前，立刻给弹窗盖上视觉钢印
                     setAutoActionRoomId(roomId);
 
-                    setTimeout(() => {
-                        executeMutation.mutate({
+                    scheduleAutoExit(() => {
+                        runExecute({
                             userId: data.userInfo.userId,
                             roomId: roomId,
-                            action: 'EXIT'
+                            action: 'EXIT',
+                            isSharedCard: false,
+                            isKeepCard: false,
+                            isBorrowedCard: false,
                         });
                     }, 2000);
                 }
@@ -108,12 +133,15 @@ export default function DebugNav() {
     });
 
     const executeMutation = useExecuteAccessMutation({
-        onSuccess: (data) => {
+        onSuccess: (data, variables) => {
             const failedMessage = data.success === false ? (data.message || data.msg || '操作被拒绝') : '';
             setExecuteErrorMessage(failedMessage);
             if (failedMessage) {
                 setErrorMsg(failedMessage);
                 return;
+            }
+            if (variables?.userId && variables?.action) {
+                noteScanExecuteSuccess(variables.userId, lastScannedIdRef.current, variables.action);
             }
             resetCloseTimer();
         },
@@ -124,13 +152,28 @@ export default function DebugNav() {
             setErrorMsg(message);
             setExecuteErrorMessage(message);
             isHardwareScanRef.current = false;
-        }
+        },
     });
+
+    const runExecute = (payload: ExecutePayload) => {
+        setScanExecutePending(payload.userId);
+        executeMutation.mutate(payload, {
+            onSettled: () => setScanExecutePending(null),
+        });
+    };
 
     const handleScanAction = (code: string) => {
         const cleanValue = String(code).trim();
         if (!cleanValue) return;
 
+        const guard = tryBeginScanChannel(cleanValue, activeResult?.userInfo?.userId);
+        if (!guard.allow) {
+            setErrorMsg(guard.message);
+            isHardwareScanRef.current = false;
+            return;
+        }
+
+        lastScannedIdRef.current = cleanValue;
         setLastScannedId(cleanValue);
         setErrorMsg('');
         setExecuteErrorMessage('');
@@ -241,6 +284,7 @@ export default function DebugNav() {
             <AnimatePresence>
                 {activeResult && (
                     <PopupErrorBoundary onClose={() => {
+                        setStudentBindOpen(false);
                         setActiveResult(null);
                         analyzeMutation.reset();
                         executeMutation.reset();
@@ -251,16 +295,19 @@ export default function DebugNav() {
                         <UiverseProfilePopup
                             result={activeResult}
                             onClose={() => {
+                                setStudentBindOpen(false);
                                 setActiveResult(null);
                                 analyzeMutation.reset();
                                 executeMutation.reset();
                                 if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
                                 setInputValue('');
+                                setScanPopupSession(null, null);
+                                cancelScheduledAutoExit();
 
                                 // 💥 关窗时清空视觉钢印
                                 setAutoActionRoomId('');
                             }}
-                            onExecute={(payload) => executeMutation.mutate(payload)}
+                            onExecute={(payload) => runExecute(payload)}
                             isWorking={executeMutation.isPending}
                             executeData={executeMutation.data}
                             executeErrorMessage={executeErrorMessage}
@@ -272,13 +319,47 @@ export default function DebugNav() {
                                 }
                             }}
                             onExecuteReset={() => executeMutation.reset()}
-
+                            onOpenStudentBind={() => {
+                                const uid = activeResult.userInfo?.userId;
+                                if (!uid) return;
+                                setStudentBindTarget({
+                                    userId: uid,
+                                    userName: activeResult.userInfo?.name || "",
+                                });
+                                setStudentBindOpen(true);
+                                setActiveResult(null);
+                                analyzeMutation.reset();
+                                executeMutation.reset();
+                                if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+                            }}
                             // 💥 3. 核心修复：把钢印通过 Props 传给弹窗
                             autoActionRoomId={autoActionRoomId}
                         />
                     </PopupErrorBoundary>
                 )}
             </AnimatePresence>
+            {studentBindOpen && studentBindTarget ? (
+                <StudentDahuaBindPanel
+                    userId={studentBindTarget.userId}
+                    userName={studentBindTarget.userName}
+                    onCancel={() => {
+                        setStudentBindOpen(false);
+                        setStudentBindTarget(null);
+                    }}
+                    onSuccess={() => {
+                        setStudentBindOpen(false);
+                        setStudentBindTarget(null);
+                        setActiveResult(null);
+                        setExecuteErrorMessage('');
+                        setInputValue('');
+                        setLastScannedId('');
+                        setAutoActionRoomId('');
+                        analyzeMutation.reset();
+                        executeMutation.reset();
+                        if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+                    }}
+                />
+            ) : null}
 
             {/* 核心 Dock 容器 */}
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex flex-col items-center">

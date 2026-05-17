@@ -834,6 +834,8 @@ CREATE TABLE IF NOT EXISTS twin_access_rule_scan_config (
     id INT NOT NULL PRIMARY KEY COMMENT '固定 1 行全局配置',
     enter_dispatch_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=扫码进入时执行门禁规则大华批量下发',
     exit_dispatch_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=扫码离开时执行门禁规则大华权限回收',
+    enter_unfreeze_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=扫码进入时解冻物理卡(大华人员解冻)',
+    exit_freeze_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=扫码/自动签退离开时冻结物理卡',
     updated_by VARCHAR(64) NULL,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码进出是否执行门禁规则（大华联动）全局开关';

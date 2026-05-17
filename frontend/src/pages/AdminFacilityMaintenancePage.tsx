@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { ArrowDown, ArrowUp, Download, Plus, RefreshCw, Settings, Trash2, Upload } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, Download, Plus, RefreshCw, Settings, Trash2, Upload } from "lucide-react";
 import DailyInspectionPanel from "@/components/facility-maintenance/DailyInspectionPanel";
 import { AdminToolbar, AdminToolbarActions } from "@/components/admin/AdminToolbar";
+import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
+import { AdminSelect } from "@/components/admin/AdminSelect";
+import { adminLabelClass } from "@/features/admin/adminFormUi";
 import {
   createFmConsumableLine,
   createFmConsumableCatalog,
@@ -262,12 +266,26 @@ export default function AdminFacilityMaintenancePage() {
       if (siteEdit) {
         await patchFmSite(siteEdit.id, { name: siteName.trim(), code: siteCode.trim() || null, sortOrder: siteOrder });
         toast.success("已保存");
+        const id = siteEdit.id;
+        setSiteOpen(false);
+        // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
+        setSites((prev) =>
+          prev.map((s) =>
+            s.id === id
+              ? { ...s, name: siteName.trim(), code: siteCode.trim() || undefined, sortOrder: siteOrder }
+              : s
+          )
+        );
       } else {
-        await createFmSite({ name: siteName.trim(), code: siteCode.trim() || undefined, sortOrder: siteOrder });
+        const created = await createFmSite({ name: siteName.trim(), code: siteCode.trim() || undefined, sortOrder: siteOrder });
         toast.success("已创建");
+        setSiteOpen(false);
+        // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
+        setSites((prev) => [
+          ...prev,
+          { id: created.id, name: siteName.trim(), code: siteCode.trim() || undefined, sortOrder: siteOrder },
+        ]);
       }
-      setSiteOpen(false);
-      await loadSites();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -407,7 +425,7 @@ export default function AdminFacilityMaintenancePage() {
   const [cNote, setCNote] = useState("");
   const saveCons = async () => {
     try {
-      await createFmConsumableLine({
+      const created = await createFmConsumableLine({
         siteId: cSite,
         consumableName: cName,
         qty: Number(cQty),
@@ -417,7 +435,19 @@ export default function AdminFacilityMaintenancePage() {
       });
       toast.success("已添加");
       setCOpen(false);
-      await refresh();
+      const siteMeta = sites.find((s) => s.id === cSite);
+      const newRow: Record<string, unknown> = {
+        id: created.id,
+        occurredAt: toLocalWallClockFromDate(new Date()),
+        siteName: siteMeta?.name ?? "",
+        consumableName: cName,
+        qty: Number(cQty),
+        unit: cUnit,
+        createdByName: "",
+        note: cNote || undefined,
+      };
+      // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
+      setConsData((prev) => (prev ? { ...prev, rows: [newRow, ...prev.rows], total: prev.total + 1 } : prev));
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -431,7 +461,7 @@ export default function AdminFacilityMaintenancePage() {
   const [rNote, setRNote] = useState("");
   const saveRep = async () => {
     try {
-      await createFmReplacementRecord({
+      const created = await createFmReplacementRecord({
         siteId: rSite,
         filterType: rType,
         replacedAt: datetimeLocalValueToBackendPayload(rAt),
@@ -439,7 +469,18 @@ export default function AdminFacilityMaintenancePage() {
       });
       toast.success("已添加");
       setROpen(false);
-      await refresh();
+      const siteMeta = sites.find((s) => s.id === rSite);
+      const newRow: Record<string, unknown> = {
+        id: created.id,
+        replacedAt: datetimeLocalValueToBackendPayload(rAt),
+        siteName: siteMeta?.name ?? "",
+        filterType: rType,
+        daysSincePrevious: null,
+        createdByName: "",
+        note: rNote || undefined,
+      };
+      // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
+      setRepData((prev) => (prev ? { ...prev, rows: [newRow, ...prev.rows], total: prev.total + 1 } : prev));
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -493,37 +534,38 @@ export default function AdminFacilityMaintenancePage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <div className="mx-auto max-w-[1400px] space-y-4">
-        <AdminToolbar className="items-start justify-between gap-y-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-bold text-slate-900">检查维护</h1>
-            <p className="text-sm text-slate-500">巡查表、耗材与更换台账；站点与模板在「设置」中维护。</p>
-          </div>
-          <AdminToolbarActions>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm hover:bg-slate-50"
-              title="机房 / 模板 / 耗材名目 / 更换类型等"
-              onClick={() => {
-                setSettingsTab("sites");
-                setSettingsOpen(true);
-              }}
-            >
-              <Settings className="h-4 w-4" /> 设置
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm hover:bg-slate-50"
-              onClick={() => void refresh()}
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              刷新
-            </button>
-          </AdminToolbarActions>
-        </AdminToolbar>
-
-        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <AdminPageShell
+      title={
+        <span className="inline-flex items-center gap-2">
+          <Activity className="h-6 w-6 shrink-0 text-emerald-600" aria-hidden />
+          检查维护
+        </span>
+      }
+      description="巡查表、耗材与更换台账；站点与模板在「设置」中维护。"
+      actions={
+        <>
+          <AdminButton
+            type="button"
+            tone="secondary"
+            className="inline-flex items-center gap-2"
+            title="机房 / 模板 / 耗材名目 / 更换类型等"
+            onClick={() => {
+              setSettingsTab("sites");
+              setSettingsOpen(true);
+            }}
+          >
+            <Settings className="h-4 w-4" aria-hidden /> 设置
+          </AdminButton>
+          <AdminButton type="button" tone="secondary" className="inline-flex items-center gap-2" onClick={() => void refresh()}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
+            刷新
+          </AdminButton>
+        </>
+      }
+    >
+    <div className="mx-auto max-w-[1400px] space-y-4">
+        <AdminFormCard title="台账类型" description="在巡查表、耗材登记与更换记录之间切换。">
+        <div className="flex flex-wrap gap-2">
           {LEDGER_TABS.map((t) => (
             <button
               key={t.key}
@@ -537,19 +579,18 @@ export default function AdminFacilityMaintenancePage() {
             </button>
           ))}
         </div>
+        </AdminFormCard>
 
         {(tab === "consumables" || tab === "replacements") && (
-          <AdminToolbar className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-            <span className="shrink-0 text-sm text-slate-600">筛选机房</span>
-            <select
-              className="min-w-0 max-w-full rounded-md border border-slate-200 px-2 py-1 text-sm sm:max-w-xs"
-              value={filterSiteId}
-              onChange={(e) => setFilterSiteId(e.target.value)}
-            >
-              <option value="">全部</option>
-              {siteOptions}
-            </select>
-          </AdminToolbar>
+          <AdminFormCard title="筛选" description="按机房缩小当前台账列表。">
+            <label className="flex max-w-xs flex-col gap-1">
+              <span className={adminLabelClass}>机房</span>
+              <AdminSelect value={filterSiteId} onChange={(e) => setFilterSiteId(e.target.value)}>
+                <option value="">全部</option>
+                {siteOptions}
+              </AdminSelect>
+            </label>
+          </AdminFormCard>
         )}
 
         {settingsOpen && (
@@ -636,7 +677,8 @@ export default function AdminFacilityMaintenancePage() {
                                 try {
                                   await patchFmSite(s.id, { disabled: 1 });
                                   toast.success("已停用");
-                                  await loadSites();
+                                  // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
+                                  setSites((prev) => prev.map((x) => (x.id === s.id ? { ...x, disabled: 1 } : x)));
                                 } catch (e) {
                                   toast.error((e as Error).message);
                                 }
@@ -652,7 +694,8 @@ export default function AdminFacilityMaintenancePage() {
                                 try {
                                   await patchFmSite(s.id, { disabled: 0 });
                                   toast.success("已启用");
-                                  await loadSites();
+                                  // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
+                                  setSites((prev) => prev.map((x) => (x.id === s.id ? { ...x, disabled: 0 } : x)));
                                 } catch (e) {
                                   toast.error((e as Error).message);
                                 }
@@ -674,7 +717,8 @@ export default function AdminFacilityMaintenancePage() {
                               try {
                                 await deleteFmSitePermanent(s.id);
                                 toast.success("已删除");
-                                await loadSites();
+                                // 删除后仅从列表移除该行，禁止整表 load（post-save-no-full-refresh.mdc）
+                                setSites((prev) => prev.filter((x) => x.id !== s.id));
                               } catch (e) {
                                 toast.error((e as Error).message);
                               }
@@ -1101,7 +1145,16 @@ export default function AdminFacilityMaintenancePage() {
                           try {
                             await deleteFmConsumableLine(String(row.id));
                             toast.success("已删除");
-                            await refresh();
+                            // 删除后仅从列表移除该行，禁止整表 load（post-save-no-full-refresh.mdc）
+                            setConsData((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    rows: prev.rows.filter((x) => String(x.id) !== String(row.id)),
+                                    total: Math.max(0, prev.total - 1),
+                                  }
+                                : prev
+                            );
                           } catch (e) {
                             toast.error((e as Error).message);
                           }
@@ -1185,7 +1238,16 @@ export default function AdminFacilityMaintenancePage() {
                           try {
                             await deleteFmReplacementRecord(String(row.id));
                             toast.success("已删除");
-                            await refresh();
+                            // 删除后仅从列表移除该行，禁止整表 load（post-save-no-full-refresh.mdc）
+                            setRepData((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    rows: prev.rows.filter((x) => String(x.id) !== String(row.id)),
+                                    total: Math.max(0, prev.total - 1),
+                                  }
+                                : prev
+                            );
                           } catch (e) {
                             toast.error((e as Error).message);
                           }
@@ -1476,6 +1538,6 @@ export default function AdminFacilityMaintenancePage() {
           </div>
         </div>
       )}
-    </div>
+    </AdminPageShell>
   );
 }

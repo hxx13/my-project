@@ -1,0 +1,87 @@
+# Twin System Skill 索引
+# 参考：d:\codex\verson.1.2\yudao-skill-pro-main\skills\index.yaml
+
+skills:
+  twin:
+    name: "孪生门禁与自动化"
+    path: "skills/modules/twin/skill-twin.yaml"
+    package: "com.example.demo.modules.twin"
+    status: "completed"
+    priority: 1
+
+  telemetry:
+    name: "遥测与动物房 WinCC"
+    path: "skills/modules/telemetry/skill-telemetry.yaml"
+    package: "com.example.demo.modules.telemetry"
+    status: "completed"
+    priority: 1
+
+  auth:
+    name: "认证与用户"
+    path: "skills/modules/auth/skill-auth.yaml"
+    package: "com.example.demo.modules.auth"
+    status: "completed"
+    priority: 1
+
+  dahua:
+    name: "大华硬件与门禁"
+    path: "skills/modules/dahua/skill-dahua.yaml"
+    package: "com.example.demo.modules.dahua"
+    status: "completed"
+    priority: 2
+
+  accessrule:
+    name: "通行规则下发"
+    path: "skills/modules/accessrule/skill-accessrule.yaml"
+    package: "com.example.demo.modules.accessrule"
+    status: "completed"
+    priority: 2
+
+  pagepermission:
+    name: "页面权限（Web/小程序）"
+    path: "skills/modules/pagepermission/skill-pagepermission.yaml"
+    package: "com.example.demo.modules.pagepermission"
+    status: "completed"
+    priority: 2
+
+  notification:
+    name: "通知与外部通信"
+    path: "skills/modules/notification/skill-notification.yaml"
+    package: "com.example.demo.modules.notification"
+    status: "draft"
+    priority: 3
+
+design:
+  db:
+    name: "数据库设计"
+    path: "skills/design/db-designer.yaml"
+    cursor_rule: ".cursor/rules/db-schema-ddl-mandatory.mdc"
+  entity:
+    name: "实体与 Mapper"
+    path: "skills/design/entity-designer.yaml"
+  api:
+    name: "REST API"
+    path: "skills/design/api-designer.yaml"
+  crud:
+    name: "CRUD 分层"
+    path: "skills/design/crud-designer.yaml"
+  frontend:
+    name: "管理端前端"
+    path: "skills/design/frontend-designer.yaml"
+
+usage:
+  index: "skills/usage/index.md"
+  quick_start: "skills/usage/quick-start.md"
+  entity_impl: "skills/usage/entity-implementation.md"
+  refactor: "skills/usage/refactor-module.md"
+
+reference_external:
+  yudao_skills_root: "d:\\codex\\verson.1.2\\yudao-skill-pro-main\\skills"
+  note: "仅作模式参考，实现以本仓库 skills/ 为准"
+
+metadata:
+  project: "Twin System"
+  repo_path: "d:\\codex\\verson.1.2\\20260416"
+  stack: "Spring Boot 3.5 + JDK 17 + MyBatis + React(Vite) + 微信小程序 aroapp/"
+  created_at: "2026-05-17"
+  updated_at: "2026-05-17"

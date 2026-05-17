@@ -1,0 +1,49 @@
+skill:
+  id: "skill-auth"
+  name: "Auth 认证与用户"
+  version: "1.0.0"
+  module_path: "src/main/java/com/example/demo/modules/auth"
+  created_at: "2026-05-17"
+
+philosophy:
+  business_position: |
+    Web 账号密码、微信小程序 openId 绑定、员工注册（邀请码）、昵称与密码策略。
+    与 pagepermission（页面级）配合，而非芋道 RBAC 菜单体系。
+
+  design_principles:
+    - "User 实体 + UserMapper（MyBatis）"
+    - "AuthService 签发 token；AuthContextService 解析 Bearer"
+    - "RoleEnum 六级角色，hasMinRole 用于前后端门槛"
+    - "密码：PasswordCredentialService（含 legacy 重哈希）"
+
+architecture:
+  controller: "AuthController @RequestMapping(\"/api/auth\")"
+  key_endpoints:
+    - "POST /api/auth/login/web"
+    - "POST /api/auth/login/wechat"
+    - "POST /api/auth/register/staff（邀请码）"
+    - "PATCH /api/auth/me/display-nickname"
+
+  related_modules:
+    - "modules.invite - RegistrationInviteService"
+    - "modules.me - MiniPreferencesService"
+    - "common.enums.RoleEnum"
+
+security_roadmap:
+  current: "jwt_mock_token_{userId}"
+  target: "真实 JWT + 过滤器；保持 Result 与前端 authStorage 契约"
+  do_not: "整体替换为 yudao Spring Security 菜单权限"
+
+roles:
+  enum: "com.example.demo.common.enums.RoleEnum"
+  levels:
+    - { code: "STUDENT", level: 1 }
+    - { code: "STAFF", level: 2 }
+    - { code: "SENIOR", level: 3 }
+    - { code: "ADMIN", level: 4 }
+    - { code: "SUPER_ADMIN", level: 5 }
+    - { code: "PLATFORM_OWNER", level: 6 }
+
+cautions:
+  - "改 token 格式需同时改 frontend authStorage 与 aroapp 登录缓存"
+  - "用户表变更走 SysUserSchemaMigrator + schema.sql"

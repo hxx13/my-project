@@ -11,10 +11,10 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 扫码门禁「大华 HTTP 派发」全局开关（表 {@code twin_access_rule_scan_config}）。
+ * 扫码门禁联动全局开关（表 {@code twin_access_rule_scan_config}）。
  * <ul>
- *   <li>{@code enter_dispatch_enabled}：仅控制进入时是否调用大华 batch 下发；不控制 ARO 登记、不控制「待激活」联动计时起算、不控制本地物理卡解冻。</li>
- *   <li>{@code exit_dispatch_enabled}：仅控制离开时是否调用大华权限回收接口；不控制 ARO 离开登记、不控制自动签退后的本地冻结（见 {@link com.example.demo.modules.twin.service.DahuaAutoSignoutService}）。</li>
+ *   <li>{@code enter_dispatch_enabled} / {@code exit_dispatch_enabled}：大华 batch 下发 / 权限回收。</li>
+ *   <li>{@code enter_unfreeze_enabled} / {@code exit_freeze_enabled}：物理卡解冻 / 冻结（与 dispatch 正交）。</li>
  * </ul>
  */
 @Service
@@ -24,9 +24,6 @@ public class TwinAccessRuleScanConfigService {
 
     private final TwinAccessRuleScanConfigMapper mapper;
 
-    /**
-     * 依赖 {@link TwinAccessRuleScanConfigSchemaMigrator} 以保证其 {@code @PostConstruct} 先执行并完成建表。
-     */
     public TwinAccessRuleScanConfigService(
             TwinAccessRuleScanConfigMapper mapper,
             TwinAccessRuleScanConfigSchemaMigrator schemaMigrator) {
@@ -43,37 +40,68 @@ public class TwinAccessRuleScanConfigService {
         mapper.insertIgnoreDefault(CONFIG_ID);
     }
 
-    public boolean isEnterDispatchEnabled() {
+    private TwinAccessRuleScanConfigRow loadRow() {
         ensureRow();
         TwinAccessRuleScanConfigRow row = mapper.selectById(CONFIG_ID);
-        return row == null || row.getEnterDispatchEnabled() == null || row.getEnterDispatchEnabled() == 1;
+        if (row == null) {
+            mapper.insertIgnoreDefault(CONFIG_ID);
+            row = mapper.selectById(CONFIG_ID);
+        }
+        if (row == null) {
+            row = new TwinAccessRuleScanConfigRow();
+            row.setEnterDispatchEnabled(1);
+            row.setExitDispatchEnabled(1);
+            row.setEnterUnfreezeEnabled(1);
+            row.setExitFreezeEnabled(1);
+        }
+        return row;
+    }
+
+    private static boolean flagOn(Integer v) {
+        return v == null || v == 1;
+    }
+
+    public boolean isEnterDispatchEnabled() {
+        return flagOn(loadRow().getEnterDispatchEnabled());
     }
 
     public boolean isExitDispatchEnabled() {
-        ensureRow();
-        TwinAccessRuleScanConfigRow row = mapper.selectById(CONFIG_ID);
-        return row == null || row.getExitDispatchEnabled() == null || row.getExitDispatchEnabled() == 1;
+        return flagOn(loadRow().getExitDispatchEnabled());
+    }
+
+    public boolean isEnterUnfreezeEnabled() {
+        return flagOn(loadRow().getEnterUnfreezeEnabled());
+    }
+
+    public boolean isExitFreezeEnabled() {
+        return flagOn(loadRow().getExitFreezeEnabled());
     }
 
     public Map<String, Object> getConfigMap() {
-        ensureRow();
-        TwinAccessRuleScanConfigRow row = mapper.selectById(CONFIG_ID);
+        TwinAccessRuleScanConfigRow row = loadRow();
         Map<String, Object> m = new HashMap<>();
-        boolean enter = row == null || row.getEnterDispatchEnabled() == null || row.getEnterDispatchEnabled() == 1;
-        boolean exit = row == null || row.getExitDispatchEnabled() == null || row.getExitDispatchEnabled() == 1;
-        m.put("enterDispatchEnabled", enter);
-        m.put("exitDispatchEnabled", exit);
-        m.put("updatedBy", row != null ? row.getUpdatedBy() : null);
-        m.put("updatedAt", row != null && row.getUpdatedAt() != null ? row.getUpdatedAt().toString() : null);
+        m.put("enterDispatchEnabled", flagOn(row.getEnterDispatchEnabled()));
+        m.put("exitDispatchEnabled", flagOn(row.getExitDispatchEnabled()));
+        m.put("enterUnfreezeEnabled", flagOn(row.getEnterUnfreezeEnabled()));
+        m.put("exitFreezeEnabled", flagOn(row.getExitFreezeEnabled()));
+        m.put("updatedBy", row.getUpdatedBy());
+        m.put("updatedAt", row.getUpdatedAt() != null ? row.getUpdatedAt().toString() : null);
         return m;
     }
 
-    public Map<String, Object> saveConfig(boolean enterDispatchEnabled, boolean exitDispatchEnabled, String updatedBy) {
+    public Map<String, Object> saveConfig(
+            boolean enterDispatchEnabled,
+            boolean exitDispatchEnabled,
+            boolean enterUnfreezeEnabled,
+            boolean exitFreezeEnabled,
+            String updatedBy) {
         ensureRow();
         mapper.updateConfig(
                 CONFIG_ID,
                 enterDispatchEnabled ? 1 : 0,
                 exitDispatchEnabled ? 1 : 0,
+                enterUnfreezeEnabled ? 1 : 0,
+                exitFreezeEnabled ? 1 : 0,
                 updatedBy != null ? updatedBy : "system"
         );
         return getConfigMap();

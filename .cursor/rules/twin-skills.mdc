@@ -1,0 +1,33 @@
+---
+description: 开发 Twin System 业务代码时加载 skills/ 模块规范与设计规范（参考 yudao-skill-pro 方法论）
+alwaysApply: true
+---
+
+# Twin System Skills 引用
+
+本仓库在 **`skills/`** 维护模块知识库（索引见 `skills/index.yaml`）。外部芋道参考项目位于：
+
+`d:\codex\verson.1.2\yudao-skill-pro-main\skills`（只读，不照搬 CommonResult/tenant/RBAC）。
+
+## Agent 必须遵守
+
+1. **改库表**：同时遵守 `db-schema-ddl-mandatory.mdc` 与 `skills/design/db-designer.yaml`。
+2. **改 API**：`skills/design/api-designer.yaml`（`Result`、`/api/*`、Bearer 鉴权）。
+3. **改列表保存**：`post-save-no-full-refresh.mdc`。
+4. **按模块读 Skill**：例如改 `modules/twin` → 读 `skills/modules/twin/skill-twin.yaml`；改遥测 → `skill-telemetry.yaml`。
+
+## 模块速查
+
+| 包路径关键词 | Skill |
+|-------------|--------|
+| `modules.twin` | `skills/modules/twin/skill-twin.yaml` |
+| `modules.telemetry` | `skills/modules/telemetry/skill-telemetry.yaml` |
+| `modules.auth` | `skills/modules/auth/skill-auth.yaml` |
+| `modules.dahua` | `skills/modules/dahua/skill-dahua.yaml` |
+| `modules.accessrule` | `skills/modules/accessrule/skill-accessrule.yaml` |
+| `modules.pagepermission` | `skills/modules/pagepermission/skill-pagepermission.yaml` |
+| `frontend/src` | `skills/design/frontend-designer.yaml` |
+
+## 新增定时任务
+
+禁止随意新增 `@Scheduled`；优先 `JobExecutionRegistry` + `JobSchedulerService`（见 twin skill）。

@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 联动规则触发的自动离开。
  * <p>默认（门禁联动规则配置 {@code autoRiskActionEnabled=true}）：ARO 登记离开后，若全局允许则调用大华回收接口；
- * 映射卡冻结等本地风控与 {@code twin_access_rule_scan_config.exit_dispatch_enabled} 解耦，不因关闭「离开大华回收」而跳过。</p>
+ * 映射卡冻结受 {@code exit_freeze_enabled} 控制，与大华回收 {@code exit_dispatch_enabled} 正交。</p>
  * <p>关闭 {@code autoRiskActionEnabled} 后：仅执行 ARO 离开登记与小穿甲同步，不 revoke、不冻结。两开关叠加：任一层关闭则不会调用大华回收接口。</p>
  */
 @Service
@@ -154,15 +154,18 @@ public class DahuaAutoSignoutService {
             log.info("[auto-signout] skip-dahua-revoke exit_dispatch_disabled userId={} roomId={}", userId, roomId);
         }
 
-        runRiskActions(userId);
+        if (twinAccessRuleScanConfigService.isExitFreezeEnabled()) {
+            runRiskActions(userId);
+        } else {
+            log.info("[auto-signout] skip-freeze exit_freeze_disabled userId={}", userId);
+        }
         log.info("[auto-signout] done userId={}", userId);
         String msg;
         if (isSwingLinkageStyleReason(triggerReason)) {
             msg = mergeDetail(detail, "ARO 离开登记已完成（" + roomLabel + "）。");
             msg = augmentLinkageSignoutDetail(triggerReason, msg, true, userId);
         } else {
-            msg = mergeDetail(detail,
-                    "自动离开完成：已尝试撤销大华门禁权限并执行冻结检查（" + roomLabel + "）");
+            msg = mergeDetail(detail, "自动离开完成：已尝试撤销大华门禁权限并执行冻结检查（" + roomLabel + "）");
         }
         Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
         registerSignoutCorrelation(userId, roomId, auditId, msg);
@@ -307,34 +310,28 @@ public class DahuaAutoSignoutService {
             return "自动离开后置开关（autoRiskActionEnabled）为关闭：未自动删除大华联动门禁权限、未自动冻结权限；"
                     + "仍已发起小穿甲流水同步。状态：已完成；时间：" + time + "。";
         }
-        if (!twinAccessRuleScanConfigService.isExitDispatchEnabled()) {
-            try {
-                TwinCardMapping m = twinCardMappingService.getByAroUserId(userId);
-                if (m == null) {
-                    return "全局「扫码离开门禁联动」为关闭：未调用大华接口回收门禁规则权限；未找到孪生卡映射，未执行冻结。状态：已完成；时间：" + time + "。";
-                }
-                if (m.getFreezeExemptFlag() != null && m.getFreezeExemptFlag() == 1) {
-                    return "全局「扫码离开门禁联动」为关闭：未调用大华接口回收门禁规则权限；卡片为免冻结豁免，未自动冻结。状态：已完成；时间：" + time + "。";
-                }
-                if (m.getCardNo() != null && !m.getCardNo().isBlank()) {
-                    return "全局「扫码离开门禁联动」为关闭：未调用大华接口回收门禁规则权限；已按自动签退策略尝试冻结映射卡。状态：已完成；时间：" + time + "。";
-                }
-                return "全局「扫码离开门禁联动」为关闭：未调用大华接口回收门禁规则权限。状态：已完成；时间：" + time + "。";
-            } catch (Exception e) {
-                return "全局「扫码离开门禁联动」为关闭：未回收大华权限；读取卡映射异常。状态：已完成；时间：" + time + "。";
-            }
-        }
+        boolean revokeDone = twinAccessRuleScanConfigService.isExitDispatchEnabled();
+        boolean freezeEnabled = twinAccessRuleScanConfigService.isExitFreezeEnabled();
         try {
             TwinCardMapping m = twinCardMappingService.getByAroUserId(userId);
+            String revokePart = revokeDone
+                    ? "已自动删除大华联动门禁权限（撤销下发）"
+                    : "全局已关闭离开权限回收：未调用大华接口回收门禁规则权限";
             if (m == null) {
-                return "已自动删除大华联动门禁权限（撤销下发）；未找到孪生卡映射，未执行冻结。状态：已完成；时间：" + time + "。";
+                return revokePart + "；未找到孪生卡映射，未执行冻结。状态：已完成；时间：" + time + "。";
             }
             if (m.getFreezeExemptFlag() != null && m.getFreezeExemptFlag() == 1) {
-                return "已自动删除大华联动门禁权限（撤销下发）；卡片为免冻结豁免，未自动冻结权限。状态：已完成；时间：" + time + "。";
+                return revokePart + "；卡片为免冻结豁免，未自动冻结。状态：已完成；时间：" + time + "。";
             }
-            return "已自动删除大华联动门禁权限（撤销下发）；已自动冻结权限（映射卡置为冻结）。状态：已完成；时间：" + time + "。";
+            if (!freezeEnabled) {
+                return revokePart + "；全局已关闭离开冻结：未自动冻结映射卡。状态：已完成；时间：" + time + "。";
+            }
+            if (m.getCardNo() != null && !m.getCardNo().isBlank()) {
+                return revokePart + "；已自动冻结权限（映射卡置为冻结）。状态：已完成；时间：" + time + "。";
+            }
+            return revokePart + "。状态：已完成；时间：" + time + "。";
         } catch (Exception e) {
-            return "已尝试删除大华联动门禁权限并冻结；读取卡映射异常，未补全冻结说明。状态：已完成；时间：" + time + "。";
+            return "自动签退后置处理完成；读取卡映射异常，未补全回收/冻结说明。状态：已完成；时间：" + time + "。";
         }
     }
 
@@ -347,6 +344,9 @@ public class DahuaAutoSignoutService {
     }
 
     private void runRiskActions(String userId) {
+        if (!twinAccessRuleScanConfigService.isExitFreezeEnabled()) {
+            return;
+        }
         try {
             TwinCardMapping mapping = twinCardMappingService.getByAroUserId(userId);
             if (mapping == null) {

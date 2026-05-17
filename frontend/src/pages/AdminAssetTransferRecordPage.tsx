@@ -17,7 +17,9 @@ import {
   type AssetTransferRecord,
   type TransferPdfLinkItem,
 } from "@/api/domains/asset.api";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell, AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminButton } from "@/components/admin/AdminButton";
+import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 
@@ -435,40 +437,51 @@ export default function AdminAssetTransferRecordPage() {
   const displayLink = (item: TransferPdfLinkItem) => item.downloadUrl || item.downloadPath;
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
-            <ClipboardList className="h-6 w-6 text-indigo-600" />
-            转移记录
-          </h1>
-        </div>
-        <button onClick={() => void onExport()} className="inline-flex items-center gap-2 rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          <Download className="h-4 w-4" />
-          导出Excel
-        </button>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-4">
-        <label className="flex min-w-[18rem] flex-1 flex-col gap-1 text-xs text-slate-600">
-          搜索
-          <input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                setAppliedKeyword(keyword.trim());
-                setPage(1);
-              }
+    <AdminPageShell
+      title={
+        <span className="inline-flex items-center gap-2">
+          <ClipboardList className="h-6 w-6 shrink-0 text-indigo-600" aria-hidden />
+          转移记录
+        </span>
+      }
+      description="查看与办理资产转移申请，支持导出、补充转移后照片与 PDF 链接。"
+      actions={
+        <AdminButton type="button" tone="secondary" className="inline-flex items-center gap-2" onClick={() => void onExport()}>
+          <Download className="h-4 w-4" aria-hidden />
+          导出 Excel
+        </AdminButton>
+      }
+    >
+    <div className="flex flex-col gap-4">
+      <AdminFormCard title="筛选" description={`第 ${page} / ${pages} 页，共 ${total} 条。`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="flex min-w-[18rem] flex-1 flex-col gap-1">
+            <span className={adminLabelClass}>搜索</span>
+            <input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setAppliedKeyword(keyword.trim());
+                  setPage(1);
+                }
+              }}
+              className={adminInputClass}
+              placeholder="资产编码/名称/地点/申请人"
+            />
+          </label>
+          <AdminButton
+            type="button"
+            tone="primary"
+            onClick={() => {
+              setAppliedKeyword(keyword.trim());
+              setPage(1);
             }}
-            className="rounded border border-slate-300 px-3 py-2 text-sm"
-            placeholder="资产编码/名称/地点/申请人"
-          />
-        </label>
-        <button onClick={() => { setAppliedKeyword(keyword.trim()); setPage(1); }} className="rounded bg-blue-600 px-3 py-2 text-sm text-white">
-          查询
-        </button>
-      </div>
+          >
+            查询
+          </AdminButton>
+        </div>
+      </AdminFormCard>
 
       <AdminDataTableWrap scrollable>
         <table className="min-w-full border-collapse text-sm">
@@ -596,15 +609,15 @@ export default function AdminAssetTransferRecordPage() {
       </AdminDataTableWrap>
 
       <div className="flex items-center justify-end gap-3 text-sm text-slate-600">
-        <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded border px-3 py-1 disabled:opacity-40">
+        <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
           上一页
-        </button>
+        </AdminButton>
         <span>
           第 {page} / {pages} 页，共 {total} 条
         </span>
-        <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)} className="rounded border px-3 py-1 disabled:opacity-40">
+        <AdminButton type="button" tone="secondary" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
           下一页
-        </button>
+        </AdminButton>
       </div>
 
       {continueRow && (
@@ -912,5 +925,6 @@ export default function AdminAssetTransferRecordPage() {
         </div>
       )}
     </div>
+    </AdminPageShell>
   );
 }

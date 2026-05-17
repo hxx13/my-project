@@ -11,8 +11,13 @@ import {
     type DahuaDepartmentRow, type DahuaDoorGroupRow,
     type DahuaDeviceChannelRow, type DahuaDeviceChannelRemarkCategory, type CardMappingRow,
 } from "@/api/twinApi";
+import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminToolbarSearchField } from "@/components/admin/AdminToolbarSearchField";
 import { AdminToolbar, AdminToolbarActions } from "@/components/admin/AdminToolbar";
+import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
+import { cn } from "@/lib/utils";
+import toast from "react-hot-toast";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -24,7 +29,16 @@ import {
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import {RefreshCw, ShieldCheck, Link, Ban, Plus, User, Check, Loader2, X, Trash2, Clock, MoreHorizontal, ShieldAlert} from "lucide-react";
-import { labelForChannelRow, normalizeChannelCode, resolveChannelLabelsByCodes } from "@/utils/dahuaChannelUtils";
+import {
+    labelForChannelRow,
+    normalizeChannelCode,
+    resolveChannelLabelsByCodes,
+    useHydrateChannelNameMap,
+} from "@/utils/dahuaChannelUtils";
+import {
+    DAHUA_ISSUE_DEFAULT_DEPARTMENT_ID,
+    DAHUA_ISSUE_DEFAULT_DOOR_GROUP_IDS,
+} from "@/constants/dahuaIssueDefaults";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 
 /** 自动冻结解释与保存均固定为中国时区 */
@@ -93,10 +107,17 @@ export default function DebugCardMappingPage() {
     const [linkageModalOpen, setLinkageModalOpen] = useState(false);
     const [linkageLoading, setLinkageLoading] = useState(false);
     const [linkageSaving, setLinkageSaving] = useState(false);
-    const [linkageForm, setLinkageForm] = useState({ enterDispatchEnabled: true, exitDispatchEnabled: true });
+    const [linkageForm, setLinkageForm] = useState({
+        enterDispatchEnabled: true,
+        exitDispatchEnabled: true,
+        enterUnfreezeEnabled: true,
+        exitFreezeEnabled: true,
+    });
     const [issueAccessPrefill, setIssueAccessPrefill] = useState<DahuaIssueAccessPrefill | null>(null);
     const [issueRuleSelectedKeys, setIssueRuleSelectedKeys] = useState<string[]>([]);
     const [issuePrefillLoading, setIssuePrefillLoading] = useState(false);
+    /** 扫码门禁联动：离开时是否冻结；为 false 时不自动勾选门禁规则通道 */
+    const [scanExitFreezeEnabled, setScanExitFreezeEnabled] = useState(true);
 
     const issuingPhaseLabels = [
         "正在生成人员全局ID...",
@@ -118,22 +139,19 @@ export default function DebugCardMappingPage() {
             setIssueSteps(result?.steps || []);
             setIssuingPhase(0);
             if (result?.success) {
-                alert("✅ 大华发卡成功！");
-                setIsAddModalOpen(false);
-                setBindForm({ cardNo: '', aroUserId: '', userName: '', departmentId: '', channelCodes: [], doorGroupIds: [] });
-                setIssueSteps([]);
-                setPersonKeyword("");
+                toast.success("大华发卡成功");
+                closeIssueModal();
                 refetch();
                 return;
             }
             const failStep = result?.failStep || "unknown";
             const last = (result?.steps || []).find((it) => it.success === false);
             const reason = last?.upstreamErrMsg || last?.message || "未知错误";
-            alert(`❌ 大华发卡失败\n步骤: ${failStep}\n原因: ${reason}`);
+            toast.error(`发卡失败（${failStep}）：${reason}`);
         },
-        onError: (err: any) => {
+        onError: (err: unknown) => {
             setIssuingPhase(0);
-            alert("❌ 大华发卡失败: " + err.message);
+            toast.error(err instanceof Error ? err.message : "大华发卡失败");
         }
     });
 
@@ -224,6 +242,11 @@ export default function DebugCardMappingPage() {
                 setChannelRemarkCategories(remarkRes || []);
                 setChannelSearchKeyword("");
                 setChannelRemarkId("");
+                setBindForm((prev) => ({
+                    ...prev,
+                    departmentId: String(DAHUA_ISSUE_DEFAULT_DEPARTMENT_ID),
+                    doorGroupIds: [...DAHUA_ISSUE_DEFAULT_DOOR_GROUP_IDS],
+                }));
                 await loadChannelPicker(1, false, "", "");
             } catch (e) {
                 console.error(e);
@@ -276,6 +299,25 @@ export default function DebugCardMappingPage() {
     }, []);
 
     useEffect(() => {
+        void (async () => {
+            try {
+                const cfg = await fetchAccessRuleScanLinkageConfig();
+                setScanExitFreezeEnabled(cfg.exitFreezeEnabled !== false);
+            } catch {
+                setScanExitFreezeEnabled(true);
+            }
+        })();
+    }, []);
+
+    useHydrateChannelNameMap(
+        bindForm.channelCodes,
+        channelNameMap,
+        setChannelNameMap,
+        fetchDahuaDeviceChannels,
+        isAddModalOpen
+    );
+
+    useEffect(() => {
         if (!isAddModalOpen || !bindForm.aroUserId?.trim()) {
             setIssueAccessPrefill(null);
             setIssueRuleSelectedKeys([]);
@@ -289,7 +331,9 @@ export default function DebugCardMappingPage() {
                 const data = await fetchDahuaIssueAccessPrefill(bindForm.aroUserId.trim());
                 if (cancelled) return;
                 setIssueAccessPrefill(data);
-                const keys = (data.ruleMatches || []).filter((m) => m.defaultSelected).map((m) => m.matchKey);
+                const keys = scanExitFreezeEnabled
+                    ? (data.ruleMatches || []).filter((m) => m.defaultSelected).map((m) => m.matchKey)
+                    : [];
                 setIssueRuleSelectedKeys(keys);
             } catch (e) {
                 console.error(e);
@@ -304,24 +348,23 @@ export default function DebugCardMappingPage() {
         return () => {
             cancelled = true;
         };
-    }, [isAddModalOpen, bindForm.aroUserId]);
+    }, [isAddModalOpen, bindForm.aroUserId, scanExitFreezeEnabled]);
 
     useEffect(() => {
-        if (!issueAccessPrefill?.ruleMatches?.length) {
-            return;
-        }
         const keyset = new Set(issueRuleSelectedKeys);
         const ch = new Set<string>();
-        const dg = new Set<number>();
-        for (const m of issueAccessPrefill.ruleMatches) {
-            if (!keyset.has(m.matchKey)) continue;
-            (m.channelResourceCodes || []).forEach((c) => {
-                const k = normalizeChannelCode(c);
-                if (k) ch.add(k);
-            });
-            (m.doorGroupIds || []).forEach((id) => {
-                if (id != null && !Number.isNaN(Number(id))) dg.add(Number(id));
-            });
+        const dg = new Set<number>([...DAHUA_ISSUE_DEFAULT_DOOR_GROUP_IDS]);
+        if (issueAccessPrefill?.ruleMatches?.length) {
+            for (const m of issueAccessPrefill.ruleMatches) {
+                if (!keyset.has(m.matchKey)) continue;
+                (m.channelResourceCodes || []).forEach((c) => {
+                    const k = normalizeChannelCode(c);
+                    if (k) ch.add(k);
+                });
+                (m.doorGroupIds || []).forEach((id) => {
+                    if (id != null && !Number.isNaN(Number(id))) dg.add(Number(id));
+                });
+            }
         }
         setBindForm((prev) => ({ ...prev, channelCodes: Array.from(ch), doorGroupIds: Array.from(dg) }));
     }, [issueRuleSelectedKeys, issueAccessPrefill]);
@@ -506,6 +549,8 @@ export default function DebugCardMappingPage() {
             setLinkageForm({
                 enterDispatchEnabled: cfg.enterDispatchEnabled !== false,
                 exitDispatchEnabled: cfg.exitDispatchEnabled !== false,
+                enterUnfreezeEnabled: cfg.enterUnfreezeEnabled !== false,
+                exitFreezeEnabled: cfg.exitFreezeEnabled !== false,
             });
         } catch (e) {
             console.error(e);
@@ -521,7 +566,10 @@ export default function DebugCardMappingPage() {
             await saveAccessRuleScanLinkageConfig({
                 enterDispatchEnabled: linkageForm.enterDispatchEnabled,
                 exitDispatchEnabled: linkageForm.exitDispatchEnabled,
+                enterUnfreezeEnabled: linkageForm.enterUnfreezeEnabled,
+                exitFreezeEnabled: linkageForm.exitFreezeEnabled,
             });
+            setScanExitFreezeEnabled(linkageForm.exitFreezeEnabled);
             alert("扫码门禁联动配置已保存");
             setLinkageModalOpen(false);
         } catch (e: any) {
@@ -578,15 +626,12 @@ export default function DebugCardMappingPage() {
     const showCardPageMenu = canCardIssue || canReaper || canFreezeCfg;
 
     return (
-        <div className="p-8 bg-slate-50/50 h-full flex flex-col box-border">
-                    <AdminToolbar className="mb-6 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
-                        <div className="min-w-0 max-w-[min(46vw,26rem)] shrink">
-                            <h1 className="flex flex-wrap items-center gap-2 truncate text-lg font-black text-slate-800 sm:text-xl sm:text-2xl">
-                                卡片映射调试
-                                <span className="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-indigo-600 sm:text-xs">twin_card_mapping</span>
-                            </h1>
-                            <p className="mt-0.5 truncate text-xs text-slate-500 sm:text-sm">大华卡号与 ARO 用户绑定、豁免与自动冻结策略。</p>
-                        </div>
+        <AdminPageShell
+            title="大华发卡"
+            description="大华卡号与 ARO 用户绑定、豁免与自动冻结策略。发卡流程按步骤下发人员、权限与落库映射。"
+            className="h-full"
+        >
+                    <AdminToolbar className="mb-4 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
                         <AdminToolbarActions className="ml-auto flex min-w-0 shrink-0 flex-nowrap items-center gap-2">
                             {showCardPageMenu ? (
                                 <DropdownMenu>
@@ -876,30 +921,59 @@ export default function DebugCardMappingPage() {
                             </button>
                         </div>
                         <p className="text-xs text-slate-500 mb-4">
-                            控制 ARO 扫码进入/离开孪生后端是否按「门禁规则」调用大华批量授权或权限回收。关闭后仍执行 ARO 登记与本地卡片冻结等业务，仅跳过大华门禁接口。
+                            权限类开关控制大华 batch 下发/回收；冻融类开关控制物理卡解冻/冻结（与权限开关正交）。关闭离开冻结不影响定时跑批冻结任务。
                         </p>
                         {linkageLoading ? (
                             <div className="text-sm text-slate-500 flex items-center gap-2 py-4">
                                 <Loader2 className="w-4 h-4 animate-spin" /> 加载中…
                             </div>
                         ) : (
-                            <div className="space-y-3 mb-4">
-                                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={linkageForm.enterDispatchEnabled}
-                                        onChange={(e) => setLinkageForm((p) => ({ ...p, enterDispatchEnabled: e.target.checked }))}
-                                    />
-                                    进入时执行门禁规则（大华权限下发）
-                                </label>
-                                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={linkageForm.exitDispatchEnabled}
-                                        onChange={(e) => setLinkageForm((p) => ({ ...p, exitDispatchEnabled: e.target.checked }))}
-                                    />
-                                    离开时执行门禁规则（大华权限回收）
-                                </label>
+                            <div className="space-y-4 mb-4">
+                                <div>
+                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">权限（大华门禁规则）</p>
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={linkageForm.enterDispatchEnabled}
+                                                onChange={(e) => setLinkageForm((p) => ({ ...p, enterDispatchEnabled: e.target.checked }))}
+                                            />
+                                            进入时执行门禁规则（大华权限下发）
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={linkageForm.exitDispatchEnabled}
+                                                onChange={(e) => setLinkageForm((p) => ({ ...p, exitDispatchEnabled: e.target.checked }))}
+                                            />
+                                            离开时执行门禁规则（大华权限回收）
+                                        </label>
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">冻融（物理卡 / 大华人员状态）</p>
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={linkageForm.enterUnfreezeEnabled}
+                                                onChange={(e) => setLinkageForm((p) => ({ ...p, enterUnfreezeEnabled: e.target.checked }))}
+                                            />
+                                            进入时解冻物理卡（大华人员解冻）
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={linkageForm.exitFreezeEnabled}
+                                                onChange={(e) => setLinkageForm((p) => ({ ...p, exitFreezeEnabled: e.target.checked }))}
+                                            />
+                                            离开时冻结物理卡（扫码/自动签退）
+                                        </label>
+                                    </div>
+                                </div>
+                                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                                    关闭进入解冻但开启权限下发时，大华可能返回「冻结人员不能授权」。关闭离开冻结不影响「定时跑批冻结」配置。
+                                </p>
                             </div>
                         )}
                         <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
@@ -925,41 +999,40 @@ export default function DebugCardMappingPage() {
 
             {isAddModalOpen && (
                 <div
-                    className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-[#050A15]/70 backdrop-blur-md animate-in fade-in"
+                    className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
                     role="presentation"
                 >
                     <div
-                        className="bg-white p-6 rounded-[24px] w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 relative overflow-x-visible animate-in zoom-in-95"
+                        className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-black/[0.06]"
                         onClick={(e) => e.stopPropagation()}
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="dahua-issue-modal-title"
                     >
-                        <div className="flex justify-between items-center mb-6 shrink-0">
-                            <h2 id="dahua-issue-modal-title" className="text-xl font-black text-slate-800 flex items-center gap-2">
-                                💳 大华发卡
+                        <div className="flex shrink-0 items-center justify-between border-b border-neutral-100 px-6 py-4">
+                            <h2 id="dahua-issue-modal-title" className="text-lg font-semibold text-neutral-900">
+                                大华发卡
                             </h2>
                             <button
                                 type="button"
                                 onClick={closeIssueModal}
-                                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors"
+                                className="rounded-lg p-1.5 text-neutral-500 transition hover:bg-neutral-100"
                                 aria-label="关闭"
                             >
-                                <X className="w-5 h-5" />
+                                <X className="h-5 w-5" aria-hidden />
                             </button>
                         </div>
 
-                        {/* ========================================== */}
-                        {/* 1. 搜人：融合了你下拉组件的豪华预检框 */}
-                        {/* ========================================== */}
-                        <div className="relative mb-4">
-                            <label className="block text-xs font-bold text-slate-500 mb-1.5">1. 检索真实人员（键入自动预检，可回车）</label>
-                            <div className="relative">
+                        <div className="flex-1 space-y-4 overflow-y-auto overscroll-y-contain px-6 py-4">
+                        <AdminFormCard title="1. 选择人员" description="键入姓名或工号自动检索，回车可立即搜索。">
+                        <div className="relative">
+                            <label className={adminLabelClass}>人员检索</label>
+                            <div className="relative mt-1">
                                 <input
                                     type="text"
                                     value={personKeyword}
                                     placeholder="输入姓名或工号..."
-                                    className="w-full border-2 border-slate-200 focus:border-indigo-500 p-2.5 rounded-xl font-medium outline-none transition-colors"
+                                    className={adminInputClass}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             handleSearchRealUser(personKeyword);
@@ -984,7 +1057,7 @@ export default function DebugCardMappingPage() {
 
                             {/* 豪华预检悬浮框 (悬浮在表单上方，不撑开原有高度) */}
                             {searchUserResult.length > 0 && (
-                                <div className="absolute top-[75px] left-0 right-0 max-h-[220px] overflow-y-auto bg-[#191A1E]/95 backdrop-blur-xl border border-white/10 shadow-[0_20px_40px_rgba(0,0,0,0.6)] rounded-[16px] z-[999] p-2 animate-in slide-in-from-top-2">
+                                <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[220px] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-1 shadow-lg">
                                     {searchUserResult.map((rawPerson: any) => {
                                         // 融合你的暴力提取逻辑，确保绝不报错
                                         const safeId = rawPerson.userid || rawPerson.user_id || rawPerson.id || '';
@@ -996,7 +1069,7 @@ export default function DebugCardMappingPage() {
                                         return (
                                             <div
                                                 key={safeId}
-                                                className="flex items-center gap-3 p-2.5 rounded-[12px] hover:bg-white/10 cursor-pointer transition-colors"
+                                                className="flex cursor-pointer items-center gap-3 rounded-lg p-2.5 transition-colors hover:bg-neutral-50"
                                                 onClick={() => {
                                                     // 💥 核心：点击后直接填入表单，并清空预检框
                                                     setBindForm((prev) => ({...prev, aroUserId: safeId, userName: safeName}));
@@ -1004,15 +1077,15 @@ export default function DebugCardMappingPage() {
                                                     setSearchUserResult([]);
                                                 }}
                                             >
-                                                <div className="w-9 h-9 rounded-full bg-black/50 overflow-hidden flex justify-center items-center shrink-0 border border-white/5">
+                                                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
                                                     {headSrc ? <img src={headSrc} className="w-full h-full object-cover" /> : <User className="w-4 h-4 text-slate-400" />}
                                                 </div>
                                                 <div className="flex-1 overflow-hidden flex flex-col justify-center">
                                                     <div className="flex justify-between items-center">
-                                                        <span className="text-[13px] font-bold text-white truncate">{safeName}</span>
+                                                        <span className="truncate text-sm font-medium text-neutral-900">{safeName}</span>
                                                         <span className="text-[10px] font-mono text-slate-400">{safeId}</span>
                                                     </div>
-                                                    <span className="text-[11px] text-slate-400 font-medium truncate mt-0.5">🧬 {safeGroup}</span>
+                                                    <span className="mt-0.5 truncate text-xs text-neutral-500">{safeGroup}</span>
                                                 </div>
                                             </div>
                                         );
@@ -1021,23 +1094,25 @@ export default function DebugCardMappingPage() {
                             )}
                         </div>
 
-                        {/* 已选人员展示 (锁定状态) */}
                         {bindForm.userName && (
-                            <div className="mb-5 p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center gap-3 animate-in zoom-in-95">
-                                <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white shadow-md">
+                            <div className="mt-3 flex items-center gap-3 rounded-lg border border-[#0070f3]/20 bg-[#0070f3]/5 p-3">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0070f3] text-white">
                                     <Check className="w-4 h-4" />
                                 </div>
                                 <div>
-                                    <div className="text-xs text-indigo-500 font-bold mb-0.5">已锁定发卡目标</div>
-                                    <div className="text-sm font-black text-indigo-900">{bindForm.userName} <span className="font-mono text-xs text-indigo-400 ml-1">({bindForm.aroUserId})</span></div>
+                                    <p className={adminHintClass}>已选定发卡人员</p>
+                                    <p className="text-sm font-medium text-neutral-900">
+                                        {bindForm.userName}{" "}
+                                        <span className="ml-1 font-mono text-xs text-neutral-500">({bindForm.aroUserId})</span>
+                                    </p>
                                 </div>
                             </div>
                         )}
 
-                        {/* ========================================== */}
-                        {/* 2. 硬件数据录入 */}
-                        {/* ========================================== */}
-                        <label className="block text-xs font-bold text-slate-500 mb-1.5">2. 扫描物理卡号 (鼠标点入后刷卡)</label>
+                        </AdminFormCard>
+
+                        <AdminFormCard title="2. 扫描卡号" description="焦点置于输入框后使用读卡器刷卡。">
+                        <label className={adminLabelClass}>物理卡号</label>
                         <input
                             ref={cardInputRef}
                             id="dahua-issue-card-scan-input"
@@ -1058,11 +1133,13 @@ export default function DebugCardMappingPage() {
                                 const clean = sanitizeCardNo(e.target.value);
                                 updateCardNoWithBuffer(clean);
                             }}
-                            className="w-full border-2 border-slate-200 focus:border-indigo-500 p-2.5 rounded-xl mb-4 font-mono text-indigo-600 font-bold outline-none transition-colors"
+                            className={cn(adminInputClass, "mb-4 font-mono font-semibold text-[#0070f3]")}
                             placeholder="等待读卡器输入..."
                         />
+                        </AdminFormCard>
 
-                        <label className="block text-xs font-bold text-slate-500 mb-1.5">3. 所属部门（结构树展示，departmentType 固定传 1）</label>
+                        <AdminFormCard title="3. 所属部门" description="结构树选择部门，departmentType 固定传 1。">
+                        <label className={adminLabelClass}>部门树</label>
                         <div className="flex items-center gap-2 mb-2">
                             <div className="flex-1 text-xs text-slate-500">
                                 已选部门ID：{bindForm.departmentId || ""}
@@ -1126,9 +1203,10 @@ export default function DebugCardMappingPage() {
                             })}
                             {departmentTreeGrouped.roots.length === 0 && <div className="text-xs text-slate-400">暂无部门缓存，请先刷新</div>}
                         </div>
+                        </AdminFormCard>
 
-                        <label className="block text-xs font-bold text-slate-500 mb-1.5">4. 官方可进房间与门禁规则（按 ARO 接口自动匹配；勾选合并到步骤 5 通道/门组）</label>
-                        <div className="mb-4 rounded-xl border-2 border-slate-200 p-3 bg-slate-50/80">
+                        <AdminFormCard title="4. 门禁规则预填" description="按 ARO 官方可进房间自动匹配；勾选结果合并到步骤 5 通道/门组。">
+                        <div className="mb-4 rounded-xl border border-neutral-200 bg-neutral-50/80 p-3">
                             {!bindForm.aroUserId ? (
                                 <div className="text-xs text-slate-500">请先检索并选择人员后，将自动拉取官方可进房间并匹配门禁规则。</div>
                             ) : issuePrefillLoading ? (
@@ -1178,8 +1256,9 @@ export default function DebugCardMappingPage() {
                                 </div>
                             )}
                         </div>
+                        </AdminFormCard>
 
-                        <label className="block text-xs font-bold text-slate-500 mb-1.5">5. 通道与门组（均可不选：将跳过下发大华权限，仅建人/绑卡等前置步骤）</label>
+                        <AdminFormCard title="5. 通道与门组" description="均可不选：将跳过下发大华权限，仅执行建人/绑卡等前置步骤。">
                         <div className="mb-3 rounded-xl border-2 border-slate-200 p-3 space-y-3">
                             <div className="flex flex-wrap gap-2 items-end">
                                 <AdminToolbarSearchField
@@ -1253,7 +1332,10 @@ export default function DebugCardMappingPage() {
                                             className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-mono text-indigo-900"
                                         >
                                             {channelNameMap[normalizeChannelCode(c)] ||
-                                                (normalizeChannelCode(c) ? `未命名 / ${normalizeChannelCode(c)}` : "—")}
+                                                labelForChannelRow({
+                                                    channelCode: c,
+                                                    channelName: "",
+                                                } as DahuaDeviceChannelRow)}
                                             <button type="button" className="text-indigo-500" onClick={() => toggleIssueChannel(c, false)} aria-label="移除">
                                                 <X className="w-3 h-3" />
                                             </button>
@@ -1361,15 +1443,17 @@ export default function DebugCardMappingPage() {
                             </div>
                         )}
 
-                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                            <button
-                                type="button"
-                                onClick={closeIssueModal}
-                                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-600 transition-colors"
-                            >
+                        </AdminFormCard>
+                        </div>
+                        <div className="flex shrink-0 justify-end gap-2 border-t border-neutral-100 px-6 py-4">
+                            <AdminButton type="button" tone="secondary" onClick={closeIssueModal}>
                                 取消
-                            </button>
-                            <button
+                            </AdminButton>
+                            <AdminButton
+                                type="button"
+                                tone="primary"
+                                className="gap-2"
+                                disabled={!bindForm.aroUserId || !bindForm.cardNo || !bindForm.departmentId || issueDahuaMutation.isPending}
                                 onClick={() =>
                                     issueDahuaMutation.mutate({
                                         cardNo: bindForm.cardNo.trim(),
@@ -1380,18 +1464,14 @@ export default function DebugCardMappingPage() {
                                         doorGroupIds: bindForm.doorGroupIds,
                                     })
                                 }
-                                disabled={!bindForm.aroUserId || !bindForm.cardNo || !bindForm.departmentId || issueDahuaMutation.isPending}
-                                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-xl font-bold shadow-md transition-all active:scale-95 flex items-center gap-2"
                             >
-                                {issueDahuaMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                                确认发卡落库
-                            </button>
+                                {issueDahuaMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ShieldCheck className="h-4 w-4" aria-hidden />}
+                                确认发卡
+                            </AdminButton>
                         </div>
                     </div>
                 </div>
             )}
-        </div>
-
-
+        </AdminPageShell>
     );
 }

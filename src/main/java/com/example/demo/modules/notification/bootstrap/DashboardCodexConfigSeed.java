@@ -221,24 +221,8 @@ public class DashboardCodexConfigSeed implements ApplicationRunner {
                     1
             );
 
-            purgeScannerPopupNoticeModule();
         } catch (Exception e) {
             log.warn("[dashboard_codex] 配置定义初始化跳过（可能尚未创建 sys_system_config_def 表）: {}", e.getMessage());
-        }
-    }
-
-    /**
-     * 扫码弹窗公告功能已下线：删除模块下全部配置值与定义（含历史 primaryButtonLabel 等）。
-     */
-    private void purgeScannerPopupNoticeModule() {
-        try {
-            int cfg = jdbcTemplate.update("DELETE FROM sys_system_config WHERE module = ?", "scanner_popup_notice");
-            int def = jdbcTemplate.update("DELETE FROM sys_system_config_def WHERE module = ?", "scanner_popup_notice");
-            if (cfg > 0 || def > 0) {
-                log.info("[dashboard_codex] 已清除扫码弹窗公告模块: sys_system_config {} 条, sys_system_config_def {} 条", cfg, def);
-            }
-        } catch (Exception e) {
-            log.warn("[dashboard_codex] 清除扫码弹窗公告模块跳过: {}", e.getMessage());
         }
     }
 

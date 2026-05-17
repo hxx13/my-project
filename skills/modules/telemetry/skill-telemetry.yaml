@@ -1,0 +1,54 @@
+skill:
+  id: "skill-telemetry"
+  name: "Telemetry 遥测与动物房"
+  version: "1.0.0"
+  module_path: "src/main/java/com/example/demo/modules/telemetry"
+  created_at: "2026-05-17"
+
+philosophy:
+  business_position: |
+    动物房环境遥测：WinCC 变量读写的内存快照、Hub 聚合 API、归档与关注列表。
+    Web 与微信小程序同源接口，减少重复请求。
+
+  design_principles:
+    - "WinCC 访问集中在 TelemetrySnapshotService，避免多处直连"
+    - "配置：app.wincc.* + twin_job_schedule_config 的 TELEMETRY_WINCC_UI / LIMITS_UI"
+    - "动物房组装：telemetry.animalroom 包（AnimalRoomHubAssembler）"
+    - "归档：telemetry-value-archive + TelemetryArchivePurgeScheduler"
+
+architecture:
+  controllers:
+    - "TelemetryController - 主入口、animal-room-hub"
+    - "TelemetryWinCcWriteController - 写入"
+    - "TelemetryWatchlistController / TelemetryWatchlistAlarmLimitsController"
+    - "TelemetryArchiveV1Controller / AdminTelemetryArchiveController"
+    - "TelemetryFacilityLayoutController"
+
+  services:
+    - "TelemetrySnapshotService - 快照刷新、并发锁"
+    - "WatchlistAlarmLimitsFacadeService"
+    - "AnimalRoomHubAssembler - Hub DTO 组装"
+
+  schedulers:
+    - "TelemetryWinCcRefreshScheduler - 读 JobSchedulerService 窗口"
+    - "TelemetryArchivePurgeScheduler - cron 清理归档"
+
+key_apis:
+  - path: "GET /api/v1/telemetry/wincc/animal-room-hub"
+    note: "Web/小程序统一 Hub"
+  - path: "GET /api/v1/telemetry/wincc/animal-room-with-tab"
+    note: "summary + tabDetail 一次返回"
+  - path: "GET /api/v1/telemetry/wincc/snapshot?sync=true&variableNames="
+    note: "定点刷新，非全量"
+
+package_layout:
+  animalroom: "src/main/java/.../telemetry/animalroom/README.md"
+  dto: "AnimalRoomHubDto, Mp* 视图块"
+
+integration:
+  twin: "JobSchedulerService.getWinccDockPollConfig()"
+  config: "application.properties 中 app.wincc.*、app.telemetry.archive.*"
+
+cautions:
+  - "sync=true 与 @Scheduled 刷新互斥锁，避免 WinCC 并发 POST 超时"
+  - "改 Hub 字段需同步 aroapp animalRoomTelemetryApi.js 与 frontend 遥测页"

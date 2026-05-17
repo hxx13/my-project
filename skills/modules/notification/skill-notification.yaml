@@ -1,0 +1,20 @@
+skill:
+  id: "skill-notification"
+  name: "Notification 通知"
+  version: "1.0.0"
+  module_path: "src/main/java/com/example/demo/modules/notification"
+  status: "draft"
+  created_at: "2026-05-17"
+
+philosophy:
+  business_position: |
+    站内通知、外部通信配置、运行时配置、管理端设置种子（DashboardCodexConfigSeed 等）。
+
+architecture:
+  controllers:
+    - "NotificationController"
+    - "ExternalCommConfigController"
+    - "RuntimeConfigController"
+    - "AdminSettingsController"
+
+note: "详细表结构与渠道策略待按需补充；扩展多渠道时参考 yudao 策略模式"

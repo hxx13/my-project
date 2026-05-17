@@ -287,14 +287,23 @@ public class DahuaSwingRuleEngineService {
         dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
                 GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
 
+        boolean alreadyActivated =
+                "ACTIVATED".equalsIgnoreCase(str(state.getState()))
+                        && state.getActivatedAt() != null
+                        && !str(state.getActivatedAt()).isBlank();
         int counter = state.getCounter() == null ? 0 : state.getCounter();
         counter++;
         state.setCounter(counter);
         state.setLastSwipeAt(fmt(now));
         state.setLastRecordId(record.getRecordId());
+        state.setDebounceUntil(fmt(now.plusSeconds(debounceSeconds)));
+        if (alreadyActivated) {
+            dahuaSwingMapper.upsertActivationState(state);
+            log.debug("[swing-rule] skip-duplicate-activation-audit userId={} channel={}", userId, channelCode);
+            return;
+        }
         state.setState("ACTIVATED");
         state.setActivatedAt(fmt(now));
-        state.setDebounceUntil(fmt(now.plusSeconds(debounceSeconds)));
         // 激活成功后不再写 scheduled_exit_at：避免「激活超时」被复用为激活后宽限导致到期自动签退（listDueActivationStates 仅扫非空 scheduled_exit_at）
         state.setScheduledExitAt(null);
         dahuaSwingMapper.upsertActivationState(state);

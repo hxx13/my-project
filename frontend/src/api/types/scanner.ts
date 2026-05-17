@@ -5,7 +5,14 @@ export interface RoomInfo {
     floorName?: string;
     officialRoomId?: string;
     displayName?: string;
+    regionName?: string;
+    /** 浦东 / 浦西（来自 room_mapping_room） */
+    campusTag?: string;
     isDisabled?: boolean;
+    disableReason?: string;
+    /** 系统设置按校区禁用进入（不影响离开） */
+    enterBlocked?: boolean;
+    enterBlockReason?: string;
 }
 
 export interface DisciplinaryRecord {

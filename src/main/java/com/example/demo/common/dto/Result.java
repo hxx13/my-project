@@ -28,10 +28,15 @@ public class Result<T> {
     }
 
     public static <T> Result<T> error(String message) {
+        return fail(500, message);
+    }
+
+    /** 业务/全局异常统一出口（与 ErrorCodeConstants 配合） */
+    public static <T> Result<T> fail(int code, String message) {
         Result<T> result = new Result<>();
-        result.setCode(500);
+        result.setCode(code);
         result.setSuccess(false);
-        result.setMessage(message);
+        result.setMessage(message == null ? "操作失败" : message);
         return result;
     }
 }

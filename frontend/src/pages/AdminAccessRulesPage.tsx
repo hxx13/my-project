@@ -20,10 +20,20 @@ import {
   type DahuaDeviceChannelRow,
   type DahuaDeviceChannelRemarkCategory,
 } from "@/api/twinApi";
-import { AdminPageShell, AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
+import { AdminSelect } from "@/components/admin/AdminSelect";
+import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
+import { cn } from "@/lib/utils";
+import {
+  labelForChannelRow,
+  normalizeChannelCode,
+  resolveChannelLabelsByCodes,
+  useHydrateChannelNameMap,
+} from "@/utils/dahuaChannelUtils";
 
 function normalizeCode(code: string): string {
-  return String(code || "").trim();
+  return normalizeChannelCode(code);
 }
 
 function channelLabel(code: string, nameMap: Record<string, string>, rows: DahuaDeviceChannelRow[]): string {
@@ -31,8 +41,8 @@ function channelLabel(code: string, nameMap: Record<string, string>, rows: Dahua
   const nameByMap = (nameMap[key] || "").trim();
   if (nameByMap) return nameByMap;
   const row = rows.find((r) => normalizeCode(r.channelCode || "") === key);
-  const nameByRow = (row?.channelName || "").trim();
-  return nameByRow || "未命名通道";
+  if (row) return labelForChannelRow(row);
+  return labelForChannelRow({ channelCode: key, channelName: "" } as DahuaDeviceChannelRow);
 }
 
 function emptyItem(): AccessRuleItemPayload {
@@ -73,6 +83,16 @@ export default function AdminAccessRulesPage() {
   const [personHits, setPersonHits] = useState<any[]>([]);
   const [personItemIdx, setPersonItemIdx] = useState<number | null>(null);
   const personTimer = useRef<number | null>(null);
+
+  const allSelectedChannelCodes = items.flatMap((it) => it.channelCodes || []);
+
+  useHydrateChannelNameMap(
+    allSelectedChannelCodes,
+    channelNameMap,
+    setChannelNameMap,
+    fetchDahuaDeviceChannels,
+    editorOpen
+  );
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -120,8 +140,7 @@ export default function AdminAccessRulesPage() {
         const next = { ...prev };
         batch.forEach((row) => {
           const code = normalizeCode(row.channelCode || "");
-          const name = (row.channelName || "").trim();
-          if (code && name) next[code] = name;
+          if (code) next[code] = labelForChannelRow(row);
         });
         return next;
       });
@@ -173,6 +192,11 @@ export default function AdminAccessRulesPage() {
       setPersonItemIdx(null);
       setEditorOpen(true);
       await loadMetaForEditor();
+      const codes = (d.items || []).flatMap((it) => it.channelCodes || []);
+      if (codes.length) {
+        const labels = await resolveChannelLabelsByCodes(codes, fetchDahuaDeviceChannels);
+        setChannelNameMap((prev) => ({ ...prev, ...labels }));
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "加载详情失败");
     } finally {
@@ -204,9 +228,12 @@ export default function AdminAccessRulesPage() {
     });
   };
 
-  const toggleChannel = (itemIdx: number, code: string, checked: boolean) => {
+  const toggleChannel = (itemIdx: number, code: string, checked: boolean, row?: DahuaDeviceChannelRow) => {
     const cleanCode = normalizeCode(code);
     if (!cleanCode) return;
+    if (checked && row) {
+      setChannelNameMap((prev) => ({ ...prev, [cleanCode]: labelForChannelRow(row) }));
+    }
     setItems((prev) => {
       const next = [...prev];
       const row = { ...next[itemIdx], channelCodes: [...(next[itemIdx].channelCodes || [])] };
@@ -288,13 +315,26 @@ export default function AdminAccessRulesPage() {
       if (editingId == null) {
         await createAccessRule(body);
         toast.success("已创建规则");
+        closeEditor();
+        await loadList();
       } else {
         await updateAccessRule(editingId, body);
+        // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
+        setList((prev) =>
+          prev.map((r) =>
+            r.id === editingId
+              ? {
+                  ...r,
+                  name: body.name,
+                  enabled: body.enabled ? 1 : 0,
+                  updatedAt: new Date().toISOString(),
+                }
+              : r,
+          ),
+        );
         toast.success("已保存");
+        closeEditor();
       }
-      closeEditor();
-      setAppliedKeyword(appliedKeyword);
-      await loadList();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
     } finally {
@@ -325,47 +365,41 @@ export default function AdminAccessRulesPage() {
       }
       description="配置房间、大华门组与通道；ARO 人员为可选。匹配顺序：同房间下优先匹配「房间+人员」，无人员项时按「仅房间」兜底。"
       actions={
-        <button
-          type="button"
-          onClick={() => void openCreate()}
-          className="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800"
-        >
-          <Plus className="h-4 w-4" />
+        <AdminButton type="button" tone="primary" className="inline-flex items-center gap-2" onClick={() => void openCreate()}>
+          <Plus className="h-4 w-4" aria-hidden />
           新增规则
-        </button>
+        </AdminButton>
       }
     >
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-2 rounded-xl border border-neutral-200/90 bg-white p-4 shadow-sm ring-1 ring-black/[0.02]">
-        <label className="flex flex-col gap-1 text-xs text-slate-600">
-          关键词（名称 / 编号）
-          <input
-            className="min-w-[12rem] rounded border px-2 py-1.5 text-sm"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && (setAppliedKeyword(keyword), setPage(1))}
-          />
-        </label>
-        <button
-          type="button"
-          className="rounded bg-slate-800 px-3 py-2 text-sm text-white"
-          onClick={() => {
-            setAppliedKeyword(keyword);
-            setPage(1);
-          }}
-        >
-          查询
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center gap-2 text-slate-500">
-          <Loader2 className="h-5 w-5 animate-spin" /> 加载中…
+      <AdminFormCard title="筛选" description={`共 ${total} 条规则`}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className={adminLabelClass}>关键词（名称 / 编号）</span>
+            <input
+              className={adminInputClass}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && (setAppliedKeyword(keyword), setPage(1))}
+              placeholder="输入后回车或点查询"
+            />
+          </label>
+          <AdminButton
+            type="button"
+            tone="primary"
+            onClick={() => {
+              setAppliedKeyword(keyword);
+              setPage(1);
+            }}
+          >
+            查询
+          </AdminButton>
         </div>
-      ) : (
-        <AdminDataTableWrap scrollable>
-          <table className="min-w-full border-collapse text-sm">
-            <thead className="bg-slate-50">
+      </AdminFormCard>
+
+      <AdminTableShell loading={loading} empty={!loading && list.length === 0} emptyMessage="暂无规则，点击「新增规则」开始配置" scrollable>
+          <table className="min-w-full text-sm">
+            <thead>
               <tr>
                 <th className="border-b px-3 py-2 text-left font-medium">编号</th>
                 <th className="border-b px-3 py-2 text-left font-medium">名称</th>
@@ -389,48 +423,30 @@ export default function AdminAccessRulesPage() {
                   <td className="border-b border-slate-100 px-3 py-2 text-xs text-slate-500 whitespace-nowrap">
                     {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—"}
                   </td>
-                  <td className="border-b border-slate-100 px-3 py-2 text-right">
-                    <button type="button" className="text-blue-600 hover:underline mr-3" onClick={() => void openEdit(r.id)}>
-                      <Pencil className="inline h-4 w-4" /> 编辑
-                    </button>
-                    <button type="button" className="text-rose-600 hover:underline" onClick={() => void handleDelete(r)}>
-                      <Trash2 className="inline h-4 w-4" /> 删除
-                    </button>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <AdminButton type="button" tone="ghost" size="sm" className="mr-1 gap-1" onClick={() => void openEdit(r.id)}>
+                      <Pencil className="h-3.5 w-3.5" aria-hidden /> 编辑
+                    </AdminButton>
+                    <AdminButton type="button" tone="destructive" size="sm" className="gap-1" onClick={() => void handleDelete(r)}>
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden /> 删除
+                    </AdminButton>
                   </td>
                 </tr>
               ))}
-              {list.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
-                    暂无规则，点击「新增规则」开始配置。
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
-        </AdminDataTableWrap>
-      )}
+      </AdminTableShell>
 
-      <div className="flex items-center justify-end gap-3 text-sm text-slate-600">
-        <button
-          type="button"
-          className="rounded border px-3 py-1 disabled:opacity-40"
-          disabled={page <= 1}
-          onClick={() => setPage((p) => Math.max(1, p - 1))}
-        >
+      <div className="flex items-center justify-end gap-2 text-sm text-neutral-600">
+        <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
           上一页
-        </button>
+        </AdminButton>
         <span>
           第 {page} 页，共 {total} 条
         </span>
-        <button
-          type="button"
-          className="rounded border px-3 py-1 disabled:opacity-40"
-          disabled={page * pageSize >= total}
-          onClick={() => setPage((p) => p + 1)}
-        >
+        <AdminButton type="button" tone="secondary" size="sm" disabled={page * pageSize >= total || loading} onClick={() => setPage((p) => p + 1)}>
           下一页
-        </button>
+        </AdminButton>
       </div>
 
       {editorOpen && (
@@ -463,23 +479,25 @@ export default function AdminAccessRulesPage() {
               </button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex flex-col gap-1 text-xs text-slate-600">
-                规则名称
-                <input className="rounded border px-3 py-2 text-sm" value={formName} onChange={(e) => setFormName(e.target.value)} />
-              </label>
-              <label className="flex items-center gap-2 text-sm text-slate-700 mt-6">
-                <input type="checkbox" checked={formEnabled} onChange={(e) => setFormEnabled(e.target.checked)} />
-                启用
-              </label>
-            </div>
+            <AdminFormCard title="基本信息" description="规则名称与启用状态。">
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="flex flex-col gap-1">
+                  <span className={adminLabelClass}>规则名称</span>
+                  <input className={adminInputClass} value={formName} onChange={(e) => setFormName(e.target.value)} />
+                </label>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50/80 px-3 py-2.5 md:mt-6">
+                  <input type="checkbox" className="h-4 w-4 rounded border-neutral-300" checked={formEnabled} onChange={(e) => setFormEnabled(e.target.checked)} />
+                  <span className="text-sm text-neutral-800">{formEnabled ? "已启用" : "已停用"}</span>
+                </label>
+              </div>
+            </AdminFormCard>
 
-            <div className="mt-6 space-y-6">
+            <div className="mt-4 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-800">子规则（房间 + 授权 + 人员）</h3>
-                <button type="button" className="text-sm text-blue-600 hover:underline" onClick={addItemRow}>
-                  + 添加一行
-                </button>
+                <AdminButton type="button" tone="ghost" size="sm" onClick={addItemRow}>
+                  + 添加子规则
+                </AdminButton>
               </div>
 
               {items.map((it, idx) => (
@@ -487,16 +505,16 @@ export default function AdminAccessRulesPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-slate-500">子规则 #{idx + 1}</span>
                     {items.length > 1 && (
-                      <button type="button" className="text-xs text-rose-600" onClick={() => removeItemRow(idx)}>
-                        删除此行
-                      </button>
+                      <AdminButton type="button" tone="destructive" size="sm" onClick={() => removeItemRow(idx)}>
+                        删除
+                      </AdminButton>
                     )}
                   </div>
 
                   <label className="flex flex-col gap-1 text-xs text-slate-600">
                     ARO 房间
                     <select
-                      className="rounded border px-3 py-2 text-sm"
+                      className={adminInputClass}
                       value={it.roomId}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -574,7 +592,7 @@ export default function AdminAccessRulesPage() {
                       <div className="mt-2 rounded border border-slate-200 p-3 space-y-2 bg-slate-50/80">
                         <div className="flex flex-wrap gap-2">
                           <input
-                            className="flex-1 min-w-[8rem] rounded border px-2 py-1 text-sm"
+                            className={cn(adminInputClass, "min-w-[8rem] flex-1 py-1.5 text-sm")}
                             placeholder="通道关键字（支持名称/编码搜索）"
                             value={channelKeyword}
                             onChange={(e) => setChannelKeyword(e.target.value)}
@@ -617,7 +635,7 @@ export default function AdminAccessRulesPage() {
                                   className="mt-0.5"
                                   disabled={!code}
                                   checked={checked}
-                                  onChange={(e) => toggleChannel(idx, code, e.target.checked)}
+                                  onChange={(e) => toggleChannel(idx, code, e.target.checked, ch)}
                                 />
                                 <span className="break-all">
                                   <span className="font-medium text-slate-800">{name || "未命名通道"}</span>
@@ -649,7 +667,7 @@ export default function AdminAccessRulesPage() {
                       人员（可选，检索添加，可多名；留空则按房间匹配）
                     </div>
                     <input
-                      className="w-full rounded border px-3 py-2 text-sm"
+                      className={adminInputClass}
                       placeholder="输入姓名或工号检索…"
                       value={personItemIdx === idx ? personKeyword : ""}
                       onFocus={() => setPersonItemIdx(idx)}
@@ -692,19 +710,14 @@ export default function AdminAccessRulesPage() {
               ))}
             </div>
 
-            <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4">
-              <button type="button" className="rounded border px-4 py-2 text-sm" onClick={closeEditor}>
+            <div className="mt-6 flex justify-end gap-2 border-t border-neutral-100 pt-4">
+              <AdminButton type="button" tone="secondary" onClick={closeEditor}>
                 取消
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50"
-                onClick={() => void handleSave()}
-              >
-                {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              </AdminButton>
+              <AdminButton type="button" tone="primary" disabled={saving} className="gap-2" onClick={() => void handleSave()}>
+                {saving && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
                 保存
-              </button>
+              </AdminButton>
             </div>
           </div>
         </div>

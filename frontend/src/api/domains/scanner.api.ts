@@ -5,6 +5,7 @@ import type {
     AnalyzeResponse,
     ExecutePayload,
     RoomCardStatus,
+    RoomInfo,
     UserStatusResponse,
 } from "@/api/types/scanner";
 
@@ -51,6 +52,49 @@ const assertApiSuccess = (result: ExecuteResult, fallbackMessage: string) => {
     if (failedByCode || failedBySuccess) {
         throw new Error(result.msg || result.message || fallbackMessage);
     }
+};
+
+const normalizeRoomInfo = (raw: unknown): RoomInfo => {
+    const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const asBool = (v: unknown): boolean | undefined => {
+        if (typeof v === "boolean") return v;
+        if (v === 1 || v === "1" || v === "true") return true;
+        if (v === 0 || v === "0" || v === "false") return false;
+        return undefined;
+    };
+    const officialRoomId =
+        typeof r.officialRoomId === "string"
+            ? r.officialRoomId
+            : typeof r.id === "string"
+              ? r.id
+              : r.id != null
+                ? String(r.id)
+                : "";
+    const displayName =
+        typeof r.displayName === "string"
+            ? r.displayName
+            : typeof r.name === "string"
+              ? r.name
+              : "";
+    return {
+        id: officialRoomId || displayName,
+        name: displayName,
+        officialRoomId: officialRoomId || undefined,
+        displayName: displayName || undefined,
+        areaName: typeof r.areaName === "string" ? r.areaName : undefined,
+        floorName: typeof r.floorName === "string" ? r.floorName : undefined,
+        regionName: typeof r.regionName === "string" ? r.regionName : undefined,
+        campusTag: typeof r.campusTag === "string" ? r.campusTag : undefined,
+        isDisabled: asBool(r.isDisabled),
+        disableReason: typeof r.disableReason === "string" ? r.disableReason : undefined,
+        enterBlocked: asBool(r.enterBlocked),
+        enterBlockReason: typeof r.enterBlockReason === "string" ? r.enterBlockReason : undefined,
+    };
+};
+
+const normalizeRoomList = (raw: unknown): RoomInfo[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw.map(normalizeRoomInfo);
 };
 
 const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
@@ -132,8 +176,8 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             rpg: userInfoRaw.rpg as AnalyzeResponse["userInfo"]["rpg"],
         },
         currentState,
-        pendingRooms: Array.isArray(safe.pendingRooms) ? (safe.pendingRooms as AnalyzeResponse["pendingRooms"]) : [],
-        allowedRooms: Array.isArray(safe.allowedRooms) ? (safe.allowedRooms as AnalyzeResponse["allowedRooms"]) : [],
+        pendingRooms: normalizeRoomList(safe.pendingRooms),
+        allowedRooms: normalizeRoomList(safe.allowedRooms),
         globalUserState: typeof safe.globalUserState === "number" ? safe.globalUserState : undefined,
         disciplinaryRecords: Array.isArray(safe.disciplinaryRecords)
             ? (safe.disciplinaryRecords as AnalyzeResponse["disciplinaryRecords"])
@@ -193,4 +237,56 @@ export const updateUserState = async (userId: string, valid: boolean): Promise<E
 export const fetchAllRoomCardStatus = async (): Promise<RoomCardStatus[]> => {
     const res = await http.get<ApiResponse<RoomCardStatus[]> | RoomCardStatus[]>("/scan/room/card-status");
     return unwrapList<RoomCardStatus>(res.data, []);
+};
+
+export interface ScanCardMappingStatus {
+    bound: boolean;
+    cardNo?: string;
+    dahuaSeq?: string;
+    dahuaPersonCode?: string;
+    cardStatus?: string;
+    freezeExemptFlag?: number;
+    userName?: string;
+    aroUserId?: string;
+}
+
+export const fetchScanCardMapping = async (userId: string): Promise<ScanCardMappingStatus> => {
+    const res = await http.get<ApiResponse<ScanCardMappingStatus> | ScanCardMappingStatus>("/scan/card-mapping", {
+        params: { userId },
+    });
+    const raw = unwrapData(res.data, { bound: false } as ScanCardMappingStatus);
+    return {
+        bound: raw.bound === true,
+        cardNo: typeof raw.cardNo === "string" ? raw.cardNo : undefined,
+        dahuaSeq: typeof raw.dahuaSeq === "string" ? raw.dahuaSeq : undefined,
+        dahuaPersonCode: typeof raw.dahuaPersonCode === "string" ? raw.dahuaPersonCode : undefined,
+        cardStatus: typeof raw.cardStatus === "string" ? raw.cardStatus : undefined,
+        freezeExemptFlag: typeof raw.freezeExemptFlag === "number" ? raw.freezeExemptFlag : undefined,
+        userName: typeof raw.userName === "string" ? raw.userName : undefined,
+        aroUserId: typeof raw.aroUserId === "string" ? raw.aroUserId : undefined,
+    };
+};
+
+export interface StudentDahuaBindResult {
+    success?: boolean;
+    failStep?: string;
+    steps?: Array<{
+        stepName?: string;
+        success?: boolean;
+        upstreamCode?: string;
+        upstreamErrMsg?: string;
+        message?: string;
+    }>;
+}
+
+export const studentDahuaBind = async (payload: {
+    userId: string;
+    userName: string;
+    cardNo: string;
+}): Promise<StudentDahuaBindResult> => {
+    const res = await http.post<ApiResponse<StudentDahuaBindResult> | StudentDahuaBindResult>(
+        "/scan/student-dahua-bind",
+        payload
+    );
+    return unwrapData(res.data, { success: false });
 };

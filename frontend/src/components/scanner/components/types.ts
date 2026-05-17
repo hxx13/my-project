@@ -13,6 +13,8 @@ export interface PopupProps {
     onRefresh?: () => void;
     onExecuteReset?: () => void;
     autoActionRoomId?: string;
+    /** 未绑卡时打开学生快捷绑卡页 */
+    onOpenStudentBind?: () => void;
 }
 
 export interface CapacityStat {
@@ -47,6 +49,8 @@ export interface PopupState {
     inlineMessage: string;
     /** 仅离开成功后的仓鼠减速动画，与全局 execute 成功解耦 */
     exitCelebrateRoomId: string | null;
+    accessNotice: { message: string } | null;
+    accessNoticeDurationMs: number;
 }
 
 export interface PopupActions {
@@ -61,4 +65,5 @@ export interface PopupActions {
     getKeepCardState: (index: number) => boolean;
     isRoomLocked: (room: RoomInfo) => boolean;
     getButtonText: (room: RoomInfo, roomId: string) => string;
+    dismissAccessNotice: () => void;
 }

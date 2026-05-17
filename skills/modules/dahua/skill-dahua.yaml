@@ -1,0 +1,38 @@
+skill:
+  id: "skill-dahua"
+  name: "Dahua 大华硬件"
+  version: "1.0.0"
+  module_path: "src/main/java/com/example/demo/modules/dahua"
+  created_at: "2026-05-17"
+
+philosophy:
+  business_position: |
+    大华 ICC OAuth SDK 集成：门控、通道元数据、事件回调、部门/门组/通道缓存刷新。
+    twin 模块的摆闸规则与扫卡联动依赖本模块缓存与硬件服务。
+
+  design_principles:
+    - "缓存服务：DahuaDepartmentCacheService、DahuaDoorGroupCacheService、DahuaDeviceChannelCacheService"
+    - "刷新任务注册在 JobExecutionRegistry（DAHUA_*_REFRESH）"
+    - "门控：DahuaDoorControlController；事件：DahuaEventController"
+
+architecture:
+  controllers:
+    - "DahuaDoorControlController"
+    - "DahuaMetaController"
+    - "DahuaEventController"
+  services:
+    - "DahuaHardwareService"
+    - "*CacheService（部门/门组/通道）"
+
+  twin_integration:
+    - "DahuaSwingRuleEngineService（twin 包）"
+    - "WebScanExitDahuaLinkageService"
+    - "AdminDahuaSwingController"
+
+pattern_recommendation: |
+  新增「渠道/命令」类扩展时采用策略接口 + 注册表（参考 yudao PayClient），
+  避免在 DahuaHardwareService 内堆 if-else。
+
+cautions:
+  - "SDK 调用注意超时与 ICC 凭证配置"
+  - "缓存刷新失败不应阻塞扫卡主路径，需可观测日志"

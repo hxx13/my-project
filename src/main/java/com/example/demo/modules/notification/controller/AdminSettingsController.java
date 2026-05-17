@@ -10,6 +10,7 @@ import com.example.demo.modules.notification.dto.UpdateNotifyTemplateRequest;
 import com.example.demo.modules.notification.dto.UpdateSystemConfigRequest;
 import com.example.demo.modules.notification.service.MiniProgramNotificationService;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
+import com.example.demo.modules.twin.service.ClientReloadBroadcastService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,11 +22,14 @@ import org.springframework.web.bind.annotation.*;
 public class AdminSettingsController {
     private final NotificationSettingsService settingsService;
     private final MiniProgramNotificationService miniProgramNotificationService;
+    private final ClientReloadBroadcastService clientReloadBroadcastService;
 
     public AdminSettingsController(NotificationSettingsService settingsService,
-                                   MiniProgramNotificationService miniProgramNotificationService) {
+                                   MiniProgramNotificationService miniProgramNotificationService,
+                                   ClientReloadBroadcastService clientReloadBroadcastService) {
         this.settingsService = settingsService;
         this.miniProgramNotificationService = miniProgramNotificationService;
+        this.clientReloadBroadcastService = clientReloadBroadcastService;
     }
 
     @GetMapping("/modules")
@@ -97,6 +101,18 @@ public class AdminSettingsController {
         if (denied != null) return denied;
         User currentUser = (User) httpRequest.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
         return settingsService.updateConfig(id, request, currentUser == null ? null : currentUser.getId()) ? Result.success() : Result.error("更新配置失败");
+    }
+
+    @PostMapping("/broadcast-client-reload")
+    @Operation(summary = "通知所有已连接的前端页面强制刷新（部署新静态资源后用于同步大屏等）")
+    public Result<?> broadcastClientReload(HttpServletRequest httpRequest) {
+        Result<?> denied = requireSuperAdmin(httpRequest);
+        if (denied != null) {
+            return denied;
+        }
+        User currentUser = (User) httpRequest.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
+        String operatorId = currentUser != null ? currentUser.getId() : "";
+        return Result.success(clientReloadBroadcastService.broadcastForceReload(operatorId));
     }
 
     @PostMapping("/mini-program/test-send")

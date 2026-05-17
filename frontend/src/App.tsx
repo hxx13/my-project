@@ -6,6 +6,7 @@ import { io } from "socket.io-client";
 import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 Store
 import { Toaster } from "react-hot-toast";
 import { resolveSocketUrl } from "@/config/socketUrl";
+import { SOCKET_CLIENT_FORCE_RELOAD } from "@/config/socketEvents";
 import type { AnimalRoomTelemetryPageDto, TelemetryTagItem } from "@/api/telemetryApi";
 import {
   ANIMAL_ROOM_TELEMETRY_PAGE_QUERY_KEY,
@@ -78,9 +79,16 @@ function GlobalSocketListener() {
         socket.on(SOCKET_TELEMETRY_ANIMAL_ROOM_TAG_DELTA, onTelemetryTagDelta);
         socket.on(SOCKET_TELEMETRY_ANIMAL_ROOM_SNAPSHOT_FULL, onTelemetrySnapshotFull);
 
+        const onClientForceReload = (payload: { reason?: string; at?: string }) => {
+            console.log("[client-reload] 收到强制刷新广播", payload);
+            window.location.reload();
+        };
+        socket.on(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
+
         return () => {
             socket.off(SOCKET_TELEMETRY_ANIMAL_ROOM_TAG_DELTA, onTelemetryTagDelta);
             socket.off(SOCKET_TELEMETRY_ANIMAL_ROOM_SNAPSHOT_FULL, onTelemetrySnapshotFull);
+            socket.off(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
             socket.disconnect();
         };
     }, [addEvent, setConnected, setPieStats, queryClient]);

@@ -2,8 +2,16 @@ import { useRef, useState } from 'react';
 import { ScanFace, Loader2 } from 'lucide-react';
 import { searchPersonnel } from '@/api/domains/profile.api';
 import { useAnalyzeScanMutation, useExecuteAccessMutation } from '@/api/hooks/useScanner';
-import type { AnalyzeResponse } from '@/api/types/scanner';
+import type { AnalyzeResponse, ExecutePayload } from '@/api/types/scanner';
+import {
+    cancelScheduledAutoExit,
+    noteScanExecuteSuccess,
+    setScanExecutePending,
+    setScanPopupSession,
+    tryBeginScanChannel,
+} from '@/components/scanner/scanSessionGuard';
 import { UiverseProfilePopup } from './UiverseProfilePopup';
+import { StudentDahuaBindPanel } from './StudentDahuaBindPanel';
 import { AnimatePresence } from 'framer-motion';
 
 const toHalfWidth = (value: string) =>
@@ -17,12 +25,15 @@ export default function ScannerPanel() {
     const [errorMsg, setErrorMsg] = useState('');
     const [executeErrorMessage, setExecuteErrorMessage] = useState('');
     const [lastScannedId, setLastScannedId] = useState('');
+    const lastScannedIdRef = useRef('');
 
     // 中文转 ID 期间的专属加载状态
     const [isSearchingName, setIsSearchingName] = useState(false);
     const [isComposing, setIsComposing] = useState(false);
 
     const [activeResult, setActiveResult] = useState<AnalyzeResponse | null>(null);
+    const [studentBindOpen, setStudentBindOpen] = useState(false);
+    const [studentBindTarget, setStudentBindTarget] = useState<{ userId: string; userName: string } | null>(null);
     const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const resetCloseTimer = () => {
@@ -41,18 +52,23 @@ export default function ScannerPanel() {
         onSuccess: (data) => {
             setActiveResult(data);
             setExecuteErrorMessage('');
+            const uid = data.userInfo?.userId ? String(data.userInfo.userId) : "";
+            setScanPopupSession(uid || null, lastScannedIdRef.current);
             resetCloseTimer();
         },
         onError: (error) => setErrorMsg(error.message || '无法解析该人员')
     });
 
     const executeMutation = useExecuteAccessMutation({
-        onSuccess: (data) => {
+        onSuccess: (data, variables) => {
             const failedMessage = data.success === false ? (data.message || data.msg || '操作被拒绝') : '';
             setExecuteErrorMessage(failedMessage);
             if (failedMessage) {
                 setErrorMsg(failedMessage);
                 return;
+            }
+            if (variables?.userId && variables?.action) {
+                noteScanExecuteSuccess(variables.userId, lastScannedIdRef.current, variables.action);
             }
             resetCloseTimer();
         },
@@ -63,10 +79,23 @@ export default function ScannerPanel() {
         }
     });
 
+    const runExecute = (payload: ExecutePayload) => {
+        setScanExecutePending(payload.userId);
+        executeMutation.mutate(payload, {
+            onSettled: () => setScanExecutePending(null),
+        });
+    };
+
     // =========================================================
     // 💥 核心 1：剥离出绝对纯净的“标准物理扫码扳机”
     // =========================================================
     const triggerStandardScan = (hardwareId: string) => {
+        const guard = tryBeginScanChannel(hardwareId, activeResult?.userInfo?.userId);
+        if (!guard.allow) {
+            setErrorMsg(guard.message);
+            return;
+        }
+        lastScannedIdRef.current = hardwareId;
         setLastScannedId(hardwareId);
         analyzeMutation.mutate(hardwareId || 'RANDOM');
     };
@@ -96,11 +125,6 @@ export default function ScannerPanel() {
                 if (personList && personList.length > 0) {
                     const person = personList[0] as unknown as Record<string, string | undefined>;
 
-                    // 💥💥💥 终极爆破弹窗：把这个人的所有底裤字段全扒出来给你看！
-                    // 注意：当你看到这个弹窗时，仔细看里面代表 ID 的字段到底叫什么名字！
-                    alert("🚨 数据库真实返回的字段长这样：\n\n" + JSON.stringify(person, null, 2));
-
-                    // 💥 这里加上了更多你在实验室系统里可能用到的物理 ID 命名猜测
                     const realUserId = person.user_id
                         || person.userId
                         || person.id
@@ -213,23 +237,56 @@ export default function ScannerPanel() {
                     <UiverseProfilePopup
                         result={activeResult}
                         onClose={() => {
+                            setStudentBindOpen(false);
                             setActiveResult(null);
                             setExecuteErrorMessage('');
                             analyzeMutation.reset();
                             executeMutation.reset();
                             if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+                            setScanPopupSession(null, null);
+                            cancelScheduledAutoExit();
                         }}
-                        onExecute={(payload) => executeMutation.mutate(payload)}
+                        onExecute={(payload) => runExecute(payload)}
                         isWorking={executeMutation.isPending}
                         executeData={executeMutation.data}
                         executeErrorMessage={executeErrorMessage}
-
                         isRefreshing={analyzeMutation.isPending}
                         onRefresh={() => lastScannedId && analyzeMutation.mutate(lastScannedId)}
                         onExecuteReset={() => executeMutation.reset()}
+                        onOpenStudentBind={() => {
+                            const uid = activeResult.userInfo?.userId;
+                            if (!uid) return;
+                            setStudentBindTarget({ userId: uid, userName: activeResult.userInfo?.name || "" });
+                            setStudentBindOpen(true);
+                            setActiveResult(null);
+                            analyzeMutation.reset();
+                            executeMutation.reset();
+                            if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+                        }}
                     />
                 )}
             </AnimatePresence>
+            {studentBindOpen && studentBindTarget ? (
+                <StudentDahuaBindPanel
+                    userId={studentBindTarget.userId}
+                    userName={studentBindTarget.userName}
+                    onCancel={() => {
+                        setStudentBindOpen(false);
+                        setStudentBindTarget(null);
+                    }}
+                    onSuccess={() => {
+                        setStudentBindOpen(false);
+                        setStudentBindTarget(null);
+                        setActiveResult(null);
+                        setExecuteErrorMessage("");
+                        setInputValue("");
+                        setLastScannedId("");
+                        analyzeMutation.reset();
+                        executeMutation.reset();
+                        if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+                    }}
+                />
+            ) : null}
         </div>
     );
 }

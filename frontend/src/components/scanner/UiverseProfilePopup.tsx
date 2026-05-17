@@ -11,6 +11,7 @@ import { ProfileHeader } from "./components/ProfileHeader";
 import { CapacityStatusList } from "./components/CapacityStatusList";
 import { ActionButtons } from "./components/ActionButtons";
 import { DisciplinaryModal } from "./components/DisciplinaryModal";
+import { ScanAccessNoticeOverlay } from "./ScanAccessNoticeOverlay";
 import type { PopupProps } from "./components/types";
 import { ViolationNoticeBanner } from "./ViolationNoticeBanner";
 
@@ -83,7 +84,7 @@ const WeeklyRoutineMatrixChart = ({ predictions, themeColor }: { predictions: an
 };
 
 export function UiverseProfilePopup(props: PopupProps) {
-    const { result, onClose, autoActionRoomId = "", executeErrorMessage } = props;
+    const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind } = props;
     const { state, actions } = useProfilePopup(props);
     const canOperateRiskState = hasMinRole(authStorage.getRole(), "STAFF");
     const themeColor = String(state.user?.gender) === "2" ? "#fbb9b6" : "#2d5cf7";
@@ -92,18 +93,29 @@ export function UiverseProfilePopup(props: PopupProps) {
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
-                if (state.showRiskModal) actions.setShowRiskModal(false);
+                if (state.accessNotice) actions.dismissAccessNotice();
+                else if (state.showRiskModal) actions.setShowRiskModal(false);
                 else onClose();
             }
         };
         window.addEventListener("keydown", handleEsc);
         return () => window.removeEventListener("keydown", handleEsc);
-    }, [actions, onClose, state.showRiskModal]);
+    }, [actions, onClose, state.accessNotice, state.showRiskModal]);
 
     if (!result) return null;
 
+    const showUnboundBindHint =
+        Boolean(onOpenStudentBind) && result.success !== false && result.hasPhysicalCardMapping !== true;
+
     return createPortal(
         <>
+            <ScanAccessNoticeOverlay
+                open={Boolean(state.accessNotice?.message)}
+                message={state.accessNotice?.message ?? ""}
+                durationMs={state.accessNoticeDurationMs}
+                themeColor={themeColor}
+                onDismiss={actions.dismissAccessNotice}
+            />
             <AnimatePresence>
                 <DisciplinaryModal
                     isOpen={state.showRiskModal}
@@ -122,7 +134,16 @@ export function UiverseProfilePopup(props: PopupProps) {
                 <button className="absolute top-6 right-6 z-[10000] flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white hover:border-red-500 hover:bg-red-500/80" onClick={onClose} title="关闭 Esc">
                     <X className="w-5 h-5" />
                 </button>
-                <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2 overflow-hidden p-10">
+                {showUnboundBindHint ? (
+                    <button
+                        type="button"
+                        className="absolute bottom-8 left-1/2 z-[10001] -translate-x-1/2 max-w-[min(320px,90vw)] rounded-xl border border-cyan-400/60 bg-cyan-500/20 px-4 py-2.5 text-center text-[12px] font-bold text-cyan-50 shadow-lg shadow-cyan-900/40 hover:bg-cyan-500/35 transition-colors"
+                        onClick={onOpenStudentBind}
+                    >
+                        当前未绑卡，点我绑定卡
+                    </button>
+                ) : null}
+                <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2 overflow-hidden p-10 pb-20">
                     {result.studentViolationNotice ? <ViolationNoticeBanner notice={result.studentViolationNotice} /> : null}
                     <div className="grid min-h-0 w-full max-w-[1920px] flex-1 grid-cols-[25fr_50fr_25fr] gap-8 overflow-hidden">
                     <div className="flex flex-col h-full min-h-0 pt-6 pb-6 gap-4">
@@ -172,7 +193,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                             <AIPredictionCard predictions={state.predictionList} isLoading={state.isPredLoading} themeColor={themeColor} />
                         </div>
                     </div>
-                    <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3">
+                    <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
                         {popupMessage && (
                             <div className="w-full max-w-[340px] mx-auto shrink-0 flex justify-end pr-0">
                                 <div className="max-w-[min(260px,100%)] rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] leading-snug text-red-200/95 shadow-md flex items-start gap-1.5">

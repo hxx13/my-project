@@ -1,0 +1,48 @@
+# Twin System 实体与数据访问规范
+
+skill:
+  id: "twin-entity-designer"
+  name: "实体类设计"
+  version: "1.0.0"
+
+philosophy:
+  design_principles:
+    - "包路径：com.example.demo.modules.{module}.entity"
+    - "Mapper：com.example.demo.modules.{module}.mapper，接口加 @Mapper"
+    - "复杂 SQL 放 src/main/resources/mapper/{Module}Mapper.xml"
+    - "新表优先 Mapper，避免在 Service 内散落 JdbcTemplate（遗留代码逐步收敛）"
+    - "使用 Lombok @Data；字段名 camelCase 映射列 snake_case"
+    - "无 TenantBaseDO；不引入芋道多租户基类"
+
+entity_template: |
+  package com.example.demo.modules.example.entity;
+
+  import lombok.Data;
+  import java.time.LocalDateTime;
+
+  @Data
+  public class ExampleRow {
+      private String id;
+      // 业务字段…
+      private LocalDateTime createdAt;
+      private LocalDateTime updatedAt;
+  }
+
+mapper_template: |
+  @Mapper
+  public interface ExampleMapper {
+      ExampleRow findById(@Param("id") String id);
+      int insert(ExampleRow row);
+      int updateById(ExampleRow row);
+  }
+
+schema_migrator_pattern:
+  description: "部分模块在 config/*SchemaMigrator.java 启动时检查/ALTER 表"
+  files_examples:
+    - "modules/twin/config/TwinJobScheduleSchemaMigrator.java"
+    - "modules/pagepermission/config/PagePermissionSchemaMigrator.java"
+  rule: "改 Migrator 必须同步 schema.sql 与 scripts/*.ddl.sql"
+
+naming:
+  entity_suffix: "实体名与表语义一致，如 TwinJobScheduleConfig、PagePermissionItem"
+  id_type: "与表主键一致（String UUID 或 Long）"

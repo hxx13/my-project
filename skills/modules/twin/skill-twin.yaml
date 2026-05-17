@@ -1,0 +1,87 @@
+skill:
+  id: "skill-twin"
+  name: "Twin 孪生门禁与自动化"
+  version: "1.0.0"
+  module_path: "src/main/java/com/example/demo/modules/twin"
+  created_at: "2026-05-17"
+
+philosophy:
+  business_position: |
+    twin 模块是动物房/门禁孪生业务核心：
+    - 扫卡进出、违规记录、卡映射与冻结跑批
+    - 大华摆闸规则引擎、自动签退
+    - 统一任务调度（JobSchedulerService + twin_job_schedule_config）
+    - 自动化审计（twin_automation_log）
+    - 与 aro、accessrule、dahua、telemetry 模块协作
+
+  design_principles:
+    - "定时任务：可配置项走 JobExecutionRegistry + JobSchedulerService，避免新增裸 @Scheduled 双入口"
+    - "跑批审计：FreezeReaperAuditContext 线程上下文 + TwinAutomationLogService"
+    - "扫卡链路：TwinScanAppService / WebScanExitDahuaLinkageService 与门禁联动"
+    - "DDL：Twin*SchemaMigrator 与 schema.sql/scripts 同步"
+
+architecture:
+  layers:
+    - name: "controller"
+      components:
+        - "TwinScanController - 扫卡分析/执行"
+        - "TwinScheduleController - 任务计划配置"
+        - "TwinMappingController - 卡映射"
+        - "TwinAuditController / TwinAutomationLogController"
+        - "AdminDahuaSwingController - 摆闸管理"
+        - "TwinDashboardController - 看板/小程序概览"
+    - name: "service"
+      components:
+        - "JobSchedulerService - 调度门面"
+        - "JobExecutionRegistry - jobKey -> 执行体"
+        - "TwinCardMappingService - 映射与冻结"
+        - "DahuaSwingRuleEngineService - 摆闸规则"
+        - "TwinScanAppService - 小程序扫卡"
+        - "TwinStudentViolationService"
+    - name: "mapper"
+      components:
+        - "TwinJobScheduleConfigMapper"
+        - "TwinStudentViolationMapper"
+        - "TwinAccessRuleScanConfigMapper"
+
+  communication:
+    depends_on:
+      - "modules.dahua - 硬件与通道"
+      - "modules.accessrule - 规则下发"
+      - "modules.aro - 人员与同步"
+      - "modules.telemetry - TELEMETRY_WINCC_UI 计划行"
+
+data_model:
+  core_tables:
+    - "twin_job_schedule_config"
+    - "twin_automation_log"
+    - "twin_card_mapping（及相关冻结/扫卡配置表，以 schema.sql 为准）"
+    - "twin_student_violation"
+    - "twin_access_rule_scan_config"
+
+job_keys:
+  registry: "JobExecutionRegistry"
+  keys:
+    - { key: "RUN_REAPER", desc: "自动冻结跑批" }
+    - { key: "RUN_REAPER_SECOND", desc: "第二次冻结跑批" }
+    - { key: "TELEMETRY_WINCC_UI", desc: "WinCC 测量值；配置载体，立即执行=刷新快照" }
+    - { key: "TELEMETRY_WINCC_LIMITS_UI", desc: "WinCC 限值低频入库" }
+    - { key: "ARO_PENETRATION_POLL", desc: "ARO 增量同步" }
+    - { key: "DAHUA_DEPT_REFRESH", desc: "大华部门缓存" }
+  scheduler_note: "TELEMETRY_WINCC_* 不参与统一 tick，由 TelemetryWinCcRefreshScheduler 读 JobSchedulerService 窗口配置"
+
+code_patterns:
+  new_scheduled_work:
+    steps:
+      - "在 JobExecutionRegistry 增加 JOB_* 常量与 execute 分支"
+      - "在 JobSchedulerService.ensureDefaults 注册默认计划行"
+      - "TwinScheduleController 暴露管理 API"
+      - "禁止再挂独立 @Scheduled 除非文档说明与 registry 关系"
+
+  automation_log:
+    service: "TwinAutomationLogService"
+    context: "FreezeReaperAuditContext（跑批期间）"
+
+cautions:
+  - "修改扫卡/冻结逻辑需回归小程序与 Web 扫卡页"
+  - "大华联动注意并发：DahuaSwingPullService 与 RuleEngine 不可双跑同一业务"

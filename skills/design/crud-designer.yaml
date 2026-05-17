@@ -1,0 +1,42 @@
+# Twin System CRUD 分层规范
+
+skill:
+  id: "twin-crud-designer"
+  name: "CRUD 代码结构"
+  version: "1.0.0"
+
+layers:
+  controller:
+    package: "com.example.demo.modules.{module}.controller"
+    responsibility: "参数校验、鉴权、Result 包装"
+  service:
+    package: "com.example.demo.modules.{module}.service"
+    responsibility: "业务逻辑、事务 @Transactional"
+  mapper:
+    package: "com.example.demo.modules.{module}.mapper"
+    responsibility: "持久化"
+  dto:
+    package: "com.example.demo.modules.{module}.dto"
+    responsibility: "请求/响应 VO，与 entity 分离"
+  config:
+    package: "com.example.demo.modules.{module}.config"
+    responsibility: "SchemaMigrator、调度配置等"
+
+new_feature_flow:
+  steps:
+    - "DDL：schema.sql + scripts/*.ddl.sql"
+    - "entity + mapper (+ xml)"
+    - "service"
+    - "controller + dto"
+    - "frontend: api domain + 页面；小程序：utils API"
+    - "保存成功：setState / setQueryData 合并单行"
+
+pagination:
+  note: "无统一 PageResult；各模块自定义列表 DTO 或 Map，新增模块可引入通用 PageDto 但不强制"
+
+transactions:
+  rule: "写操作在 Service 层 @Transactional；Controller 不开启事务"
+
+testing:
+  target: "src/test/java 下 JUnit5 + @SpringBootTest / @MybatisTest"
+  priority: "JobSchedulerService、AccessRuleDispatch、Auth、Telemetry 快照"

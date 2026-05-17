@@ -16,6 +16,13 @@ import com.example.demo.modules.twin.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.service.DahuaSwingRuleConfigService;
 import com.example.demo.modules.twin.service.TwinStudentViolationService;
 import com.example.demo.modules.twin.service.WebScanExitDahuaLinkageService;
+import com.example.demo.modules.twin.service.TwinAccessRuleScanConfigService;
+import com.example.demo.modules.twin.service.DahuaIssueAccessRulePrefillService;
+import com.example.demo.modules.twin.service.DahuaIssueCardOrchestratorService;
+import com.example.demo.modules.twin.dto.DahuaIssueAccessPrefillVO;
+import com.example.demo.modules.twin.dto.DahuaIssueCardRequest;
+import com.example.demo.modules.twin.service.DahuaIssueException;
+import com.example.demo.modules.twin.entity.TwinCardMapping;
 import com.example.demo.modules.twin.support.ScanPopupEntryWindowEvaluator;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
 import org.slf4j.Logger;
@@ -67,7 +74,19 @@ public class TwinScanController {
     private WebScanExitDahuaLinkageService webScanExitDahuaLinkageService;
 
     @Autowired
+    private TwinAccessRuleScanConfigService twinAccessRuleScanConfigService;
+
+    @Autowired
     private TwinStudentViolationService twinStudentViolationService;
+
+    @Autowired
+    private DahuaIssueCardOrchestratorService dahuaIssueCardOrchestratorService;
+
+    @Autowired
+    private DahuaIssueAccessRulePrefillService dahuaIssueAccessRulePrefillService;
+
+    private static final long STUDENT_DAHUA_BIND_DEPT_ID = 26L;
+    private static final java.util.List<Long> STUDENT_DAHUA_BIND_DOOR_GROUP_IDS = java.util.List.of(58L, 59L);
 
     @Value("${app.access-rule-dahua-debug:false}")
     private boolean accessRuleDahuaDebug;
@@ -171,8 +190,8 @@ public class TwinScanController {
                 webScanExitDahuaLinkageService.cancelPendingDeferredExitForUser(userId);
             }
 
-            // ENTER 必须先解冻，再调用大华 batchAuthority；否则大华会返回“冻结人员不能授权”
-            if (accessType == 1 && physicalCardNo != null) {
+            // ENTER：按全局开关解冻；关闭时仍执行 ARO/待激活，但若开启下放则大华可能因「冻结人员不能授权」失败
+            if (accessType == 1 && physicalCardNo != null && twinAccessRuleScanConfigService.isEnterUnfreezeEnabled()) {
                 try {
                     twinCardMappingService.updateCardStatus(physicalCardNo, "NORMAL");
                 } catch (Exception e) {
@@ -181,6 +200,8 @@ public class TwinScanController {
                     result.setMessage("官方系统登记成功，但大华预解冻失败，无法下发门禁权限，请联系管理员！");
                     return Result.success(result);
                 }
+            } else if (accessType == 1 && physicalCardNo != null) {
+                log.info("[scan-exec] skip-pre-unfreeze enter_unfreeze_disabled userId={} cardNo={}", userId, physicalCardNo);
             }
 
             String effectiveRoomId = roomId;
@@ -208,14 +229,24 @@ public class TwinScanController {
                             userId, effectiveRoomId, physicalCardNo, isKeepCard, deferSec);
                 }
                 applyDispatchHint(result, dispatchResult, effectiveRoomId, userId, accessType);
+                if (accessType == 1
+                        && physicalCardNo != null
+                        && !twinAccessRuleScanConfigService.isEnterUnfreezeEnabled()
+                        && twinAccessRuleScanConfigService.isEnterDispatchEnabled()) {
+                    String unfreezeHint = "全局已关闭进入解冻：物理卡仍为冻结态，大华权限下发可能失败。";
+                    String merged = result.getDahuaHint();
+                    result.setDahuaHint(merged != null && !merged.isBlank() ? merged + " " + unfreezeHint : unfreezeHint);
+                }
                 if (accessType == 2 && deferSec > 0) {
                     result.setDeferredDahuaSeconds(deferSec);
-                    String deferHint = "大华门禁权限回收与物理卡冻结将在 " + deferSec + " 秒后执行。";
-                    String merged = result.getDahuaHint();
-                    if (merged != null && !merged.isBlank()) {
-                        result.setDahuaHint(merged + " " + deferHint);
-                    } else {
-                        result.setDahuaHint(deferHint);
+                    String deferHint = webScanExitDahuaLinkageService.buildDeferredExitHint(deferSec, isKeepCard);
+                    if (deferHint != null && !deferHint.isBlank()) {
+                        String merged = result.getDahuaHint();
+                        if (merged != null && !merged.isBlank()) {
+                            result.setDahuaHint(merged + " " + deferHint);
+                        } else {
+                            result.setDahuaHint(deferHint);
+                        }
                     }
                 }
             } catch (Exception linkageEx) {
@@ -342,8 +373,74 @@ public class TwinScanController {
     }
 
     /**
-     * 📊 【第三把刀】房卡与人员实时监控 (一拖二接口)
-     * 支持传 roomId 查看单间，或者不传查看全校！
+     * 扫码终端：查询人员在大华发卡库中的绑卡状态（供学生快捷绑卡二次确认展示）。
+     */
+    @GetMapping("/card-mapping")
+    public Result<Map<String, Object>> getCardMappingForScan(@RequestParam("userId") String userId) {
+        String uid = userId != null ? userId.trim() : "";
+        if (uid.isEmpty()) {
+            return Result.error("缺少 userId");
+        }
+        TwinCardMapping mapping = twinCardMappingService.getByAroUserId(uid);
+        Map<String, Object> resp = new HashMap<>();
+        if (mapping == null || mapping.getCardNo() == null || mapping.getCardNo().isBlank()) {
+            resp.put("bound", false);
+            return Result.success(resp);
+        }
+        resp.put("bound", true);
+        resp.put("cardNo", mapping.getCardNo());
+        resp.put("dahuaSeq", mapping.getDahuaSeq());
+        resp.put("dahuaPersonCode", mapping.getDahuaPersonCode());
+        resp.put("cardStatus", mapping.getCardStatus() != null ? mapping.getCardStatus() : "NORMAL");
+        resp.put("freezeExemptFlag", mapping.getFreezeExemptFlag() != null ? mapping.getFreezeExemptFlag() : 0);
+        resp.put("userName", mapping.getUserName());
+        resp.put("aroUserId", mapping.getAroUserId());
+        return Result.success(resp);
+    }
+
+    /**
+     * 学生扫码快捷绑卡：固定部门 #26、门组 #58/#59；通道仅当「离开时冻结」开启时按门禁规则预填。
+     */
+    @PostMapping("/student-dahua-bind")
+    public Result<?> studentDahuaBind(@RequestBody Map<String, Object> body) {
+        String userId = body.get("userId") != null ? String.valueOf(body.get("userId")).trim() : "";
+        String cardNo = body.get("cardNo") != null ? String.valueOf(body.get("cardNo")).trim() : "";
+        String userName = body.get("userName") != null ? String.valueOf(body.get("userName")).trim() : "";
+        if (userId.isEmpty() || cardNo.isEmpty()) {
+            return Result.error("缺少人员或卡号");
+        }
+        if (!cardNo.matches("^[0-9A-Za-z]{8}$")) {
+            return Result.error("卡号须为 8 位字母或数字");
+        }
+        TwinCardMapping existing = twinCardMappingService.getByAroUserId(userId);
+        if (existing != null && existing.getCardNo() != null && !existing.getCardNo().isBlank()) {
+            return Result.error("该人员已绑卡，请勿重复绑定");
+        }
+        DahuaIssueCardRequest req = new DahuaIssueCardRequest();
+        req.setAroUserId(userId);
+        req.setCardNo(cardNo);
+        req.setUserName(userName.isEmpty() ? userId : userName);
+        req.setDepartmentId(STUDENT_DAHUA_BIND_DEPT_ID);
+        req.setDoorGroupIds(new java.util.ArrayList<>(STUDENT_DAHUA_BIND_DOOR_GROUP_IDS));
+        java.util.List<String> channels = new java.util.ArrayList<>();
+        if (twinAccessRuleScanConfigService.isExitFreezeEnabled()) {
+            DahuaIssueAccessPrefillVO prefill = dahuaIssueAccessRulePrefillService.build(userId);
+            if (prefill.getDefaultChannelResourceCodes() != null) {
+                channels.addAll(prefill.getDefaultChannelResourceCodes());
+            }
+        }
+        req.setChannelResourceCodes(channels);
+        try {
+            return Result.success(dahuaIssueCardOrchestratorService.issue(req));
+        } catch (DahuaIssueException e) {
+            return Result.success(e.getResponse());
+        } catch (Exception e) {
+            return Result.error("绑卡失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 📊 房卡与人员实时监控：支持传 roomId 查看单间，或不传查看全校。
      */
     @GetMapping("/room/card-status")
     public com.example.demo.common.dto.Result<?> getRoomCardStatus(

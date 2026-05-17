@@ -1,5 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
+import {
+    ENTER_REFRESH_MS,
+    EXIT_CELEBRATE_MS,
+    EXIT_NOTICE_AFTER_REFRESH_MS,
+    parseScanAccessNoticeSettings,
+    resolveAccessNoticeText,
+} from "@/components/scanner/scanAccessNoticeConfig";
 import { fetchPredictionDashboard } from "@/api/domains/profile.api";
 import type { RoomOverviewItem } from "@/api/types/profile"; // 👈 去它真正的老家拿！
 import { useRoomOverviewQuery } from "@/api/hooks/useProfile";
@@ -118,10 +126,22 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     const [actedRoomId, setActedRoomId] = useState<string | null>(null);
     const [inlineMessage, setInlineMessage] = useState("");
     const [exitCelebrateRoomId, setExitCelebrateRoomId] = useState<string | null>(null);
+    const [accessNotice, setAccessNotice] = useState<{ message: string } | null>(null);
+    const [pendingExitNoticeMode, setPendingExitNoticeMode] = useState<"OWN" | "BORROWED" | null>(null);
     const [keepCardStates, setKeepCardStates] = useState<boolean[]>(new Array(targetRooms.length || 10).fill(false));
     const manualLockRef = useRef(false);
     const hasLoggedStampRef = useRef(false);
     const toasterResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const exitNoticeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const entryModeAtExecuteRef = useRef<"OWN" | "BORROWED" | null>(null);
+
+    const { data: runtimeConfig = {} } = useQuery({
+        queryKey: ["public-runtime-config"],
+        queryFn: fetchPublicRuntimeConfig,
+        staleTime: 60_000,
+    });
+    const noticeSettings = useMemo(() => parseScanAccessNoticeSettings(runtimeConfig), [runtimeConfig]);
+    const dismissAccessNotice = useCallback(() => setAccessNotice(null), []);
 
     useEffect(() => {
         if (hasLoggedStampRef.current) return;
@@ -131,6 +151,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
 
     useEffect(() => () => {
         if (toasterResetTimerRef.current) clearTimeout(toasterResetTimerRef.current);
+        if (exitNoticeFallbackTimerRef.current) clearTimeout(exitNoticeFallbackTimerRef.current);
     }, []);
 
     const { data: roomOverview = [], isFetching: roomOverviewFetching } = useRoomOverviewQuery();
@@ -183,8 +204,18 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         setActedRoomId(null);
         setFinishedRooms([]);
         setToastData((prev) => ({ ...prev, play: false, exp: 0 }));
+        entryModeAtExecuteRef.current = null;
         manualLockRef.current = false;
     }, [user?.userId, currentState]);
+
+    useEffect(() => {
+        setAccessNotice(null);
+        setPendingExitNoticeMode(null);
+        if (exitNoticeFallbackTimerRef.current) {
+            clearTimeout(exitNoticeFallbackTimerRef.current);
+            exitNoticeFallbackTimerRef.current = null;
+        }
+    }, [user?.userId]);
 
     useEffect(() => {
         setKeepCardStates(new Array(Math.max(targetRooms.length, 1)).fill(false));
@@ -244,8 +275,12 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     }, [isExecuteSuccess, executeData?.unboundForDahuaRule, executeData?.dahuaHint, executeData?.accessRuleDebug]);
 
     useEffect(() => {
-        if (!isExecuteSuccess || !onRefresh || !onExecuteReset) return;
-        // 进入/离开成功后立刻刷新房间容量，减少“满员禁用”滞后感
+        if (!isExecuteSuccess || !onExecuteReset) return;
+
+        const successAction: "ENTER" | "EXIT" =
+            lastExecutedActionRef.current ?? (currentState === "INSIDE" ? "EXIT" : "ENTER");
+        const modeForNotice = entryModeAtExecuteRef.current ?? entryMode;
+
         queryClient.invalidateQueries({ queryKey: ["roomOverview"] }).catch(() => undefined);
         const gainedExp = getExpGainFromResult(executeData);
         if (gainedExp > 0) {
@@ -257,25 +292,91 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         }
         const targetId = actedRoomId || autoActionRoomId;
         if (targetId) setFinishedRooms((prev) => Array.from(new Set([...prev, targetId])));
-        const timer = setTimeout(() => {
+
+        const showNoticeIfEnabled = (act: "ENTER" | "EXIT") => {
+            if (!noticeSettings.enabled) return;
+            setAccessNotice({ message: resolveAccessNoticeText(act, modeForNotice, runtimeConfig) });
+        };
+
+        const runRefresh = () => {
             onExecuteReset();
-            onRefresh();
+            onRefresh?.();
             queryClient.invalidateQueries({ queryKey: ["roomOverview"] }).catch(() => undefined);
-        }, 1500);
-        return () => clearTimeout(timer);
-    }, [actedRoomId, autoActionRoomId, executeData, isExecuteSuccess, onExecuteReset, onRefresh, queryClient]);
+            entryModeAtExecuteRef.current = null;
+        };
+
+        if (successAction === "ENTER") {
+            showNoticeIfEnabled("ENTER");
+            const timer = setTimeout(runRefresh, ENTER_REFRESH_MS);
+            return () => clearTimeout(timer);
+        }
+
+        setPendingExitNoticeMode(noticeSettings.enabled ? modeForNotice : null);
+
+        const celebrateTimer = setTimeout(() => {
+            runRefresh();
+        }, EXIT_CELEBRATE_MS);
+
+        if (exitNoticeFallbackTimerRef.current) clearTimeout(exitNoticeFallbackTimerRef.current);
+        exitNoticeFallbackTimerRef.current = setTimeout(() => {
+            exitNoticeFallbackTimerRef.current = null;
+            setPendingExitNoticeMode((stillPending) => {
+                if (stillPending && noticeSettings.enabled) {
+                    setAccessNotice({
+                        message: resolveAccessNoticeText("EXIT", stillPending, runtimeConfig),
+                    });
+                }
+                return null;
+            });
+        }, EXIT_CELEBRATE_MS + 1800);
+
+        return () => clearTimeout(celebrateTimer);
+    }, [
+        actedRoomId,
+        autoActionRoomId,
+        currentState,
+        entryMode,
+        executeData,
+        isExecuteSuccess,
+        noticeSettings.enabled,
+        onExecuteReset,
+        onRefresh,
+        queryClient,
+        runtimeConfig,
+    ]);
 
     useEffect(() => {
-        if (!isSameActionSuccess || action !== "EXIT") return;
+        if (!isExecuteSuccess) return;
+        const successAction: "ENTER" | "EXIT" =
+            lastExecutedActionRef.current ?? (currentState === "INSIDE" ? "EXIT" : "ENTER");
+        if (successAction !== "EXIT") return;
         const targetId = actedRoomId || autoActionRoomId;
         if (targetId) setExitCelebrateRoomId(targetId);
-    }, [action, actedRoomId, autoActionRoomId, isSameActionSuccess]);
+    }, [actedRoomId, autoActionRoomId, currentState, isExecuteSuccess]);
 
     useEffect(() => {
         if (!exitCelebrateRoomId) return;
-        const t = setTimeout(() => setExitCelebrateRoomId(null), 4200);
+        const t = setTimeout(() => setExitCelebrateRoomId(null), EXIT_CELEBRATE_MS);
         return () => clearTimeout(t);
     }, [exitCelebrateRoomId]);
+
+    useEffect(() => {
+        if (!pendingExitNoticeMode || !noticeSettings.enabled) return;
+        if (isRefreshing) return;
+        if (currentState !== "OUTSIDE") return;
+
+        const mode = pendingExitNoticeMode;
+        const showTimer = setTimeout(() => {
+            setPendingExitNoticeMode(null);
+            if (exitNoticeFallbackTimerRef.current) {
+                clearTimeout(exitNoticeFallbackTimerRef.current);
+                exitNoticeFallbackTimerRef.current = null;
+            }
+            setAccessNotice({ message: resolveAccessNoticeText("EXIT", mode, runtimeConfig) });
+        }, EXIT_NOTICE_AFTER_REFRESH_MS);
+
+        return () => clearTimeout(showTimer);
+    }, [pendingExitNoticeMode, currentState, isRefreshing, noticeSettings.enabled, runtimeConfig]);
 
     useEffect(() => {
         if (!user?.userId || targetRooms.length === 0) {
@@ -353,6 +454,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         }
         const targetRoomId = room.officialRoomId || room.id;
         lastExecutedActionRef.current = action;
+        entryModeAtExecuteRef.current = entryMode;
         manualLockRef.current = true;
         setActedRoomId(targetRoomId);
         onExecute({
@@ -392,7 +494,8 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     const isRoomLocked = (room: RoomInfo) =>
         Boolean(
             isStateUnknown ||
-                room.isDisabled ||
+                (action === "ENTER" && room.enterBlocked) ||
+                (action === "ENTER" && room.isDisabled) ||
                 globalUserState === 3 ||
                 (action === "ENTER" && isRoomFull(room)) ||
                 (action === "ENTER" && entryTimeBlocked) ||
@@ -410,7 +513,8 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         if (action === "ENTER" && isRoomFull(room)) return `[满员] 无法进入 ${room.displayName}`;
         if (action === "ENTER" && entryTimeBlocked) return `[非开放时段] 无法进入 ${room.displayName}`;
         if (action === "ENTER" && violationEnterLocked) return `[违规处理] 禁止进入 ${room.displayName}`;
-        if (room.isDisabled) return `[禁入] ${room.displayName}`;
+        if (action === "ENTER" && room.enterBlocked) return `[不在此校区] ${room.displayName}`;
+        if (action === "ENTER" && room.isDisabled) return `[禁入] ${room.displayName}`;
         return action === "ENTER" ? `进入 ${room.displayName}` : `离开 ${room.displayName}`;
     };
 
@@ -435,6 +539,8 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             actedRoomId,
             inlineMessage,
             exitCelebrateRoomId,
+            accessNotice,
+            accessNoticeDurationMs: noticeSettings.durationMs,
         },
         actions: {
             setShowRiskModal,
@@ -447,6 +553,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             getKeepCardState: (index) => Boolean(keepCardStates[index]),
             isRoomLocked,
             getButtonText,
+            dismissAccessNotice,
         },
     };
 };

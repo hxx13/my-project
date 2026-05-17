@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { FileText } from "lucide-react";
 import { fetchAutomationLogs, type AutomationLogRow } from "@/api/twinApi";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
+import { AdminSelect } from "@/components/admin/AdminSelect";
+import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import { detailTextToLines } from "@/utils/detailTextToLines";
 
 const TYPE_OPTIONS = [
@@ -63,8 +67,8 @@ export default function AdminAutomationLogsPage() {
       setRows(data.list || []);
       setTotal(data.total || 0);
       setPage(data.page || targetPage);
-    } catch (e: any) {
-      toast.error(e?.message || "自动化日志加载失败");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "自动化日志加载失败");
     } finally {
       setLoading(false);
     }
@@ -76,22 +80,63 @@ export default function AdminAutomationLogsPage() {
   }, []);
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-3 text-base font-semibold text-slate-800">自动化日志</div>
-        <div className="grid gap-2 md:grid-cols-6">
-          <select value={automationType} onChange={(e) => setAutomationType(e.target.value)} className="rounded-md border px-3 py-2 text-sm">
-            {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <select value={triggerType} onChange={(e) => setTriggerType(e.target.value)} className="rounded-md border px-3 py-2 text-sm">
-            {TRIGGER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="用户ID/姓名/原因/事件关键词" className="rounded-md border px-3 py-2 text-sm" />
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="rounded-md border px-3 py-2 text-sm" />
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="rounded-md border px-3 py-2 text-sm" />
-          <div className="flex gap-2">
-            <button onClick={() => void load(1)} className="rounded-md bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700">筛选</button>
-            <button
+    <AdminPageShell
+      title={
+        <span className="inline-flex items-center gap-2">
+          <FileText className="h-6 w-6 shrink-0 text-[#0070f3]" aria-hidden />
+          自动化日志
+        </span>
+      }
+      description="查看门禁联动、定时任务等自动化执行流水；可按类型、触发方式与时间筛选。"
+    >
+      <div className="flex flex-col gap-4">
+        <AdminFormCard title="筛选条件" description={`共 ${total} 条，按时间倒序分页展示。`}>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <label className="flex flex-col gap-1">
+              <span className={adminLabelClass}>自动化类型</span>
+              <AdminSelect value={automationType} onChange={(e) => setAutomationType(e.target.value)}>
+                {TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </AdminSelect>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={adminLabelClass}>触发方式</span>
+              <AdminSelect value={triggerType} onChange={(e) => setTriggerType(e.target.value)}>
+                {TRIGGER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </AdminSelect>
+            </label>
+            <label className="flex flex-col gap-1 md:col-span-2">
+              <span className={adminLabelClass}>关键词</span>
+              <input
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="用户ID/姓名/原因/事件关键词"
+                className={adminInputClass}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={adminLabelClass}>开始日期</span>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={adminInputClass} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={adminLabelClass}>结束日期</span>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={adminInputClass} />
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <AdminButton type="button" tone="primary" onClick={() => void load(1)}>
+              筛选
+            </AdminButton>
+            <AdminButton
+              type="button"
+              tone="secondary"
               onClick={() => {
                 setAutomationType("");
                 setTriggerType("");
@@ -101,32 +146,26 @@ export default function AdminAutomationLogsPage() {
                 setShowPenetrationLogs(false);
                 void load(1, false);
               }}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
             >
               重置
-            </button>
+            </AdminButton>
           </div>
-        </div>
-        <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={showPenetrationLogs}
-            onChange={(e) => {
-              const v = e.target.checked;
-              setShowPenetrationLogs(v);
-              void load(1, v);
-            }}
-          />
-          显示穿甲轮询等后台任务日志（ARO_PENETRATION_POLL）
-        </label>
-      </div>
+          <label className={`flex cursor-pointer items-center gap-2 ${adminHintClass}`}>
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-neutral-300"
+              checked={showPenetrationLogs}
+              onChange={(e) => {
+                const v = e.target.checked;
+                setShowPenetrationLogs(v);
+                void load(1, v);
+              }}
+            />
+            显示穿甲轮询等后台任务日志（ARO_PENETRATION_POLL）
+          </label>
+        </AdminFormCard>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-sm text-slate-600">共 {total} 条，按时间倒序</div>
-          {loading && <div className="text-xs text-slate-500">加载中...</div>}
-        </div>
-        <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
+        <AdminTableShell loading={loading} empty={!loading && rows.length === 0} emptyMessage="暂无日志" scrollable>
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b bg-slate-50 text-left text-slate-600">
@@ -147,22 +186,24 @@ export default function AdminAutomationLogsPage() {
                   <td className="px-2 py-2 whitespace-nowrap">{toTime(r.eventTime)}</td>
                   <td className="px-2 py-2">
                     <div>{r.automationTypeLabel || r.automationType || "-"}</div>
-                    {r.automationTypeLabel && <div className="text-[10px] text-slate-400 font-mono">{r.automationType}</div>}
+                    {r.automationTypeLabel && <div className="font-mono text-[10px] text-slate-400">{r.automationType}</div>}
                   </td>
                   <td className="px-2 py-2">
                     <div>{r.triggerTypeLabel || r.triggerType || "-"}</div>
-                    {r.triggerTypeLabel && <div className="text-[10px] text-slate-400 font-mono">{r.triggerType}</div>}
+                    {r.triggerTypeLabel && <div className="font-mono text-[10px] text-slate-400">{r.triggerType}</div>}
                   </td>
                   <td className="px-2 py-2">
                     <div>{r.eventKeyLabel || r.eventKey || "-"}</div>
-                    {r.eventKeyLabel && <div className="text-[10px] text-slate-400 font-mono">{r.eventKey}</div>}
+                    {r.eventKeyLabel && <div className="font-mono text-[10px] text-slate-400">{r.eventKey}</div>}
                   </td>
                   <td className="px-2 py-2 font-mono text-xs">{r.userId || "-"}</td>
                   <td className="px-2 py-2">{r.userName || "-"}</td>
-                  <td className="px-2 py-2">{r.success === 1 ? <span className="text-emerald-600">成功</span> : <span className="text-rose-600">失败</span>}</td>
+                  <td className="px-2 py-2">
+                    {r.success === 1 ? <span className="text-emerald-600">成功</span> : <span className="text-rose-600">失败</span>}
+                  </td>
                   <td className="px-2 py-2">
                     <div>{r.triggerReasonLabel || r.triggerReason || "-"}</div>
-                    {r.triggerReasonLabel && <div className="text-[10px] text-slate-400 font-mono">{r.triggerReason}</div>}
+                    {r.triggerReasonLabel && <div className="font-mono text-[10px] text-slate-400">{r.triggerReason}</div>}
                   </td>
                   <td className="max-w-[32rem] px-2 py-2 text-slate-700">
                     <div className="space-y-1 break-words">
@@ -175,32 +216,22 @@ export default function AdminAutomationLogsPage() {
                   </td>
                 </tr>
               ))}
-              {!rows.length && !loading && (
-                <tr>
-                  <td className="px-2 py-8 text-center text-slate-500" colSpan={9}>暂无日志</td>
-                </tr>
-              )}
             </tbody>
           </table>
-        </AdminDataTableWrap>
-        <div className="mt-3 flex items-center justify-end gap-2 text-sm">
-          <button
-            disabled={page <= 1 || loading}
-            onClick={() => void load(page - 1)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+        </AdminTableShell>
+
+        <div className="flex items-center justify-end gap-2 text-sm">
+          <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || loading} onClick={() => void load(page - 1)}>
             上一页
-          </button>
-          <span className="text-slate-600">{page} / {totalPages}</span>
-          <button
-            disabled={page >= totalPages || loading}
-            onClick={() => void load(page + 1)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          </AdminButton>
+          <span className="text-neutral-600">
+            {page} / {totalPages}
+          </span>
+          <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || loading} onClick={() => void load(page + 1)}>
             下一页
-          </button>
+          </AdminButton>
         </div>
       </div>
-    </div>
+    </AdminPageShell>
   );
 }

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Database, Upload } from "lucide-react";
+import { LayoutGrid, Upload } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   fetchCageShelfDetail,
@@ -12,7 +12,9 @@ import {
   type CageShelfFilterOptions,
   type CageShelfIndexRow,
 } from "@/api/domains/cageShelf.api";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell, AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminButton } from "@/components/admin/AdminButton";
+import { adminLabelClass } from "@/features/admin/adminFormUi";
 
 /** 对齐后端 cageBoxInfo（UE 蓝图 ST_CageData）字段顺序 */
 const CAGE_BOX_INFO_FIELD_ORDER = [
@@ -164,6 +166,7 @@ function ShelfGrid({
 }
 
 export default function AdminCageShelfPage() {
+  const importInputRef = useRef<HTMLInputElement>(null);
   const [options, setOptions] = useState<CageShelfFilterOptions>({
     campuses: [],
     areas: [],
@@ -334,32 +337,45 @@ export default function AdminCageShelfPage() {
   };
 
   return (
-    <div className="space-y-3 min-h-0">
-      <div className="rounded-xl border bg-white p-3">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-800">
-            <Database className="h-4 w-4 text-blue-600" />
-            笼架信息
-          </div>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded border px-3 py-1.5 text-xs hover:bg-slate-50">
-            <Upload className="h-3.5 w-3.5" />
+    <AdminPageShell
+      title={
+        <span className="inline-flex items-center gap-2">
+          <LayoutGrid className="h-6 w-6 shrink-0 text-[#0070f3]" aria-hidden />
+          笼架信息
+        </span>
+      }
+      description="按校区—区域—楼层—房间逐级筛选，查看笼架格位与落库索引；支持 CSV 导入。"
+      actions={
+        <>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv"
+            className="sr-only"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              void onImport(f);
+              e.currentTarget.value = "";
+            }}
+          />
+          <AdminButton
+            type="button"
+            tone="secondary"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => importInputRef.current?.click()}
+          >
+            <Upload className="h-3.5 w-3.5" aria-hidden />
             导入 CSV
-            <input
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                void onImport(f);
-                e.currentTarget.value = "";
-              }}
-            />
-          </label>
-        </div>
-
+          </AdminButton>
+        </>
+      }
+    >
+    <div className="min-h-0 space-y-4">
+      <AdminFormCard title="位置筛选" description="选择房间后将加载该房间内全部笼架平面。">
         <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-4">
           <div>
-            <div className="mb-1.5 text-xs font-medium text-slate-600">1. 校区</div>
+            <div className={`mb-1.5 ${adminLabelClass}`}>1. 校区</div>
             <div className="flex flex-wrap gap-2">
               {options.campuses.map((c) => (
                 <button
@@ -380,7 +396,7 @@ export default function AdminCageShelfPage() {
 
           {campusId && (
             <div>
-              <div className="mb-1.5 text-xs font-medium text-slate-600">2. 区域</div>
+              <div className={`mb-1.5 ${adminLabelClass}`}>2. 区域</div>
               <div className="flex flex-wrap gap-2">
                 {options.areas.map((a) => {
                   const active = areaId === a.areaId && areaName === a.areaName;
@@ -408,7 +424,7 @@ export default function AdminCageShelfPage() {
 
           {campusId && areaId && (
             <div>
-              <div className="mb-1.5 text-xs font-medium text-slate-600">3. 楼层</div>
+              <div className={`mb-1.5 ${adminLabelClass}`}>3. 楼层</div>
               <div className="flex flex-wrap gap-2">
                 {options.floors.map((f) => {
                   const active = floorId === f.floorId && floorName === f.floorName;
@@ -436,7 +452,7 @@ export default function AdminCageShelfPage() {
 
           {campusId && areaId && floorId && (
             <div>
-              <div className="mb-1.5 text-xs font-medium text-slate-600">4. 房间（选定后自动加载本房间全部笼架）</div>
+              <div className={`mb-1.5 ${adminLabelClass}`}>4. 房间（选定后自动加载本房间全部笼架）</div>
               <div className="flex flex-wrap gap-2">
                 {options.rooms.map((r) => {
                   const active = roomId === r.roomId && roomName === r.roomName;
@@ -462,7 +478,7 @@ export default function AdminCageShelfPage() {
             </div>
           )}
         </div>
-      </div>
+      </AdminFormCard>
 
       <div className="min-h-[62vh] space-y-4 overflow-y-auto pr-1">
         {roomLoading && (
@@ -494,11 +510,7 @@ export default function AdminCageShelfPage() {
         )}
       </div>
 
-      <div className="rounded-xl border bg-white p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-800">落库索引可视化</div>
-          <div className="text-xs text-slate-500">当前筛选命中 {indexTotal} 条（展示前 {indexRows.length} 条）</div>
-        </div>
+      <AdminFormCard title="落库索引可视化" description={`当前筛选命中 ${indexTotal} 条（展示前 ${indexRows.length} 条）。`}>
         <AdminDataTableWrap scrollable>
           <table className="min-w-full text-xs">
             <thead className="bg-slate-50 text-slate-600">
@@ -532,7 +544,7 @@ export default function AdminCageShelfPage() {
             </tbody>
           </table>
         </AdminDataTableWrap>
-      </div>
+      </AdminFormCard>
 
       {activeCell && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={() => setActiveCell(null)}>
@@ -572,5 +584,6 @@ export default function AdminCageShelfPage() {
         </div>
       )}
     </div>
+    </AdminPageShell>
   );
 }

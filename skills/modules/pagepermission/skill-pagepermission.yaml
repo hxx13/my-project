@@ -1,0 +1,30 @@
+skill:
+  id: "skill-pagepermission"
+  name: "PagePermission 页面权限"
+  version: "1.0.0"
+  module_path: "src/main/java/com/example/demo/modules/pagepermission"
+  created_at: "2026-05-17"
+
+philosophy:
+  business_position: |
+    以「页面/功能节点」为粒度（非芋道菜单表），覆盖 Web 管理端与微信小程序。
+    通过扫描前端路由注册表自动发现节点，再配置 minRole 与 enabled。
+
+  design_principles:
+    - "PagePermissionService.scanPlatform 解析 adminNavRegistry.ts / 小程序 wxml"
+    - "树形结构 parentNodeKey + nodeKey"
+    - "RoleEnum 等级约束：子节点 minRole 不得低于父节点"
+
+architecture:
+  controllers:
+    - "AdminPagePermissionController - 管理配置"
+    - "PublicPagePermissionController - 登录后拉取可见树"
+  frontend:
+    - "frontend: pagePermission.api.ts、canShowWebEntry、AdminLayout"
+    - "aroapp: hasMinRole 与页面入口"
+
+data_table: "page_permission（以 schema.sql 为准）"
+
+cautions:
+  - "新增 admin 路由须在 adminNavRegistry.ts 注册，否则 scan 无法发现"
+  - "改 nodeKey 会破坏已存配置，需迁移脚本或兼容"

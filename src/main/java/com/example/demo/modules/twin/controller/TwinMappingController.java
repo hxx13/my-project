@@ -142,7 +142,7 @@ public class TwinMappingController {
     }
 
     @PutMapping("/access-rule-scan-linkage-config")
-    @Operation(summary = "保存扫码门禁规则联动开关（进入下发 / 离开回收）")
+    @Operation(summary = "保存扫码门禁规则联动开关（下发/回收/解冻/冻结）")
     public Result<?> putAccessRuleScanLinkageConfig(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody Map<String, Object> body) {
@@ -151,19 +151,23 @@ public class TwinMappingController {
         if (denied != null) {
             return denied;
         }
-        boolean enter = true;
-        if (body.containsKey("enterDispatchEnabled")) {
-            Object v = body.get("enterDispatchEnabled");
-            enter = v instanceof Boolean ? (Boolean) v : Boolean.parseBoolean(String.valueOf(v));
-        }
-        boolean exit = true;
-        if (body.containsKey("exitDispatchEnabled")) {
-            Object v = body.get("exitDispatchEnabled");
-            exit = v instanceof Boolean ? (Boolean) v : Boolean.parseBoolean(String.valueOf(v));
-        }
-        Map<String, Object> saved = accessRuleScanConfigService.saveConfig(enter, exit, user.getId());
-        log.info("[twin] access-rule-scan-linkage-config updated by userId={} enter={} exit={}", user.getId(), enter, exit);
+        boolean enterDispatch = parseBoolBody(body, "enterDispatchEnabled", true);
+        boolean exitDispatch = parseBoolBody(body, "exitDispatchEnabled", true);
+        boolean enterUnfreeze = parseBoolBody(body, "enterUnfreezeEnabled", true);
+        boolean exitFreeze = parseBoolBody(body, "exitFreezeEnabled", true);
+        Map<String, Object> saved = accessRuleScanConfigService.saveConfig(
+                enterDispatch, exitDispatch, enterUnfreeze, exitFreeze, user.getId());
+        log.info("[twin] access-rule-scan-linkage-config updated by userId={} enterDispatch={} exitDispatch={} enterUnfreeze={} exitFreeze={}",
+                user.getId(), enterDispatch, exitDispatch, enterUnfreeze, exitFreeze);
         return Result.success(saved);
+    }
+
+    private static boolean parseBoolBody(Map<String, Object> body, String key, boolean defaultValue) {
+        if (!body.containsKey(key)) {
+            return defaultValue;
+        }
+        Object v = body.get(key);
+        return v instanceof Boolean ? (Boolean) v : Boolean.parseBoolean(String.valueOf(v));
     }
 
     @GetMapping("/dahua-issue/access-prefill")

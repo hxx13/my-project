@@ -25,12 +25,12 @@ export const useAnalyzeScanMutation = (options?: {
     });
 
 export const useExecuteAccessMutation = (options?: {
-    onSuccess?: (data: ExecuteResult) => void;
+    onSuccess?: (data: ExecuteResult, variables: ExecutePayload) => void;
     onError?: (error: Error) => void;
 }) =>
     useMutation({
         mutationFn: (payload: ExecutePayload) => executeAccess(payload),
-        onSuccess: options?.onSuccess,
+        onSuccess: (data, variables) => options?.onSuccess?.(data, variables),
         onError: options?.onError,
     });
 

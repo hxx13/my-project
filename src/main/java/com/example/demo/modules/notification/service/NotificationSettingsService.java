@@ -166,6 +166,8 @@ public class NotificationSettingsService {
         if ("supplies".equals(module)) return "物资领用";
         if ("dashboard_codex".equals(module)) return "主页公告/还卡说明";
         if ("telemetry_facility".equals(module)) return "动物房设施布局";
+        if ("scanner".equals(module)) return "扫码终端";
+        if ("twin_scanner_popup".equals(module)) return "扫码进出提示";
         return module;
     }
 

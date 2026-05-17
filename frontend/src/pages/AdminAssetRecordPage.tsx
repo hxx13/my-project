@@ -23,9 +23,9 @@ import {
 } from "@/api/domains/asset.api";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
 import { AdminButton } from "@/components/admin/AdminButton";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
-import { AdminToolbar, AdminToolbarActions, AdminToolbarPrimary } from "@/components/admin/AdminToolbar";
+import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -195,7 +195,6 @@ export default function AdminAssetRecordPage() {
     [detailAsset]
   );
 
-  const totalColumns = useMemo(() => 3 + editableColumns.length, [editableColumns.length]);
   const widths = widthProfile ?? {
     assetCode: "14ch",
     assetName: "20ch",
@@ -459,158 +458,158 @@ export default function AdminAssetRecordPage() {
   };
 
   return (
-    <div className="w-full min-w-0 max-w-full overflow-x-hidden pb-2">
-      <div className="flex w-full min-w-0 max-w-full flex-col gap-4 p-6">
-        <AdminToolbar className="items-start justify-between gap-y-3">
-          <div className="min-w-0 flex-1 basis-full sm:basis-[min(100%,24rem)]">
-            <h1 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
-              <Archive className="h-6 w-6 shrink-0 text-blue-600" />
-              资产记录
-            </h1>
-            <p className="mt-1 text-sm text-slate-600">支持 CSV/Excel 导入、Excel 导出、动态表头、搜索修改，以及申请转移流程。</p>
-          </div>
-          <AdminToolbarActions className="min-w-0 w-full flex-col items-stretch sm:w-auto sm:flex-row sm:items-center sm:justify-end">
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              className="sr-only"
-              aria-hidden
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                void onImport(f);
-                e.currentTarget.value = "";
-              }}
-            />
-            <div className="flex min-w-0 flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedAsset(null);
-                  setModalOpen(true);
+    <AdminPageShell
+      title={
+        <span className="inline-flex items-center gap-2">
+          <Archive className="h-6 w-6 shrink-0 text-blue-600" aria-hidden />
+          资产记录
+        </span>
+      }
+      description="支持 CSV/Excel 导入、Excel 导出、动态表头、搜索修改，以及申请转移流程。"
+      actions={
+        <div className="flex min-w-0 flex-wrap justify-end gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            className="sr-only"
+            aria-hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              void onImport(f);
+              e.currentTarget.value = "";
+            }}
+          />
+          <AdminButton
+            type="button"
+            tone="secondary"
+            className="inline-flex min-h-9 items-center gap-2"
+            onClick={() => {
+              setSelectedAsset(null);
+              setModalOpen(true);
+            }}
+          >
+            申请转移
+          </AdminButton>
+          <AdminButton type="button" tone="secondary" className="inline-flex min-h-9 items-center gap-2" onClick={openAddModal}>
+            <Plus className="h-4 w-4 shrink-0" aria-hidden />
+            新增资产
+          </AdminButton>
+          <AdminButton
+            type="button"
+            tone={tableEditMode ? "secondary" : "primary"}
+            className="inline-flex min-h-9 items-center gap-2"
+            onClick={() => setTableEditMode((v) => !v)}
+          >
+            <Pencil className="h-4 w-4 shrink-0" aria-hidden />
+            {tableEditMode ? "完成编辑" : "编辑表格"}
+          </AdminButton>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)] disabled:pointer-events-none disabled:opacity-50">
+              <MoreHorizontal className="h-4 w-4 shrink-0" />
+              更多操作
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[12rem]">
+              <DropdownMenuLabel className="text-xs font-normal text-slate-500">数据与维护</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  window.setTimeout(() => importInputRef.current?.click(), 0);
                 }}
-                className="inline-flex min-h-9 items-center gap-2 rounded border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm text-indigo-800"
               >
-                申请转移
-              </button>
-              <button
-                type="button"
-                onClick={openAddModal}
-                className="inline-flex min-h-9 items-center gap-2 rounded border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-800"
+                <Upload className="mr-2 inline h-4 w-4" />
+                导入文件
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void onExport()}>
+                <Download className="mr-2 inline h-4 w-4" />
+                导出 Excel
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void onAddColumn()}>
+                <Plus className="mr-2 inline h-4 w-4" />
+                新增表头
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => refreshColumnWidths()}>刷新列宽</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => void onClearTable()} className="text-rose-700 focus:text-rose-800">
+                <Trash2 className="mr-2 inline h-4 w-4" />
+                清空当前表格
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setDeleteKeyword("");
+                  setDeleteCandidates([]);
+                  setSelectedDeleteId("");
+                  setDeleteOpen(true);
+                }}
               >
-                <Plus className="h-4 w-4 shrink-0" />
-                新增资产
-              </button>
-              <AdminButton
-                type="button"
-                tone={tableEditMode ? "secondary" : "primary"}
-                className="inline-flex min-h-9 items-center gap-2"
-                onClick={() => setTableEditMode((v) => !v)}
-              >
-                <Pencil className="h-4 w-4 shrink-0" />
-                {tableEditMode ? "完成编辑" : "编辑表格"}
-              </AdminButton>
-              <DropdownMenu>
-                <DropdownMenuTrigger className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)] disabled:pointer-events-none disabled:opacity-50">
-                  <MoreHorizontal className="h-4 w-4 shrink-0" />
-                  更多操作
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[12rem]">
-                  <DropdownMenuLabel className="text-xs font-normal text-slate-500">数据与维护</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      window.setTimeout(() => importInputRef.current?.click(), 0);
-                    }}
-                  >
-                    <Upload className="mr-2 inline h-4 w-4" />
-                    导入文件
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => void onExport()}>
-                    <Download className="mr-2 inline h-4 w-4" />
-                    导出 Excel
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => void onAddColumn()}>
-                    <Plus className="mr-2 inline h-4 w-4" />
-                    新增表头
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => refreshColumnWidths()}>刷新列宽</DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => void onClearTable()} className="text-rose-700 focus:text-rose-800">
-                    <Trash2 className="mr-2 inline h-4 w-4" />
-                    清空当前表格
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      setDeleteKeyword("");
-                      setDeleteCandidates([]);
-                      setSelectedDeleteId("");
-                      setDeleteOpen(true);
-                    }}
-                  >
-                    <Trash2 className="mr-2 inline h-4 w-4" />
-                    删除资产
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => void openRecycleModal()}>回收站</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </AdminToolbarActions>
-        </AdminToolbar>
-
-        <AdminToolbar className="rounded-lg border border-slate-200 bg-white p-4">
-          <AdminToolbarPrimary>
-            <label className="flex w-full max-w-full min-w-0 flex-col gap-1 text-xs text-slate-600 sm:max-w-md">
-              全局搜索
+                <Trash2 className="mr-2 inline h-4 w-4" />
+                删除资产
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void openRecycleModal()}>回收站</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      }
+    >
+    <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-hidden pb-2">
+        <AdminFormCard title="筛选" description={`共 ${total} 条；列宽可随内容在「更多操作」中刷新。`}>
+          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+            <label className="flex w-full max-w-full min-w-0 flex-col gap-1 lg:max-w-md">
+              <span className={adminLabelClass}>全局搜索</span>
               <input
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && applySearch()}
-                className="w-full min-w-0 rounded border border-slate-300 px-3 py-2 text-sm"
+                className={adminInputClass}
                 placeholder="资产编码/动态列/申请记录"
               />
             </label>
-          </AdminToolbarPrimary>
-          <label className="flex min-w-[12rem] shrink-0 flex-col gap-1 text-xs text-slate-600">
-            资产名称
-            <AdminSelect value={assetName} onChange={(e) => setAssetName(e.target.value)}>
-              <option value="__ALL__">全部</option>
-              {facets.assetNames.map((name) => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </AdminSelect>
-          </label>
-          <label className="flex min-w-[10rem] shrink-0 flex-col gap-1 text-xs text-slate-600">
-            使用人
-            <AdminSelect value={user} onChange={(e) => setUser(e.target.value)}>
-              <option value="__ALL__">全部</option>
-              {(facets.users && facets.users.length ? facets.users : facets.campuses).map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </AdminSelect>
-          </label>
-          <label className="flex min-w-[10rem] shrink-0 flex-col gap-1 text-xs text-slate-600">
-            规格型号
-            <AdminSelect value={model} onChange={(e) => setModel(e.target.value)}>
-              <option value="__ALL__">全部</option>
-              {facets.models.map((item) => (
-                <option key={item} value={item}>{item}</option>
-              ))}
-            </AdminSelect>
-          </label>
-          <AdminToolbarActions className="w-full shrink-0 sm:w-auto">
-            <AdminButton type="button" onClick={applySearch} className="inline-flex items-center gap-1">
-              <Search className="h-4 w-4" />
-              查询
-            </AdminButton>
-            <AdminButton type="button" tone="secondary" onClick={resetSearch} className="inline-flex items-center gap-1">
-              重置
-            </AdminButton>
-          </AdminToolbarActions>
-        </AdminToolbar>
+            <label className="flex min-w-[12rem] shrink-0 flex-col gap-1">
+              <span className={adminLabelClass}>资产名称</span>
+              <AdminSelect value={assetName} onChange={(e) => setAssetName(e.target.value)}>
+                <option value="__ALL__">全部</option>
+                {facets.assetNames.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </AdminSelect>
+            </label>
+            <label className="flex min-w-[10rem] shrink-0 flex-col gap-1">
+              <span className={adminLabelClass}>使用人</span>
+              <AdminSelect value={user} onChange={(e) => setUser(e.target.value)}>
+                <option value="__ALL__">全部</option>
+                {(facets.users && facets.users.length ? facets.users : facets.campuses).map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </AdminSelect>
+            </label>
+            <label className="flex min-w-[10rem] shrink-0 flex-col gap-1">
+              <span className={adminLabelClass}>规格型号</span>
+              <AdminSelect value={model} onChange={(e) => setModel(e.target.value)}>
+                <option value="__ALL__">全部</option>
+                {facets.models.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </AdminSelect>
+            </label>
+            <div className="flex w-full flex-wrap gap-2 lg:w-auto">
+              <AdminButton type="button" onClick={applySearch} className="inline-flex items-center gap-1">
+                <Search className="h-4 w-4" aria-hidden />
+                查询
+              </AdminButton>
+              <AdminButton type="button" tone="secondary" onClick={resetSearch} className="inline-flex items-center gap-1">
+                重置
+              </AdminButton>
+            </div>
+          </div>
+        </AdminFormCard>
 
-        {/* 与 WinCC 变量页一致：min-w-0 + 表格外壳；表头 sticky / 斑马纹见 index.css（post-save 规则仍适用） */}
-        <AdminDataTableWrap scrollable className="w-full min-w-0 overscroll-x-contain">
+        <AdminTableShell
+          loading={loading}
+          empty={!loading && rows.length === 0}
+          emptyMessage="暂无资产数据，请先导入 CSV/Excel。"
+          scrollable
+          className="w-full min-w-0 overscroll-x-contain"
+        >
           <table className="w-max min-w-full border-collapse text-sm">
             <thead>
               <tr>
@@ -651,46 +650,37 @@ export default function AdminAssetRecordPage() {
                   <td className="border-b px-2 py-1.5">
                     <div className="flex items-center gap-2">
                       {tableEditMode ? (
-                        <button
-                          type="button"
-                          onClick={() => void onSave(r)}
-                          className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700"
-                        >
+                        <AdminButton type="button" tone="secondary" size="sm" onClick={() => void onSave(r)}>
                           保存
-                        </button>
+                        </AdminButton>
                       ) : null}
-                      <button
+                      <AdminButton
                         type="button"
+                        tone="secondary"
+                        size="sm"
                         onClick={() => setDetailAsset(r)}
-                        className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-xs text-indigo-700"
+                        className="border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                       >
                         详情
-                      </button>
+                      </AdminButton>
                     </div>
                   </td>
                 </tr>
               ))}
-              {!rows.length && (
-                <tr>
-                  <td className="px-3 py-10 text-center text-slate-500" colSpan={totalColumns}>
-                    {loading ? "加载中..." : "暂无资产数据，请先导入 CSV/Excel。"}
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
-        </AdminDataTableWrap>
+        </AdminTableShell>
 
         <div className="flex items-center justify-end gap-3 text-sm text-slate-600">
-          <button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded border px-3 py-1 disabled:opacity-40">
+          <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
             上一页
-          </button>
+          </AdminButton>
           <span>
             第 {page} / {pages} 页，共 {total} 条
           </span>
-          <button disabled={page >= pages} onClick={() => setPage((p) => p + 1)} className="rounded border px-3 py-1 disabled:opacity-40">
+          <AdminButton type="button" tone="secondary" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
             下一页
-          </button>
+          </AdminButton>
         </div>
 
         <AssetTransferApplyModal
@@ -927,7 +917,7 @@ export default function AdminAssetRecordPage() {
           </button>
         )}
       </div>
-    </div>
+    </AdminPageShell>
   );
 }
 

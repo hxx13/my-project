@@ -118,6 +118,17 @@ export async function fetchSettingsModules() {
   return res.data.data;
 }
 
+/** 超级管理员：Socket 广播，令所有已连接前端页 location.reload() */
+export async function broadcastClientReload() {
+  const res = await adminHttp.post<Result<{ reason?: string; at?: string; operatorUserId?: string }>>(
+    "/settings/broadcast-client-reload"
+  );
+  if (!res.data.success) {
+    throw new Error(res.data.message || "广播刷新失败");
+  }
+  return res.data.data;
+}
+
 export interface CapabilityPolicyRecord {
   bizDomain: string;
   minRoleSubmit: number;

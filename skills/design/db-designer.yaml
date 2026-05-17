@@ -1,0 +1,51 @@
+# Twin System 数据库设计规范
+# 与 .cursor/rules/db-schema-ddl-mandatory.mdc 一致，供 Skill 引用
+
+skill:
+  id: "twin-db-designer"
+  name: "数据库设计"
+  version: "1.0.0"
+
+philosophy:
+  design_principles:
+    - "权威定义在 src/main/resources/schema.sql"
+    - "可独立执行增量脚本放在 scripts/<主题>_*.ddl.sql"
+    - "部分模块使用 *SchemaMigrator 在启动时 ALTER（须与 schema.sql/scripts 同步）"
+    - "嵌入式核心表可用 classpath:db/bootstrap-*.sql（见 scripts/DEPLOY_DDL.md）"
+    - "本系统默认单租户，业务表不要求 tenant_id"
+    - "主键常见为 VARCHAR(36) UUID 或 BIGINT，与现有表保持一致"
+
+naming:
+  table:
+    format: "snake_case，按域加前缀"
+    examples: ["twin_job_schedule_config", "twin_automation_log", "telemetry_value_archive"]
+  column:
+    rules:
+      - "时间：created_at / updated_at 或 create_time（与邻表一致）"
+      - "软删：deleted / is_deleted（若模块已有惯例则跟随）"
+      - "外键字段：{entity}_id"
+  index:
+    format: "idx_{table}_{columns}"
+
+ddl_delivery_checklist:
+  - step: 1
+    action: "更新 schema.sql（CREATE TABLE IF NOT EXISTS 或带注释的一次性 ALTER）"
+  - step: 2
+    action: "新增或更新 scripts/*.ddl.sql"
+  - step: 3
+    action: "若走嵌入式 bootstrap，同步 src/main/resources/db/bootstrap-*.sql"
+  - step: 4
+    action: "PR/任务说明中写明目标库与需执行脚本（默认 twin_system）"
+
+jdbc_placeholder_rule: |
+  手写 INSERT/UPDATE 时 ? 个数必须与 setString/setX/args 长度一致；
+  禁止 VALUES 字面量占位与绑定参数错位。见 db-schema-ddl-mandatory.mdc。
+
+common_audit_columns:
+  recommended:
+    - { name: "created_at", type: "DATETIME", comment: "创建时间" }
+    - { name: "updated_at", type: "DATETIME", comment: "更新时间" }
+
+exceptions:
+  - "纯查询、不改表结构：无需新 DDL"
+  - "批量导入/全量同步允许整表重拉（前端另有 post-save-no-full-refresh 规则）"

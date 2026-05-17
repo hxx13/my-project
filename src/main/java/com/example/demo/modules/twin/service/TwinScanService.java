@@ -5,7 +5,9 @@ import com.example.demo.common.dto.UniversalEvent;
 import com.example.demo.modules.aro.service.AroDatabaseService;
 import com.example.demo.modules.aro.service.RealtimeEventDedupService;
 import com.example.demo.modules.aro.service.AroService;
+import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
 import com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper;
+import com.example.demo.modules.twin.support.ScanCampusTagResolver;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -57,6 +59,9 @@ public class TwinScanService {
 
     @Autowired
     private RoomMappingRoomMapper roomMappingRoomMapper;
+
+    @Autowired
+    private ScanCampusEnterConfigService scanCampusEnterConfigService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -115,6 +120,7 @@ public class TwinScanService {
             try {
                 String todayStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
                 applyDayTrajectoryRoomLocks(userId, todayStr + "%", finalAllowed, traceId);
+                applyCampusEnterAdminLocks(finalAllowed, traceId);
             } catch (Exception e) {
                 log.warn("[scan-status] day-trajectory-lock failed userId={} err={}", userId, e.getMessage());
             }
@@ -267,11 +273,19 @@ public class TwinScanService {
                 RoomDictionaryManager.RoomMapping mapping = dictionaryManager.translate(roomId);
 
                 if (mapping != null) {
+                    RoomMappingRoom catalog = roomMappingRoomMapper.selectByRoomId(roomId);
+                    String campusTag = ScanCampusTagResolver.resolve(catalog, mapping.displayName);
                     Map<String, Object> cleanRoom = new HashMap<>();
                     cleanRoom.put("officialRoomId", roomId);
                     cleanRoom.put("displayName", mapping.displayName);
                     cleanRoom.put("floorName", mapping.floorName);
                     cleanRoom.put("officialRoomName", room.get("name"));
+                    if (catalog != null && catalog.getRegionName() != null) {
+                        cleanRoom.put("regionName", catalog.getRegionName());
+                    }
+                    if (!campusTag.isEmpty()) {
+                        cleanRoom.put("campusTag", campusTag);
+                    }
                     Integer lvl = examRoomPermissionSyncService.parseLevel(room.get("level"));
                     if (lvl != null) {
                         cleanRoom.put("officialPermissionLevel", lvl);
@@ -350,6 +364,35 @@ public class TwinScanService {
                 }
             } else {
                 room.put("disableReason", null);
+            }
+        }
+    }
+
+    /**
+     * 系统设置：禁用某校区「进入」按钮（仅影响场外可进列表，不影响离开）。
+     */
+    private void applyCampusEnterAdminLocks(List<Map<String, Object>> rooms, String traceId) {
+        if (rooms == null || rooms.isEmpty()) {
+            return;
+        }
+        boolean blockPd = scanCampusEnterConfigService.isPudongEnterBlocked();
+        boolean blockPx = scanCampusEnterConfigService.isPuxiEnterBlocked();
+        if (!blockPd && !blockPx) {
+            return;
+        }
+        for (Map<String, Object> room : rooms) {
+            String campus = room.get("campusTag") != null ? String.valueOf(room.get("campusTag")).trim() : "";
+            if (campus.isEmpty()) {
+                campus = ScanCampusTagResolver.resolveFromText(String.valueOf(room.get("displayName")));
+            }
+            boolean block = ("浦东".equals(campus) && blockPd) || ("浦西".equals(campus) && blockPx);
+            if (!block) {
+                continue;
+            }
+            room.put("enterBlocked", true);
+            room.put("enterBlockReason", "不在此校区");
+            if (traceId != null) {
+                log.info("[scan-flow:{}] campus-enter-block room={} campus={}", traceId, room.get("displayName"), campus);
             }
         }
     }

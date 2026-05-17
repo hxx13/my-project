@@ -1,0 +1,27 @@
+skill:
+  id: "skill-accessrule"
+  name: "AccessRule 通行规则"
+  version: "1.0.0"
+  module_path: "src/main/java/com/example/demo/modules/accessrule"
+  created_at: "2026-05-17"
+
+philosophy:
+  business_position: |
+    将业务规则下发到大华门禁：AccessRuleDispatchService 为核心编排，
+    与 twin 扫卡配置、房间映射、人员档案联动。
+
+  design_principles:
+    - "下发结果封装 AccessRuleDispatchResult"
+    - "提示文案 AccessRuleDispatchHintHelper"
+    - "表结构变更：AccessRuleSchemaMigrator + DDL 三件套"
+
+architecture:
+  controller: "AccessRuleController"
+  service: "AccessRuleDispatchService"
+  twin_link: "TwinAccessRuleScanConfigService、DahuaIssueAccessRulePrefillService"
+
+testing_priority: "下发失败回滚、部分成功、与大华缓存一致性"
+
+cautions:
+  - "修改下发顺序需评估已在场人员与冻结状态"
+  - "twin_access_rule_scan_config 四开关正交：enter/exit_dispatch（大华权限）、enter_unfreeze/exit_freeze（物理卡冻融）；关闭离开冻结不影响 RUN_REAPER 定时跑批"

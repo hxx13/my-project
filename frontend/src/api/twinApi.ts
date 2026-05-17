@@ -658,6 +658,8 @@ export const saveFreezeConfig = async (payload: {
 export interface TwinAccessRuleScanLinkageConfig {
     enterDispatchEnabled?: boolean;
     exitDispatchEnabled?: boolean;
+    enterUnfreezeEnabled?: boolean;
+    exitFreezeEnabled?: boolean;
     updatedBy?: string | null;
     updatedAt?: string | null;
 }
@@ -670,6 +672,8 @@ export const fetchAccessRuleScanLinkageConfig = async (): Promise<TwinAccessRule
 export const saveAccessRuleScanLinkageConfig = async (payload: {
     enterDispatchEnabled: boolean;
     exitDispatchEnabled: boolean;
+    enterUnfreezeEnabled: boolean;
+    exitFreezeEnabled: boolean;
 }) => {
     const res = await authHttp.put('/v1/twin/mappings/access-rule-scan-linkage-config', payload);
     return res.data;

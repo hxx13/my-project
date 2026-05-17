@@ -1,0 +1,34 @@
+# Twin System 管理端前端规范
+
+skill:
+  id: "twin-frontend-designer"
+  name: "前端设计"
+  version: "1.0.0"
+
+stack:
+  framework: "React 19 + Vite + TypeScript"
+  ui: "shadcn / Radix + Tailwind"
+  data: "@tanstack/react-query"
+  routing: "react-router-dom v7"
+  state: "zustand（局部）"
+
+structure:
+  paths:
+    layouts: "frontend/src/layouts/AdminLayout.tsx"
+    pages: "frontend/src/pages/**"
+    api: "frontend/src/api/domains/*.api.ts"
+    auth: "frontend/src/features/auth/"
+    admin_nav: "frontend/src/features/admin/buildAdminNavModel.ts"
+
+permissions:
+  web: "fetchPublicPagePermissions + canShowWebEntry + hasMinRole"
+  registry: "adminNavRegistry.ts 中 id/path/label 与 pagepermission 扫描一致"
+
+save_refresh_rule:
+  rule_file: ".cursor/rules/post-save-no-full-refresh.mdc"
+  requirement: "保存/提交成功后用接口返回体合并当前行，禁止 loadData(reset) 或整表 refetch"
+
+mini_program:
+  path: "aroapp/miniprogram/"
+  rule_file: ".cursor/rules/aroapp-mini-ui-buttons.mdc"
+  note: "列表/表单按钮风格与检查维护等模块保持一致"
