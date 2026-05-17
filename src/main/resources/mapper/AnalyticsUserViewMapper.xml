@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.analytics.mapper.AnalyticsUserViewMapper">
+
+    <resultMap id="AnalyticsUserViewMap" type="com.example.demo.modules.analytics.entity.AnalyticsUserView">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="reportKey" column="report_key"/>
+        <result property="name" column="name"/>
+        <result property="filterJson" column="filter_json"/>
+        <result property="isDefault" column="is_default"/>
+        <result property="isSubscribed" column="is_subscribed"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectByUserAndReport" resultMap="AnalyticsUserViewMap">
+        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, sort_order, created_at, updated_at
+        FROM analytics_user_view
+        WHERE user_id = #{userId}
+          AND report_key = #{reportKey}
+        ORDER BY is_subscribed DESC, is_default DESC, sort_order ASC, updated_at DESC
+    </select>
+
+    <select id="selectByIdAndUser" resultMap="AnalyticsUserViewMap">
+        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, sort_order, created_at, updated_at
+        FROM analytics_user_view
+        WHERE id = #{id} AND user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <select id="selectAllSubscribed" resultMap="AnalyticsUserViewMap">
+        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, sort_order, created_at, updated_at
+        FROM analytics_user_view
+        WHERE report_key = #{reportKey}
+          AND is_subscribed = 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO analytics_user_view (user_id, report_key, name, filter_json, is_default, is_subscribed, sort_order)
+        VALUES (#{userId}, #{reportKey}, #{name}, #{filterJson}, #{isDefault}, #{isSubscribed}, #{sortOrder})
+    </insert>
+
+    <update id="update">
+        UPDATE analytics_user_view
+        SET name = #{name},
+            filter_json = #{filterJson},
+            is_default = #{isDefault},
+            is_subscribed = #{isSubscribed},
+            sort_order = #{sortOrder}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <delete id="deleteByIdAndUser">
+        DELETE FROM analytics_user_view
+        WHERE id = #{id} AND user_id = #{userId}
+    </delete>
+
+    <update id="clearDefaultForReport">
+        UPDATE analytics_user_view
+        SET is_default = 0
+        WHERE user_id = #{userId} AND report_key = #{reportKey}
+    </update>
+
+    <update id="setDefault">
+        UPDATE analytics_user_view
+        SET is_default = 1
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+
+    <update id="setSubscribed">
+        UPDATE analytics_user_view
+        SET is_subscribed = #{subscribed}
+        WHERE id = #{id} AND user_id = #{userId}
+    </update>
+</mapper>

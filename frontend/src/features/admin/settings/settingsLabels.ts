@@ -103,6 +103,41 @@ export function labelConfigOption(opt: string): string {
   return CONFIG_OPTION_LABELS[k] ?? CONFIG_OPTION_LABELS[k.toUpperCase()] ?? k;
 }
 
+export type SettingsNavGroup = {
+  id: string;
+  title: string;
+  items: Array<{ key: string; label: string }>;
+};
+
+/** 配置模块侧栏分组（固定顺序；未列入的模块归入「其他」） */
+const MODULE_GROUP_DEFS: Array<{ id: string; title: string; keys: string[] }> = [
+  { id: "notify", title: "通知与权限", keys: ["notification", "template", "capability"] },
+  { id: "experience", title: "界面与展示", keys: ["dashboard_codex", "telemetry_facility", "frontend_runtime", "scanner"] },
+  { id: "business", title: "业务扩展", keys: ["supplies", "mini_program", "llm"] },
+  { id: "platform", title: "平台与网络", keys: ["network", "system"] },
+];
+
+export function groupSettingsModules(modules: Array<{ key: string; label: string }>): SettingsNavGroup[] {
+  const byKey = new Map(modules.map((m) => [m.key, m]));
+  const used = new Set<string>();
+  const groups: SettingsNavGroup[] = [];
+
+  for (const def of MODULE_GROUP_DEFS) {
+    const items = def.keys.map((k) => byKey.get(k)).filter((m): m is { key: string; label: string } => Boolean(m));
+    items.forEach((m) => used.add(m.key));
+    if (items.length > 0) groups.push({ id: def.id, title: def.title, items });
+  }
+
+  const rest = modules.filter((m) => !used.has(m.key));
+  if (rest.length > 0) groups.push({ id: "other", title: "其他", items: rest });
+
+  return groups;
+}
+
+export function moduleLabel(modules: Array<{ key: string; label: string }>, moduleKey: string): string {
+  return modules.find((m) => m.key === moduleKey)?.label || moduleKey;
+}
+
 export function moduleDescription(moduleKey: string): string {
   switch (moduleKey) {
     case "notification":
@@ -125,6 +160,8 @@ export function moduleDescription(moduleKey: string): string {
       return "网络与接口相关参数。";
     case "system":
       return "通用系统级参数。";
+    case "llm":
+      return "通义/DashScope：主模型 + 备用列表自动切换；可开启日批与打开清算时自动生成 AI 解读。";
     default:
       return "按配置定义维护本模块参数，无需记忆英文键名。";
   }

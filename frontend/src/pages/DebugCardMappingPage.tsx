@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     fetchCardMappings, searchCardMappings, updateExemptFlag, updateCardStatus, searchPersonnel,
     deleteCardMapping, runManualReaper, issueDahuaCard, fetchDahuaDepartments, refreshDahuaDepartments,
@@ -40,6 +40,11 @@ import {
     DAHUA_ISSUE_DEFAULT_DOOR_GROUP_IDS,
 } from "@/constants/dahuaIssueDefaults";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
+import {
+    EXEMPT_DURATION_PRESETS,
+    formatExemptExpireAt,
+    formatExemptRemaining,
+} from "@/constants/exemptDurationPresets";
 
 /** 自动冻结解释与保存均固定为中国时区 */
 const FREEZE_TIMEZONE_CN = "Asia/Shanghai";
@@ -104,6 +109,8 @@ export default function DebugCardMappingPage() {
     });
     /** 1=第一次定时 2=第二次定时 */
     const [freezeSlotModal, setFreezeSlotModal] = useState<null | 1 | 2>(null);
+    const [exemptModal, setExemptModal] = useState<{ cardNo: string; userName?: string } | null>(null);
+    const queryClient = useQueryClient();
     const [linkageModalOpen, setLinkageModalOpen] = useState(false);
     const [linkageLoading, setLinkageLoading] = useState(false);
     const [linkageSaving, setLinkageSaving] = useState(false);
@@ -589,9 +596,31 @@ export default function DebugCardMappingPage() {
     };
 
     // 🚨 严禁在查询流中使用本地 state 覆盖，采用 React Query 的 Mutation
+    const mergeExemptRow = (cardNo: string, patch: Partial<CardMappingRow>) => (row: CardMappingRow) =>
+        row.cardNo === cardNo ? { ...row, ...patch } : row;
+
     const toggleExemptMutation = useMutation({
-        mutationFn: (variables: { cardNo: string, flag: number }) => updateExemptFlag(variables.cardNo, variables.flag),
-        onSuccess: () => refetch() // 修改成功后自动重载表格
+        mutationFn: (variables: { cardNo: string; flag: number; durationMinutes?: number }) =>
+            updateExemptFlag(variables.cardNo, variables.flag, variables.durationMinutes),
+        onSuccess: (updated, variables) => {
+            // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
+            const patch: Partial<CardMappingRow> = {
+                freezeExemptFlag: updated?.freezeExemptFlag ?? variables.flag,
+                freezeExemptExpireAt: updated?.freezeExemptExpireAt ?? (variables.flag === 0 ? null : undefined),
+                lastModifiedTime: updated?.lastModifiedTime,
+            };
+            queryClient.setQueryData(
+                ["cardMappings", page, pageSize],
+                (old: { list?: CardMappingRow[]; total?: number } | undefined) => {
+                    if (!old?.list) return old;
+                    return { ...old, list: old.list.map(mergeExemptRow(variables.cardNo, patch)) };
+                },
+            );
+            setSearchResults((prev) => prev.map(mergeExemptRow(variables.cardNo, patch)));
+            setExemptModal(null);
+            toast.success(variables.flag === 1 ? "已设置豁免" : "已取消豁免");
+        },
+        onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "豁免更新失败"),
     });
 
     const runReaperMutation = useMutation({
@@ -727,7 +756,11 @@ export default function DebugCardMappingPage() {
                         <tbody className="divide-y divide-slate-100">
                         {displayData.map((row, idx: number) => {
                             const isFrozen = row.cardStatus === 'FROZEN';
-                            const isExempt = row.freezeExemptFlag === 1;
+                            const isExempt =
+                                row.freezeExemptFlag === 1 &&
+                                (!row.freezeExemptExpireAt ||
+                                    Date.parse(String(row.freezeExemptExpireAt).replace(/-/g, "/")) > Date.now());
+                            const exemptRemain = isExempt ? formatExemptRemaining(row.freezeExemptExpireAt) : "";
                             const rowKey = row.cardNo || row.aroUserId || `row-${idx}`;
 
                             return (
@@ -764,12 +797,29 @@ export default function DebugCardMappingPage() {
                                     </td>
                                     <td className="p-3 text-center">
                                         <button
-                                            onClick={() => toggleExemptMutation.mutate({ cardNo: row.cardNo, flag: isExempt ? 0 : 1 })}
+                                            type="button"
+                                            onClick={() => {
+                                                if (isExempt) {
+                                                    if (window.confirm(`取消卡号 ${row.cardNo} 的豁免？`)) {
+                                                        toggleExemptMutation.mutate({ cardNo: row.cardNo, flag: 0 });
+                                                    }
+                                                    return;
+                                                }
+                                                setExemptModal({ cardNo: row.cardNo, userName: row.userName });
+                                            }}
                                             disabled={toggleExemptMutation.isPending}
                                             className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${isExempt ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'}`}
                                         >
                                             {isExempt ? '👑 已豁免' : '受控'}
                                         </button>
+                                        {isExempt && exemptRemain ? (
+                                            <div className="mt-1 text-[10px] text-amber-600 font-mono">{exemptRemain}</div>
+                                        ) : null}
+                                        {isExempt && row.freezeExemptExpireAt ? (
+                                            <div className="mt-0.5 text-[10px] text-slate-400 font-mono">
+                                                至 {formatExemptExpireAt(row.freezeExemptExpireAt)}
+                                            </div>
+                                        ) : null}
                                     </td>
                                     <td className="p-3 text-right font-mono text-xs text-slate-500">
                                         {row.lastModifiedTime || '-'}
@@ -894,6 +944,55 @@ export default function DebugCardMappingPage() {
                             >
                                 {freezeSaving ? "保存中…" : "保存"}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {exemptModal && (
+                <div
+                    className="fixed inset-0 z-[250] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                    onClick={() => setExemptModal(null)}
+                    role="presentation"
+                >
+                    <div
+                        className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm p-6"
+                        onClick={(e) => e.stopPropagation()}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="exempt-duration-title"
+                    >
+                        <div className="flex justify-between items-start mb-4">
+                            <h3 id="exempt-duration-title" className="text-lg font-black text-slate-800">
+                                选择豁免时效
+                            </h3>
+                            <button type="button" onClick={() => setExemptModal(null)} className="p-1 rounded-full hover:bg-slate-100" aria-label="关闭">
+                                <X className="w-5 h-5 text-slate-400" />
+                            </button>
+                        </div>
+                        <p className="text-sm text-slate-600 mb-4">
+                            卡号 <span className="font-mono font-bold text-indigo-600">{exemptModal.cardNo}</span>
+                            {exemptModal.userName ? ` · ${exemptModal.userName}` : ""}
+                        </p>
+                        <p className="text-xs text-slate-500 mb-3">到期后将自动取消豁免。</p>
+                        <div className="flex flex-col gap-2">
+                            {EXEMPT_DURATION_PRESETS.map((preset) => (
+                                <button
+                                    key={preset.durationMinutes}
+                                    type="button"
+                                    disabled={toggleExemptMutation.isPending}
+                                    className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800 disabled:opacity-50 transition-colors"
+                                    onClick={() =>
+                                        toggleExemptMutation.mutate({
+                                            cardNo: exemptModal.cardNo,
+                                            flag: 1,
+                                            durationMinutes: preset.durationMinutes,
+                                        })
+                                    }
+                                >
+                                    {preset.label}
+                                </button>
+                            ))}
                         </div>
                     </div>
                 </div>

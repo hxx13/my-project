@@ -1,4 +1,5 @@
 import type { ScanCardMappingStatus } from "@/api/domains/scanner.api";
+import { formatExemptRemaining } from "@/constants/exemptDurationPresets";
 
 function normalizeCardStatus(raw?: string): "FROZEN" | "NORMAL" {
   return String(raw || "").toUpperCase() === "FROZEN" ? "FROZEN" : "NORMAL";
@@ -32,7 +33,11 @@ export function DahuaCardMappingStatusPanel({
   }
 
   const cardStatus = normalizeCardStatus(mapping.cardStatus);
-  const exempt = Number(mapping.freezeExemptFlag ?? 0) === 1;
+  const exempt =
+    Number(mapping.freezeExemptFlag ?? 0) === 1 &&
+    (!mapping.freezeExemptExpireAt ||
+      Date.parse(String(mapping.freezeExemptExpireAt).replace(/-/g, "/")) > Date.now());
+  const exemptRemain = exempt ? formatExemptRemaining(mapping.freezeExemptExpireAt) : "";
 
   return (
     <div className={`rounded-xl border border-white/10 bg-black/40 ${compact ? "p-2 space-y-1" : "p-3 space-y-2"}`}>
@@ -55,6 +60,7 @@ export function DahuaCardMappingStatusPanel({
           }`}
         >
           风控：{exempt ? "豁免" : "受控"}
+          {exemptRemain ? ` · ${exemptRemain}` : ""}
         </span>
       </div>
       <p className="font-mono text-[10px] text-slate-400 break-all">

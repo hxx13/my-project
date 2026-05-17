@@ -144,6 +144,9 @@ CREATE TABLE IF NOT EXISTS twin_card_mapping (
     aro_user_id VARCHAR(50) NOT NULL,
     card_status VARCHAR(20) DEFAULT 'NORMAL' COMMENT '卡状态',
     freeze_exempt_flag INT DEFAULT 0 COMMENT '冻结豁免标记',
+    freeze_exempt_grant_date DATE NULL COMMENT '豁免授予日',
+    exempt_granted_at DATETIME NULL COMMENT '豁免授予时间',
+    freeze_exempt_expire_at DATETIME NULL COMMENT '豁免到期时间；到期自动收回',
     last_modified_time VARCHAR(30) COMMENT '最后修改时间',
     UNIQUE KEY uk_twin_card_mapping_card_no (card_no)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='物理卡片映射表';
@@ -875,3 +878,94 @@ CREATE TABLE IF NOT EXISTS twin_scan_popup_announcement (
     KEY idx_tspa_status_enabled (status, enabled, sort_order),
     KEY idx_tspa_publish (publish_at, expire_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码弹窗公告（多条翻页）';
+
+CREATE TABLE IF NOT EXISTS analytics_user_view (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL COMMENT '登录用户 ID',
+    report_key VARCHAR(64) NOT NULL COMMENT '报表标识，如 isolation_usage',
+    name VARCHAR(128) NOT NULL COMMENT '用户自定义视图名称',
+    filter_json JSON NOT NULL COMMENT '筛选条件 JSON',
+    is_default TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=该报表下默认视图',
+    is_subscribed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=参与自动审计对比',
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_auv_user_report (user_id, report_key),
+    KEY idx_auv_user_default (user_id, report_key, is_default)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计审计-用户筛选订阅';
+
+CREATE TABLE IF NOT EXISTS analytics_audit_log (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    view_id BIGINT NOT NULL,
+    report_key VARCHAR(64) NOT NULL,
+    view_name VARCHAR(128) NOT NULL DEFAULT '',
+    period_type VARCHAR(16) NOT NULL COMMENT 'day|week|month',
+    period_label VARCHAR(32) NOT NULL,
+    current_start DATETIME NOT NULL,
+    current_end DATETIME NOT NULL,
+    previous_start DATETIME NOT NULL,
+    previous_end DATETIME NOT NULL,
+    current_rounds BIGINT NOT NULL DEFAULT 0,
+    previous_rounds BIGINT NOT NULL DEFAULT 0,
+    current_users INT NOT NULL DEFAULT 0,
+    previous_users INT NOT NULL DEFAULT 0,
+    current_groups INT NOT NULL DEFAULT 0,
+    previous_groups INT NOT NULL DEFAULT 0,
+    delta_rounds BIGINT NOT NULL DEFAULT 0,
+    delta_pct DECIMAL(10, 2) NULL,
+    top_groups_json JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_aal_user_report_time (user_id, report_key, created_at),
+    KEY idx_aal_view_period (view_id, period_type, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计审计-订阅周期对比日志';
+
+CREATE TABLE IF NOT EXISTS analytics_llm_insight (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    audit_log_id BIGINT NOT NULL COMMENT 'analytics_audit_log.id',
+    user_id VARCHAR(64) NOT NULL COMMENT '生成者',
+    model VARCHAR(64) NOT NULL DEFAULT '',
+    prompt_tokens INT NULL,
+    completion_tokens INT NULL,
+    insight_json JSON NOT NULL COMMENT '结构化解读（headline、图表建议等）',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_ali_audit (audit_log_id),
+    KEY idx_ali_user_time (user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计审计-大模型解读缓存';
+
+CREATE TABLE IF NOT EXISTS analytics_query_snapshot (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    view_id BIGINT NOT NULL,
+    report_key VARCHAR(64) NOT NULL,
+    period_key VARCHAR(64) NOT NULL,
+    query_cycle VARCHAR(16) NOT NULL,
+    filter_json JSON NOT NULL,
+    report_json JSON NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_aqs_view_period (user_id, view_id, report_key, period_key),
+    KEY idx_aqs_view (view_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='隔离统计-历史周期查询快照';
+
+CREATE TABLE IF NOT EXISTS analytics_view_share (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    share_code_hash VARCHAR(64) NOT NULL COMMENT '分享码哈希',
+    share_code_plain VARCHAR(16) NULL COMMENT '明文分享码（所有者后台可查看）',
+    owner_user_id VARCHAR(64) NOT NULL,
+    source_view_id BIGINT NOT NULL,
+    report_key VARCHAR(64) NOT NULL,
+    snapshot_version INT NOT NULL DEFAULT 1,
+    payload_json MEDIUMTEXT NOT NULL COMMENT '封箱：view+auditLogs+insights',
+    audit_log_count INT NOT NULL DEFAULT 0,
+    insight_count INT NOT NULL DEFAULT 0,
+    owner_display_name VARCHAR(128) NOT NULL DEFAULT '',
+    expires_at DATETIME NOT NULL,
+    max_imports INT NOT NULL DEFAULT 10,
+    import_count INT NOT NULL DEFAULT 0,
+    revoked TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_avs_code_hash (share_code_hash),
+    KEY idx_avs_owner (owner_user_id, created_at),
+    KEY idx_avs_source_view (source_view_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计审计-配置分享封箱';

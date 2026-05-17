@@ -8,6 +8,8 @@ import com.example.demo.modules.notification.dto.MiniProgramTestSendRequest;
 import com.example.demo.modules.notification.dto.UpdateNotifyRuleRequest;
 import com.example.demo.modules.notification.dto.UpdateNotifyTemplateRequest;
 import com.example.demo.modules.notification.dto.UpdateSystemConfigRequest;
+import com.example.demo.modules.llm.service.DashScopeChatClient;
+import com.example.demo.modules.llm.service.LlmConfigService;
 import com.example.demo.modules.notification.service.MiniProgramNotificationService;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
 import com.example.demo.modules.twin.service.ClientReloadBroadcastService;
@@ -16,6 +18,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/admin/settings")
 @Tag(name = "系统设置", description = "通知规则、模板、配置项管理")
@@ -23,13 +27,19 @@ public class AdminSettingsController {
     private final NotificationSettingsService settingsService;
     private final MiniProgramNotificationService miniProgramNotificationService;
     private final ClientReloadBroadcastService clientReloadBroadcastService;
+    private final DashScopeChatClient dashScopeChatClient;
+    private final LlmConfigService llmConfigService;
 
     public AdminSettingsController(NotificationSettingsService settingsService,
                                    MiniProgramNotificationService miniProgramNotificationService,
-                                   ClientReloadBroadcastService clientReloadBroadcastService) {
+                                   ClientReloadBroadcastService clientReloadBroadcastService,
+                                   DashScopeChatClient dashScopeChatClient,
+                                   LlmConfigService llmConfigService) {
         this.settingsService = settingsService;
         this.miniProgramNotificationService = miniProgramNotificationService;
         this.clientReloadBroadcastService = clientReloadBroadcastService;
+        this.dashScopeChatClient = dashScopeChatClient;
+        this.llmConfigService = llmConfigService;
     }
 
     @GetMapping("/modules")
@@ -113,6 +123,26 @@ public class AdminSettingsController {
         User currentUser = (User) httpRequest.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
         String operatorId = currentUser != null ? currentUser.getId() : "";
         return Result.success(clientReloadBroadcastService.broadcastForceReload(operatorId));
+    }
+
+    @PostMapping("/llm/test-connection")
+    @Operation(summary = "测试大模型 API 连接（使用当前系统设置中的 Key 与 Base URL）")
+    public Result<?> testLlmConnection(HttpServletRequest httpRequest) {
+        Result<?> denied = requireSuperAdmin(httpRequest);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            llmConfigService.assertReady();
+            String reply = dashScopeChatClient.ping();
+            return Result.success(Map.of(
+                    "ok", true,
+                    "model", llmConfigService.getModel(),
+                    "baseUrl", llmConfigService.getBaseUrl(),
+                    "reply", reply));
+        } catch (IllegalStateException e) {
+            return Result.error(e.getMessage());
+        }
     }
 
     @PostMapping("/mini-program/test-send")

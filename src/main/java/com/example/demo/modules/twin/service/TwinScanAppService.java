@@ -169,7 +169,7 @@ public class TwinScanAppService {
                 winZone = ZoneId.systemDefault();
             }
             result.setScanPopupEntryWindowEnabled(ScanPopupEntryWindowEvaluator.isWindowEnabled(swingCfg));
-            result.setScanPopupEntryAllowedNow(ScanPopupEntryWindowEvaluator.isExecuteAllowedNow(swingCfg, winZone));
+            result.setScanPopupEntryAllowedNow(ScanPopupEntryWindowEvaluator.isEntryAllowedNow(swingCfg, winZone));
             try {
                 result.setStudentViolationNotice(twinStudentViolationService.buildNotice(realPhysicalId));
             } catch (Exception e) {

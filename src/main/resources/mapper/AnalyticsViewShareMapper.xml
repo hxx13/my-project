@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.analytics.mapper.AnalyticsViewShareMapper">
+
+    <resultMap id="AnalyticsViewShareMap" type="com.example.demo.modules.analytics.entity.AnalyticsViewShare">
+        <id property="id" column="id"/>
+        <result property="shareCodeHash" column="share_code_hash"/>
+        <result property="shareCodePlain" column="share_code_plain"/>
+        <result property="ownerUserId" column="owner_user_id"/>
+        <result property="sourceViewId" column="source_view_id"/>
+        <result property="reportKey" column="report_key"/>
+        <result property="snapshotVersion" column="snapshot_version"/>
+        <result property="payloadJson" column="payload_json"/>
+        <result property="auditLogCount" column="audit_log_count"/>
+        <result property="insightCount" column="insight_count"/>
+        <result property="ownerDisplayName" column="owner_display_name"/>
+        <result property="expiresAt" column="expires_at"/>
+        <result property="maxImports" column="max_imports"/>
+        <result property="importCount" column="import_count"/>
+        <result property="revoked" column="revoked"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO analytics_view_share (
+            share_code_hash, share_code_plain, owner_user_id, source_view_id, report_key, snapshot_version,
+            payload_json, audit_log_count, insight_count, owner_display_name,
+            expires_at, max_imports, import_count, revoked
+        ) VALUES (
+            #{shareCodeHash}, #{shareCodePlain}, #{ownerUserId}, #{sourceViewId}, #{reportKey}, #{snapshotVersion},
+            #{payloadJson}, #{auditLogCount}, #{insightCount}, #{ownerDisplayName},
+            #{expiresAt}, #{maxImports}, 0, 0
+        )
+    </insert>
+
+    <select id="selectByCodeHash" resultMap="AnalyticsViewShareMap">
+        SELECT *
+        FROM analytics_view_share
+        WHERE share_code_hash = #{shareCodeHash}
+        LIMIT 1
+    </select>
+
+    <update id="incrementImportCount">
+        UPDATE analytics_view_share
+        SET import_count = import_count + 1
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectActiveBySourceView" resultMap="AnalyticsViewShareMap">
+        SELECT *
+        FROM analytics_view_share
+        WHERE owner_user_id = #{ownerUserId}
+          AND source_view_id = #{sourceViewId}
+          AND revoked = 0
+          AND expires_at &gt; NOW()
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <update id="revokeActiveBySourceView">
+        UPDATE analytics_view_share
+        SET revoked = 1
+        WHERE owner_user_id = #{ownerUserId}
+          AND source_view_id = #{sourceViewId}
+          AND revoked = 0
+    </update>
+
+    <update id="revokeByIdAndOwner">
+        UPDATE analytics_view_share
+        SET revoked = 1
+        WHERE id = #{id} AND owner_user_id = #{ownerUserId}
+    </update>
+</mapper>

@@ -41,7 +41,11 @@ function normalizeHexColor(raw?: string) {
 }
 
 export function isMultilineConfigKey(configKey: string) {
-  return MULTILINE_KEYS.has(configKey);
+  return (
+    MULTILINE_KEYS.has(configKey) ||
+    configKey.startsWith("llm.insight_user_prompt.") ||
+    configKey.startsWith("llm.insight_system_prompt.")
+  );
 }
 
 export function isColorConfigKey(configKey: string) {
@@ -81,7 +85,7 @@ export function ConfigFieldEditor({
   const renderValueInput = () => {
     if (options.length > 0) {
       return (
-        <AdminSelect value={cfg.configValue || ""} onChange={(e) => onChange(e.target.value)} className="w-full max-w-md">
+        <AdminSelect value={cfg.configValue || ""} onChange={(e) => onChange(e.target.value)} className="w-full max-w-md" autoComplete="off">
           {options.map((opt) => (
             <option key={opt} value={opt}>
               {labelConfigOption(opt)}
@@ -107,6 +111,7 @@ export function ConfigFieldEditor({
           className={cn(adminInputClass, "max-w-xs")}
           value={cfg.configValue || ""}
           onChange={(e) => onChange(e.target.value)}
+          autoComplete="off"
         />
       );
     }
@@ -163,6 +168,7 @@ export function ConfigFieldEditor({
     }
 
     const sensitive = Boolean(def?.isSensitive);
+    const isApiKey = cfg.configKey.includes("api_key") || cfg.configKey.includes("api-key");
     return (
       <div className="flex max-w-lg items-center gap-2">
         <input
@@ -170,6 +176,15 @@ export function ConfigFieldEditor({
           className={adminInputClass}
           value={cfg.configValue || ""}
           onChange={(e) => onChange(e.target.value)}
+          name={`sys-config-${cfg.configKey.replace(/\./g, "-")}`}
+          autoComplete={isApiKey ? "new-password" : "off"}
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-lpignore="true"
+          data-1p-ignore
+          data-form-type="other"
+          placeholder={isApiKey ? "sk-…（勿填登录用户名）" : undefined}
         />
         {sensitive ? (
           <AdminButton type="button" tone="secondary" size="sm" onClick={onToggleSensitive}>

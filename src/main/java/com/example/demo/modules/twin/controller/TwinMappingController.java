@@ -250,9 +250,19 @@ public class TwinMappingController {
         try {
             String cardNo = payload.get("cardNo").toString();
             Integer flag = Integer.parseInt(payload.get("flag").toString());
-            mappingService.updateExemptFlag(cardNo, flag);
-            log.info("[twin] exempt cardNo={} flag={} by userId={}", cardNo, flag, user.getId());
-            return Result.success("特权更新成功！");
+            Integer durationMinutes = null;
+            if (payload.get("durationMinutes") != null) {
+                durationMinutes = Integer.parseInt(payload.get("durationMinutes").toString());
+            }
+            if (flag == 1 && durationMinutes == null) {
+                return Result.error("开启豁免须选择时效（durationMinutes）");
+            }
+            Map<String, Object> updated = mappingService.updateExemptFlag(cardNo, flag, durationMinutes);
+            log.info("[twin] exempt cardNo={} flag={} durationMinutes={} by userId={}",
+                    cardNo, flag, durationMinutes, user.getId());
+            return Result.success(updated);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
         } catch (Exception e) {
             return Result.error("特权更新失败: " + e.getMessage());
         }

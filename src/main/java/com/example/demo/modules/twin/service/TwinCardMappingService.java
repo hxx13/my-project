@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TwinCardMappingService {
 
     private static final Logger log = LoggerFactory.getLogger(TwinCardMappingService.class);
+    private static final DateTimeFormatter EXEMPT_EXPIRE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Autowired
     private TwinCardMappingMapper mappingMapper;
@@ -139,7 +141,42 @@ public class TwinCardMappingService {
      * 物理冻结豁免（freeze_exempt_flag=1）：供滞留跑批 {@link #executeFreezeReaperTask} 与联动豁免 {@link #isLinkageRuleExempt} 使用；禁止对 null 做拆箱比较。
      */
     public boolean isFreezeExempt(TwinCardMapping mapping) {
-        return mapping != null && mapping.getFreezeExemptFlag() != null && mapping.getFreezeExemptFlag() == 1;
+        return isExemptCurrentlyActive(mapping);
+    }
+
+    /** flag=1 且未过 freeze_exempt_expire_at（无到期字段时视为仍有效，兼容历史数据） */
+    private boolean isExemptCurrentlyActive(TwinCardMapping mapping) {
+        if (mapping == null || mapping.getFreezeExemptFlag() == null || mapping.getFreezeExemptFlag() != 1) {
+            return false;
+        }
+        String expireAt = mapping.getFreezeExemptExpireAt();
+        if (expireAt == null || expireAt.isBlank()) {
+            return true;
+        }
+        try {
+            LocalDateTime exp = LocalDateTime.parse(expireAt.trim(), EXEMPT_EXPIRE_FMT);
+            return LocalDateTime.now().isBefore(exp);
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    /**
+     * 计算豁免到期时间。durationMinutes：正整数=从现在起算分钟；-1=当日 23:59:59。
+     */
+    public String computeExemptExpireAt(Integer durationMinutes) {
+        if (durationMinutes == null) {
+            throw new IllegalArgumentException("开启豁免须指定时效 durationMinutes");
+        }
+        LocalDateTime expire;
+        if (durationMinutes == -1) {
+            expire = LocalDate.now().atTime(23, 59, 59);
+        } else if (durationMinutes <= 0) {
+            throw new IllegalArgumentException("durationMinutes 须为正整数或 -1（今日有效）");
+        } else {
+            expire = LocalDateTime.now().plusMinutes(durationMinutes);
+        }
+        return expire.format(EXEMPT_EXPIRE_FMT);
     }
 
     /**
@@ -186,17 +223,40 @@ public class TwinCardMappingService {
         }
     }
 
-    public synchronized void updateExemptFlag(String cardNo, Integer flag) {
+    public synchronized Map<String, Object> updateExemptFlag(String cardNo, Integer flag, Integer durationMinutes) {
+        if (flag == null || (flag != 0 && flag != 1)) {
+            throw new IllegalArgumentException("flag 须为 0 或 1");
+        }
         TwinCardMapping cacheItem = resolveMappingByCardNo(cardNo);
         String dbCardNo = cacheItem != null ? cacheItem.getCardNo() : (cardNo == null ? "" : cardNo.trim());
         String updateTime = getCurrentTime();
-        // 1. 持久化落盘
-        mappingMapper.updateExemptFlag(dbCardNo, flag, updateTime);
-        // 2. 局部刷新缓存
+        String expireAt = null;
+        if (flag == 1) {
+            expireAt = computeExemptExpireAt(durationMinutes);
+        }
+        mappingMapper.updateExemptFlag(dbCardNo, flag, expireAt, updateTime);
         if (cacheItem != null) {
-            cacheItem.setFreezeExemptFlag(flag);
-            cacheItem.setLastModifiedTime(updateTime);
-            // Java 是引用传递，修改 cacheItem 也会直接在 userIdCache 中生效
+            applyExemptFieldsToMapping(cacheItem, flag, expireAt, updateTime);
+        }
+        Map<String, Object> out = new HashMap<>();
+        out.put("cardNo", dbCardNo);
+        out.put("freezeExemptFlag", flag);
+        out.put("freezeExemptExpireAt", expireAt);
+        out.put("lastModifiedTime", updateTime);
+        return out;
+    }
+
+    private void applyExemptFieldsToMapping(TwinCardMapping m, int flag, String expireAt, String updateTime) {
+        m.setFreezeExemptFlag(flag);
+        m.setLastModifiedTime(updateTime);
+        if (flag == 1) {
+            m.setFreezeExemptGrantDate(LocalDate.now().toString());
+            m.setExemptGrantedAt(updateTime);
+            m.setFreezeExemptExpireAt(expireAt);
+        } else {
+            m.setFreezeExemptGrantDate(null);
+            m.setExemptGrantedAt(null);
+            m.setFreezeExemptExpireAt(null);
         }
     }
 
@@ -426,18 +486,58 @@ public class TwinCardMappingService {
      */
     @Transactional(rollbackFor = Exception.class)
     public synchronized void updateExemptFlagByUserId(String aroUserId, int flag) {
+        updateExemptFlagByUserId(aroUserId, flag, flag == 1 ? -1 : null);
+    }
+
+    public synchronized void updateExemptFlagByUserId(String aroUserId, int flag, Integer durationMinutes) {
         try {
-            int affected = mappingMapper.updateExemptFlagByUserId(aroUserId, flag);
+            String expireAt = flag == 1 ? computeExemptExpireAt(durationMinutes != null ? durationMinutes : -1) : null;
+            int affected = mappingMapper.updateExemptFlagByUserId(aroUserId, flag, expireAt);
             if (affected > 0) {
-                TwinCardMapping m = userIdCache.get(aroUserId);
+                TwinCardMapping m = userIdCache.get(aroUserId.trim());
                 if (m != null) {
-                    m.setFreezeExemptFlag(flag);
-                    m.setLastModifiedTime(getCurrentTime());
+                    applyExemptFieldsToMapping(m, flag, expireAt, getCurrentTime());
                 }
-                System.out.println("✅ [映射底盘] 成功修改人员 [" + aroUserId + "] 的物理卡风控豁免状态为: " + (flag == 1 ? "开启" : "关闭"));
+                log.info("[映射底盘] 人员 {} 豁免={} 到期={}", aroUserId, flag == 1 ? "开" : "关", expireAt);
             }
         } catch (Exception e) {
-            System.err.println("❌ [映射底盘] 修改豁免权失败: " + e.getMessage());
+            log.error("[映射底盘] 修改豁免权失败 aroUserId={}: {}", aroUserId, e.getMessage());
+        }
+    }
+
+    @Scheduled(fixedDelay = 60_000, initialDelay = 45_000)
+    public void revokeExpiredTimedExemptions() {
+        try {
+            int rows = mappingMapper.revokeExpiredExemptionsByExpireAt();
+            if (rows > 0) {
+                syncCacheExpiredExemptFlags();
+                log.info("[豁免时效] 已自动收回 {} 份到期豁免", rows);
+            }
+        } catch (Exception e) {
+            log.warn("[豁免时效] 到期收回失败: {}", e.getMessage());
+        }
+    }
+
+    private void syncCacheExpiredExemptFlags() {
+        LocalDateTime now = LocalDateTime.now();
+        for (TwinCardMapping m : userIdCache.values()) {
+            if (m == null || m.getFreezeExemptFlag() == null || m.getFreezeExemptFlag() != 1) {
+                continue;
+            }
+            String expireAt = m.getFreezeExemptExpireAt();
+            if (expireAt == null || expireAt.isBlank()) {
+                continue;
+            }
+            try {
+                if (!now.isBefore(LocalDateTime.parse(expireAt.trim(), EXEMPT_EXPIRE_FMT))) {
+                    m.setFreezeExemptFlag(0);
+                    m.setFreezeExemptGrantDate(null);
+                    m.setExemptGrantedAt(null);
+                    m.setFreezeExemptExpireAt(null);
+                }
+            } catch (Exception ignored) {
+                // keep cache as-is
+            }
         }
     }
 
@@ -469,6 +569,7 @@ public class TwinCardMappingService {
                 for (TwinCardMapping m : userIdCache.values()) {
                     if (m != null && m.getFreezeExemptFlag() != null && m.getFreezeExemptFlag() == 1) {
                         m.setFreezeExemptFlag(0);
+                        m.setFreezeExemptExpireAt(null);
                         m.setLastModifiedTime(getCurrentTime());
                     }
                 }

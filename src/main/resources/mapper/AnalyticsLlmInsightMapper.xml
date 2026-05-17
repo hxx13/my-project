@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.analytics.mapper.AnalyticsLlmInsightMapper">
+
+    <resultMap id="AnalyticsLlmInsightMap" type="com.example.demo.modules.analytics.entity.AnalyticsLlmInsight">
+        <id property="id" column="id"/>
+        <result property="auditLogId" column="audit_log_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="model" column="model"/>
+        <result property="promptTokens" column="prompt_tokens"/>
+        <result property="completionTokens" column="completion_tokens"/>
+        <result property="insightJson" column="insight_json"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectByViewId" resultMap="AnalyticsLlmInsightMap">
+        SELECT i.id, i.audit_log_id, i.user_id, i.model, i.prompt_tokens, i.completion_tokens, i.insight_json,
+               i.created_at, i.updated_at
+        FROM analytics_llm_insight i
+        INNER JOIN analytics_audit_log a ON a.id = i.audit_log_id
+        WHERE a.user_id = #{userId}
+          AND a.view_id = #{viewId}
+    </select>
+
+    <select id="selectByAuditLogId" resultMap="AnalyticsLlmInsightMap">
+        SELECT id, audit_log_id, user_id, model, prompt_tokens, completion_tokens, insight_json, created_at, updated_at
+        FROM analytics_llm_insight
+        WHERE audit_log_id = #{auditLogId}
+        LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO analytics_llm_insight (
+            audit_log_id, user_id, model, prompt_tokens, completion_tokens, insight_json
+        ) VALUES (
+            #{auditLogId}, #{userId}, #{model}, #{promptTokens}, #{completionTokens}, #{insightJson}
+        )
+    </insert>
+
+    <update id="updateByAuditLogId">
+        UPDATE analytics_llm_insight
+        SET model = #{model},
+            prompt_tokens = #{promptTokens},
+            completion_tokens = #{completionTokens},
+            insight_json = #{insightJson},
+            updated_at = NOW()
+        WHERE audit_log_id = #{auditLogId}
+    </update>
+</mapper>

@@ -129,6 +129,19 @@ public interface TwinDashboardMapper {
             @Param("roomName") String roomName,
             @Param("excludeBlacklist") Boolean excludeBlacklist);
 
+    /** 与 debug 流水筛选条件一致，按时间升序供统计聚合（上限 30 万条） */
+    List<Map<String, Object>> listFilteredDebugLogsForAggregation(
+            @Param("campus") String campus,
+            @Param("floor") String floor,
+            @Param("campusList") List<String> campusList,
+            @Param("floorList") List<String> floorList,
+            @Param("keyword") String keyword,
+            @Param("startTime") String startTime,
+            @Param("endTime") String endTime,
+            @Param("actionType") Integer actionType,
+            @Param("roomName") String roomName,
+            @Param("excludeBlacklist") Boolean excludeBlacklist);
+
     List<Map<String, Object>> getBlacklist();
 
     int addBlacklist(@Param("userId") String userId, @Param("name") String name, @Param("reason") String reason);

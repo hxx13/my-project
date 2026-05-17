@@ -27,6 +27,11 @@ public class TwinCardMappingSchemaMigrator {
                     "dahua_person_code",
                     "ALTER TABLE twin_card_mapping ADD COLUMN dahua_person_code VARCHAR(64) NULL COMMENT '大华人员编码(用于权限下发/回收)'"
             );
+            ensureColumnExists(
+                    "twin_card_mapping",
+                    "freeze_exempt_expire_at",
+                    "ALTER TABLE twin_card_mapping ADD COLUMN freeze_exempt_expire_at DATETIME NULL COMMENT '豁免到期时间；到期自动收回'"
+            );
             log.info("[twin-mapping-schema] twin_card_mapping 结构已就绪");
         } catch (Exception e) {
             log.error("[twin-mapping-schema] 结构迁移失败: {}", e.getMessage());

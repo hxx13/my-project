@@ -15,13 +15,15 @@ import {
   type SettingDefinitionRecord,
   type SystemConfigRecord,
 } from "@/api/domains/notification.api";
-import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
+import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { CapabilityPoliciesPanel } from "@/features/admin/settings/CapabilityPoliciesPanel";
+import { ClientReloadOpsPanel } from "@/features/admin/settings/ClientReloadOpsPanel";
+import { LlmSettingsPanel } from "@/features/admin/settings/LlmSettingsPanel";
 import { NotificationRulesPanel } from "@/features/admin/settings/NotificationRulesPanel";
 import { NotificationTemplatesPanel } from "@/features/admin/settings/NotificationTemplatesPanel";
-import { SettingsModuleTabs } from "@/features/admin/settings/SettingsModuleTabs";
+import { SettingsModuleNav } from "@/features/admin/settings/SettingsModuleNav";
 import { SystemConfigsPanel } from "@/features/admin/settings/SystemConfigsPanel";
-import { ClientReloadOpsPanel } from "@/features/admin/settings/ClientReloadOpsPanel";
+import { moduleDescription, moduleLabel } from "@/features/admin/settings/settingsLabels";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 
@@ -93,7 +95,7 @@ export default function AdminSettingsPage() {
         setConfigs([]);
         setConfigDefs([]);
         setCapabilityPolicies([]);
-      } else if (isConfigModule(activeModule)) {
+      } else if (activeModule === "llm" || isConfigModule(activeModule)) {
         const [c, d] = await Promise.all([fetchSystemConfigs(activeModule), fetchConfigDefinitions(activeModule)]);
         setConfigs(c);
         setConfigDefs(d);
@@ -132,6 +134,8 @@ export default function AdminSettingsPage() {
     if (modules.some((x) => x.key === m)) setActiveModule(m);
   }, [searchParams, modules]);
 
+  const activeTitle = moduleLabel(modules, activeModule);
+
   return (
     <AdminPageShell
       title={
@@ -140,46 +144,56 @@ export default function AdminSettingsPage() {
           系统设置
         </span>
       }
-      description="统一管理通知、业务能力与各模块运行参数。枚举与模板请通过下拉选择，无需手输英文代码。"
+      description="左侧选择模块分类，右侧编辑具体配置。枚举与模板请用下拉，无需手输英文代码。"
+      actions={canBroadcastClientReload ? <ClientReloadOpsPanel /> : undefined}
     >
-      <AdminFormCard title="配置模块" description="选择要维护的设置分类。">
-        <SettingsModuleTabs modules={modules} activeModule={activeModule} onChange={setActiveModule} />
-      </AdminFormCard>
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+        <SettingsModuleNav modules={modules} activeModule={activeModule} onChange={setActiveModule} />
 
-      {canBroadcastClientReload ? <ClientReloadOpsPanel /> : null}
+        <div className="min-w-0 flex-1 space-y-4">
+          <div className="hidden border-b border-neutral-100 pb-3 lg:block">
+            <h3 className="text-base font-semibold text-neutral-900">{activeTitle}</h3>
+            <p className="mt-1 text-sm text-neutral-600">{moduleDescription(activeModule)}</p>
+          </div>
 
-      {loading ? (
-        <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-neutral-200 bg-white text-sm text-neutral-500">
-          加载中…
+          {loading ? (
+            <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-neutral-200 bg-white text-sm text-neutral-500">
+              加载中…
+            </div>
+          ) : null}
+
+          {!loading && activeModule === "notification" ? (
+            <NotificationRulesPanel rules={rules} templates={templateCatalog} onRulesChange={setRules} />
+          ) : null}
+
+          {!loading && activeModule === "capability" ? (
+            <CapabilityPoliciesPanel policies={capabilityPolicies} onPoliciesChange={setCapabilityPolicies} />
+          ) : null}
+
+          {!loading && activeModule === "template" ? (
+            <NotificationTemplatesPanel
+              templates={templates}
+              supplyPushConfigs={supplyPushConfigs}
+              supplyPushDefs={supplyPushDefs}
+              onTemplatesChange={setTemplates}
+              onSupplyConfigsChange={setSupplyPushConfigs}
+            />
+          ) : null}
+
+          {!loading && activeModule === "llm" ? (
+            <LlmSettingsPanel configs={configs} configDefs={configDefs} onConfigsChange={setConfigs} />
+          ) : null}
+
+          {!loading && isConfigModule(activeModule) && activeModule !== "llm" ? (
+            <SystemConfigsPanel
+              moduleKey={activeModule}
+              configs={configs}
+              configDefs={configDefs}
+              onConfigsChange={setConfigs}
+            />
+          ) : null}
         </div>
-      ) : null}
-
-      {!loading && activeModule === "notification" ? (
-        <NotificationRulesPanel rules={rules} templates={templateCatalog} onRulesChange={setRules} />
-      ) : null}
-
-      {!loading && activeModule === "capability" ? (
-        <CapabilityPoliciesPanel policies={capabilityPolicies} onPoliciesChange={setCapabilityPolicies} />
-      ) : null}
-
-      {!loading && activeModule === "template" ? (
-        <NotificationTemplatesPanel
-          templates={templates}
-          supplyPushConfigs={supplyPushConfigs}
-          supplyPushDefs={supplyPushDefs}
-          onTemplatesChange={setTemplates}
-          onSupplyConfigsChange={setSupplyPushConfigs}
-        />
-      ) : null}
-
-      {!loading && isConfigModule(activeModule) ? (
-        <SystemConfigsPanel
-          moduleKey={activeModule}
-          configs={configs}
-          configDefs={configDefs}
-          onConfigsChange={setConfigs}
-        />
-      ) : null}
+      </div>
     </AdminPageShell>
   );
 }

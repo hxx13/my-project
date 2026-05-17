@@ -23,6 +23,8 @@ public class TwinCardMapping {
     private String freezeExemptGrantDate;
     /** 豁免授予时间戳（库 DATETIME） */
     private String exemptGrantedAt;
+    /** 豁免到期时间 yyyy-MM-dd HH:mm:ss；到期后自动收回 flag */
+    private String freezeExemptExpireAt;
     private String lastModifiedTime;   // 最后修改时间戳
 
     // --- 视图聚合字段 (不存入当前表，通过 JOIN 获取，供前端大屏展示) ---

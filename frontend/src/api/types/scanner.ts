@@ -50,9 +50,9 @@ export interface AnalyzeResponse {
     disciplinaryRecords?: DisciplinaryRecord[];
     /** 后端 twin_card_mapping 是否存在该人员；用于指示自带校园卡 / 领用公卡 */
     hasPhysicalCardMapping?: boolean;
-    /** 是否启用扫码弹窗入口时段限制 */
+    /** 是否启用扫码弹窗入口时段限制（仅限制进入，不限制离开） */
     scanPopupEntryWindowEnabled?: boolean;
-    /** 当前时间是否在允许打卡的时段内 */
+    /** 当前时间是否允许扫码进入（仅进入；离开不受此字段限制） */
     scanPopupEntryAllowedNow?: boolean;
     /** 管理员下发的违规通告（扫码弹窗覆盖展示） */
     studentViolationNotice?: StudentViolationNotice;

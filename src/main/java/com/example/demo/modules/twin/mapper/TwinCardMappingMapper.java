@@ -17,7 +17,8 @@ public interface TwinCardMappingMapper {
     // ================== 2. 管理端数据写入与状态变更 ==================
     void insertMapping(TwinCardMapping mapping);
 
-    void updateExemptFlag(@Param("cardNo") String cardNo, @Param("flag") Integer flag, @Param("updateTime") String updateTime);
+    void updateExemptFlag(@Param("cardNo") String cardNo, @Param("flag") Integer flag,
+                          @Param("expireAt") String expireAt, @Param("updateTime") String updateTime);
 
     void updateCardStatus(@Param("cardNo") String cardNo, @Param("status") String status, @Param("updateTime") String updateTime);
 
@@ -34,11 +35,15 @@ public interface TwinCardMappingMapper {
 
     List<String> findTodayExemptedThenRevokedUserIds();
 
-    int updateExemptFlagByUserId(@Param("aroUserId") String aroUserId, @Param("flag") int flag);
+    int updateExemptFlagByUserId(@Param("aroUserId") String aroUserId, @Param("flag") int flag,
+                                 @Param("expireAt") String expireAt);
 
     int resetDailyExemptions();
 
     int clearAllExemptFlagsKeepGrantTrace();
 
     int revokeExpiredExemptionsByTodayKeepCard();
+
+    /** 收回 freeze_exempt_expire_at 已到的豁免 */
+    int revokeExpiredExemptionsByExpireAt();
 }

@@ -479,6 +479,62 @@
           AND accessType = 1
     </select>
 
+    <sql id="FilteredDebugWhere">
+        <if test="keyword != null and keyword != ''">
+            <bind name="keywordPattern" value="'%' + keyword + '%'" />
+            AND (
+                name LIKE #{keywordPattern}
+                OR user_id LIKE #{keywordPattern}
+                OR project_group_names LIKE #{keywordPattern}
+            )
+        </if>
+        <if test="startTime != null and startTime != ''"> AND create_time &gt;= #{startTime} </if>
+        <if test="endTime != null and endTime != ''"> AND create_time &lt;= #{endTime} </if>
+        <if test="actionType != null"> AND accessType = #{actionType} </if>
+        <if test="campusList != null and campusList.size() > 0">
+            AND (
+            <foreach collection="campusList" item="c" separator=" OR ">
+                area_name LIKE CONCAT('%', #{c}, '%')
+            </foreach>
+            )
+        </if>
+        <if test="(campusList == null or campusList.size() == 0) and campus != null and campus != ''">
+            <bind name="campusPattern" value="'%' + campus + '%'" />
+            AND area_name LIKE #{campusPattern}
+        </if>
+        <if test="floorList != null and floorList.size() > 0">
+            AND (
+            <foreach collection="floorList" item="f" separator=" OR ">
+                room_name LIKE CONCAT(#{f}, '%')
+            </foreach>
+            )
+        </if>
+        <if test="(floorList == null or floorList.size() == 0) and floor != null and floor != ''"> AND room_name LIKE CONCAT(#{floor}, '%') </if>
+        <if test="roomName != null and roomName != ''">
+            <bind name="roomPattern" value="'%' + roomName + '%'" />
+            AND room_name LIKE #{roomPattern}
+        </if>
+        <if test="excludeBlacklist != null and excludeBlacklist == true">
+            AND user_id NOT IN (SELECT user_id FROM twin_blacklist)
+        </if>
+    </sql>
+
+    <select id="listFilteredDebugLogsForAggregation" resultType="map">
+        SELECT user_id AS userId,
+               name,
+               accessType,
+               create_time AS createTime,
+               area_name AS areaName,
+               room_name AS roomName,
+               room_id AS roomId,
+               project_group_names AS projectGroupNames
+        FROM aro_access_log
+        WHERE 1 = 1
+        <include refid="FilteredDebugWhere"/>
+        ORDER BY create_time ASC
+        LIMIT 300000
+    </select>
+
     <select id="getFilteredDebugLogs" resultType="map">
         SELECT log.id,
                log.user_id,
@@ -543,29 +599,7 @@
                SUM(CASE WHEN is_keep_card = 1 THEN 1 ELSE 0 END) AS totalKeep
         FROM aro_access_log
         WHERE 1 = 1
-        <if test="keyword != null and keyword != ''">
-            <bind name="keywordPattern" value="'%' + keyword + '%'" />
-            AND (
-                name LIKE #{keywordPattern}
-                OR user_id LIKE #{keywordPattern}
-                OR project_group_names LIKE #{keywordPattern}
-            )
-        </if>
-        <if test="startTime != null and startTime != ''"> AND create_time &gt;= #{startTime} </if>
-        <if test="endTime != null and endTime != ''"> AND create_time &lt;= #{endTime} </if>
-        <if test="actionType != null"> AND accessType = #{actionType} </if>
-        <if test="campus != null and campus != ''">
-            <bind name="campusPattern" value="'%' + campus + '%'" />
-            AND area_name LIKE #{campusPattern}
-        </if>
-        <if test="floor != null and floor != ''"> AND room_name LIKE CONCAT(#{floor}, '%') </if>
-        <if test="roomName != null and roomName != ''">
-            <bind name="roomPattern" value="'%' + roomName + '%'" />
-            AND room_name LIKE #{roomPattern}
-        </if>
-        <if test="excludeBlacklist != null and excludeBlacklist == true">
-            AND user_id NOT IN (SELECT user_id FROM twin_blacklist)
-        </if>
+        <include refid="FilteredDebugWhere"/>
     </select>
 
     <select id="getBlacklist" resultType="map">

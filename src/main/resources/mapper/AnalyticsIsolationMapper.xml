@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.analytics.mapper.AnalyticsIsolationMapper">
+
+    <!--
+      room_mapping.csv 中「隔离器 / 浦东隔离包」等分区名落在 floor_id（表头：楼层id），非 region_name。
+      API 参数 regionName 表示隔离分区（floor_id）；floorName 表示具体房间名（room_name）。
+    -->
+    <sql id="IsolationRoomWhere">
+        (
+            IFNULL(floor_id, '') LIKE '%隔离%'
+            OR IFNULL(room_name, '') LIKE '%隔%'
+        )
+        <if test="regionName != null and regionName != ''">
+            AND floor_id = #{regionName}
+        </if>
+        <if test="floorName != null and floorName != ''">
+            AND room_name = #{floorName}
+        </if>
+        <if test="campus != null and campus != ''">
+            <choose>
+                <when test="campus == '浦东'">AND (shelf_id = '2' OR region_id = '浦东')</when>
+                <when test="campus == '浦西'">AND (shelf_id = '1' OR region_id = '浦西')</when>
+                <otherwise>
+                    <bind name="campusPattern" value="'%' + campus + '%'"/>
+                    AND (shelf_id LIKE #{campusPattern} OR region_id LIKE #{campusPattern})
+                </otherwise>
+            </choose>
+        </if>
+    </sql>
+
+    <select id="selectIsolationRooms" resultType="map">
+        SELECT room_id AS roomId,
+               room_name AS roomName,
+               region_id AS campusLabel,
+               region_name AS regionName,
+               floor_id AS partitionName,
+               floor_name AS floorName,
+               shelf_id AS shelfId
+        FROM room_mapping_room
+        WHERE <include refid="IsolationRoomWhere"/>
+        ORDER BY floor_id, room_name
+    </select>
+
+    <select id="selectAccessLogsForIsolation" resultType="map">
+        SELECT log.id,
+               log.user_id AS userId,
+               log.name,
+               log.accessType,
+               log.create_time AS createTime,
+               log.area_name AS areaName,
+               log.room_id AS roomId,
+               log.room_name AS roomName,
+               log.project_group_names AS projectGroupNames
+        FROM aro_access_log log
+        WHERE 1 = 1
+        <if test="roomIds != null and roomIds.size() > 0">
+            AND (
+                log.room_id IN
+                <foreach collection="roomIds" item="rid" open="(" separator="," close=")">
+                    #{rid}
+                </foreach>
+                <if test="roomNames != null and roomNames.size() > 0">
+                    OR log.room_name IN
+                    <foreach collection="roomNames" item="rn" open="(" separator="," close=")">
+                        #{rn}
+                    </foreach>
+                </if>
+            )
+        </if>
+        <if test="(roomIds == null or roomIds.size() == 0) and roomNames != null and roomNames.size() > 0">
+            AND log.room_name IN
+            <foreach collection="roomNames" item="rn" open="(" separator="," close=")">
+                #{rn}
+            </foreach>
+        </if>
+        <if test="campus != null and campus != ''">
+            <bind name="campusPattern" value="'%' + campus + '%'"/>
+            AND log.area_name LIKE #{campusPattern}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            <bind name="keywordPattern" value="'%' + keyword + '%'"/>
+            AND (
+                log.name LIKE #{keywordPattern}
+                OR log.user_id LIKE #{keywordPattern}
+                OR log.project_group_names LIKE #{keywordPattern}
+            )
+        </if>
+        <if test="startTime != null and startTime != ''">
+            AND log.create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null and endTime != ''">
+            AND log.create_time &lt;= #{endTime}
+        </if>
+        <if test="excludeBlacklist != null and excludeBlacklist == true">
+            AND log.user_id NOT IN (SELECT user_id FROM twin_blacklist)
+        </if>
+        ORDER BY log.create_time ASC
+    </select>
+</mapper>

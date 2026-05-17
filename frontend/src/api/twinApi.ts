@@ -462,6 +462,7 @@ export interface CardMappingRow {
     dahuaPersonCode?: string;
     cardStatus?: string;
     freezeExemptFlag?: number;
+    freezeExemptExpireAt?: string | null;
     lastModifiedTime?: string;
     [key: string]: any;
 }
@@ -479,10 +480,22 @@ export const searchCardMappings = async (keyword: string): Promise<CardMappingRo
     return res.data?.data || [];
 };
 
-// 3. 切换特权免死金牌 (1=豁免, 0=受控)
-export const updateExemptFlag = async (cardNo: string, flag: number) => {
-    const res = await authHttp.post(`/v1/twin/mappings/exempt`, { cardNo, flag });
-    return res.data;
+// 3. 切换特权免死金牌 (1=豁免, 0=受控)；开启时须传 durationMinutes（-1=今日 24:00）
+export const updateExemptFlag = async (
+    cardNo: string,
+    flag: number,
+    durationMinutes?: number,
+): Promise<{
+    freezeExemptFlag?: number;
+    freezeExemptExpireAt?: string | null;
+    lastModifiedTime?: string;
+}> => {
+    const body: { cardNo: string; flag: number; durationMinutes?: number } = { cardNo, flag };
+    if (flag === 1 && durationMinutes != null) {
+        body.durationMinutes = durationMinutes;
+    }
+    const res = await authHttp.post(`/v1/twin/mappings/exempt`, body);
+    return res.data?.data ?? res.data;
 };
 
 // 4. 强制冻结/解冻卡片 (NORMAL / FROZEN)

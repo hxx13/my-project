@@ -170,9 +170,9 @@ public class TwinScanController {
             } catch (Exception e) {
                 winZone = ZoneId.systemDefault();
             }
-            if (!ScanPopupEntryWindowEvaluator.isExecuteAllowedNow(swingCfg, winZone)) {
+            if (accessType == 1 && !ScanPopupEntryWindowEvaluator.isEntryAllowedNow(swingCfg, winZone)) {
                 result.setSuccess(false);
-                result.setMessage("当前不在允许使用扫码打卡的时段内，请稍后再试");
+                result.setMessage("当前不在允许扫码进入的时段内，请稍后再试");
                 return Result.success(result);
             }
 

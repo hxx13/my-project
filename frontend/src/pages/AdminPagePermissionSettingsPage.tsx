@@ -50,6 +50,7 @@ const PATH_TITLE_MAP: Record<string, string> = {
   "/admin/staff-messages": "好友",
   "/admin/file-templates": "文件模板库",
   "/admin/content-hub": "小程序内容中心",
+  "/admin/analytics": "统计与审计",
   "/admin/dahua-swing-tasks": "门禁拉取规则",
   "/admin/dahua-swing-rules": "门禁联动规则",
   "/admin/dahua-swing-records": "门禁记录库",

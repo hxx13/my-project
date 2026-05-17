@@ -183,6 +183,20 @@ export async function updateSystemConfig(id: number, payload: Partial<SystemConf
   await adminHttp.patch(`/settings/configs/${id}`, payload);
 }
 
+export type LlmConnectionTestResult = {
+  ok: boolean;
+  model: string;
+  baseUrl: string;
+  reply: string;
+};
+
+export async function testLlmConnection(): Promise<LlmConnectionTestResult> {
+  const res = await adminHttp.post<Result<LlmConnectionTestResult>>("/settings/llm/test-connection");
+  const body = res.data;
+  if (!body?.success) throw new Error(body?.message || "连接测试失败");
+  return body.data;
+}
+
 export async function fetchExternalCommConfigOverview() {
   const res = await adminHttp.get<Result<ExternalCommConfigOverview>>("/settings/external-comm-config");
   return res.data.data;

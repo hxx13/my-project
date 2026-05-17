@@ -20,7 +20,7 @@ public class ScanAnalyzeResponseDTO {
     private Boolean hasPhysicalCardMapping;
     /** 门禁联动配置：是否启用扫码弹窗入口时段限制 */
     private Boolean scanPopupEntryWindowEnabled;
-    /** 当前是否处于允许打卡的时段内（未启用限制时为 true） */
+    /** 当前是否处于允许扫码进入的时段内（未启用限制时为 true；仅影响进入，不影响离开） */
     private Boolean scanPopupEntryAllowedNow;
     /** 学生违规通告（管理员下发）；无则 null */
     private ScanStudentViolationNoticeDTO studentViolationNotice;

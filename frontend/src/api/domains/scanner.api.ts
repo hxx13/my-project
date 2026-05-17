@@ -284,6 +284,7 @@ export interface ScanCardMappingStatus {
     dahuaPersonCode?: string;
     cardStatus?: string;
     freezeExemptFlag?: number;
+    freezeExemptExpireAt?: string | null;
     userName?: string;
     aroUserId?: string;
 }
@@ -300,6 +301,8 @@ export const fetchScanCardMapping = async (userId: string): Promise<ScanCardMapp
         dahuaPersonCode: typeof raw.dahuaPersonCode === "string" ? raw.dahuaPersonCode : undefined,
         cardStatus: typeof raw.cardStatus === "string" ? raw.cardStatus : undefined,
         freezeExemptFlag: typeof raw.freezeExemptFlag === "number" ? raw.freezeExemptFlag : undefined,
+        freezeExemptExpireAt:
+            typeof raw.freezeExemptExpireAt === "string" ? raw.freezeExemptExpireAt : undefined,
         userName: typeof raw.userName === "string" ? raw.userName : undefined,
         aroUserId: typeof raw.aroUserId === "string" ? raw.aroUserId : undefined,
     };

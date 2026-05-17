@@ -240,6 +240,22 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
         } catch (Exception e) {
             log.debug("[page-permission-schema] 动物房 Twin 入口种子跳过: {}", e.getMessage());
         }
+        try {
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'WEB', 'entry:web:admin:analytics', 'ENTRY', '统计与审计', '/admin/analytics', 'sidebar',
+                        'STAFF', 'STAFF', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            log.info("[page-permission-schema] 已种子 WEB sidebar：统计与审计（INSERT IGNORE）");
+        } catch (Exception e) {
+            log.debug("[page-permission-schema] 统计与审计入口种子跳过: {}", e.getMessage());
+        }
     }
 }
 

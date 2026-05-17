@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 门禁联动配置中的「扫码弹窗入口时段」：启用后仅在配置的 HH:mm 时段内允许 Web 扫码执行进/出。
+ * 门禁联动配置中的「扫码弹窗入口时段」：启用后仅在配置的 HH:mm 时段内允许 Web 扫码进入；离开不受限。
  */
 public final class ScanPopupEntryWindowEvaluator {
 
@@ -23,9 +23,14 @@ public final class ScanPopupEntryWindowEvaluator {
     }
 
     /**
-     * 未启用时不限制。
-     * 启用后须至少配置一个合法 HH:mm 时段；当前时间须落入任一时段，否则禁止执行扫码进/出。
+     * 未启用时不限制进入。
+     * 启用后须至少配置一个合法 HH:mm 时段；当前时间须落入任一时段，否则禁止扫码进入（离开始终允许）。
      */
+    public static boolean isEntryAllowedNow(Map<String, Object> cfg, ZoneId zone) {
+        return isExecuteAllowedNow(cfg, zone);
+    }
+
+    /** 与 {@link #isEntryAllowedNow} 相同，保留旧方法名供测试与历史调用 */
     public static boolean isExecuteAllowedNow(Map<String, Object> cfg, ZoneId zone) {
         if (!isWindowEnabled(cfg)) {
             return true;

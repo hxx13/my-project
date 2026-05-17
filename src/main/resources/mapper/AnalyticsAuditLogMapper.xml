@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.analytics.mapper.AnalyticsAuditLogMapper">
+
+    <resultMap id="AnalyticsAuditLogMap" type="com.example.demo.modules.analytics.entity.AnalyticsAuditLog">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="viewId" column="view_id"/>
+        <result property="reportKey" column="report_key"/>
+        <result property="viewName" column="view_name"/>
+        <result property="periodType" column="period_type"/>
+        <result property="periodLabel" column="period_label"/>
+        <result property="currentStart" column="current_start"/>
+        <result property="currentEnd" column="current_end"/>
+        <result property="previousStart" column="previous_start"/>
+        <result property="previousEnd" column="previous_end"/>
+        <result property="currentRounds" column="current_rounds"/>
+        <result property="previousRounds" column="previous_rounds"/>
+        <result property="currentUsers" column="current_users"/>
+        <result property="previousUsers" column="previous_users"/>
+        <result property="currentGroups" column="current_groups"/>
+        <result property="previousGroups" column="previous_groups"/>
+        <result property="deltaRounds" column="delta_rounds"/>
+        <result property="deltaPct" column="delta_pct"/>
+        <result property="topGroupsJson" column="top_groups_json"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO analytics_audit_log (
+            user_id, view_id, report_key, view_name, period_type, period_label,
+            current_start, current_end, previous_start, previous_end,
+            current_rounds, previous_rounds, current_users, previous_users,
+            current_groups, previous_groups, delta_rounds, delta_pct, top_groups_json
+        ) VALUES (
+            #{userId}, #{viewId}, #{reportKey}, #{viewName}, #{periodType}, #{periodLabel},
+            #{currentStart}, #{currentEnd}, #{previousStart}, #{previousEnd},
+            #{currentRounds}, #{previousRounds}, #{currentUsers}, #{previousUsers},
+            #{currentGroups}, #{previousGroups}, #{deltaRounds}, #{deltaPct}, #{topGroupsJson}
+        )
+    </insert>
+
+    <select id="selectAllByView" resultMap="AnalyticsAuditLogMap">
+        SELECT *
+        FROM analytics_audit_log
+        WHERE user_id = #{userId}
+          AND view_id = #{viewId}
+        ORDER BY period_type ASC, period_label ASC, created_at ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectByUserAndReport" resultMap="AnalyticsAuditLogMap">
+        SELECT *
+        FROM analytics_audit_log
+        WHERE user_id = #{userId}
+          AND report_key = #{reportKey}
+        <if test="viewId != null">
+            AND view_id = #{viewId}
+        </if>
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countByViewPeriodLabel" resultType="int">
+        SELECT COUNT(*)
+        FROM analytics_audit_log
+        WHERE view_id = #{viewId}
+          AND period_type = #{periodType}
+          AND period_label = #{periodLabel}
+    </select>
+
+    <select id="selectById" resultMap="AnalyticsAuditLogMap">
+        SELECT * FROM analytics_audit_log WHERE id = #{id}
+    </select>
+
+    <select id="selectRecentWithoutInsight" resultMap="AnalyticsAuditLogMap">
+        SELECT a.*
+        FROM analytics_audit_log a
+        LEFT JOIN analytics_llm_insight i ON i.audit_log_id = a.id
+        WHERE a.user_id = #{userId}
+          AND a.report_key = #{reportKey}
+          AND a.view_id = #{viewId}
+          AND i.id IS NULL
+        ORDER BY a.created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectRecentWithoutInsightGlobal" resultMap="AnalyticsAuditLogMap">
+        SELECT a.*
+        FROM analytics_audit_log a
+        LEFT JOIN analytics_llm_insight i ON i.audit_log_id = a.id
+        WHERE a.report_key = #{reportKey}
+          AND i.id IS NULL
+        ORDER BY a.created_at DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

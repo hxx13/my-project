@@ -170,7 +170,7 @@ export default function AdminDahuaSwingRulesPage() {
               <span>启用扫码弹窗入口时段限制</span>
             </label>
             <p className="text-xs text-slate-500">
-              启用后，所有房间的进入/离开按钮仅在下列时段内可用；时区与服务器配置 app.business-timezone（默认 Asia/Shanghai）一致。
+              启用后，仅限制扫码进入；离开按钮不受时段限制。时区与 app.business-timezone（默认 Asia/Shanghai）一致。
             </p>
             <div className="space-y-1">
               {form.scanPopupEntryWindows.map((band, idx) => (
