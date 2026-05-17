@@ -1,7 +1,7 @@
 ﻿import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Settings, ShieldAlert, Trash2, X } from "lucide-react";
-import { addToBlacklist, fetchBlacklist, removeFromBlacklist } from "@/api/twinApi";
+import { useQueryClient } from "@tanstack/react-query";
+import { Settings } from "lucide-react";
+import { BlacklistManageModal } from "@/components/admin/BlacklistManageModal";
 import {
   CAMPUS_OPTIONS,
   PUDONG_FLOOR_OPTIONS,
@@ -47,13 +47,6 @@ function Chip({
 export function AnalyticsPipelineFilterBar({ filters, onChange, onClear, invalidateKeys }: Props) {
   const queryClient = useQueryClient();
   const [blacklistOpen, setBlacklistOpen] = useState(false);
-  const [newBlacklist, setNewBlacklist] = useState({ userId: "", name: "", reason: "" });
-
-  const { data: blacklistData = [], refetch: refetchBlacklist } = useQuery({
-    queryKey: ["twinBlacklist"],
-    queryFn: fetchBlacklist,
-    enabled: blacklistOpen,
-  });
 
   const showPudongFloors = filters.campuses.includes(PUDONG_CAMPUS);
 
@@ -148,67 +141,11 @@ export function AnalyticsPipelineFilterBar({ filters, onChange, onClear, invalid
         </button>
       </div>
 
-      {blacklistOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
-          <div className="flex w-[600px] flex-col overflow-hidden rounded-2xl border bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b bg-slate-50 px-6 py-4">
-              <h2 className="flex items-center gap-2 text-lg font-black">
-                <ShieldAlert className="h-5 w-5 text-rose-500" />
-                黑名单
-              </h2>
-              <button type="button" onClick={() => setBlacklistOpen(false)}>
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="flex gap-2 border-b p-4">
-              <input
-                placeholder="学工号"
-                value={newBlacklist.userId}
-                onChange={(e) => setNewBlacklist((n) => ({ ...n, userId: e.target.value }))}
-                className="flex-1 rounded-lg border px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="姓名"
-                value={newBlacklist.name}
-                onChange={(e) => setNewBlacklist((n) => ({ ...n, name: e.target.value }))}
-                className="w-[100px] rounded-lg border px-3 py-2 text-sm"
-              />
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!newBlacklist.userId || !newBlacklist.name) return;
-                  await addToBlacklist(newBlacklist);
-                  setNewBlacklist({ userId: "", name: "", reason: "" });
-                  await refetchBlacklist();
-                  invalidateRelated();
-                }}
-                className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-bold text-white"
-              >
-                <Plus className="inline h-4 w-4" /> 添加
-              </button>
-            </div>
-            <div className="max-h-[280px] overflow-y-auto p-4">
-              {blacklistData.map((item: { userId: string; name: string }) => (
-                <div key={item.userId} className="mb-2 flex items-center justify-between rounded-lg border p-2 text-sm">
-                  <span>
-                    {item.name} <span className="font-mono text-xs text-neutral-400">{item.userId}</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await removeFromBlacklist(item.userId);
-                      await refetchBlacklist();
-                      invalidateRelated();
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 text-rose-400" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <BlacklistManageModal
+        open={blacklistOpen}
+        onClose={() => setBlacklistOpen(false)}
+        onChanged={invalidateRelated}
+      />
     </>
   );
 }

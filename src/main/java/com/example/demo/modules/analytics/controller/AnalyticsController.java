@@ -130,8 +130,53 @@ public class AnalyticsController {
         return java.util.Arrays.stream(csv.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
     }
 
+    @GetMapping("/reports/{reportKey}/share")
+    @Operation(summary = "获取当前报表下全部配置的有效分享码")
+    public Result<Map<String, Object>> getReportShare(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable String reportKey) {
+        User user = resolveUser(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        Result<?> denied = requireStaff(authorization);
+        if (denied != null) {
+            return Result.error(denied.getMessage());
+        }
+        try {
+            return Result.success(viewShareService.getActiveShareForReport(user.getId(), reportKey));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/reports/{reportKey}/share")
+    @Operation(summary = "生成/重新生成分享码（封箱该报表下全部配置与快照）")
+    public Result<Map<String, Object>> createReportShare(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable String reportKey,
+            @RequestBody(required = false) Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        Result<?> denied = requireStaff(authorization);
+        if (denied != null) {
+            return Result.error(denied.getMessage());
+        }
+        try {
+            Integer expiresDays = body != null && body.get("expiresDays") instanceof Number n ? n.intValue() : null;
+            Integer maxImports = body != null && body.get("maxImports") instanceof Number n ? n.intValue() : null;
+            String display = resolveUserDisplayName(user);
+            return Result.success(
+                    viewShareService.createShareForReport(user.getId(), reportKey, display, expiresDays, maxImports));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     @GetMapping("/views/{viewId}/share")
-    @Operation(summary = "获取当前配置的有效分享码（可重复查看）")
+    @Operation(summary = "获取分享码（等同所属报表全部配置）")
     public Result<Map<String, Object>> getViewShare(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable long viewId) {
@@ -151,7 +196,7 @@ public class AnalyticsController {
     }
 
     @PostMapping("/views/{viewId}/share")
-    @Operation(summary = "生成/重新生成分享码（作废旧码，封箱当前快照）")
+    @Operation(summary = "生成分享码（等同封箱所属报表下全部配置）")
     public Result<Map<String, Object>> createViewShare(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable long viewId,

@@ -193,6 +193,36 @@ public class AnalyticsSchemaMigrator implements ApplicationRunner {
                     """);
             ensureColumn("analytics_view_share", "share_code_plain",
                     "ALTER TABLE analytics_view_share ADD COLUMN share_code_plain VARCHAR(16) NULL COMMENT '明文分享码' AFTER share_code_hash");
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS analytics_chat_session (
+                        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                        user_id VARCHAR(64) NOT NULL,
+                        report_key VARCHAR(64) NOT NULL,
+                        view_id BIGINT NOT NULL,
+                        view_name VARCHAR(128) NOT NULL DEFAULT '',
+                        title VARCHAR(128) NOT NULL DEFAULT '新对话',
+                        context_json MEDIUMTEXT NULL,
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        KEY idx_acs_user_report (user_id, report_key, updated_at),
+                        KEY idx_acs_view (view_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计页-AI对话会话'
+                    """);
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS analytics_chat_message (
+                        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                        session_id BIGINT NOT NULL,
+                        role VARCHAR(16) NOT NULL,
+                        content MEDIUMTEXT NOT NULL,
+                        thinking_text TEXT NULL,
+                        model VARCHAR(64) NULL,
+                        prompt_tokens INT NULL,
+                        completion_tokens INT NULL,
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        KEY idx_acm_session (session_id, id),
+                        CONSTRAINT fk_acm_session FOREIGN KEY (session_id) REFERENCES analytics_chat_session(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计页-AI对话消息'
+                    """);
             log.info("[analytics-schema] analytics 表结构已就绪");
 
         } catch (Exception e) {

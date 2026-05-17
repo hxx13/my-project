@@ -279,13 +279,18 @@ export type AnalyticsViewShareStatus = {
   maxImports?: number;
   importsRemaining?: number;
   importCount?: number;
-  viewName: string;
+  reportKey?: string;
+  viewCount?: number;
+  viewNames?: string[];
+  viewName?: string;
   regenerated?: boolean;
 };
 
 export type AnalyticsViewSharePreview = {
   reportKey: string;
   viewName: string;
+  viewCount?: number;
+  viewNames?: string[];
   ownerDisplayName: string;
   auditLogCount: number;
   insightCount: number;
@@ -295,7 +300,9 @@ export type AnalyticsViewSharePreview = {
 };
 
 export type AnalyticsViewShareImportResult = {
-  view: AnalyticsUserView;
+  views: AnalyticsUserView[];
+  view?: AnalyticsUserView;
+  viewCount: number;
   importedAuditLogs: number;
   importedInsights: number;
   message: string;
@@ -315,10 +322,30 @@ function mapViewDto(raw: Record<string, unknown>): AnalyticsUserView {
   };
 }
 
+export async function fetchAnalyticsReportShare(reportKey: string): Promise<AnalyticsViewShareStatus> {
+  return unwrap(
+    authHttp.get<Result<AnalyticsViewShareStatus>>(`/v1/analytics/reports/${encodeURIComponent(reportKey)}/share`)
+  );
+}
+
+export async function createAnalyticsReportShare(
+  reportKey: string,
+  opts?: { expiresDays?: number; maxImports?: number }
+): Promise<AnalyticsViewShareStatus> {
+  return unwrap(
+    authHttp.post<Result<AnalyticsViewShareStatus>>(
+      `/v1/analytics/reports/${encodeURIComponent(reportKey)}/share`,
+      opts ?? {}
+    )
+  );
+}
+
+/** @deprecated 使用 createAnalyticsReportShare */
 export async function fetchAnalyticsViewShare(viewId: number): Promise<AnalyticsViewShareStatus> {
   return unwrap(authHttp.get<Result<AnalyticsViewShareStatus>>(`/v1/analytics/views/${viewId}/share`));
 }
 
+/** @deprecated 使用 createAnalyticsReportShare */
 export async function createAnalyticsViewShare(
   viewId: number,
   opts?: { expiresDays?: number; maxImports?: number }
@@ -338,20 +365,25 @@ export async function previewAnalyticsViewShare(code: string): Promise<Analytics
 
 export async function importAnalyticsViewShare(
   code: string,
-  targetName?: string
+  nameSuffix?: string
 ): Promise<AnalyticsViewShareImportResult> {
   const data = await unwrap(
     authHttp.post<Result<Record<string, unknown>>>("/v1/analytics/share/import", {
       code: code.trim(),
-      ...(targetName?.trim() ? { targetName: targetName.trim() } : {}),
+      ...(nameSuffix?.trim() ? { targetName: nameSuffix.trim() } : {}),
     })
   );
-  const viewRaw = data.view as Record<string, unknown> | undefined;
-  if (!viewRaw) {
+  const viewsRaw = data.views as Record<string, unknown>[] | undefined;
+  const views =
+    viewsRaw?.map((v) => mapViewDto(v)) ??
+    (data.view ? [mapViewDto(data.view as Record<string, unknown>)] : []);
+  if (views.length === 0) {
     throw new Error("导入响应缺少配置数据");
   }
   return {
-    view: mapViewDto(viewRaw),
+    views,
+    view: views[0],
+    viewCount: Number(data.viewCount ?? views.length),
     importedAuditLogs: Number(data.importedAuditLogs ?? 0),
     importedInsights: Number(data.importedInsights ?? 0),
     message: String(data.message ?? "导入成功"),

@@ -29,7 +29,10 @@ import java.util.Map;
 @Service
 public class AnalyticsViewShareService {
 
-    private static final int SNAPSHOT_VERSION = 1;
+    private static final int SNAPSHOT_VERSION_V1 = 1;
+    private static final int SNAPSHOT_VERSION_V2 = 2;
+    private static final long BUNDLE_SOURCE_VIEW_ID = 0L;
+    private static final int MAX_VIEWS_PER_SHARE = 50;
     private static final int MAX_AUDIT_LOGS_PER_SHARE = 500;
     private static final int MAX_PAYLOAD_CHARS = 4_000_000;
     private static final String ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -60,24 +63,35 @@ public class AnalyticsViewShareService {
         this.pepper = pepper;
     }
 
+    /** 兼容旧接口：按 viewId 查所属报表的全局分享码 */
     public Map<String, Object> getActiveShareForView(String ownerUserId, long viewId) {
         AnalyticsUserView view = viewMapper.selectByIdAndUser(viewId, ownerUserId);
         if (view == null) {
             throw new IllegalArgumentException("配置不存在或无权查看");
         }
-        AnalyticsViewShare share = shareMapper.selectActiveBySourceView(ownerUserId, viewId);
+        return getActiveShareForReport(ownerUserId, view.getReportKey());
+    }
+
+    public Map<String, Object> getActiveShareForReport(String ownerUserId, String reportKey) {
+        String rk = normalizeReportKey(reportKey);
+        List<AnalyticsUserView> views = viewMapper.selectByUserAndReport(ownerUserId, rk);
+        AnalyticsViewShare share = shareMapper.selectActiveByReport(ownerUserId, rk);
         if (share == null) {
             Map<String, Object> empty = new LinkedHashMap<>();
             empty.put("active", false);
-            empty.put("viewName", view.getName());
+            empty.put("reportKey", rk);
+            empty.put("viewCount", views.size());
             return empty;
         }
         Map<String, Object> out = shareToOwnerMap(share);
         out.put("active", true);
-        out.put("viewName", view.getName());
+        out.put("reportKey", rk);
+        out.put("viewCount", countViewsInPayload(share));
+        out.put("viewNames", listViewNamesInPayload(share));
         return out;
     }
 
+    /** 兼容旧接口：封箱该配置所属报表下的全部配置 */
     @Transactional
     public Map<String, Object> createShare(
             String ownerUserId, long viewId, String ownerDisplayName, Integer expiresDays, Integer maxImports) {
@@ -85,109 +99,98 @@ public class AnalyticsViewShareService {
         if (view == null) {
             throw new IllegalArgumentException("配置不存在或无权分享");
         }
-        shareMapper.revokeActiveBySourceView(ownerUserId, viewId);
-        List<AnalyticsAuditLog> logs =
-                auditLogMapper.selectAllByView(ownerUserId, viewId, MAX_AUDIT_LOGS_PER_SHARE);
-        if (logs.size() >= MAX_AUDIT_LOGS_PER_SHARE) {
-            throw new IllegalArgumentException("清算记录过多（超过 " + MAX_AUDIT_LOGS_PER_SHARE + " 条），请缩小配置范围后再分享");
+        return createShareForReport(ownerUserId, view.getReportKey(), ownerDisplayName, expiresDays, maxImports);
+    }
+
+    @Transactional
+    public Map<String, Object> createShareForReport(
+            String ownerUserId, String reportKey, String ownerDisplayName, Integer expiresDays, Integer maxImports) {
+        String rk = normalizeReportKey(reportKey);
+        List<AnalyticsUserView> views = viewMapper.selectByUserAndReport(ownerUserId, rk);
+        if (views.isEmpty()) {
+            throw new IllegalArgumentException("暂无统计配置可分享，请先保存至少一条配置");
         }
-        List<AnalyticsLlmInsight> insights = insightMapper.selectByViewId(ownerUserId, viewId);
-        Map<Long, String> periodKeyByAuditId = new HashMap<>();
-        for (AnalyticsAuditLog log : logs) {
-            periodKeyByAuditId.put(log.getId(), periodKey(log.getPeriodType(), log.getPeriodLabel()));
+        if (views.size() > MAX_VIEWS_PER_SHARE) {
+            throw new IllegalArgumentException("配置数量过多（超过 " + MAX_VIEWS_PER_SHARE + " 条），请精简后再分享");
+        }
+
+        shareMapper.revokeActiveByReport(ownerUserId, rk);
+
+        int logBudget = MAX_AUDIT_LOGS_PER_SHARE;
+        List<Map<String, Object>> viewBundles = new ArrayList<>();
+        int totalLogs = 0;
+        int totalInsights = 0;
+
+        for (AnalyticsUserView view : views) {
+            if (logBudget <= 0) {
+                throw new IllegalArgumentException(
+                        "清算记录合计超过 " + MAX_AUDIT_LOGS_PER_SHARE + " 条，请减少期次或配置数量后再分享");
+            }
+            Map<String, Object> bundle = buildViewBundle(ownerUserId, view, logBudget);
+            int logCount = ((List<?>) bundle.get("auditLogs")).size();
+            int insCount = ((List<?>) bundle.get("insights")).size();
+            logBudget -= logCount;
+            totalLogs += logCount;
+            totalInsights += insCount;
+            viewBundles.add(bundle);
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("v", SNAPSHOT_VERSION);
-        payload.put("reportKey", view.getReportKey());
-        Map<String, Object> viewSnap = new LinkedHashMap<>();
-        viewSnap.put("name", view.getName());
-        viewSnap.put("filterJson", view.getFilterJson());
-        viewSnap.put("sortOrder", view.getSortOrder() != null ? view.getSortOrder() : 0);
-        payload.put("view", viewSnap);
-        payload.put("auditLogs", logs.stream().map(this::auditLogToMap).toList());
+        payload.put("v", SNAPSHOT_VERSION_V2);
+        payload.put("reportKey", rk);
+        payload.put("views", viewBundles);
 
-        List<Map<String, Object>> insightSnaps = new ArrayList<>();
-        for (AnalyticsLlmInsight ins : insights) {
-            String pk = periodKeyByAuditId.get(ins.getAuditLogId());
-            if (pk == null) {
-                continue;
-            }
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("periodType", pk.split("\\|", 2)[0]);
-            m.put("periodLabel", pk.contains("|") ? pk.split("\\|", 2)[1] : "");
-            m.put("model", ins.getModel() != null ? ins.getModel() : "");
-            m.put("promptTokens", ins.getPromptTokens());
-            m.put("completionTokens", ins.getCompletionTokens());
-            m.put("insightJson", ins.getInsightJson());
-            insightSnaps.add(m);
-        }
-        payload.put("insights", insightSnaps);
-
-        String payloadJson;
-        try {
-            payloadJson = objectMapper.writeValueAsString(payload);
-        } catch (Exception e) {
-            throw new IllegalStateException("封箱序列化失败: " + e.getMessage());
-        }
-        if (payloadJson.length() > MAX_PAYLOAD_CHARS) {
-            throw new IllegalArgumentException("分享内容过大，请减少清算期次后再试");
-        }
-
+        String payloadJson = serializePayload(payload);
         int days = expiresDays != null ? Math.min(Math.max(expiresDays, 1), 365) : 30;
         int maxImp = maxImports != null ? Math.min(Math.max(maxImports, 1), 100) : 10;
         LocalDateTime expiresAt = LocalDateTime.now().plusDays(days);
         String display = StringUtils.hasText(ownerDisplayName) ? ownerDisplayName.trim() : ownerUserId;
 
-        for (int attempt = 0; attempt < 12; attempt++) {
-            String plain = generatePlainCode(10);
-            String hash = InviteCodeHasher.sha256Hex(pepper, InviteCodeHasher.normalize(plain));
-            AnalyticsViewShare row = new AnalyticsViewShare();
-            row.setShareCodeHash(hash);
-            row.setShareCodePlain(plain);
-            row.setOwnerUserId(ownerUserId);
-            row.setSourceViewId(viewId);
-            row.setReportKey(view.getReportKey());
-            row.setSnapshotVersion(SNAPSHOT_VERSION);
-            row.setPayloadJson(payloadJson);
-            row.setAuditLogCount(logs.size());
-            row.setInsightCount(insightSnaps.size());
-            row.setOwnerDisplayName(display);
-            row.setExpiresAt(expiresAt);
-            row.setMaxImports(maxImp);
-            try {
-                shareMapper.insert(row);
-                Map<String, Object> out = shareToOwnerMap(row);
-                out.put("active", true);
-                out.put("plainCode", plain);
-                out.put("viewName", view.getName());
-                out.put("regenerated", true);
-                return out;
-            } catch (DuplicateKeyException ex) {
-                // retry code collision
-            }
-        }
-        throw new IllegalStateException("生成分享码失败，请重试");
+        return insertShareRow(
+                ownerUserId,
+                BUNDLE_SOURCE_VIEW_ID,
+                rk,
+                SNAPSHOT_VERSION_V2,
+                payloadJson,
+                totalLogs,
+                totalInsights,
+                display,
+                expiresAt,
+                maxImp,
+                views);
     }
 
     public Map<String, Object> previewShare(String code) {
         AnalyticsViewShare share = resolveActiveShare(code);
         Map<String, Object> payload = readPayload(share.getPayloadJson());
-        Map<String, Object> viewSnap = castMap(payload.get("view"));
+        int version = payloadVersion(payload);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("reportKey", payload.get("reportKey"));
-        out.put("viewName", viewSnap.get("name"));
         out.put("ownerDisplayName", share.getOwnerDisplayName());
         out.put("auditLogCount", share.getAuditLogCount());
         out.put("insightCount", share.getInsightCount());
         out.put("expiresAt", share.getExpiresAt() != null ? share.getExpiresAt().toString() : null);
         out.put("importsRemaining", Math.max(0, share.getMaxImports() - share.getImportCount()));
-        out.put("snapshotNote", "导入后将复制配置、清算快照与 AI 解读；之后双方数据独立，不会同步");
+        if (version == SNAPSHOT_VERSION_V2) {
+            List<String> names = listViewNamesFromPayload(payload);
+            out.put("viewCount", names.size());
+            out.put("viewNames", names);
+            out.put("viewName", names.isEmpty() ? "全部配置" : names.get(0) + (names.size() > 1 ? " 等" + names.size() + " 条" : ""));
+            out.put(
+                    "snapshotNote",
+                    "导入后将复制全部 " + names.size() + " 条配置及其清算快照、AI 解读；之后双方数据独立，不会同步");
+        } else {
+            Map<String, Object> viewSnap = castMap(payload.get("view"));
+            out.put("viewCount", 1);
+            out.put("viewName", viewSnap.get("name"));
+            out.put("viewNames", List.of(String.valueOf(viewSnap.get("name"))));
+            out.put("snapshotNote", "导入后将复制配置、清算快照与 AI 解读；之后双方数据独立，不会同步");
+        }
         return out;
     }
 
     @Transactional
-    public Map<String, Object> importShare(String importerUserId, String code, String targetName) {
+    public Map<String, Object> importShare(String importerUserId, String code, String nameSuffix) {
         AnalyticsViewShare share = resolveActiveShare(code);
         if (share.getImportCount() >= share.getMaxImports()) {
             throw new IllegalArgumentException("该分享码已达最大导入次数");
@@ -197,21 +200,68 @@ public class AnalyticsViewShareService {
         }
 
         Map<String, Object> payload = readPayload(share.getPayloadJson());
-        int version = payload.get("v") instanceof Number n ? n.intValue() : 0;
-        if (version != SNAPSHOT_VERSION) {
+        int version = payloadVersion(payload);
+        String ownerLabel = share.getOwnerDisplayName();
+        String suffix = StringUtils.hasText(nameSuffix)
+                ? nameSuffix.trim()
+                : " (来自 " + ownerLabel + ")";
+
+        List<AnalyticsUserViewDto> importedViews = new ArrayList<>();
+        int importedLogs = 0;
+        int importedInsights = 0;
+
+        if (version == SNAPSHOT_VERSION_V2) {
+            String reportKey = String.valueOf(payload.get("reportKey"));
+            List<Map<String, Object>> bundles = castViewBundles(payload.get("views"));
+            if (bundles.isEmpty()) {
+                throw new IllegalArgumentException("分享包内无配置");
+            }
+            for (Map<String, Object> bundle : bundles) {
+                ImportOneResult one = importOneViewBundle(importerUserId, reportKey, bundle, suffix);
+                importedViews.add(one.viewDto());
+                importedLogs += one.logs();
+                importedInsights += one.insights();
+            }
+        } else if (version == SNAPSHOT_VERSION_V1) {
+            String reportKey = String.valueOf(payload.get("reportKey"));
+            Map<String, Object> legacy = new LinkedHashMap<>();
+            legacy.put("view", payload.get("view"));
+            legacy.put("auditLogs", payload.get("auditLogs"));
+            legacy.put("insights", payload.get("insights"));
+            ImportOneResult one = importOneViewBundle(importerUserId, reportKey, legacy, suffix);
+            importedViews.add(one.viewDto());
+            importedLogs = one.logs();
+            importedInsights = one.insights();
+        } else {
             throw new IllegalArgumentException("不支持的分享包版本");
         }
-        String reportKey = String.valueOf(payload.get("reportKey"));
-        Map<String, Object> viewSnap = castMap(payload.get("view"));
+
+        shareMapper.incrementImportCount(share.getId());
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("views", importedViews);
+        out.put("view", importedViews.isEmpty() ? null : importedViews.get(0));
+        out.put("viewCount", importedViews.size());
+        out.put("importedAuditLogs", importedLogs);
+        out.put("importedInsights", importedInsights);
+        out.put(
+                "message",
+                "已导入 " + importedViews.size() + " 条独立配置，后续清算与解读仅在您账号下延续，不与分享者同步");
+        return out;
+    }
+
+    private record ImportOneResult(AnalyticsUserViewDto viewDto, int logs, int insights) {}
+
+    private ImportOneResult importOneViewBundle(
+            String importerUserId, String reportKey, Map<String, Object> bundle, String nameSuffix) {
+        Map<String, Object> viewSnap = castMap(bundle.get("view"));
         String baseName = String.valueOf(viewSnap.get("name"));
-        String importName = StringUtils.hasText(targetName)
-                ? targetName.trim()
-                : baseName + " (来自 " + share.getOwnerDisplayName() + ")";
+        String importName = truncateName(baseName + nameSuffix);
 
         AnalyticsUserView newView = new AnalyticsUserView();
         newView.setUserId(importerUserId);
         newView.setReportKey(reportKey);
-        newView.setName(importName.length() > 128 ? importName.substring(0, 128) : importName);
+        newView.setName(importName);
         newView.setFilterJson(String.valueOf(viewSnap.get("filterJson")));
         newView.setIsDefault(0);
         newView.setIsSubscribed(0);
@@ -221,7 +271,7 @@ public class AnalyticsViewShareService {
         long newViewId = newView.getId();
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> auditLogs = (List<Map<String, Object>>) payload.get("auditLogs");
+        List<Map<String, Object>> auditLogs = (List<Map<String, Object>>) bundle.get("auditLogs");
         if (auditLogs == null) {
             auditLogs = List.of();
         }
@@ -240,7 +290,7 @@ public class AnalyticsViewShareService {
         }
 
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> insights = (List<Map<String, Object>>) payload.get("insights");
+        List<Map<String, Object>> insights = (List<Map<String, Object>>) bundle.get("insights");
         int importedInsights = 0;
         if (insights != null) {
             for (Map<String, Object> ins : insights) {
@@ -267,15 +317,155 @@ public class AnalyticsViewShareService {
             }
         }
 
-        shareMapper.incrementImportCount(share.getId());
+        return new ImportOneResult(userViewService.getForUser(importerUserId, newViewId), importedLogs, importedInsights);
+    }
 
-        AnalyticsUserViewDto viewDto = userViewService.getForUser(importerUserId, newViewId);
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("view", viewDto);
-        out.put("importedAuditLogs", importedLogs);
-        out.put("importedInsights", importedInsights);
-        out.put("message", "已导入为独立配置，后续清算与解读仅在您账号下延续，不与分享者同步");
-        return out;
+    private Map<String, Object> buildViewBundle(String ownerUserId, AnalyticsUserView view, int logBudget) {
+        long viewId = view.getId();
+        List<AnalyticsAuditLog> logs = auditLogMapper.selectAllByView(ownerUserId, viewId, logBudget);
+        List<AnalyticsLlmInsight> insights = insightMapper.selectByViewId(ownerUserId, viewId);
+        Map<Long, String> periodKeyByAuditId = new HashMap<>();
+        for (AnalyticsAuditLog log : logs) {
+            periodKeyByAuditId.put(log.getId(), periodKey(log.getPeriodType(), log.getPeriodLabel()));
+        }
+
+        Map<String, Object> viewSnap = new LinkedHashMap<>();
+        viewSnap.put("name", view.getName());
+        viewSnap.put("filterJson", view.getFilterJson());
+        viewSnap.put("sortOrder", view.getSortOrder() != null ? view.getSortOrder() : 0);
+
+        List<Map<String, Object>> insightSnaps = new ArrayList<>();
+        for (AnalyticsLlmInsight ins : insights) {
+            String pk = periodKeyByAuditId.get(ins.getAuditLogId());
+            if (pk == null) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            String[] parts = pk.split("\\|", 2);
+            m.put("periodType", parts[0]);
+            m.put("periodLabel", parts.length > 1 ? parts[1] : "");
+            m.put("model", ins.getModel() != null ? ins.getModel() : "");
+            m.put("promptTokens", ins.getPromptTokens());
+            m.put("completionTokens", ins.getCompletionTokens());
+            m.put("insightJson", ins.getInsightJson());
+            insightSnaps.add(m);
+        }
+
+        Map<String, Object> bundle = new LinkedHashMap<>();
+        bundle.put("view", viewSnap);
+        bundle.put("auditLogs", logs.stream().map(this::auditLogToMap).toList());
+        bundle.put("insights", insightSnaps);
+        return bundle;
+    }
+
+    private Map<String, Object> insertShareRow(
+            String ownerUserId,
+            long sourceViewId,
+            String reportKey,
+            int snapshotVersion,
+            String payloadJson,
+            int auditLogCount,
+            int insightCount,
+            String ownerDisplayName,
+            LocalDateTime expiresAt,
+            int maxImports,
+            List<AnalyticsUserView> sourceViews) {
+        for (int attempt = 0; attempt < 12; attempt++) {
+            String plain = generatePlainCode(10);
+            String hash = InviteCodeHasher.sha256Hex(pepper, InviteCodeHasher.normalize(plain));
+            AnalyticsViewShare row = new AnalyticsViewShare();
+            row.setShareCodeHash(hash);
+            row.setShareCodePlain(plain);
+            row.setOwnerUserId(ownerUserId);
+            row.setSourceViewId(sourceViewId);
+            row.setReportKey(reportKey);
+            row.setSnapshotVersion(snapshotVersion);
+            row.setPayloadJson(payloadJson);
+            row.setAuditLogCount(auditLogCount);
+            row.setInsightCount(insightCount);
+            row.setOwnerDisplayName(ownerDisplayName);
+            row.setExpiresAt(expiresAt);
+            row.setMaxImports(maxImports);
+            try {
+                shareMapper.insert(row);
+                Map<String, Object> out = shareToOwnerMap(row);
+                out.put("active", true);
+                out.put("plainCode", plain);
+                out.put("reportKey", reportKey);
+                out.put("viewCount", sourceViews.size());
+                out.put("viewNames", sourceViews.stream().map(AnalyticsUserView::getName).toList());
+                out.put("regenerated", true);
+                return out;
+            } catch (DuplicateKeyException ex) {
+                // retry code collision
+            }
+        }
+        throw new IllegalStateException("生成分享码失败，请重试");
+    }
+
+    private String serializePayload(Map<String, Object> payload) {
+        try {
+            String json = objectMapper.writeValueAsString(payload);
+            if (json.length() > MAX_PAYLOAD_CHARS) {
+                throw new IllegalArgumentException("分享内容过大，请减少清算期次或配置数量后再试");
+            }
+            return json;
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("封箱序列化失败: " + e.getMessage());
+        }
+    }
+
+    private String normalizeReportKey(String reportKey) {
+        if (!StringUtils.hasText(reportKey)) {
+            throw new IllegalArgumentException("reportKey 不能为空");
+        }
+        return reportKey.trim();
+    }
+
+    private static String truncateName(String name) {
+        return name.length() > 128 ? name.substring(0, 128) : name;
+    }
+
+    private int payloadVersion(Map<String, Object> payload) {
+        return payload.get("v") instanceof Number n ? n.intValue() : 0;
+    }
+
+    private int countViewsInPayload(AnalyticsViewShare share) {
+        if (share.getSnapshotVersion() != null && share.getSnapshotVersion() == SNAPSHOT_VERSION_V2) {
+            return listViewNamesFromPayload(readPayload(share.getPayloadJson())).size();
+        }
+        return 1;
+    }
+
+    private List<String> listViewNamesInPayload(AnalyticsViewShare share) {
+        return listViewNamesFromPayload(readPayload(share.getPayloadJson()));
+    }
+
+    private List<String> listViewNamesFromPayload(Map<String, Object> payload) {
+        if (payloadVersion(payload) == SNAPSHOT_VERSION_V2) {
+            List<String> names = new ArrayList<>();
+            for (Map<String, Object> bundle : castViewBundles(payload.get("views"))) {
+                names.add(String.valueOf(castMap(bundle.get("view")).get("name")));
+            }
+            return names;
+        }
+        return List.of(String.valueOf(castMap(payload.get("view")).get("name")));
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> castViewBundles(Object viewsObj) {
+        if (viewsObj instanceof List<?> list) {
+            List<Map<String, Object>> out = new ArrayList<>();
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> m) {
+                    out.add((Map<String, Object>) m);
+                }
+            }
+            return out;
+        }
+        return List.of();
     }
 
     @Transactional

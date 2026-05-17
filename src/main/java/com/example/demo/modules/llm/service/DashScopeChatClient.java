@@ -9,12 +9,20 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 @Component
 public class DashScopeChatClient {
@@ -90,6 +98,119 @@ public class DashScopeChatClient {
     public String ping() {
         ChatResult result = chatWithFallback(List.of(Map.of("role", "user", "content", "请只回复：连接成功")));
         return result.content() + " [" + result.model() + "]";
+    }
+
+    /**
+     * 流式对话（OpenAI SSE 兼容）；onDelta 收到增量文本，完成后 onComplete 携带模型名。
+     */
+    public void streamChatWithFallback(List<Map<String, String>> messages, StreamConsumer consumer) {
+        llmConfigService.assertReady();
+        List<String> models = llmConfigService.getModelCandidates();
+        IllegalStateException lastError = null;
+        for (String model : models) {
+            try {
+                streamChatWithModel(model, messages, consumer);
+                return;
+            } catch (IllegalStateException e) {
+                lastError = e;
+                if (!isRetriableModelError(e)) {
+                    throw e;
+                }
+                log.warn("[llm] 流式模型 {} 失败，尝试下一个: {}", model, e.getMessage());
+            }
+        }
+        if (lastError != null) {
+            throw new IllegalStateException(
+                    "流式调用均失败（已尝试: " + String.join(", ", models) + "）: " + lastError.getMessage());
+        }
+        throw new IllegalStateException("未配置可用模型");
+    }
+
+    private void streamChatWithModel(String model, List<Map<String, String>> messages, StreamConsumer consumer) {
+        String url = llmConfigService.getBaseUrl() + "/chat/completions";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model);
+        body.put("messages", messages);
+        body.put("stream", true);
+        body.put("max_tokens", llmConfigService.getMaxTokens());
+        body.put("temperature", llmConfigService.getTemperature());
+
+        HttpURLConnection conn = null;
+        try {
+            String json = objectMapper.writeValueAsString(body);
+            conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(30_000);
+            conn.setReadTimeout(300_000);
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            conn.setRequestProperty("Accept", "text/event-stream");
+            conn.setRequestProperty("Authorization", "Bearer " + llmConfigService.getApiKey());
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(json.getBytes(StandardCharsets.UTF_8));
+            }
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                String err = readAll(conn.getErrorStream());
+                throw new IllegalStateException("大模型流式调用失败(" + model + "): " + code + " " + shorten(err));
+            }
+            try (BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.startsWith("data:")) {
+                        continue;
+                    }
+                    String data = line.substring(5).trim();
+                    if ("[DONE]".equals(data)) {
+                        break;
+                    }
+                    if (data.isEmpty()) {
+                        continue;
+                    }
+                    JsonNode root = objectMapper.readTree(data);
+                    JsonNode err = root.path("error");
+                    if (!err.isMissingNode() && err.has("message")) {
+                        throw new IllegalStateException(err.path("message").asText("未知错误"));
+                    }
+                    String delta = root.path("choices").path(0).path("delta").path("content").asText("");
+                    if (StringUtils.hasText(delta)) {
+                        consumer.onDelta(delta);
+                    }
+                }
+            }
+            consumer.onComplete(model);
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("大模型流式调用失败(" + model + "): " + e.getMessage());
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
+        }
+    }
+
+    private static String readAll(java.io.InputStream in) {
+        if (in == null) {
+            return "";
+        }
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    public interface StreamConsumer {
+        void onDelta(String text);
+
+        void onComplete(String model);
     }
 
     private static boolean isRetriableModelError(IllegalStateException e) {

@@ -14,8 +14,14 @@ public interface AnalyticsViewShareMapper {
     AnalyticsViewShare selectActiveBySourceView(
             @Param("ownerUserId") String ownerUserId, @Param("sourceViewId") long sourceViewId);
 
+    /** source_view_id=0 表示该报表下全部配置的封箱包 */
+    AnalyticsViewShare selectActiveByReport(
+            @Param("ownerUserId") String ownerUserId, @Param("reportKey") String reportKey);
+
     int revokeActiveBySourceView(
             @Param("ownerUserId") String ownerUserId, @Param("sourceViewId") long sourceViewId);
+
+    int revokeActiveByReport(@Param("ownerUserId") String ownerUserId, @Param("reportKey") String reportKey);
 
     int incrementImportCount(@Param("id") long id);
 

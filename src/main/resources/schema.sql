@@ -969,3 +969,31 @@ CREATE TABLE IF NOT EXISTS analytics_view_share (
     KEY idx_avs_owner (owner_user_id, created_at),
     KEY idx_avs_source_view (source_view_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计审计-配置分享封箱';
+
+CREATE TABLE IF NOT EXISTS analytics_chat_session (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    report_key VARCHAR(64) NOT NULL,
+    view_id BIGINT NOT NULL,
+    view_name VARCHAR(128) NOT NULL DEFAULT '',
+    title VARCHAR(128) NOT NULL DEFAULT '新对话',
+    context_json MEDIUMTEXT NULL COMMENT '封箱时的多期统计数据',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_acs_user_report (user_id, report_key, updated_at),
+    KEY idx_acs_view (view_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计页-AI对话会话';
+
+CREATE TABLE IF NOT EXISTS analytics_chat_message (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    session_id BIGINT NOT NULL,
+    role VARCHAR(16) NOT NULL COMMENT 'user|assistant|system',
+    content MEDIUMTEXT NOT NULL,
+    thinking_text TEXT NULL,
+    model VARCHAR(64) NULL,
+    prompt_tokens INT NULL,
+    completion_tokens INT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_acm_session (session_id, id),
+    CONSTRAINT fk_acm_session FOREIGN KEY (session_id) REFERENCES analytics_chat_session(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计页-AI对话消息';

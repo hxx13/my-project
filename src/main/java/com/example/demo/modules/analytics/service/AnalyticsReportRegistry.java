@@ -18,8 +18,8 @@ public class AnalyticsReportRegistry {
                 new AnalyticsReportDescriptorDto(
                         REPORT_ISOLATION_USAGE,
                         "隔离服使用统计",
-                        "按区域统计隔离服完整进出轮次（进入+离开计 1 轮），支持校区/分区/楼层筛选。",
-                        "门禁与房间",
+                        "按区域统计隔离服完整进出次数，支持校区/分区/楼层筛选。",
+                        "统计与审计",
                         true
                 )
         );

@@ -66,6 +66,27 @@
           AND revoked = 0
     </update>
 
+    <select id="selectActiveByReport" resultMap="AnalyticsViewShareMap">
+        SELECT *
+        FROM analytics_view_share
+        WHERE owner_user_id = #{ownerUserId}
+          AND report_key = #{reportKey}
+          AND source_view_id = 0
+          AND revoked = 0
+          AND expires_at &gt; NOW()
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <update id="revokeActiveByReport">
+        UPDATE analytics_view_share
+        SET revoked = 1
+        WHERE owner_user_id = #{ownerUserId}
+          AND report_key = #{reportKey}
+          AND source_view_id = 0
+          AND revoked = 0
+    </update>
+
     <update id="revokeByIdAndOwner">
         UPDATE analytics_view_share
         SET revoked = 1

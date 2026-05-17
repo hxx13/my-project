@@ -252,10 +252,10 @@ export function IsolationUsageReportPanel() {
                 <Upload className="h-3 w-3" />
                 导入
               </button>
-              {activeView ? (
+              {views.length > 0 ? (
                 <button
                   type="button"
-                  title="生成分享码"
+                  title="分享全部统计配置"
                   className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-800 hover:bg-violet-100"
                   onClick={() => setShareModal("create")}
                 >
@@ -398,18 +398,19 @@ export function IsolationUsageReportPanel() {
       <AnalyticsViewShareModal
         mode={shareModal === "import" ? "import" : "create"}
         open={shareModal != null}
-        viewId={activeView?.id}
-        viewName={activeView?.name}
+        reportKey={REPORT_KEY}
+        viewCount={views.length}
         onClose={() => setShareModal(null)}
-        onImported={(view) => {
+        onImported={(imported) => {
           qc.setQueryData<AnalyticsUserView[]>(["analytics", "views", REPORT_KEY], (prev) => [
             ...(prev ?? []),
-            view,
+            ...imported,
           ]);
-          applyView(view);
+          if (imported[0]) applyView(imported[0]);
           void qc.invalidateQueries({ queryKey: ["analytics", "audit-logs", REPORT_KEY] });
         }}
       />
+
     </div>
   );
 }
