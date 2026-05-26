@@ -6,15 +6,19 @@ import {
   migrateAnalyticsFilter,
   type AnalyticsCompareCycle,
 } from "@/features/analytics/analyticsPipelineFilter";
+import { migrateCageAnalyticsFilter } from "@/features/analytics/cageAnalyticsFilter";
 import type { AnalyticsUserView } from "@/api/domains/analytics.api";
 
 export function useGroupedAuditLogs(reportKey: string, view: AnalyticsUserView | null) {
   const viewId = view?.id ?? null;
   const compareCycles = useMemo(() => {
     if (!view) return [] as AnalyticsCompareCycle[];
-    const f = migrateAnalyticsFilter(view.filter as Record<string, unknown>);
-    return f.compareCycles;
-  }, [view]);
+    const raw = view.filter as Record<string, unknown>;
+    if (reportKey === "cage_occupancy") {
+      return migrateCageAnalyticsFilter(raw).compareCycles;
+    }
+    return migrateAnalyticsFilter(raw).compareCycles;
+  }, [view, reportKey]);
 
   const query = useQuery({
     queryKey: ["analytics", "audit-logs", reportKey, viewId],

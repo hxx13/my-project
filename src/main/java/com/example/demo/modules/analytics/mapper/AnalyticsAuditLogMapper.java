@@ -11,6 +11,9 @@ public interface AnalyticsAuditLogMapper {
 
     int insert(AnalyticsAuditLog row);
 
+    /** 笼架占用：同周期快照刷新（更新指标与 JSON，保留 id/created_at） */
+    int updatePeriodSnapshot(AnalyticsAuditLog row);
+
     List<AnalyticsAuditLog> selectByUserAndReport(
             @Param("userId") String userId,
             @Param("reportKey") String reportKey,
@@ -23,6 +26,11 @@ public interface AnalyticsAuditLogMapper {
             @Param("limit") int limit);
 
     int countByViewPeriodLabel(
+            @Param("viewId") long viewId,
+            @Param("periodType") String periodType,
+            @Param("periodLabel") String periodLabel);
+
+    AnalyticsAuditLog selectByViewPeriodLabel(
             @Param("viewId") long viewId,
             @Param("periodType") String periodType,
             @Param("periodLabel") String periodLabel);

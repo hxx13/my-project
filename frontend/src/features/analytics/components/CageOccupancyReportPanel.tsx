@@ -6,17 +6,18 @@ import {
   deleteAnalyticsView,
   fetchAnalyticsViews,
   fetchAuditLogDetail,
+  fetchCageAuditProgress,
   generateAnalyticsLlmInsightBatch,
   saveAnalyticsView,
-  scopeFilterOnly,
   setAnalyticsViewSubscription,
   updateAnalyticsView,
   type AnalyticsUserView,
 } from "@/api/domains/analytics.api";
+import { CageAuditProgressBanner } from "@/features/analytics/components/CageAuditProgressBanner";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
 import { AnalyticsConfigCollapsible } from "@/features/analytics/components/AnalyticsConfigCollapsible";
 import { EditAnalyticsViewModal } from "@/features/analytics/components/EditAnalyticsViewModal";
-import { IsolationUsageReportLayout } from "@/features/analytics/components/IsolationUsageReportLayout";
+import { CageOccupancyReportLayout } from "@/features/analytics/components/CageOccupancyReportLayout";
 import {
   AnalyticsLlmInsightDialog,
   type InsightDialogTarget,
@@ -29,18 +30,19 @@ import {
 import { SettlementRecordsPanel } from "@/features/analytics/components/SettlementRecordsPanel";
 import { AnalyticsViewShareModal } from "@/features/analytics/components/AnalyticsViewShareModal";
 import {
-  defaultAnalyticsDraftFilter,
-  migrateAnalyticsFilter,
-  type AnalyticsDraftFilter,
-} from "@/features/analytics/analyticsPipelineFilter";
+  cageScopeFilterOnly,
+  defaultCageAnalyticsDraftFilter,
+  migrateCageAnalyticsFilter,
+  type CageAnalyticsDraftFilter,
+} from "@/features/analytics/cageAnalyticsFilter";
 import { useGroupedAuditLogs } from "@/features/analytics/hooks/useGroupedAuditLogs";
 import { cn } from "@/lib/utils";
 
-const REPORT_KEY = "isolation_usage";
+const REPORT_KEY = "cage_occupancy";
 
-export function IsolationUsageReportPanel() {
+export function CageOccupancyReportPanel() {
   const qc = useQueryClient();
-  const [draft, setDraft] = useState<AnalyticsDraftFilter>(() => defaultAnalyticsDraftFilter());
+  const [draft, setDraft] = useState<CageAnalyticsDraftFilter>(() => defaultCageAnalyticsDraftFilter());
   const [activeViewId, setActiveViewId] = useState<number | null>(null);
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -48,6 +50,7 @@ export function IsolationUsageReportPanel() {
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [insightDialog, setInsightDialog] = useState<InsightDialogTarget | null>(null);
   const [shareModal, setShareModal] = useState<"create" | "import" | null>(null);
+  const [awaitingCageAudit, setAwaitingCageAudit] = useState(false);
 
   const { data: views = [] } = useQuery({
     queryKey: ["analytics", "views", REPORT_KEY],
@@ -60,6 +63,42 @@ export function IsolationUsageReportPanel() {
   );
 
   const { compareCycles, latestByCycle, grouped } = useGroupedAuditLogs(REPORT_KEY, activeView);
+
+  const { data: cageAuditProgress } = useQuery({
+    queryKey: ["analytics", "cage-audit-progress", activeViewId],
+    queryFn: () => fetchCageAuditProgress(activeViewId!),
+    enabled: activeViewId != null && (awaitingCageAudit || activeView?.subscribed === true),
+    refetchInterval: (q) => {
+      const st = q.state.data?.status;
+      return awaitingCageAudit || st === "running" ? 1500 : false;
+    },
+  });
+
+  const snapshotsReady = useMemo(() => {
+    if (compareCycles.length === 0) return false;
+    return compareCycles.every((c) => latestByCycle.has(c));
+  }, [compareCycles, latestByCycle]);
+
+  useEffect(() => {
+    if (!awaitingCageAudit) return;
+    const st = cageAuditProgress?.status;
+    if (snapshotsReady && (st === "done" || st === "idle" || st === "failed")) {
+      setAwaitingCageAudit(false);
+    }
+  }, [awaitingCageAudit, cageAuditProgress?.status, snapshotsReady]);
+
+  useEffect(() => {
+    if (!awaitingCageAudit || activeViewId == null) return;
+    const timer = window.setInterval(() => {
+      void qc.invalidateQueries({ queryKey: ["analytics", "audit-logs", REPORT_KEY, activeViewId] });
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [awaitingCageAudit, activeViewId, qc]);
+
+  const showCageAuditProgress =
+    awaitingCageAudit ||
+    cageAuditProgress?.status === "running" ||
+    (awaitingCageAudit && !snapshotsReady && cageAuditProgress?.status === "done");
 
   const latestIdsByCycle = useMemo(
     () => new Set([...latestByCycle.values()].map((l) => l.id)),
@@ -108,31 +147,30 @@ export function IsolationUsageReportPanel() {
 
   const applyView = (v: AnalyticsUserView) => {
     setActiveViewId(v.id);
-    setDraft(migrateAnalyticsFilter(v.filter as Record<string, unknown>));
+    setDraft(migrateCageAnalyticsFilter(v.filter as Record<string, unknown>));
     setSelectedLogId(null);
   };
 
   const handleSaveConfig = async (opts: SaveConfigOptions) => {
     try {
-      const filter = scopeFilterOnly({ ...draft, compareCycles: opts.compareCycles });
+      const filter = cageScopeFilterOnly({ ...draft, compareCycles: opts.compareCycles });
       const created = await saveAnalyticsView({ reportKey: REPORT_KEY, name: opts.name, filter });
       let saved = created;
       if (opts.subscribe) {
-        saved = await setAnalyticsViewSubscription(created.id, true, {
-          backfillHistory: opts.backfillHistory,
-          backfillUntil: opts.backfillUntil,
-        });
+        saved = await setAnalyticsViewSubscription(created.id, true);
       }
       qc.setQueryData<AnalyticsUserView[]>(["analytics", "views", REPORT_KEY], (prev) => [
         ...(prev ?? []),
         saved,
       ]);
       setActiveViewId(saved.id);
-      setDraft(migrateAnalyticsFilter(saved.filter as Record<string, unknown>));
+      setDraft(migrateCageAnalyticsFilter(saved.filter as Record<string, unknown>));
       if (opts.subscribe) {
+        setAwaitingCageAudit(true);
         void qc.invalidateQueries({ queryKey: ["analytics", "audit-logs", REPORT_KEY] });
+        void qc.invalidateQueries({ queryKey: ["analytics", "cage-audit-progress", saved.id] });
       }
-      toast.success(opts.subscribe ? "已保存并订阅" : "已保存", { duration: 5000 });
+      toast.success(opts.subscribe ? "已保存并订阅，正在拉取笼架数据…" : "已保存", { duration: 5000 });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
     }
@@ -142,31 +180,27 @@ export function IsolationUsageReportPanel() {
     id: number,
     name: string,
     filter: Record<string, unknown>,
-    subscribed: boolean,
-    backfillHistory: boolean,
-    backfillUntil: string
+    subscribed: boolean
   ) => {
     try {
-      const updated = await updateAnalyticsView(id, { name, filter });
-      const wasSubscribed = updated.subscribed;
+      const updated = await updateAnalyticsView(id, { name, filter, reportKey: REPORT_KEY });
       const withSub =
         updated.subscribed !== subscribed
-          ? await setAnalyticsViewSubscription(id, subscribed, {
-              backfillHistory: subscribed && backfillHistory,
-              backfillUntil,
-            })
-          : subscribed && backfillHistory && wasSubscribed
-            ? await setAnalyticsViewSubscription(id, true, { backfillHistory: true, backfillUntil })
-            : updated;
+          ? await setAnalyticsViewSubscription(id, subscribed)
+          : updated;
       qc.setQueryData<AnalyticsUserView[]>(["analytics", "views", REPORT_KEY], (prev) =>
         (prev ?? []).map((v) => (v.id === id ? withSub : v))
       );
       if (activeViewId === id) {
-        setDraft(migrateAnalyticsFilter(withSub.filter as Record<string, unknown>));
+        setDraft(migrateCageAnalyticsFilter(withSub.filter as Record<string, unknown>));
+      }
+      if (subscribed) {
+        setAwaitingCageAudit(true);
+        void qc.invalidateQueries({ queryKey: ["analytics", "cage-audit-progress", id] });
       }
       void qc.invalidateQueries({ queryKey: ["analytics", "audit-logs", REPORT_KEY] });
       setEditView(null);
-      toast.success("配置已更新");
+      toast.success(subscribed ? "配置已更新，正在拉取笼架数据…" : "配置已更新");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "更新失败");
     }
@@ -178,8 +212,14 @@ export function IsolationUsageReportPanel() {
       qc.setQueryData<AnalyticsUserView[]>(["analytics", "views", REPORT_KEY], (prev) =>
         (prev ?? []).map((row) => (row.id === v.id ? updated : row))
       );
+      if (updated.subscribed) {
+        setAwaitingCageAudit(true);
+        void qc.invalidateQueries({ queryKey: ["analytics", "cage-audit-progress", v.id] });
+      } else {
+        setAwaitingCageAudit(false);
+      }
       void qc.invalidateQueries({ queryKey: ["analytics", "audit-logs", REPORT_KEY] });
-      toast.success(updated.subscribed ? "已开启订阅" : "已取消订阅");
+      toast.success(updated.subscribed ? "已开启订阅，正在拉取笼架数据…" : "已取消订阅");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
     }
@@ -226,6 +266,7 @@ export function IsolationUsageReportPanel() {
   return (
     <div className="space-y-3">
       <AnalyticsConfigCollapsible
+        reportKey={REPORT_KEY}
         draft={draft}
         onDraftChange={setDraft}
         onSaveClick={() => setShowSaveModal(true)}
@@ -327,12 +368,17 @@ export function IsolationUsageReportPanel() {
         </aside>
 
         <main className="min-w-0 flex-1 space-y-4">
+          <CageAuditProgressBanner
+            progress={cageAuditProgress}
+            visible={showCageAuditProgress}
+          />
           <LatestSnapshotsDashboard
             compareCycles={compareCycles}
             latestByCycle={latestByCycle}
             grouped={grouped}
             onOpenInsight={openInsightDialog}
             viewName={activeView?.name}
+            metricUnit="笼位"
           />
 
           {isHistoricalSelection ? (
@@ -360,7 +406,7 @@ export function IsolationUsageReportPanel() {
                 <p className="text-sm text-rose-700">{(historicalError as Error).message}</p>
               ) : historicalDetail ? (
                 <>
-                  <IsolationUsageReportLayout
+                  <CageOccupancyReportLayout
                     report={historicalDetail}
                     fromSnapshot
                     periodLabel={historicalDetail.periodLabel}
@@ -375,11 +421,14 @@ export function IsolationUsageReportPanel() {
       <SaveAnalyticsConfigModal
         open={showSaveModal}
         initialCompareCycles={draft.compareCycles}
+        enableHistoryBackfill={false}
+        subscribeHint="保存后立即订阅：抓取当前日/周/月笼架快照并自动环比（无历史回溯）"
         onClose={() => setShowSaveModal(false)}
         onConfirm={handleSaveConfig}
       />
 
       <EditAnalyticsViewModal
+        reportKey={REPORT_KEY}
         view={editView}
         open={editView != null}
         onClose={() => setEditView(null)}

@@ -26,6 +26,8 @@ public class AnalyticsChatContextService {
     private static final int MAX_VIEWS = 32;
     private static final int MAX_PERIODS_PER_VIEW = 36;
     private static final int TOP_GROUPS = 12;
+    private static final int TOP_PIS = 12;
+    private static final int TOP_ROOMS = 15;
     private static final int TOP_REGIONS = 10;
 
     private final AnalyticsUserViewMapper viewMapper;
@@ -63,7 +65,7 @@ public class AnalyticsChatContextService {
         root.put("views", List.of(buildViewPayload(userId, reportKey, view)));
         root.put(
                 "note",
-                "数据为单条统计配置下已清算各期快照；byProjectGroup 为课题组，byRegion 含地区与房间；可跨期比较。");
+                "数据为单条统计配置下已清算各期快照；byProjectGroup 为课题组，byPi 为 PI 老师，byRoom 为各房间笼位数，byRegion 为区域汇总；可跨期比较。");
         return writeJson(root);
     }
 
@@ -90,7 +92,7 @@ public class AnalyticsChatContextService {
                 "数据为本报表下全部（或前 "
                         + MAX_VIEWS
                         + " 条）统计配置各自的清算快照；跨配置比较时请引用 viewName 与 periodLabel；"
-                        + "byProjectGroup 为课题组，byRegion 含地区与房间。");
+                        + "byProjectGroup 为课题组，byPi 为 PI 老师，byRoom 为各房间笼位数，byRegion 为区域汇总。");
         return writeJson(root);
     }
 
@@ -148,6 +150,8 @@ public class AnalyticsChatContextService {
         m.put("deltaPct", detail.get("deltaPct"));
         m.put("summary", detail.get("summary"));
         m.put("byProjectGroup", topN(detail.get("byProjectGroup"), TOP_GROUPS));
+        m.put("byPi", topN(detail.get("byPi"), TOP_PIS));
+        m.put("byRoom", topN(detail.get("byRoom"), TOP_ROOMS));
         m.put("byRegion", topN(detail.get("byRegion"), TOP_REGIONS));
         return m;
     }

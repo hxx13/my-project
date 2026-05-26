@@ -4,10 +4,12 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.analytics.dto.AnalyticsAuditLogDto;
+import com.example.demo.modules.analytics.dto.CageAuditProgressDto;
 import com.example.demo.modules.analytics.dto.AnalyticsSubscriptionRequest;
 import com.example.demo.modules.analytics.dto.AnalyticsUserViewDto;
 import com.example.demo.modules.analytics.dto.AnalyticsUserViewUpsertRequest;
 import com.example.demo.modules.analytics.service.AnalyticsAuditService;
+import com.example.demo.modules.analytics.service.AnalyticsCageAuditProgressService;
 import com.example.demo.modules.analytics.service.AnalyticsLlmInsightService;
 import com.example.demo.modules.analytics.service.AnalyticsQuerySnapshotService;
 import com.example.demo.modules.analytics.service.AnalyticsReportRegistry;
@@ -42,6 +44,7 @@ public class AnalyticsController {
     private final AnalyticsUserViewService userViewService;
     private final IsolationUsageReportService isolationUsageReportService;
     private final AnalyticsAuditService auditService;
+    private final AnalyticsCageAuditProgressService cageAuditProgressService;
     private final AnalyticsQuerySnapshotService querySnapshotService;
     private final AnalyticsLlmInsightService llmInsightService;
     private final AnalyticsViewShareService viewShareService;
@@ -53,6 +56,7 @@ public class AnalyticsController {
             AnalyticsUserViewService userViewService,
             IsolationUsageReportService isolationUsageReportService,
             AnalyticsAuditService auditService,
+            AnalyticsCageAuditProgressService cageAuditProgressService,
             AnalyticsQuerySnapshotService querySnapshotService,
             AnalyticsLlmInsightService llmInsightService,
             AnalyticsViewShareService viewShareService,
@@ -62,6 +66,7 @@ public class AnalyticsController {
         this.userViewService = userViewService;
         this.isolationUsageReportService = isolationUsageReportService;
         this.auditService = auditService;
+        this.cageAuditProgressService = cageAuditProgressService;
         this.querySnapshotService = querySnapshotService;
         this.llmInsightService = llmInsightService;
         this.viewShareService = viewShareService;
@@ -438,6 +443,22 @@ public class AnalyticsController {
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    @GetMapping("/views/{viewId}/cage-audit-progress")
+    @Operation(summary = "笼架占用订阅清算拉取进度")
+    public Result<CageAuditProgressDto> cageAuditProgress(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable long viewId) {
+        User user = resolveUser(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        Result<?> denied = requireStaff(authorization);
+        if (denied != null) {
+            return Result.error(denied.getMessage());
+        }
+        return Result.success(cageAuditProgressService.getForUser(user.getId(), viewId));
     }
 
     @GetMapping("/audit-logs")

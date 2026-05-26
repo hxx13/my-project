@@ -18,6 +18,9 @@ export type SaveConfigOptions = {
 type Props = {
   open: boolean;
   initialCompareCycles: AnalyticsCompareCycle[];
+  /** 隔离服可回溯历史；笼架占用仅落库当前周期快照 */
+  enableHistoryBackfill?: boolean;
+  subscribeHint?: string;
   onClose: () => void;
   onConfirm: (opts: SaveConfigOptions) => Promise<void>;
 };
@@ -25,6 +28,8 @@ type Props = {
 export function SaveAnalyticsConfigModal({
   open,
   initialCompareCycles,
+  enableHistoryBackfill = true,
+  subscribeHint,
   onClose,
   onConfirm,
 }: Props) {
@@ -99,15 +104,19 @@ export function SaveAnalyticsConfigModal({
               checked={subscribe}
               onChange={(e) => setSubscribe(e.target.checked)}
             />
-            <span className="text-sm text-neutral-800">保存后立即订阅（每日自动清算）</span>
+            <span className="text-sm text-neutral-800">
+              {subscribeHint ?? "保存后立即订阅（每日自动清算）"}
+            </span>
           </label>
-          <HistoryBackfillField
-            enabled={backfillHistory}
-            onEnabledChange={setBackfillHistory}
-            untilDate={backfillUntil}
-            onUntilDateChange={setBackfillUntil}
-            disabled={!subscribe}
-          />
+          {enableHistoryBackfill ? (
+            <HistoryBackfillField
+              enabled={backfillHistory}
+              onEnabledChange={setBackfillHistory}
+              untilDate={backfillUntil}
+              onUntilDateChange={setBackfillUntil}
+              disabled={!subscribe}
+            />
+          ) : null}
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <button type="button" className="rounded-lg border px-4 py-2 text-sm" onClick={onClose}>
@@ -119,7 +128,7 @@ export function SaveAnalyticsConfigModal({
               saving ||
               !name.trim() ||
               !compareCycles.length ||
-              (backfillHistory && subscribe && !backfillUntil)
+              (enableHistoryBackfill && backfillHistory && subscribe && !backfillUntil)
             }
             className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             onClick={() => void handleSubmit()}

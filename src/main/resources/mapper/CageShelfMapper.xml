@@ -159,4 +159,51 @@
           <if test="floorId != null and floorId != ''">AND CAST(floor_id AS CHAR) = #{floorId}</if>
           <if test="roomId != null and roomId != ''">AND CAST(room_id AS CHAR) = #{roomId}</if>
     </select>
+
+    <sql id="analyticsShelfFilterWhere">
+        WHERE deleted = 0
+        <if test="campusIds != null and campusIds.size() > 0">
+            AND campus_id IN
+            <foreach collection="campusIds" item="cid" open="(" separator="," close=")">#{cid}</foreach>
+        </if>
+        <if test="areaIds != null and areaIds.size() > 0">
+            AND CAST(area_id AS CHAR) IN
+            <foreach collection="areaIds" item="aid" open="(" separator="," close=")">#{aid}</foreach>
+        </if>
+        <if test="floorIds != null and floorIds.size() > 0">
+            AND CAST(floor_id AS CHAR) IN
+            <foreach collection="floorIds" item="fid" open="(" separator="," close=")">#{fid}</foreach>
+        </if>
+        <if test="roomIds != null and roomIds.size() > 0">
+            AND CAST(room_id AS CHAR) IN
+            <foreach collection="roomIds" item="rid" open="(" separator="," close=")">#{rid}</foreach>
+        </if>
+        <if test="(campusIds == null or campusIds.size() == 0) and legacyCampusNames != null and legacyCampusNames.size() > 0">
+            AND campus_name IN
+            <foreach collection="legacyCampusNames" item="c" open="(" separator="," close=")">#{c}</foreach>
+        </if>
+        <if test="(floorIds == null or floorIds.size() == 0) and legacyFloorNames != null and legacyFloorNames.size() > 0">
+            AND floor_name IN
+            <foreach collection="legacyFloorNames" item="f" open="(" separator="," close=")">#{f}</foreach>
+        </if>
+        <if test="(roomIds == null or roomIds.size() == 0) and legacyRoomName != null and legacyRoomName != ''">
+            AND room_name LIKE CONCAT('%', #{legacyRoomName}, '%')
+        </if>
+    </sql>
+
+    <select id="countShelveIndexesForAnalytics" resultType="int">
+        SELECT COUNT(1)
+        FROM cage_shelf_index
+        <include refid="analyticsShelfFilterWhere"/>
+    </select>
+
+    <select id="listShelveIndexesForAnalytics" resultMap="CageShelfIndexMap">
+        SELECT *
+        FROM cage_shelf_index
+        <include refid="analyticsShelfFilterWhere"/>
+        ORDER BY campus_id, area_id, floor_id, room_id, shelve_id
+        <if test="limit != null and limit > 0">
+            LIMIT #{limit}
+        </if>
+    </select>
 </mapper>

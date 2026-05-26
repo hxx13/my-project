@@ -154,15 +154,19 @@ public class AnalyticsUserViewService {
         AnalyticsUserView refreshed = mapper.selectByIdAndUser(id, userId);
         if (subscribed && !wasSubscribed) {
             triggerAudit(refreshed, backfillHistory, backfillUntil);
-        } else if (subscribed && Boolean.TRUE.equals(backfillHistory)) {
+        } else if (subscribed
+                && Boolean.TRUE.equals(backfillHistory)
+                && !AnalyticsReportRegistry.REPORT_CAGE_OCCUPANCY.equals(refreshed.getReportKey())) {
             triggerBackfillOnly(refreshed, backfillUntil);
         }
         return toDto(refreshed);
     }
 
     private void triggerAudit(AnalyticsUserView row, Boolean backfillHistory, String backfillUntil) {
-        auditTriggerSupport.scheduleAuditAndBackfill(
-                row.getId(), row.getUserId(), Boolean.TRUE.equals(backfillHistory), backfillUntil);
+        boolean cage = AnalyticsReportRegistry.REPORT_CAGE_OCCUPANCY.equals(row.getReportKey());
+        boolean backfill = !cage && Boolean.TRUE.equals(backfillHistory);
+        String until = cage ? null : backfillUntil;
+        auditTriggerSupport.scheduleAuditAndBackfill(row.getId(), row.getUserId(), backfill, until);
     }
 
     private void triggerBackfillOnly(AnalyticsUserView row, String backfillUntil) {

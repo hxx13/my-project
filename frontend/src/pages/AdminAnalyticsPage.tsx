@@ -8,10 +8,14 @@ import {
 } from "@/api/domains/analytics.api";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AnalyticsCopilotDialog } from "@/features/analytics/components/AnalyticsCopilotDialog";
+import { CageOccupancyReportPanel } from "@/features/analytics/components/CageOccupancyReportPanel";
 import { IsolationUsageReportPanel } from "@/features/analytics/components/IsolationUsageReportPanel";
 import { cn } from "@/lib/utils";
 
 const ISOLATION_REPORT_KEY = "isolation_usage";
+const CAGE_REPORT_KEY = "cage_occupancy";
+
+const ANALYTICS_REPORT_KEYS = [ISOLATION_REPORT_KEY, CAGE_REPORT_KEY] as const;
 
 export default function AdminAnalyticsPage() {
   const { data: reports = [], isLoading } = useQuery({
@@ -23,11 +27,12 @@ export default function AdminAnalyticsPage() {
   const [copilotOpen, setCopilotOpen] = useState(false);
 
   const active = reports.find((r) => r.key === activeKey) ?? reports[0];
+  const isAnalyticsReport = ANALYTICS_REPORT_KEYS.includes(activeKey as (typeof ANALYTICS_REPORT_KEYS)[number]);
 
-  const { data: isolationViews = [] } = useQuery({
-    queryKey: ["analytics", "views", ISOLATION_REPORT_KEY],
-    queryFn: () => fetchAnalyticsViews(ISOLATION_REPORT_KEY),
-    enabled: activeKey === ISOLATION_REPORT_KEY,
+  const { data: activeViews = [] } = useQuery({
+    queryKey: ["analytics", "views", activeKey],
+    queryFn: () => fetchAnalyticsViews(activeKey),
+    enabled: isAnalyticsReport,
   });
 
   return (
@@ -70,14 +75,14 @@ export default function AdminAnalyticsPage() {
                     {active.category}
                   </span>
                 </div>
-                {activeKey === ISOLATION_REPORT_KEY ? (
+                {isAnalyticsReport ? (
                   <button
                     type="button"
-                    disabled={isolationViews.length === 0}
+                    disabled={activeViews.length === 0}
                     onClick={() => setCopilotOpen(true)}
                     title={
-                      isolationViews.length > 0
-                        ? `基于全部 ${isolationViews.length} 条统计配置及其清算数据综合分析`
+                      activeViews.length > 0
+                        ? `基于全部 ${activeViews.length} 条统计配置及其清算数据综合分析`
                         : "请先在下方保存至少一条统计配置"
                     }
                     className="ml-auto shrink-0 self-center inline-flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-3 text-base font-bold text-white shadow-lg ring-2 ring-violet-500/40 hover:from-violet-700 hover:to-indigo-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
@@ -90,18 +95,18 @@ export default function AdminAnalyticsPage() {
             </header>
           ) : null}
 
-          {activeKey === ISOLATION_REPORT_KEY ? (
-            <IsolationUsageReportPanel />
-          ) : (
+          {activeKey === ISOLATION_REPORT_KEY ? <IsolationUsageReportPanel /> : null}
+          {activeKey === CAGE_REPORT_KEY ? <CageOccupancyReportPanel /> : null}
+          {!isAnalyticsReport ? (
             <p className="text-sm text-neutral-500">该报表模块即将上线。</p>
-          )}
+          ) : null}
 
-          {activeKey === ISOLATION_REPORT_KEY ? (
+          {isAnalyticsReport ? (
             <AnalyticsCopilotDialog
               open={copilotOpen}
               onClose={() => setCopilotOpen(false)}
-              reportKey={ISOLATION_REPORT_KEY}
-              configCount={isolationViews.length}
+              reportKey={activeKey as typeof ISOLATION_REPORT_KEY | typeof CAGE_REPORT_KEY}
+              configCount={activeViews.length}
             />
           ) : null}
         </div>

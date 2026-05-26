@@ -1,25 +1,39 @@
 ﻿import { useState } from "react";
 import { BookmarkPlus, ChevronDown, ChevronRight, Settings2 } from "lucide-react";
 import { AnalyticsPipelineFilterBar } from "@/features/analytics/AnalyticsPipelineFilterBar";
+import { CageAnalyticsScopeFilterBar } from "@/features/analytics/CageAnalyticsScopeFilterBar";
 import { CompareCyclesField } from "@/features/analytics/components/CompareCyclesField";
 import {
   defaultAnalyticsDraftFilter,
   type AnalyticsDraftFilter,
 } from "@/features/analytics/analyticsPipelineFilter";
-type Props = {
+import {
+  defaultCageAnalyticsDraftFilter,
+  type CageAnalyticsDraftFilter,
+} from "@/features/analytics/cageAnalyticsFilter";
+
+type IsolationProps = {
+  reportKey?: string;
   draft: AnalyticsDraftFilter;
   onDraftChange: (next: AnalyticsDraftFilter) => void;
   onSaveClick: () => void;
   defaultOpen?: boolean;
 };
 
-export function AnalyticsConfigCollapsible({
-  draft,
-  onDraftChange,
-  onSaveClick,
-  defaultOpen = false,
-}: Props) {
+type CageProps = {
+  reportKey: "cage_occupancy";
+  draft: CageAnalyticsDraftFilter;
+  onDraftChange: (next: CageAnalyticsDraftFilter) => void;
+  onSaveClick: () => void;
+  defaultOpen?: boolean;
+};
+
+type Props = IsolationProps | CageProps;
+
+export function AnalyticsConfigCollapsible(props: Props) {
+  const { onSaveClick, defaultOpen = false } = props;
   const [open, setOpen] = useState(defaultOpen);
+  const isCage = props.reportKey === "cage_occupancy";
 
   return (
     <div className="rounded-xl border border-neutral-200/90 bg-white shadow-sm">
@@ -40,15 +54,39 @@ export function AnalyticsConfigCollapsible({
 
       {open ? (
         <div className="space-y-3 border-t border-neutral-100 px-3 pb-3 pt-3">
-          <AnalyticsPipelineFilterBar
-            filters={draft}
-            onChange={onDraftChange}
-            onClear={() => onDraftChange(defaultAnalyticsDraftFilter())}
-          />
-          <CompareCyclesField
-            value={draft.compareCycles}
-            onChange={(compareCycles) => onDraftChange({ ...draft, compareCycles })}
-          />
+          {isCage ? (
+            <>
+              <CageAnalyticsScopeFilterBar
+                filters={(props as CageProps).draft}
+                onChange={(props as CageProps).onDraftChange}
+                onClear={() => (props as CageProps).onDraftChange(defaultCageAnalyticsDraftFilter())}
+              />
+              <p className="text-[11px] leading-relaxed text-neutral-500">
+                笼位统计口径：仅计入「已预约且有笼盒」（animalCageType=3）；筛选范围内笼架全量拉取（分批请求 ARO，可能较慢）。订阅后即时落库日/周/月快照并环比；不支持历史回溯。
+              </p>
+              <CompareCyclesField
+                value={(props as CageProps).draft.compareCycles}
+                onChange={(compareCycles) =>
+                  (props as CageProps).onDraftChange({ ...(props as CageProps).draft, compareCycles })
+                }
+              />
+            </>
+          ) : (
+            <>
+              <AnalyticsPipelineFilterBar
+                reportKey={(props as IsolationProps).reportKey}
+                filters={(props as IsolationProps).draft}
+                onChange={(props as IsolationProps).onDraftChange}
+                onClear={() => (props as IsolationProps).onDraftChange(defaultAnalyticsDraftFilter())}
+              />
+              <CompareCyclesField
+                value={(props as IsolationProps).draft.compareCycles}
+                onChange={(compareCycles) =>
+                  (props as IsolationProps).onDraftChange({ ...(props as IsolationProps).draft, compareCycles })
+                }
+              />
+            </>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"

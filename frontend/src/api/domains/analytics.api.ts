@@ -1,6 +1,7 @@
 import { authHttp } from "@/api/core/authHttp";
 import type { AnalyticsCompareCycle } from "@/features/analytics/analyticsPipelineFilter";
 import { scopeFilterOnly } from "@/features/analytics/analyticsPipelineFilter";
+import { cageScopeFilterOnly } from "@/features/analytics/cageAnalyticsFilter";
 
 interface Result<T> {
   code: number;
@@ -9,7 +10,7 @@ interface Result<T> {
   data: T;
 }
 
-export type AnalyticsReportKey = "isolation_usage" | string;
+export type AnalyticsReportKey = "isolation_usage" | "cage_occupancy" | string;
 
 export interface AnalyticsReportDescriptor {
   key: AnalyticsReportKey;
@@ -20,18 +21,37 @@ export interface AnalyticsReportDescriptor {
 }
 
 export type IsolationScopeFilter = ReturnType<typeof scopeFilterOnly>;
+export type CageScopeFilter = ReturnType<typeof cageScopeFilterOnly>;
+export type AnalyticsViewFilter = IsolationScopeFilter | CageScopeFilter | Record<string, unknown>;
 
 export type IsolationUsageSummary = {
   totalPersonTimes: number;
+  totalOccupiedSlots?: number;
   uniqueGroups?: number;
-  uniqueUsers: number;
-  rawLogCount: number;
+  uniqueUsers?: number;
+  uniquePis?: number;
+  uniqueRooms?: number;
+  rawLogCount?: number;
   truncated?: boolean;
 };
 
 export type ProjectGroupRow = {
   groupName: string;
   personTimes: number;
+  occupiedSlots?: number;
+};
+
+export type CagePiRow = {
+  piName: string;
+  personTimes: number;
+  occupiedSlots?: number;
+};
+
+export type CageRoomRow = {
+  roomName: string;
+  location?: string;
+  personTimes: number;
+  occupiedSlots?: number;
 };
 
 export type RegionRow = {
@@ -43,6 +63,8 @@ export type IsolationUsageQueryResult = {
   summary: IsolationUsageSummary;
   byRegion: RegionRow[];
   byProjectGroup: ProjectGroupRow[];
+  byPi?: CagePiRow[];
+  byRoom?: CageRoomRow[];
   fromSnapshot?: boolean;
   periodKey?: string;
   periodLabel?: string;
@@ -56,7 +78,7 @@ export type AnalyticsUserView = {
   id: number;
   reportKey: string;
   name: string;
-  filter: IsolationScopeFilter;
+  filter: AnalyticsViewFilter;
   defaultView: boolean;
   subscribed: boolean;
   sortOrder: number;
@@ -97,6 +119,28 @@ export async function fetchAnalyticsViews(reportKey: string): Promise<AnalyticsU
   return unwrap(authHttp.get<Result<AnalyticsUserView[]>>("/v1/analytics/views", { params: { reportKey } }));
 }
 
+export type CageAuditProgress = {
+  status: "idle" | "running" | "done" | "failed";
+  viewId: number;
+  message?: string;
+  periodType?: string;
+  periodLabel?: string;
+  cycleIndex?: number;
+  cycleTotal?: number;
+  totalShelves?: number;
+  processedShelves?: number;
+  batchIndex?: number;
+  batchCount?: number;
+  percent?: number;
+  updatedAtMs?: number;
+};
+
+export async function fetchCageAuditProgress(viewId: number): Promise<CageAuditProgress> {
+  return unwrap(
+    authHttp.get<Result<CageAuditProgress>>(`/v1/analytics/views/${viewId}/cage-audit-progress`)
+  );
+}
+
 export async function fetchAnalyticsAuditLogs(params: {
   reportKey: string;
   viewId?: number;
@@ -116,19 +160,20 @@ export async function fetchAuditLogDetail(id: number): Promise<IsolationUsageQue
 export async function saveAnalyticsView(body: {
   reportKey: string;
   name: string;
-  filter: IsolationScopeFilter;
+  filter: AnalyticsViewFilter;
 }): Promise<AnalyticsUserView> {
   return unwrap(authHttp.post<Result<AnalyticsUserView>>("/v1/analytics/views", body));
 }
 
 export async function updateAnalyticsView(
   id: number,
-  body: { name: string; filter: IsolationScopeFilter }
+  body: { name: string; filter: AnalyticsViewFilter; reportKey?: string }
 ): Promise<AnalyticsUserView> {
   return unwrap(
     authHttp.put<Result<AnalyticsUserView>>(`/v1/analytics/views/${id}`, {
-      reportKey: "isolation_usage",
-      ...body,
+      reportKey: body.reportKey ?? "isolation_usage",
+      name: body.name,
+      filter: body.filter,
     })
   );
 }

@@ -217,6 +217,8 @@ public class AnalyticsLlmInsightService {
             compact.put("deltaPct", detail.get("deltaPct"));
             compact.put("summary", detail.get("summary"));
             compact.put("byProjectGroup", topN(detail.get("byProjectGroup"), 15));
+            compact.put("byPi", topN(detail.get("byPi"), 12));
+            compact.put("byRoom", topN(detail.get("byRoom"), 15));
             compact.put("byRegion", topN(detail.get("byRegion"), 10));
             return objectMapper.writeValueAsString(compact);
         } catch (Exception e) {

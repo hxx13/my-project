@@ -2,6 +2,7 @@ package com.example.demo.modules.analytics.service;
 
 import com.example.demo.modules.analytics.entity.AnalyticsUserView;
 import com.example.demo.modules.analytics.mapper.AnalyticsUserViewMapper;
+import com.example.demo.modules.analytics.service.AnalyticsReportRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -34,9 +35,11 @@ public class AnalyticsAuditAsyncService {
             return;
         }
         try {
-            log.info("[analytics-audit] async start viewId={} backfill={}", viewId, backfillHistory);
+            boolean cage = view != null && AnalyticsReportRegistry.REPORT_CAGE_OCCUPANCY.equals(view.getReportKey());
+            boolean doBackfill = backfillHistory && !cage && StringUtils.hasText(backfillUntil);
+            log.info("[analytics-audit] async start viewId={} backfill={}", viewId, doBackfill);
             auditService.runAuditForView(view);
-            if (backfillHistory && StringUtils.hasText(backfillUntil)) {
+            if (doBackfill) {
                 LocalDate until = auditService.parseBackfillUntil(backfillUntil);
                 auditService.backfillAuditForView(view, until);
             }

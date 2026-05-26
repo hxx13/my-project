@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { AnalyticsAuditLog, IsolationUsageQueryResult } from "@/api/domains/analytics.api";
+import type { AnalyticsAuditLog, CagePiRow, CageRoomRow, IsolationUsageQueryResult } from "@/api/domains/analytics.api";
 import { MeasuredChartBox } from "@/features/analytics/components/MeasuredChartBox";
 import { PeriodTrendBarChart } from "@/features/analytics/components/PeriodTrendBarChart";
 import type { AnalyticsCompareCycle } from "@/features/analytics/analyticsPipelineFilter";
@@ -31,6 +31,7 @@ type Props = {
   loading?: boolean;
   error?: Error | null;
   hasCachedInsight?: boolean;
+  metricUnit?: string;
   onOpenInsight?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 };
 
@@ -43,10 +44,15 @@ export function CategorySnapshotAnalysisCard({
   loading,
   error,
   hasCachedInsight,
+  metricUnit = "人次",
   onOpenInsight,
 }: Props) {
   const [compareExpanded, setCompareExpanded] = useState(false);
   const [topGroupsExpanded, setTopGroupsExpanded] = useState(false);
+  const [topPiExpanded, setTopPiExpanded] = useState(false);
+  const [topRoomsExpanded, setTopRoomsExpanded] = useState(false);
+
+  const isCageMetric = metricUnit === "笼位";
 
   const delta = log.deltaRounds;
   const pct = log.deltaPct;
@@ -62,14 +68,27 @@ export function CategorySnapshotAnalysisCard({
   ];
 
   const groups = detail?.byProjectGroup ?? [];
+  const pis: CagePiRow[] = detail?.byPi ?? [];
+  const rooms: CageRoomRow[] = detail?.byRoom ?? [];
+
+  const slotMetric = (row: { personTimes?: number; occupiedSlots?: number }) =>
+    row.occupiedSlots ?? row.personTimes ?? 0;
+
   const topGroups = groups.slice(0, 8).map((g) => ({
     name: g.groupName.length > 12 ? `${g.groupName.slice(0, 12)}…` : g.groupName,
     fullName: g.groupName,
-    personTimes: g.personTimes,
+    personTimes: slotMetric(g),
+  }));
+
+  const topPis = pis.slice(0, 8).map((p) => ({
+    name: p.piName.length > 10 ? `${p.piName.slice(0, 10)}…` : p.piName,
+    fullName: p.piName,
+    personTimes: slotMetric(p),
   }));
 
   const summary = detail?.summary;
   const topGroupsChartHeight = Math.min(200, Math.max(80, topGroups.length * 28));
+  const topPiChartHeight = Math.min(200, Math.max(80, topPis.length * 28));
 
   return (
     <article className="flex flex-col rounded-2xl border border-neutral-200/90 bg-white shadow-sm transition">
@@ -101,10 +120,17 @@ export function CategorySnapshotAnalysisCard({
       <div className="space-y-3 p-4">
         <div className="grid grid-cols-3 gap-2">
           <TrendCompareCard trend={trend} trendLabel={trendLabel} delta={delta} pct={pct} />
-          <PeriodRoundsCard previousRounds={log.previousRounds} currentRounds={log.currentRounds} />
+          <PeriodRoundsCard
+            previousRounds={log.previousRounds}
+            currentRounds={log.currentRounds}
+            metricUnit={metricUnit}
+          />
           <ScopeSummaryCard
             uniqueGroups={summary?.uniqueGroups}
             uniqueUsers={summary?.uniqueUsers}
+            uniquePis={summary?.uniquePis}
+            uniqueRooms={summary?.uniqueRooms}
+            isCageMetric={isCageMetric}
             loading={loading}
             error={error}
           />
@@ -133,7 +159,7 @@ export function CategorySnapshotAnalysisCard({
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                   <XAxis dataKey="name" tick={{ fontSize: 12, fontWeight: 600 }} />
                   <YAxis tick={{ fontSize: 11 }} allowDecimals={false} width={36} />
-                  <Tooltip formatter={(v) => [`${v} 人次`, ""]} />
+                  <Tooltip formatter={(v) => [`${v} ${metricUnit}`, ""]} />
                   <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={48}>
                     {compareChart.map((entry, i) => (
                       <Cell key={i} fill={entry.fill} />
@@ -157,7 +183,7 @@ export function CategorySnapshotAnalysisCard({
               ) : (
                 <ChevronRight className="h-3.5 w-3.5" />
               )}
-              课题组人次 Top（本期）
+              {`课题组${metricUnit} Top（本期）`}
               {!topGroupsExpanded ? (
                 <span className="font-normal text-neutral-400">（点击展开）</span>
               ) : null}
@@ -170,12 +196,96 @@ export function CategorySnapshotAnalysisCard({
                     <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
                     <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 10 }} />
                     <Tooltip
-                      formatter={(v) => [Number(v ?? 0), "人次"]}
+                      formatter={(v) => [Number(v ?? 0), metricUnit]}
                       labelFormatter={(_, p) => (p?.[0]?.payload as { fullName?: string })?.fullName ?? ""}
                     />
                     <Bar dataKey="personTimes" fill="#7c6cf0" radius={[0, 4, 4, 0]} barSize={16} />
                   </BarChart>
                 </MeasuredChartBox>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {isCageMetric && detail && topPis.length > 0 ? (
+          <div className="rounded-lg border border-neutral-200/90 bg-neutral-50/50">
+            <button
+              type="button"
+              onClick={() => setTopPiExpanded((v) => !v)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-neutral-600 hover:bg-neutral-100/80"
+            >
+              {topPiExpanded ? (
+                <ChevronDown className="h-3.5 w-3.5 text-violet-600" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5" />
+              )}
+              PI课题组笼位 Top（本期）
+              {!topPiExpanded ? (
+                <span className="font-normal text-neutral-400">（点击展开）</span>
+              ) : null}
+            </button>
+            {topPiExpanded ? (
+              <div className="border-t border-neutral-200/80 px-3 pb-3 pt-2">
+                <MeasuredChartBox height={topPiChartHeight}>
+                  <BarChart layout="vertical" data={topPis} margin={{ left: 4, right: 12 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 10 }} />
+                    <Tooltip
+                      formatter={(v) => [Number(v ?? 0), metricUnit]}
+                      labelFormatter={(_, p) => (p?.[0]?.payload as { fullName?: string })?.fullName ?? ""}
+                    />
+                    <Bar dataKey="personTimes" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={16} />
+                  </BarChart>
+                </MeasuredChartBox>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {isCageMetric && detail && rooms.length > 0 ? (
+          <div className="rounded-lg border border-neutral-200/90 bg-neutral-50/50">
+            <button
+              type="button"
+              onClick={() => setTopRoomsExpanded((v) => !v)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-neutral-600 hover:bg-neutral-100/80"
+            >
+              {topRoomsExpanded ? (
+                <ChevronDown className="h-3.5 w-3.5 text-violet-600" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5" />
+              )}
+              各房间笼位数（本期）
+              {!topRoomsExpanded ? (
+                <span className="font-normal text-neutral-400">（点击展开）</span>
+              ) : null}
+            </button>
+            {topRoomsExpanded ? (
+              <div className="border-t border-neutral-200/80 px-3 pb-2 pt-2">
+                <div className="max-h-48 overflow-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-neutral-500">
+                        <th className="pb-1 font-medium">房间</th>
+                        <th className="pb-1 font-medium">位置</th>
+                        <th className="pb-1 text-right font-medium">笼位</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rooms.slice(0, 20).map((r) => (
+                        <tr key={`${r.location ?? ""}-${r.roomName}`} className="border-t border-neutral-100">
+                          <td className="py-1 font-medium text-neutral-800">{r.roomName}</td>
+                          <td className="max-w-[10rem] truncate py-1 text-neutral-600" title={r.location}>
+                            {r.location ?? "—"}
+                          </td>
+                          <td className="py-1 text-right tabular-nums font-semibold text-violet-700">
+                            {slotMetric(r)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : null}
           </div>
@@ -239,13 +349,15 @@ function TrendCompareCard({
 function PeriodRoundsCard({
   previousRounds,
   currentRounds,
+  metricUnit = "人次",
 }: {
   previousRounds: number;
   currentRounds: number;
+  metricUnit?: string;
 }) {
   return (
     <div className="flex min-h-[5.5rem] flex-col justify-center rounded-xl border border-violet-200 bg-violet-50/90 px-2.5 py-2 text-center shadow-sm">
-      <p className="text-[10px] font-medium text-violet-700/80">上期 / 本期（人次）</p>
+      <p className="text-[10px] font-medium text-violet-700/80">{`上期 / 本期（${metricUnit}）`}</p>
       <p className="mt-1.5 flex items-baseline justify-center gap-1 tabular-nums leading-none">
         <span className="text-lg font-bold text-slate-600">{previousRounds}</span>
         <span className="text-sm font-medium text-violet-400">/</span>
@@ -259,11 +371,17 @@ function PeriodRoundsCard({
 function ScopeSummaryCard({
   uniqueGroups,
   uniqueUsers,
+  uniquePis,
+  uniqueRooms,
+  isCageMetric,
   loading,
   error,
 }: {
   uniqueGroups?: number;
   uniqueUsers?: number;
+  uniquePis?: number;
+  uniqueRooms?: number;
+  isCageMetric?: boolean;
   loading?: boolean;
   error?: Error | null;
 }) {
@@ -275,16 +393,33 @@ function ScopeSummaryCard({
       ) : error ? (
         <p className="mt-2 text-[10px] leading-snug text-rose-600">加载失败</p>
       ) : (
-        <div className="mt-1.5 flex items-center justify-center gap-3 tabular-nums">
+        <div
+          className={cn(
+            "mt-1.5 tabular-nums",
+            isCageMetric ? "grid grid-cols-2 gap-2" : "flex items-center justify-center gap-3"
+          )}
+        >
+          {!isCageMetric ? (
+            <>
+              <div>
+                <p className="text-[9px] text-neutral-500">课题组</p>
+                <p className="text-lg font-black text-neutral-900">{uniqueGroups ?? "—"}</p>
+              </div>
+              <span className="text-neutral-300">·</span>
+            </>
+          ) : null}
           <div>
-            <p className="text-[9px] text-neutral-500">课题组</p>
-            <p className="text-lg font-black text-neutral-900">{uniqueGroups ?? "—"}</p>
+            <p className="text-[9px] text-neutral-500">{isCageMetric ? "PI课题组" : "涉及人数"}</p>
+            <p className="text-lg font-black text-neutral-900">
+              {isCageMetric ? (uniquePis ?? "—") : (uniqueUsers ?? "—")}
+            </p>
           </div>
-          <span className="text-neutral-300">·</span>
-          <div>
-            <p className="text-[9px] text-neutral-500">涉及人数</p>
-            <p className="text-lg font-black text-neutral-900">{uniqueUsers ?? "—"}</p>
-          </div>
+          {isCageMetric ? (
+            <div>
+              <p className="text-[9px] text-neutral-500">房间</p>
+              <p className="text-lg font-black text-neutral-900">{uniqueRooms ?? "—"}</p>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

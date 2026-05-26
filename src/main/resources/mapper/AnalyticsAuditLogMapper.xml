@@ -41,6 +41,24 @@
         )
     </insert>
 
+    <update id="updatePeriodSnapshot">
+        UPDATE analytics_audit_log
+        SET current_start = #{currentStart},
+            current_end = #{currentEnd},
+            previous_start = #{previousStart},
+            previous_end = #{previousEnd},
+            current_rounds = #{currentRounds},
+            previous_rounds = #{previousRounds},
+            current_users = #{currentUsers},
+            previous_users = #{previousUsers},
+            current_groups = #{currentGroups},
+            previous_groups = #{previousGroups},
+            delta_rounds = #{deltaRounds},
+            delta_pct = #{deltaPct},
+            top_groups_json = #{topGroupsJson}
+        WHERE id = #{id}
+    </update>
+
     <select id="selectAllByView" resultMap="AnalyticsAuditLogMap">
         SELECT *
         FROM analytics_audit_log
@@ -68,6 +86,15 @@
         WHERE view_id = #{viewId}
           AND period_type = #{periodType}
           AND period_label = #{periodLabel}
+    </select>
+
+    <select id="selectByViewPeriodLabel" resultMap="AnalyticsAuditLogMap">
+        SELECT *
+        FROM analytics_audit_log
+        WHERE view_id = #{viewId}
+          AND period_type = #{periodType}
+          AND period_label = #{periodLabel}
+        LIMIT 1
     </select>
 
     <select id="selectById" resultMap="AnalyticsAuditLogMap">

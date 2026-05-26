@@ -12,14 +12,22 @@ import java.util.List;
 public class AnalyticsReportRegistry {
 
     public static final String REPORT_ISOLATION_USAGE = "isolation_usage";
+    public static final String REPORT_CAGE_OCCUPANCY = "cage_occupancy";
 
     public List<AnalyticsReportDescriptorDto> listReports() {
         return List.of(
                 new AnalyticsReportDescriptorDto(
                         REPORT_ISOLATION_USAGE,
                         "隔离服使用统计",
-                        "按区域统计隔离服完整进出次数，支持校区/分区/楼层筛选。",
-                        "统计与审计",
+                        "按区域统计隔离服完整进出轮次（进入+离开计 1 轮），支持校区/分区/楼层筛选。",
+                        "门禁与房间",
+                        true
+                ),
+                new AnalyticsReportDescriptorDto(
+                        REPORT_CAGE_OCCUPANCY,
+                        "笼架占用统计",
+                        "统计已预约且已放置笼盒的笼位数（实时 ARO 快照），筛选方式与隔离服统计一致。",
+                        "笼架与预约",
                         true
                 )
         );

@@ -16,6 +16,7 @@ type Props = {
   grouped: Map<AnalyticsCompareCycle, AnalyticsAuditLog[]>;
   onOpenInsight: (auditLogId: number, periodLabel: string, e: React.MouseEvent<HTMLButtonElement>) => void;
   viewName?: string;
+  metricUnit?: string;
 };
 
 export function LatestSnapshotsDashboard({
@@ -24,6 +25,7 @@ export function LatestSnapshotsDashboard({
   grouped,
   onOpenInsight,
   viewName,
+  metricUnit = "人次",
 }: Props) {
   const entries = COMPARE_CYCLE_OPTIONS.filter((o) => compareCycles.includes(o.value) && latestByCycle.has(o.value)).map(
     (o) => ({
@@ -82,6 +84,7 @@ export function LatestSnapshotsDashboard({
               loading={q.isLoading}
               error={q.error as Error | null}
               hasCachedInsight={hasCachedInsight}
+              metricUnit={metricUnit}
               onOpenInsight={(e) => onOpenInsight(log.id, log.periodLabel, e)}
             />
           );
