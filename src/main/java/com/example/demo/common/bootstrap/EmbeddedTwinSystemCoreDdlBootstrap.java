@@ -10,7 +10,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.DatabasePopulatorUtils;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.stereotype.Component;
-import com.example.demo.modules.twin.service.TwinStudentViolationService;
+import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 
 import javax.sql.DataSource;
 

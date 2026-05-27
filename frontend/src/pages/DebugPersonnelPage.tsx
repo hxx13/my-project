@@ -1,6 +1,12 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchDebugPersonnelList, searchPersonnel, recalculateRpgExp, syncPersonnelData } from "@/api/twinApi";
+import {
+  fetchDebugPersonnelList,
+  searchPersonnel,
+  recalculateRpgExp,
+  syncPersonnelData,
+  type PersonnelRecord,
+} from "@/api/twinApi";
 import {
   addContactBookmark,
   fetchBookmarkedPeerIds,
@@ -16,6 +22,10 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import toast from "react-hot-toast";
 import { DebugPersonnelPersonCard } from "@/features/twin-debug/DebugPersonnelPersonCard";
+
+function toPersonRow(p: PersonnelRecord | Record<string, unknown>): Record<string, unknown> {
+  return { ...p };
+}
 
 export default function DebugPersonnelPage() {
   const queryClient = useQueryClient();
@@ -65,7 +75,9 @@ export default function DebugPersonnelPage() {
     setIsSearching(true);
     try {
       const res = await searchPersonnel(keyword.trim());
-      setSearchResults((res || []) as Record<string, unknown>[]);
+      setSearchResults(
+        (res || []).map((row) => toPersonRow(row as Record<string, unknown>)),
+      );
     } catch (error) {
       console.error("人员搜索失败", error);
     }
@@ -113,7 +125,9 @@ export default function DebugPersonnelPage() {
     }
   };
 
-  const displayData: Record<string, unknown>[] = isSearching ? searchResults : (data?.data as Record<string, unknown>[]) || [];
+  const displayData: Record<string, unknown>[] = isSearching
+    ? searchResults
+    : (data?.data ?? []).map(toPersonRow);
 
   const opsItems = [
     {
@@ -159,7 +173,7 @@ export default function DebugPersonnelPage() {
         }
       })();
     },
-    onAssignGroup: (uid: string, groupId: number | null) => {
+    onAssignGroup: (uid: string, groupId: string | null) => {
       void (async () => {
         try {
           await setContactAssignment(uid, groupId);

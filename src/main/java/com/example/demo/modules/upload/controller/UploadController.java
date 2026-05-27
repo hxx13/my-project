@@ -7,6 +7,8 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.upload.service.UploadFileService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
@@ -34,6 +36,7 @@ import java.util.UUID;
 @RequestMapping("/api/upload")
 @Tag(name = "文件上传", description = "上传文件与文件访问接口")
 public class UploadController {
+    private static final Logger log = LoggerFactory.getLogger(UploadController.class);
     private final AuthContextService authContextService;
     private final UploadFileService uploadFileService;
 
@@ -119,6 +122,7 @@ public class UploadController {
                 return MediaType.parseMediaType(contentType);
             }
         } catch (Exception ignored) {
+            log.debug("探测文件ContentType失败: {}", ignored.getMessage());
         }
         return MediaType.APPLICATION_OCTET_STREAM;
     }

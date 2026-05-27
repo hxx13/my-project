@@ -75,6 +75,7 @@ public class FacilityMaintenanceSchemaMigrator implements ApplicationRunner {
                         WHERE site_id IS NOT NULL AND TRIM(site_id) <> ''
                         """);
             } catch (Exception ignored) {
+                log.debug("模板机房数据迁移失败: {}", ignored.getMessage());
             }
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS fm_template_item (
@@ -172,6 +173,7 @@ public class FacilityMaintenanceSchemaMigrator implements ApplicationRunner {
                         VALUES ('FM_RP_01','初效',0,0),('FM_RP_02','中效',1,0),('FM_RP_03','高效',2,0)
                         """);
             } catch (Exception ignored) {
+                log.debug("初始化更换类型预设失败: {}", ignored.getMessage());
             }
             log.info("[facility-maintenance-schema] 表结构已就绪");
         } catch (Exception e) {

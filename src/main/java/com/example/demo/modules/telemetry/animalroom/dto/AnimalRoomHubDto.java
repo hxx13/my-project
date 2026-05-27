@@ -2,7 +2,7 @@ package com.example.demo.modules.telemetry.animalroom.dto;
 
 import com.example.demo.modules.telemetry.dto.TelemetrySnapshotDto;
 import com.example.demo.modules.telemetry.dto.TelemetryWinccDockPollConfigDto;
-import com.example.demo.modules.twin.dto.RoomDashboardRenderDTO;
+import com.example.demo.modules.twin.common.dto.RoomDashboardRenderDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

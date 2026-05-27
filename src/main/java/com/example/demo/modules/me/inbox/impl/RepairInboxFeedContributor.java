@@ -10,7 +10,7 @@ import com.example.demo.modules.me.inbox.dto.InboxItemDto;
 import com.example.demo.modules.policy.BizDomains;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
 import com.example.demo.modules.repair.entity.RepairOrder;
-import com.example.demo.modules.repair.enums.RepairOrderStatus;
+import com.example.demo.modules.repair.enums.RepairOrderStatusEnum;
 import com.example.demo.modules.repair.mapper.RepairOrderMapper;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -49,8 +49,8 @@ public class RepairInboxFeedContributor implements InboxFeedContributor {
         LocalDateTime before = query.getBeforeTime();
         int cap = query.getPerSourceCap();
         List<RepairOrder> merged = new ArrayList<>();
-        merged.addAll(fetchStatus(user, RepairOrderStatus.PENDING.name(), cap));
-        merged.addAll(fetchStatus(user, RepairOrderStatus.PROCESSING.name(), cap));
+        merged.addAll(fetchStatus(user, RepairOrderStatusEnum.PENDING.name(), cap));
+        merged.addAll(fetchStatus(user, RepairOrderStatusEnum.PROCESSING.name(), cap));
         ZoneId z = ZoneId.systemDefault();
         Stream<RepairOrder> stream = merged.stream()
                 .filter(o -> before == null || sortTime(o).isBefore(before));

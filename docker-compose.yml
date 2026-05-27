@@ -5,7 +5,7 @@ services:
     container_name: twin_mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: SuperAdmin@2026  # 你的数据库密码，这里为了本地开发设为 root
+      MYSQL_ROOT_PASSWORD: SuperAdmin@2026  # 你的数据库密码
       MYSQL_DATABASE: twin_system # 自动为你建好这个空库！
     ports:
       - "3306:3306"

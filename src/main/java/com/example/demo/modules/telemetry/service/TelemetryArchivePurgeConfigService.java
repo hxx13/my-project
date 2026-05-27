@@ -4,7 +4,7 @@ import com.example.demo.modules.telemetry.dto.archive.TelemetryArchivePurgeConfi
 import com.example.demo.modules.telemetry.dto.archive.TelemetryArchivePurgeProgressDto;
 import com.example.demo.modules.telemetry.entity.TelemetryArchivePurgeConfig;
 import com.example.demo.modules.telemetry.mapper.TelemetryArchivePurgeConfigMapper;
-import com.example.demo.modules.twin.service.JobExecutionRegistry;
+import com.example.demo.modules.twin.common.service.JobExecutionRegistry;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

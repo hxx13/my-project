@@ -1,5 +1,7 @@
 package com.example.demo.modules.notification.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -12,6 +14,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 @Service
 public class NotificationPushService {
+
+    private static final Logger log = LoggerFactory.getLogger(NotificationPushService.class);
+
     /** 与 application.properties 中 spring.mvc.async.request-timeout（毫秒）保持一致 */
     private static final long EMITTER_TIMEOUT_MS = 30L * 60L * 1000L;
     private final Map<String, CopyOnWriteArrayList<SseEmitter>> emitterMap = new ConcurrentHashMap<>();
@@ -29,6 +34,7 @@ public class NotificationPushService {
             try {
                 emitter.complete();
             } catch (Exception ignoredComplete) {
+                log.debug("SSE complete after IO error failed", ignoredComplete);
             }
         }
         return emitter;
@@ -57,6 +63,7 @@ public class NotificationPushService {
                     try {
                         emitter.complete();
                     } catch (Exception ignoredComplete) {
+                        log.debug("SSE complete after IO error failed", ignoredComplete);
                     }
                 }
             }

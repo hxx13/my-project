@@ -5,8 +5,8 @@ import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.mapper.AroDatabaseMapper;
 import com.example.demo.modules.aro.task.AroSyncTask;
-import com.example.demo.modules.twin.service.TwinCardMappingService;
-import com.example.demo.modules.twin.service.TwinDashboardService;
+import com.example.demo.modules.twin.card.service.TwinCardMappingService;
+import com.example.demo.modules.twin.dashboard.service.TwinDashboardService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,11 +37,11 @@ public class AroStartupAsyncService {
     public void executeHeavyStartupCheckAsync() {
         Integer personnelCount = aroDatabaseMapper.countPersonnel();
         if (personnelCount == null || personnelCount == 0) {
-            System.out.println("⚠️ [开机后台自检] 人员库为空！正在全量拉取人员 (不影响正常业务)...");
+            log.warn("[开机后台自检] 人员库为空！正在全量拉取人员 (不影响正常业务)...");
             List<AroPersonnel> allPersonnel = aroService.fetchAllPersonnel();
             if (!allPersonnel.isEmpty()) aroPersonnelDatabaseService.upsertPersonnel(allPersonnel);
         } else {
-            System.out.println("✅ [开机后台自检] 人员库正常，当前录入人数: " + personnelCount);
+            log.info("[开机后台自检] 人员库正常，当前录入人数: {}", personnelCount);
         }
 
         String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
@@ -50,7 +50,7 @@ public class AroStartupAsyncService {
         if (logCount == null || logCount == 0) {
             String startDate = "2025-10-01";
             String rangeDate = startDate + " - " + today;
-            System.out.println("⚠️ [开机后台自检] 流水库为空！开启历史防洪追溯，目标时间：" + rangeDate);
+            log.warn("[开机后台自检] 流水库为空！开启历史防洪追溯，目标时间：{}", rangeDate);
 
             int pageNum = 1;
             int totalRecovered = 0;
@@ -60,7 +60,7 @@ public class AroStartupAsyncService {
 
                 aroDatabaseService.batchInsert(records);
                 totalRecovered += records.size();
-                System.out.println("✅ [历史重建] 成功入库第 " + pageNum + " 页，已累计找回 " + totalRecovered + " 条...");
+                log.info("[历史重建] 成功入库第 {} 页，已累计找回 {} 条...", pageNum, totalRecovered);
 
                 if (records.size() < 100) break;
                 pageNum++;
@@ -73,11 +73,11 @@ public class AroStartupAsyncService {
         mappingService.reconcileExemptionsByLogs();
         mappingService.resetDailyExemptions();
         try {
-            System.out.println("📊 [大屏推送] 正在计算最新饼图数据...");
+            log.info("[大屏推送] 正在计算最新饼图数据...");
             Map<String, Object> newPieData = dashboardService.getTodayRoomStats();
             socketServer.getBroadcastOperations().sendEvent("TWIN_PIE_UPDATE", newPieData);
         } catch (Exception e) {
-            System.err.println("❌ 饼图推送失败: " + e.getMessage());
+            log.error("饼图推送失败: {}", e.getMessage());
         }
     }
 }

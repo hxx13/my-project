@@ -2,7 +2,7 @@ package com.example.demo.modules.telemetry.scheduler;
 
 import com.example.demo.modules.telemetry.config.WinCcProperties;
 import com.example.demo.modules.telemetry.service.TelemetrySnapshotService;
-import com.example.demo.modules.twin.service.JobSchedulerService;
+import com.example.demo.modules.twin.common.service.JobSchedulerService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;

@@ -1,6 +1,7 @@
 import axios, { AxiosError } from "axios";
 import type { ApiResponse } from "@/api/types/common";
 import { authStorage } from "@/features/auth/authStorage";
+import { attachTokenRefreshInterceptor } from "./tokenRefresh";
 
 export const http = axios.create({
     baseURL: "/api/v1/twin",
@@ -29,5 +30,7 @@ http.interceptors.response.use(
         return Promise.reject(new Error(message));
     }
 );
+
+attachTokenRefreshInterceptor(http);
 
 export const unwrapApiResponse = <T>(payload: ApiResponse<T>): T => payload.data;

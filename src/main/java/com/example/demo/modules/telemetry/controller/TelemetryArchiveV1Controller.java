@@ -6,7 +6,7 @@ import com.example.demo.modules.telemetry.service.TelemetryArchiveService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.web.bind.annotation.CrossOrigin;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
  */
 @RestController
 @RequestMapping("/api/v1/telemetry/archive")
-@CrossOrigin(origins = "*")
+
 @Tag(name = "遥测归档", description = "时序查询（降采样）")
 public class TelemetryArchiveV1Controller {
 

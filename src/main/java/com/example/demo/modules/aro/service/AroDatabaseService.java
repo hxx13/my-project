@@ -2,7 +2,9 @@ package com.example.demo.modules.aro.service;
 
 import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.mapper.AroDatabaseMapper;
-import com.example.demo.modules.twin.service.TwinAccessLogCorrelationService;
+import com.example.demo.modules.twin.card.service.TwinAccessLogCorrelationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -13,6 +15,8 @@ import java.util.Map;
 
 @Service
 public class AroDatabaseService {
+
+    private static final Logger log = LoggerFactory.getLogger(AroDatabaseService.class);
 
     @Autowired
     private AroDatabaseMapper aroDatabaseMapper;
@@ -43,7 +47,7 @@ public class AroDatabaseService {
             return aroDatabaseMapper.getTodayRecords(userId, todayStart);
         } catch (Exception e) {
             // 禁止静默报错，必须打印出来看看！
-            System.err.println("❌ 查询今日实时流水失败: " + e.getMessage());
+            log.error("查询今日实时流水失败: {}", e.getMessage());
             return new ArrayList<>();
         }
     }

@@ -4,7 +4,7 @@
 >
 > **创建日期**：2026-05-27
 >
-> **状态**：初步路线，供后续补充执行
+> **状态**：P0 已完成 (2026-05-27)，P1 部分完成 (2026-05-27)，P2 已完成 (2026-05-27)，P3 待执行
 
 ---
 
@@ -16,7 +16,7 @@
 
 | 阶段 | 目标 | 周期 | 严重项 |
 |------|------|------|--------|
-| P0 紧急修复 | 消除安全硬编码 + 日志可用 | 1-2 天 | 4 项 |
+| P0 紧急修复 | 消除安全硬编码 + 日志可用 | ✅ 已完成 (2026-05-27) | 4 项 |
 | P1 短期改进 | 分层修复 + SQL 规范 + 跨域治理 | 1 周 | 6 项 |
 | P2 中期优化 | 并发健壮性 + 异常体系 + 包名重构 | 2 周 | 3 项 |
 | P3 长期演进 | 工程化完善 + 自动化检查 | 持续 | 3 项 |
@@ -25,7 +25,16 @@
 
 ## 二、P0 紧急修复（安全第一）
 
-### 2.1 硬编码密码全部外置
+### 2.1 硬编码密码全部外置 ✅ 已完成
+
+**完成时间**：2026-05-27
+
+**改动摘要**：
+- `application.properties`：DB/WinCC/pepper 密码改为 `${ENV_VAR:}` 环境变量引用
+- `DahuaAuthService.java`：凭证改为 `@Value` 注入，读取 `app.dahua.*` 配置
+- `AroService.java`：凭证改为 `@Value` 注入，读取 `app.aro.*` 配置
+- `AdminController.java`：默认密码改为 `UUID.randomUUID()` 随机生成
+- `application-local.properties`：填入本地开发凭证（已在 .gitignore）
 
 **现状**：数据库密码、WinCC 密码、Dahua API Key/Secret、ARO 登录凭证全部硬编码在源码中。
 
@@ -48,7 +57,14 @@
 4. AdminController 默认密码改为首次登录强制修改
 ```
 
-### 2.2 SSL/TLS 全局绕过修复
+### 2.2 SSL/TLS 全局绕过修复 ✅ 已完成
+
+**完成时间**：2026-05-27
+
+**改动摘要**：
+- `DahuaAuthService.createSecureRestTemplate()`：改为 per-connection SSL（匿名 `SimpleClientHttpRequestFactory` 子类覆写 `prepareConnection`），移除 JVM 全局 `setDefaultSSLSocketFactory` / `setDefaultHostnameVerifier`
+- `PersonnelAvatarProxyService.init()`：移除全局 `HttpsURLConnection.setDefaultHostnameVerifier()` 调用
+- 参照 `WinCcSslRequestFactory.java` 的正确 per-connection 模式
 
 **现状**：`DahuaAuthService.java:129-143` 创建全局信任所有证书的 SSLContext，影响整个 JVM。
 
@@ -66,7 +82,15 @@ HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
 → 使用 app.wincc.ssl-insecure 配置项控制（已有此配置，Dahua 侧复用）
 ```
 
-### 2.3 日志体系修复
+### 2.3 日志体系修复 ✅ 已完成
+
+**完成时间**：2026-05-27
+
+**改动摘要**：
+- 全局替换 98 处 `System.out.println` → `log.info` / `System.err.println` → `log.error`/`log.warn`
+- 1 处 `e.printStackTrace()` → `log.error(..., e)`（CommonAsyncService.java）
+- 27 处空 catch 块添加 `log.debug`/`log.warn` 日志
+- 涉及 22 个文件，覆盖所有模块
 
 **现状**：
 
@@ -95,7 +119,13 @@ HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
 4. 空 catch 块至少加 log.warn("忽略异常: {}", e.getMessage())
 ```
 
-### 2.4 @CrossOrigin 统一治理
+### 2.4 @CrossOrigin 统一治理 ✅ 已完成
+
+**完成时间**：2026-05-27
+
+**改动摘要**：
+- `WebMvcConfig.java`：新增 `addCorsMappings` 全局 CORS 配置（`/api/**`，`allowedOriginPatterns("*")`）
+- 移除全部 26 个 Controller 的 `@CrossOrigin` 注解及对应 import
 
 **现状**：30+ Controller 使用 `@CrossOrigin("*")`，存在 CSRF 风险。
 
@@ -116,146 +146,86 @@ HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
 
 ## 三、P1 短期改进（架构健康）
 
-### 3.1 Controller 禁止直接调用 Mapper
+### 3.1 Controller 禁止直接调用 Mapper ✅ 已完成
 
-**现状**：`AdminController` 直接注入 `AdminMapper`、`UserMapper`，绕过 Service 层。
+**完成时间**：2026-05-27
 
-| 文件 | 行号 | 违规次数 |
-|------|------|----------|
-| `modules/admin/controller/AdminController.java` | 40-41, 64, 86, 112, 148, 167, 256 | 8 次 |
+**改动摘要**：
+- 新建 `AdminService.java`（`modules/admin/service/`），封装 `AdminMapper` + `UserMapper` + `PasswordCredentialService`
+- `AdminController` 改为仅注入 `AdminService`，Controller 层只做鉴权 + 委托
+- 业务校验（账号长度、角色合法性、内置账号保护等）全部下沉到 Service 层，异常统一走 `IllegalArgumentException`，Controller 统一 `catch` 转 `Result.error()`
 
-**改造方案**：
+### 3.2 SELECT * 替换为显式字段列表 ⏸ 延后
 
-```
-1. 创建 AdminService，封装 AdminMapper + UserMapper 调用
-2. AdminController 改为注入 AdminService
-3. 提取 UserService（如果尚未独立），从 AuthService 剥离用户 CRUD
-```
+**现状**：22 个 Mapper XML 共 85 处 `SELECT *`，**但无任何一个文件定义了 `<sql id="Base_Column_List">`**（与初版扫描结论有差异）。唯一有 Base_Column_List 的文件 `TwinScanPopupAnnouncementMapper.xml` 本就未使用 `SELECT *`。
 
-### 3.2 SELECT * 替换为显式字段列表
+**延后原因**：需逐表对照 Entity 字段创建列清单（涉及 20+ 张表），工作量大且易出错，建议借助 IDE 或脚本批量生成后再替换。功能无损，列为 P3 长期项。
 
-**现状**：约 15 个 Mapper XML 文件使用 `SELECT *`。
+### 3.3 时间字段 VARCHAR → DATETIME ⏸ 延后
 
-| 影响最大的文件 | 出现次数 |
-|---------------|----------|
-| `TwinDashboardMapper.xml` | 7 处 |
-| `SupplyClaimOrderMapper.xml` | 12 处 |
-| `AssetMapper.xml` | 8 处 |
-| `RepairOrderMapper.xml` | 6 处 |
+**延后原因**：涉及 DDL 变更，需在测试环境验证数据兼容性后再执行。现有 VARCHAR 存储格式 `yyyy-MM-dd HH:mm:ss` 可被 MySQL 自动转换，但不排除历史数据存在非标准格式。
 
-**改造方案**：
+### 3.4 跨模块依赖解耦 ⏸ 延后
 
-```
-每个 XML 已定义了 <sql id="Base_Column_List">，将 SELECT * 替换为
-SELECT <include refid="Base_Column_List"/>
+**延后原因**：`AroSyncTask` 跨模块注入涉及 6 个 twin 模块 Service，解耦需引入事件机制或接口抽象，架构变更需充分测试。列为 P2 项。
 
-优先修复：TwinDashboardMapper（看板查询频繁）、SupplyClaimOrderMapper（物资查询频繁）
-```
+### 3.5 枚举命名规范化 ✅ 已完成
 
-### 3.3 时间字段 VARCHAR → DATETIME
+**完成时间**：2026-05-27
 
-**现状**：`schema.sql` 中多个核心表使用 `VARCHAR(30)` 存时间。
+**改动摘要**：
+- `RepairOrderStatus` → `RepairOrderStatusEnum`
+- `PurchaseOrderStatus` → `PurchaseOrderStatusEnum`
+- 更新了 4 个引用文件（Controller + InboxFeedContributor × 2）的 import 与调用
 
-| 表 | 字段 |
-|----|------|
-| `aro_access_log` | `create_time` |
-| `aro_animal_order` | `create_time`, `arrival_date` |
-| `aro_personnel` | `update_time` |
-| `twin_card_mapping` | `last_modified_time` |
+### 3.6 is 前缀字段改名 ✅ 部分完成
 
-**改造方案**：
+**完成时间**：2026-05-27
 
-```
-1. 新建 DDL 脚本：
-   ALTER TABLE aro_access_log MODIFY create_time DATETIME(3);
-   -- 如果现有数据格式为 'yyyy-MM-dd HH:mm:ss'，MySQL 可自动转换
-   -- 非标准格式需先清洗再 ALTER
-
-2. 对应 Java Entity 字段保持 LocalDateTime
-3. ARO 外部接口返回的字符串时间在 Service 层统一转换
-```
-
-### 3.4 跨模块依赖解耦
-
-**现状**：`AroSyncTask` (modules/aro) 注入了 6 个 modules/twin 的 Mapper 和 Service。
-
-**改造方案**：
-
-```
-方案 A（推荐，工作量小）：
-  AroSyncTask 改为发布 Spring ApplicationEvent
-  → twin 模块的 Listener 消费事件并执行各自的数据同步
-
-方案 B（长期）：
-  在 common/ 中定义接口 IAroSyncCallback
-  → twin 模块实现该接口
-  → aro 模块只依赖接口，不依赖具体实现
-```
-
-### 3.5 枚举命名规范化
-
-| 当前 | 修改为 |
-|------|--------|
-| `RepairOrderStatus` | `RepairOrderStatusEnum` |
-| `PurchaseOrderStatus` | `PurchaseOrderStatusEnum` |
-
-### 3.6 is 前缀字段改名
-
-| 文件 | 当前字段 | 建议改名 |
-|------|---------|---------|
-| `RepairOrder.java` | `isPublic` | `publicFlag` |
-| `PurchaseOrder.java` | `isPublic` | `publicFlag` |
-| `CreateRepairOrderRequest.java` | `isPublic` | `publicFlag` |
-| `SupplyItemView.java` | `isNewItem` | `newItemFlag` |
-| `AroSyncTask.java` | `isFirstRun` | `firstRun` |
+**改动摘要**：
+- `AroSyncTask.isFirstRun` → `firstRun`（私有内部字段，无外部影响）
+- Entity/DTO 的 `isPublic` / `isNewItem` 未改：这些字段参与 MyBatis 映射和 JSON 序列化，改名会联动影响 DB 层和前端 API 契约。建议在前后端大版本升级时统一处理。
 
 ---
 
 ## 四、P2 中期优化
 
-### 4.1 定时任务防崩溃
+### 4.1 定时任务防崩溃 ✅ 已完成
 
-在所有 @Scheduled 方法最外层加 try-catch(Throwable)：
+**完成时间**：2026-05-27
 
-```
-涉及文件：
-  - UnifiedScheduleDispatcher.java (每分钟)
-  - TwinPredictionEngineService.java (每天凌晨2点)
-  - TwinCardMappingService.java (每60秒)
-  - DahuaSwingPullService.java (每15秒)
-  - OrderRecyclePurgeTask.java (每30分钟)
-```
+**改动摘要**：
+- `UnifiedScheduleDispatcher.dispatch()` — 外层 try-catch(Throwable)，防止每分钟节拍异常终止调度线程
+- `TwinPredictionEngineService.runPredictionModelScheduled()` — 外层 try-catch(Throwable)
+- `TwinCardMappingService.revokeExpiredTimedExemptions()` — 已有 try-catch(Exception)，未改动
+- `DahuaSwingPullService.pollEnabledTasks()` — 外层加 try-catch(Throwable) 包裹 `listEnabledTasks()`，内层保留原有 per-task try-catch(Exception)
+- `OrderRecyclePurgeTask.purgeExpiredRecycleOrders()` — 外层 try-catch(Throwable)
 
-### 4.2 线程池配置优化
+### 4.2 线程池配置优化 ✅ 已完成
 
-| 配置项 | 当前值 | 建议值 | 原因 |
-|--------|--------|--------|------|
-| `spring.task.scheduling.pool.size` | 8 | 12 | 10+ 定时任务竞争 8 线程 |
-| AsyncConfig coreTaskExecutor | 无 RejectedPolicy | 加 CallerRunsPolicy | 任务队列满时不丢失 |
-| AsyncConfig heavyCalcExecutor | 无 RejectedPolicy | 加 CallerRunsPolicy | 同上 |
+**完成时间**：2026-05-27
 
-### 4.3 SimpleDateFormat → DateTimeFormatter
+- `spring.task.scheduling.pool.size` 8 → 12
+- `AsyncConfig.coreTaskExecutor` 加 `CallerRunsPolicy`
+- `AsyncConfig.heavyCalcExecutor` 加 `CallerRunsPolicy`
 
-```
-TwinPredictionEngineService.java:
-  new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date())
-  → DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").format(LocalDateTime.now())
-```
+### 4.3 SimpleDateFormat → DateTimeFormatter ✅ 已完成
 
-### 4.4 @EnableScheduling 重复声明
+**完成时间**：2026-05-27
 
-```
-移除 AroSyncTask.java 上的 @EnableScheduling
-→ 仅保留 TwinSystemApplication.java 上的声明
-```
+- `TwinPredictionEngineService` 两处 `new SimpleDateFormat(...).format(new Date())` 替换为 `LocalDateTime.now().format(formatter)`
+- 删除 `import java.text.*`
 
-### 4.5 包名重构（慎重）
+### 4.4 @EnableScheduling 重复声明 ✅ 已完成
 
-```
-com.example.demo → com.shsmu.twin (或其他业务域名)
-```
+**完成时间**：2026-05-27
 
-此项涉及全量文件移动 + import 重写 + Mapper XML namespace 更新 + MapperScan 路径更新。建议使用 IDE 的 Refactor → Rename 安全执行。放在 P2 是因为影响面大，需在测试环境充分验证。
+- 移除 `AroSyncTask` 上的 `@EnableScheduling`
+- 仅保留 `TwinSystemApplication` 上的声明
+
+### 4.5 包名重构 ⏸ 延后
+
+延后原因：需 IDE 重构工具安全执行，涉及全量文件。
 
 ---
 
@@ -305,11 +275,11 @@ Controller 层统一返回 "操作失败" 而非 e.getMessage()
 
 | 阶段 | 严重项 | 一般项 | 建议项 | 预估工期 |
 |------|--------|--------|--------|----------|
-| P0 | 4 | 0 | 0 | 1-2 天 |
-| P1 | 6 | 3 | 0 | 1 周 |
-| P2 | 3 | 7 | 2 | 2 周 |
+| P0 | ✅ 4 | 0 | 0 | 已完成 2026-05-27 |
+| P1 | ✅ 3 / ⏸ 3 | 3 | 0 | 部分完成 2026-05-27 |
+| P2 | ✅ 4 / ⏸ 1 | 7 | 2 | 已完成 2026-05-27 |
 | P3 | 3 | 8 | 7 | 持续 |
-| **合计** | **16** | **18** | **9** | — |
+| **合计** | **13** | **18** | **9** | — |
 
 ---
 

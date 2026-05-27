@@ -1,5 +1,6 @@
 package com.example.demo.modules.notification.service;
 
+import com.example.demo.common.event.CredentialsChangedEvent;
 import com.example.demo.modules.notification.dto.UpdateNotifyRuleRequest;
 import com.example.demo.modules.notification.dto.UpdateNotifyTemplateRequest;
 import com.example.demo.modules.notification.dto.UpdateSystemConfigRequest;
@@ -10,6 +11,7 @@ import com.example.demo.modules.notification.entity.SystemConfigDefinition;
 import com.example.demo.modules.notification.entity.SystemConfigItem;
 import com.example.demo.modules.notification.mapper.NotificationSettingsMapper;
 import com.example.demo.modules.telemetry.service.TelemetryFacilityLayoutRulesService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -19,11 +21,14 @@ import java.util.*;
 public class NotificationSettingsService {
     private final NotificationSettingsMapper settingsMapper;
     private final TelemetryFacilityLayoutRulesService telemetryFacilityLayoutRulesService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public NotificationSettingsService(NotificationSettingsMapper settingsMapper,
-                                       TelemetryFacilityLayoutRulesService telemetryFacilityLayoutRulesService) {
+                                       TelemetryFacilityLayoutRulesService telemetryFacilityLayoutRulesService,
+                                       ApplicationEventPublisher eventPublisher) {
         this.settingsMapper = settingsMapper;
         this.telemetryFacilityLayoutRulesService = telemetryFacilityLayoutRulesService;
+        this.eventPublisher = eventPublisher;
     }
 
     public List<NotifyRule> listRules() {
@@ -55,6 +60,29 @@ public class NotificationSettingsService {
             }
         }
         return settingsMapper.listConfigsByModule(module);
+    }
+
+    /**
+     * 从 sys_system_config 读取单个配置值；DB 无有效值时回退到 fallback。
+     * 自动播种缺少的配置项（根据 sys_system_config_def 默认值）。
+     */
+    public String getEffectiveValue(String module, String configKey, String fallback) {
+        List<SystemConfigItem> items = listConfigs(module);
+        String dbValue = items.stream()
+                .filter(item -> configKey.equals(item.getConfigKey()))
+                .map(SystemConfigItem::getConfigValue)
+                .findFirst()
+                .orElse(null);
+        if (StringUtils.hasText(dbValue)) {
+            return dbValue;
+        }
+        // 环境变量兜底
+        String envName = configKey.replace(".", "_").toUpperCase();
+        String envValue = System.getenv(envName);
+        if (StringUtils.hasText(envValue)) {
+            return envValue;
+        }
+        return fallback;
     }
 
     public boolean updateRule(Long id, UpdateNotifyRuleRequest request) {
@@ -105,6 +133,9 @@ public class NotificationSettingsService {
             if (TelemetryFacilityLayoutRulesService.MODULE.equals(item.getModule())
                     && TelemetryFacilityLayoutRulesService.CONFIG_KEY_RULES_JSON.equals(item.getConfigKey())) {
                 telemetryFacilityLayoutRulesService.refresh();
+            }
+            if ("credentials".equals(item.getModule()) || "integration".equals(item.getModule())) {
+                eventPublisher.publishEvent(new CredentialsChangedEvent(item.getModule(), item.getConfigKey()));
             }
             return true;
         }
@@ -169,6 +200,8 @@ public class NotificationSettingsService {
         if ("scanner".equals(module)) return "扫码终端";
         if ("twin_scanner_popup".equals(module)) return "扫码进出提示";
         if ("student_violation".equals(module)) return "学生违规/未绑卡提示";
+        if ("credentials".equals(module)) return "外部系统凭证";
+        if ("integration".equals(module)) return "外部集成配置";
         if ("llm".equals(module)) return "大模型（DeepSeek）";
         if ("logging".equals(module)) return "控制台日志管理";
         return module;

@@ -13,8 +13,7 @@ import {
     DropdownMenuSubTrigger,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-type ContactGroup = { id: number; name: string };
+import type { ContactGroup } from "@/api/domains/chat.api";
 
 type Props = {
     person: Record<string, unknown>;
@@ -24,7 +23,7 @@ type Props = {
     contactGroups: ContactGroup[];
     onAddBookmark: (uid: string) => void;
     onRemoveBookmark: (uid: string) => void;
-    onAssignGroup: (uid: string, groupId: number | null) => void;
+    onAssignGroup: (uid: string, groupId: string | null) => void;
 };
 
 export function DebugPersonnelPersonCard({

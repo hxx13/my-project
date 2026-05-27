@@ -114,7 +114,7 @@ const MODULE_GROUP_DEFS: Array<{ id: string; title: string; keys: string[] }> = 
   { id: "notify", title: "通知与权限", keys: ["notification", "template", "capability"] },
   { id: "experience", title: "界面与展示", keys: ["dashboard_codex", "telemetry_facility", "frontend_runtime", "scanner"] },
   { id: "business", title: "业务扩展", keys: ["supplies", "mini_program", "llm"] },
-  { id: "platform", title: "平台与网络", keys: ["network", "system", "logging"] },
+  { id: "platform", title: "平台与网络", keys: ["network", "system", "logging", "credentials", "integration"] },
 ];
 
 export function groupSettingsModules(modules: Array<{ key: string; label: string }>): SettingsNavGroup[] {
@@ -162,6 +162,10 @@ export function moduleDescription(moduleKey: string): string {
       return "通用系统级参数。";
     case "llm":
       return "DeepSeek：主模型 + 备用列表自动切换；可开启日批与打开清算时自动生成 AI 解读。";
+    case "credentials":
+      return "外部系统（大华、ARO、WinCC）的登录凭证与 API 密钥；敏感字段保存后不再明文展示。";
+    case "integration":
+      return "外部集成与运维开关：WinCC/大华连接参数、调试开关、遥测归档、头像代理等。";
     case "logging":
       return "运行时控制台日志管理：调节 ROOT 级别和各业务模块日志开关，修改即时生效，重启恢复默认。";
     default:

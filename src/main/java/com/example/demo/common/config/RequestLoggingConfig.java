@@ -11,7 +11,7 @@ public class RequestLoggingConfig {
     public CommonsRequestLoggingFilter logFilter() {
         CommonsRequestLoggingFilter filter = new CommonsRequestLoggingFilter();
         filter.setIncludeQueryString(true);
-        filter.setIncludePayload(true); // 打印请求体
+        filter.setIncludePayload(false);
         filter.setMaxPayloadLength(10000);
         filter.setIncludeHeaders(false);
         filter.setAfterMessagePrefix("📡 [流量监控] 请求数据: ");

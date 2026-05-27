@@ -2,7 +2,6 @@ package com.example.demo.common.config;
 
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
-import com.example.demo.modules.auth.mapper.UserMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
@@ -12,12 +11,11 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class AdminAuthInterceptor implements HandlerInterceptor {
 
     public static final String CURRENT_ADMIN_USER_ATTR = "CURRENT_ADMIN_USER";
-    private static final String TOKEN_PREFIX = "jwt_mock_token_";
     private static final int ADMIN_BASE_MIN_LEVEL = RoleEnum.STAFF.getLevel();
-    private final UserMapper userMapper;
+    private final JwtTokenService jwtTokenService;
 
-    public AdminAuthInterceptor(UserMapper userMapper) {
-        this.userMapper = userMapper;
+    public AdminAuthInterceptor(JwtTokenService jwtTokenService) {
+        this.jwtTokenService = jwtTokenService;
     }
 
     @Override
@@ -28,22 +26,13 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             return false;
         }
         String token = authHeader.substring("Bearer ".length()).trim();
-        if (!token.startsWith(TOKEN_PREFIX)) {
+        if (token.isBlank()) {
             writeUnauthorized(response, "Token 非法");
             return false;
         }
-        String userId = token.substring(TOKEN_PREFIX.length());
-        if (userId.isBlank()) {
-            writeUnauthorized(response, "Token 非法");
-            return false;
-        }
-        User user = userMapper.findById(userId);
+        User user = jwtTokenService.validateTokenAndResolveUser(token);
         if (user == null) {
-            writeUnauthorized(response, "用户不存在");
-            return false;
-        }
-        if (user.getStatus() != null && user.getStatus() == 0) {
-            writeUnauthorized(response, "账号已禁用");
+            writeUnauthorized(response, "Token 无效或已过期");
             return false;
         }
         RoleEnum role = user.getRole();

@@ -1,11 +1,11 @@
 package com.example.demo.modules.accessfusion.service;
 
 import com.example.demo.modules.accessfusion.model.AccessAuditFilterParams;
-import com.example.demo.modules.twin.entity.DahuaSwingRecord;
-import com.example.demo.modules.twin.mapper.DahuaSwingMapper;
-import com.example.demo.modules.twin.support.DahuaSwingDepartmentSupport;
-import com.example.demo.modules.twin.support.DahuaSwingDepartmentSupport.Dept;
-import com.example.demo.modules.twin.support.DahuaSwingEnterExitSupport;
+import com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord;
+import com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper;
+import com.example.demo.modules.twin.dahua.support.DahuaSwingDepartmentSupport;
+import com.example.demo.modules.twin.dahua.support.DahuaSwingDepartmentSupport.Dept;
+import com.example.demo.modules.twin.dahua.support.DahuaSwingEnterExitSupport;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 

@@ -29,14 +29,6 @@
         LIMIT 1
     </select>
 
-    <select id="findByUsernameAndPassword" resultMap="UserResultMap">
-        SELECT <include refid="User_Column_List"/>
-        FROM sys_user
-        WHERE username = #{username}
-          AND password = #{password}
-        LIMIT 1
-    </select>
-
     <select id="findByOpenId" resultMap="UserResultMap">
         SELECT <include refid="User_Column_List"/>
         FROM sys_user
@@ -58,14 +50,6 @@
         <foreach collection="ids" item="id" open="(" separator="," close=")">
             #{id}
         </foreach>
-    </select>
-
-    <select id="findByIdAndPassword" resultMap="UserResultMap">
-        SELECT <include refid="User_Column_List"/>
-        FROM sys_user
-        WHERE id = #{id}
-          AND password = #{password}
-        LIMIT 1
     </select>
 
     <insert id="insertUser" parameterType="com.example.demo.modules.auth.entity.User">

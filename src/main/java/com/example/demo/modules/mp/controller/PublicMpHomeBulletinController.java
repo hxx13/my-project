@@ -7,7 +7,6 @@ import com.example.demo.modules.mp.service.MpHomeBulletinPublicService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,7 +20,6 @@ import java.util.List;
  */
 @RestController
 @RequestMapping("/api/public/mp-home/bulletins")
-@CrossOrigin(origins = "*")
 @Tag(name = "公开·小程序首页公告", description = "公告与版本合并列表/详情（只读）")
 public class PublicMpHomeBulletinController {
 

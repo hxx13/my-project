@@ -7,8 +7,10 @@ import com.example.demo.modules.telemetry.dto.TelemetrySnapshotDto;
 import com.example.demo.modules.telemetry.dto.TelemetryTagItemDto;
 import com.example.demo.modules.telemetry.dto.TelemetryWinccDockPollConfigDto;
 import com.example.demo.modules.telemetry.util.WinccLimitVariableNaming;
-import com.example.demo.modules.twin.dto.RoomDashboardRenderDTO;
-import com.example.demo.modules.twin.service.TwinDashboardAggregationService;
+import com.example.demo.modules.twin.common.dto.RoomDashboardRenderDTO;
+import com.example.demo.modules.twin.dashboard.service.TwinDashboardAggregationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.text.Collator;
@@ -25,6 +27,9 @@ import java.util.stream.Collectors;
  */
 @Service
 public class AnimalRoomHubAssembler {
+
+    private static final Logger log = LoggerFactory.getLogger(AnimalRoomHubAssembler.class);
+
 
     private final TwinDashboardAggregationService twinDashboardAggregationService;
     private final TelemetryFacilityLayoutRulesService facilityLayoutRules;
@@ -364,6 +369,7 @@ public class AnimalRoomHubAssembler {
                     int n = Integer.parseInt(x.trim());
                     if (n >= 1 && n <= 7) set.add(n);
                 } catch (NumberFormatException ignored) {
+                    log.debug("解析weekDays数值失败: {}", ignored.getMessage());
                 }
             }
             if (!set.isEmpty()) {
@@ -902,6 +908,7 @@ public class AnimalRoomHubAssembler {
                 long t = Instant.parse(it.getTimestamp()).toEpochMilli();
                 max = max == null ? t : Math.max(max, t);
             } catch (Exception ignored) {
+                log.debug("解析遥测时间戳失败: {}", ignored.getMessage());
             }
         }
         return max;

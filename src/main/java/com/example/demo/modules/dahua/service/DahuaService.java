@@ -1,5 +1,7 @@
 package com.example.demo.modules.dahua.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.alibaba.fastjson2.JSON;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.dto.UniversalEvent;
@@ -13,6 +15,8 @@ import java.util.*;
 
 @Service
 public class DahuaService {
+
+    private static final Logger log = LoggerFactory.getLogger(DahuaService.class);
 
     @Autowired
     private SocketIOServer socketServer;
@@ -39,7 +43,7 @@ public class DahuaService {
     // 2. 🔐 订阅逻辑 (现在直接找 AuthService 要 Token 和 BaseUrl)
     // =========================================================================
     public void cleanupLegacySubscriptions() {
-        System.out.println("🧹 [System] 清理旧订阅...");
+        log.info("[System] 清理旧订阅...");
         List<String> zombieNames = Arrays.asList("172.22.161.252_8080", "172.22.161.252_3000", "172.22.161.254_3000", "172.22.161.254_8080", "192.168.1.3_8080", "My_Fixed_Java_Client_V1");
         for (String name : zombieNames) unsubscribe(name);
     }
@@ -98,7 +102,7 @@ public class DahuaService {
             Map<String, Object> res = authService.getRestTemplate().postForObject(subUrl, new HttpEntity<>(payload, headers), Map.class);
             return res != null && (Boolean.TRUE.equals(res.get("success")) || "0".equals(String.valueOf(res.get("code"))));
         } catch (Exception e) {
-            System.err.println("❌ 订阅失败：" + e.getMessage());
+            log.error("订阅失败：{}", e.getMessage());
             return false;
         }
     }
@@ -120,9 +124,9 @@ public class DahuaService {
             Thread.sleep(3000);
             cleanupLegacySubscriptions();
             subscribe();
-            System.out.println("✅ [大华网关] 订阅就绪，雷达已开启！");
+            log.info("[大华网关] 订阅就绪，雷达已开启！");
         } catch (Exception e) {
-            System.err.println("❌ [大华网关] 订阅启动失败: " + e.getMessage());
+            log.error("[大华网关] 订阅启动失败: {}", e.getMessage());
         }
     }
 }

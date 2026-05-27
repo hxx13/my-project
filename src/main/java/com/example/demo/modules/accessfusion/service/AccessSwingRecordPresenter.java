@@ -1,8 +1,8 @@
 package com.example.demo.modules.accessfusion.service;
 
-import com.example.demo.modules.twin.entity.DahuaSwingRecord;
-import com.example.demo.modules.twin.support.DahuaSwingDepartmentSupport;
-import com.example.demo.modules.twin.support.DahuaSwingEnterExitSupport;
+import com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord;
+import com.example.demo.modules.twin.dahua.support.DahuaSwingDepartmentSupport;
+import com.example.demo.modules.twin.dahua.support.DahuaSwingEnterExitSupport;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;

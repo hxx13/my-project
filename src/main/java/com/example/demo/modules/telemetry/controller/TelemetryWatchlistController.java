@@ -20,7 +20,7 @@ import com.example.demo.modules.telemetry.service.TelemetryWatchlistDbService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.CrossOrigin;
+
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -39,7 +39,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/telemetry/watchlists")
-@CrossOrigin(origins = "*")
+
 @Tag(name = "WinCC变量清单", description = "CSV 导入入库、按文件名命名、整表替换与激活")
 public class TelemetryWatchlistController {
 

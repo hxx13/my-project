@@ -7,7 +7,7 @@ import com.example.demo.modules.telemetry.service.WatchlistAlarmLimitsFacadeServ
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.CrossOrigin;
+
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,7 +22,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/v1/telemetry/watchlists/alarm-limits")
-@CrossOrigin(origins = "*")
+
 @Tag(name = "WinCC变量报警限", description = "基于变量库的上下限查询（与快照分离）")
 public class TelemetryWatchlistAlarmLimitsController {
 

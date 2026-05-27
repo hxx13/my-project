@@ -4,7 +4,7 @@ import com.example.demo.common.config.AdminAuthInterceptor;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
-import com.example.demo.modules.twin.service.SystemDiagnosticsService;
+import com.example.demo.modules.twin.common.service.SystemDiagnosticsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;

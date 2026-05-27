@@ -10,7 +10,6 @@ import javax.annotation.PostConstruct;
 
 @RestController
 @RequestMapping("/api/event") // 保持大华设备配好的 Webhook 路由不变
-@CrossOrigin("*")
 @Tag(name = "大华事件", description = "门禁设备Webhook接收")
 public class DahuaEventController {
 

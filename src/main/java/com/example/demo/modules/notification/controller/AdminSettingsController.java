@@ -3,7 +3,9 @@ package com.example.demo.modules.notification.controller;
 import com.example.demo.common.config.AdminAuthInterceptor;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.dahua.service.DahuaAuthService;
 import com.example.demo.modules.notification.dto.MiniProgramTestSendRequest;
 import com.example.demo.modules.notification.dto.UpdateNotifyRuleRequest;
 import com.example.demo.modules.notification.dto.UpdateNotifyTemplateRequest;
@@ -12,7 +14,8 @@ import com.example.demo.modules.llm.service.DashScopeChatClient;
 import com.example.demo.modules.llm.service.LlmConfigService;
 import com.example.demo.modules.notification.service.MiniProgramNotificationService;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
-import com.example.demo.modules.twin.service.ClientReloadBroadcastService;
+import com.example.demo.modules.telemetry.client.WinCcRestTagClient;
+import com.example.demo.modules.twin.common.service.ClientReloadBroadcastService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,17 +32,26 @@ public class AdminSettingsController {
     private final ClientReloadBroadcastService clientReloadBroadcastService;
     private final DashScopeChatClient dashScopeChatClient;
     private final LlmConfigService llmConfigService;
+    private final DahuaAuthService dahuaAuthService;
+    private final AroService aroService;
+    private final WinCcRestTagClient winCcRestTagClient;
 
     public AdminSettingsController(NotificationSettingsService settingsService,
                                    MiniProgramNotificationService miniProgramNotificationService,
                                    ClientReloadBroadcastService clientReloadBroadcastService,
                                    DashScopeChatClient dashScopeChatClient,
-                                   LlmConfigService llmConfigService) {
+                                   LlmConfigService llmConfigService,
+                                   DahuaAuthService dahuaAuthService,
+                                   AroService aroService,
+                                   WinCcRestTagClient winCcRestTagClient) {
         this.settingsService = settingsService;
         this.miniProgramNotificationService = miniProgramNotificationService;
         this.clientReloadBroadcastService = clientReloadBroadcastService;
         this.dashScopeChatClient = dashScopeChatClient;
         this.llmConfigService = llmConfigService;
+        this.dahuaAuthService = dahuaAuthService;
+        this.aroService = aroService;
+        this.winCcRestTagClient = winCcRestTagClient;
     }
 
     @GetMapping("/modules")
@@ -142,6 +154,37 @@ public class AdminSettingsController {
                     "reply", reply));
         } catch (IllegalStateException e) {
             return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/dahua/test-connection")
+    @Operation(summary = "测试大华门禁 API 连接（使用当前系统设置中的凭证）")
+    public Result<?> testDahuaConnection(HttpServletRequest httpRequest) {
+        Result<?> denied = requireSuperAdmin(httpRequest);
+        if (denied != null) return denied;
+        return Result.success(dahuaAuthService.testConnection());
+    }
+
+    @PostMapping("/aro/test-connection")
+    @Operation(summary = "测试 ARO 实验动物系统连接（使用当前系统设置中的凭证）")
+    public Result<?> testAroConnection(HttpServletRequest httpRequest) {
+        Result<?> denied = requireSuperAdmin(httpRequest);
+        if (denied != null) return denied;
+        return Result.success(aroService.testConnection());
+    }
+
+    @PostMapping("/wincc/test-connection")
+    @Operation(summary = "测试 WinCC 工业组态系统连接（使用当前系统设置中的凭证）")
+    public Result<?> testWinccConnection(HttpServletRequest httpRequest) {
+        Result<?> denied = requireSuperAdmin(httpRequest);
+        if (denied != null) return denied;
+        try {
+            winCcRestTagClient.readValues(WinCcRestTagClient.defaultTestVariableNames());
+            return Result.success(Map.of("ok", true));
+        } catch (IllegalStateException e) {
+            return Result.success(Map.of("ok", false, "error", e.getMessage()));
+        } catch (Exception e) {
+            return Result.success(Map.of("ok", false, "error", "WinCC 连接失败: " + e.getMessage()));
         }
     }
 

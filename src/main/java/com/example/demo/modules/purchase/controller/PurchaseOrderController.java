@@ -9,7 +9,7 @@ import com.example.demo.modules.purchase.dto.CompletePurchaseOrderRequest;
 import com.example.demo.modules.purchase.dto.CreatePurchaseOrderRequest;
 import com.example.demo.modules.purchase.dto.PurchaseOrderView;
 import com.example.demo.modules.purchase.entity.PurchaseOrder;
-import com.example.demo.modules.purchase.enums.PurchaseOrderStatus;
+import com.example.demo.modules.purchase.enums.PurchaseOrderStatusEnum;
 import com.example.demo.modules.purchase.mapper.PurchaseOrderMapper;
 import com.example.demo.modules.purchase.service.PurchaseOrderService;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
@@ -83,7 +83,7 @@ public class PurchaseOrderController {
         order.setApplicantName(userDisplayNameService.resolveDisplayName(user.getId()));
         order.setLocation(request.getLocation().trim());
         order.setContent(request.getContent().trim());
-        order.setStatus(PurchaseOrderStatus.PENDING.name());
+        order.setStatus(PurchaseOrderStatusEnum.PENDING.name());
         order.setIsPublic(Boolean.FALSE.equals(request.getIsPublic()) ? 0 : 1);
         order.setRequestImagesJson(purchaseOrderService.toJsonArray(request.getRequestImages()));
         order.setResultImagesJson("[]");
@@ -147,7 +147,7 @@ public class PurchaseOrderController {
         if (denied != null) return denied;
         PurchaseOrder order = purchaseOrderMapper.findById(id);
         if (order == null) return Result.error("采购单不存在");
-        if (!PurchaseOrderStatus.PENDING.name().equals(order.getStatus())) return Result.error("仅待处理状态可接单");
+        if (!PurchaseOrderStatusEnum.PENDING.name().equals(order.getStatus())) return Result.error("仅待处理状态可接单");
         int updated = purchaseOrderMapper.markProcessing(id, user.getId(), LocalDateTime.now());
         if (updated < 1) return Result.error("接单失败，请刷新后重试");
         publishEvent("STARTED", user, order, Map.of("operatorName", StringUtils.hasText(user.getUsername()) ? user.getUsername() : user.getId()));
@@ -164,7 +164,7 @@ public class PurchaseOrderController {
         if (denied != null) return denied;
         PurchaseOrder order = purchaseOrderMapper.findById(id);
         if (order == null) return Result.error("采购单不存在");
-        if (!PurchaseOrderStatus.PROCESSING.name().equals(order.getStatus())) return Result.error("仅处理中状态可完成");
+        if (!PurchaseOrderStatusEnum.PROCESSING.name().equals(order.getStatus())) return Result.error("仅处理中状态可完成");
         String resultRemark = request == null ? null : request.getResultRemark();
         String resultImagesJson = purchaseOrderService.toJsonArray(request == null ? null : request.getResultImages());
         int updated = purchaseOrderMapper.markCompleted(id, resultRemark, resultImagesJson, LocalDateTime.now());
@@ -317,7 +317,7 @@ public class PurchaseOrderController {
         if (!StringUtils.hasText(status)) return null;
         String value = status.trim().toUpperCase();
         try {
-            return PurchaseOrderStatus.valueOf(value).name();
+            return PurchaseOrderStatusEnum.valueOf(value).name();
         } catch (Exception e) {
             return null;
         }

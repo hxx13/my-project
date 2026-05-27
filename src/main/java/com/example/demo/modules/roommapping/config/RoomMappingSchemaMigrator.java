@@ -73,7 +73,7 @@ public class RoomMappingSchemaMigrator implements ApplicationRunner {
     }
 
     /**
-     * 与 {@link com.example.demo.modules.twin.service.ExamRoomPermissionSyncService} 中判定一致：
+     * 与 {@link com.example.demo.modules.twin.common.service.ExamRoomPermissionSyncService} 中判定一致：
      * 有非空可读列表 → 有权限；否则若 JSON 明显非空数组/对象 → 仍视为有（避免仅有 JSON、展示尚未刷新的老数据排在无权限之后）。
      */
     private void backfillOfficialRoomPermissionFlag() {

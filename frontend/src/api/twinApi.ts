@@ -1,8 +1,18 @@
 import axios from 'axios';
 import { authHttp } from '@/api/core/authHttp';
 import { http as twinHttp } from '@/api/core/http';
+import { authStorage } from '@/features/auth/authStorage';
+import { attachTokenRefreshInterceptor } from '@/api/core/tokenRefresh';
 
 const api = axios.create({ baseURL: '/api/v1/twin/dashboard' });
+api.interceptors.request.use((config) => {
+    const token = authStorage.getToken();
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+attachTokenRefreshInterceptor(api);
 
 const asArrayData = (payload: any): any[] => {
     if (Array.isArray(payload)) return payload;
@@ -48,7 +58,7 @@ export interface DashboardStatsResponse {
 // 💥 真正的网络请求！前端只负责伸手要，再也不自己造假数据了！
 export const fetchDashboardStats = async (): Promise<DashboardStatsResponse> => {
     // Vite proxy 会自动把 /api/v1... 转发给跑在 8080 端口的 Spring Boot
-    const response = await axios.get('/api/v1/twin/dashboard/stats');
+    const response = await authHttp.get('/v1/twin/dashboard/stats');
     return asMapData(response.data?.data || response.data) as DashboardStatsResponse;
 };
 
@@ -74,7 +84,7 @@ export interface DebugRecord {
 
 // 请求 Debug 接口
 export const fetchDebugLogs = async (): Promise<DebugRecord[]> => {
-    const response = await axios.get('/api/v1/twin/dashboard/debug/logs');
+    const response = await authHttp.get('/v1/twin/dashboard/debug/logs');
     return asArrayData(response.data?.data);
 };
 
@@ -86,7 +96,7 @@ export interface DebugLogPageResponse {
 
 // 💥 新增：请求分页的流水数据 (替换掉原来那个一次性拉取全部的老方法)
 export const fetchDebugLogList = async (page: number, size: number = 100): Promise<DebugLogPageResponse> => {
-    const response = await axios.get(`/api/v1/twin/dashboard/debug/logs/list?page=${page}&size=${size}`);
+    const response = await authHttp.get(`/v1/twin/dashboard/debug/logs/list?page=${page}&size=${size}`);
     return response.data?.data || { data: [], total: 0 };
 };
 
@@ -109,7 +119,7 @@ export interface PersonnelPageResponse {
 
 // 请求分页数据
 export const fetchDebugPersonnelList = async (page: number, size: number = 100): Promise<PersonnelPageResponse> => {
-    const response = await axios.get(`/api/v1/twin/dashboard/debug/personnel/list?page=${page}&size=${size}`);
+    const response = await authHttp.get(`/v1/twin/dashboard/debug/personnel/list?page=${page}&size=${size}`);
     return response.data?.data || { data: [], total: 0 };
 };
 
@@ -177,7 +187,7 @@ export const fetchLineChartData = async () => {
 
 // 💥 增加：大屏左侧实时流水列表（冷启动获取最新 N 条真实数据）
 export const fetchRealtimeFeed = async (limit: number = 50) => {
-    const response = await axios.get(`/api/v1/twin/dashboard/realtime-feed?limit=${limit}`);
+    const response = await authHttp.get(`/v1/twin/dashboard/realtime-feed?limit=${limit}`);
     return asArrayData(response.data?.data);
 };
 
@@ -198,7 +208,7 @@ export const fetchAutomationLogsNear = async (params: {
     if (params.excludePenetrationPoll === false) {
         sp.set('excludePenetrationPoll', 'false');
     }
-    const response = await axios.get(`/api/v1/twin/dashboard/automation-logs-near?${sp.toString()}`);
+    const response = await authHttp.get(`/v1/twin/dashboard/automation-logs-near?${sp.toString()}`);
     const d = response.data?.data;
     return Array.isArray(d) ? d : [];
 };
@@ -213,31 +223,31 @@ export interface DashboardStatsResponse {
 
 // 💥 增加 limit 参数，默认深水炸弹级别 (500条)
 export const searchRealtimeFeed = async (keyword: string, limit: number = 9999) => {
-    const response = await axios.get(`/api/v1/twin/dashboard/realtime-feed/search?keyword=${encodeURIComponent(keyword)}&limit=${limit}`);
+    const response = await authHttp.get(`/v1/twin/dashboard/realtime-feed/search?keyword=${encodeURIComponent(keyword)}&limit=${limit}`);
     return asArrayData(response.data?.data);
 };
 
 // 💥 增加：人员档案库专属搜索 API
 export const searchPersonnel = async (keyword: string) => {
-    const response = await axios.get(`/api/v1/twin/dashboard/personnel/search?keyword=${encodeURIComponent(keyword)}`);
+    const response = await authHttp.get(`/v1/twin/dashboard/personnel/search?keyword=${encodeURIComponent(keyword)}`);
     return asArrayData(response.data?.data);
 };
 
 // 💥 触发全量经验值重算
 export const recalculateRpgExp = async () => {
-    const response = await axios.get('/api/v1/twin/rpg/recalculate-all');
+    const response = await authHttp.get('/v1/twin/rpg/recalculate-all');
     return response.data;
 };
 
 // 💥 触发全量人员资料库同步 (假设你的接口叫这个)
 export const syncPersonnelData = async (signal?: AbortSignal) => {
-    const response = await axios.post('/api/v1/twin/personnel/sync-all', undefined, { signal }); // 替换为你的真实后端路径
+    const response = await authHttp.post('/v1/twin/personnel/sync-all', undefined, { signal }); // 替换为你的真实后端路径
     return response.data;
 };
 
 // 💥 触发进出流水全量同步拉取 (假设你的接口叫这个)
 export const syncAccessLogs = async () => {
-    const response = await axios.post('/api/v1/twin/dashboard/sync-logs'); // 替换为你的真实后端路径
+    const response = await authHttp.post('/v1/twin/dashboard/sync-logs'); // 替换为你的真实后端路径
     return response.data;
 };
 
@@ -291,8 +301,8 @@ export const fetchDebugPredictionUserPage = async (
     size: number = 16,
     keyword: string = "",
 ): Promise<DebugPredictionUserPageResponse> => {
-    const response = await axios.get(
-        `/api/v1/twin/prediction/admin/list?page=${page}&size=${size}&keyword=${encodeURIComponent(keyword)}`,
+    const response = await authHttp.get(
+        `/v1/twin/prediction/admin/list?page=${page}&size=${size}&keyword=${encodeURIComponent(keyword)}`,
     );
     return asData<DebugPredictionUserPageResponse>(response.data, { data: [], total: 0 });
 };
@@ -303,18 +313,18 @@ export const fetchDebugPredictionList = fetchDebugPredictionUserPage;
 // 💥 2. 触发后端全量/单点炼丹重算 (Trigger)
 export const triggerModelCalculation = async (userId: string = 'ALL') => {
     // 之前我们在后端已经把这个接口改成了 GET 请求
-    const response = await axios.get(`/api/v1/twin/prediction/admin/trigger?userId=${encodeURIComponent(userId)}`);
+    const response = await authHttp.get(`/v1/twin/prediction/admin/trigger?userId=${encodeURIComponent(userId)}`);
     return response.data;
 };
 
 // 💥 3. 大屏端直接读取某人的专属推演结果 (供你的卡片 UI 使用)
 export const fetchPredictionDashboard = async (userId: string, roomId: string) => {
-    const response = await axios.get(`/api/v1/twin/prediction/dashboard?userId=${encodeURIComponent(userId)}&roomId=${encodeURIComponent(roomId)}`);
+    const response = await authHttp.get(`/v1/twin/prediction/dashboard?userId=${encodeURIComponent(userId)}&roomId=${encodeURIComponent(roomId)}`);
     return asMapData(response.data?.data);
 };
 
 export const fetchPredictionRoomsByUser = async (userId: string): Promise<PredictionRoomItem[]> => {
-    const response = await axios.get(`/api/v1/twin/prediction/rooms?userId=${encodeURIComponent(userId)}`);
+    const response = await authHttp.get(`/v1/twin/prediction/rooms?userId=${encodeURIComponent(userId)}`);
     return asArrayData(response.data?.data);
 };
 
@@ -324,7 +334,7 @@ export const fetchPredictionRoomsByUser = async (userId: string): Promise<Predic
 
 // 🏆 课题组动物订购月度排行榜
 export const fetchAnimalOrderRanking = async (region: 'TOTAL' | 'PUDONG' | 'PUXI') => {
-    const response = await axios.get(`/api/v1/twin/order/ranking?region=${region}`);
+    const response = await authHttp.get(`/v1/twin/order/ranking?region=${region}`);
     return asArrayData(response.data?.data);
 };
 
@@ -332,25 +342,25 @@ export const fetchAnimalOrderRanking = async (region: 'TOTAL' | 'PUDONG' | 'PUXI
 // 💥 完美接入 SEARCH 搜索功能！
 export const fetchGroupOrderDetailData = async (page: number, keyword: string = '') => {
     // 💥 接口地址改为 Controller 里写好的聚合路径
-    const response = await axios.get(`/api/v1/twin/order/admin/grouped-all?page=${page}&keyword=${encodeURIComponent(keyword)}`);
+    const response = await authHttp.get(`/v1/twin/order/admin/grouped-all?page=${page}&keyword=${encodeURIComponent(keyword)}`);
     return asData(response.data, { data: [], total: 0 });
 };
 
 // ⚡ Debug专属：手动触发同步官方数据（可传 AbortSignal）
 export const syncAnimalOrders = async (signal?: AbortSignal) => {
-    const response = await axios.get('/api/v1/twin/order/admin/sync', { signal });
+    const response = await authHttp.get('/v1/twin/order/admin/sync', { signal });
     return response.data;
 };
 
 // ⏸️ Debug专属：暂停正在进行的订单同步
 export const cancelAnimalOrderSync = async () => {
-    const response = await axios.post('/api/v1/twin/order/admin/sync/cancel');
+    const response = await authHttp.post('/v1/twin/order/admin/sync/cancel');
     return response.data;
 };
 
 // 💥 增加 areaName 参数
 export const fetchRetentionWarnings = async (limit: number, areaName: string) => {
-    const res = await axios.get('/api/v1/twin/dashboard/retention-warnings', {
+    const res = await authHttp.get('/v1/twin/dashboard/retention-warnings', {
         params: { limit, areaName }
     });
     const body = res.data;
@@ -378,13 +388,13 @@ export interface UserStatusResponse {
 
 // 💥 查询状态
 export const fetchUserStatus = async (userId: string): Promise<UserStatusResponse> => {
-    const response = await axios.get(`/api/v1/twin/scan/user-status?userId=${userId}`);
+    const response = await authHttp.get(`/v1/twin/scan/user-status?userId=${userId}`);
     return asData<UserStatusResponse>(response.data, { state: 0, userDisciplinaryRecords: [] } as UserStatusResponse);
 };
 
 // 💥 修改状态 (valid: true为解封，false为禁用)
 export const updateUserState = async (userId: string, valid: boolean) => {
-    const response = await axios.post('/api/v1/twin/scan/user-status/update', {
+    const response = await authHttp.post('/v1/twin/scan/user-status/update', {
         userId,
         valid,
         invalidReason: null
@@ -402,24 +412,24 @@ export const updateUserState = async (userId: string, valid: boolean) => {
 
 // 触发全局重算
 export const triggerGroupHeatmapRecalc = async () => {
-    const res = await axios.get('/api/v1/twin/prediction/admin/recalc-group');
+    const res = await authHttp.get('/v1/twin/prediction/admin/recalc-group');
     return res.data;
 };
 
 // 获取房间列表导航册
 export const fetchPredictionRoomList = async () => {
-    const res = await axios.get('/api/v1/twin/prediction/room-list');
+    const res = await authHttp.get('/v1/twin/prediction/room-list');
     return res.data.data || [];
 };
 
 export const fetchGroupHeatmapByRoom = async (roomId: string) => {
-    const res = await axios.get(`/api/v1/twin/prediction/group-heatmap?roomId=${roomId}`);
+    const res = await authHttp.get(`/v1/twin/prediction/group-heatmap?roomId=${roomId}`);
     return res.data.data; // 现在返回的是 { roomData: [], suiteData: [], suiteId: "", suiteName: "" }
 };
 
 // 获取房间上限
 export const fetchRoomCapacity = async (roomId: string, physicalRoomName?: string) => {
-    const res = await axios.get('/api/v1/twin/prediction/room-capacity', {
+    const res = await authHttp.get('/v1/twin/prediction/room-capacity', {
         params: { roomId, physicalRoomName }
     });
     return res.data.data;
@@ -427,14 +437,14 @@ export const fetchRoomCapacity = async (roomId: string, physicalRoomName?: strin
 
 // 设置房间上限
 export const updateRoomCapacity = async (roomId: string, capacity: number, physicalRoomName?: string) => {
-    const res = await axios.post('/api/v1/twin/prediction/room-capacity', { roomId, capacity, physicalRoomName });
+    const res = await authHttp.post('/v1/twin/prediction/room-capacity', { roomId, capacity, physicalRoomName });
     return res.data;
 };
 
 // 💥 获取指定房间的实时房卡与人数状态
 export const fetchRoomCardStatus = async (roomId: string) => {
     // 等你后端写好后，替换成真实的 API 路径
-    // const res = await axios.get(`/api/v1/room/card-status?roomId=${roomId}`);
+    // const res = await authHttp.get(`/v1/room/card-status?roomId=${roomId}`);
     // return res.data.data;
 
     return;
@@ -451,36 +461,36 @@ export interface RoomCardStatus {
 
 export const fetchAllRoomCardStatus = async (): Promise<RoomCardStatus[]> => {
     // 💥 请求你刚刚写在 TwinScanController 里的接口！
-    const res = await axios.get('/api/v1/twin/scan/room/card-status');
+    const res = await authHttp.get('/v1/twin/scan/room/card-status');
     return res.data.data || [];
 };
 
 
 // 📊 获取多维过滤流水列表
 export const fetchFilteredDebugLogs = async (params: Record<string, string | number | boolean | undefined>) => {
-    const res = await axios.get('/api/v1/twin/dashboard/debug/logs/filter', { params });
+    const res = await authHttp.get('/v1/twin/dashboard/debug/logs/filter', { params });
     return res.data?.data || { data: [], total: 0 };
 };
 
 // 📊 获取聚合统计数据 (KPI)
 export const fetchFilteredDebugStats = async (params: Record<string, string | number | boolean | undefined>) => {
-    const res = await axios.get('/api/v1/twin/dashboard/debug/stats', { params });
+    const res = await authHttp.get('/v1/twin/dashboard/debug/stats', { params });
     return asMapData(res.data?.data);
 };
 
 // 🛡️ 黑名单管理 API
 export const fetchBlacklist = async () => {
-    const res = await axios.get('/api/v1/twin/dashboard/debug/blacklist');
+    const res = await authHttp.get('/v1/twin/dashboard/debug/blacklist');
     return asArrayData(res.data?.data);
 };
 
 export const addToBlacklist = async (data: { userId: string; name: string; reason: string }) => {
-    const res = await axios.post('/api/v1/twin/dashboard/debug/blacklist', data);
+    const res = await authHttp.post('/v1/twin/dashboard/debug/blacklist', data);
     return res.data;
 };
 
 export const removeFromBlacklist = async (userId: string) => {
-    const res = await axios.delete(`/api/v1/twin/dashboard/debug/blacklist/${userId}`);
+    const res = await authHttp.delete(`/v1/twin/dashboard/debug/blacklist/${userId}`);
     return res.data;
 };
 
@@ -943,7 +953,7 @@ export const deleteRoomConfig = async (id: number) => {
 };
 
 export const fetchRoomOverview = async () => {
-    const res = await axios.get('/api/v1/twin/dashboard/wechat-overview');
+    const res = await authHttp.get('/v1/twin/dashboard/wechat-overview');
     return res.data.data;
 }
 

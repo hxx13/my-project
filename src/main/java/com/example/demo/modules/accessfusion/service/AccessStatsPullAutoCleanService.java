@@ -1,6 +1,6 @@
 package com.example.demo.modules.accessfusion.service;
 
-import com.example.demo.modules.twin.entity.DahuaSwingStatsPullTask;
+import com.example.demo.modules.twin.dahua.entity.DahuaSwingStatsPullTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

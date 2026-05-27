@@ -8,8 +8,8 @@ import com.example.demo.modules.dahua.service.DahuaDepartmentCacheService;
 import com.example.demo.modules.dahua.service.DahuaDeviceChannelCacheService;
 import com.example.demo.modules.dahua.service.DahuaDeviceChannelRemarkCategoryService;
 import com.example.demo.modules.dahua.service.DahuaDoorGroupCacheService;
-import com.example.demo.modules.twin.service.JobExecutionRegistry;
-import com.example.demo.modules.twin.service.JobSchedulerService;
+import com.example.demo.modules.twin.common.service.JobExecutionRegistry;
+import com.example.demo.modules.twin.common.service.JobSchedulerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
@@ -19,7 +19,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/dahua/meta")
-@CrossOrigin("*")
 @Tag(name = "大华主数据", description = "部门、门组与设备通道缓存接口")
 public class DahuaMetaController {
     private final DahuaDepartmentCacheService departmentCacheService;

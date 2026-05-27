@@ -1,5 +1,6 @@
 import axios, { AxiosError } from "axios";
 import { authStorage } from "@/features/auth/authStorage";
+import { attachTokenRefreshInterceptor } from "./tokenRefresh";
 
 export const adminHttp = axios.create({
   baseURL: "/api/admin",
@@ -58,3 +59,5 @@ adminHttp.interceptors.response.use(
     return Promise.reject(new Error(finalMessage));
   }
 );
+
+attachTokenRefreshInterceptor(adminHttp);

@@ -270,10 +270,9 @@ DEALLOCATE PREPARE stmt_ap;
 -- 预设超级管理员（仅开发/首次初始化；生产环境请改密或删除后自行开户）
 -- Web 登录：POST /api/auth/login/web 使用 username + password
 INSERT INTO sys_user (id, username, password, open_id, role, status, auth_profile)
-VALUES ('SYS_SUPER_ROOT', 'superadmin', 'SuperAdmin@2026', NULL, 'PLATFORM_OWNER', 1, 'WEB_PASSWORD')
+VALUES ('SYS_SUPER_ROOT', 'superadmin', '$2a$10$5u/gpYhKzeZ2j8MzRsPu7.5PtHbmO.RG5MikB640FByTiJiqEljiK', NULL, 'PLATFORM_OWNER', 1, 'WEB_PASSWORD')
 ON DUPLICATE KEY UPDATE
     username = VALUES(username),
-    password = VALUES(password),
     role = VALUES(role),
     status = VALUES(status);
 

@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/access-rules")
-@CrossOrigin("*")
 @Tag(name = "门禁规则", description = "扫码按房间+人员匹配并下发大华授权")
 public class AccessRuleController {
 

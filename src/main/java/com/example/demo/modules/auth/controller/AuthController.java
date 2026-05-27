@@ -1,5 +1,6 @@
 package com.example.demo.modules.auth.controller;
 
+import com.example.demo.common.config.JwtTokenService;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
@@ -23,7 +24,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.CrossOrigin;
+
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -36,7 +37,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin("*")
+
 @Tag(name = "认证模块", description = "Web与微信小程序统一认证接口")
 public class AuthController {
 
@@ -46,19 +47,22 @@ public class AuthController {
     private final PasswordCredentialService passwordCredentialService;
     private final RegistrationInviteService registrationInviteService;
     private final StaffRegistrationService staffRegistrationService;
+    private final JwtTokenService jwtTokenService;
 
     public AuthController(UserMapper userMapper,
                           AuthService authService,
                           AuthContextService authContextService,
                           PasswordCredentialService passwordCredentialService,
                           RegistrationInviteService registrationInviteService,
-                          StaffRegistrationService staffRegistrationService) {
+                          StaffRegistrationService staffRegistrationService,
+                          JwtTokenService jwtTokenService) {
         this.userMapper = userMapper;
         this.authService = authService;
         this.authContextService = authContextService;
         this.passwordCredentialService = passwordCredentialService;
         this.registrationInviteService = registrationInviteService;
         this.staffRegistrationService = staffRegistrationService;
+        this.jwtTokenService = jwtTokenService;
     }
 
     @PostMapping("/login/web")
@@ -143,6 +147,29 @@ public class AuthController {
         }
         if (isDisabled(fresh)) {
             return Result.error("账号已禁用");
+        }
+        fresh.setRole(authService.normalizeRole(fresh.getRole()));
+        return authService.generateAuthResult(fresh);
+    }
+
+    @PostMapping("/token/refresh")
+    @Operation(summary = "用当前 Token（含过期但未超过60天）换取新 Token，供前端自动续期")
+    public Result<?> refreshToken(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return Result.error("未提供 Token");
+        }
+        String token = authHeader.substring("Bearer ".length()).trim();
+        if (token.isBlank()) {
+            return Result.error("Token 为空");
+        }
+        User user = jwtTokenService.validateTokenForRefresh(token);
+        if (user == null) {
+            return Result.error("Token 无效或已超过刷新窗口，请重新登录");
+        }
+        User fresh = userMapper.findById(user.getId());
+        if (fresh == null || (fresh.getStatus() != null && fresh.getStatus() == 0)) {
+            return Result.error("账号不存在或已禁用");
         }
         fresh.setRole(authService.normalizeRole(fresh.getRole()));
         return authService.generateAuthResult(fresh);

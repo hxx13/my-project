@@ -1,7 +1,7 @@
 package com.example.demo.modules.accessfusion.service;
 
 import com.example.demo.modules.accessfusion.entity.AccessRawEvent;
-import com.example.demo.modules.twin.entity.DahuaSwingRecord;
+import com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord;
 
 /**
  * 门禁清洗「人员」维度：以刷卡人实体（工号/姓名/卡号）为准，不用 mappingUserId 做去抖，

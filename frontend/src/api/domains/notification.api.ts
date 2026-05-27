@@ -229,6 +229,33 @@ export async function fetchExternalCommConfigOverview() {
 }
 
 /** 公开运行时配置（无需登录），用于主页公告等 */
+export type ConnectionTestResult = {
+  ok: boolean;
+  error?: string;
+  baseUrl?: string;
+};
+
+export async function testDahuaConnection(): Promise<ConnectionTestResult> {
+  const res = await adminHttp.post<Result<ConnectionTestResult>>("/settings/dahua/test-connection");
+  const body = res.data;
+  if (!body?.success) throw new Error(body?.message || "连接测试失败");
+  return body.data;
+}
+
+export async function testAroConnection(): Promise<ConnectionTestResult> {
+  const res = await adminHttp.post<Result<ConnectionTestResult>>("/settings/aro/test-connection");
+  const body = res.data;
+  if (!body?.success) throw new Error(body?.message || "连接测试失败");
+  return body.data;
+}
+
+export async function testWinccConnection(): Promise<ConnectionTestResult> {
+  const res = await adminHttp.post<Result<ConnectionTestResult>>("/settings/wincc/test-connection");
+  const body = res.data;
+  if (!body?.success) throw new Error(body?.message || "连接测试失败");
+  return body.data;
+}
+
 export async function fetchPublicRuntimeConfig(): Promise<Record<string, string>> {
   const res = await fetch("/api/public/runtime-config");
   const json = (await res.json()) as Result<Record<string, string>>;

@@ -10,15 +10,11 @@ import java.util.List;
 public interface UserMapper {
     User findByUsername(@Param("username") String username);
 
-    User findByUsernameAndPassword(@Param("username") String username, @Param("password") String password);
-
     User findByOpenId(@Param("openId") String openId);
 
     User findById(@Param("id") String id);
 
     List<User> findByIds(@Param("ids") List<String> ids);
-
-    User findByIdAndPassword(@Param("id") String id, @Param("password") String password);
 
     int insertUser(User user);
 

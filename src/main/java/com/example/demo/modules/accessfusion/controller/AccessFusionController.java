@@ -24,7 +24,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/access-fusion")
-@CrossOrigin("*")
 @Tag(name = "门禁清洗", description = "大华摆闸归一、方向推断与统计投喂")
 public class AccessFusionController {
 

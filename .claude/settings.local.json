@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./mvnw compile *)",
+      "Bash(./mvnw -q exec:java -Dexec.mainClass=\"org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder\" -Dexec.classpathScope=compile -Dexec.args=\"SuperAdmin@2026\")",
+      "Bash(node -e \"try { const bcrypt = require\\('bcryptjs'\\); console.log\\(bcrypt.hashSync\\('SuperAdmin@2026', 10\\)\\); } catch\\(e\\) { try { const bcrypt = require\\('bcrypt'\\); console.log\\(bcrypt.hashSync\\('SuperAdmin@2026', 10\\)\\); } catch\\(e2\\) { console.log\\('NO_BCRYPT'\\); } }\")",
+      "Bash(python -c \"import bcrypt; print\\(bcrypt.hashpw\\(b'SuperAdmin@2026', bcrypt.gensalt\\(10\\)\\).decode\\(\\)\\)\")",
+      "Bash(python -c \"import hashlib; print\\('no bcrypt module'\\)\")",
+      "Bash(./mvnw -q dependency:build-classpath -DincludeScope=compile -Dmdep.outputFile=cp.txt)",
+      "Bash(where java *)",
+      "Bash(java -version)",
+      "Bash(where javac *)",
+      "Bash(javac -version)",
+      "Bash(./mvnw -q compile)",
+      "Bash(npx tsc *)",
+      "Bash(node -e \"const a = require\\('axios'\\); console.log\\(a.VERSION || 'unknown'\\)\")",
+      "Bash(mvn compile *)",
+      "Bash(where mvn *)",
+      "Bash(cmd /c \"mvnw.cmd compile -q\")",
+      "Bash(./mvnw.cmd compile *)",
+      "Bash(git checkout *)",
+      "Bash(cp entity/__TRACKED_VAR__ common/entity/__TRACKED_VAR__)",
+      "Bash(sed -i 's/package com\\\\.example\\\\.demo\\\\.modules\\\\.twin\\\\.entity;/package com.example.demo.modules.twin.common.entity;/' common/entity/__TRACKED_VAR__)",
+      "Bash(rm entity/__TRACKED_VAR__)",
+      "Bash(cp mapper/__TRACKED_VAR__ common/mapper/__TRACKED_VAR__)",
+      "Bash(sed -i 's/package com\\\\.example\\\\.demo\\\\.modules\\\\.twin\\\\.mapper;/package com.example.demo.modules.twin.common.mapper;/' common/mapper/__TRACKED_VAR__)",
+      "Bash(cp controller/__TRACKED_VAR__ common/controller/__TRACKED_VAR__)",
+      "Bash(sed -i 's/package com\\\\.example\\\\.demo\\\\.modules\\\\.twin\\\\.controller;/package com.example.demo.modules.twin.common.controller;/' common/controller/__TRACKED_VAR__)",
+      "Bash(rm controller/__TRACKED_VAR__)",
+      "Bash(cp bootstrap/__TRACKED_VAR__ common/bootstrap/__TRACKED_VAR__)",
+      "Bash(sed -i 's/package com\\\\.example\\\\.demo\\\\.modules\\\\.twin\\\\.bootstrap;/package com.example.demo.modules.twin.common.bootstrap;/' common/bootstrap/__TRACKED_VAR__)"
+    ]
+  }
+}

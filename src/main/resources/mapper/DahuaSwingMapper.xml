@@ -495,4 +495,12 @@
           AND channel_code = #{pendingChannel}
           AND UPPER(state) = 'PENDING_ACTIVATION'
     </select>
+
+    <select id="tryAcquireLock" resultType="int">
+        SELECT GET_LOCK(#{lockName}, #{timeoutSeconds})
+    </select>
+
+    <select id="releaseLock" resultType="int">
+        SELECT RELEASE_LOCK(#{lockName})
+    </select>
 </mapper>

@@ -10,7 +10,7 @@ import com.example.demo.modules.me.inbox.dto.InboxItemDto;
 import com.example.demo.modules.policy.BizDomains;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
 import com.example.demo.modules.purchase.entity.PurchaseOrder;
-import com.example.demo.modules.purchase.enums.PurchaseOrderStatus;
+import com.example.demo.modules.purchase.enums.PurchaseOrderStatusEnum;
 import com.example.demo.modules.purchase.mapper.PurchaseOrderMapper;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -48,8 +48,8 @@ public class PurchaseInboxFeedContributor implements InboxFeedContributor {
         LocalDateTime before = query.getBeforeTime();
         int cap = query.getPerSourceCap();
         List<PurchaseOrder> merged = new ArrayList<>();
-        merged.addAll(fetchStatus(user, PurchaseOrderStatus.PENDING.name(), cap));
-        merged.addAll(fetchStatus(user, PurchaseOrderStatus.PROCESSING.name(), cap));
+        merged.addAll(fetchStatus(user, PurchaseOrderStatusEnum.PENDING.name(), cap));
+        merged.addAll(fetchStatus(user, PurchaseOrderStatusEnum.PROCESSING.name(), cap));
         ZoneId z = ZoneId.systemDefault();
         return merged.stream()
                 .filter(o -> before == null || sortTime(o).isBefore(before))

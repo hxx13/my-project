@@ -3,6 +3,8 @@ package com.example.demo.modules.facilitymaintenance.service;
 import com.example.demo.common.excel.ExcelExportColumnAutosizer;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -27,6 +29,7 @@ import java.util.*;
 @Service
 public class FacilityMaintenanceService {
 
+    private static final Logger log = LoggerFactory.getLogger(FacilityMaintenanceService.class);
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
@@ -1315,6 +1318,7 @@ public class FacilityMaintenanceService {
                 }
             }
         } catch (Exception ignored) {
+            log.debug("解析gridJson失败: {}", ignored.getMessage());
         }
         Object sdObj = sheetRow.get("sheetDate");
         LocalDate sd;

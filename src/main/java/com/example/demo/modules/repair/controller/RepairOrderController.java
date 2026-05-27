@@ -9,7 +9,7 @@ import com.example.demo.modules.repair.dto.CompleteRepairOrderRequest;
 import com.example.demo.modules.repair.dto.CreateRepairOrderRequest;
 import com.example.demo.modules.repair.dto.RepairOrderView;
 import com.example.demo.modules.repair.entity.RepairOrder;
-import com.example.demo.modules.repair.enums.RepairOrderStatus;
+import com.example.demo.modules.repair.enums.RepairOrderStatusEnum;
 import com.example.demo.modules.repair.mapper.RepairOrderMapper;
 import com.example.demo.modules.repair.service.RepairOrderService;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
@@ -85,7 +85,7 @@ public class RepairOrderController {
         order.setApplicantName(userDisplayNameService.resolveDisplayName(user.getId()));
         order.setLocation(request.getLocation().trim());
         order.setContent(request.getContent().trim());
-        order.setStatus(RepairOrderStatus.PENDING.name());
+        order.setStatus(RepairOrderStatusEnum.PENDING.name());
         order.setIsPublic(Boolean.FALSE.equals(request.getIsPublic()) ? 0 : 1);
         order.setRequestImagesJson(repairOrderService.toJsonArray(request.getRequestImages()));
         order.setResultImagesJson("[]");
@@ -169,7 +169,7 @@ public class RepairOrderController {
 
         RepairOrder order = repairOrderMapper.findById(id);
         if (order == null) return Result.error("报修单不存在");
-        if (!RepairOrderStatus.PENDING.name().equals(order.getStatus())) {
+        if (!RepairOrderStatusEnum.PENDING.name().equals(order.getStatus())) {
             return Result.error("仅待处理状态可接单");
         }
         int updated = repairOrderMapper.markProcessing(id, user.getId(), LocalDateTime.now());
@@ -191,7 +191,7 @@ public class RepairOrderController {
 
         RepairOrder order = repairOrderMapper.findById(id);
         if (order == null) return Result.error("报修单不存在");
-        if (!RepairOrderStatus.PROCESSING.name().equals(order.getStatus())) {
+        if (!RepairOrderStatusEnum.PROCESSING.name().equals(order.getStatus())) {
             return Result.error("仅处理中状态可完成");
         }
         String resultRemark = request == null ? null : request.getResultRemark();
@@ -336,7 +336,7 @@ public class RepairOrderController {
         }
         String value = status.trim().toUpperCase();
         try {
-            return RepairOrderStatus.valueOf(value).name();
+            return RepairOrderStatusEnum.valueOf(value).name();
         } catch (Exception e) {
             return null;
         }

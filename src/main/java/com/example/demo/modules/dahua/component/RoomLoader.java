@@ -1,5 +1,7 @@
 package com.example.demo.modules.dahua.component;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
@@ -12,6 +14,9 @@ import java.util.Properties;
 
 @Component
 public class RoomLoader {
+
+    private static final Logger log = LoggerFactory.getLogger(RoomLoader.class);
+
     private final Map<String, String> roomMap = new HashMap<>();
 
     @PostConstruct
@@ -21,10 +26,10 @@ public class RoomLoader {
                 Properties props = new Properties();
                 props.load(new InputStreamReader(is, StandardCharsets.UTF_8));
                 props.forEach((k, v) -> roomMap.put(String.valueOf(k).trim(), String.valueOf(v).trim()));
-                System.out.println("✅ [映射表] 已加载 " + roomMap.size() + " 个房间翻译规则");
+                log.info("[映射表] 已加载 {} 个房间翻译规则", roomMap.size());
             }
         } catch (Exception e) {
-            System.err.println("❌ [映射表] 加载异常: " + e.getMessage());
+            log.error("[映射表] 加载异常: {}", e.getMessage());
         }
     }
 

@@ -1,5 +1,6 @@
 import axios, { AxiosError } from "axios";
 import { authStorage } from "@/features/auth/authStorage";
+import { attachTokenRefreshInterceptor } from "./tokenRefresh";
 
 export const authHttp = axios.create({
   baseURL: "/api",
@@ -46,3 +47,5 @@ authHttp.interceptors.response.use(
     return Promise.reject(new Error(message));
   }
 );
+
+attachTokenRefreshInterceptor(authHttp);

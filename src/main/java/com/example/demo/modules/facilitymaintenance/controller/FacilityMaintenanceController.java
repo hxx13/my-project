@@ -7,6 +7,8 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.facilitymaintenance.service.FacilityMaintenanceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +31,7 @@ import java.util.Map;
 @Tag(name = "检查维护", description = "机房巡查、耗材、更换记录")
 public class FacilityMaintenanceController {
 
+    private static final Logger log = LoggerFactory.getLogger(FacilityMaintenanceController.class);
     private static final DateTimeFormatter FN_TS = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final ZoneId ZONE_CN = ZoneId.of("Asia/Shanghai");
 
@@ -729,10 +732,12 @@ public class FacilityMaintenanceController {
         try {
             return OffsetDateTime.parse(s).atZoneSameInstant(ZONE_CN).toLocalDateTime();
         } catch (Exception ignored) {
+            log.debug("OffsetDateTime parse attempt failed: {}", ignored.getMessage());
         }
         try {
             return LocalDateTime.parse(s);
         } catch (Exception ignored) {
+            log.debug("LocalDateTime parse attempt failed: {}", ignored.getMessage());
         }
         try {
             return LocalDateTime.parse(s.replace(" ", "T"));

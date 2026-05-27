@@ -121,7 +121,7 @@ export async function fetchWinccTelemetrySnapshot(
 ): Promise<TelemetrySnapshot> {
   const sync = options?.sync === true;
   const vn = options?.variableNames?.trim();
-  const res = await axios.get<ApiResult<TelemetrySnapshot>>(
+  const res = await authHttp.get<ApiResult<TelemetrySnapshot>>(
     "/api/v1/telemetry/wincc/snapshot",
     {
       params: {
@@ -204,7 +204,7 @@ export async function fetchWinccAnimalRoomHub(
   const soloWidthPx = options?.soloWidthPx ?? 960;
   const campus = options?.campus;
   const hubClient = options?.hubClient;
-  const res = await axios.get<ApiResult<AnimalRoomHubDto>>("/api/v1/telemetry/wincc/animal-room-hub", {
+  const res = await authHttp.get<ApiResult<AnimalRoomHubDto>>("/api/v1/telemetry/wincc/animal-room-hub", {
     params: {
       sync: sync ? "true" : "false",
       soloWidthPx,
@@ -615,7 +615,7 @@ export function formatTelemetryTs(iso: string | null | undefined): string {
 }
 
 export async function fetchWinccDockPollConfig(): Promise<TelemetryWinccDockPollConfig> {
-  const res = await axios.get<ApiResult<TelemetryWinccDockPollConfig>>(
+  const res = await authHttp.get<ApiResult<TelemetryWinccDockPollConfig>>(
     "/api/v1/telemetry/wincc/dock-poll-config"
   );
   const body = res.data;
@@ -626,7 +626,7 @@ export async function fetchWinccDockPollConfig(): Promise<TelemetryWinccDockPoll
 }
 
 export async function fetchWinccSequentialDiagnostic(): Promise<TelemetrySequentialDiagnostic> {
-  const res = await axios.get<ApiResult<TelemetrySequentialDiagnostic>>(
+  const res = await authHttp.get<ApiResult<TelemetrySequentialDiagnostic>>(
     "/api/v1/telemetry/wincc/diagnostic/sequential-built-in-then-watchlist"
   );
   const body = res.data;
@@ -652,7 +652,7 @@ export async function queryWatchlistAlarmLimits(
   variableNames: string[],
   currentValueByVariable?: Record<string, string | null | undefined>
 ): Promise<WatchlistAlarmLimitsBatch> {
-  const res = await axios.post<ApiResult<WatchlistAlarmLimitsBatch>>("/api/v1/telemetry/watchlists/alarm-limits/query", {
+  const res = await authHttp.post<ApiResult<WatchlistAlarmLimitsBatch>>("/api/v1/telemetry/watchlists/alarm-limits/query", {
     variableNames,
     currentValueByVariable: currentValueByVariable ?? {},
   });
@@ -676,7 +676,7 @@ export async function patchWatchlistTagAlarmOverrides(
   payload: { alarmOverrideMin?: string | null; alarmOverrideMax?: string | null }
 ): Promise<TelemetryWatchlistTagDto> {
   const code = encodeURIComponent(bundleCode);
-  const res = await axios.patch<ApiResult<TelemetryWatchlistTagDto>>(
+  const res = await authHttp.patch<ApiResult<TelemetryWatchlistTagDto>>(
     `/api/v1/telemetry/watchlists/${code}/tags/${tagId}/alarm-overrides`,
     payload
   );

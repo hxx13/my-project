@@ -25,7 +25,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.springframework.format.annotation.DateTimeFormat;
 
-import org.springframework.web.bind.annotation.CrossOrigin;
+
 
 import org.springframework.web.bind.annotation.GetMapping;
 
@@ -59,7 +59,7 @@ import java.util.Map;
 
 @RequestMapping("/api/admin/telemetry/archive")
 
-@CrossOrigin(origins = "*")
+
 
 @Tag(name = "遥测归档(管理)", description = "telemetry_value_archive 查询与清理")
 

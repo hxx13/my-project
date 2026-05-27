@@ -1,5 +1,6 @@
 package com.example.demo.modules.invite;
 
+import com.example.demo.modules.notification.service.NotificationSettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,16 +29,23 @@ public class RegistrationInviteService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final RegistrationInviteJdbcRepository repo;
-    private final String pepper;
+    private final NotificationSettingsService settingsService;
+    private final String defaultPepper;
 
     public RegistrationInviteService(RegistrationInviteJdbcRepository repo,
-                                       @Value("${app.invite-code-pepper:change-me-in-production}") String pepper) {
+                                     NotificationSettingsService settingsService,
+                                     @Value("${app.invite-code-pepper:change-me-in-production}") String defaultPepper) {
         this.repo = repo;
-        this.pepper = pepper;
+        this.settingsService = settingsService;
+        this.defaultPepper = defaultPepper;
+    }
+
+    private String resolvePepper() {
+        return settingsService.getEffectiveValue("credentials", "invite_code_pepper", defaultPepper);
     }
 
     public String hashOfNormalized(String normalized) {
-        return InviteCodeHasher.sha256Hex(pepper, normalized);
+        return InviteCodeHasher.sha256Hex(resolvePepper(), normalized);
     }
 
     /** 生成可读推荐码（不含易混 0/O、1/I） */

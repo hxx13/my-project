@@ -1,20 +1,24 @@
 package com.example.demo.modules.aro.service;
 
 import com.alibaba.fastjson2.JSON;
+import com.example.demo.common.event.CredentialsChangedEvent;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.dto.AroRecord;
+import com.example.demo.modules.notification.service.NotificationSettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.example.demo.modules.twin.support.TwinTimingDiagnostics;
+import com.example.demo.modules.twin.common.support.TwinTimingDiagnostics;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
-import javax.annotation.PostConstruct; // 注意顶部要补上这个导入
+import javax.annotation.PostConstruct;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,19 +38,57 @@ public class AroService {
     private String cachedToken = null;
     private volatile String lastAroErrorMessage = "";
 
-    // 🚨 你的 ARO 系统真实账号和密码
-    private final String account = "15001771038";
-    private final String password = "88888888";
+    // @Value 仅作为默认值，运行时优先从系统设置（sys_system_config）读取
+    @Value("${app.aro.account:}")
+    private String defaultAccount;
+    @Value("${app.aro.password:}")
+    private String defaultPassword;
+
+    private String account;
+    private String password;
+
+    private final NotificationSettingsService settingsService;
+
+    public AroService(NotificationSettingsService settingsService) {
+        this.settingsService = settingsService;
+    }
 
     @PostConstruct
     public void forceInitialLogin() {
-        System.out.println("\n🔥 [系统点火] 正在优先抢占 ARO 官方全局 Token，阻塞其他无关任务...");
+        reloadCredentials();
+        log.info("[系统点火] 正在优先抢占 ARO 官方全局 Token，阻塞其他无关任务...");
         boolean success = login();
         if (success) {
-            System.out.println("✅ [系统点火] ARO Token 抢占成功！主电源已合闸，放行后续自检与雷达订阅！\n");
+            log.info("[系统点火] ARO Token 抢占成功！主电源已合闸，放行后续自检与雷达订阅！");
         } else {
-            System.err.println("❌ [系统点火] ARO Token 获取失败，请检查账号密码或网络！\n");
+            log.error("[系统点火] ARO Token 获取失败，请检查账号密码或网络！");
         }
+    }
+
+    /** 从 sys_system_config 加载凭证，DB 无值时回退到 @Value / 环境变量 */
+    private void reloadCredentials() {
+        this.account = settingsService.getEffectiveValue("credentials", "aro.account", defaultAccount);
+        this.password = settingsService.getEffectiveValue("credentials", "aro.password", defaultPassword);
+    }
+
+    @EventListener
+    public void onCredentialsChanged(CredentialsChangedEvent event) {
+        if (event.isCredentials() && event.getConfigKey() != null && event.getConfigKey().startsWith("aro.")) {
+            log.info("[ARO] 系统设置凭证变动，重载并清除旧 Token: {}", event.getConfigKey());
+            reloadCredentials();
+            this.cachedToken = null;
+        }
+    }
+
+    /** 测试连接：尝试登录 ARO，成功返回 true，失败返回错误消息。 */
+    public Map<String, Object> testConnection() {
+        reloadCredentials();
+        this.cachedToken = null;
+        boolean ok = login();
+        if (ok) {
+            return Map.of("ok", true);
+        }
+        return Map.of("ok", false, "error", getLastAroErrorMessage());
     }
 
     /**
@@ -64,7 +106,7 @@ public class AroService {
         HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
 
         try {
-            System.out.println("🔄 [ARO] 正在请求登录获取 Token...");
+            log.info("[ARO] 正在请求登录获取 Token...");
             Map response = restTemplate.postForObject(url, request, Map.class);
 
             if (response != null && response.containsKey("data")) {
@@ -72,7 +114,7 @@ public class AroService {
                 if (data.containsKey("token")) {
                     this.cachedToken = (String) data.get("token");
                     this.lastAroErrorMessage = "";
-                    System.out.println("✅ [ARO] 登录成功！已获取最新 Token。");
+                    log.info("[ARO] 登录成功！已获取最新 Token。");
                     TwinTimingDiagnostics.logAro("login", "-", System.currentTimeMillis() - t0, true, "token ok");
                     return true;
                 }
@@ -80,7 +122,7 @@ public class AroService {
             this.lastAroErrorMessage = "ARO 登录失败: 返回体缺少 token";
         } catch (Exception e) {
             this.lastAroErrorMessage = "ARO 登录失败: " + e.getMessage();
-            System.err.println("❌ [ARO] 登录失败: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            log.error("[ARO] 登录失败", e);
             TwinTimingDiagnostics.logAro("login", "-", System.currentTimeMillis() - t0, false, e.getMessage());
             return false;
         }
@@ -168,16 +210,16 @@ public class AroService {
 
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
-                System.out.println("⚠️ [ARO] Token 已过期，正在重新登录...");
+                log.info("[ARO] Token 已过期，正在重新登录...");
                 this.cachedToken = null;
                 if (login()) {
                     return fetchRecordsByCondition(rangeDate, state, pageNum, pageSize);
                 }
             }
-            System.err.println("❌ [ARO] 拉取记录报错: " + e.getMessage());
+            log.error("[ARO] 拉取记录报错", e);
             return new ArrayList<>();
         } catch (Exception e) {
-            System.err.println("❌ [ARO] 网络异常: " + e.getMessage());
+            log.error("[ARO] 网络异常", e);
             return new ArrayList<>();
         }
     }
@@ -208,7 +250,7 @@ public class AroService {
         int pageSize = 100; // 每次拉取 100 人
         boolean keepFetching = true;
 
-        System.out.println("👻 [人员资料收割机] 开始启动，准备从官方 ARO 扒取全量数据...");
+        log.info("[人员资料收割机] 开始启动，准备从官方 ARO 扒取全量数据...");
 
         while (keepFetching) {
             String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/user/list?" +
@@ -235,7 +277,7 @@ public class AroService {
                             keepFetching = false; // 没数据了，退出
                         } else {
                             allPersonnel.addAll(pageList);
-                            System.out.println("✅ 已获取第 " + pageNum + " 页数据，当前累计人数: " + allPersonnel.size());
+                            log.info("已获取第 {} 页数据，当前累计人数: {}", pageNum, allPersonnel.size());
                             pageNum++;
                             Thread.sleep(800); // 战术停顿 0.8 秒，防封杀
                         }
@@ -244,12 +286,12 @@ public class AroService {
                     }
                 }
             } catch (Exception e) {
-                System.err.println("❌ [人员资料拉取失败] 第 " + pageNum + " 页异常: " + e.getMessage());
+                log.error("[人员资料拉取失败] 第 {} 页异常", pageNum, e);
                 keepFetching = false;
             }
         }
 
-        System.out.println("🎉 [人员资料收割机] 任务完成！共计获取: " + allPersonnel.size() + " 人！");
+        log.info("[人员资料收割机] 任务完成！共计获取: {} 人！", allPersonnel.size());
         return allPersonnel;
     }
 
@@ -290,7 +332,7 @@ public class AroService {
             }
             return new ArrayList<>();
         } catch (Exception e) {
-            System.err.println("❌ [ARO] 人员检索回源失败: " + e.getMessage());
+            log.error("[ARO] 人员检索回源失败", e);
             return new ArrayList<>();
         }
     }
@@ -340,17 +382,17 @@ public class AroService {
                             "rooms=" + parsed.size());
                     return parsed;
                 }
-                System.err.println("⚠️ [ARO-探测] 可进入房间返回格式异常 | userId=" + userId);
+                log.warn("[ARO-探测] 可进入房间返回格式异常 | userId={}", userId);
             }
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 this.cachedToken = null;
                 if (login()) return getExamOfflineRoom(userId);
             }
-            System.err.println("❌ [ARO-探测] 可进入房间查询失败 | userId=" + userId + " | err=" + e.getMessage());
+            log.error("[ARO-探测] 可进入房间查询失败 | userId={}", userId, e);
             TwinTimingDiagnostics.logAro("examOfflineRoom", userId, System.currentTimeMillis() - t0, false, e.getMessage());
         } catch (Exception e) {
-            System.err.println("❌ [ARO-探测] 可进入房间查询异常 | userId=" + userId + " | err=" + e.getMessage());
+            log.error("[ARO-探测] 可进入房间查询异常 | userId={}", userId, e);
             TwinTimingDiagnostics.logAro("examOfflineRoom", userId, System.currentTimeMillis() - t0, false, e.getMessage());
         }
         TwinTimingDiagnostics.logAro("examOfflineRoom", userId, System.currentTimeMillis() - t0, true, "empty");
@@ -505,7 +547,7 @@ public class AroService {
 
             if (!response.getStatusCode().is2xxSuccessful()) {
                 this.lastAroErrorMessage = "ARO HTTP 错误: " + response.getStatusCodeValue();
-                System.err.println("❌ [ARO 响应] HTTP 非成功状态: " + response.getStatusCodeValue());
+                log.warn("[ARO 响应] HTTP 非成功状态: {}", response.getStatusCodeValue());
                 return false;
             }
             Map respBody = response.getBody();
@@ -522,13 +564,16 @@ public class AroService {
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 this.cachedToken = null;
-                if (login()) return submitAccessRecord(userId, roomId, accessType);
+                login();
+                this.lastAroErrorMessage = "ARO 认证过期，已刷新令牌（不自动重试提交，由上游定时任务下一节拍重试）";
+                log.warn("[ARO 响应] 401 未授权，已刷新令牌但不重试本次提交 userId={}", userId);
+                return false;
             }
             this.lastAroErrorMessage = "ARO 请求失败: " + e.getStatusCode().value() + " " + e.getStatusText();
-            System.err.println("❌ [ARO 响应] 官方系统拒绝: " + e.getMessage());
+            log.error("[ARO 响应] 官方系统拒绝", e);
         } catch (Exception e) {
             this.lastAroErrorMessage = "ARO 请求异常: " + e.getMessage();
-            System.err.println("❌ [ARO 崩溃] 提交门禁记录断网或超时: " + e.getMessage());
+            log.error("[ARO 崩溃] 提交门禁记录断网或超时", e);
         }
         return false;
     }
@@ -590,7 +635,7 @@ public class AroService {
         if (this.cachedToken == null && !login()) return null;
 
         String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/order/list?pageNum=" + pageNum + "&pageSize=" + pageSize;
-        System.out.println("🌐 [ARO 请求] 拉取动物订单 page=" + pageNum + ", size=" + pageSize);
+        log.info("[ARO 请求] 拉取动物订单 page={}, size={}", pageNum, pageSize);
 
         try {
             // 完美照抄你们的 uri 穿甲弹防转义设计
@@ -607,19 +652,19 @@ public class AroService {
                     // 只把最核心的 data 层剥离出去返回
                     return (Map<String, Object>) response.getBody().get("data");
                 } else {
-                    System.err.println("❌ [ARO 响应] 接口拒绝: " + response.getBody().get("message"));
+                    log.warn("[ARO 响应] 接口拒绝: {}", response.getBody().get("message"));
                 }
             }
         } catch (org.springframework.web.client.HttpClientErrorException e) {
             // 完美照抄你们的 401 自动重登录机制！
             if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
-                System.out.println("⚠️ [ARO] Token 已过期，正在重新登录并无缝重试...");
+                log.info("[ARO] Token 已过期，正在重新登录并无缝重试...");
                 this.cachedToken = null;
                 if (login()) return fetchAnimalOrderPage(pageNum, pageSize);
             }
-            System.err.println("❌ [ARO 响应] 拉取订单失败: " + e.getMessage());
+            log.error("[ARO 响应] 拉取订单失败", e);
         } catch (Exception e) {
-            System.err.println("❌ [ARO 崩溃] 拉取订单异常: " + e.getMessage());
+            log.error("[ARO 崩溃] 拉取订单异常", e);
         }
         return null;
     }
@@ -667,7 +712,7 @@ public class AroService {
         if (this.cachedToken == null && !login()) return false;
 
         String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/user/updateState";
-        System.out.println("⚡ [风控执行] 正在" + (valid ? "解封" : "封禁") + "人员: " + userId);
+        log.info("[风控执行] 正在{}人员: {}", (valid ? "解封" : "封禁"), userId);
 
         Map<String, Object> body = new HashMap<>();
         body.put("userId", userId);
@@ -680,7 +725,7 @@ public class AroService {
             ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.POST, entity, Map.class);
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("✅ [风控执行] 状态修改成功！");
+                log.info("[风控执行] 状态修改成功！");
                 return true;
             }
         } catch (org.springframework.web.client.HttpClientErrorException e) {
@@ -688,9 +733,9 @@ public class AroService {
                 this.cachedToken = null;
                 if (login()) return updateUserState(userId, valid);
             }
-            System.err.println("❌ [风控执行] 修改失败: " + e.getMessage());
+            log.error("[风控执行] 修改失败", e);
         } catch (Exception e) {
-            System.err.println("❌ [风控执行] 网络异常: " + e.getMessage());
+            log.error("[风控执行] 网络异常", e);
         }
         return false;
     }

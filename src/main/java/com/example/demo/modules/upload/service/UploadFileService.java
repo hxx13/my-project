@@ -1,5 +1,7 @@
 package com.example.demo.modules.upload.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -11,6 +13,7 @@ import java.util.List;
 
 @Service
 public class UploadFileService {
+    private static final Logger log = LoggerFactory.getLogger(UploadFileService.class);
     private static final String FILE_PREFIX = "/api/upload/files/";
 
     @Value("${app.upload.base-dir:uploads}")
@@ -39,6 +42,7 @@ public class UploadFileService {
         try {
             Files.deleteIfExists(filePath);
         } catch (Exception ignored) {
+            log.debug("删除文件失败: {}", ignored.getMessage());
         }
     }
 

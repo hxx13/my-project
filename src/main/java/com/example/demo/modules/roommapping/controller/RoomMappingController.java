@@ -7,8 +7,8 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.roommapping.dto.OfficialPermissionLevelPatchRequest;
 import com.example.demo.modules.roommapping.dto.RoomMappingImportStats;
 import com.example.demo.modules.roommapping.service.RoomMappingService;
-import com.example.demo.modules.twin.service.JobExecutionRegistry;
-import com.example.demo.modules.twin.service.JobSchedulerService;
+import com.example.demo.modules.twin.common.service.JobExecutionRegistry;
+import com.example.demo.modules.twin.common.service.JobSchedulerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
@@ -17,7 +17,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/room-mapping")
-@CrossOrigin("*")
 @Tag(name = "房间通道映射", description = "ARO 房间与大华通道编码对照（room_mapping.csv 落库）")
 public class RoomMappingController {
 

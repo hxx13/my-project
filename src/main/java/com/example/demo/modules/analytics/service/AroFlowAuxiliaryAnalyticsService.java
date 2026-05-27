@@ -2,7 +2,7 @@ package com.example.demo.modules.analytics.service;
 
 import com.example.demo.modules.accessfusion.mapper.AccessCleanedEventMapper;
 import com.example.demo.modules.accessfusion.service.AccessAudienceConstants;
-import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
+import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 

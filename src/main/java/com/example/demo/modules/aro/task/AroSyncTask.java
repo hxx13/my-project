@@ -11,10 +11,10 @@ import com.example.demo.modules.aro.service.AroPersonnelDatabaseService;
 import com.example.demo.modules.aro.service.RealtimeEventDedupService;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.aro.service.AroStartupAsyncService;
-import com.example.demo.modules.twin.component.RoomNormalizer;
-import com.example.demo.modules.twin.support.AccessLogFeedProvenanceBuilder;
-import com.example.demo.modules.twin.support.FreezeReaperAuditContext;
-import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
+import com.example.demo.modules.twin.common.component.RoomNormalizer;
+import com.example.demo.modules.twin.common.support.AccessLogFeedProvenanceBuilder;
+import com.example.demo.modules.twin.common.support.FreezeReaperAuditContext;
+import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +28,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Component
-@EnableScheduling
 public class AroSyncTask {
 
     private static final Logger log = LoggerFactory.getLogger(AroSyncTask.class);
@@ -42,17 +41,17 @@ public class AroSyncTask {
     @Autowired private AroDatabaseMapper aroDatabaseMapper;
     @Autowired private RealtimeEventDedupService realtimeEventDedupService;
     @Autowired private AroStartupAsyncService aroStartupAsyncService;
-    @Autowired private com.example.demo.modules.twin.service.TwinDashboardService dashboardService;
+    @Autowired private com.example.demo.modules.twin.dashboard.service.TwinDashboardService dashboardService;
     @Autowired private TwinDashboardMapper dashboardMapper;
-    @Autowired private com.example.demo.modules.twin.service.TwinCardMappingService twinCardMappingService;
-    @Autowired private com.example.demo.modules.twin.service.TwinCardMappingService mappingService;
-    @Autowired private com.example.demo.modules.twin.service.TwinFreezeConfigService freezeConfigService;
-    @Autowired @Lazy private com.example.demo.modules.twin.service.JobSchedulerService jobSchedulerService;
-    @Autowired private com.example.demo.modules.twin.service.DahuaAutoSignoutService dahuaAutoSignoutService;
-    @Autowired private com.example.demo.modules.twin.service.TwinAutomationLogService automationLogService;
+    @Autowired private com.example.demo.modules.twin.card.service.TwinCardMappingService twinCardMappingService;
+    @Autowired private com.example.demo.modules.twin.card.service.TwinCardMappingService mappingService;
+    @Autowired private com.example.demo.modules.twin.card.service.TwinFreezeConfigService freezeConfigService;
+    @Autowired @Lazy private com.example.demo.modules.twin.common.service.JobSchedulerService jobSchedulerService;
+    @Autowired private com.example.demo.modules.twin.dahua.service.DahuaAutoSignoutService dahuaAutoSignoutService;
+    @Autowired private com.example.demo.modules.twin.common.service.TwinAutomationLogService automationLogService;
     private String lastRecordTime = EPOCH_WATERMARK;
     private volatile boolean watermarkHydrated = false;
-    private boolean isFirstRun = true;
+    private boolean firstRun = true;
 
     /** 从库内最新流水恢复增量水位，避免重启后以 1970 水位重复拉取当日全量。 */
     public synchronized void refreshWatermarkFromDatabase() {
@@ -96,8 +95,8 @@ public class AroSyncTask {
     // ==========================================================
     public void syncAroRecords() {
         // 首次仍触发一次开机后台自检
-        if (isFirstRun) {
-            isFirstRun = false;
+        if (firstRun) {
+            firstRun = false;
             log.info("[ARO Sync] 系统启动：触发后台自检（不阻塞主服务）");
             aroStartupAsyncService.executeHeavyStartupCheckAsync();
             return;
@@ -232,9 +231,10 @@ public class AroSyncTask {
                 planTime = String.valueOf(fc.get("freezeTime")).trim();
             }
         } catch (Exception ignore) {
+            log.debug("读取freezeTime配置失败: {}", ignore.getMessage());
         }
         LocalDateTime execAt = LocalDateTime.now();
-        System.out.println("🚨 [风控预警] 首次冻结跑批：计划时刻=" + planTime + "，实际执行=" + execAt);
+        log.info("[风控预警] 首次冻结跑批：计划时刻={}，实际执行={}", planTime, execAt);
         mappingService.reconcileExemptionsByLogs();
         Map<String, Integer> freezeStats = mappingService.executeFreezeReaperTask();
         String scheduleTriggerType = "TIMER";
@@ -244,7 +244,7 @@ public class AroSyncTask {
         }
         // 第一次冻结：每日定时（时刻见 freeze_config.freeze_time）触发滞留冻结跑批
         automationLogService.write(
-                com.example.demo.modules.twin.service.TwinAutomationLogService.TYPE_SCHEDULER,
+                com.example.demo.modules.twin.common.service.TwinAutomationLogService.TYPE_SCHEDULER,
                 "RUN_REAPER",
                 scheduleTriggerType,
                 "FIRST_FREEZE_TIMER",
@@ -257,7 +257,7 @@ public class AroSyncTask {
         // 业务约束：第一次冻结结束后立刻清空当日全部豁免标记，第二次冻结不再保留豁免。
         int cleared = mappingService.clearAllExemptFlagsAfterFirstFreeze();
         automationLogService.write(
-                com.example.demo.modules.twin.service.TwinAutomationLogService.TYPE_EXEMPTION,
+                com.example.demo.modules.twin.common.service.TwinAutomationLogService.TYPE_EXEMPTION,
                 "FIRST_FREEZE_CLEAR_EXEMPT",
                 scheduleTriggerType,
                 "FIRST_FREEZE_FINISHED_CLEAR_ALL_EXEMPT",
@@ -280,9 +280,10 @@ public class AroSyncTask {
                 planSecond = String.valueOf(fc.get("secondFreezeTime")).trim();
             }
         } catch (Exception ignore) {
+            log.debug("读取secondFreezeTime配置失败: {}", ignore.getMessage());
         }
         LocalDateTime execAt = LocalDateTime.now();
-        System.out.println("🚨 [风控预警] 第二次冻结跑批：计划时刻=" + (planSecond.isEmpty() ? "（未配置）" : planSecond) + "，实际执行=" + execAt);
+        log.info("[风控预警] 第二次冻结跑批：计划时刻={}，实际执行={}", planSecond.isEmpty() ? "（未配置）" : planSecond, execAt);
         mappingService.reconcileExemptionsByLogs();
         Map<String, Integer> freezeStats = mappingService.executeFreezeReaperTask();
         String scheduleTriggerType = "TIMER";
@@ -291,7 +292,7 @@ public class AroSyncTask {
             scheduleTriggerType = actx.getTriggerType();
         }
         automationLogService.write(
-                com.example.demo.modules.twin.service.TwinAutomationLogService.TYPE_SCHEDULER,
+                com.example.demo.modules.twin.common.service.TwinAutomationLogService.TYPE_SCHEDULER,
                 "RUN_REAPER_SECOND",
                 scheduleTriggerType,
                 "SECOND_FREEZE_TIMER",
@@ -321,9 +322,9 @@ public class AroSyncTask {
                         fail++;
                     }
                 }
-                System.out.println("🧩 [二次冻结补偿] 今日曾豁免且仍滞留 -> 自动离开，候选=" + candidates.size() + " 成功=" + success + " 失败=" + fail);
+                log.info("[二次冻结补偿] 今日曾豁免且仍滞留 -> 自动离开，候选={} 成功={} 失败={}", candidates.size(), success, fail);
                 automationLogService.write(
-                        com.example.demo.modules.twin.service.TwinAutomationLogService.TYPE_SCHEDULER,
+                        com.example.demo.modules.twin.common.service.TwinAutomationLogService.TYPE_SCHEDULER,
                         "SECOND_FREEZE_AUTO_SIGNOUT",
                         "TIMER",
                         "SECOND_FREEZE_TIMER",
@@ -335,7 +336,7 @@ public class AroSyncTask {
                 );
             } else {
                 automationLogService.write(
-                        com.example.demo.modules.twin.service.TwinAutomationLogService.TYPE_SCHEDULER,
+                        com.example.demo.modules.twin.common.service.TwinAutomationLogService.TYPE_SCHEDULER,
                         "SECOND_FREEZE_AUTO_SIGNOUT",
                         "TIMER",
                         "SECOND_FREEZE_TIMER_DISABLED",
@@ -347,9 +348,9 @@ public class AroSyncTask {
                 );
             }
         } catch (Exception e) {
-            System.err.println("❌ [二次冻结补偿] 执行失败: " + e.getMessage());
+            log.error("[二次冻结补偿] 执行失败", e);
             automationLogService.write(
-                    com.example.demo.modules.twin.service.TwinAutomationLogService.TYPE_SCHEDULER,
+                    com.example.demo.modules.twin.common.service.TwinAutomationLogService.TYPE_SCHEDULER,
                     "SECOND_FREEZE_AUTO_SIGNOUT",
                     "TIMER",
                     "SECOND_FREEZE_TIMER",
@@ -366,18 +367,18 @@ public class AroSyncTask {
      * 阶段二：每日豁免回收（由统一定时管理中心触发）。
      */
     public void dailyExemptResetTask() {
-        System.out.println("🧹 [系统维护] 正在执行每日豁免权回收...");
+        log.info("[系统维护] 正在执行每日豁免权回收...");
         boolean autoSignout = jobSchedulerService.isDailyExemptRevokeAutoSignoutEnabled();
         if (!autoSignout) {
-            System.out.println("🧹 [系统维护] 回收后自动签离：未开启（定时管理·每日豁免回收 → revoke_auto_signout_enabled=false）");
+            log.info("[系统维护] 回收后自动签离：未开启（定时管理·每日豁免回收 -> revoke_auto_signout_enabled=false）");
         } else {
-            System.out.println("🧹 [系统维护] 回收后自动签离：已开启（仅今日曾豁免且流水仍在馆）");
+            log.info("[系统维护] 回收后自动签离：已开启（仅今日曾豁免且流水仍在馆）");
         }
         int[] result = mappingService.runDailyExemptMaintenance(autoSignout);
         int rows = result != null && result.length > 0 ? result[0] : 0;
         int signoutOk = result != null && result.length > 1 ? result[1] : 0;
         automationLogService.write(
-                com.example.demo.modules.twin.service.TwinAutomationLogService.TYPE_EXEMPTION,
+                com.example.demo.modules.twin.common.service.TwinAutomationLogService.TYPE_EXEMPTION,
                 "DAILY_EXEMPT_RESET",
                 "TIMER",
                 "DAILY_EXEMPT_RESET_TIMER",
@@ -400,11 +401,11 @@ public class AroSyncTask {
         // 1. 人员核验
         Integer personnelCount = aroDatabaseMapper.countPersonnel();
         if (personnelCount == null || personnelCount == 0) {
-            System.out.println("⚠️ [开机后台自检] 人员库为空！正在全量拉取人员 (不影响正常业务)...");
+            log.warn("[开机后台自检] 人员库为空！正在全量拉取人员 (不影响正常业务)...");
             List<AroPersonnel> allPersonnel = aroService.fetchAllPersonnel();
             if (!allPersonnel.isEmpty()) aroPersonnelDatabaseService.upsertPersonnel(allPersonnel);
         } else {
-            System.out.println("✅ [开机后台自检] 人员库正常，当前录入人数: " + personnelCount);
+            log.info("[开机后台自检] 人员库正常，当前录入人数: {}", personnelCount);
         }
 
         // 2. 流水核验与历史重建
@@ -414,7 +415,7 @@ public class AroSyncTask {
         if (logCount == null || logCount == 0) {
             String startDate = "2025-10-01";
             String rangeDate = startDate + " - " + today;
-            System.out.println("⚠️ [开机后台自检] 流水库为空！开启历史防洪追溯，目标时间：" + rangeDate);
+            log.warn("[开机后台自检] 流水库为空！开启历史防洪追溯，目标时间：{}", rangeDate);
 
             int pageNum = 1;
             int totalRecovered = 0;
@@ -424,7 +425,7 @@ public class AroSyncTask {
 
                 aroDatabaseService.batchInsert(records);
                 totalRecovered += records.size();
-                System.out.println("✅ [历史重建] 成功入库第 " + pageNum + " 页，已累计找回 " + totalRecovered + " 条...");
+                log.info("[历史重建] 成功入库第 {} 页，已累计找回 {} 条...", pageNum, totalRecovered);
 
                 if (pageNum == 1 && !records.isEmpty()) lastRecordTime = records.get(0).getCreateTime();
                 if (records.size() < 100) break;
@@ -432,13 +433,15 @@ public class AroSyncTask {
                 pageNum++;
                 try { Thread.sleep(1500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             }
-            System.out.println("🎉 [历史重建] 大功告成！完美补齐了 " + totalRecovered + " 条记录！");
+            log.info("[历史重建] 大功告成！完美补齐了 {} 条记录！", totalRecovered);
         } else {
             // 如果库里有数据，随便查一条最近的时间赋给 lastRecordTime，防止重启后狂拉数据
             try {
                 String latestTime = aroDatabaseMapper.getLatestAccessLogCreateTime();
                 if (latestTime != null) lastRecordTime = latestTime;
-            } catch (Exception e) {}
+            } catch (Exception e) {
+                log.warn("读取latestAccessLogCreateTime失败: {}", e.getMessage());
+            }
         }
 
         // 在开机自检方法的末尾加入：
@@ -452,11 +455,11 @@ public class AroSyncTask {
     // ==========================================================
     private void pushPieChartUpdate() {
         try {
-            System.out.println("📊 [大屏推送] 正在计算最新饼图数据...");
+            log.info("[大屏推送] 正在计算最新饼图数据...");
             Map<String, Object> newPieData = dashboardService.getTodayRoomStats();
             socketServer.getBroadcastOperations().sendEvent("TWIN_PIE_UPDATE", newPieData);
         } catch (Exception e) {
-            System.err.println("❌ 饼图推送失败: " + e.getMessage());
+            log.error("饼图推送失败", e);
         }
     }
 

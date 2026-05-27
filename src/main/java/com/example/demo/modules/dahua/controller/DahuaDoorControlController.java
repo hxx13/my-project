@@ -17,7 +17,6 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/dahua/door-control")
-@CrossOrigin("*")
 @Tag(name = "大华门禁控制", description = "通道列表与五种门禁控制模式")
 public class DahuaDoorControlController {
     private final DahuaDeviceChannelCacheService deviceChannelCacheService;

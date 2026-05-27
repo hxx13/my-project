@@ -1,5 +1,6 @@
 package com.example.demo.modules.auth.service;
 
+import com.example.demo.common.config.JwtTokenService;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.AuthProfileConstants;
@@ -18,15 +19,17 @@ public class AuthService {
 
     private final UserMapper userMapper;
     private final UserDisplayNameService userDisplayNameService;
+    private final JwtTokenService jwtTokenService;
 
-    public AuthService(UserMapper userMapper, UserDisplayNameService userDisplayNameService) {
+    public AuthService(UserMapper userMapper, UserDisplayNameService userDisplayNameService, JwtTokenService jwtTokenService) {
         this.userMapper = userMapper;
         this.userDisplayNameService = userDisplayNameService;
+        this.jwtTokenService = jwtTokenService;
     }
 
     public Result<AuthData> generateAuthResult(User user) {
         AuthData data = new AuthData();
-        data.setToken(generateMockJwt(user));
+        data.setToken(jwtTokenService.generateToken(user));
         data.setRole(user.getRole().getCode());
         data.setRoleDesc(user.getRole().getDescZh());
         data.setRoleLevel(user.getRole().getLevel());
@@ -81,7 +84,4 @@ public class AuthService {
         return role == null ? RoleEnum.STUDENT : role;
     }
 
-    private String generateMockJwt(User user) {
-        return "jwt_mock_token_" + user.getId();
-    }
 }

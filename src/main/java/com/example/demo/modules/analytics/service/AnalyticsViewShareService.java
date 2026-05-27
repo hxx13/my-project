@@ -10,6 +10,7 @@ import com.example.demo.modules.analytics.mapper.AnalyticsLlmInsightMapper;
 import com.example.demo.modules.analytics.mapper.AnalyticsUserViewMapper;
 import com.example.demo.modules.analytics.mapper.AnalyticsViewShareMapper;
 import com.example.demo.modules.invite.InviteCodeHasher;
+import com.example.demo.modules.notification.service.NotificationSettingsService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,7 +45,8 @@ public class AnalyticsViewShareService {
     private final AnalyticsLlmInsightMapper insightMapper;
     private final AnalyticsUserViewService userViewService;
     private final ObjectMapper objectMapper;
-    private final String pepper;
+    private final NotificationSettingsService settingsService;
+    private final String defaultPepper;
 
     public AnalyticsViewShareService(
             AnalyticsViewShareMapper shareMapper,
@@ -53,14 +55,20 @@ public class AnalyticsViewShareService {
             AnalyticsLlmInsightMapper insightMapper,
             AnalyticsUserViewService userViewService,
             ObjectMapper objectMapper,
-            @Value("${app.invite-code-pepper:change-me-in-production}") String pepper) {
+            NotificationSettingsService settingsService,
+            @Value("${app.invite-code-pepper:change-me-in-production}") String defaultPepper) {
         this.shareMapper = shareMapper;
         this.viewMapper = viewMapper;
         this.auditLogMapper = auditLogMapper;
         this.insightMapper = insightMapper;
         this.userViewService = userViewService;
         this.objectMapper = objectMapper;
-        this.pepper = pepper;
+        this.settingsService = settingsService;
+        this.defaultPepper = defaultPepper;
+    }
+
+    private String resolvePepper() {
+        return settingsService.getEffectiveValue("credentials", "invite_code_pepper", defaultPepper);
     }
 
     /** 兼容旧接口：按 viewId 查所属报表的全局分享码 */
@@ -372,7 +380,7 @@ public class AnalyticsViewShareService {
             List<AnalyticsUserView> sourceViews) {
         for (int attempt = 0; attempt < 12; attempt++) {
             String plain = generatePlainCode(10);
-            String hash = InviteCodeHasher.sha256Hex(pepper, InviteCodeHasher.normalize(plain));
+            String hash = InviteCodeHasher.sha256Hex(resolvePepper(), InviteCodeHasher.normalize(plain));
             AnalyticsViewShare row = new AnalyticsViewShare();
             row.setShareCodeHash(hash);
             row.setShareCodePlain(plain);
@@ -495,7 +503,7 @@ public class AnalyticsViewShareService {
         if (!StringUtils.hasText(code)) {
             throw new IllegalArgumentException("请输入分享码");
         }
-        String hash = InviteCodeHasher.sha256Hex(pepper, InviteCodeHasher.normalize(code));
+        String hash = InviteCodeHasher.sha256Hex(resolvePepper(), InviteCodeHasher.normalize(code));
         AnalyticsViewShare share = shareMapper.selectByCodeHash(hash);
         if (share == null) {
             throw new IllegalArgumentException("分享码无效");

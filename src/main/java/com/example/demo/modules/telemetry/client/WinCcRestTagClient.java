@@ -301,6 +301,12 @@ public class WinCcRestTagClient {
         return s.substring(0, max) + "…";
     }
 
+    /** 连接测试用：取回退监视列表前 2 条作为轻量探测点名。 */
+    public static List<String> defaultTestVariableNames() {
+        List<String> all = WinCcProperties.defaultWatchlist();
+        return all.size() > 2 ? all.subList(0, 2) : all;
+    }
+
     private static String trimSlash(String base) {
         String s = base.trim();
         while (s.endsWith("/")) {

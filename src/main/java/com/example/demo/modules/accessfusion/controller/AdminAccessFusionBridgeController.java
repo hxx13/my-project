@@ -24,7 +24,6 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/admin/twin/access-fusion")
-@CrossOrigin("*")
 public class AdminAccessFusionBridgeController {
 
     private final AccessDoorRuleService doorRuleService;

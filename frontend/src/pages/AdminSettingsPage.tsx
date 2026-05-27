@@ -18,6 +18,7 @@ import {
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { CapabilityPoliciesPanel } from "@/features/admin/settings/CapabilityPoliciesPanel";
 import { ClientReloadOpsPanel } from "@/features/admin/settings/ClientReloadOpsPanel";
+import { CredentialsTestPanel } from "@/features/admin/settings/CredentialsTestPanel";
 import { LlmSettingsPanel } from "@/features/admin/settings/LlmSettingsPanel";
 import { NotificationRulesPanel } from "@/features/admin/settings/NotificationRulesPanel";
 import { NotificationTemplatesPanel } from "@/features/admin/settings/NotificationTemplatesPanel";
@@ -184,7 +185,11 @@ export default function AdminSettingsPage() {
             <LlmSettingsPanel configs={configs} configDefs={configDefs} onConfigsChange={setConfigs} />
           ) : null}
 
-          {!loading && isConfigModule(activeModule) && activeModule !== "llm" ? (
+          {!loading && (activeModule === "credentials" || activeModule === "integration") ? (
+            <CredentialsTestPanel moduleKey={activeModule} configs={configs} configDefs={configDefs} onConfigsChange={setConfigs} />
+          ) : null}
+
+          {!loading && isConfigModule(activeModule) && activeModule !== "llm" && activeModule !== "credentials" && activeModule !== "integration" ? (
             <SystemConfigsPanel
               moduleKey={activeModule}
               configs={configs}

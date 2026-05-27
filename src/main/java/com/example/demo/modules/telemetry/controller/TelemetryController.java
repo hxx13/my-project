@@ -13,12 +13,12 @@ import com.example.demo.modules.telemetry.dto.TelemetryTagItemDto;
 import com.example.demo.modules.telemetry.dto.TelemetryWinccDockPollConfigDto;
 import com.example.demo.modules.telemetry.service.TelemetrySnapshotService;
 import com.example.demo.modules.telemetry.service.WatchlistAlarmLimitsFacadeService;
-import com.example.demo.modules.twin.service.JobSchedulerService;
+import com.example.demo.modules.twin.common.service.JobSchedulerService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.web.bind.annotation.CrossOrigin;
+
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -33,7 +33,7 @@ import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/telemetry/wincc")
-@CrossOrigin(origins = "*")
+
 @Tag(name = "动物房遥测", description = "WinCC 只读快照（内存缓存）；动物房 Hub 与 Web/小程序同源")
 public class TelemetryController {
 

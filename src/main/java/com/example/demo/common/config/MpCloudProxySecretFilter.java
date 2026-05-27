@@ -1,5 +1,8 @@
 package com.example.demo.common.config;
 
+import com.example.demo.common.event.CredentialsChangedEvent;
+import com.example.demo.modules.notification.service.NotificationSettingsService;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -7,16 +10,13 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.annotation.Order;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/**
- * 可选：配置 app.mp.proxy.secret 非空后，要求访问 /api/** 的请求携带相同值的 X-Proxy-Secret，
- * 用于公网暴露 Spring 时仅允许经微信云函数转发。留空则不启用，Web 直连调试不受影响。
- */
 @Component
 @Order(0)
 public class MpCloudProxySecretFilter extends OncePerRequestFilter {
@@ -24,7 +24,27 @@ public class MpCloudProxySecretFilter extends OncePerRequestFilter {
     public static final String HEADER_NAME = "X-Proxy-Secret";
 
     @Value("${app.mp.proxy.secret:}")
-    private String expectedSecret;
+    private String defaultSecret;
+
+    private final NotificationSettingsService settingsService;
+
+    private volatile String expectedSecret;
+
+    public MpCloudProxySecretFilter(NotificationSettingsService settingsService) {
+        this.settingsService = settingsService;
+    }
+
+    @PostConstruct
+    public void init() {
+        this.expectedSecret = settingsService.getEffectiveValue("credentials", "mp.proxy_secret", defaultSecret);
+    }
+
+    @EventListener
+    public void onCredentialsChanged(CredentialsChangedEvent event) {
+        if (event.isCredentials() && "mp.proxy_secret".equals(event.getConfigKey())) {
+            this.expectedSecret = settingsService.getEffectiveValue("credentials", "mp.proxy_secret", defaultSecret);
+        }
+    }
 
     @Override
     protected void doFilterInternal(

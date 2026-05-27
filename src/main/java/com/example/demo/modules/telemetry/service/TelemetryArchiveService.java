@@ -7,7 +7,7 @@ import com.example.demo.modules.telemetry.dto.archive.TelemetryArchivePurgeResul
 import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveQueryPageDto;
 import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveSeriesDto;
 import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveStorageStatsDto;
-import com.example.demo.modules.twin.support.TwinTimingDiagnostics;
+import com.example.demo.modules.twin.common.support.TwinTimingDiagnostics;
 import com.example.demo.modules.telemetry.entity.TelemetryValueArchiveRow;
 import com.example.demo.modules.telemetry.mapper.TelemetryValueArchiveMapper;
 import org.slf4j.Logger;
@@ -392,6 +392,7 @@ public class TelemetryArchiveService {
                             + "WHERE table_schema = DATABASE() AND table_name = 'telemetry_value_archive'",
                     Double.class);
         } catch (Exception ignored) {
+            log.debug("查询归档表大小失败: {}", ignored.getMessage());
         }
         long older = estimateRowsOlderThan(cutoff, total);
         LocalDateTime oldest = null;
@@ -400,6 +401,7 @@ public class TelemetryArchiveService {
             oldest = archiveMapper.selectOldestSampleAt();
             newest = archiveMapper.selectNewestSampleAt();
         } catch (Exception ignored) {
+            log.debug("查询归档最旧/最新采样时间失败: {}", ignored.getMessage());
         }
         ZoneId z = ZoneId.systemDefault();
         return TelemetryArchiveStorageStatsDto.builder()
@@ -434,6 +436,7 @@ public class TelemetryArchiveService {
                 return 0;
             }
         } catch (Exception ignored) {
+            log.debug("估算过期行数时查询最旧采样时间失败: {}", ignored.getMessage());
         }
         return approxTotal > 0 ? -1 : 0;
     }

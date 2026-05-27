@@ -11,7 +11,7 @@ import com.example.demo.modules.telemetry.service.WatchlistAlarmLimitsFacadeServ
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.CrossOrigin;
+
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -22,7 +22,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/telemetry/wincc")
-@CrossOrigin(origins = "*")
+
 @Tag(name = "动物房遥测", description = "WinCC 写入（超级管理员）")
 public class TelemetryWinCcWriteController {
 
