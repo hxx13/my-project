@@ -18,10 +18,27 @@ import org.springframework.web.context.request.async.AsyncRequestTimeoutExceptio
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.util.Locale;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /** 安全扫描/爬虫常见探测路径，不必以 WARN 刷屏 */
+    private static boolean isBenignProbePath(String path) {
+        if (path == null || path.isBlank()) {
+            return true;
+        }
+        String p = path.trim().replace('\\', '/').toLowerCase(Locale.ROOT);
+        if (p.contains(".env") || p.contains(".git") || p.contains("web.config") || p.contains("wp-")) {
+            return true;
+        }
+        if (p.startsWith("sdk/") || p.endsWith("/sdk/weblanguage") || p.contains("phpmyadmin")) {
+            return true;
+        }
+        return p.equals(".ds_store") || p.contains("/.well-known/");
+    }
 
     @ExceptionHandler(TwinBusinessException.class)
     public Result<Void> handleTwinBusiness(TwinBusinessException ex) {
@@ -73,7 +90,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public Result<Void> handleNoResource(NoResourceFoundException ex) {
         String path = ex.getResourcePath();
-        log.warn("No resource: {} {}", ex.getHttpMethod(), path);
+        if (isBenignProbePath(path)) {
+            if (log.isTraceEnabled()) {
+                log.trace("Ignored probe: {} {}", ex.getHttpMethod(), path);
+            }
+        } else {
+            log.debug("No resource: {} {}", ex.getHttpMethod(), path);
+        }
         if ("login".equals(path) || "/login".equals(path)) {
             return Result.error("请使用 POST /api/auth/login/web 登录");
         }

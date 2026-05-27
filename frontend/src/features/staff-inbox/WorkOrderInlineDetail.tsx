@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import toast from "react-hot-toast";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import type { PurchaseOrderRecord } from "@/api/domains/purchase.api";
 import type { RepairOrderRecord } from "@/api/domains/repair.api";
 import type { SupplyClaimLine, SupplyClaimOrder, SupplyClaimPdfLinkItem } from "@/api/domains/supplies.api";
@@ -125,7 +126,7 @@ export function WorkOrderInlineDetail({
                       type="button"
                       className="rounded border border-slate-300 px-2 py-0.5"
                       onClick={async () => {
-                        await navigator.clipboard.writeText(displayClaimLink(item));
+                        await copyTextToClipboard(displayClaimLink(item));
                         toast.success("已复制");
                       }}
                     >

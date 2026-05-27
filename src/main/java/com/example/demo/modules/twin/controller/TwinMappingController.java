@@ -216,17 +216,27 @@ public class TwinMappingController {
                     secondFreezeAutoSignoutEnabled = Boolean.parseBoolean(String.valueOf(sv));
                 }
             }
+            boolean dailyExemptRevokeAutoSignoutEnabled = false;
+            if (body.containsKey("dailyExemptRevokeAutoSignoutEnabled")) {
+                Object dv = body.get("dailyExemptRevokeAutoSignoutEnabled");
+                if (dv instanceof Boolean) {
+                    dailyExemptRevokeAutoSignoutEnabled = (Boolean) dv;
+                } else {
+                    dailyExemptRevokeAutoSignoutEnabled = Boolean.parseBoolean(String.valueOf(dv));
+                }
+            }
             String timezone = body.get("timezone") != null ? String.valueOf(body.get("timezone")) : null;
             Map<String, Object> saved = freezeConfigService.saveConfig(
                     enabled,
                     freezeTime,
                     secondFreezeTime,
                     secondFreezeAutoSignoutEnabled,
+                    dailyExemptRevokeAutoSignoutEnabled,
                     timezone,
                     user.getId());
             String syncedFirstFreezeTime = saved.get("freezeTime") == null ? (freezeTime == null ? "18:00" : freezeTime) : String.valueOf(saved.get("freezeTime"));
             String syncedSecondFreezeTime = saved.get("secondFreezeTime") == null ? "" : String.valueOf(saved.get("secondFreezeTime"));
-            // 联动：第一次/第二次冻结与豁免回收任务统一由冻结配置同步。
+            // 联动：仅第一次/第二次冻结跑批；每日豁免回收在「定时管理」独立配置。
             jobSchedulerService.syncFreezeJobs(enabled, syncedFirstFreezeTime, syncedSecondFreezeTime, user.getId());
             log.info("[twin] freeze-config updated by userId={} payload={}", user.getId(), body);
             return Result.success(saved);
@@ -243,7 +253,7 @@ public class TwinMappingController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @RequestBody Map<String, Object> payload) {
         User user = authContextService.resolveUserFromBearer(authorization);
-        Result<?> denied = requireSenior(user);
+        Result<?> denied = requireAdmin(user);
         if (denied != null) {
             return denied;
         }
@@ -381,6 +391,21 @@ public class TwinMappingController {
         }
         RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
         if (role.getLevel() < RoleEnum.SENIOR.getLevel()) {
+            return Result.error("无权限访问");
+        }
+        return null;
+    }
+
+    /** 豁免权下放：管理员及以上 */
+    private Result<?> requireAdmin(User user) {
+        if (user == null) {
+            return Result.error("未登录或令牌无效");
+        }
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            return Result.error("账号已禁用");
+        }
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        if (role.getLevel() < RoleEnum.ADMIN.getLevel()) {
             return Result.error("无权限访问");
         }
         return null;

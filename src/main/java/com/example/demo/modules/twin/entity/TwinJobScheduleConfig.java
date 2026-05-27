@@ -13,6 +13,8 @@ public class TwinJobScheduleConfig {
     private String weekDays;
     /** 动物房程序坞轮询间隔（秒），仅 jobKey=TELEMETRY_WINCC_UI 使用；其它任务可为 null */
     private Integer pollIntervalSeconds;
+    /** 仅 DAILY_EXEMPT_RESET：定时回收后对「今日曾豁免且流水仍在馆」者自动签离 */
+    private Integer revokeAutoSignoutEnabled;
     private LocalDateTime lastRunAt;
     private LocalDateTime lastSuccessAt;
     private String lastStatus;
@@ -38,6 +40,8 @@ public class TwinJobScheduleConfig {
     public void setWeekDays(String weekDays) { this.weekDays = weekDays; }
     public Integer getPollIntervalSeconds() { return pollIntervalSeconds; }
     public void setPollIntervalSeconds(Integer pollIntervalSeconds) { this.pollIntervalSeconds = pollIntervalSeconds; }
+    public Integer getRevokeAutoSignoutEnabled() { return revokeAutoSignoutEnabled; }
+    public void setRevokeAutoSignoutEnabled(Integer revokeAutoSignoutEnabled) { this.revokeAutoSignoutEnabled = revokeAutoSignoutEnabled; }
     public LocalDateTime getLastRunAt() { return lastRunAt; }
     public void setLastRunAt(LocalDateTime lastRunAt) { this.lastRunAt = lastRunAt; }
     public LocalDateTime getLastSuccessAt() { return lastSuccessAt; }

@@ -14,6 +14,16 @@ public interface TelemetryValueArchiveMapper {
 
     int deleteOlderThan(@Param("cutoff") LocalDateTime cutoff);
 
+    int deleteOlderThanBatch(@Param("cutoff") LocalDateTime cutoff, @Param("limit") int limit);
+
+    long countAll();
+
+    long countOlderThan(@Param("cutoff") LocalDateTime cutoff);
+
+    LocalDateTime selectOldestSampleAt();
+
+    LocalDateTime selectNewestSampleAt();
+
     long countByFilter(
             @Param("variableQ") String variableQ,
             @Param("from") LocalDateTime from,

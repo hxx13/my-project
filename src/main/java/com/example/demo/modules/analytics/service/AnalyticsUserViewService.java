@@ -102,10 +102,15 @@ public class AnalyticsUserViewService {
         if (body.getSubscribed() != null) {
             existing.setIsSubscribed(body.getSubscribed() ? 1 : 0);
         }
+        boolean filterUpdated = body.getFilter() != null;
+        boolean forceRecalc = Boolean.TRUE.equals(body.getForceRecalcSnapshots());
         mapper.update(existing);
         AnalyticsUserView refreshed = mapper.selectByIdAndUser(id, userId);
-        if (!wasSubscribed && refreshed.getIsSubscribed() != null && refreshed.getIsSubscribed() == 1) {
+        boolean nowSubscribed = refreshed.getIsSubscribed() != null && refreshed.getIsSubscribed() == 1;
+        if (!wasSubscribed && nowSubscribed) {
             triggerAudit(refreshed, body.getBackfillHistory(), body.getBackfillUntil());
+        } else if (nowSubscribed && (filterUpdated || forceRecalc)) {
+            auditTriggerSupport.scheduleRefreshSnapshots(refreshed.getId(), userId);
         }
         return toDto(refreshed);
     }

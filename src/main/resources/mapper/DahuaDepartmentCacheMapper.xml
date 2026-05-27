@@ -40,6 +40,20 @@
         LIMIT #{pageSize} OFFSET #{offset}
     </select>
 
+    <select id="selectNameById" resultType="string">
+        SELECT name FROM dahua_department_cache WHERE id = #{id} LIMIT 1
+    </select>
+
+    <select id="selectIdByName" resultType="long">
+        SELECT id FROM dahua_department_cache WHERE name = #{name} LIMIT 1
+    </select>
+
+    <select id="selectStudentDeptIdByName" resultType="long">
+        SELECT id FROM dahua_department_cache
+        WHERE name = #{name} AND id IN (26, 27, 28, 29)
+        LIMIT 1
+    </select>
+
     <select id="count" resultType="int">
         SELECT COUNT(*)
         FROM dahua_department_cache

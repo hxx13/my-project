@@ -150,6 +150,11 @@ export function prependPersonalNavSidebarGroups(
     for (const it of g.items) {
       pathToItem.set(normalizeAdminPath(it.to), it);
     }
+    for (const sg of g.subgroups ?? []) {
+      for (const it of sg.items) {
+        pathToItem.set(normalizeAdminPath(it.to), it);
+      }
+    }
   }
 
   const starSet = new Set(starPaths.map(normalizeAdminPath));

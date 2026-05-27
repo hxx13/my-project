@@ -1,14 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Check, RefreshCw, User, X } from "lucide-react";
 import {
+  Ban,
+  Bell,
+  Check,
+  CheckCircle2,
+  CreditCard,
+  Pencil,
+  RefreshCw,
+  ShieldAlert,
+  Trash2,
+  User,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  batchCreateStudentViolations,
   clearStudentViolation,
   createStudentViolation,
   deleteStudentViolation,
   getUnboundCardNoticeSettings,
   listStudentViolations,
+  listViolationPersonnelByProjectGroup,
   markStudentViolationProcessed,
   saveUnboundCardNoticeSettings,
+  searchViolationProjectGroups,
   UNBOUND_APPLY_ROLE_OPTIONS,
   updateStudentViolation,
   type StudentViolationRow,
@@ -16,7 +34,10 @@ import {
 } from "@/api/domains/studentViolation.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { searchPersonnel } from "@/api/twinApi";
-import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminButton, adminPickableRowClass } from "@/components/admin/AdminButton";
+import { AdminFilePickButton } from "@/components/admin/AdminFilePickButton";
+import { AdminPageTabs, AdminTabPanel } from "@/components/admin/AdminPageTabs";
+import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { cn } from "@/lib/utils";
 import { ScanPopupAnnouncementSection } from "@/features/admin/ScanPopupAnnouncementSection";
@@ -24,16 +45,27 @@ import {
   SCAN_OPERATOR_ROLE_HINT_UNBOUND,
   SCAN_OPERATOR_ROLE_LABEL,
 } from "@/features/admin/scanOperatorRoleHint";
+import { normalizePersonnelRecord, type PersonnelRecordView } from "@/utils/personnelRecord";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 
 type PickUser = { userId: string; name: string };
+type LockMode = "single" | "batch";
+type PageTabId = "unbound" | "announcement" | "create" | "records";
+
+const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
+  { id: "unbound", label: "未绑卡提示", icon: <CreditCard className="h-4 w-4 text-slate-500" aria-hidden /> },
+  { id: "announcement", label: "扫码弹窗公告", icon: <Bell className="h-4 w-4 text-slate-500" aria-hidden /> },
+  { id: "create", label: "新建违规", icon: <UserPlus className="h-4 w-4 text-slate-500" aria-hidden /> },
+  { id: "records", label: "违规记录", icon: <ShieldAlert className="h-4 w-4 text-slate-500" aria-hidden /> },
+];
+
+const LOCK_MODE_OPTIONS: { value: LockMode; label: string }[] = [
+  { value: "single", label: "单人锁定" },
+  { value: "batch", label: "课题组批量" },
+];
 
 const inputBase =
-  "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm outline-none transition placeholder:text-neutral-400 focus-visible:border-neutral-300 focus-visible:ring-2 focus-visible:ring-[#0070f3]/25";
-
-/** 与 AdminButton secondary 视觉对齐的文件选择标签（原生 file 需包在 label 内） */
-const filePickTriggerClass =
-  "inline-flex cursor-pointer items-center justify-center rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 shadow-sm transition hover:bg-neutral-50 focus-within:outline-none focus-within:ring-2 focus-within:ring-[#0070f3]/25";
+  "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm outline-none transition placeholder:text-neutral-400 focus-visible:border-neutral-300 focus-visible:ring-2 focus-visible:ring-[color:var(--admin-focus-ring)]/40";
 
 function parseRowImageUrls(row: StudentViolationRow): string[] {
   const raw = row.imageUrls;
@@ -54,13 +86,77 @@ function personDisplayName(r: StudentViolationRow): string {
   return n || r.targetUserId;
 }
 
+/** 违规记录状态中文（库内仍存英文枚举） */
+function violationStatusLabel(status: string | undefined): { text: string; hint?: string; className: string } {
+  switch (status) {
+    case "ACTIVE":
+      return {
+        text: "生效中",
+        hint: "扫码弹窗与大屏公示均可能展示",
+        className: "font-medium text-rose-700",
+      };
+    case "SUPERSEDED":
+      return {
+        text: "已被覆盖",
+        hint: "同一人新建违规时，旧记录由系统自动归档；仅留档，不再生效",
+        className: "text-amber-800",
+      };
+    case "CLEARED":
+      return {
+        text: "已解除",
+        hint: "管理员手动「解除」",
+        className: "text-emerald-800",
+      };
+    case "PROCESSED":
+      return {
+        text: "已处理",
+        hint: "管理员标记「已处理」，扫码不再弹窗",
+        className: "text-slate-700",
+      };
+    case "EXPIRED":
+      return {
+        text: "已过期",
+        hint: "超过到期时间，系统自动失效",
+        className: "text-neutral-500",
+      };
+    default:
+      return { text: status || "—", className: "text-neutral-600" };
+  }
+}
+
+function parsePageTab(raw: string | null): PageTabId {
+  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records") return raw;
+  return "unbound";
+}
+
 export default function AdminStudentViolationsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = parsePageTab(searchParams.get("tab"));
+  const setActiveTab = (id: PageTabId) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("tab", id);
+        return next;
+      },
+      { replace: true }
+    );
+  };
+
   const [rows, setRows] = useState<StudentViolationRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [personKeyword, setPersonKeyword] = useState("");
   const [searchUserResult, setSearchUserResult] = useState<Array<Record<string, unknown>>>([]);
   const personSearchTimer = useRef<number | null>(null);
+  const [lockMode, setLockMode] = useState<LockMode>("single");
   const [picked, setPicked] = useState<PickUser | null>(null);
+  const [groupKeyword, setGroupKeyword] = useState("");
+  const [groupSuggestions, setGroupSuggestions] = useState<string[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [groupMembers, setGroupMembers] = useState<PersonnelRecordView[]>([]);
+  const [groupMembersLoading, setGroupMembersLoading] = useState(false);
+  const [batchSelectedIds, setBatchSelectedIds] = useState<Set<string>>(new Set());
+  const groupSearchTimer = useRef<number | null>(null);
   const [violationText, setViolationText] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -208,6 +304,77 @@ export default function AdminStudentViolationsPage() {
     setPersonKeyword("");
     setSearchUserResult([]);
   };
+
+  const resetBatchGroup = () => {
+    setSelectedGroup(null);
+    setGroupKeyword("");
+    setGroupSuggestions([]);
+    setGroupMembers([]);
+    setBatchSelectedIds(new Set());
+  };
+
+  const handleSearchProjectGroups = useCallback(async (keyword: string) => {
+    const q = keyword.trim();
+    if (!q) {
+      setGroupSuggestions([]);
+      return;
+    }
+    try {
+      const list = await searchViolationProjectGroups(q, 30);
+      setGroupSuggestions(Array.isArray(list) ? list : []);
+    } catch {
+      setGroupSuggestions([]);
+    }
+  }, []);
+
+  const loadGroupMembers = useCallback(async (groupName: string) => {
+    const g = groupName.trim();
+    if (!g) {
+      setGroupMembers([]);
+      setBatchSelectedIds(new Set());
+      return;
+    }
+    setGroupMembersLoading(true);
+    try {
+      const rows = await listViolationPersonnelByProjectGroup(g, 500);
+      const members = (Array.isArray(rows) ? rows : [])
+        .map((r) => normalizePersonnelRecord(r as unknown as Record<string, unknown>))
+        .filter((p): p is PersonnelRecordView => p != null && Boolean(p.userId));
+      setGroupMembers(members);
+      setBatchSelectedIds(new Set(members.map((m) => m.userId)));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "加载课题组成员失败");
+      setGroupMembers([]);
+      setBatchSelectedIds(new Set());
+    } finally {
+      setGroupMembersLoading(false);
+    }
+  }, []);
+
+  const pickProjectGroup = (groupName: string) => {
+    const g = groupName.trim();
+    if (!g) return;
+    setSelectedGroup(g);
+    setGroupKeyword(g);
+    setGroupSuggestions([]);
+    void loadGroupMembers(g);
+  };
+
+  const toggleBatchMember = (userId: string, checked: boolean) => {
+    setBatchSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(userId);
+      else next.delete(userId);
+      return next;
+    });
+  };
+
+  const switchLockMode = (mode: LockMode) => {
+    if (mode === lockMode) return;
+    setLockMode(mode);
+    clearPickedPerson();
+    resetBatchGroup();
+  };
   const maxEnterParsed = useMemo(() => {
     const s = maxEnter.trim();
     if (!s) return null;
@@ -273,15 +440,61 @@ export default function AdminStudentViolationsPage() {
     void uploadViolationImages(imgs);
   };
 
+  const resetViolationForm = () => {
+    setViolationText("");
+    setImageUrls([]);
+    setMaxEnter("");
+    setExpireDays("");
+    setForbidEnter(false);
+    setShowEvery(true);
+  };
+
   const submit = async () => {
-    if (!picked) {
-      toast.error("请先选择人员");
+    if (lockMode === "single") {
+      if (!picked) {
+        toast.error("请先选择人员");
+        return;
+      }
+      setSaving(true);
+      try {
+        await createStudentViolation({
+          targetUserId: picked.userId,
+          violationText: violationText.trim(),
+          imageUrls,
+          forbidEnter,
+          maxEnterSuccess: maxEnterParsed,
+          showNoticeEveryScan: showEvery,
+          expireAfterDays: expireDaysParsed,
+        });
+        toast.success("已保存违规记录");
+        clearPickedPerson();
+        resetViolationForm();
+        // 新建会影响多条 ACTIVE/SUPERSEDED 关系，需全量对齐列表
+        await load();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "保存失败");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    if (!selectedGroup) {
+      toast.error("请先检索并选择课题组");
+      return;
+    }
+    const ids = Array.from(batchSelectedIds);
+    if (!ids.length) {
+      toast.error("请至少勾选一名课题组成员");
+      return;
+    }
+    if (!window.confirm(`确认为课题组「${selectedGroup}」下选中的 ${ids.length} 人批量提交违规记录？`)) {
       return;
     }
     setSaving(true);
     try {
-      await createStudentViolation({
-        targetUserId: picked.userId,
+      const summary = await batchCreateStudentViolations({
+        targetUserIds: ids,
         violationText: violationText.trim(),
         imageUrls,
         forbidEnter,
@@ -289,22 +502,25 @@ export default function AdminStudentViolationsPage() {
         showNoticeEveryScan: showEvery,
         expireAfterDays: expireDaysParsed,
       });
-      toast.success("已保存违规记录");
-      clearPickedPerson();
-      setViolationText("");
-      setImageUrls([]);
-      setMaxEnter("");
-      setExpireDays("");
-      setForbidEnter(false);
-      setShowEvery(true);
-      // 新建会影响多条 ACTIVE/SUPERSEDED 关系，需全量对齐列表
+      const created = summary?.createdCount ?? 0;
+      const failed = summary?.failed?.length ?? 0;
+      if (failed > 0) {
+        toast.error(`已创建 ${created} 条，${failed} 人失败`);
+      } else {
+        toast.success(`已为 ${created} 人保存违规记录`);
+      }
+      resetBatchGroup();
+      resetViolationForm();
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "保存失败");
+      toast.error(e instanceof Error ? e.message : "批量保存失败");
     } finally {
       setSaving(false);
     }
   };
+
+  const canSubmit =
+    lockMode === "single" ? Boolean(picked) : Boolean(selectedGroup) && batchSelectedIds.size > 0;
 
   const onClear = async (id: number) => {
     if (!window.confirm("确认解除该条违规？")) return;
@@ -425,20 +641,37 @@ export default function AdminStudentViolationsPage() {
 
   return (
     <AdminPageShell
-      title="学生违规管理"
+      title="警告与弹窗公告"
+      description="按标签切换各配置板块；违规惩戒支持单人或课题组批量锁定。"
       actions={
-        <AdminButton
-          type="button"
-          tone="secondary"
-          className="inline-flex items-center gap-2"
-          disabled={loading}
-          onClick={() => void load()}
-        >
-          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} aria-hidden />
-          刷新列表
-        </AdminButton>
+        activeTab === "records" ? (
+          <AdminButton
+            type="button"
+            tone="secondary"
+            className="inline-flex items-center gap-2"
+            loading={loading}
+            onClick={() => void load()}
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden />
+            刷新列表
+          </AdminButton>
+        ) : null
       }
     >
+      <AdminPageTabs
+        tabs={PAGE_TABS}
+        value={activeTab}
+        onChange={(id) => setActiveTab(id as PageTabId)}
+        panelIdPrefix="violation-page-panel"
+      />
+
+      <div className="mt-4">
+        <AdminTabPanel
+          id="violation-page-panel-unbound"
+          tabId="unbound"
+          activeTab={activeTab}
+          className="space-y-4"
+        >
       <AdminFormCard
         title="未绑卡扫码提示"
         description="扫描到尚未绑定物理卡的人员时展示警示；按当前网页登录人员的 sys_user 角色决定是否生效（与被扫人员身份无关）。"
@@ -525,21 +758,13 @@ export default function AdminStudentViolationsPage() {
           <div>
             <label className="text-xs font-medium text-neutral-600">提示附图（可选）</label>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <label className={cn(filePickTriggerClass, "text-xs py-1.5")}>
-                <span>选择图片</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  disabled={unboundUploading || unboundLoading}
-                  className="sr-only"
-                  onChange={(e) => {
-                    const files = e.target.files;
-                    if (files?.length) void uploadUnboundImages(Array.from(files));
-                    e.target.value = "";
-                  }}
-                />
-              </label>
+              <AdminFilePickButton
+                multiple
+                disabled={unboundUploading || unboundLoading}
+                onFiles={(files) => {
+                  if (files?.length) void uploadUnboundImages(Array.from(files));
+                }}
+              />
               {unboundUploading ? <span className="text-xs text-neutral-500">上传中…</span> : null}
             </div>
             {unboundUrls.length > 0 ? (
@@ -562,103 +787,265 @@ export default function AdminStudentViolationsPage() {
               </div>
             ) : null}
           </div>
-          <AdminButton type="button" disabled={unboundSaving || unboundLoading} onClick={() => void saveUnboundSettings()}>
-            {unboundSaving ? "保存中…" : "保存未绑卡提示"}
+          <AdminButton
+            type="button"
+            tone="primary"
+            loading={unboundSaving}
+            disabled={unboundLoading}
+            onClick={() => void saveUnboundSettings()}
+          >
+            保存未绑卡提示
           </AdminButton>
         </div>
       </AdminFormCard>
+        </AdminTabPanel>
 
+        <AdminTabPanel
+          id="violation-page-panel-announcement"
+          tabId="announcement"
+          activeTab={activeTab}
+          className="space-y-4"
+        >
       <ScanPopupAnnouncementSection />
+        </AdminTabPanel>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <AdminTabPanel
+          id="violation-page-panel-create"
+          tabId="create"
+          activeTab={activeTab}
+        >
         <AdminFormCard
           title="新建违规"
-          description="先锁定人员，再填写说明与策略；提交后扫码侧按最新 ACTIVE 展示。"
+          description="单人锁定或按课题组批量勾选成员；提交后扫码侧按每人最新 ACTIVE 展示。"
         >
-          <div className="relative space-y-3">
-            <div>
-              <label className="text-xs font-medium text-neutral-600">检索人员</label>
-              <p className="mt-0.5 text-[11px] text-neutral-500">键入自动预检，可回车；选中后锁定对象。</p>
-              <input
-                type="text"
-                disabled={Boolean(picked)}
-                className={cn(inputBase, "mt-1.5 disabled:bg-neutral-50 disabled:text-neutral-500")}
-                placeholder="输入姓名或工号…"
-                value={personKeyword}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    void handleSearchPersonnel(personKeyword);
-                  }
-                }}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setPersonKeyword(val);
-                  if (personSearchTimer.current) {
-                    window.clearTimeout(personSearchTimer.current);
-                  }
-                  personSearchTimer.current = window.setTimeout(() => {
-                    void handleSearchPersonnel(val);
-                  }, 250);
-                }}
+          <div className="mb-4">
+            <label className="text-xs font-medium text-neutral-600">锁定方式</label>
+            <div className="mt-1.5">
+              <AdminSegmentedControl
+                options={LOCK_MODE_OPTIONS}
+                value={lockMode}
+                onChange={switchLockMode}
+                aria-label="违规对象锁定方式"
               />
             </div>
-            {searchUserResult.length > 0 && !picked ? (
-              <div
-                className="absolute left-0 right-0 top-[5.5rem] z-20 max-h-[220px] overflow-y-auto overscroll-y-contain rounded-xl border border-neutral-200/90 bg-white p-1.5 shadow-lg ring-1 ring-black/[0.04]"
-                role="listbox"
-                aria-label="人员预检结果"
-              >
-                {searchUserResult.map((rawPerson) => {
-                  const rp = rawPerson as Record<string, unknown>;
-                  const safeId = String(rp.user_id ?? rp.userid ?? rp.userId ?? rp.id ?? "").trim();
-                  const safeName = String(rp.name ?? rp.username ?? "未知").trim() || safeId;
-                  const safeGroup = String(rp.project_group_name ?? rp.projectgroupname ?? "无课题组");
-                  const safeHead = rp.head ?? rp.avatar;
-                  const headSrc = resolvePersonnelAvatarUrl(typeof safeHead === "string" ? safeHead : undefined);
-                  return (
+          </div>
+
+          {lockMode === "single" ? (
+            <div className="relative space-y-3">
+              <div>
+                <label className="text-xs font-medium text-neutral-600">检索人员</label>
+                <p className="mt-0.5 text-[11px] text-neutral-500">键入自动预检，可回车；选中后锁定对象。</p>
+                <input
+                  type="text"
+                  disabled={Boolean(picked)}
+                  className={cn(inputBase, "mt-1.5 disabled:bg-neutral-50 disabled:text-neutral-500")}
+                  placeholder="输入姓名或工号…"
+                  value={personKeyword}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void handleSearchPersonnel(personKeyword);
+                    }
+                  }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPersonKeyword(val);
+                    if (personSearchTimer.current) {
+                      window.clearTimeout(personSearchTimer.current);
+                    }
+                    personSearchTimer.current = window.setTimeout(() => {
+                      void handleSearchPersonnel(val);
+                    }, 250);
+                  }}
+                />
+              </div>
+              {searchUserResult.length > 0 && !picked ? (
+                <div
+                  className="absolute left-0 right-0 top-[5.5rem] z-20 max-h-[220px] overflow-y-auto overscroll-y-contain rounded-xl border border-neutral-200/90 bg-white p-1.5 shadow-lg ring-1 ring-black/[0.04]"
+                  role="listbox"
+                  aria-label="人员预检结果"
+                >
+                  {searchUserResult.map((rawPerson) => {
+                    const rp = rawPerson as Record<string, unknown>;
+                    const safeId = String(rp.user_id ?? rp.userid ?? rp.userId ?? rp.id ?? "").trim();
+                    const safeName = String(rp.name ?? rp.username ?? "未知").trim() || safeId;
+                    const safeGroup = String(rp.project_group_name ?? rp.projectgroupname ?? "无课题组");
+                    const safeHead = rp.head ?? rp.avatar;
+                    const headSrc = resolvePersonnelAvatarUrl(typeof safeHead === "string" ? safeHead : undefined);
+                    return (
                     <button
                       key={safeId || safeName}
                       type="button"
-                      className="flex w-full cursor-pointer items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-neutral-50"
+                      className={adminPickableRowClass}
                       onClick={() => pickPersonFromHit(rp)}
                     >
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-50">
-                        {headSrc ? (
-                          <img src={headSrc} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
-                        ) : (
-                          <User className="h-4 w-4 text-neutral-400" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-semibold text-neutral-900">{safeName}</span>
-                          <span className="shrink-0 font-mono text-[10px] text-neutral-500">{safeId}</span>
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-50">
+                          {headSrc ? (
+                            <img src={headSrc} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                          ) : (
+                            <User className="h-4 w-4 text-neutral-400" />
+                          )}
                         </div>
-                        <div className="mt-0.5 truncate text-xs text-neutral-500">{safeGroup}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-            {picked ? (
-              <div className="flex items-center gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50/80 p-3 ring-1 ring-indigo-100/80">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm">
-                  <Check className="h-4 w-4" aria-hidden />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-sm font-semibold text-neutral-900">{safeName}</span>
+                            <span className="shrink-0 font-mono text-[10px] text-neutral-500">{safeId}</span>
+                          </div>
+                          <div className="mt-0.5 truncate text-xs text-neutral-500">{safeGroup}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-indigo-700">已锁定违规对象</div>
-                  <div className="text-sm font-semibold text-indigo-950">
-                    {picked.name}{" "}
-                    <span className="ml-1 font-mono text-xs font-normal text-indigo-600">({picked.userId})</span>
+              ) : null}
+              {picked ? (
+                <div className="flex items-center gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50/80 p-3 ring-1 ring-indigo-100/80">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm">
+                    <Check className="h-4 w-4" aria-hidden />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold text-indigo-700">已锁定违规对象</div>
+                    <div className="text-sm font-semibold text-indigo-950">
+                      {picked.name}{" "}
+                      <span className="ml-1 font-mono text-xs font-normal text-indigo-600">({picked.userId})</span>
+                    </div>
+                  </div>
+                  <AdminButton type="button" tone="secondary" size="sm" className="shrink-0" onClick={clearPickedPerson}>
+                    更换人员
+                  </AdminButton>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="relative space-y-3">
+              <div>
+                <label className="text-xs font-medium text-neutral-600">检索课题组</label>
+                <p className="mt-0.5 text-[11px] text-neutral-500">数据来自人员档案库；选中课题组后可勾选该组下成员批量锁定。</p>
+                <input
+                  type="text"
+                  disabled={Boolean(selectedGroup)}
+                  className={cn(inputBase, "mt-1.5 disabled:bg-neutral-50 disabled:text-neutral-500")}
+                  placeholder="输入课题组名称…"
+                  value={groupKeyword}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void handleSearchProjectGroups(groupKeyword);
+                    }
+                  }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setGroupKeyword(val);
+                    if (selectedGroup && val !== selectedGroup) {
+                      setSelectedGroup(null);
+                      setGroupMembers([]);
+                      setBatchSelectedIds(new Set());
+                    }
+                    if (groupSearchTimer.current) {
+                      window.clearTimeout(groupSearchTimer.current);
+                    }
+                    groupSearchTimer.current = window.setTimeout(() => {
+                      void handleSearchProjectGroups(val);
+                    }, 250);
+                  }}
+                />
+              </div>
+              {groupSuggestions.length > 0 && !selectedGroup ? (
+                <div
+                  className="absolute left-0 right-0 top-[5.5rem] z-20 max-h-[200px] overflow-y-auto overscroll-y-contain rounded-xl border border-neutral-200/90 bg-white p-1.5 shadow-lg ring-1 ring-black/[0.04]"
+                  role="listbox"
+                  aria-label="课题组检索结果"
+                >
+                  {groupSuggestions.map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      className={cn(adminPickableRowClass, "px-3 py-2 text-sm font-medium text-neutral-900")}
+                      onClick={() => pickProjectGroup(g)}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {selectedGroup ? (
+                <div className="flex items-center gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50/80 p-3 ring-1 ring-indigo-100/80">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold text-indigo-700">已选课题组</div>
+                    <div className="text-sm font-semibold text-indigo-950">{selectedGroup}</div>
+                    <div className="mt-0.5 text-xs text-indigo-600">
+                      {groupMembersLoading
+                        ? "正在加载成员…"
+                        : `共 ${groupMembers.length} 人，已勾选 ${batchSelectedIds.size} 人`}
+                    </div>
+                  </div>
+                  <AdminButton type="button" tone="secondary" size="sm" className="shrink-0" onClick={resetBatchGroup}>
+                    更换课题组
+                  </AdminButton>
+                </div>
+              ) : null}
+              {selectedGroup && !groupMembersLoading && groupMembers.length > 0 ? (
+                <div className="rounded-xl border border-neutral-200/90 bg-neutral-50/50 p-2">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+                    <span className="text-xs font-medium text-neutral-600">课题组成员</span>
+                    <div className="flex gap-2">
+                      <AdminButton
+                        type="button"
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => setBatchSelectedIds(new Set(groupMembers.map((m) => m.userId)))}
+                      >
+                        <Users className="h-3.5 w-3.5" aria-hidden />
+                        全选
+                      </AdminButton>
+                      <AdminButton
+                        type="button"
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => setBatchSelectedIds(new Set())}
+                      >
+                        取消全选
+                      </AdminButton>
+                    </div>
+                  </div>
+                  <div className="max-h-[220px] space-y-1 overflow-y-auto overscroll-y-contain pr-1">
+                    {groupMembers.map((m) => {
+                      const checked = batchSelectedIds.has(m.userId);
+                      const headSrc = resolvePersonnelAvatarUrl(m.head);
+                      return (
+                        <label
+                          key={m.userId}
+                          className={cn(
+                            "flex cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors",
+                            checked ? "border-indigo-200 bg-white" : "border-transparent bg-white/60 hover:bg-white"
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 shrink-0 rounded border-neutral-300"
+                            checked={checked}
+                            onChange={(e) => toggleBatchMember(m.userId, e.target.checked)}
+                          />
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-50">
+                            {headSrc ? (
+                              <img src={headSrc} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <User className="h-3.5 w-3.5 text-neutral-400" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-medium text-neutral-900">{m.name}</div>
+                            <div className="font-mono text-[10px] text-neutral-500">{m.userId}</div>
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
-                <AdminButton type="button" tone="ghost" size="sm" className="shrink-0 text-rose-700 hover:text-rose-800" onClick={clearPickedPerson}>
-                  更换
-                </AdminButton>
-              </div>
-            ) : null}
-          </div>
+              ) : null}
+              {selectedGroup && !groupMembersLoading && groupMembers.length === 0 ? (
+                <p className="text-xs text-amber-800">该课题组下未找到有效成员（请确认档案库中 user_id 与课题组标注）。</p>
+              ) : null}
+            </div>
+          )}
 
           <div>
             <label className="text-xs font-medium text-neutral-600">违规说明</label>
@@ -683,20 +1070,7 @@ export default function AdminStudentViolationsPage() {
                 <kbd className="rounded border border-neutral-200 bg-white px-1 font-mono text-[10px]">V</kbd> 粘贴剪贴板中的截图（与「选择图片」相同上传流程）。
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <label className={cn(filePickTriggerClass, "text-xs py-1.5")}>
-                  <span>选择图片</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    disabled={uploading}
-                    className="sr-only"
-                    onChange={(e) => {
-                      void onFiles(e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
+                <AdminFilePickButton multiple disabled={uploading} onFiles={(files) => void onFiles(files)} />
                 {uploading ? <span className="text-xs text-neutral-500">上传中…</span> : null}
               </div>
             </div>
@@ -762,22 +1136,33 @@ export default function AdminStudentViolationsPage() {
             </div>
           </div>
 
-          <div className="pt-1">
-            <AdminButton type="button" tone="primary" disabled={saving || !picked} onClick={() => void submit()}>
-              {saving ? "提交中…" : "提交违规记录"}
+          <div className="border-t border-neutral-100 pt-4">
+            <AdminButton
+              type="button"
+              tone="primary"
+              size="lg"
+              loading={saving}
+              disabled={!canSubmit}
+              className="min-w-[10rem]"
+              onClick={() => void submit()}
+            >
+              {lockMode === "batch" ? `批量提交（${batchSelectedIds.size} 人）` : "提交违规记录"}
             </AdminButton>
           </div>
         </AdminFormCard>
+        </AdminTabPanel>
 
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-end justify-between gap-2 border-b border-neutral-200/90 pb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-neutral-900">记录列表</h3>
-              <p className="mt-1 text-xs text-neutral-500">
-                {picked ? `仅显示「${picked.name}」的最近 400 条` : "显示全员最近 400 条；上方选择人员后可筛选。扫码侧仅取该人最新 ACTIVE。"}
-              </p>
-            </div>
-          </div>
+        <AdminTabPanel
+          id="violation-page-panel-records"
+          tabId="records"
+          activeTab={activeTab}
+          className="space-y-3"
+        >
+          <p className="text-xs text-neutral-500">
+            {picked
+              ? `当前筛选：「${picked.name}」的最近 400 条（在「新建违规」页锁定人员后生效）`
+              : "显示全员最近 400 条；扫码与大屏仅取每人最新「生效中」记录。「已被覆盖」为同一人再次新建时系统自动归档的旧记录。"}
+          </p>
           <AdminTableShell
             loading={loading}
             empty={!loading && rows.length === 0}
@@ -800,6 +1185,7 @@ export default function AdminStudentViolationsPage() {
               <tbody>
                 {rows.map((r) => {
                   const imgs = parseRowImageUrls(r);
+                  const st = violationStatusLabel(r.status);
                   return (
                     <tr key={r.id} className="align-top">
                       <td className="px-3 py-2 font-mono text-xs text-neutral-700">{r.id}</td>
@@ -814,28 +1200,48 @@ export default function AdminStudentViolationsPage() {
                           </div>
                         ) : null}
                       </td>
-                      <td className="px-3 py-2 text-xs text-neutral-800">{r.status}</td>
+                      <td className="px-3 py-2 text-xs">
+                        <span className={st.className} title={st.hint}>
+                          {st.text}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-xs">{r.forbidEnter ? "是" : "否"}</td>
                       <td className="px-3 py-2 text-xs">
                         {r.maxEnterSuccess != null ? `${r.enterSuccessCount ?? 0}/${r.maxEnterSuccess}` : "—"}
                       </td>
                       <td className="px-3 py-2 text-xs text-neutral-600">{r.expireAt ? String(r.expireAt).slice(0, 16) : "—"}</td>
                       <td className="px-3 py-2">
-                        <div className="flex flex-col items-end gap-1.5">
-                          <AdminButton type="button" tone="ghost" size="sm" className="h-8 px-2" onClick={() => openEdit(r)}>
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <AdminButton type="button" tone="secondary" size="sm" className="gap-1" onClick={() => openEdit(r)}>
+                            <Pencil className="h-3.5 w-3.5" aria-hidden />
                             编辑
                           </AdminButton>
                           {r.status === "ACTIVE" ? (
-                            <AdminButton type="button" tone="secondary" size="sm" className="h-auto min-h-0 whitespace-normal px-2 py-1 text-left text-xs" onClick={() => void onMarkProcessed(r.id)}>
+                            <AdminButton
+                              type="button"
+                              tone="secondary"
+                              size="sm"
+                              className="gap-1 text-emerald-900"
+                              onClick={() => void onMarkProcessed(r.id)}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
                               已处理
                             </AdminButton>
                           ) : null}
                           {r.status === "ACTIVE" ? (
-                            <AdminButton type="button" tone="secondary" size="sm" className="h-8 px-2 text-amber-900" onClick={() => void onClear(r.id)}>
-                              解除生效
+                            <AdminButton
+                              type="button"
+                              tone="secondary"
+                              size="sm"
+                              className="gap-1 text-amber-900"
+                              onClick={() => void onClear(r.id)}
+                            >
+                              <Ban className="h-3.5 w-3.5" aria-hidden />
+                              解除
                             </AdminButton>
                           ) : null}
-                          <AdminButton type="button" tone="destructive" size="sm" className="h-8 px-2" onClick={() => void onDeleteRow(r)}>
+                          <AdminButton type="button" tone="destructive" size="sm" className="gap-1" onClick={() => void onDeleteRow(r)}>
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden />
                             删除
                           </AdminButton>
                         </div>
@@ -846,7 +1252,7 @@ export default function AdminStudentViolationsPage() {
               </tbody>
             </table>
           </AdminTableShell>
-        </section>
+        </AdminTabPanel>
       </div>
 
       {editOpen && editId != null ? (
@@ -893,17 +1299,13 @@ export default function AdminStudentViolationsPage() {
               <div>
                 <label className="text-xs font-medium text-neutral-600">图片</label>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <label className={cn(filePickTriggerClass, "text-xs py-1.5")}>
-                    <span>添加图片</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      disabled={editUploading}
-                      className="sr-only"
-                      onChange={(e) => void onEditFiles(e.target.files)}
-                    />
-                  </label>
+                  <AdminFilePickButton
+                    multiple
+                    disabled={editUploading}
+                    onFiles={(files) => void onEditFiles(files)}
+                  >
+                    添加图片
+                  </AdminFilePickButton>
                   {editUploading ? <span className="text-xs text-neutral-500">上传中…</span> : null}
                 </div>
                 {editUrls.length > 0 ? (
@@ -977,8 +1379,8 @@ export default function AdminStudentViolationsPage() {
               <AdminButton type="button" tone="secondary" disabled={savingEdit} onClick={() => setEditOpen(false)}>
                 取消
               </AdminButton>
-              <AdminButton type="button" tone="primary" disabled={savingEdit} onClick={() => void saveEdit()}>
-                {savingEdit ? "保存中…" : "保存"}
+              <AdminButton type="button" tone="primary" loading={savingEdit} onClick={() => void saveEdit()}>
+                保存修改
               </AdminButton>
             </div>
           </div>

@@ -169,7 +169,8 @@ public class NotificationSettingsService {
         if ("scanner".equals(module)) return "扫码终端";
         if ("twin_scanner_popup".equals(module)) return "扫码进出提示";
         if ("student_violation".equals(module)) return "学生违规/未绑卡提示";
-        if ("llm".equals(module)) return "大模型（通义/DashScope）";
+        if ("llm".equals(module)) return "大模型（DeepSeek）";
+        if ("logging".equals(module)) return "控制台日志管理";
         return module;
     }
 

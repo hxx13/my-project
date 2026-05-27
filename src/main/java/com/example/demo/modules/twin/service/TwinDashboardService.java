@@ -1,6 +1,7 @@
 package com.example.demo.modules.twin.service;
 
 import com.example.demo.common.dto.UniversalEvent;
+import com.example.demo.common.time.BusinessTimeWindow;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -20,13 +21,16 @@ public class TwinDashboardService {
     @Autowired
     private TwinDashboardMapper dashboardMapper;
 
+    @Autowired
+    private BusinessTimeWindow businessTimeWindow;
+
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     /**
      * 🏆 API 1：课题组排行榜 (完全委托给 Mapper)
      */
     public List<Map<String, Object>> getGroupRanking(String timeType, String region) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = businessTimeWindow.today();
         String startTime;
 
         if ("TODAY".equalsIgnoreCase(timeType)) {
@@ -50,7 +54,7 @@ public class TwinDashboardService {
      * 📊 API 2 核心引擎：今日饼图与总人数 (完全委托给 Mapper)
      */
     public Map<String, Object> getTodayRoomStats() {
-        String todayStart = LocalDate.now().format(FMT) + " 00:00:00";
+        String todayStart = businessTimeWindow.todayWindow().startInclusive();
         Map<String, Object> result = new HashMap<>();
 
         try {
@@ -78,7 +82,7 @@ public class TwinDashboardService {
      * 📈 API 3 核心引擎：27 刻度进出高峰折线图 (Java 内存高速分桶)
      */
     public Map<String, Object> getTodayLineChart() {
-        String todayStart = LocalDate.now().format(FMT) + " 00:00:00";
+        String todayStart = businessTimeWindow.todayWindow().startInclusive();
 
         // 💥 解耦：只负责从 Mapper 拿到原始数据集
         List<Map<String, Object>> records = new ArrayList<>();

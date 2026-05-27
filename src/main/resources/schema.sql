@@ -544,7 +544,8 @@ CREATE TABLE IF NOT EXISTS twin_job_schedule_config (
     last_status VARCHAR(16) NULL COMMENT 'SUCCESS/FAILED/RUNNING',
     last_error VARCHAR(500) NULL COMMENT '最近错误摘要',
     updated_by VARCHAR(64) NULL COMMENT '更新人',
-    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    revoke_auto_signout_enabled TINYINT NOT NULL DEFAULT 0 COMMENT 'DAILY_EXEMPT_RESET: 今日曾豁免且流水在馆时自动签离'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统一定时任务配置与最近执行状态';
 
 CREATE TABLE IF NOT EXISTS twin_access_correlation_pending (
@@ -997,3 +998,278 @@ CREATE TABLE IF NOT EXISTS analytics_chat_message (
     KEY idx_acm_session (session_id, id),
     CONSTRAINT fk_acm_session FOREIGN KEY (session_id) REFERENCES analytics_chat_session(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计页-AI对话消息';
+
+-- accessfusion：门禁清洗统计（详见 scripts/access_fusion.ddl.sql）
+CREATE TABLE IF NOT EXISTS access_door_rule (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    rule_set_id BIGINT NOT NULL DEFAULT 1,
+    stats_task_id BIGINT NOT NULL DEFAULT 0 COMMENT '统计拉取任务ID',
+    channel_code VARCHAR(128) NOT NULL,
+    channel_name VARCHAR(256) NULL,
+    door_mode VARCHAR(32) NOT NULL DEFAULT 'BIDIRECTIONAL_TOGGLE',
+    paired_entry_channel VARCHAR(128) NULL,
+    paired_exit_channel VARCHAR(128) NULL,
+    zone_id VARCHAR(64) NULL,
+    campus VARCHAR(128) NULL,
+    floor VARCHAR(64) NULL,
+    debounce_seconds INT NOT NULL DEFAULT 45,
+    max_swipes_per_minute INT NOT NULL DEFAULT 8,
+    enabled TINYINT NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_access_door_rule_task_channel (stats_task_id, channel_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_clean_task_settings (
+    stats_task_id BIGINT NOT NULL PRIMARY KEY,
+    debounce_seconds INT NOT NULL DEFAULT 45,
+    auto_clean_package TINYINT NOT NULL DEFAULT 1,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_clean_channel_scope (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    stats_task_id BIGINT NOT NULL,
+    channel_code VARCHAR(128) NOT NULL,
+    channel_name VARCHAR(256) NULL,
+    enabled TINYINT NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_clean_scope_task_channel (stats_task_id, channel_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_clean_package (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    stats_task_id BIGINT NOT NULL DEFAULT 0 COMMENT '遗留字段，清洗包主维度为 channel_code',
+    channel_code VARCHAR(128) NOT NULL COMMENT '每通道唯一数据包',
+    package_name VARCHAR(128) NOT NULL,
+    window_start DATETIME NULL,
+    window_end DATETIME NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'DRAFT',
+    total_scanned INT NOT NULL DEFAULT 0,
+    included_count INT NOT NULL DEFAULT 0,
+    excluded_count INT NOT NULL DEFAULT 0,
+    review_count INT NOT NULL DEFAULT 0,
+    published_at DATETIME NULL,
+    last_merged_swing_time DATETIME NULL COMMENT '增量合并游标',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_clean_package_channel (channel_code),
+    KEY idx_clean_package_task (stats_task_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_swing_clean_run (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    channel_code VARCHAR(128) NOT NULL,
+    package_id BIGINT NULL COMMENT '通道账本 access_clean_package.id',
+    trigger_type VARCHAR(16) NOT NULL COMMENT 'MANUAL|SCHEDULED|RERUN',
+    stats_task_ids_json VARCHAR(512) NULL,
+    config_snapshot_json MEDIUMTEXT NULL COMMENT '试算/合并时的配置快照',
+    incremental_after_time DATETIME NULL,
+    window_start DATETIME NULL,
+    window_end DATETIME NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'RUNNING' COMMENT 'RUNNING|DONE|FAILED|SUPERSEDED',
+    total_scanned INT NOT NULL DEFAULT 0,
+    included_count INT NOT NULL DEFAULT 0,
+    excluded_count INT NOT NULL DEFAULT 0,
+    review_count INT NOT NULL DEFAULT 0,
+    superseded_by_run_id BIGINT NULL,
+    error_message VARCHAR(512) NULL,
+    started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at DATETIME NULL,
+    KEY idx_swing_clean_run_channel (channel_code, started_at),
+    KEY idx_swing_clean_run_pkg (package_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_clean_package_item (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    package_id BIGINT NOT NULL,
+    last_run_id BIGINT NULL COMMENT '最近一次写入本行的清洗批次',
+    swing_row_id BIGINT NULL,
+    record_id VARCHAR(128) NOT NULL,
+    swing_time DATETIME NOT NULL,
+    channel_code VARCHAR(128) NOT NULL,
+    channel_name VARCHAR(256) NULL,
+    person_code VARCHAR(64) NULL,
+    person_name VARCHAR(128) NULL,
+    mapping_user_id VARCHAR(64) NULL,
+    department_id VARCHAR(50) NULL COMMENT 'ARO部门ID，26=学生',
+    department_name VARCHAR(128) NULL,
+    audience_type VARCHAR(16) NULL COMMENT 'STUDENT|STAFF',
+    disposition VARCHAR(24) NOT NULL,
+    auto_reason VARCHAR(128) NULL,
+    manual_override VARCHAR(24) NULL,
+    manual_verdict VARCHAR(16) NULL,
+    direction VARCHAR(8) NULL,
+    direction_override VARCHAR(8) NULL,
+    flags_json VARCHAR(512) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_package_record (package_id, record_id),
+    KEY idx_package_item_disp (package_id, disposition),
+    KEY idx_pkg_item_last_run (last_run_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_raw_event (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    source VARCHAR(32) NOT NULL,
+    record_id VARCHAR(128) NOT NULL,
+    swing_task_id BIGINT NULL,
+    swing_time DATETIME NOT NULL,
+    card_number VARCHAR(64) NULL,
+    channel_code VARCHAR(128) NOT NULL,
+    channel_name VARCHAR(256) NULL,
+    person_code VARCHAR(64) NULL,
+    person_name VARCHAR(128) NULL,
+    department_id VARCHAR(50) NULL,
+    department_name VARCHAR(128) NULL,
+    mapping_user_id VARCHAR(64) NULL,
+    dahua_enter_or_exit INT NULL,
+    open_result INT NULL,
+    raw_json MEDIUMTEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_access_raw_source_record (source, record_id),
+    KEY idx_access_raw_swing_time (swing_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_clean_batch (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    batch_type VARCHAR(32) NOT NULL,
+    window_start DATETIME NOT NULL,
+    window_end DATETIME NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'RUNNING',
+    raw_in INT NOT NULL DEFAULT 0,
+    cleaned_out INT NOT NULL DEFAULT 0,
+    visit_out INT NOT NULL DEFAULT 0,
+    review_count INT NOT NULL DEFAULT 0,
+    error_message VARCHAR(512) NULL,
+    started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at DATETIME NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_cleaned_event (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    batch_id BIGINT NULL,
+    raw_event_id BIGINT NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    person_name VARCHAR(128) NULL,
+    channel_code VARCHAR(128) NOT NULL,
+    room_id VARCHAR(64) NULL,
+    room_name VARCHAR(256) NULL,
+    area_name VARCHAR(256) NULL,
+    floor_name VARCHAR(128) NULL,
+    direction VARCHAR(8) NOT NULL,
+    access_type TINYINT NOT NULL,
+    inference_method VARCHAR(32) NOT NULL,
+    confidence INT NOT NULL DEFAULT 80,
+    flags_json VARCHAR(512) NULL,
+    project_group_names VARCHAR(512) NULL,
+    event_time DATETIME NOT NULL,
+    needs_review TINYINT NOT NULL DEFAULT 0,
+    ai_suggested_direction VARCHAR(8) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_access_cleaned_raw (raw_event_id),
+    KEY idx_access_cleaned_agg (event_time, user_id, room_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_visit_round (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    batch_id BIGINT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    room_id VARCHAR(64) NULL,
+    room_name VARCHAR(256) NULL,
+    round_date DATE NOT NULL,
+    enter_time DATETIME NULL,
+    exit_time DATETIME NULL,
+    enter_cleaned_event_id BIGINT NULL,
+    exit_cleaned_event_id BIGINT NULL,
+    status VARCHAR(16) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_access_visit_user_date (user_id, round_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_clean_rule_profile (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    description VARCHAR(512) NULL,
+    debounce_seconds INT NOT NULL DEFAULT 45,
+    swing_direction_filter VARCHAR(8) NOT NULL DEFAULT 'ALL',
+    auto_clean_package TINYINT NOT NULL DEFAULT 1,
+    require_mapping TINYINT NOT NULL DEFAULT 0 COMMENT '0=不限制映射(含工作人员);1=仅已映射用户纳入',
+    open_success_only TINYINT NOT NULL DEFAULT 1,
+    default_door_mode VARCHAR(32) NULL DEFAULT 'DAHUA_ENTER_EXIT',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_clean_rule_profile_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS access_clean_execution_log (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    stats_pull_task_id BIGINT NULL,
+    clean_rule_profile_id BIGINT NULL,
+    execution_date DATE NOT NULL,
+    window_start DATETIME NULL,
+    window_end DATETIME NULL,
+    channel_codes_json VARCHAR(2048) NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'SUCCESS',
+    total_scanned INT NOT NULL DEFAULT 0,
+    included_count INT NOT NULL DEFAULT 0,
+    excluded_count INT NOT NULL DEFAULT 0,
+    review_count INT NOT NULL DEFAULT 0,
+    config_snapshot_json MEDIUMTEXT NULL,
+    note_text VARCHAR(1024) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_exec_log_task_date (stats_pull_task_id, execution_date),
+    KEY idx_exec_log_profile_date (clean_rule_profile_id, execution_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 统计用门禁批量拉取（与 twin_dahua_pull_task 即时任务分离，详见 scripts/dahua_swing_stats_pull.ddl.sql）
+CREATE TABLE IF NOT EXISTS twin_dahua_stats_pull_task (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    enabled TINYINT NOT NULL DEFAULT 1,
+    period_mode VARCHAR(32) NOT NULL DEFAULT 'PREVIOUS_DAY',
+    period_days INT NOT NULL DEFAULT 1,
+    query_json TEXT NOT NULL,
+    clean_rule_profile_id BIGINT NULL COMMENT '绑定的清洗规则方案',
+    last_pulled_start DATETIME NULL,
+    last_pulled_end DATETIME NULL,
+    last_status VARCHAR(32) NULL,
+    last_error TEXT NULL,
+    last_run_at DATETIME NULL,
+    last_saved_count INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_stats_pull_enabled (enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- WinCC 温湿度归档（详见 src/main/resources/db/telemetry-value-archive.sql）
+CREATE TABLE IF NOT EXISTS telemetry_value_archive (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    sample_at DATETIME(3) NOT NULL COMMENT '采样时间',
+    variable_name VARCHAR(512) NOT NULL COMMENT 'WinCC 变量名',
+    numeric_value DOUBLE NULL,
+    raw_value VARCHAR(512) NULL,
+    metric_kind_code VARCHAR(64) NULL,
+    room_canonical VARCHAR(256) NULL,
+    bundle_code VARCHAR(128) NULL,
+    schema_version TINYINT NOT NULL DEFAULT 1,
+    ingest_batch_id VARCHAR(64) NULL,
+    ext_json TEXT NULL,
+    KEY idx_tva_sample_at (sample_at),
+    KEY idx_tva_var_sample (variable_name(255), sample_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='遥测值归档（WinCC 刷新写入）';
+
+CREATE TABLE IF NOT EXISTS telemetry_archive_purge_config (
+    id TINYINT NOT NULL PRIMARY KEY,
+    purge_enabled TINYINT NOT NULL DEFAULT 1,
+    retention_days INT NOT NULL DEFAULT 14,
+    batch_delete_size INT NOT NULL DEFAULT 50000,
+    optimize_after_purge TINYINT NOT NULL DEFAULT 1,
+    archive_write_enabled TINYINT NOT NULL DEFAULT 1,
+    last_purge_at DATETIME NULL,
+    last_purge_deleted_rows BIGINT NULL,
+    last_purge_duration_ms INT NULL,
+    updated_by VARCHAR(64) NULL,
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='温湿度归档清理策略';

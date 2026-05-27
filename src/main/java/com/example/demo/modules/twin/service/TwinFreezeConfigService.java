@@ -32,12 +32,14 @@ public class TwinFreezeConfigService {
     public void ensureDefaultRow() {
         ensureSecondFreezeColumn();
         ensureSecondFreezeAutoSignoutColumn();
+        ensureDailyExemptRevokeAutoSignoutColumn();
         freezeConfigMapper.insertIgnoreDefault(CONFIG_ID);
     }
 
     public void ensureRow() {
         ensureSecondFreezeColumn();
         ensureSecondFreezeAutoSignoutColumn();
+        ensureDailyExemptRevokeAutoSignoutColumn();
         freezeConfigMapper.insertIgnoreDefault(CONFIG_ID);
     }
 
@@ -56,6 +58,21 @@ public class TwinFreezeConfigService {
         if (cnt == null || cnt == 0) {
             freezeConfigMapper.addSecondFreezeAutoSignoutColumn();
         }
+    }
+
+    private void ensureDailyExemptRevokeAutoSignoutColumn() {
+        Integer cnt = freezeConfigMapper.countDailyExemptRevokeAutoSignoutColumn();
+        if (cnt == null || cnt == 0) {
+            freezeConfigMapper.addDailyExemptRevokeAutoSignoutColumn();
+        }
+    }
+
+    public boolean isDailyExemptRevokeAutoSignoutEnabled() {
+        ensureRow();
+        TwinFreezeConfigRow row = freezeConfigMapper.selectById(CONFIG_ID);
+        return row != null
+                && row.getDailyExemptRevokeAutoSignoutEnabled() != null
+                && row.getDailyExemptRevokeAutoSignoutEnabled() == 1;
     }
 
     public ZoneId resolveZoneId(TwinFreezeConfigRow row) {
@@ -80,6 +97,7 @@ public class TwinFreezeConfigService {
         m.put("freezeTime", row.getFreezeTime() != null ? row.getFreezeTime() : DEFAULT_FREEZE_TIME);
         m.put("secondFreezeTime", row.getSecondFreezeTime() != null ? row.getSecondFreezeTime() : "");
         m.put("secondFreezeAutoSignoutEnabled", row.getSecondFreezeAutoSignoutEnabled() != null && row.getSecondFreezeAutoSignoutEnabled() == 1);
+        m.put("dailyExemptRevokeAutoSignoutEnabled", row.getDailyExemptRevokeAutoSignoutEnabled() != null && row.getDailyExemptRevokeAutoSignoutEnabled() == 1);
         m.put("timezone", row.getTimezone() != null ? row.getTimezone() : DEFAULT_TZ);
         m.put("updatedBy", row.getUpdatedBy());
         m.put("updatedAt", row.getUpdatedAt() != null ? row.getUpdatedAt().toString() : null);
@@ -93,6 +111,7 @@ public class TwinFreezeConfigService {
         m.put("freezeTime", DEFAULT_FREEZE_TIME);
         m.put("secondFreezeTime", "");
         m.put("secondFreezeAutoSignoutEnabled", false);
+        m.put("dailyExemptRevokeAutoSignoutEnabled", false);
         m.put("timezone", DEFAULT_TZ);
         m.put("updatedBy", updatedBy);
         m.put("updatedAt", null);
@@ -128,6 +147,7 @@ public class TwinFreezeConfigService {
             String freezeTime,
             String secondFreezeTime,
             boolean secondFreezeAutoSignoutEnabled,
+            boolean dailyExemptRevokeAutoSignoutEnabled,
             String timezone,
             String updatedBy) {
         ensureRow();
@@ -148,8 +168,9 @@ public class TwinFreezeConfigService {
         }
         int en = enabled ? 1 : 0;
         int secondAuto = secondFreezeAutoSignoutEnabled ? 1 : 0;
+        int dailyExemptAuto = dailyExemptRevokeAutoSignoutEnabled ? 1 : 0;
         String by = (updatedBy == null || updatedBy.isBlank()) ? "unknown" : updatedBy.trim();
-        freezeConfigMapper.updateConfig(CONFIG_ID, en, ft, secondFt, secondAuto, tz, by);
+        freezeConfigMapper.updateConfig(CONFIG_ID, en, ft, secondFt, secondAuto, dailyExemptAuto, tz, by);
         return getConfigMap();
     }
 

@@ -5,6 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.aro.task.AroSyncTask;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.common.time.BusinessTimeWindow;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,14 +23,17 @@ import java.util.*;
 public class TwinCardStatusController {
 
     private final TwinDashboardMapper dashboardMapper;
+    private final BusinessTimeWindow businessTimeWindow;
     private final AroSyncTask aroSyncTask;
     private final AuthContextService authContextService;
 
     public TwinCardStatusController(
             TwinDashboardMapper dashboardMapper,
+            BusinessTimeWindow businessTimeWindow,
             AroSyncTask aroSyncTask,
             AuthContextService authContextService) {
         this.dashboardMapper = dashboardMapper;
+        this.businessTimeWindow = businessTimeWindow;
         this.aroSyncTask = aroSyncTask;
         this.authContextService = authContextService;
     }
@@ -37,7 +41,9 @@ public class TwinCardStatusController {
     @GetMapping("/status")
     @Operation(summary = "获取房卡状态总览")
     public List<Map<String, Object>> getRoomStatus() {
-        List<Map<String, Object>> activeUsers = dashboardMapper.getTodayActiveUsersForRoomStatus();
+        BusinessTimeWindow.Window day = businessTimeWindow.todayWindow();
+        List<Map<String, Object>> activeUsers = dashboardMapper.getTodayActiveUsersForRoomStatus(
+                day.startInclusive(), day.endExclusive());
         Map<String, Map<String, Object>> roomGroups = new LinkedHashMap<>();
 
         for (Map<String, Object> user : activeUsers) {
@@ -126,10 +132,11 @@ public class TwinCardStatusController {
             return Result.error("无权限访问");
         }
         try {
-            aroSyncTask.executeIncrementalSync();
+            var sync = aroSyncTask.executeIncrementalSync(true);
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
-            result.put("message", "流水同步成功！大屏已动态重组。");
+            result.put("message", sync.summary());
+            result.put("metrics", sync.metrics());
             return Result.success(result);
         } catch (Exception e) {
             return Result.error("同步失败：" + e.getMessage());

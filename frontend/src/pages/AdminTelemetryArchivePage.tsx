@@ -1,8 +1,20 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import { Link } from "react-router-dom";
 import { adminHttp } from "@/api/core/adminHttp";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
-import { Archive } from "lucide-react";
+import { AdminButton } from "@/components/admin/AdminButton";
+import {
+  fetchTelemetryArchivePurgeConfig,
+  fetchTelemetryArchivePurgeProgress,
+  fetchTelemetryArchiveStorageStats,
+  purgeTelemetryArchiveNow,
+  saveTelemetryArchivePurgeConfig,
+  type TelemetryArchivePurgeConfig,
+} from "@/api/domains/telemetryArchive.api";
+import { Archive, Database, Trash2 } from "lucide-react";
+import { motion } from "framer-motion";
 
 type ArchiveRow = {
   id: number;
@@ -24,11 +36,39 @@ type ArchivePage = {
 
 type ApiResult<T> = { success?: boolean; message?: string; data?: T };
 
+const defaultPurgeConfig = (): TelemetryArchivePurgeConfig => ({
+  purgeEnabled: true,
+  retentionDays: 14,
+  batchDeleteSize: 5000,
+  optimizeAfterPurge: true,
+  archiveWriteEnabled: true,
+  scheduleJobKey: "TELEMETRY_ARCHIVE_PURGE",
+  scheduleJobName: "温湿度·WinCC归档自动清理",
+});
+
 export default function AdminTelemetryArchivePage() {
+  const queryClient = useQueryClient();
   const [variableName, setVariableName] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
+
+  const [purgeForm, setPurgeForm] = useState<TelemetryArchivePurgeConfig>(defaultPurgeConfig);
+
+  const statsQ = useQuery({
+    queryKey: ["admin", "telemetry-archive", "stats"],
+    queryFn: fetchTelemetryArchiveStorageStats,
+    refetchInterval: 60_000,
+  });
+
+  const configQ = useQuery({
+    queryKey: ["admin", "telemetry-archive", "purge-config"],
+    queryFn: async () => {
+      const cfg = await fetchTelemetryArchivePurgeConfig();
+      setPurgeForm(cfg);
+      return cfg;
+    },
+  });
 
   const queryKey = useMemo(
     () => ["admin", "telemetry-archive", page, variableName, from, to] as const,
@@ -55,6 +95,56 @@ export default function AdminTelemetryArchivePage() {
     },
   });
 
+  const saveConfigM = useMutation({
+    mutationFn: () => saveTelemetryArchivePurgeConfig(purgeForm),
+    onSuccess: (data) => {
+      setPurgeForm(data);
+      toast.success("清理策略已保存");
+      void queryClient.invalidateQueries({ queryKey: ["admin", "telemetry-archive"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const purgeProgressQ = useQuery({
+    queryKey: ["admin", "telemetry-archive", "purge-progress"],
+    queryFn: fetchTelemetryArchivePurgeProgress,
+    refetchInterval: (q) => (q.state.data?.inProgress ? 2000 : false),
+    refetchIntervalInBackground: true,
+  });
+
+  const wasPurgeRunning = useRef(false);
+  useEffect(() => {
+    const p = purgeProgressQ.data;
+    if (p?.inProgress) {
+      wasPurgeRunning.current = true;
+      return;
+    }
+    if (wasPurgeRunning.current && p && !p.inProgress) {
+      wasPurgeRunning.current = false;
+      if (p.status === "COMPLETED") {
+        toast.success(p.message || "清理已结束");
+      } else if (p.status === "FAILED") {
+        toast.error(p.error || p.message || "清理失败");
+      }
+      void queryClient.invalidateQueries({ queryKey: ["admin", "telemetry-archive", "stats"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "telemetry-archive", "purge-config"] });
+    }
+  }, [purgeProgressQ.data, queryClient]);
+
+  const purgeNowM = useMutation({
+    mutationFn: purgeTelemetryArchiveNow,
+    onSuccess: (r) => {
+      toast.success(r.message || (r.accepted ? "后台清理已启动" : "清理已在运行"));
+      void queryClient.invalidateQueries({ queryKey: ["admin", "telemetry-archive", "purge-progress"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const stats = statsQ.data;
+  const purgeProgress = purgeProgressQ.data;
+  const purgeRunning = purgeProgress?.inProgress === true;
+  const showPurgeProgress = purgeProgress != null && purgeProgress.status !== "IDLE";
+
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="flex flex-wrap items-center gap-2">
@@ -62,9 +152,185 @@ export default function AdminTelemetryArchivePage() {
         <h1 className="text-xl font-semibold text-slate-900">温湿度数据归档</h1>
       </div>
       <p className="max-w-3xl text-sm text-slate-600">
-        查询 WinCC 刷新写入的 <code className="rounded bg-slate-100 px-1">telemetry_value_archive</code>{" "}
-        表；默认保留约 30 天（见 <code className="rounded bg-slate-100 px-1">app.telemetry.archive.retention-days</code>
-        ）。
+        WinCC 刷新写入 <code className="rounded bg-slate-100 px-1">telemetry_value_archive</code>。
+        表过大可能拖慢 MySQL；可配置保留天数并自动清理。执行时刻在{" "}
+        <Link to="/admin/schedule" className="text-sky-700 underline">
+          定时任务管理
+        </Link>{" "}
+        中调整任务「温湿度·WinCC归档自动清理」。
+      </p>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <Database className="h-4 w-4 text-sky-600" />
+            表占用（实时）
+          </div>
+          {statsQ.isPending ? (
+            <p className="text-sm text-slate-500">统计加载中…</p>
+          ) : statsQ.isError ? (
+            <p className="text-sm text-rose-600">{(statsQ.error as Error).message}</p>
+          ) : stats ? (
+            <ul className="space-y-1 text-sm text-slate-700">
+              <li>
+                总行数（约）：
+                <strong>{stats.totalRows.toLocaleString()}</strong>
+                {stats.approximate ? " · information_schema 估算" : ""}
+                {stats.tableSizeMb != null ? ` · 约 ${stats.tableSizeMb} MB` : ""}
+              </li>
+              <li>
+                超过保留期（{stats.effectiveRetentionDays} 天）待删：
+                <strong className="text-amber-700">
+                  {" "}
+                  {stats.rowsOlderThanRetention < 0
+                    ? "未知（表过大，请点「立即清理」并查看进度条）"
+                    : stats.rowsOlderThanRetention.toLocaleString()}
+                </strong>{" "}
+                行
+              </li>
+              <li className="font-mono text-xs text-slate-500">
+                最早 {stats.oldestSampleAt ?? "—"} · 最新 {stats.newestSampleAt ?? "—"}
+              </li>
+            </ul>
+          ) : null}
+          <div className="mt-3">
+            <AdminButton tone="secondary" size="sm" onClick={() => void statsQ.refetch()}>
+              刷新统计
+            </AdminButton>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-amber-200/80 bg-amber-50/40 p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <Trash2 className="h-4 w-4 text-amber-700" />
+            自动清理策略
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={purgeForm.purgeEnabled}
+                onChange={(e) => setPurgeForm((f) => ({ ...f, purgeEnabled: e.target.checked }))}
+              />
+              启用清理
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={purgeForm.archiveWriteEnabled}
+                onChange={(e) => setPurgeForm((f) => ({ ...f, archiveWriteEnabled: e.target.checked }))}
+              />
+              继续写入归档
+            </label>
+            <label className="text-xs text-slate-600">
+              保留天数
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={purgeForm.retentionDays}
+                onChange={(e) =>
+                  setPurgeForm((f) => ({ ...f, retentionDays: Number(e.target.value) || 14 }))
+                }
+                className="mt-1 block w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="text-xs text-slate-600">
+              每批删除行数（建议 2000～5000，过大易锁表）
+              <input
+                type="number"
+                min={500}
+                max={20000}
+                step={500}
+                value={purgeForm.batchDeleteSize}
+                onChange={(e) =>
+                  setPurgeForm((f) => ({ ...f, batchDeleteSize: Number(e.target.value) || 5000 }))
+                }
+                className="mt-1 block w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={purgeForm.optimizeAfterPurge}
+                onChange={(e) => setPurgeForm((f) => ({ ...f, optimizeAfterPurge: e.target.checked }))}
+              />
+              清理后执行 OPTIMIZE TABLE（释放磁盘，大表可能较慢）
+            </label>
+          </div>
+          {purgeForm.lastPurgeAt ? (
+            <p className="mt-2 font-mono text-xs text-slate-500">
+              上次清理：{purgeForm.lastPurgeAt}，删除 {purgeForm.lastPurgeDeletedRows ?? 0} 行，耗时{" "}
+              {purgeForm.lastPurgeDurationMs ?? 0} ms
+            </p>
+          ) : null}
+          {showPurgeProgress ? (
+            <motion.div className="mt-3 rounded-lg border border-sky-200 bg-sky-50/60 p-3">
+              <motion.div className="mb-2 flex items-center justify-between text-xs text-slate-600">
+                <span className="font-medium text-slate-800">
+                  {purgeRunning ? "清理进行中…" : purgeProgress?.status === "FAILED" ? "清理失败" : "清理结果"}
+                </span>
+                <span>{purgeProgress?.percentComplete ?? 0}%</span>
+              </motion.div>
+              <motion.div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <motion.div
+                  className={`h-full rounded-full transition-all duration-500 ${purgeProgress?.status === "FAILED" ? "bg-rose-500" : "bg-sky-600"}`}
+                  style={{ width: `${Math.min(100, purgeProgress?.percentComplete ?? 0)}%` }}
+                />
+              </motion.div>
+              <p className="mt-2 text-xs text-slate-700">{purgeProgress?.message ?? "—"}</p>
+              <p className="mt-1 font-mono text-xs text-slate-500">
+                本次已删 {purgeProgress?.deletedThisSession?.toLocaleString() ?? 0} 行 · 第{" "}
+                {purgeProgress?.batchRounds ?? 0} 批 · 表内剩余约{" "}
+                {purgeProgress?.remainingRowsApprox?.toLocaleString() ?? "—"} 行
+              </p>
+              {purgeProgress?.error ? (
+                <p className="mt-1 text-xs text-rose-600">{purgeProgress.error}</p>
+              ) : null}
+            </motion.div>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <AdminButton
+              tone="primary"
+              size="sm"
+              loading={saveConfigM.isPending}
+              onClick={() => saveConfigM.mutate()}
+            >
+              保存策略
+            </AdminButton>
+            <AdminButton
+              tone="destructive"
+              size="sm"
+              loading={purgeNowM.isPending}
+              disabled={!purgeForm.purgeEnabled || purgeRunning}
+              onClick={() => {
+                const pending =
+                  stats?.rowsOlderThanRetention != null && stats.rowsOlderThanRetention >= 0
+                    ? stats.rowsOlderThanRetention.toLocaleString()
+                    : "大量";
+                if (
+                  !window.confirm(
+                    `将在后台持续删除过期数据（保留 ${purgeForm.retentionDays} 天，每批 ${purgeForm.batchDeleteSize} 行），` +
+                      `待删约 ${pending} 行。进度条会自动更新，无需反复点击。继续？`
+                  )
+                ) {
+                  return;
+                }
+                purgeNowM.mutate();
+              }}
+            >
+              立即清理
+            </AdminButton>
+          </div>
+          {configQ.isError ? (
+            <p className="mt-2 text-xs text-rose-600">{(configQ.error as Error).message}</p>
+          ) : null}
+        </div>
+      </div>
+
+      <p className="text-xs text-slate-500">
+        说明：扫码变慢若日志显示 <code>[ARO·耗时] noLeaveRoom</code> 超时，主因是 ARO 官方接口，清理本表无法直接修复；
+        但若 <code>telemetry_value_archive</code> 已达数百万行，清理可减轻 MySQL 整体压力。
       </p>
 
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -104,13 +370,9 @@ export default function AdminTelemetryArchivePage() {
             placeholder="可选"
           />
         </label>
-        <button
-          type="button"
-          onClick={() => void listQ.refetch()}
-          className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900"
-        >
-          刷新
-        </button>
+        <AdminButton tone="secondary" size="sm" onClick={() => void listQ.refetch()}>
+          刷新列表
+        </AdminButton>
       </div>
 
       <AdminDataTableWrap scrollable>
@@ -160,22 +422,17 @@ export default function AdminTelemetryArchivePage() {
           {Math.max(1, Math.ceil((listQ.data?.total ?? 0) / (listQ.data?.size ?? 50)))} 页
         </span>
         <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="rounded border border-slate-200 px-3 py-1 disabled:opacity-40"
-          >
+          <AdminButton tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
             上一页
-          </button>
-          <button
-            type="button"
+          </AdminButton>
+          <AdminButton
+            tone="secondary"
+            size="sm"
             disabled={listQ.data != null && page * listQ.data.size >= listQ.data.total}
             onClick={() => setPage((p) => p + 1)}
-            className="rounded border border-slate-200 px-3 py-1 disabled:opacity-40"
           >
             下一页
-          </button>
+          </AdminButton>
         </div>
       </div>
     </div>

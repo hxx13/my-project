@@ -34,7 +34,33 @@ export function IsolationUsageReportLayout({ report, fromSnapshot, periodLabel }
         </p>
       ) : null}
 
-      {chartData.length > 0 ? (
+      {report.summary?.dataSource === "access_package" ? (
+        <p className="text-xs text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+          主数据：门禁清洗总库（每条纳入 = 1 次
+          {report.summary.directionScope ? ` · ${report.summary.directionScope}` : ""}）· 合计{" "}
+          <strong>
+            {report.summary.totalEvents ?? report.summary.totalSets ?? report.summary.totalPersonTimes ?? 0}
+          </strong>{" "}
+          条：学生{" "}
+          <strong>{report.summary.studentEvents ?? report.summary.studentSets ?? 0}</strong> / 工作人员{" "}
+          <strong>{report.summary.staffEvents ?? report.summary.staffSets ?? 0}</strong>
+          {report.summary.channelScope ? ` · 通道：${report.summary.channelScope}` : ""}
+          {report.summary.metricNote ? ` · ${report.summary.metricNote}` : ""}
+        </p>
+      ) : report.summary?.dataSource === "cleaned" ? (
+        <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">
+          数据来自大华摆闸清洗管线
+          {report.summary.reviewPendingCount != null && report.summary.reviewPendingCount > 0
+            ? ` · 待复核 ${report.summary.reviewPendingCount} 条`
+            : ""}
+        </p>
+      ) : report.summary?.dataSource === "aro" ? (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+          数据来自 ARO 通行日志（对照模式）
+        </p>
+      ) : null}
+
+      {chartData.length > 0 && report.summary?.dataSource !== "access_package" ? (
         <AdminFormCard title="课题组人次分布">
           <MeasuredChartBox height={chartHeight}>
               <BarChart layout="vertical" data={chartData} margin={{ top: 4, right: 16, left: 4, bottom: 4 }}>

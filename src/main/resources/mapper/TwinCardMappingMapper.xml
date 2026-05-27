@@ -141,7 +141,86 @@
         )
     </update>
 
+    <!-- 时效到期收回：仅关 flag，保留 grant_date / exempt_granted_at 供每日回收识别「今日曾豁免」；不触发签离 -->
     <update id="revokeExpiredExemptionsByExpireAt">
+        UPDATE twin_card_mapping
+        SET freeze_exempt_flag = 0,
+            freeze_exempt_expire_at = NULL,
+            last_modified_time = DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')
+        WHERE freeze_exempt_flag = 1
+          AND freeze_exempt_expire_at IS NOT NULL
+          AND freeze_exempt_expire_at &lt;= NOW()
+    </update>
+
+    <!-- 与 AI 雷达一致：今日有进入且同房间无后续离开(2/3) -->
+    <select id="findTodayStillInsideUserIdsByAccessLog" resultType="string">
+        SELECT DISTINCT e.user_id
+        FROM aro_access_log e
+        WHERE e.accessType = 1
+          AND CAST(e.create_time AS DATETIME) &gt;= #{todayStart}
+          AND CAST(e.create_time AS DATETIME) &lt; #{todayEnd}
+          AND e.user_id IS NOT NULL
+          AND TRIM(e.user_id) != ''
+          AND NOT EXISTS (
+              SELECT 1
+              FROM aro_access_log out_log
+              WHERE out_log.user_id = e.user_id
+                AND out_log.accessType IN (2, 3)
+                AND CAST(out_log.create_time AS DATETIME) &gt; CAST(e.create_time AS DATETIME)
+                AND CAST(out_log.create_time AS DATETIME) &gt;= #{todayStart}
+                AND CAST(out_log.create_time AS DATETIME) &lt; #{todayEnd}
+                AND (
+                    (out_log.room_id IS NOT NULL AND e.room_id IS NOT NULL AND out_log.room_id = e.room_id)
+                    OR (out_log.room_id IS NULL AND e.room_id IS NULL)
+                )
+          )
+    </select>
+
+    <select id="findAllActiveExemptions" resultType="com.example.demo.modules.twin.entity.TwinCardMapping">
+        SELECT m.id,
+               m.card_no AS cardNo,
+               m.dahua_seq AS dahuaSeq,
+               m.dahua_person_code AS dahuaPersonCode,
+               m.aro_user_id AS aroUserId,
+               m.card_status AS cardStatus,
+               m.freeze_exempt_flag AS freezeExemptFlag,
+               m.freeze_exempt_grant_date AS freezeExemptGrantDate,
+               m.exempt_granted_at AS exemptGrantedAt,
+               m.freeze_exempt_expire_at AS freezeExemptExpireAt,
+               m.last_modified_time AS lastModifiedTime,
+               p.name AS userName,
+               p.job_number AS jobNumber
+        FROM twin_card_mapping m
+        LEFT JOIN aro_personnel p ON m.aro_user_id = p.user_id
+        WHERE m.freeze_exempt_flag = 1
+    </select>
+
+    <!-- 定时管理「每日豁免回收」兜底：无条件收回全部 flag=1，不受 grant_date / expire_at / keep_card 约束 -->
+    <select id="findMappingsExemptedToday" resultType="com.example.demo.modules.twin.entity.TwinCardMapping">
+        SELECT m.id,
+               m.card_no AS cardNo,
+               m.dahua_seq AS dahuaSeq,
+               m.dahua_person_code AS dahuaPersonCode,
+               m.aro_user_id AS aroUserId,
+               m.card_status AS cardStatus,
+               m.freeze_exempt_flag AS freezeExemptFlag,
+               m.freeze_exempt_grant_date AS freezeExemptGrantDate,
+               m.exempt_granted_at AS exemptGrantedAt,
+               m.freeze_exempt_expire_at AS freezeExemptExpireAt,
+               m.last_modified_time AS lastModifiedTime,
+               p.name AS userName,
+               p.job_number AS jobNumber
+        FROM twin_card_mapping m
+        LEFT JOIN aro_personnel p ON m.aro_user_id = p.user_id
+        WHERE m.aro_user_id IS NOT NULL
+          AND TRIM(m.aro_user_id) != ''
+          AND (
+              m.freeze_exempt_grant_date = CURDATE()
+              OR (m.exempt_granted_at IS NOT NULL AND DATE(m.exempt_granted_at) = CURDATE())
+          )
+    </select>
+
+    <update id="forceRevokeAllActiveExemptions">
         UPDATE twin_card_mapping
         SET freeze_exempt_flag = 0,
             freeze_exempt_grant_date = NULL,
@@ -149,8 +228,6 @@
             freeze_exempt_expire_at = NULL,
             last_modified_time = DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')
         WHERE freeze_exempt_flag = 1
-          AND freeze_exempt_expire_at IS NOT NULL
-          AND freeze_exempt_expire_at &lt;= NOW()
     </update>
 
 </mapper>

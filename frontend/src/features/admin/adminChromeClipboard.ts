@@ -1,3 +1,5 @@
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
+
 /** 后台自定义右键菜单：剪贴板相关（无法 100% 复刻系统菜单，受浏览器安全策略限制） */
 
 function isTextLikeInput(el: Element | null): el is HTMLInputElement | HTMLTextAreaElement {
@@ -25,11 +27,13 @@ export function getEditableContextTarget(): HTMLInputElement | HTMLTextAreaEleme
 export async function adminChromeCopySelectionOrPageUrl(): Promise<void> {
   const sel = window.getSelection()?.toString() ?? "";
   const text = sel.trim() ? sel : window.location.href;
-  await navigator.clipboard.writeText(text);
+  const ok = await copyTextToClipboard(text);
+  if (!ok) throw new Error("复制失败，请手动复制");
 }
 
 export async function adminChromeCopyPageUrl(): Promise<void> {
-  await navigator.clipboard.writeText(window.location.href);
+  const ok = await copyTextToClipboard(window.location.href);
+  if (!ok) throw new Error("复制失败，请手动复制");
 }
 
 export async function adminChromePasteIntoFocused(): Promise<void> {

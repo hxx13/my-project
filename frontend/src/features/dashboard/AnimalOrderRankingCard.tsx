@@ -53,11 +53,8 @@ export function AnimalOrderRankingCard() {
                                     : "bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-500"
                             }`}
                         >
-                            当月模式动物耗量榜
+                            本月动物消耗
                         </span>
-                        <p className={`text-[9px] font-bold -mt-0.5 ${sf ? "text-slate-500" : "text-slate-400"}`}>
-                            每周四凌晨 0:00 自动结算
-                        </p>
                     </div>
                 </div>
 
@@ -67,7 +64,7 @@ export function AnimalOrderRankingCard() {
                     }`}
                 >
                     {(['TOTAL', 'PUDONG', 'PUXI'] as RegionType[]).map((region) => {
-                        const labels = { TOTAL: '全域', PUDONG: '浦东', PUXI: '浦西' };
+                        const labels = { TOTAL: '统计', PUDONG: '浦东', PUXI: '浦西' };
                         const isActive = activeRegion === region;
                         return (
                             <button

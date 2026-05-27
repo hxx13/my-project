@@ -11,12 +11,21 @@ export type AnalyticsScopeFilter = {
   floors: string[];
   roomName: string;
   excludeBlacklist: boolean;
+  /** 空=全部已启用清洗通道 */
+  channelCodes: string[];
+  /** 与 channelCodes 为空等价；写入订阅 JSON 便于溯源 */
+  allEnabledChannels?: boolean;
   /** 启用的清算对比：日、周、月（至少一项） */
   compareCycles: AnalyticsCompareCycle[];
 };
 
 /** 编辑区临时状态 = 范围筛选 + 对比周期（保存时写入配置） */
 export type AnalyticsDraftFilter = AnalyticsScopeFilter;
+
+/** 写入订阅 JSON：actionType 为数字，供后端 AnalyticsFilterParams 解析 */
+export type AnalyticsPersistedScopeFilter = Omit<AnalyticsScopeFilter, "actionType"> & {
+  actionType?: number;
+};
 
 export const CAMPUS_OPTIONS = [
   { value: "浦东", label: "浦东" },
@@ -45,18 +54,55 @@ export const defaultAnalyticsDraftFilter = (): AnalyticsDraftFilter => ({
   floors: [],
   roomName: "",
   excludeBlacklist: true,
+  channelCodes: [],
   compareCycles: ["day"],
 });
 
-export function scopeFilterOnly(filter: AnalyticsDraftFilter): AnalyticsScopeFilter {
+/** 勾选通道后写入草稿：非空则仅统计所选通道，空列表表示全部已启用通道 */
+export function withChannelSelection(
+  filter: AnalyticsDraftFilter,
+  channelCodes: string[]
+): AnalyticsDraftFilter {
+  const codes = channelCodes.map((c) => c.trim()).filter(Boolean);
   return {
-    actionType: filter.actionType,
+    ...filter,
+    channelCodes: codes,
+    allEnabledChannels: codes.length === 0,
+  };
+}
+
+/** 写入订阅视图的 filter JSON（actionType 用数字，便于后端 AnalyticsFilterParams 解析） */
+export function scopeFilterOnly(filter: AnalyticsDraftFilter): AnalyticsPersistedScopeFilter {
+  const actionType =
+    filter.actionType === "1" ? 1 : filter.actionType === "2" ? 2 : undefined;
+  const channelCodes = filter.channelCodes.map((c) => c.trim()).filter(Boolean);
+  return {
     campuses: filter.campuses,
     floors: filter.floors,
     roomName: filter.roomName,
     excludeBlacklist: filter.excludeBlacklist,
+    channelCodes,
+    // 有具体通道时强制 false，避免历史 allEnabledChannels:true 导致忽略 channelCodes
+    allEnabledChannels: channelCodes.length === 0,
     compareCycles: filter.compareCycles.length ? filter.compareCycles : ["day"],
+    ...(actionType != null ? { actionType } : {}),
   };
+}
+
+/** 从已保存视图的 filter 生成编辑区草稿（设置/编辑弹窗打开前调用） */
+export function draftFromSavedFilter(
+  filter: Record<string, unknown> | AnalyticsScopeFilter | undefined
+): AnalyticsDraftFilter {
+  if (!filter || typeof filter !== "object" || Array.isArray(filter)) {
+    return defaultAnalyticsDraftFilter();
+  }
+  return migrateAnalyticsFilter(filter as Record<string, unknown>);
+}
+
+function parseActionType(raw: unknown): AnalyticsDraftFilter["actionType"] {
+  if (raw === 1 || raw === "1") return "1";
+  if (raw === 2 || raw === "2") return "2";
+  return "";
 }
 
 export function migrateAnalyticsFilter(raw: Record<string, unknown>): AnalyticsDraftFilter {
@@ -76,13 +122,17 @@ export function migrateAnalyticsFilter(raw: Record<string, unknown>): AnalyticsD
   );
   const uniqueCycles = [...new Set(compareCycles)];
 
+  const channelCodes = parseStringArray(raw.channelCodes);
   return {
     ...base,
-    actionType: (raw.actionType === "1" || raw.actionType === "2" ? raw.actionType : "") as AnalyticsDraftFilter["actionType"],
+    actionType: parseActionType(raw.actionType),
     campuses,
     floors,
     roomName: String(raw.roomName ?? "").trim(),
     excludeBlacklist: raw.excludeBlacklist !== false,
+    channelCodes,
+    allEnabledChannels:
+      channelCodes.length === 0 ? raw.allEnabledChannels !== false : false,
     compareCycles: uniqueCycles.length ? uniqueCycles : base.compareCycles,
   };
 }

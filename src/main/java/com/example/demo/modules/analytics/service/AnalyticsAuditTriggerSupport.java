@@ -35,6 +35,12 @@ public class AnalyticsAuditTriggerSupport {
         runAfterCommit(task);
     }
 
+    /** 配置变更后重算当前订阅周期的快照（不触发历史回填）。 */
+    public void scheduleRefreshSnapshots(long viewId, String userId) {
+        Runnable task = () -> auditAsyncService.refreshSnapshotsAsync(viewId, userId);
+        runAfterCommit(task);
+    }
+
     private static void runAfterCommit(Runnable task) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {

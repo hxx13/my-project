@@ -54,4 +54,28 @@ public interface NotificationMapper {
     int countUnreadCompletionReceipts(@Param("userId") String userId);
 
     List<NotificationView> listUnreadCompletionReceipts(@Param("userId") String userId, @Param("limit") int limit);
+
+    /** 同一业务单下当前用户全部未读通知标为已读 */
+    int markReadByBiz(@Param("userId") String userId,
+                      @Param("bizType") String bizType,
+                      @Param("bizId") String bizId,
+                      @Param("readTime") LocalDateTime readTime);
+
+    /** 指定 biz 是否仍有未读通知（供前端卡片展示） */
+    int countUnreadByBiz(@Param("userId") String userId,
+                         @Param("bizType") String bizType,
+                         @Param("bizId") String bizId);
+
+    /** 教职工消息页「待处理」角标：工单类未读通知条数 */
+    int countUnreadStaffWorkInbox(@Param("userId") String userId);
+
+    /** 申请人侧报修/采购角标：本人申请单关联的未读通知 */
+    int countUnreadWorkOrderForApplicant(@Param("userId") String userId, @Param("bizType") String bizType);
+
+    /** 处理人侧报修/采购角标：本人收到的该业务域未读通知 */
+    int countUnreadWorkOrderForProcessor(@Param("userId") String userId, @Param("bizType") String bizType);
+
+    /** 批量查询哪些 biz 仍有未读（keys 为空时返回空） */
+    List<String> listUnreadBizCompositeKeys(@Param("userId") String userId,
+                                            @Param("compositeKeys") Collection<String> compositeKeys);
 }

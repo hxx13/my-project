@@ -29,12 +29,16 @@
 
 | 语义 | `tone` | 说明 |
 |------|--------|------|
-| 主 | `primary` | 实心主色 |
-| 次 | `secondary` | 描边/浅底 |
-| 幽灵 | `ghost` | 弱背景 hover |
-| 危险 | `destructive` | 删除类操作 |
+| 主 | `primary` | 主色填充 + **2px 主色描边** |
+| 次 | `secondary` | 白底 + **2px 灰色描边** |
+| 幽灵 | `ghost` | 同 secondary（管理端不用无边框 ghost） |
+| 危险 | `destructive` | 浅红底 + **2px 红色描边** |
 
-高度与工具栏一致时使用 `size="default"`（`h-9` 与 `--admin-control-height` 接近）。**禁用**时 `disabled` + 降低透明度；**loading** 时在文案侧由调用方传入「保存中…」等，组件不内置请求态。
+**所有 `AdminButton` 均带 `border-2` 与 `shadow-sm`**，避免主按钮（保存/提交/发布）看起来像纯文字。
+
+高度与工具栏一致时使用 `size="default"`（`h-9` 与 `--admin-control-height` 接近）。**禁用**时 `disabled` + 降低透明度；**loading** 时传 `loading` 显示旋转图标并自动 `disabled`；**active** 用于分段/列表「当前项」描边高亮（勿用 `ghost` 代替可点击操作）。
+
+**避免**用 `tone="ghost"` 承载主操作或表格行内按钮（易与正文混淆）；行内操作用 `secondary` + 图标，危险操作用 `destructive`。
 
 ## 表单
 
@@ -60,6 +64,9 @@
 | `AdminButton` | `frontend/src/components/admin/AdminButton.tsx` |
 | `AdminSelect` | `frontend/src/components/admin/AdminSelect.tsx` |
 | `AdminToolbar` | `frontend/src/components/admin/AdminToolbar.tsx` |
+| `AdminPageTabs` / `AdminTabPanel` | `frontend/src/components/admin/AdminPageTabs.tsx` |
+| `AdminSegmentedControl` | `frontend/src/components/admin/AdminSegmentedControl.tsx` |
+| `AdminFilePickButton` | `frontend/src/components/admin/AdminFilePickButton.tsx` |
 
 ### `AdminButton`
 

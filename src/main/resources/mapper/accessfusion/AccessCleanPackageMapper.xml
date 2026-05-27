@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessCleanPackageMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_clean_package (
+            stats_task_id, channel_code, package_name, window_start, window_end, status,
+            total_scanned, included_count, excluded_count, review_count, published_at, last_merged_swing_time
+        ) VALUES (
+            #{statsTaskId}, #{channelCode}, #{packageName}, #{windowStart}, #{windowEnd}, #{status},
+            #{totalScanned}, #{includedCount}, #{excludedCount}, #{reviewCount}, #{publishedAt}, #{lastMergedSwingTime}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE access_clean_package SET
+            stats_task_id = #{statsTaskId},
+            channel_code = #{channelCode},
+            package_name = #{packageName},
+            window_start = #{windowStart},
+            window_end = #{windowEnd},
+            status = #{status},
+            total_scanned = #{totalScanned},
+            included_count = #{includedCount},
+            excluded_count = #{excludedCount},
+            review_count = #{reviewCount},
+            published_at = #{publishedAt},
+            last_merged_swing_time = #{lastMergedSwingTime}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanPackage">
+        SELECT id, stats_task_id AS statsTaskId, channel_code AS channelCode, package_name AS packageName,
+               window_start AS windowStart, window_end AS windowEnd, status,
+               total_scanned AS totalScanned, included_count AS includedCount,
+               excluded_count AS excludedCount, review_count AS reviewCount,
+               published_at AS publishedAt, last_merged_swing_time AS lastMergedSwingTime,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM access_clean_package WHERE id = #{id}
+    </select>
+
+    <select id="selectByTask" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanPackage">
+        SELECT id, stats_task_id AS statsTaskId, channel_code AS channelCode, package_name AS packageName,
+               window_start AS windowStart, window_end AS windowEnd, status,
+               total_scanned AS totalScanned, included_count AS includedCount,
+               excluded_count AS excludedCount, review_count AS reviewCount,
+               published_at AS publishedAt, last_merged_swing_time AS lastMergedSwingTime,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM access_clean_package
+        WHERE stats_task_id = #{statsTaskId}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectPrimaryByStatsTaskId" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanPackage">
+        SELECT id, stats_task_id AS statsTaskId, channel_code AS channelCode, package_name AS packageName,
+               window_start AS windowStart, window_end AS windowEnd, status,
+               total_scanned AS totalScanned, included_count AS includedCount,
+               excluded_count AS excludedCount, review_count AS reviewCount,
+               published_at AS publishedAt, last_merged_swing_time AS lastMergedSwingTime,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM access_clean_package
+        WHERE stats_task_id = #{statsTaskId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectPrimaryByChannelCode" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanPackage">
+        SELECT id, stats_task_id AS statsTaskId, channel_code AS channelCode, package_name AS packageName,
+               window_start AS windowStart, window_end AS windowEnd, status,
+               total_scanned AS totalScanned, included_count AS includedCount,
+               excluded_count AS excludedCount, review_count AS reviewCount,
+               published_at AS publishedAt, last_merged_swing_time AS lastMergedSwingTime,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM access_clean_package
+        WHERE channel_code = #{channelCode}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <select id="listAllPrimaryPackages" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanPackage">
+        SELECT id, stats_task_id AS statsTaskId, channel_code AS channelCode, package_name AS packageName,
+               window_start AS windowStart, window_end AS windowEnd, status,
+               total_scanned AS totalScanned, included_count AS includedCount,
+               excluded_count AS excludedCount, review_count AS reviewCount,
+               published_at AS publishedAt, last_merged_swing_time AS lastMergedSwingTime,
+               created_at AS createdAt, updated_at AS updatedAt
+        FROM access_clean_package
+        WHERE channel_code IS NOT NULL AND channel_code != ''
+        ORDER BY channel_code
+    </select>
+</mapper>

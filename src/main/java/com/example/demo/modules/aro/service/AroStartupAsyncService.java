@@ -4,9 +4,13 @@ import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.mapper.AroDatabaseMapper;
+import com.example.demo.modules.aro.task.AroSyncTask;
 import com.example.demo.modules.twin.service.TwinCardMappingService;
 import com.example.demo.modules.twin.service.TwinDashboardService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +22,8 @@ import java.util.Map;
 @Service
 public class AroStartupAsyncService {
 
+    private static final Logger log = LoggerFactory.getLogger(AroStartupAsyncService.class);
+
     @Autowired private AroService aroService;
     @Autowired private AroDatabaseService aroDatabaseService;
     @Autowired private AroPersonnelDatabaseService aroPersonnelDatabaseService;
@@ -25,6 +31,7 @@ public class AroStartupAsyncService {
     @Autowired private TwinDashboardService dashboardService;
     @Autowired private TwinCardMappingService mappingService;
     @Autowired private SocketIOServer socketServer;
+    @Autowired @Lazy private AroSyncTask aroSyncTask;
 
     @Async("heavyCalcExecutor")
     public void executeHeavyStartupCheckAsync() {
@@ -59,9 +66,10 @@ public class AroStartupAsyncService {
                 pageNum++;
                 try { Thread.sleep(1500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
             }
-            System.out.println("🎉 [历史重建] 大功告成！完美补齐了 " + totalRecovered + " 条记录！");
+            log.info("[开机自检] 历史流水重建完成，共 {} 条", totalRecovered);
         }
 
+        aroSyncTask.refreshWatermarkFromDatabase();
         mappingService.reconcileExemptionsByLogs();
         mappingService.resetDailyExemptions();
         try {

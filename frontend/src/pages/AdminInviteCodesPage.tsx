@@ -7,31 +7,7 @@ import {
   type RegistrationInviteRow,
 } from "@/api/domains/siteAdmin.api";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    /* fall through */
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    return ok;
-  } catch {
-    return false;
-  }
-}
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 
 export default function AdminInviteCodesPage() {
   const [rows, setRows] = useState<RegistrationInviteRow[]>([]);
@@ -64,7 +40,7 @@ export default function AdminInviteCodesPage() {
     try {
       const r = await createRegistrationInvite({ ttlDays, maxUses, note });
       setLastPlain(r.plainCode);
-      const copied = await copyToClipboard(r.plainCode);
+      const copied = await copyTextToClipboard(r.plainCode);
       toast.success(copied ? "已生成并已复制到剪贴板" : "已生成（复制失败，请手动复制下方推荐码）");
       await load();
     } catch (e) {
@@ -74,7 +50,7 @@ export default function AdminInviteCodesPage() {
 
   const copyLast = async () => {
     if (!lastPlain) return;
-    const ok = await copyToClipboard(lastPlain);
+    const ok = await copyTextToClipboard(lastPlain);
     toast[ok ? "success" : "error"](ok ? "已复制" : "复制失败，请手动选择复制");
   };
 

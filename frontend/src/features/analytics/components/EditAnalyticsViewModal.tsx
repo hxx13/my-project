@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { AnalyticsPipelineFilterBar } from "@/features/analytics/AnalyticsPipelineFilterBar";
+import { AccessChannelMultiSelect } from "@/features/analytics/AccessChannelMultiSelect";
 import { CageAnalyticsScopeFilterBar } from "@/features/analytics/CageAnalyticsScopeFilterBar";
 import { CompareCyclesField } from "@/features/analytics/components/CompareCyclesField";
 import {
@@ -9,8 +10,9 @@ import {
 } from "@/features/analytics/components/HistoryBackfillField";
 import {
   defaultAnalyticsDraftFilter,
-  migrateAnalyticsFilter,
+  draftFromSavedFilter,
   scopeFilterOnly,
+  withChannelSelection,
   type AnalyticsDraftFilter,
 } from "@/features/analytics/analyticsPipelineFilter";
 import {
@@ -64,13 +66,13 @@ export function EditAnalyticsViewModal(props: Props) {
       if (isCage) {
         setCageFilters(migrateCageAnalyticsFilter(raw));
       } else {
-        setIsoFilters(migrateAnalyticsFilter(raw));
+        setIsoFilters(draftFromSavedFilter(raw));
       }
       setSubscribed(view.subscribed);
       setBackfillHistory(false);
       setBackfillUntil(defaultBackfillUntilDate());
     }
-  }, [view, open, isCage]);
+  }, [view, open, isCage, view?.filter]);
 
   useEffect(() => {
     if (!subscribed) setBackfillHistory(false);
@@ -79,15 +81,23 @@ export function EditAnalyticsViewModal(props: Props) {
   if (!open || !view) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-white shadow-xl">
+    <div
+      data-modal-layer="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        key={view.id}
+        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h3 className="font-semibold text-neutral-900">编辑统计配置</h3>
           <button type="button" onClick={onClose} className="rounded p-1 text-neutral-400 hover:bg-neutral-100">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="space-y-4 overflow-y-auto p-4">
+        <div data-modal-scroll className="space-y-4 overflow-y-auto p-4">
           <input
             className="w-full rounded-lg border px-3 py-2 text-sm"
             placeholder="配置名称"
@@ -101,11 +111,45 @@ export function EditAnalyticsViewModal(props: Props) {
               onClear={() => setCageFilters(defaultCageAnalyticsDraftFilter())}
             />
           ) : (
-            <AnalyticsPipelineFilterBar
-              filters={isoFilters}
-              onChange={setIsoFilters}
-              onClear={() => setIsoFilters(defaultAnalyticsDraftFilter())}
-            />
+            <>
+              <p className="text-[11px] text-neutral-500">
+                主口径：清洗总库（仅通道，不按进出筛门禁）；进出方向在下方 ARO 流水区，仅辅助参考。
+              </p>
+              <AccessChannelMultiSelect
+                selected={isoFilters.channelCodes}
+                onChange={(channelCodes) => setIsoFilters(withChannelSelection(isoFilters, channelCodes))}
+              />
+              <details className="rounded-lg border border-neutral-200 bg-neutral-50/80" open>
+                <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-neutral-700">
+                  ARO 流水（校区 / 楼层 / 房间 / 进出方向）
+                </summary>
+                <div className="border-t border-neutral-200 px-2 pb-2 pt-2 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-neutral-800">进出方向（流水）</span>
+                    <select
+                      value={isoFilters.actionType}
+                      onChange={(e) =>
+                        setIsoFilters({
+                          ...isoFilters,
+                          actionType: e.target.value as AnalyticsDraftFilter["actionType"],
+                        })
+                      }
+                      className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[11px] font-bold text-neutral-900 outline-none"
+                    >
+                      <option value="">全部进出</option>
+                      <option value="1">仅进入</option>
+                      <option value="2">仅离开</option>
+                    </select>
+                  </div>
+                  <AnalyticsPipelineFilterBar
+                    filters={isoFilters}
+                    onChange={setIsoFilters}
+                    onClear={() => setIsoFilters(defaultAnalyticsDraftFilter())}
+                    hideActionType
+                  />
+                </div>
+              </details>
+            </>
           )}
           <CompareCyclesField
             value={isCage ? cageFilters.compareCycles : isoFilters.compareCycles}

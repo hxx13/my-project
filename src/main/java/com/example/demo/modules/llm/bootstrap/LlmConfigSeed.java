@@ -10,7 +10,8 @@ import com.example.demo.modules.llm.LlmInsightModules;
 import org.springframework.stereotype.Component;
 
 /**
- * 大模型（通义/DashScope 兼容）连接参数：超级管理员在「系统设置 → 大模型」维护。
+ * 大模型（DeepSeek OpenAI 兼容）连接参数：超级管理员在「系统设置 → 大模型」维护。
+ * 默认使用 DeepSeek-V4-Pro，支持 OpenAI 兼容协议的其他模型。
  */
 @Component
 @Order(125)
@@ -27,13 +28,13 @@ public class LlmConfigSeed implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         try {
-            String modelOptions = "[\"qwen-plus\",\"qwen-max\",\"qwen-turbo\",\"qwen-long\"]";
+            String modelOptions = "[\"deepseek-v4-pro\",\"deepseek-v3\",\"deepseek-r1\"]";
             ensureDef("llm", "llm.enabled", "启用大模型", "关闭后统计页无法生成 AI 解读", "BOOLEAN", null, "false", 0, 0, 0);
             ensureDef(
                     "llm",
                     "llm.api_key",
                     "API Key",
-                    "阿里云百炼 API Key（sk- 开头）；仅后端调用，勿公开",
+                    "DeepSeek API Key（sk- 开头）；仅后端调用，勿公开",
                     "STRING",
                     null,
                     "",
@@ -44,22 +45,22 @@ public class LlmConfigSeed implements ApplicationRunner {
                     "llm",
                     "llm.base_url",
                     "API Base URL",
-                    "OpenAI 兼容地址，如 https://dashscope.aliyuncs.com/compatible-mode/v1 或业务空间导出地址",
+                    "OpenAI 兼容地址，默认 https://api.deepseek.com/v1",
                     "STRING",
                     null,
-                    "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                    "https://api.deepseek.com/v1",
                     0,
                     0,
                     0);
-            ensureDef("llm", "llm.model", "主模型", "优先使用；失败时按备用列表自动切换", "STRING", modelOptions, "qwen-plus", 0, 0, 0);
+            ensureDef("llm", "llm.model", "主模型", "优先使用；失败时按备用列表自动切换", "STRING", modelOptions, "deepseek-v4-pro", 0, 0, 0);
             ensureDef(
                     "llm",
                     "llm.model_fallback",
                     "备用模型列表",
-                    "逗号分隔，主模型失败或限流时依次尝试。无需填写全部 124 个模型，2～5 个即可，如 qwen-turbo,qwen-plus,qwen-max",
+                    "逗号分隔，主模型失败或限流时依次尝试。2～5 个即可，如 deepseek-v3,deepseek-r1",
                     "STRING",
                     null,
-                    "qwen-turbo,qwen-plus,qwen-max",
+                    "deepseek-v3,deepseek-r1",
                     0,
                     0,
                     0);

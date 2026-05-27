@@ -10,6 +10,7 @@ import {
   type AnalyticsViewSharePreview,
   type AnalyticsViewShareStatus,
 } from "@/api/domains/analytics.api";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 
 type Mode = "create" | "import";
 
@@ -95,8 +96,13 @@ export function AnalyticsViewShareModal({
     setCreating(true);
     try {
       const res = await createAnalyticsReportShare(reportKey, { expiresDays, maxImports });
-      setShareMeta(shareMetaFromStatus(res));
+      const meta = shareMetaFromStatus(res);
+      setShareMeta(meta);
       toast.success(shareMeta ? "已重新生成分享码，旧码已作废" : "分享码已生成");
+      if (meta?.plainCode) {
+        const copied = await copyTextToClipboard(meta.plainCode);
+        if (copied) toast.success("分享码已复制到剪贴板");
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "生成失败");
     } finally {
@@ -144,19 +150,20 @@ export function AnalyticsViewShareModal({
     }
   };
 
-  const copyCode = async () => {
-    if (!shareMeta?.plainCode) return;
-    try {
-      await navigator.clipboard.writeText(shareMeta.plainCode);
-      toast.success("已复制分享码");
-    } catch {
-      toast.error("复制失败，请手动复制");
-    }
+  const copyPlainCode = async (plain: string) => {
+    const ok = await copyTextToClipboard(plain);
+    if (ok) toast.success("已复制分享码");
+    else toast.error("复制失败，请手动选中上方分享码复制");
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm" onClick={onClose}>
+    <div
+      data-modal-layer="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
       <div
+        data-modal-scroll
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
@@ -185,9 +192,9 @@ export function AnalyticsViewShareModal({
                     </code>
                     <button
                       type="button"
-                      onClick={() => void copyCode()}
+                      onClick={() => void copyPlainCode(shareMeta.plainCode)}
                       className="shrink-0 rounded-lg border border-violet-300 bg-white p-2 text-violet-700 hover:bg-violet-50"
-                      title="复制"
+                      title="复制分享码"
                     >
                       <Copy className="h-4 w-4" />
                     </button>
@@ -249,12 +256,23 @@ export function AnalyticsViewShareModal({
             <>
               <label className="block text-xs text-neutral-600">
                 分享码
-                <input
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  placeholder="10 位字母数字"
-                  className="mt-1 w-full rounded-lg border px-3 py-2 font-mono text-sm tracking-wider"
-                />
+                <div className="mt-1 flex gap-2">
+                  <input
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase().replace(/\s/g, ""))}
+                    placeholder="10 位字母数字"
+                    className="min-w-0 flex-1 rounded-lg border px-3 py-2 font-mono text-sm tracking-wider"
+                  />
+                  <button
+                    type="button"
+                    disabled={!code.trim()}
+                    onClick={() => void copyPlainCode(code.trim())}
+                    className="shrink-0 rounded-lg border border-neutral-300 px-3 py-2 text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+                    title="复制输入框中的分享码"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
               </label>
               <button
                 type="button"

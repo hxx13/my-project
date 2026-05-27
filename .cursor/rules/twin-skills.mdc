@@ -25,6 +25,7 @@ alwaysApply: true
 | `modules.auth` | `skills/modules/auth/skill-auth.yaml` |
 | `modules.dahua` | `skills/modules/dahua/skill-dahua.yaml` |
 | `modules.accessrule` | `skills/modules/accessrule/skill-accessrule.yaml` |
+| `modules.accessfusion` | `skills/modules/accessfusion/skill-accessfusion.yaml` |
 | `modules.pagepermission` | `skills/modules/pagepermission/skill-pagepermission.yaml` |
 | `frontend/src` | `skills/design/frontend-designer.yaml` |
 

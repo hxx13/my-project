@@ -9,12 +9,14 @@ import com.example.demo.modules.analytics.dto.AnalyticsSubscriptionRequest;
 import com.example.demo.modules.analytics.dto.AnalyticsUserViewDto;
 import com.example.demo.modules.analytics.dto.AnalyticsUserViewUpsertRequest;
 import com.example.demo.modules.analytics.service.AnalyticsAuditService;
+import com.example.demo.modules.analytics.service.AnalyticsAuditTriggerSupport;
 import com.example.demo.modules.analytics.service.AnalyticsCageAuditProgressService;
 import com.example.demo.modules.analytics.service.AnalyticsLlmInsightService;
 import com.example.demo.modules.analytics.service.AnalyticsQuerySnapshotService;
 import com.example.demo.modules.analytics.service.AnalyticsReportRegistry;
 import com.example.demo.modules.analytics.service.AnalyticsUserViewService;
 import com.example.demo.modules.analytics.service.AnalyticsViewShareService;
+import com.example.demo.modules.analytics.service.AnalyticsFilterParams;
 import com.example.demo.modules.analytics.service.IsolationUsageReportService;
 import com.example.demo.modules.auth.entity.User;
 import io.swagger.v3.oas.annotations.Operation;
@@ -48,6 +50,7 @@ public class AnalyticsController {
     private final AnalyticsQuerySnapshotService querySnapshotService;
     private final AnalyticsLlmInsightService llmInsightService;
     private final AnalyticsViewShareService viewShareService;
+    private final AnalyticsAuditTriggerSupport auditTriggerSupport;
     private final Executor heavyCalcExecutor;
 
     public AnalyticsController(
@@ -60,6 +63,7 @@ public class AnalyticsController {
             AnalyticsQuerySnapshotService querySnapshotService,
             AnalyticsLlmInsightService llmInsightService,
             AnalyticsViewShareService viewShareService,
+            AnalyticsAuditTriggerSupport auditTriggerSupport,
             @Qualifier("heavyCalcExecutor") Executor heavyCalcExecutor) {
         this.authContextService = authContextService;
         this.reportRegistry = reportRegistry;
@@ -70,6 +74,7 @@ public class AnalyticsController {
         this.querySnapshotService = querySnapshotService;
         this.llmInsightService = llmInsightService;
         this.viewShareService = viewShareService;
+        this.auditTriggerSupport = auditTriggerSupport;
         this.heavyCalcExecutor = heavyCalcExecutor;
     }
 
@@ -110,6 +115,28 @@ public class AnalyticsController {
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    @PostMapping("/isolation-usage/preview")
+    @Operation(summary = "按当前配置试算隔离服统计（直读清洗总库，不写快照）")
+    public Result<Map<String, Object>> isolationPreview(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, Object> filter,
+            @RequestParam String startTime,
+            @RequestParam String endTime) {
+        User user = resolveUser(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        Result<?> denied = requireStaff(authorization);
+        if (denied != null) {
+            return Result.error(denied.getMessage());
+        }
+        if (!StringUtils.hasText(startTime) || !StringUtils.hasText(endTime)) {
+            return Result.error("请指定时间范围");
+        }
+        AnalyticsFilterParams params = AnalyticsFilterParams.fromMap(filter != null ? filter : Map.of());
+        return Result.success(isolationUsageReportService.previewWithFilter(params, startTime.trim(), endTime.trim()));
     }
 
     private static List<String> mergeCampuses(String single, String multi) {
@@ -263,7 +290,12 @@ public class AnalyticsController {
         }
         try {
             String code = String.valueOf(body.get("code"));
-            String targetName = body.get("targetName") != null ? String.valueOf(body.get("targetName")) : null;
+            String targetName = null;
+            if (body.get("targetName") != null && StringUtils.hasText(String.valueOf(body.get("targetName")))) {
+                targetName = String.valueOf(body.get("targetName")).trim();
+            } else if (body.get("nameSuffix") != null && StringUtils.hasText(String.valueOf(body.get("nameSuffix")))) {
+                targetName = String.valueOf(body.get("nameSuffix")).trim();
+            }
             return Result.success(viewShareService.importShare(user.getId(), code, targetName));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return Result.error(e.getMessage());
@@ -320,6 +352,26 @@ public class AnalyticsController {
             return Result.error("reportKey 不能为空");
         }
         return Result.success(llmInsightService.getInsightPrompt(reportKey.trim()));
+    }
+
+    @GetMapping("/llm/insight-data-package")
+    @Operation(summary = "封箱单条清算快照数据包（AI 解读/追问投喂，不调用大模型）")
+    public Result<Map<String, Object>> getInsightDataPackage(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam long auditLogId) {
+        User user = resolveUser(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        Result<?> denied = requireStaff(authorization);
+        if (denied != null) {
+            return Result.error(denied.getMessage());
+        }
+        try {
+            return Result.success(llmInsightService.getInsightDataPackage(user.getId(), auditLogId));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
     }
 
     @GetMapping("/llm/insights")
@@ -510,6 +562,23 @@ public class AnalyticsController {
         }
         try {
             return Result.success(userViewService.create(user.getId(), body));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/views/{id}/force-recalc-snapshots")
+    @Operation(summary = "强制重算该视图下全部已有周期快照（与配置是否变更无关）")
+    public Result<Void> forceRecalcSnapshots(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable long id) {
+        User user = resolveUser(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        try {
+            auditTriggerSupport.scheduleRefreshSnapshots(id, user.getId());
+            return Result.success(null);
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         }

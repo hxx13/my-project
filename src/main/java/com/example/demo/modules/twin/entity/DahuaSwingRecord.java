@@ -8,6 +8,8 @@ import lombok.Setter;
 public class DahuaSwingRecord {
     private Long id;
     private Long taskId;
+    /** REALTIME=即时拉取任务 | STATS=统计批量拉取任务 */
+    private String pullTaskType;
     private String recordId;
     private String cardNumber;
     private Integer cardStatus;
@@ -17,6 +19,11 @@ public class DahuaSwingRecord {
     private String personCode;
     private Long personId;
     private String personName;
+    /** 大华部门 ID（拉取落库），26=学生 */
+    private String departmentId;
+    private String departmentName;
+    /** STUDENT | STAFF */
+    private String audienceType;
     private String swingTime;
     private String createTime;
     private Integer openResult;

@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.twin.dto.JobRunOutcome;
 import com.example.demo.modules.twin.entity.TwinJobScheduleConfig;
 import com.example.demo.modules.twin.service.JobSchedulerService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -64,6 +65,11 @@ public class TwinScheduleController {
                     row.setPollIntervalSeconds(null);
                 }
             }
+            if (body.containsKey("revokeAutoSignoutEnabled")) {
+                Object rv = body.get("revokeAutoSignoutEnabled");
+                boolean on = rv instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(rv));
+                row.setRevokeAutoSignoutEnabled(on ? 1 : 0);
+            }
             return Result.success(jobSchedulerService.updateSchedule(row, user.getId()));
         } catch (Exception e) {
             return Result.error("保存失败: " + e.getMessage());
@@ -78,8 +84,8 @@ public class TwinScheduleController {
         Result<?> denied = requireAdmin(user);
         if (denied != null) return denied;
         try {
-            jobSchedulerService.runManual(jobKey, user.getId());
-            return Result.success("执行成功");
+            JobRunOutcome outcome = jobSchedulerService.runManual(jobKey, user.getId());
+            return Result.success(outcome.toMap());
         } catch (Exception e) {
             return Result.error("执行失败: " + e.getMessage());
         }

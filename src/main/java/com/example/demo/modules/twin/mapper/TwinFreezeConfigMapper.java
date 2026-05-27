@@ -15,6 +15,10 @@ public interface TwinFreezeConfigMapper {
 
     int addSecondFreezeAutoSignoutColumn();
 
+    Integer countDailyExemptRevokeAutoSignoutColumn();
+
+    int addDailyExemptRevokeAutoSignoutColumn();
+
     TwinFreezeConfigRow selectById(@Param("id") int id);
 
     int insertIgnoreDefault(@Param("id") int id);
@@ -25,6 +29,7 @@ public interface TwinFreezeConfigMapper {
             @Param("freezeTime") String freezeTime,
             @Param("secondFreezeTime") String secondFreezeTime,
             @Param("secondFreezeAutoSignoutEnabled") int secondFreezeAutoSignoutEnabled,
+            @Param("dailyExemptRevokeAutoSignoutEnabled") int dailyExemptRevokeAutoSignoutEnabled,
             @Param("timezone") String timezone,
             @Param("updatedBy") String updatedBy);
 

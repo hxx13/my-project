@@ -170,16 +170,27 @@ public class SuppliesService {
     public List<SupplyItemView> listItemsForStaff(String userId, Long categoryId) {
         List<SupplyItemView> views = itemMapper.listOnShelf(categoryId).stream().map(this::toItemView).collect(Collectors.toList());
         applyNoveltyTags(userId, views);
+        // 全部分栏：新品/进货全局置顶；单分类：仅在该分类内置顶（仍按分类 sortOrder 由 SQL 筛出）
+        final boolean allCategories = categoryId == null;
         views.sort((a, b) -> {
-            int catCmp = Long.compare(a.getCategoryId() == null ? 0L : a.getCategoryId(), b.getCategoryId() == null ? 0L : b.getCategoryId());
-            if (catCmp != 0) return catCmp;
             int rankCmp = Integer.compare(noveltyRank(a), noveltyRank(b));
             if (rankCmp != 0) return rankCmp;
             LocalDateTime at = latestNoveltyTime(a);
             LocalDateTime bt = latestNoveltyTime(b);
-            if (at != null && bt != null) return bt.compareTo(at);
-            if (at != null) return -1;
-            if (bt != null) return 1;
+            if (at != null && bt != null) {
+                int timeCmp = bt.compareTo(at);
+                if (timeCmp != 0) return timeCmp;
+            } else if (at != null) {
+                return -1;
+            } else if (bt != null) {
+                return 1;
+            }
+            if (allCategories) {
+                int catCmp = Long.compare(
+                        a.getCategoryId() == null ? 0L : a.getCategoryId(),
+                        b.getCategoryId() == null ? 0L : b.getCategoryId());
+                if (catCmp != 0) return catCmp;
+            }
             return Long.compare(a.getId() == null ? 0L : a.getId(), b.getId() == null ? 0L : b.getId());
         });
         return views;

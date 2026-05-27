@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessCleanTaskSettingsMapper">
+
+    <select id="selectByTask" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanTaskSettings">
+        SELECT stats_task_id AS statsTaskId,
+               debounce_seconds AS debounceSeconds,
+               auto_clean_package AS autoCleanPackage,
+               swing_direction_filter AS swingDirectionFilter
+        FROM access_clean_task_settings
+        WHERE stats_task_id = #{statsTaskId}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO access_clean_task_settings (stats_task_id, debounce_seconds, auto_clean_package, swing_direction_filter)
+        VALUES (#{statsTaskId}, #{debounceSeconds}, #{autoCleanPackage}, #{swingDirectionFilter})
+        ON DUPLICATE KEY UPDATE
+            debounce_seconds = #{debounceSeconds},
+            auto_clean_package = #{autoCleanPackage},
+            swing_direction_filter = #{swingDirectionFilter}
+    </insert>
+</mapper>

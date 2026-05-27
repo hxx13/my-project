@@ -121,6 +121,8 @@ public final class TwinAutomationLogDisplayHelper {
             case "SECOND_FREEZE_STRANDED_TODAY_EXEMPT" -> "二次冻结：今日曾豁免且仍滞留";
             case "FIRST_FREEZE_FINISHED_CLEAR_ALL_EXEMPT" -> "首次冻结结束：清空当日豁免";
             case "DAILY_EXEMPT_RESET_TIMER" -> "每日豁免回收（凌晨定时）";
+            case "DAILY_EXEMPT_RESET_FALLBACK" -> "定时兜底收回豁免（无视时效与流水规则）";
+            case "DAILY_EXEMPT_REVOKE_AUTO_SIGNOUT" -> "豁免收回后自动签离";
             case "BOOTSTRAP_CATCHUP" -> "启动补跑（错过窗的定时任务）";
             case "SCHEDULE_TICK" -> "定时调度心跳";
             case "MANUAL_RUN" -> "管理员手动执行";
@@ -156,6 +158,7 @@ public final class TwinAutomationLogDisplayHelper {
             case "SECOND_FREEZE_AUTO_SIGNOUT" -> "二次冻结后批量自动离开";
             case "DAILY_EXEMPT_RESET" -> "每日豁免重置";
             case "DAILY_EXEMPT_RESET_TIMER" -> "每日豁免重置（定时）";
+            case "EXEMPT_REVOKED" -> "收回冻结豁免";
             default -> v.isEmpty() ? "-" : v;
         };
     }

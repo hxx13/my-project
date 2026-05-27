@@ -7,7 +7,10 @@ import com.example.demo.modules.aro.service.RealtimeEventDedupService;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
 import com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper;
+import com.example.demo.modules.twin.support.ScanAnalyzeTimingTrace;
 import com.example.demo.modules.twin.support.ScanCampusTagResolver;
+import com.example.demo.modules.twin.support.ScanPopupFlowLog;
+import com.example.demo.modules.twin.support.TwinTimingDiagnostics;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -63,29 +66,59 @@ public class TwinScanService {
     @Autowired
     private ScanCampusEnterConfigService scanCampusEnterConfigService;
 
+    @Autowired
+    private ScanAnalyzeTimingTrace analyzeTimingTrace;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 扫码阶段 1：探测状态与权限（日志由 traceId 串联为 3/5、4/5 步）。
      */
     public Map<String, Object> processScanStatus(String userId, String traceId) {
+        long aroParallelStart = System.currentTimeMillis();
 
-        CompletableFuture<List<Map<String, Object>>> noLeaveFuture = CompletableFuture.supplyAsync(() ->
-                aroService.getNoLeaveRoom(userId)
-        );
+        CompletableFuture<List<Map<String, Object>>> noLeaveFuture = CompletableFuture.supplyAsync(() -> {
+            long t0 = System.currentTimeMillis();
+            List<Map<String, Object>> rooms = aroService.getNoLeaveRoom(userId);
+            long ms = System.currentTimeMillis() - t0;
+            int cnt = rooms == null ? -1 : rooms.size();
+            if (traceId != null) {
+                TwinTimingDiagnostics.logScanPhase(traceId, "aro.noLeaveRoom", ms, "rooms=" + cnt);
+                analyzeTimingTrace.stepForTrace(traceId,
+                        "aro.GET https://aro.shsmu.edu.cn/jtu/api/admin/user/noLeaveRoom",
+                        ms, "rooms=" + cnt);
+            }
+            return rooms;
+        });
 
-        CompletableFuture<List<Map<String, Object>>> allowedFuture = CompletableFuture.supplyAsync(() ->
-                aroService.getExamOfflineRoom(userId)
-        );
+        CompletableFuture<List<Map<String, Object>>> allowedFuture = CompletableFuture.supplyAsync(() -> {
+            long t0 = System.currentTimeMillis();
+            List<Map<String, Object>> rooms = aroService.getExamOfflineRoom(userId);
+            long ms = System.currentTimeMillis() - t0;
+            int cnt = rooms == null ? 0 : rooms.size();
+            if (traceId != null) {
+                TwinTimingDiagnostics.logScanPhase(traceId, "aro.examOfflineRoom", ms, "rooms=" + cnt);
+                analyzeTimingTrace.stepForTrace(traceId,
+                        "aro.GET https://aro.shsmu.edu.cn/jtu/api/admin/user/examOfflineRoom",
+                        ms, "rooms=" + cnt);
+            }
+            return rooms;
+        });
 
         CompletableFuture.allOf(noLeaveFuture, allowedFuture).join();
 
         List<Map<String, Object>> noLeaveRooms = noLeaveFuture.join();
         List<Map<String, Object>> allowedRooms = allowedFuture.join();
 
+        long aroParallelMs = System.currentTimeMillis() - aroParallelStart;
+        int noLeaveCount = noLeaveRooms == null ? -1 : noLeaveRooms.size();
+        int allowedCount = allowedRooms == null ? 0 : allowedRooms.size();
         if (traceId != null) {
-            log.info("[scan-flow:{}] 3/5 🌐 已向官方查询滞留与可进入权限 userId={}", traceId, userId);
+            TwinTimingDiagnostics.logScanPhase(traceId, "aroParallel(noLeave+examOffline)",
+                    aroParallelMs, "noLeave=" + noLeaveCount + " allowed=" + allowedCount);
         }
+        analyzeTimingTrace.step("aroParallel(wall-clock max of noLeave+examOffline)",
+                aroParallelMs, "noLeave=" + noLeaveCount + " allowed=" + allowedCount);
 
         Map<String, Object> response = new HashMap<>();
 
@@ -105,22 +138,31 @@ public class TwinScanService {
             response.put("pendingRooms", new ArrayList<>());
             response.put("message", reason);
             if (traceId != null) {
-                log.warn("[scan-flow:{}] 4/5 ⚠️ 无法判定场内/场外 userId={} 原因={}", traceId, userId, reason);
+                log.debug("[扫码·解析] trace={} 官方状态未知 id={} reason={}", traceId, userId, reason);
             }
         } else if (!noLeaveRooms.isEmpty() && !bypassNoLeave) {
+            long tTranslate = System.currentTimeMillis();
             List<Map<String, Object>> finalPending = translateAndFilterRooms(noLeaveRooms);
+            analyzeTimingTrace.step("mysql.translateAndFilterRooms(pending)",
+                    System.currentTimeMillis() - tTranslate, "rows=" + finalPending.size());
             response.put("currentState", "INSIDE");
             response.put("pendingRooms", finalPending);
-            if (traceId != null) {
-                log.info("[scan-flow:{}] 4/5 📍 当前在【场内】待离开房间：{}", traceId, joinRoomDisplayNames(finalPending));
-            }
         } else {
+            long tTranslate = System.currentTimeMillis();
             List<Map<String, Object>> finalAllowed = translateAndFilterRooms(allowedRooms);
+            analyzeTimingTrace.step("mysql.translateAndFilterRooms(allowed)",
+                    System.currentTimeMillis() - tTranslate, "rows=" + finalAllowed.size());
 
             try {
                 String todayStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                long tLocks = System.currentTimeMillis();
                 applyDayTrajectoryRoomLocks(userId, todayStr + "%", finalAllowed, traceId);
+                analyzeTimingTrace.step("mysql.dayTrajectoryRoomLocks",
+                        System.currentTimeMillis() - tLocks, "rooms=" + finalAllowed.size());
+                long tCampus = System.currentTimeMillis();
                 applyCampusEnterAdminLocks(finalAllowed, traceId);
+                analyzeTimingTrace.step("mysql.campusEnterAdminLocks",
+                        System.currentTimeMillis() - tCampus, "");
             } catch (Exception e) {
                 log.warn("[scan-status] day-trajectory-lock failed userId={} err={}", userId, e.getMessage());
             }
@@ -128,9 +170,6 @@ public class TwinScanService {
             // 审查完毕，组装并放行给前端
             response.put("currentState", "OUTSIDE");
             response.put("allowedRooms", finalAllowed);
-            if (traceId != null) {
-                log.info("[scan-flow:{}] 4/5 📍 当前在【场外】可进入房间：{}", traceId, joinRoomDisplayNames(finalAllowed));
-            }
 
             if (!finalAllowed.isEmpty()) {
                 CompletableFuture.runAsync(() -> {
@@ -182,7 +221,7 @@ public class TwinScanService {
         if (!success && accessType == 2 && aroService.isNoLeaveRoomError()) {
             // 仅对下一次 analyze 生效一次，化解 ARO noLeave/submit 短时不一致
             noLeaveBypassUntilMap.put(userId, System.currentTimeMillis() + 30_000L);
-            log.info("[scan-exec] 状态自愈 userId={} 动作=离开 原因=官方待离房间不一致已对齐", userId);
+            log.debug("[扫码·登记] id={} 离开状态自愈（官方待离不一致）", userId);
             return true;
         }
         if (success && accessType == 1) {
@@ -209,22 +248,16 @@ public class TwinScanService {
                 try {
                     // ⏳ 战术停顿：给官方服务器 1.5 秒的落盘时间，避免我们查得太快它还没存进去
                     Thread.sleep(1000);
-                    log.info("[scan-sync] 1/3 📥 拉取官方流水 userId={} 动作={}",
-                            userId, accessType == 1 ? "进入" : "离开");
-
                     // 轻量实时请求：每次动作拉取最新 20 条；用于补齐落库，瀑布仅推当前用户目标事件。
                     com.example.demo.modules.aro.dto.AroRecord targetRecord =
                             miniPenetrationSyncService.syncLatestForUser(userId, accessType, 20, true);
 
                     if (targetRecord != null) {
-                        log.info("[scan-sync] 2/3 💾 已同步并定位目标流水 userId={} recordId={}", userId, targetRecord.getId());
                         int sharedVal = isShared ? 1 : 0;
                         int keepVal = isKeep ? 1 : 0;
                         int borrowedVal = isBorrowedCard ? 1 : 0;
                         try {
                             dashboardMapper.updateAccessLogCardFlags(targetRecord.getId(), sharedVal, keepVal, borrowedVal);
-                            log.info("[scan-sync] 🏷️ 已补充流水标记 userId={} 领借={} 共享={} 保管={}",
-                                    userId, isBorrowedCard, isShared, isKeep);
                             String summary = accessType == 1 ? "Web扫码进入" : accessType == 2 ? "Web扫码离开" : "Web扫码登记";
                             StringBuilder det = new StringBuilder();
                             det.append("由 Web 扫码发起 ARO 登记，流水已同步；记录ID=").append(targetRecord.getId()).append("。");
@@ -245,14 +278,15 @@ public class TwinScanService {
                                     null
                             );
                         } catch (Exception e) {
-                            log.warn("[scan-sync] 标记失败 userId={} err={}", userId, e.getMessage());
+                            log.warn("[扫码·流水] id={} 标记失败 err={}", userId, e.getMessage());
                         }
-                        log.info("[scan-sync] 3/3 📢 已推送大屏 userId={} 姓名={}", userId, targetRecord.getName());
+                        ScanPopupFlowLog.logSync(
+                                userId, accessType, true, targetRecord.getId(), isBorrowedCard, isShared, isKeep);
                     } else {
-                        log.warn("[scan-sync] 未在拉取结果中找到本人流水 userId={}（将由定时任务补全）", userId);
+                        ScanPopupFlowLog.logSync(userId, accessType, false, null, isBorrowedCard, isShared, isKeep);
                     }
                 } catch (Exception e) {
-                    log.error("[scan-sync] failed userId={} err={}", userId, e.getMessage(), e);
+                    log.error("[扫码·流水] id={} 同步失败 err={}", userId, e.getMessage(), e);
                 }
             });
         }
@@ -360,7 +394,7 @@ public class TwinScanService {
             if (disabled) {
                 room.put("disableReason", reason.toString());
                 if (traceId != null) {
-                    log.info("[scan-flow:{}] room-lock userId={} room={} reason={}", traceId, userId, roomName, reason);
+                    log.debug("[扫码·解析] trace={} 房间锁定 id={} room={} reason={}", traceId, userId, roomName, reason);
                 }
             } else {
                 room.put("disableReason", null);
@@ -392,7 +426,7 @@ public class TwinScanService {
             room.put("enterBlocked", true);
             room.put("enterBlockReason", "不在此校区");
             if (traceId != null) {
-                log.info("[scan-flow:{}] campus-enter-block room={} campus={}", traceId, room.get("displayName"), campus);
+                log.debug("[扫码·解析] trace={} 校区禁入 room={} campus={}", traceId, room.get("displayName"), campus);
             }
         }
     }

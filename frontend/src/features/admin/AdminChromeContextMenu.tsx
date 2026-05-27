@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { PublicPagePermissionNode } from "@/api/domains/pagePermission.api";
 import {
@@ -533,31 +534,27 @@ export function AdminChromeContextMenu({
                 icon={ShieldAlert}
                 label="复制路由路径"
                 onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(`${location.pathname}${location.search}`);
+                  const ok = await copyTextToClipboard(`${location.pathname}${location.search}`);
+                  if (ok) {
                     toast.success("已复制路径");
                     onClose();
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "复制失败");
-                  }
+                  } else toast.error("复制失败，请手动复制");
                 }}
               />
               <MenuRow
                 icon={Bug}
                 label="复制调试摘要"
                 onClick={async () => {
-                  try {
-                    const blob = {
-                      pathname: `${location.pathname}${location.search}`,
-                      role: authStorage.getRole() || "",
-                      href: window.location.href,
-                    };
-                    await navigator.clipboard.writeText(JSON.stringify(blob, null, 2));
+                  const blob = {
+                    pathname: `${location.pathname}${location.search}`,
+                    role: authStorage.getRole() || "",
+                    href: window.location.href,
+                  };
+                  const ok = await copyTextToClipboard(JSON.stringify(blob, null, 2));
+                  if (ok) {
                     toast.success("已复制");
                     onClose();
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "复制失败");
-                  }
+                  } else toast.error("复制失败，请手动复制");
                 }}
               />
               <MenuRow

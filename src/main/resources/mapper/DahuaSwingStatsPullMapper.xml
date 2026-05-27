@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.mapper.DahuaSwingStatsPullMapper">
+
+    <sql id="taskColumns">
+        id, name, enabled, period_mode AS periodMode, period_days AS periodDays, query_json AS queryJson,
+        clean_rule_profile_id AS cleanRuleProfileId,
+        DATE_FORMAT(last_pulled_start, '%Y-%m-%d %H:%i:%s') AS lastPulledStart,
+        DATE_FORMAT(last_pulled_end, '%Y-%m-%d %H:%i:%s') AS lastPulledEnd,
+        last_status AS lastStatus, last_error AS lastError,
+        DATE_FORMAT(last_run_at, '%Y-%m-%d %H:%i:%s') AS lastRunAt,
+        last_saved_count AS lastSavedCount,
+        DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+        DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+    </sql>
+
+    <select id="listTasks" resultType="com.example.demo.modules.twin.entity.DahuaSwingStatsPullTask">
+        SELECT <include refid="taskColumns"/> FROM twin_dahua_stats_pull_task ORDER BY id DESC
+    </select>
+
+    <select id="listEnabledTasks" resultType="com.example.demo.modules.twin.entity.DahuaSwingStatsPullTask">
+        SELECT <include refid="taskColumns"/> FROM twin_dahua_stats_pull_task WHERE enabled = 1 ORDER BY id ASC
+    </select>
+
+    <select id="findById" resultType="com.example.demo.modules.twin.entity.DahuaSwingStatsPullTask">
+        SELECT <include refid="taskColumns"/> FROM twin_dahua_stats_pull_task WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_dahua_stats_pull_task (name, enabled, period_mode, period_days, query_json, clean_rule_profile_id)
+        VALUES (#{name}, #{enabled}, #{periodMode}, #{periodDays}, #{queryJson}, #{cleanRuleProfileId})
+    </insert>
+
+    <update id="update">
+        UPDATE twin_dahua_stats_pull_task SET
+            name = #{name},
+            enabled = #{enabled},
+            period_mode = #{periodMode},
+            period_days = #{periodDays},
+            query_json = #{queryJson},
+            clean_rule_profile_id = #{cleanRuleProfileId}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateCleanRuleProfileId">
+        UPDATE twin_dahua_stats_pull_task SET clean_rule_profile_id = #{cleanRuleProfileId} WHERE id = #{id}
+    </update>
+
+    <delete id="delete">DELETE FROM twin_dahua_stats_pull_task WHERE id = #{id}</delete>
+
+    <update id="updateRunState">
+        UPDATE twin_dahua_stats_pull_task SET
+            last_pulled_start = #{lastPulledStart},
+            last_pulled_end = #{lastPulledEnd},
+            last_status = #{lastStatus},
+            last_error = #{lastError},
+            last_run_at = #{lastRunAt},
+            last_saved_count = #{lastSavedCount}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateQueryJson">
+        UPDATE twin_dahua_stats_pull_task SET query_json = #{queryJson} WHERE id = #{id}
+    </update>
+</mapper>

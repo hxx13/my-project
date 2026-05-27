@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryArchivePurgeConfigMapper">
+
+    <resultMap id="CfgMap" type="com.example.demo.modules.telemetry.entity.TelemetryArchivePurgeConfig">
+        <id column="id" property="id"/>
+        <result column="purge_enabled" property="purgeEnabled"/>
+        <result column="retention_days" property="retentionDays"/>
+        <result column="batch_delete_size" property="batchDeleteSize"/>
+        <result column="optimize_after_purge" property="optimizeAfterPurge"/>
+        <result column="archive_write_enabled" property="archiveWriteEnabled"/>
+        <result column="last_purge_at" property="lastPurgeAt"/>
+        <result column="last_purge_deleted_rows" property="lastPurgeDeletedRows"/>
+        <result column="last_purge_duration_ms" property="lastPurgeDurationMs"/>
+        <result column="updated_by" property="updatedBy"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectSingleton" resultMap="CfgMap">
+        SELECT id, purge_enabled, retention_days, batch_delete_size, optimize_after_purge,
+               archive_write_enabled, last_purge_at, last_purge_deleted_rows, last_purge_duration_ms,
+               updated_by, update_time
+        FROM telemetry_archive_purge_config
+        WHERE id = 1
+        LIMIT 1
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO telemetry_archive_purge_config (
+            id, purge_enabled, retention_days, batch_delete_size, optimize_after_purge,
+            archive_write_enabled, updated_by
+        ) VALUES (
+            1,
+            #{cfg.purgeEnabled},
+            #{cfg.retentionDays},
+            #{cfg.batchDeleteSize},
+            #{cfg.optimizeAfterPurge},
+            #{cfg.archiveWriteEnabled},
+            #{cfg.updatedBy}
+        )
+        ON DUPLICATE KEY UPDATE
+            purge_enabled = VALUES(purge_enabled),
+            retention_days = VALUES(retention_days),
+            batch_delete_size = VALUES(batch_delete_size),
+            optimize_after_purge = VALUES(optimize_after_purge),
+            archive_write_enabled = VALUES(archive_write_enabled),
+            updated_by = VALUES(updated_by)
+    </insert>
+
+    <update id="updateLastPurge">
+        UPDATE telemetry_archive_purge_config
+        SET last_purge_at = NOW(),
+            last_purge_deleted_rows = #{deletedRows},
+            last_purge_duration_ms = #{durationMs},
+            updated_by = #{updatedBy}
+        WHERE id = 1
+    </update>
+</mapper>

@@ -6,6 +6,10 @@ import com.example.demo.modules.twin.entity.DahuaSwingPullTask;
 import com.example.demo.modules.twin.entity.DahuaSwingRecord;
 import com.example.demo.modules.twin.entity.TwinCardMapping;
 import com.example.demo.modules.twin.mapper.DahuaSwingMapper;
+import com.example.demo.modules.twin.support.DahuaSwingDepartmentSupport;
+import com.example.demo.modules.twin.support.TwinTimingDiagnostics;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,23 +24,29 @@ import java.util.Map;
 
 @Service
 public class DahuaSwingPullService {
+    private static final Logger log = LoggerFactory.getLogger(DahuaSwingPullService.class);
     private static final DateTimeFormatter DT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final DahuaSwingMapper dahuaSwingMapper;
     private final DahuaOpenApiService dahuaOpenApiService;
     private final TwinCardMappingService twinCardMappingService;
     private final DahuaSwingRuleEngineService dahuaSwingRuleEngineService;
+    private final com.example.demo.modules.accessfusion.service.AccessRawEventIngestService accessRawEventIngestService;
+    private final DahuaSwingDepartmentSupport departmentSupport;
 
     public DahuaSwingPullService(
             DahuaSwingMapper dahuaSwingMapper,
             DahuaOpenApiService dahuaOpenApiService,
             TwinCardMappingService twinCardMappingService,
-            DahuaSwingRuleEngineService dahuaSwingRuleEngineService
-    ) {
+            DahuaSwingRuleEngineService dahuaSwingRuleEngineService,
+            com.example.demo.modules.accessfusion.service.AccessRawEventIngestService accessRawEventIngestService,
+            DahuaSwingDepartmentSupport departmentSupport) {
         this.dahuaSwingMapper = dahuaSwingMapper;
         this.dahuaOpenApiService = dahuaOpenApiService;
         this.twinCardMappingService = twinCardMappingService;
         this.dahuaSwingRuleEngineService = dahuaSwingRuleEngineService;
+        this.accessRawEventIngestService = accessRawEventIngestService;
+        this.departmentSupport = departmentSupport;
     }
 
     public List<DahuaSwingPullTask> listTasks() {
@@ -78,8 +88,11 @@ public class DahuaSwingPullService {
                     continue;
                 }
                 pullOnce(task);
-            } catch (Exception ignore) {
-                // 单个任务失败不影响其他任务轮询
+            } catch (Exception e) {
+                TwinTimingDiagnostics.logDahuaPull(task.getId(), task.getName(), 0, false,
+                        "scheduled: " + simplifyErrorMessage(e));
+                log.warn("[大华·拉取] 定时轮询单任务失败 taskId={} name={} err={}",
+                        task.getId(), task.getName(), simplifyErrorMessage(e));
             }
         }
         // 到期签退由 DahuaSwingRuleEngineService 独立定时节拍处理，避免与 @Scheduled 并发双跑
@@ -136,10 +149,10 @@ public class DahuaSwingPullService {
         int safeSize = Math.max(1, Math.min(size, 500));
         int offset = (safePage - 1) * safeSize;
         List<DahuaSwingRecord> list = dahuaSwingMapper.listRecords(
-                taskId, channelCode, personCode, personName, openType, startTime, endTime, safeSize, offset
+                taskId, channelCode, null, personCode, personName, openType, null, startTime, endTime, safeSize, offset
         );
         int total = dahuaSwingMapper.countRecords(
-                taskId, channelCode, personCode, personName, openType, startTime, endTime
+                taskId, channelCode, personCode, personName, openType, null, startTime, endTime
         );
         Map<String, Object> out = new HashMap<>();
         out.put("data", list);
@@ -151,6 +164,7 @@ public class DahuaSwingPullService {
     private Map<String, Object> pullOnce(DahuaSwingPullTask task) {
         LocalDateTime runAt = LocalDateTime.now();
         String runAtText = fmt(runAt);
+        long pullStart = System.currentTimeMillis();
         try {
             Map<String, Object> query = JSON.parseObject(task.getQueryJson(), Map.class);
             if (query == null) query = new HashMap<>();
@@ -163,10 +177,7 @@ public class DahuaSwingPullService {
             LocalDateTime end = runAt.plusMinutes(futureOffsetMinutes);
             query.put("pageSize", pageSize);
             query.put("pageNum", 1);
-            query.put("startSwingTime", fmt(start));
-            query.put("endSwingTime", fmt(end));
-            query.put("startCreateTime", fmt(start.minusMinutes(10)));
-            query.put("endCreateTime", fmt(end));
+            DahuaOpenApiService.applySwingRecordTimeRangeForLivePoll(query, start, end);
             validateRequiredQueryFields(query);
 
             int page = 1;
@@ -180,11 +191,13 @@ public class DahuaSwingPullService {
                 for (Map<String, Object> row : rows) {
                     DahuaSwingRecord record = toRecord(task.getId(), row);
                     enrichMapping(record);
+                    departmentSupport.applyToRecord(record, row);
                     // 同一 record_id 在时间窗内被每轮 poll 反复 upsert：若库中已是 mapping_hit=1，则不再跑联动，避免激活/延时签退被重复排程
                     DahuaSwingRecord existing = dahuaSwingMapper.findRecordByTaskIdAndRecordId(task.getId(), record.getRecordId());
                     boolean alreadyLinkageEligible =
                             existing != null && Integer.valueOf(1).equals(existing.getMappingHit());
                     dahuaSwingMapper.upsertRecord(record);
+                    accessRawEventIngestService.ingestFromSwing(record, "DAHUA_PULL");
                     totalSaved++;
                     if (alreadyLinkageEligible) {
                         continue;
@@ -206,8 +219,12 @@ public class DahuaSwingPullService {
             out.put("pulledEndTime", fmt(end));
             out.put("queryWindowMinutes", queryWindowMinutes);
             out.put("futureOffsetMinutes", futureOffsetMinutes);
+            TwinTimingDiagnostics.logDahuaPull(task.getId(), task.getName(),
+                    System.currentTimeMillis() - pullStart, true, "saved=" + totalSaved);
             return out;
         } catch (Exception e) {
+            TwinTimingDiagnostics.logDahuaPull(task.getId(), task.getName(),
+                    System.currentTimeMillis() - pullStart, false, simplifyErrorMessage(e));
             dahuaSwingMapper.updateTaskRunState(task.getId(), null, "FAILED", simplifyErrorMessage(e), runAtText);
             throw e;
         }
@@ -258,6 +275,7 @@ public class DahuaSwingPullService {
     private DahuaSwingRecord toRecord(Long taskId, Map<String, Object> row) {
         DahuaSwingRecord r = new DahuaSwingRecord();
         r.setTaskId(taskId);
+        r.setPullTaskType("REALTIME");
         r.setRecordId(str(row.get("id")));
         r.setCardNumber(str(row.get("cardNumber")));
         r.setCardStatus(intvObj(row.get("cardStatus")));
@@ -272,6 +290,7 @@ public class DahuaSwingPullService {
         r.setOpenResult(intvObj(row.get("openResult")));
         r.setEnterOrExit(intvObj(row.get("enterOrExit")));
         r.setRawJson(JSON.toJSONString(row));
+        com.example.demo.modules.twin.support.DahuaSwingEnterExitSupport.applyResolved(r);
         return r;
     }
 

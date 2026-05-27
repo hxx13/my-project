@@ -6,9 +6,11 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import {
   ADMIN_NAV_REGISTRY,
+  collectRegistryGroupItems,
   inferHomeSectionTitleForUnknownPath,
   titleForUnknownAdminPath,
   type AdminNavContext,
+  type AdminNavRegistryItem,
 } from "@/features/admin/adminNavRegistry";
 
 export type AdminSidebarNavItem = {
@@ -20,14 +22,20 @@ export type AdminSidebarNavItem = {
   badgeText?: string;
   telemetry?: boolean;
   telemetryReturnStorageKey?: string;
-  /** 侧栏图标外圈：背景 + 文字色 + ring，便于区分入口 */
   iconWrapClass?: string;
+};
+
+export type AdminSidebarNavSubgroup = {
+  id: string;
+  title: string;
+  items: AdminSidebarNavItem[];
 };
 
 export type AdminSidebarNavGroup = {
   id: string;
   title: string;
   items: AdminSidebarNavItem[];
+  subgroups?: AdminSidebarNavSubgroup[];
 };
 
 export type AdminHomeEntry = {
@@ -120,7 +128,6 @@ export function sidebarIconWrapForNavId(id: string): string {
   return SIDEBAR_ICON_WRAP_PALETTE[Math.abs(h) % SIDEBAR_ICON_WRAP_PALETTE.length];
 }
 
-/** 侧栏置顶「好友」入口（与注册表中 staff-messages 路径一致，供 prepend 与最近/收藏解析） */
 export function buildFriendsNavSidebarItem(): AdminSidebarNavItem {
   return {
     key: "staff-messages",
@@ -131,34 +138,51 @@ export function buildFriendsNavSidebarItem(): AdminSidebarNavItem {
   };
 }
 
+function registryItemToSidebar(it: AdminNavRegistryItem, pendingBadges: PendingBadges | null): AdminSidebarNavItem {
+  return {
+    key: it.id,
+    to: it.path,
+    end: it.navEnd,
+    label: it.label,
+    icon: it.icon,
+    telemetry: it.telemetry,
+    telemetryReturnStorageKey: it.telemetryReturnStorageKey,
+    badgeText: badgeTextFromKey(pendingBadges, it.badgeTextKey),
+    iconWrapClass: sidebarIconWrapForNavId(it.id),
+  };
+}
+
 export function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBadges | null) {
   const sidebarGroups: AdminSidebarNavGroup[] = [];
   for (const g of ADMIN_NAV_REGISTRY) {
     const items: AdminSidebarNavItem[] = [];
-    for (const it of g.items) {
+    for (const it of g.items ?? []) {
       if (!it.sidebarVisible(ctx)) continue;
-      items.push({
-        key: it.id,
-        to: it.path,
-        end: it.navEnd,
-        label: it.label,
-        icon: it.icon,
-        telemetry: it.telemetry,
-        telemetryReturnStorageKey: it.telemetryReturnStorageKey,
-        badgeText: badgeTextFromKey(pendingBadges, it.badgeTextKey),
-        iconWrapClass: sidebarIconWrapForNavId(it.id),
-      });
+      const nav = registryItemToSidebar(it, pendingBadges);
+      if (nav) items.push(nav);
     }
-    if (items.length) sidebarGroups.push({ id: g.id, title: g.title, items });
+    const subgroups: AdminSidebarNavSubgroup[] = [];
+    for (const sg of g.subgroups ?? []) {
+      const sgItems: AdminSidebarNavItem[] = [];
+      for (const it of sg.items) {
+        if (!it.sidebarVisible(ctx)) continue;
+        const nav = registryItemToSidebar(it, pendingBadges);
+        if (nav) sgItems.push(nav);
+      }
+      if (sgItems.length) subgroups.push({ id: sg.id, title: sg.title, items: sgItems });
+    }
+    if (items.length || subgroups.length) {
+      sidebarGroups.push({ id: g.id, title: g.title, items, subgroups: subgroups.length ? subgroups : undefined });
+    }
   }
 
   const knownPaths = new Set(
-    ADMIN_NAV_REGISTRY.flatMap((g) => g.items.map((it) => normalizeAdminPath(it.path)))
+    ADMIN_NAV_REGISTRY.flatMap((g) => collectRegistryGroupItems(g).map((it) => normalizeAdminPath(it.path)))
   );
 
   const homeSections: AdminHomeSection[] = ADMIN_NAV_REGISTRY.map((g) => ({
     title: g.title,
-    entries: g.items.map((it) => {
+    entries: collectRegistryGroupItems(g).map((it) => {
       const effectiveMinRole = resolveEntryMinRole(ctx.permNodes, it.path, it.fallbackMinRole);
       const roleOk = hasMinRole(ctx.role, effectiveMinRole);
       const permOk = canShowWebEntry(ctx.permNodes, it.path, "sidebar", ctx.role, effectiveMinRole);
@@ -213,16 +237,27 @@ export function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingB
     mergedHome = [...mergedHome, { title: "自动发现", entries: unknown }];
   }
 
-  const flatNavigableItems: AdminCommandPaletteItem[] = sidebarGroups.flatMap((g) =>
-    g.items.map((it) => ({
+  const flatNavigableItems: AdminCommandPaletteItem[] = sidebarGroups.flatMap((g) => {
+    const top = g.items.map((it) => ({
       id: it.key,
       path: it.to,
       label: it.label,
       groupTitle: g.title,
       telemetry: it.telemetry,
       telemetryReturnStorageKey: it.telemetryReturnStorageKey,
-    }))
-  );
+    }));
+    const nested = (g.subgroups ?? []).flatMap((sg) =>
+      sg.items.map((it) => ({
+        id: it.key,
+        path: it.to,
+        label: it.label,
+        groupTitle: `${g.title} · ${sg.title}`,
+        telemetry: it.telemetry,
+        telemetryReturnStorageKey: it.telemetryReturnStorageKey,
+      }))
+    );
+    return [...top, ...nested];
+  });
 
   return {
     sidebarGroups,

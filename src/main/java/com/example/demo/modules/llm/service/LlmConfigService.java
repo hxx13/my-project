@@ -37,26 +37,26 @@ public class LlmConfigService {
     }
 
     public String getBaseUrl() {
-        String url = get("llm.base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1");
+        String url = get("llm.base_url", "https://api.deepseek.com/v1");
         if (!StringUtils.hasText(url)) {
-            url = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+            url = "https://api.deepseek.com/v1";
         }
         return trimTrailingSlash(url.trim());
     }
 
     public String getModel() {
-        return get("llm.model", "qwen-plus");
+        return get("llm.model", "deepseek-v4-pro");
     }
 
     /**
-     * 主模型 + 备用模型列表（逗号分隔），去重且保持顺序。无需配置全部 124 个模型，仅列 2～5 个即可。
+     * 主模型 + 备用模型列表（逗号分隔），去重且保持顺序。无需配置全部模型，仅列 2～5 个即可。
      */
     public List<String> getModelCandidates() {
         Set<String> ordered = new LinkedHashSet<>();
         addModels(ordered, getModel());
-        addModels(ordered, get("llm.model_fallback", "qwen-turbo,qwen-plus,qwen-max"));
+        addModels(ordered, get("llm.model_fallback", "deepseek-v3,deepseek-r1"));
         if (ordered.isEmpty()) {
-            ordered.add("qwen-plus");
+            ordered.add("deepseek-v4-pro");
         }
         return new ArrayList<>(ordered);
     }
@@ -122,7 +122,7 @@ public class LlmConfigService {
         if (StringUtils.hasText(fromDb)) {
             return fromDb.trim();
         }
-        return LlmInsightModules.defaultSystemPrompt();
+        return LlmInsightModules.defaultSystemPrompt(reportKey);
     }
 
     public Map<String, Object> getInsightPromptBundle(String reportKey) {

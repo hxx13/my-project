@@ -29,6 +29,7 @@ import java.util.Set;
  *   <li>人工扫码离开(accessType=2) 成功后必须 {@link #clearActivationStatesForUser}，避免定时任务重复签退。</li>
  *   <li>{@link TwinCardMappingService#isLinkageRuleExempt(String)} 为 true 时跳过全部联动（不写入状态、不触发自动签退）；豁免标记不由联动消耗。</li>
  *   <li>同一物理门可同时出现在「激活卡片」与「激活后再刷门签退」：未激活时须先按激活门处理，不得因仅命中后者而丢弃刷卡。</li>
+ *   <li>「刷门即签退」须在「激活卡片规则」已成功（userId 存在 ACTIVATED）后才可排延时签退；未激活时若门亦在激活组则走激活逻辑。</li>
  * </ul>
  */
 @Service
@@ -168,7 +169,7 @@ public class DahuaSwingRuleEngineService {
             int dup = dahuaSwingMapper.countActivationByUserAndLastRecordId(
                     GLOBAL_RULE_TASK_ID, userId, recordId);
             if (dup > 0) {
-                log.info("[swing-rule] skip-duplicate-record linkage userId={} recordId={} channel={}",
+                log.debug("[swing-rule] skip-duplicate-record linkage userId={} recordId={} channel={}",
                         userId, recordId, channelCode);
                 return;
             }
@@ -251,8 +252,13 @@ public class DahuaSwingRuleEngineService {
             return;
         }
 
-        // 刷门即签退（含与激活门重合的门）：先清「待激活」占位，再删掉该用户其它通道上的联动行，只保留当前门上的延时签退任务，避免多定时器并存
-        if (hitExitRule) {
+        // 刷门即签退：须已「激活卡片」成功；未激活时若同门亦在激活组则交下方激活逻辑，否则忽略
+        if (hitExitRule && !userActivatedElsewhere) {
+            if (!hitToggleRule) {
+                log.info("[swing-rule] skip-exit-until-activated userId={} channel={}", userId, channelCode);
+                return;
+            }
+        } else if (hitExitRule) {
             dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
                     GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
             dahuaSwingMapper.deleteActivationStatesByUserId(userId);
@@ -283,14 +289,31 @@ public class DahuaSwingRuleEngineService {
         if (!hitToggleRule) {
             return;
         }
-        // 仅命中激活卡片规则：取消「待激活」倒计时；后续激活逻辑作用在当前通道行上
-        dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
-                GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
 
         boolean alreadyActivated =
                 "ACTIVATED".equalsIgnoreCase(str(state.getState()))
                         && state.getActivatedAt() != null
                         && !str(state.getActivatedAt()).isBlank();
+
+        // 延时签退进行中：禁止再次激活，避免清空 scheduled_exit_at 导致无法自动签退
+        if (dahuaSwingMapper.countAutoExitScheduledForUser(GLOBAL_RULE_TASK_ID, userId) > 0) {
+            log.debug("[swing-rule] skip-activation-during-exit-scheduled userId={} channel={}",
+                    userId, channelCode);
+            return;
+        }
+        // 无待激活计时器且从未激活：禁止刷门直接激活（须先扫码进入起算 PENDING_ACTIVATION）
+        if (!alreadyActivated
+                && userActivatedElsewhere == false
+                && dahuaSwingMapper.existsPendingActivationForUser(
+                        GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL) == 0) {
+            log.debug("[swing-rule] skip-activation-without-pending-timer userId={} channel={}",
+                    userId, channelCode);
+            return;
+        }
+
+        // 仅命中激活卡片规则：取消「待激活」倒计时；后续激活逻辑作用在当前通道行上
+        dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
+                GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
         int counter = state.getCounter() == null ? 0 : state.getCounter();
         counter++;
         state.setCounter(counter);
@@ -323,7 +346,8 @@ public class DahuaSwingRuleEngineService {
     }
 
     /**
-     * 到期任务：须完整自动离开（见类注释）。同一 userId 只处理一次，并清空其所有联动行，防止重复探测。
+     * 到期任务：须完整自动离开（见类注释）。同一 userId 只处理一次；
+     * 仅 autoSignout 成功时清空联动行，ARO 失败时保留 scheduled 行供下一 tick 重试。
      */
     public synchronized void processDueStates() {
         List<DahuaActivationState> dueStates = dahuaSwingMapper.listDueActivationStates(fmt(LocalDateTime.now()));
@@ -387,8 +411,13 @@ public class DahuaSwingRuleEngineService {
                     linkageSnapshot
             );
             log.info("[swing-rule] due-auto-signout-result userId={} success={}", userId, ok);
-            // 无论成功失败都清理：失败由后续刷卡重新走激活；禁止残留 scheduled 行导致重复签退
-            dahuaSwingMapper.deleteActivationStatesByUserId(userId);
+            // 仅成功时清理：ARO 超时/失败时保留 scheduled 行，下一 tick 重试自动签退
+            if (ok) {
+                dahuaSwingMapper.deleteActivationStatesByUserId(userId);
+            } else {
+                log.warn("[swing-rule] due-auto-signout-keep-state userId={} state={} channel={} scheduledExitAt={}",
+                        userId, state.getState(), state.getChannelCode(), state.getScheduledExitAt());
+            }
         }
     }
 

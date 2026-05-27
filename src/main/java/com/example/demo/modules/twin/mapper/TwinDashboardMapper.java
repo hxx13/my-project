@@ -30,6 +30,15 @@ public interface TwinDashboardMapper {
 
     List<Map<String, Object>> searchPersonnel(@Param("keyword") String keyword, @Param("limit") int limit);
 
+    /** 课题组名模糊检索（返回 project_group_name 原始字段，供 Java 拆分去重） */
+    List<String> searchPersonnelProjectGroupFields(@Param("keyword") String keyword, @Param("limit") int limit);
+
+    /** 按课题组名模糊拉取人员（精确归属在 Service 层按逗号拆分校验） */
+    List<Map<String, Object>> listPersonnelLooseByProjectGroup(
+            @Param("projectGroupName") String projectGroupName,
+            @Param("limit") int limit
+    );
+
     int addPersonExp(@Param("name") String name, @Param("expToAdd") int expToAdd);
 
     void updateUserAllowedRoomsJson(@Param("userId") String userId, @Param("roomsJson") String roomsJson);
@@ -39,6 +48,14 @@ public interface TwinDashboardMapper {
     List<Map<String, Object>> getDebugPredictionList(@Param("keyword") String keyword, @Param("limit") int limit, @Param("offset") int offset);
 
     int getPredictionTotalCount(@Param("keyword") String keyword);
+
+    List<Map<String, Object>> getDebugPredictionUserPage(@Param("keyword") String keyword, @Param("limit") int limit, @Param("offset") int offset);
+
+    int getDebugPredictionUserTotal(@Param("keyword") String keyword);
+
+    List<Map<String, Object>> getDebugPredictionByUserIds(@Param("userIds") List<String> userIds);
+
+    Integer getHasOfficialRoomPermission(@Param("userId") String userId);
 
     void saveOrUpdateAnimalOrder(
             @Param("sn") String sn, @Param("areaName") String areaName,
@@ -64,9 +81,16 @@ public interface TwinDashboardMapper {
 
     int getGroupedStatsPageTotalCount(@Param("keyword") String keyword);
 
-    List<Map<String, Object>> getActiveRetentionWarnings(@Param("limit") int limit, @Param("areaName") String areaName);
+    List<Map<String, Object>> getActiveRetentionWarnings(
+            @Param("limit") int limit,
+            @Param("areaName") String areaName,
+            @Param("todayStart") String todayStart,
+            @Param("todayEnd") String todayEnd);
 
-    List<Map<String, Object>> getRoomCardStatusList(@Param("roomId") String roomId);
+    List<Map<String, Object>> getRoomCardStatusList(
+            @Param("roomId") String roomId,
+            @Param("todayStart") String todayStart,
+            @Param("todayEnd") String todayEnd);
 
     void deleteBehaviorPrediction(@Param("userId") String userId);
 
@@ -148,7 +172,9 @@ public interface TwinDashboardMapper {
 
     int removeBlacklist(@Param("userId") String userId);
 
-    List<Map<String, Object>> getTodayActiveUsersForRoomStatus();
+    List<Map<String, Object>> getTodayActiveUsersForRoomStatus(
+            @Param("todayStart") String todayStart,
+            @Param("todayEnd") String todayEnd);
 
     Integer countTodayPuxiVisits(@Param("userId") String userId, @Param("todayPrefix") String todayPrefix);
 

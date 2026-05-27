@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessVisitRoundMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_visit_round (
+            batch_id, user_id, room_id, room_name, round_date, enter_time, exit_time,
+            enter_cleaned_event_id, exit_cleaned_event_id, status
+        ) VALUES (
+            #{batchId}, #{userId}, #{roomId}, #{roomName}, #{roundDate}, #{enterTime}, #{exitTime},
+            #{enterCleanedEventId}, #{exitCleanedEventId}, #{status}
+        )
+    </insert>
+
+    <delete id="deleteByBatchId">DELETE FROM access_visit_round WHERE batch_id = #{batchId}</delete>
+</mapper>

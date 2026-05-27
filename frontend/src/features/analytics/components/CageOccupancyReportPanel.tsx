@@ -1,6 +1,6 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, BellOff, Pencil, Share2, Sparkles, Trash2, Upload } from "lucide-react";
+import { Bell, BellOff, Pencil, Settings2, Share2, Sparkles, Trash2, Upload } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
   deleteAnalyticsView,
@@ -15,7 +15,7 @@ import {
 } from "@/api/domains/analytics.api";
 import { CageAuditProgressBanner } from "@/features/analytics/components/CageAuditProgressBanner";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
-import { AnalyticsConfigCollapsible } from "@/features/analytics/components/AnalyticsConfigCollapsible";
+import { AnalyticsConfigSettingsModal } from "@/features/analytics/components/AnalyticsConfigSettingsModal";
 import { EditAnalyticsViewModal } from "@/features/analytics/components/EditAnalyticsViewModal";
 import { CageOccupancyReportLayout } from "@/features/analytics/components/CageOccupancyReportLayout";
 import {
@@ -51,6 +51,7 @@ export function CageOccupancyReportPanel() {
   const [insightDialog, setInsightDialog] = useState<InsightDialogTarget | null>(null);
   const [shareModal, setShareModal] = useState<"create" | "import" | null>(null);
   const [awaitingCageAudit, setAwaitingCageAudit] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
 
   const { data: views = [] } = useQuery({
     queryKey: ["analytics", "views", REPORT_KEY],
@@ -105,8 +106,14 @@ export function CageOccupancyReportPanel() {
     [latestByCycle]
   );
 
-  const isHistoricalSelection =
-    selectedLogId != null && !latestIdsByCycle.has(selectedLogId);
+  const selectedLog = useMemo(() => {
+    if (selectedLogId == null) return null;
+    for (const list of grouped.values()) {
+      const hit = list.find((l) => l.id === selectedLogId);
+      if (hit) return hit;
+    }
+    return null;
+  }, [grouped, selectedLogId]);
 
   const openInsightDialog = (
     auditLogId: number,
@@ -121,12 +128,6 @@ export function CageOccupancyReportPanel() {
       anchor: { top: r.top, left: r.left, bottom: r.bottom, right: r.right },
     });
   };
-
-  const { data: historicalDetail, isLoading: historicalLoading, error: historicalError } = useQuery({
-    queryKey: ["analytics", "audit-detail", "historical", selectedLogId],
-    queryFn: () => fetchAuditLogDetail(selectedLogId!),
-    enabled: isHistoricalSelection,
-  });
 
   useEffect(() => {
     if (activeViewId == null && views.length > 0) {
@@ -265,23 +266,29 @@ export function CageOccupancyReportPanel() {
 
   return (
     <div className="space-y-3">
-      <AnalyticsConfigCollapsible
+      <button
+        type="button"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50"
+        onClick={() => setConfigOpen(true)}
+      >
+        <Settings2 className="h-4 w-4 text-violet-600" />
+        设置
+      </button>
+
+      <AnalyticsConfigSettingsModal
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
         reportKey={REPORT_KEY}
         draft={draft}
         onDraftChange={setDraft}
-        onSaveClick={() => setShowSaveModal(true)}
-        defaultOpen={false}
+        onSaveClick={() => {
+          setConfigOpen(false);
+          setShowSaveModal(true);
+        }}
       />
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
-        <aside
-          className={cn(
-            "w-full shrink-0 space-y-3 xl:w-72",
-            "xl:sticky xl:top-20 xl:z-10 xl:self-start",
-            "xl:max-h-[calc(100dvh-5rem)] xl:overflow-y-auto xl:overscroll-y-contain xl:pr-0.5",
-            "[scrollbar-width:thin]"
-          )}
-        >
+        <aside className="w-full shrink-0 space-y-3 xl:w-72 xl:sticky xl:top-20 xl:z-10 xl:self-start">
           <AdminFormCard title="统计配置">
             <div className="-mt-1 mb-2 flex justify-end gap-1">
               <button
@@ -352,6 +359,8 @@ export function CageOccupancyReportPanel() {
             reportKey={REPORT_KEY}
             view={activeView}
             selectedLogId={selectedLogId}
+            selectedLog={selectedLog}
+            latestByCycle={latestByCycle}
             latestIdsByCycle={latestIdsByCycle}
             onSelectLog={setSelectedLogId}
           />
@@ -376,45 +385,12 @@ export function CageOccupancyReportPanel() {
             compareCycles={compareCycles}
             latestByCycle={latestByCycle}
             grouped={grouped}
+            selectedLogId={selectedLogId}
+            selectedLog={selectedLog}
             onOpenInsight={openInsightDialog}
             viewName={activeView?.name}
             metricUnit="笼位"
           />
-
-          {isHistoricalSelection ? (
-            <section className="rounded-2xl border border-amber-200/80 bg-amber-50/30 p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-amber-900">
-                  历史期次明细 · {historicalDetail?.periodLabel ?? "…"}
-                </h3>
-                {selectedLogId != null ? (
-                  <button
-                    type="button"
-                    onClick={(e) =>
-                      openInsightDialog(selectedLogId, historicalDetail?.periodLabel ?? "", e)
-                    }
-                    className="inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-xs font-semibold text-violet-800 hover:bg-violet-50"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" aria-hidden />
-                    AI 解读
-                  </button>
-                ) : null}
-              </div>
-              {historicalLoading ? (
-                <p className="text-sm text-neutral-500">加载中…</p>
-              ) : historicalError ? (
-                <p className="text-sm text-rose-700">{(historicalError as Error).message}</p>
-              ) : historicalDetail ? (
-                <>
-                  <CageOccupancyReportLayout
-                    report={historicalDetail}
-                    fromSnapshot
-                    periodLabel={historicalDetail.periodLabel}
-                  />
-                </>
-              ) : null}
-            </section>
-          ) : null}
         </main>
       </div>
 
@@ -456,6 +432,7 @@ export function CageOccupancyReportPanel() {
             ...imported,
           ]);
           if (imported[0]) applyView(imported[0]);
+          void qc.invalidateQueries({ queryKey: ["analytics", "views", REPORT_KEY] });
           void qc.invalidateQueries({ queryKey: ["analytics", "audit-logs", REPORT_KEY] });
         }}
       />

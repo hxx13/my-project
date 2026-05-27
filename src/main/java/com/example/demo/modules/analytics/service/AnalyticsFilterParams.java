@@ -13,11 +13,15 @@ public record AnalyticsFilterParams(
         String roomName,
         Integer actionType,
         boolean excludeBlacklist,
-        List<String> auditCycles) {
+        List<String> auditCycles,
+        /** 空=全部已启用清洗通道 */
+        List<String> channelCodes,
+        /** true 表示 channelCodes 为空时解析为全部已启用通道 */
+        boolean allEnabledChannels) {
 
     public static AnalyticsFilterParams fromMap(Map<String, Object> filter) {
         if (filter == null) {
-            return new AnalyticsFilterParams(List.of(), List.of(), null, null, true, List.of("day"));
+            return new AnalyticsFilterParams(List.of(), List.of(), null, null, true, List.of("day"), List.of(), true);
         }
         List<String> campuses = parseList(filter.get("campuses"));
         String legacyCampus = trim(filter.get("campus"));
@@ -43,13 +47,21 @@ public record AnalyticsFilterParams(
         if (auditCycles.isEmpty()) {
             auditCycles = List.of("day");
         }
+        List<String> channelCodes = parseList(filter.get("channelCodes"));
+        // 已选具体通道时不得再按「全部已启用」展开，防止 JSON 中 allEnabledChannels:true 与 channelCodes 并存
+        boolean allEnabled =
+                channelCodes.isEmpty()
+                        && (Boolean.TRUE.equals(filter.get("allEnabledChannels"))
+                                || filter.get("allEnabledChannels") != Boolean.FALSE);
         return new AnalyticsFilterParams(
                 campuses,
                 floors,
                 emptyToNull(roomName),
                 actionType,
                 excludeBlacklist,
-                auditCycles);
+                auditCycles,
+                channelCodes,
+                allEnabled);
     }
 
     private static List<String> parseAuditCycles(Object raw) {

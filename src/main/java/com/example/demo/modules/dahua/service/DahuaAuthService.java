@@ -128,8 +128,8 @@ public class DahuaAuthService {
     // 您原汁原味的 SSL 绕过逻辑，一行未改！
     private RestTemplate createSecureRestTemplate() {
         SimpleClientHttpRequestFactory f = new SimpleClientHttpRequestFactory();
-        f.setConnectTimeout(5000);
-        f.setReadTimeout(5000);
+        f.setConnectTimeout(10_000);
+        f.setReadTimeout(120_000);
         try {
             SSLContext sc = SSLContext.getInstance("SSL");
             sc.init(null, new TrustManager[]{new X509TrustManager() {

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import {
   createOrReuseSupplyClaimPdfLink,
   deleteMySupplyClaim,
@@ -121,7 +122,7 @@ export default function AdminSuppliesMinePage() {
       const data = await listSupplyClaimPdfLinks(row.id);
       setLinkRows(data.links || []);
       const copyText = created.downloadUrl || created.downloadPath;
-      if (copyText) await navigator.clipboard.writeText(copyText);
+      if (copyText) await copyTextToClipboard(copyText);
       toast.success(created.reused ? "已复用链接（已复制）" : "已生成链接（已复制）");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "获取链接失败");
@@ -427,7 +428,7 @@ export default function AdminSuppliesMinePage() {
                             type="button"
                             className="rounded border border-slate-300 px-2 py-1"
                             onClick={async () => {
-                              await navigator.clipboard.writeText(displayLink(item));
+                              await copyTextToClipboard(displayLink(item));
                               toast.success("已复制");
                             }}
                           >

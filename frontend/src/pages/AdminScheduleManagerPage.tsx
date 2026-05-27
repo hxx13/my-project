@@ -1,18 +1,30 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
   fetchScheduleJobs,
   runScheduleJobNow,
   updateScheduleJob,
 } from "@/api/domains/schedule.api";
-import type { ScheduleJobRow } from "@/api/domains/schedule.api";
+import type { JobRunOutcome, ScheduleJobRow } from "@/api/domains/schedule.api";
 import {
   executeDahuaSwingTask,
   listDahuaSwingTasks,
   updateDahuaSwingTask,
   type DahuaSwingTask,
 } from "@/api/domains/dahuaSwing.api";
+import {
+  executeDahuaSwingStatsTask,
+  listDahuaSwingStatsTasks,
+  updateDahuaSwingStatsTask,
+  type DahuaSwingStatsPullTask,
+} from "@/api/domains/dahuaSwingStats.api";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import {
+  STATS_PULL_SCHEDULE_JOB,
+  STATS_PULL_SCHEDULE_SECTIONS,
+} from "@/features/dahua-swing-stats/statsPullScheduleJobs";
+import { isHistoricalTask, PERIOD_MODE_LABEL, parsePeriodMode } from "@/features/dahua-swing-stats/statsTaskModel";
+import type { StatsPeriodMode } from "@/features/dahua-swing-stats/statsTaskModel";
 
 const weekOptions = [
   { id: 1, label: "周一" },
@@ -26,12 +38,25 @@ const weekOptions = [
 
 type EditState = Record<string, ScheduleJobRow>;
 type DahuaEditState = Record<number, { enabled: number; pollIntervalSeconds: number; weekDays: string; startTime: string; endTime: string }>;
+type StatsEditState = Record<number, { enabled: number }>;
 
 /** 动物房 WinCC 测量值高频轮询：与程序坞页 GET /telemetry/wincc/dock-poll-config 对应 */
 const TELEMETRY_WINCC_UI_KEY = "TELEMETRY_WINCC_UI";
 const TELEMETRY_WINCC_POLL_KEYS = new Set([TELEMETRY_WINCC_UI_KEY, "TELEMETRY_WINCC_LIMITS_UI"]);
 
+/** 已下线，仅过滤历史库行 */
+const DEPRECATED_JOB_KEYS = new Set([
+  "ACCESS_RAW_BACKFILL",
+  "ACCESS_EVENT_CLEAN_DAILY",
+  "ACCESS_EVENT_CLEAN_INCREMENTAL",
+  "DAHUA_SWING_STATS_PULL",
+]);
+
+/** 与后端 JobSchedulePolicy.isPollInWindow 一致：窗口内按轮询间隔执行 */
+const PLATFORM_POLL_KEYS = new Set(["ARO_PENETRATION_POLL"]);
+
 const FREEZE_KEYS = new Set(["RUN_REAPER", "RUN_REAPER_SECOND", "DAILY_EXEMPT_RESET"]);
+const DAILY_EXEMPT_RESET_KEY = "DAILY_EXEMPT_RESET";
 const SINGLE_KEYS = new Set([
   "RPG_RECALC_ALL",
   "ORDER_SYNC",
@@ -43,8 +68,14 @@ const SINGLE_KEYS = new Set([
   "DAHUA_GROUP_REFRESH",
   "DAHUA_CHANNEL_REFRESH",
   "DAHUA_DEPT_REFRESH",
+  "ACCESS_CLEAN_PACKAGE_DAILY",
+  STATS_PULL_SCHEDULE_JOB.PREVIOUS_DAY,
+  STATS_PULL_SCHEDULE_JOB.PREVIOUS_WEEK,
+  STATS_PULL_SCHEDULE_JOB.SINCE_LAST,
   ...Array.from(FREEZE_KEYS),
 ]);
+
+const WINCC_POLL_KEYS = TELEMETRY_WINCC_POLL_KEYS;
 
 export default function AdminScheduleManagerPage() {
   const [rows, setRows] = useState<ScheduleJobRow[]>([]);
@@ -52,24 +83,48 @@ export default function AdminScheduleManagerPage() {
   const [loading, setLoading] = useState(false);
   const [dahuaRows, setDahuaRows] = useState<DahuaSwingTask[]>([]);
   const [dahuaDraft, setDahuaDraft] = useState<DahuaEditState>({});
+  const [statsRows, setStatsRows] = useState<DahuaSwingStatsPullTask[]>([]);
+  const [statsDraft, setStatsDraft] = useState<StatsEditState>({});
   const [savingKey, setSavingKey] = useState<string>("");
+  const loadToastOnce = useRef(false);
+
+  const refreshScheduleStatus = useCallback(async () => {
+    const list = await fetchScheduleJobs();
+    const normalized = list.map(normalizeScheduleRow).filter((r) => !DEPRECATED_JOB_KEYS.has(r.jobKey));
+    setRows(normalized);
+    setDraft((prev) => {
+      const next = { ...prev };
+      for (const r of normalized) {
+        const cur = next[r.jobKey];
+        if (!cur) {
+          next[r.jobKey] = r;
+        } else {
+          next[r.jobKey] = mergeScheduleStatus(cur, r);
+        }
+      }
+      return next;
+    });
+  }, []);
 
   const load = useCallback(async (options?: { showLoading?: boolean }) => {
     const showLoading = options?.showLoading ?? true;
     if (showLoading) setLoading(true);
     try {
       const list = await fetchScheduleJobs();
-      setRows(list);
+      const normalized = list.map(normalizeScheduleRow).filter((r) => !DEPRECATED_JOB_KEYS.has(r.jobKey));
+      setRows(normalized);
       const state: EditState = {};
-      for (const r of list) {
-        state[r.jobKey] = {
-          ...r,
-          pollIntervalSeconds: TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey)
-            ? Math.max(10, Math.min(3600, Number(r.pollIntervalSeconds ?? 60)))
-            : r.pollIntervalSeconds,
-        };
+      for (const r of normalized) {
+        state[r.jobKey] = r;
       }
       setDraft(state);
+    } catch (e) {
+      if (!loadToastOnce.current) {
+        loadToastOnce.current = true;
+        toast.error(e instanceof Error ? e.message : "加载定时任务失败");
+      }
+    }
+    try {
       const tasks = await listDahuaSwingTasks();
       setDahuaRows(tasks);
       const ds: DahuaEditState = {};
@@ -85,8 +140,22 @@ export default function AdminScheduleManagerPage() {
         };
       }
       setDahuaDraft(ds);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "加载失败");
+    } catch {
+      setDahuaRows([]);
+      setDahuaDraft({});
+    }
+    try {
+      const statsTasks = (await listDahuaSwingStatsTasks()).filter((t) => !isHistoricalTask(t));
+      setStatsRows(statsTasks);
+      const ss: StatsEditState = {};
+      for (const t of statsTasks) {
+        if (!t.id) continue;
+        ss[t.id] = { enabled: t.enabled ?? 0 };
+      }
+      setStatsDraft(ss);
+    } catch {
+      setStatsRows([]);
+      setStatsDraft({});
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -99,40 +168,12 @@ export default function AdminScheduleManagerPage() {
   /** 静默刷新执行状态列，避免编辑草稿时被整表覆盖 */
   useEffect(() => {
     const id = window.setInterval(() => {
-      void (async () => {
-        try {
-          const list = await fetchScheduleJobs();
-          setRows(list);
-          setDraft((prev) => {
-            const next = { ...prev };
-            for (const r of list) {
-              const cur = next[r.jobKey];
-              if (!cur) {
-                next[r.jobKey] = {
-                  ...r,
-                  pollIntervalSeconds: TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey)
-                    ? Math.max(10, Math.min(3600, Number(r.pollIntervalSeconds ?? 60)))
-                    : r.pollIntervalSeconds,
-                };
-                continue;
-              }
-              next[r.jobKey] = {
-                ...cur,
-                lastRunAt: r.lastRunAt,
-                lastSuccessAt: r.lastSuccessAt,
-                lastStatus: r.lastStatus,
-                lastError: r.lastError,
-              };
-            }
-            return next;
-          });
-        } catch {
-          /* 定时静默失败忽略 */
-        }
-      })();
+      void refreshScheduleStatus().catch(() => {
+        /* 定时静默失败忽略 */
+      });
     }, 15000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [refreshScheduleStatus]);
 
   const exceptions = useMemo(
     () => ["流水线页面中的强制同步ARO流水", "房卡调度页面中的强制同步流水（独立定时，不在此处配置）"],
@@ -144,20 +185,61 @@ export default function AdminScheduleManagerPage() {
   const singleGroups = useMemo(
     () => [
       {
-        title: "模型与空间重算",
+        title: "门禁统计（每日到点）",
+        keys: new Set([
+          "ACCESS_CLEAN_PACKAGE_DAILY",
+          STATS_PULL_SCHEDULE_JOB.PREVIOUS_DAY,
+          STATS_PULL_SCHEDULE_JOB.PREVIOUS_WEEK,
+          STATS_PULL_SCHEDULE_JOB.SINCE_LAST,
+        ]),
+      },
+      {
+        title: "孪生·模型与空间",
         keys: new Set(["RPG_RECALC_ALL", "GROUP_RECALC", "MODEL_RECALC"]),
       },
       {
-        title: "同步与落库任务",
+        title: "同步与落库",
         keys: new Set(["ORDER_SYNC", "ORDER_SYNC_FULL", "PERSONNEL_SYNC_ALL", "ROOM_MAPPING_REFRESH"]),
       },
       {
-        title: "大华缓存刷新任务",
+        title: "大华缓存",
         keys: new Set(["DAHUA_GROUP_REFRESH", "DAHUA_CHANNEL_REFRESH", "DAHUA_DEPT_REFRESH"]),
       },
     ],
     []
   );
+  const accessPipelineSchedule = useMemo(() => {
+    const rowOf = (key: string) => draft[key] ?? rows.find((r) => r.jobKey === key);
+    const clean = rowOf("ACCESS_CLEAN_PACKAGE_DAILY");
+    const pulls = STATS_PULL_SCHEDULE_SECTIONS.map((s) => {
+      const row = rowOf(s.jobKey);
+      return {
+        ...s,
+        scheduleTime: row?.scheduleTime ?? "02:00",
+        enabled: (row?.enabled ?? 0) === 1,
+      };
+    });
+    return {
+      pulls,
+      cleanTime: clean?.scheduleTime ?? "03:00",
+      cleanEnabled: (clean?.enabled ?? 0) === 1,
+    };
+  }, [draft, rows]);
+
+  const statsRowsByPeriod = useMemo(() => {
+    const map = new Map<StatsPeriodMode, DahuaSwingStatsPullTask[]>();
+    for (const s of STATS_PULL_SCHEDULE_SECTIONS) {
+      map.set(s.periodMode, []);
+    }
+    for (const r of statsRows) {
+      const mode = parsePeriodMode(r.periodMode);
+      if (mode === "HISTORICAL_RANGE") continue;
+      const list = map.get(mode);
+      if (list) list.push(r);
+    }
+    return map;
+  }, [statsRows]);
+
   const singleGroupedRows = useMemo(
     () =>
       singleGroups
@@ -166,12 +248,17 @@ export default function AdminScheduleManagerPage() {
     [singleGroups, singleRows]
   );
   const rangeGroupedRows = useMemo(
-    () => [
-      {
-        title: "平台轮询与窗口任务",
-        rows: rangeRows,
-      },
-    ].filter((g) => g.rows.length > 0),
+    () =>
+      [
+        {
+          title: "动物房 WinCC（窗口 + 轮询秒）",
+          rows: rangeRows.filter((r) => WINCC_POLL_KEYS.has(r.jobKey)),
+        },
+        {
+          title: "ARO 渗透（窗口 + 轮询秒）",
+          rows: rangeRows.filter((r) => PLATFORM_POLL_KEYS.has(r.jobKey)),
+        },
+      ].filter((g) => g.rows.length > 0),
     [rangeRows]
   );
 
@@ -199,24 +286,26 @@ export default function AdminScheduleManagerPage() {
         scheduleStartTime: row.scheduleStartTime || "07:00",
         scheduleEndTime: row.scheduleEndTime || "22:00",
         weekDays: row.weekDays || "",
-        ...(TELEMETRY_WINCC_POLL_KEYS.has(jobKey)
+        ...(TELEMETRY_WINCC_POLL_KEYS.has(jobKey) || PLATFORM_POLL_KEYS.has(jobKey)
           ? {
               pollIntervalSeconds: Math.max(
                 10,
-                Math.min(3600, Number(row.pollIntervalSeconds ?? 60))
+                Math.min(
+                  PLATFORM_POLL_KEYS.has(jobKey) ? 86400 : 3600,
+                  Number(row.pollIntervalSeconds ?? 60)
+                )
               ),
             }
           : {}),
+        ...(jobKey === DAILY_EXEMPT_RESET_KEY
+          ? { revokeAutoSignoutEnabled: (row.revokeAutoSignoutEnabled ?? 0) === 1 }
+          : {}),
       });
-      toast.success("保存成功");
       // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
-      if (saved && typeof saved === "object" && "jobKey" in saved) {
-        const merged: ScheduleJobRow = { ...row, ...saved };
-        setRows((prev) => prev.map((x) => (x.jobKey === jobKey ? { ...x, ...merged } : x)));
-        setDraft((prev) => ({ ...prev, [jobKey]: { ...prev[jobKey], ...merged } }));
-      } else {
-        await load({ showLoading: false });
-      }
+      const merged = normalizeScheduleRow({ ...row, ...saved });
+      setRows((prev) => prev.map((x) => (x.jobKey === jobKey ? { ...x, ...merged } : x)));
+      setDraft((prev) => ({ ...prev, [jobKey]: merged }));
+      toast.success("保存成功");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
     } finally {
@@ -246,16 +335,75 @@ export default function AdminScheduleManagerPage() {
       q.execWeekDays = d.weekDays.split(",").map((x) => Number(x)).filter((x) => Number.isInteger(x) && x >= 1 && x <= 7);
       q.execStartTime = d.startTime || "07:00";
       q.execEndTime = d.endTime || "22:00";
+      const queryJson = JSON.stringify(q);
       await updateDahuaSwingTask(task.id, {
         ...task,
         enabled: d.enabled,
         pollIntervalSeconds: Math.max(10, Number(d.pollIntervalSeconds || 60)),
-        queryJson: JSON.stringify(q),
+        queryJson,
       });
+      // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
+      setDahuaRows((prev) =>
+        prev.map((r) =>
+          r.id === task.id
+            ? {
+                ...r,
+                enabled: d.enabled,
+                pollIntervalSeconds: Math.max(10, Number(d.pollIntervalSeconds || 60)),
+                queryJson,
+              }
+            : r
+        )
+      );
       toast.success("大华任务计划已保存");
-      await load({ showLoading: false });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSavingKey("");
+    }
+  };
+
+  const updateStatsDraft = (id: number, patch: Partial<StatsEditState[number]>) => {
+    setStatsDraft((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+  };
+
+  const saveStats = async (task: DahuaSwingStatsPullTask) => {
+    if (!task.id) return;
+    const d = statsDraft[task.id];
+    if (!d) return;
+    setSavingKey(`stats-${task.id}`);
+    try {
+      await updateDahuaSwingStatsTask(task.id, {
+        ...task,
+        enabled: d.enabled,
+      });
+      toast.success("日批任务开关已保存");
+      // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
+      setStatsRows((prev) =>
+        prev.map((r) =>
+          r.id === task.id
+            ? { ...r, enabled: d.enabled }
+            : r
+        )
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSavingKey("");
+    }
+  };
+
+  const runStatsNow = async (taskId?: number) => {
+    if (!taskId) return;
+    setSavingKey(`stats-${taskId}`);
+    try {
+      await executeDahuaSwingStatsTask(taskId);
+      toast.success("已触发统计拉取");
+      const list = await listDahuaSwingStatsTasks();
+      const row = list.find((x) => x.id === taskId);
+      if (row) setStatsRows((prev) => prev.map((r) => (r.id === taskId ? row : r)));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "执行失败");
     } finally {
       setSavingKey("");
     }
@@ -265,9 +413,10 @@ export default function AdminScheduleManagerPage() {
     if (!taskId) return;
     setSavingKey(`dahua-${taskId}`);
     try {
-      await executeDahuaSwingTask(taskId);
-      toast.success("已触发执行");
-      await load({ showLoading: false });
+      const result = await executeDahuaSwingTask(taskId);
+      toast.success(`已触发执行，本次入库 ${result?.saved ?? 0} 条`);
+      const tasks = await listDahuaSwingTasks();
+      setDahuaRows(tasks);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "执行失败");
     } finally {
@@ -276,11 +425,28 @@ export default function AdminScheduleManagerPage() {
   };
 
   const runNow = async (jobKey: string) => {
+    if (savingKey === jobKey) return;
     setSavingKey(jobKey);
     try {
-      await runScheduleJobNow(jobKey);
-      toast.success("已触发执行");
-      await load({ showLoading: false });
+      const outcome: JobRunOutcome = await runScheduleJobNow(jobKey);
+      let detail = outcome.summary || "已触发执行";
+      const m = outcome.metrics;
+      if (
+        (jobKey === STATS_PULL_SCHEDULE_JOB.PREVIOUS_DAY ||
+          jobKey === STATS_PULL_SCHEDULE_JOB.PREVIOUS_WEEK ||
+          jobKey === STATS_PULL_SCHEDULE_JOB.SINCE_LAST) &&
+        m
+      ) {
+        const acOk = m.autoCleanOk ?? 0;
+        const acSkip = m.autoCleanSkipped ?? 0;
+        const acFail = m.autoCleanFail ?? 0;
+        detail += ` · 自动清洗 成功${acOk} 跳过${acSkip} 失败${acFail}`;
+      }
+      if (jobKey === "ACCESS_CLEAN_PACKAGE_DAILY" && m) {
+        detail += ` · 通道${m.channels ?? 0} 成功${m.ok ?? 0} 跳过${m.skipNoAuto ?? 0}`;
+      }
+      toast.success(detail, { duration: outcome.noop ? 8000 : 5000 });
+      await refreshScheduleStatus();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "执行失败");
     } finally {
@@ -304,10 +470,10 @@ export default function AdminScheduleManagerPage() {
       ) : (
         <div className="space-y-4">
           <div className="rounded border bg-white p-3">
-            <div className="mb-2 text-base font-semibold text-slate-800">A. 时间段任务（持续轮询/窗口执行）</div>
+            <div className="mb-2 text-base font-semibold text-slate-800">A. 窗口轮询任务</div>
             <div className="mb-3 text-xs text-slate-500">
-              此类任务依赖执行窗口（开始~结束）+ 计划类型（每天/每周）。例如 ARO 穿甲弹与门禁拉取轮询任务。
-              <strong>动物房 WinCC 测量值</strong>与<strong> WinCC 限值低频（TELEMETRY_WINCC_LIMITS_UI）</strong>两行：均由<strong>开关+窗口+周计划+轮询(秒)</strong>约束；服务端专用调度器读取配置（不参与统一 tick）。测量值任务更新内存快照；限值任务已不再访问 WinCC（动物房报警限改为「WinCC 变量」页顶部全局配置）。
+              仅在<strong>执行窗口</strong>内按<strong>轮询间隔(秒)</strong>重复检查。WinCC 两行由专用调度读取（不参与统一定时 tick）。
+              审计门禁批量拉取在下方 B 区按<strong>昨日 / 上周 / 水位</strong>拆成三个独立到点 Job（回溯无定时，仅工作台手动）。
             </div>
             {rangeGroupedRows.map((group) => (
               <div key={group.title} className="mb-4">
@@ -351,18 +517,21 @@ export default function AdminScheduleManagerPage() {
                               <input type="time" className="rounded border px-2 py-1" value={d.scheduleEndTime || "22:00"} onChange={(e) => updateDraft(r.jobKey, { scheduleEndTime: e.target.value })} />
                             </td>
                             <td className="border px-2 py-2">
-                              {TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey) ? (
+                              {TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey) || PLATFORM_POLL_KEYS.has(r.jobKey) ? (
                                 <input
                                   type="number"
                                   className="w-24 rounded border px-2 py-1"
                                   min={10}
-                                  max={3600}
+                                  max={PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600}
                                   value={d.pollIntervalSeconds ?? 60}
                                   onChange={(e) =>
                                     updateDraft(r.jobKey, {
                                       pollIntervalSeconds: Math.max(
                                         10,
-                                        Math.min(3600, Number(e.target.value || 60))
+                                        Math.min(
+                                          PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600,
+                                          Number(e.target.value || 60)
+                                        )
                                       ),
                                     })
                                   }
@@ -406,7 +575,7 @@ export default function AdminScheduleManagerPage() {
             ))}
 
             <div className="mt-4">
-              <div className="mb-2 text-sm font-semibold text-slate-700">门禁拉取任务（时间段）</div>
+              <div className="mb-2 text-sm font-semibold text-slate-700">即时门禁拉取（轮询+时间段，孪生联动）</div>
               <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-50">
@@ -461,16 +630,134 @@ export default function AdminScheduleManagerPage() {
                 </table>
               </AdminDataTableWrap>
             </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <div className="mb-1 text-sm font-semibold text-slate-700">审计拉取任务（按策略参与对应定时 Job）</div>
+                <p className="mb-2 text-xs text-slate-500">
+                  <strong>回溯</strong>不在此配置，仅在{" "}
+                  <a href="#/admin/dahua-swing-tasks?tab=audit" className="text-indigo-700 underline">
+                    门禁数据工作台 · 审计拉取
+                  </a>{" "}
+                  手动执行。下方勾选「参与定时」仅对<strong>同策略</strong>的到点 Job 生效；到点时刻在 B 区分别配置：
+                  {accessPipelineSchedule.pulls.map((p) => (
+                    <span key={p.jobKey} className="ml-1">
+                      {p.title}{" "}
+                      <strong className={p.enabled ? "text-violet-800" : "text-rose-600"}>
+                        {p.enabled ? p.scheduleTime : "关"}
+                      </strong>
+                    </span>
+                  ))}
+                  ；增量入库{" "}
+                  <strong className={accessPipelineSchedule.cleanEnabled ? "text-violet-800" : "text-rose-600"}>
+                    {accessPipelineSchedule.cleanEnabled ? accessPipelineSchedule.cleanTime : "已关闭"}
+                  </strong>
+                  （建议晚于昨日日批 15–30 分钟，且仅昨日 Job 结束后刷新隔离服/笼架订阅统计）。
+                </p>
+              </div>
+              {STATS_PULL_SCHEDULE_SECTIONS.map((section) => {
+                const sectionRows = statsRowsByPeriod.get(section.periodMode) ?? [];
+                return (
+                  <div key={section.periodMode}>
+                    <div className="mb-1 text-xs font-semibold text-slate-600">
+                      {section.title} · 对应 Job <code className="text-[10px]">{section.jobKey}</code>
+                    </div>
+                    <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="border px-2 py-2 text-left">任务</th>
+                            <th className="border px-2 py-2 text-left">参与本策略定时</th>
+                            <th className="border px-2 py-2 text-left">上次数据窗</th>
+                            <th className="border px-2 py-2 text-left">状态</th>
+                            <th className="border px-2 py-2 text-left">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sectionRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="border px-2 py-4 text-center text-xs text-slate-400">
+                                暂无 {section.title} 任务
+                              </td>
+                            </tr>
+                          ) : (
+                            sectionRows.map((r) => {
+                              if (!r.id) return null;
+                              const d = statsDraft[r.id];
+                              if (!d) return null;
+                              return (
+                                <tr key={r.id}>
+                                  <td className="border px-2 py-2">{r.name || `任务#${r.id}`}</td>
+                                  <td className="border px-2 py-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={d.enabled === 1}
+                                      onChange={(e) =>
+                                        updateStatsDraft(r.id!, { enabled: e.target.checked ? 1 : 0 })
+                                      }
+                                    />
+                                  </td>
+                                  <td className="border px-2 py-2 text-xs">
+                                    {r.lastPulledStart && r.lastPulledEnd ? (
+                                      <>
+                                        {r.lastPulledStart}
+                                        <br />
+                                        {r.lastPulledEnd}
+                                      </>
+                                    ) : (
+                                      "-"
+                                    )}
+                                  </td>
+                                  <td className="border px-2 py-2">{r.lastStatus || "-"}</td>
+                                  <td className="border px-2 py-2">
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        className="rounded border px-2 py-1"
+                                        disabled={savingKey === `stats-${r.id}`}
+                                        onClick={() => void saveStats(r)}
+                                      >
+                                        保存
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="rounded border px-2 py-1"
+                                        disabled={savingKey === `stats-${r.id}`}
+                                        onClick={() => void runStatsNow(r.id)}
+                                      >
+                                        立即执行
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </AdminDataTableWrap>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div className="rounded border bg-white p-3">
-            <div className="mb-2 text-base font-semibold text-slate-800">B. 单次时间任务（到点执行一次）</div>
+            <div className="mb-2 text-base font-semibold text-slate-800">B. 每日定时（到点执行一次）</div>
             <div className="mb-3 text-xs text-slate-500">
-              此类任务按“单个执行时间”触发，并支持重启补跑（错过计划点会在重启自检时补齐；已执行或已被新配置覆盖的旧计划点不会重复补跑）。
+              仅需配置<strong>执行时刻</strong>与周计划，无需时间段与轮询间隔。支持重启补跑（错过计划点会在重启自检时补齐）。
+              <strong>审计门禁·每日到点</strong>：拉取昨日窗后，各任务若开启「拉取后自动清洗」则写入总库（开关在{" "}
+              <a href="#/admin/dahua-swing-tasks?tab=audit" className="text-indigo-700 underline">
+                定时审计拉取
+              </a>
+              ）。<strong>门禁统计·自动入库</strong>：独立增量任务，仍看各任务同一开关。
             </div>
 
             <div className="mb-4">
               <div className="mb-2 text-sm font-semibold text-slate-700">冻结联动任务</div>
+              <p className="mb-2 text-xs text-amber-800/90 bg-amber-50 border border-amber-200/80 rounded px-2 py-1.5">
+                「每日豁免权回收」在本页单独配置开关与执行时间，不再随冻结总开关绑定。可勾选「回收后自动签离」：仅对<strong>今日曾豁免且流水仍判定在馆</strong>者签离；时效到期收回、未申请豁免的滞留者不签离（与 AI 雷达口径一致，跨日后不计入当日雷达）。
+              </p>
               <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-50">
@@ -480,6 +767,7 @@ export default function AdminScheduleManagerPage() {
                       <th className="border px-2 py-2 text-left">计划</th>
                       <th className="border px-2 py-2 text-left">执行时间</th>
                       <th className="border px-2 py-2 text-left">每周</th>
+                      <th className="border px-2 py-2 text-left">回收后签离</th>
                       <th className="border px-2 py-2 text-left">上次执行</th>
                       <th className="border px-2 py-2 text-left">上次成功</th>
                       <th className="border px-2 py-2 text-left">状态</th>
@@ -516,6 +804,24 @@ export default function AdminScheduleManagerPage() {
                               <span className="text-slate-400">-</span>
                             )}
                           </td>
+                          <td className="border px-2 py-2">
+                            {r.jobKey === DAILY_EXEMPT_RESET_KEY ? (
+                              <label className="flex items-center gap-1 text-xs cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={(d.revokeAutoSignoutEnabled ?? 0) === 1}
+                                  onChange={(e) =>
+                                    updateDraft(r.jobKey, {
+                                      revokeAutoSignoutEnabled: e.target.checked ? 1 : 0,
+                                    })
+                                  }
+                                />
+                                今日曾豁免且仍在馆
+                              </label>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
                           <td className="border px-2 py-2">{r.lastRunAt || "-"}</td>
                           <td className="border px-2 py-2">{r.lastSuccessAt || "-"}</td>
                           <td className="border px-2 py-2">{r.lastStatus || "-"}</td>
@@ -536,6 +842,14 @@ export default function AdminScheduleManagerPage() {
             {singleGroupedRows.map((group) => (
               <div key={group.title} className="mb-4">
                 <div className="mb-2 text-sm font-semibold text-slate-700">{group.title}</div>
+                {group.title === "门禁统计（每日到点）" ? (
+                  <p className="mb-2 text-xs text-slate-500">
+                    三个审计拉取 Job 互不合并：<strong>昨日日批</strong>、<strong>上周周批</strong>、<strong>水位增量</strong>各配独立到点时刻，仅执行对应 periodMode 且已勾选参与定时的任务；<strong>历史回溯无定时</strong>。
+                    「昨日日批」到点后还会跑全局增量入库并刷新隔离服/笼架订阅；周批/水位仅拉取+任务级自动清洗。
+                    <strong className="ml-1">门禁统计·自动入库</strong>（
+                    <code className="text-[10px]">ACCESS_CLEAN_PACKAGE_DAILY</code>）建议时刻晚于昨日日批。
+                  </p>
+                ) : null}
                 <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
                   <table className="min-w-full text-sm">
                     <thead className="bg-slate-50">
@@ -627,4 +941,35 @@ function normalizeTime(input: unknown, def: string): string {
   if (typeof input !== "string" || input.trim().length < 4) return def;
   const s = input.trim();
   return s.length >= 5 ? s.slice(0, 5) : def;
+}
+
+function normalizeScheduleRow(r: ScheduleJobRow): ScheduleJobRow {
+  const rawEnabled = (r as { enabled?: number | boolean }).enabled;
+  return {
+    ...r,
+    enabled: rawEnabled === 1 || rawEnabled === true ? 1 : 0,
+    scheduleTime: normalizeTime(r.scheduleTime, "02:00"),
+    scheduleStartTime: normalizeTime(r.scheduleStartTime, "07:00"),
+    scheduleEndTime: normalizeTime(r.scheduleEndTime, "22:00"),
+    pollIntervalSeconds:
+      TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey) || PLATFORM_POLL_KEYS.has(r.jobKey)
+        ? Math.max(
+            10,
+            Math.min(
+              PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600,
+              Number(r.pollIntervalSeconds ?? 60)
+            )
+          )
+        : r.pollIntervalSeconds,
+  };
+}
+
+function mergeScheduleStatus(cur: ScheduleJobRow, fromServer: ScheduleJobRow): ScheduleJobRow {
+  return {
+    ...cur,
+    lastRunAt: fromServer.lastRunAt,
+    lastSuccessAt: fromServer.lastSuccessAt,
+    lastStatus: fromServer.lastStatus,
+    lastError: fromServer.lastError,
+  };
 }

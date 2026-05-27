@@ -245,10 +245,39 @@ export const syncAccessLogs = async () => {
 // 🧠 AI 空间驻留推演大脑 API (Twin Prediction Engine)
 // =========================================================
 
-export interface PredictionPageResponse {
-    data: Array<Record<string, unknown>>;
+export interface DebugPredictionRoomDto {
+    roomId?: string;
+    roomName?: string;
+    medianDurationMins?: number;
+    peakEntryTime?: string;
+    predictedExitTime?: string;
+    predictedExitLabel?: string;
+    policyTag?: string;
+    overtimeProb?: number;
+    visitCount?: number;
+    nextRoomProb?: Record<string, unknown>;
+    entryCurve?: number[];
+    exitCurve?: number[];
+}
+
+export interface DebugPredictionUserDto {
+    userId: string;
+    userName?: string;
+    hasOfficialRoomPermission?: boolean;
+    totalExp?: number;
+    level?: number;
+    weeklyEntryCurve?: number[];
+    weeklyExitCurve?: number[];
+    rooms?: DebugPredictionRoomDto[];
+}
+
+export interface DebugPredictionUserPageResponse {
+    data: DebugPredictionUserDto[];
     total: number;
 }
+
+/** @deprecated 行级列表已改为按人聚合，请使用 fetchDebugPredictionUserPage */
+export type PredictionPageResponse = DebugPredictionUserPageResponse;
 
 export interface PredictionRoomItem {
     room_id?: string;
@@ -257,10 +286,19 @@ export interface PredictionRoomItem {
     roomName?: string;
 }
 
-export const fetchDebugPredictionList = async (page: number, size: number = 100, keyword: string = ''): Promise<PredictionPageResponse> => {
-    const response = await axios.get(`/api/v1/twin/prediction/admin/list?page=${page}&size=${size}&keyword=${encodeURIComponent(keyword)}`);
-    return asData<PredictionPageResponse>(response.data, { data: [], total: 0 });
+export const fetchDebugPredictionUserPage = async (
+    page: number,
+    size: number = 16,
+    keyword: string = "",
+): Promise<DebugPredictionUserPageResponse> => {
+    const response = await axios.get(
+        `/api/v1/twin/prediction/admin/list?page=${page}&size=${size}&keyword=${encodeURIComponent(keyword)}`,
+    );
+    return asData<DebugPredictionUserPageResponse>(response.data, { data: [], total: 0 });
 };
+
+/** @deprecated 使用 fetchDebugPredictionUserPage */
+export const fetchDebugPredictionList = fetchDebugPredictionUserPage;
 
 // 💥 2. 触发后端全量/单点炼丹重算 (Trigger)
 export const triggerModelCalculation = async (userId: string = 'ALL') => {
@@ -312,15 +350,14 @@ export const cancelAnimalOrderSync = async () => {
 
 // 💥 增加 areaName 参数
 export const fetchRetentionWarnings = async (limit: number, areaName: string) => {
-    try {
-        const res = await axios.get('/api/v1/twin/dashboard/retention-warnings', {
-            params: { limit, areaName }
-        });
-        return asArrayData(res.data?.data);
-    } catch (error) {
-        console.error("雷达数据拉取异常:", error);
-        return [];
+    const res = await axios.get('/api/v1/twin/dashboard/retention-warnings', {
+        params: { limit, areaName }
+    });
+    const body = res.data;
+    if (body?.code !== 200 && body?.success !== true) {
+        throw new Error(body?.message || body?.msg || '滞留雷达数据拉取失败');
     }
+    return asArrayData(body?.data);
 };
 
 // =========================================================
@@ -663,6 +700,7 @@ export const saveFreezeConfig = async (payload: {
     freezeTime: string;
     secondFreezeTime?: string;
     secondFreezeAutoSignoutEnabled?: boolean;
+    dailyExemptRevokeAutoSignoutEnabled?: boolean;
     timezone?: string;
 }) => {
     const res = await authHttp.put('/v1/twin/mappings/freeze-config', payload);

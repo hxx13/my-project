@@ -4,7 +4,9 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.notification.dto.MarkReadByBizRequest;
 import com.example.demo.modules.notification.dto.MiniSubscribeAckRequest;
+import com.example.demo.modules.notification.dto.UnreadBizKeysRequest;
 import com.example.demo.modules.notification.service.NotificationPushService;
 import com.example.demo.modules.notification.service.MiniProgramNotificationService;
 import com.example.demo.modules.notification.service.NotificationService;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -57,8 +60,41 @@ public class NotificationController {
         User user = resolveUser(authorization);
         Result<?> denied = requireAuthenticated(user);
         if (denied != null) return denied;
-        notificationService.markRead(user.getId(), id);
-        return Result.success();
+        int affected = notificationService.markRead(user.getId(), id);
+        Map<String, Object> data = new HashMap<>();
+        data.put("affected", affected);
+        return Result.success(data);
+    }
+
+    @PatchMapping("/read-by-biz")
+    @Operation(summary = "按业务单全部已读（同一 bizType+bizId 下全部事件通知）")
+    public Result<?> markReadByBiz(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                   @RequestBody MarkReadByBizRequest request) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireAuthenticated(user);
+        if (denied != null) return denied;
+        if (request == null || request.getBizType() == null || request.getBizType().isBlank()
+                || request.getBizId() == null || request.getBizId().isBlank()) {
+            return Result.error("bizType 与 bizId 不能为空");
+        }
+        int affected = notificationService.markReadByBiz(user.getId(), request.getBizType(), request.getBizId());
+        Map<String, Object> data = new HashMap<>();
+        data.put("affected", affected);
+        data.put("bizType", request.getBizType().trim().toUpperCase());
+        data.put("bizId", request.getBizId().trim());
+        return Result.success(data);
+    }
+
+    @PostMapping("/unread-biz-flags")
+    @Operation(summary = "批量查询业务单是否仍有未读通知")
+    public Result<?> unreadBizFlags(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @RequestBody UnreadBizKeysRequest request) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireAuthenticated(user);
+        if (denied != null) return denied;
+        List<UnreadBizKeysRequest.BizKeyItem> keys = request == null ? List.of() : request.getKeys();
+        Map<String, Boolean> flags = notificationService.resolveUnreadBizFlags(user.getId(), keys);
+        return Result.success(Map.of("flags", flags));
     }
 
     @PatchMapping("/read-all")
@@ -67,8 +103,8 @@ public class NotificationController {
         User user = resolveUser(authorization);
         Result<?> denied = requireAuthenticated(user);
         if (denied != null) return denied;
-        notificationService.markAllRead(user.getId());
-        return Result.success();
+        int affected = notificationService.markAllRead(user.getId());
+        return Result.success(Map.of("affected", affected));
     }
 
     @DeleteMapping("/{id}")

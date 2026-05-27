@@ -49,13 +49,22 @@ public class AnalyticsChatController {
             @RequestBody Map<String, Object> body) {
         String reportKey = body != null ? (String) body.get("reportKey") : null;
         Object viewIdObj = body != null ? body.get("viewId") : null;
-        if (!StringUtils.hasText(reportKey) || viewIdObj == null) {
-            return Result.error("reportKey 与 viewId 必填");
+        Object auditLogIdObj = body != null ? body.get("auditLogId") : null;
+        if (!StringUtils.hasText(reportKey)) {
+            return Result.error("reportKey 必填");
         }
-        long viewId = ((Number) viewIdObj).longValue();
         String title = body != null ? (String) body.get("title") : null;
         try {
             User user = requireStaffUser(authorization);
+            if (auditLogIdObj != null) {
+                long auditLogId = ((Number) auditLogIdObj).longValue();
+                return Result.success(
+                        chatService.createSessionForAuditLog(user.getId(), reportKey, auditLogId, title));
+            }
+            if (viewIdObj == null) {
+                return Result.error("viewId 或 auditLogId 必填其一");
+            }
+            long viewId = ((Number) viewIdObj).longValue();
             return Result.success(chatService.createSession(user.getId(), reportKey, viewId, title));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());

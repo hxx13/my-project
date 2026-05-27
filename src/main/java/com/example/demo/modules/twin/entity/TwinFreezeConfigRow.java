@@ -13,6 +13,8 @@ public class TwinFreezeConfigRow {
     private String freezeTime;
     private String secondFreezeTime;
     private Integer secondFreezeAutoSignoutEnabled;
+    /** 每日豁免回收任务收回豁免后是否自动签离 */
+    private Integer dailyExemptRevokeAutoSignoutEnabled;
     private String timezone;
     private String updatedBy;
     private LocalDateTime updatedAt;

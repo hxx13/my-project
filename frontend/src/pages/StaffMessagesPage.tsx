@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import { Bell, MessageCircle, Pin, Smile, Trash2, Users } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -536,7 +537,7 @@ export default function StaffMessagesPage() {
       const links = await listSupplyClaimPdfLinks(inlineWork.order.id);
       setClaimLinks(links.links || []);
       const copyText = created.downloadUrl || created.downloadPath;
-      if (copyText) await navigator.clipboard.writeText(copyText);
+      if (copyText) await copyTextToClipboard(copyText);
       toast.success(created.reused ? "已复用链接（已复制）" : "已生成链接（已复制）");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "获取链接失败");

@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.example.demo.modules.aro.dto.AroNewsDetailDto;
 import com.example.demo.modules.aro.dto.AroNewsListPayloadDto;
 import com.example.demo.modules.aro.dto.AroNewsSummaryDto;
+import com.example.demo.modules.aro.support.AroNewsResponseParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,7 +50,10 @@ public class AroNewsProxyService {
         if (root == null) {
             return AroNewsListPayloadDto.builder().list(List.of()).build();
         }
-        List<Map<String, Object>> rawMaps = extractListMaps(root);
+        List<Map<String, Object>> rawMaps = AroNewsResponseParser.extractListMaps(root);
+        if (rawMaps.isEmpty()) {
+            log.warn("[ARO新闻] 列表解析为空，请核对 JTU 响应结构是否变更。顶层 keys={}", root.keySet());
+        }
         List<AroNewsSummaryDto> out = new ArrayList<>(rawMaps.size());
         for (Map<String, Object> m : rawMaps) {
             out.add(toSummary(m));
@@ -69,11 +73,16 @@ public class AroNewsProxyService {
         if (root == null) {
             throw new IllegalStateException("ARO 新闻详情返回为空");
         }
-        Map<String, Object> dataMap = extractDataMap(root);
-        if (dataMap == null) {
+        Map<String, Object> dataMap = AroNewsResponseParser.extractDetailMap(root, sid);
+        if (dataMap.isEmpty()) {
+            log.warn("[ARO新闻] 详情解析为空 id={} 顶层 keys={}", sid, root.keySet());
             throw new IllegalStateException("ARO 新闻详情缺少 data");
         }
-        return toDetail(dataMap, sid);
+        AroNewsDetailDto detail = toDetail(dataMap, sid);
+        if (detail.getNewsContent() == null || detail.getNewsContent().isBlank()) {
+            log.warn("[ARO新闻] 详情正文为空 id={} item keys={}", sid, dataMap.keySet());
+        }
+        return detail;
     }
 
     private String exchangeGetWithTokenRetry(String urlString) {
@@ -102,77 +111,20 @@ public class AroNewsProxyService {
         throw new IllegalStateException("拉取 ARO 新闻失败: 登录重试后仍 401", unauthorized);
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> extractListMaps(Map<String, Object> root) {
-        Object data = root.get("data");
-        List<?> rawList = null;
-        if (data instanceof Map) {
-            Object list = ((Map<?, ?>) data).get("list");
-            if (list instanceof List) {
-                rawList = (List<?>) list;
-            }
-        }
-        if (rawList == null && root.get("list") instanceof List) {
-            rawList = (List<?>) root.get("list");
-        }
-        if (rawList == null) {
-            return List.of();
-        }
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Object o : rawList) {
-            if (o instanceof Map) {
-                out.add((Map<String, Object>) o);
-            }
-        }
-        return out;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> extractDataMap(Map<String, Object> root) {
-        Object data = root.get("data");
-        if (data instanceof Map) {
-            return (Map<String, Object>) data;
-        }
-        return null;
-    }
-
     private static AroNewsSummaryDto toSummary(Map<String, Object> m) {
-        String id = str(first(m, "id", "newsId"));
-        String newsName = str(first(m, "newsName", "title", "name"));
-        String createTime = str(first(m, "createTime", "create_time", "gmtCreate"));
         return AroNewsSummaryDto.builder()
-                .id(id)
-                .newsName(newsName)
-                .createTime(createTime)
+                .id(AroNewsResponseParser.pickId(m, ""))
+                .newsName(AroNewsResponseParser.pickTitle(m))
+                .createTime(AroNewsResponseParser.pickCreateTime(m))
                 .build();
     }
 
     private static AroNewsDetailDto toDetail(Map<String, Object> m, String fallbackId) {
-        String id = str(first(m, "id", "newsId"));
-        if (id.isEmpty()) {
-            id = fallbackId;
-        }
-        String newsName = str(first(m, "newsName", "title", "name"));
-        String createTime = str(first(m, "createTime", "create_time", "gmtCreate"));
-        String newsContent = str(first(m, "newsContent", "news_content", "content"));
         return AroNewsDetailDto.builder()
-                .id(id)
-                .newsName(newsName)
-                .createTime(createTime)
-                .newsContent(newsContent)
+                .id(AroNewsResponseParser.pickId(m, fallbackId))
+                .newsName(AroNewsResponseParser.pickTitle(m))
+                .createTime(AroNewsResponseParser.pickCreateTime(m))
+                .newsContent(AroNewsResponseParser.pickNewsContent(m))
                 .build();
-    }
-
-    private static Object first(Map<String, Object> m, String... keys) {
-        for (String k : keys) {
-            if (m != null && m.containsKey(k) && m.get(k) != null) {
-                return m.get(k);
-            }
-        }
-        return null;
-    }
-
-    private static String str(Object o) {
-        return o == null ? "" : String.valueOf(o).trim();
     }
 }

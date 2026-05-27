@@ -63,6 +63,8 @@ export interface PopupActions {
     setKeepCardState: (index: number, checked: boolean) => void;
     clearInlineMessage: () => void;
     getKeepCardState: (index: number) => boolean;
+    isEnterLocked: (room: RoomInfo) => boolean;
+    isExitLocked: (room: RoomInfo) => boolean;
     isRoomLocked: (room: RoomInfo) => boolean;
     getButtonText: (room: RoomInfo, roomId: string) => string;
     dismissAccessNotice: () => void;

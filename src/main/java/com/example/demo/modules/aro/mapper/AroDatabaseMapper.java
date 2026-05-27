@@ -37,4 +37,7 @@ public interface AroDatabaseMapper {
 
     /** 按 roomId 取最近一条有房间名的流水，用于自动化日志 detail 展开 */
     List<Map<String, Object>> selectLatestRoomNamesByRoomIds(@Param("roomIds") List<String> roomIds);
+
+    /** 今日仍有未配平 ENTER 的流水（用于官方已清退时的本地对齐） */
+    List<Map<String, Object>> findTodayUnexitedEntersForUser(@Param("userId") String userId);
 }

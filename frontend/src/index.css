@@ -287,3 +287,14 @@
     transform: none;
   }
 }
+
+/* 弹窗层打开时禁止背后页面滚动（见 lib/modalScrollGuard.ts） */
+html[data-modal-scroll-lock],
+html[data-modal-scroll-lock] body {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+[data-modal-scroll] {
+  overscroll-behavior: contain;
+}

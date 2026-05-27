@@ -1,10 +1,31 @@
-HELP.md
+# ===== Dependencies =====
+node_modules/
+aroapp/cloudfunctions/**/node_modules/
+.pnp/
+.pnp.js
+
+# ===== Build outputs =====
+dist/
+build/
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
+!**/src/main/**/build/
+!**/src/test/**/build/
 
-### STS ###
+# ===== Environment files (secrets) =====
+.env.local
+.env.*.local
+.env
+
+# ===== IDE =====
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+# Eclipse / STS
 .apt_generated
 .classpath
 .factorypath
@@ -12,25 +33,59 @@ target/
 .settings
 .springBeans
 .sts4-cache
+# VS Code
+.vscode/
 
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-
-### NetBeans ###
+# ===== NetBeans =====
 /nbproject/private/
 /nbbuild/
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### VS Code ###
-.vscode/
+# ===== OS generated files =====
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
 
-### WeChat miniprogram cloud functions ###
-aroapp/cloudfunctions/**/node_modules/
+# ===== Logs & cache =====
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.cache/
+*.tsbuildinfo
+
+# ===== Testing & coverage =====
+coverage/
+.nyc_output/
+*.lcov
+
+# ===== Runtime / uploads =====
+uploads/*
+!uploads/.gitkeep
+temp/
+tmp/
+
+# ===== Local dev config =====
+application-local.properties
+start.bat
+start-public.bat
+build-and-start.bat
+build-and-start-public.bat
+HELP.md
+
+# ===== Misc =====
+*.pdf
+*.zip
+*.tar.gz
+*.rar

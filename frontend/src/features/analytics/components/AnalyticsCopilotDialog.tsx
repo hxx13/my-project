@@ -23,6 +23,7 @@ import {
   type AnalyticsChatSession,
 } from "@/api/domains/analyticsChat.api";
 import type { AnalyticsReportKey } from "@/api/domains/analytics.api";
+import { ChatMarkdownBody } from "@/components/markdown/ChatMarkdownBody";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -47,6 +48,8 @@ export function AnalyticsCopilotDialog({ open, onClose, reportKey, configCount }
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /** 首条发送新建会话时跳过 loadMessages，避免覆盖流式占位 */
+  const skipNextMessagesLoadRef = useRef(false);
 
   const [sessions, setSessions] = useState<AnalyticsChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
@@ -108,7 +111,7 @@ export function AnalyticsCopilotDialog({ open, onClose, reportKey, configCount }
       return;
     }
     try {
-      const created = await createAnalyticsChatSession(reportKey, scopeViewId);
+      const created = await createAnalyticsChatSession(reportKey, { viewId: scopeViewId });
       setSessions((prev) => [created, ...prev]);
       setActiveSessionId(created.id);
       setMessages([]);
@@ -141,11 +144,14 @@ export function AnalyticsCopilotDialog({ open, onClose, reportKey, configCount }
     }
 
     let sessionId = activeSessionId;
+    let createdNewSession = false;
     if (sessionId == null) {
       try {
-        const created = await createAnalyticsChatSession(reportKey, scopeViewId);
+        const created = await createAnalyticsChatSession(reportKey, { viewId: scopeViewId });
         setSessions((prev) => [created, ...prev]);
         sessionId = created.id;
+        createdNewSession = true;
+        skipNextMessagesLoadRef.current = true;
         setActiveSessionId(created.id);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "创建会话失败");
@@ -199,13 +205,38 @@ export function AnalyticsCopilotDialog({ open, onClose, reportKey, configCount }
               )
             );
           },
-          onDone: async () => {
-            const fresh = await fetchAnalyticsChatMessages(sessionId!);
-            setMessages(fresh);
+          onDone: (payload) => {
+            const thinkingText = thinkingLines.length > 0 ? thinkingLines.join("\n") : undefined;
+            // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (m.id === tempAssistantId) {
+                  return {
+                    ...m,
+                    id: payload.messageId ?? tempAssistantId,
+                    role: "assistant" as const,
+                    content: answer || m.liveContent || "",
+                    thinkingText,
+                    model: payload.model,
+                    streaming: false,
+                    liveThinking: undefined,
+                    liveContent: undefined,
+                  };
+                }
+                if (m.id === tempUserId && payload.messageId) {
+                  return { ...m, id: m.id };
+                }
+                return m;
+              })
+            );
             setSessions((prev) =>
               prev.map((s) =>
                 s.id === sessionId
-                  ? { ...s, updatedAt: new Date().toISOString(), title: s.title === "新对话" ? text.slice(0, 40) : s.title }
+                  ? {
+                      ...s,
+                      updatedAt: new Date().toISOString(),
+                      title: s.title === "新对话" || createdNewSession ? text.slice(0, 40) : s.title,
+                    }
                   : s
               )
             );
@@ -227,7 +258,7 @@ export function AnalyticsCopilotDialog({ open, onClose, reportKey, configCount }
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-2 sm:p-4">
+    <div data-modal-layer="true" className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-2 sm:p-4">
       <div
         className="flex h-[min(92vh,880px)] w-[min(96vw,1120px)] flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl"
         role="dialog"
@@ -267,7 +298,7 @@ export function AnalyticsCopilotDialog({ open, onClose, reportKey, configCount }
                 新建对话
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+            <div data-modal-scroll className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
               {loadingSessions ? (
                 <p className="px-2 py-4 text-center text-xs text-neutral-400">加载中…</p>
               ) : sessions.length === 0 ? (
@@ -306,6 +337,7 @@ export function AnalyticsCopilotDialog({ open, onClose, reportKey, configCount }
           <main className="flex min-w-0 flex-1 flex-col">
             <div
               ref={scrollRef}
+              data-modal-scroll
               className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 [scrollbar-width:thin]"
             >
               {!canUse ? (
@@ -322,7 +354,7 @@ export function AnalyticsCopilotDialog({ open, onClose, reportKey, configCount }
                     可提问例如：「对比各配置，哪个月异常且耗量最大？峰值在哪个地区、房间和课题组？」
                   </p>
                   <p className="text-xs text-neutral-400">
-                    将封箱本报表下全部统计配置的多期清算快照（非仅当前选中的一条）。
+                    将封箱本报表下全部统计配置的多期清算快照（与页面清算列表同源；期次摘要全覆盖）。
                   </p>
                 </div>
               ) : (
@@ -437,19 +469,23 @@ function MessageBubble({
           </div>
         ) : null}
 
-        <div className="whitespace-pre-wrap break-words">
-          {content}
-          {m.streaming && !content ? (
-            <span className="inline-flex items-center gap-1 text-neutral-400">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-violet-400" />
-              <span className="h-2 w-2 animate-pulse rounded-full bg-violet-400 [animation-delay:150ms]" />
-              <span className="h-2 w-2 animate-pulse rounded-full bg-violet-400 [animation-delay:300ms]" />
-            </span>
-          ) : null}
-          {m.streaming && content ? (
-            <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-violet-500 align-middle" />
-          ) : null}
-        </div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap break-words">{content}</div>
+        ) : (
+          <>
+            <ChatMarkdownBody text={content} streaming={m.streaming} />
+            {m.streaming && !content ? (
+              <span className="inline-flex items-center gap-1 text-neutral-400">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-violet-400" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-violet-400 [animation-delay:150ms]" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-violet-400 [animation-delay:300ms]" />
+              </span>
+            ) : null}
+            {m.streaming && content ? (
+              <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-violet-500 align-middle" />
+            ) : null}
+          </>
+        )}
       </div>
     </div>
   );

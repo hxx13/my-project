@@ -5,10 +5,13 @@ import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.dto.AroRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.example.demo.modules.twin.support.TwinTimingDiagnostics;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 import javax.annotation.PostConstruct; // 注意顶部要补上这个导入
@@ -25,6 +28,7 @@ public class AroService {
     private static final Logger log = LoggerFactory.getLogger(AroService.class);
 
     @Autowired
+    @Qualifier("aroRestTemplate")
     private RestTemplate restTemplate;
 
     private String cachedToken = null;
@@ -49,6 +53,7 @@ public class AroService {
      * 1. 模拟蓝图的 FetchToken：去 ARO 拿 Token
      */
     public boolean login() {
+        long t0 = System.currentTimeMillis();
         String url = "https://aro.shsmu.edu.cn/jtu/api/login";
         Map<String, String> body = new HashMap<>();
         body.put("account", account);
@@ -68,6 +73,7 @@ public class AroService {
                     this.cachedToken = (String) data.get("token");
                     this.lastAroErrorMessage = "";
                     System.out.println("✅ [ARO] 登录成功！已获取最新 Token。");
+                    TwinTimingDiagnostics.logAro("login", "-", System.currentTimeMillis() - t0, true, "token ok");
                     return true;
                 }
             }
@@ -75,7 +81,10 @@ public class AroService {
         } catch (Exception e) {
             this.lastAroErrorMessage = "ARO 登录失败: " + e.getMessage();
             System.err.println("❌ [ARO] 登录失败: " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            TwinTimingDiagnostics.logAro("login", "-", System.currentTimeMillis() - t0, false, e.getMessage());
+            return false;
         }
+        TwinTimingDiagnostics.logAro("login", "-", System.currentTimeMillis() - t0, false, lastAroErrorMessage);
         return false;
     }
 
@@ -305,7 +314,11 @@ public class AroService {
     // 💥 1. 获取允许进入的房间 (完美适配官方 GET 接口 + 修正真实 URL)
     // ==============================================================================
     public List<Map<String, Object>> getExamOfflineRoom(String userId) {
-        if (this.cachedToken == null && !login()) return new ArrayList<>();
+        long t0 = System.currentTimeMillis();
+        if (this.cachedToken == null && !login()) {
+            TwinTimingDiagnostics.logAro("examOfflineRoom", userId, System.currentTimeMillis() - t0, false, "login failed");
+            return new ArrayList<>();
+        }
 
         // 💥 修正点 1：URL 严格对齐官方最新路径，并将 userId 作为 Query 参数拼接
         String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/user/examOfflineRoom?userId=" + userId;
@@ -323,6 +336,8 @@ public class AroService {
                 Object data = response.getBody().get("data");
                 List<Map<String, Object>> parsed = tryParseRoomList(data);
                 if (parsed != null) {
+                    TwinTimingDiagnostics.logAro("examOfflineRoom", userId, System.currentTimeMillis() - t0, true,
+                            "rooms=" + parsed.size());
                     return parsed;
                 }
                 System.err.println("⚠️ [ARO-探测] 可进入房间返回格式异常 | userId=" + userId);
@@ -333,63 +348,89 @@ public class AroService {
                 if (login()) return getExamOfflineRoom(userId);
             }
             System.err.println("❌ [ARO-探测] 可进入房间查询失败 | userId=" + userId + " | err=" + e.getMessage());
+            TwinTimingDiagnostics.logAro("examOfflineRoom", userId, System.currentTimeMillis() - t0, false, e.getMessage());
         } catch (Exception e) {
             System.err.println("❌ [ARO-探测] 可进入房间查询异常 | userId=" + userId + " | err=" + e.getMessage());
+            TwinTimingDiagnostics.logAro("examOfflineRoom", userId, System.currentTimeMillis() - t0, false, e.getMessage());
         }
+        TwinTimingDiagnostics.logAro("examOfflineRoom", userId, System.currentTimeMillis() - t0, true, "empty");
         return new ArrayList<>();
     }
 
     // ==============================================================================
     // 💥 2. 获取滞留未离开的房间 (完美适配官方 GET 接口 + Query 传参)
     // ==============================================================================
+    /**
+     * 查询官方滞留房间。自动签退依赖此接口；网络读超时时由联动定时器保留状态并重试。
+     * 对 {@link ResourceAccessException}（含 read timeout）最多重试 1 次。
+     */
     public List<Map<String, Object>> getNoLeaveRoom(String userId) {
+        long t0 = System.currentTimeMillis();
         if (this.cachedToken == null && !login()) {
             if (this.lastAroErrorMessage == null || this.lastAroErrorMessage.isBlank()) {
                 this.lastAroErrorMessage = "探测滞留空间失败: 登录 ARO 失败";
             }
+            TwinTimingDiagnostics.logAro("noLeaveRoom", userId, System.currentTimeMillis() - t0, false, lastAroErrorMessage);
             return null;
         }
-
-        // 💥 修复点 1：完全换成官方最新 URL，并将 userId 作为 Query 参数拼在后面！
-        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/user/noLeaveRoom?userId=" + userId;
-
-        try {
-            java.net.URI uri = java.net.URI.create(urlString);
-
-            // 💥 修复点 2：GET 请求不需要 Body，传入 null 即可
-            HttpEntity<String> entity = new HttpEntity<>(null, getAuthHeaders());
-
-            // 💥 修复点 3：强制改为 HttpMethod.GET
-            ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Object data = response.getBody().get("data");
-                List<Map<String, Object>> parsed = tryParseRoomList(data);
-                if (parsed != null) {
-                    this.lastAroErrorMessage = "";
-                    return parsed;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                List<Map<String, Object>> result = getNoLeaveRoomOnce(userId);
+                TwinTimingDiagnostics.logAro("noLeaveRoom", userId, System.currentTimeMillis() - t0,
+                        result != null, result != null ? "rooms=" + result.size() : lastAroErrorMessage);
+                return result;
+            } catch (HttpClientErrorException e) {
+                if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                    this.cachedToken = null;
+                    if (login()) {
+                        continue;
+                    }
                 }
-                Object msg = response.getBody().get("message");
-                Object status = response.getBody().get("status");
-                String dataType = (data == null) ? "null" : data.getClass().getName();
-                this.lastAroErrorMessage = "探测滞留空间失败: 返回数据格式异常"
-                        + (msg != null ? ("，message=" + msg) : "");
-                log.warn("[aro] noLeaveRoom 数据格式异常 userId={} message={}", userId, msg);
+                this.lastAroErrorMessage = "探测滞留空间失败: " + e.getStatusCode().value() + " " + e.getStatusText();
+                log.warn("[aro] noLeaveRoom http error userId={} status={} msg={}",
+                        userId, e.getStatusCode().value(), e.getMessage());
+                TwinTimingDiagnostics.logAro("noLeaveRoom", userId, System.currentTimeMillis() - t0, false, e.getMessage());
+                return null;
+            } catch (ResourceAccessException e) {
+                this.lastAroErrorMessage = "探测滞留空间失败: " + e.getMessage();
+                if (attempt < 2) {
+                    log.warn("[aro] noLeaveRoom timeout/retry userId={} attempt={} msg={}",
+                            userId, attempt, e.getMessage());
+                    continue;
+                }
+                log.warn("[aro] noLeaveRoom timeout userId={} afterRetries=2 msg={}", userId, e.getMessage());
+                TwinTimingDiagnostics.logAro("noLeaveRoom", userId, System.currentTimeMillis() - t0, false, e.getMessage());
+                return null;
+            } catch (Exception e) {
+                this.lastAroErrorMessage = "探测滞留空间失败: " + e.getMessage();
+                log.warn("[aro] noLeaveRoom error userId={} msg={}", userId, e.getMessage());
+                TwinTimingDiagnostics.logAro("noLeaveRoom", userId, System.currentTimeMillis() - t0, false, e.getMessage());
                 return null;
             }
-            this.lastAroErrorMessage = "探测滞留空间失败: HTTP " + response.getStatusCodeValue();
-            return null;
-        } catch (org.springframework.web.client.HttpClientErrorException e) {
-            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
-                this.cachedToken = null;
-                if (login()) return getNoLeaveRoom(userId);
-            }
-            this.lastAroErrorMessage = "探测滞留空间失败: " + e.getStatusCode().value() + " " + e.getStatusText();
-            System.err.println("❌ [ARO 响应] 探测滞留失败: " + e.getMessage());
-        } catch (Exception e) {
-            this.lastAroErrorMessage = "探测滞留空间失败: " + e.getMessage();
-            System.err.println("❌ [ARO 崩溃] 探测滞留异常: " + e.getMessage());
         }
+        return null;
+    }
+
+    private List<Map<String, Object>> getNoLeaveRoomOnce(String userId) {
+        String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/user/noLeaveRoom?userId=" + userId;
+        java.net.URI uri = java.net.URI.create(urlString);
+        HttpEntity<String> entity = new HttpEntity<>(null, getAuthHeaders());
+        ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
+
+        if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+            Object data = response.getBody().get("data");
+            List<Map<String, Object>> parsed = tryParseRoomList(data);
+            if (parsed != null) {
+                this.lastAroErrorMessage = "";
+                return parsed;
+            }
+            Object msg = response.getBody().get("message");
+            this.lastAroErrorMessage = "探测滞留空间失败: 返回数据格式异常"
+                    + (msg != null ? ("，message=" + msg) : "");
+            log.warn("[aro] noLeaveRoom 数据格式异常 userId={} message={}", userId, msg);
+            return null;
+        }
+        this.lastAroErrorMessage = "探测滞留空间失败: HTTP " + response.getStatusCodeValue();
         return null;
     }
 
@@ -587,7 +628,11 @@ public class AroService {
     // 💥 5. 获取人员详情状态与惩戒记录 (完美解析 State)
     // ==============================================================================
     public Map<String, Object> getUserDetailAndDisciplinary(String userId) {
-        if (this.cachedToken == null && !login()) return null;
+        long t0 = System.currentTimeMillis();
+        if (this.cachedToken == null && !login()) {
+            TwinTimingDiagnostics.logAro("userDetail", userId, System.currentTimeMillis() - t0, false, "login failed");
+            return null;
+        }
 
         String urlString = "https://aro.shsmu.edu.cn/jtu/api/admin/user/detail?id=" + userId;
 
@@ -597,7 +642,7 @@ public class AroService {
             ResponseEntity<Map> response = restTemplate.exchange(uri, HttpMethod.GET, entity, Map.class);
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                // 剥离外壳，直接把含 state 和 userDisciplinaryRecords 的 data 扔给前端
+                TwinTimingDiagnostics.logAro("userDetail", userId, System.currentTimeMillis() - t0, true, "ok");
                 return (Map<String, Object>) response.getBody().get("data");
             }
         } catch (org.springframework.web.client.HttpClientErrorException e) {
@@ -606,9 +651,12 @@ public class AroService {
                 if (login()) return getUserDetailAndDisciplinary(userId);
             }
             log.warn("[aro] 人员详情查询失败 userId={} err={}", userId, e.getMessage());
+            TwinTimingDiagnostics.logAro("userDetail", userId, System.currentTimeMillis() - t0, false, e.getMessage());
         } catch (Exception e) {
             log.warn("[aro] 人员详情网络异常 userId={} err={}", userId, e.getMessage());
+            TwinTimingDiagnostics.logAro("userDetail", userId, System.currentTimeMillis() - t0, false, e.getMessage());
         }
+        TwinTimingDiagnostics.logAro("userDetail", userId, System.currentTimeMillis() - t0, false, "empty body");
         return null;
     }
 

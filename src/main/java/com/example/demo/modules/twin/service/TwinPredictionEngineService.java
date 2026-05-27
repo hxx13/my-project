@@ -1,5 +1,6 @@
 package com.example.demo.modules.twin.service;
 
+import com.example.demo.modules.twin.config.BuildingAccessPolicy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -26,6 +27,9 @@ public class TwinPredictionEngineService {
     // 彻底抛弃裸写 SQL，改用规范的 Mapper。
     @Autowired
     private com.example.demo.modules.twin.mapper.TwinDashboardMapper dashboardMapper;
+
+    @Autowired
+    private BuildingAccessPolicy accessPolicy;
 
     // ... 下面保留你原来的 runPredictionModelManual 等方法不变
 
@@ -91,6 +95,7 @@ public class TwinPredictionEngineService {
 
         for (String uId : usersToProcess) {
             try {
+                boolean authorized = isUserOfficialAuthorized(uId);
                 // 💥 解耦：调用 Mapper 拉取流水
                 List<Map<String, Object>> userLogs = dashboardMapper.getUserLogsForPrediction(uId);
 
@@ -200,8 +205,7 @@ public class TwinPredictionEngineService {
                     pairedVisitCounts.put(roomId, pairedVisitCounts.getOrDefault(roomId, 0) + 1);
                     pairedWeightSum.put(roomId, pairedWeightSum.getOrDefault(roomId, 0.0) + weight);
 
-                    double timeValue = timestamp.getHour() + timestamp.getMinute() / 60.0;
-                    if (timeValue > 17.5) {
+                    if (accessPolicy.isLateExit(timestamp, authorized)) {
                         lateExitWeight.put(roomId, lateExitWeight.getOrDefault(roomId, 0.0) + weight);
                     }
 
@@ -263,9 +267,11 @@ public class TwinPredictionEngineService {
                     }
                     String peakEntryTime = peakStrBuilder.toString();
 
-                    // 07–19 展示窗口：日内条件概率质量（对衰减加权计数做轻度平滑后再归一）
-                    double[] entryCurve = dayWindowPmF(smoothHourly3(entryH), 7, 19);
-                    double[] exitCurve = dayWindowPmF(smoothHourly3(exitH), 7, 19);
+                    // 07–22 展示窗口：日内条件概率质量（对衰减加权计数做轻度平滑后再归一）
+                    double[] entryCurve = dayWindowPmF(smoothHourly3(entryH),
+                            BuildingAccessPolicy.DAY_CHART_START_HOUR, BuildingAccessPolicy.DAY_CHART_END_HOUR);
+                    double[] exitCurve = dayWindowPmF(smoothHourly3(exitH),
+                            BuildingAccessPolicy.DAY_CHART_START_HOUR, BuildingAccessPolicy.DAY_CHART_END_HOUR);
                     String entryCurveJson = com.alibaba.fastjson2.JSON.toJSONString(entryCurve);
                     String exitCurveJson = com.alibaba.fastjson2.JSON.toJSONString(exitCurve);
 
@@ -414,8 +420,7 @@ public class TwinPredictionEngineService {
                             LocalDateTime entryTime = userEntryTracker.get(trackKey);
                             if (entryTime != null && entryTime.toLocalDate().equals(timestamp.toLocalDate())) {
                                 int startHour = entryTime.getHour();
-                                int endHour = hour;
-                                if (endHour > 17 || (endHour == 17 && timestamp.getMinute() > 30)) endHour = 17;
+                                int endHour = Math.min(hour, BuildingAccessPolicy.DAY_CHART_END_HOUR);
                                 for (int h = startHour; h <= endHour && h < 24; h++) {
                                     roomHeatmaps.get(tId)[dayOfWeek][h] += weight;
                                 }
@@ -433,7 +438,7 @@ public class TwinPredictionEngineService {
                     double weight = Math.pow(0.5, Math.max(0, daysDiff) / 14.0);
                     int dayOfWeek = entryTime.getDayOfWeek().getValue() - 1;
                     int startHour = entryTime.getHour();
-                    for (int h = startHour; h <= 17 && h < 24; h++) {
+                    for (int h = startHour; h <= BuildingAccessPolicy.DAY_CHART_END_HOUR && h < 24; h++) {
                         if (roomHeatmaps.containsKey(tId)) roomHeatmaps.get(tId)[dayOfWeek][h] += weight;
                     }
                 }
@@ -558,59 +563,79 @@ public class TwinPredictionEngineService {
      * @return LocalDateTime     经过弹性压缩与超时校准后的最终预计离开时间
      */
     public LocalDateTime calculateSmartExitTime(LocalDateTime entryTime, int medianDurationMins, double overtimeProb, LocalDateTime now) {
+        return calculateSmartExitTime(entryTime, medianDurationMins, overtimeProb, now, false);
+    }
 
-        LocalDateTime softCeiling = entryTime.toLocalDate().atTime(17, 30);
-        LocalDateTime hardCeiling = entryTime.toLocalDate().atTime(19, 0);
-        LocalTime lateEntryThreshold = LocalTime.of(16, 30);
+    /**
+     * 弹性离场推演：非授权 17:30 前入场可弹性离场；授权人员最晚 22:00；超时滑动延期。
+     */
+    public LocalDateTime calculateSmartExitTime(LocalDateTime entryTime, int medianDurationMins, double overtimeProb, LocalDateTime now, boolean authorized) {
+        LocalDate day = entryTime.toLocalDate();
+        LocalDateTime authorizedLatest = accessPolicy.authorizedLatestExitOn(day);
+        LocalDateTime naiveExit = entryTime.plusMinutes(medianDurationMins);
 
         LocalDateTime finalPredictedExit;
-
-        // ⚡ 场景 A：极晚入场快闪模式 (16:30 之后进入)
-        if (entryTime.toLocalTime().isAfter(lateEntryThreshold)) {
-            LocalDateTime quickDashExit = entryTime.plusMinutes(30);
-            if (quickDashExit.isAfter(softCeiling)) {
-                LocalDateTime absoluteMinExit = entryTime.plusMinutes(15);
-                finalPredictedExit = absoluteMinExit.isAfter(softCeiling) ? absoluteMinExit : softCeiling;
-            } else {
-                finalPredictedExit = quickDashExit;
-            }
-        }
-        // 🌌 场景 B：常规入场模式 & 弹性暮光区 (16:30 之前进入)
-        else {
-            LocalDateTime naiveExit = entryTime.plusMinutes(medianDurationMins);
-            if (naiveExit.isAfter(softCeiling)) {
-                long overflowMins = Duration.between(softCeiling, naiveExit).toMinutes();
-                long allowedOverflowMins = (long) (overflowMins * overtimeProb);
-                LocalDateTime blendedExit = softCeiling.plusMinutes(allowedOverflowMins);
-                finalPredictedExit = blendedExit.isAfter(hardCeiling) ? hardCeiling : blendedExit;
-            } else {
-                finalPredictedExit = naiveExit;
-            }
+        if (authorized) {
+            finalPredictedExit = naiveExit.isAfter(authorizedLatest) ? authorizedLatest : naiveExit;
+        } else if (entryTime.toLocalTime().isAfter(BuildingAccessPolicy.NORMAL_ENTRY_DEADLINE)) {
+            finalPredictedExit = naiveExit.isAfter(authorizedLatest) ? authorizedLatest : naiveExit;
+        } else {
+            finalPredictedExit = naiveExit;
         }
 
-        // ====================================================================
-        // 🚨 场景 C：终极补丁 —— 超时滑动拦截器 (The Rolling Extension Override)
-        // ====================================================================
         if (finalPredictedExit.isBefore(now)) {
-            // 洞察：他本来该走了，但现在还在。打破了历史画像。
-            // 对策：从【现在】开始，再给他 30 分钟的“收尾时间”。
             LocalDateTime extendedExit = now.plusMinutes(30);
-
-            // 同样，这 30 分钟绝不能击穿 19:00 的物理底线
-            if (extendedExit.isAfter(hardCeiling)) {
-                // 如果当前时间早就过了 19:00 (属于严重违规滞留或漏刷卡)
-                // 永远维持 [当前时间 + 15 分钟] 的滚动预警，让雷达持续报警
-                if (now.isAfter(hardCeiling)) {
-                    finalPredictedExit = now.plusMinutes(15);
+            if (authorized) {
+                if (extendedExit.isAfter(authorizedLatest)) {
+                    finalPredictedExit = now.isAfter(authorizedLatest) ? now.plusMinutes(15) : authorizedLatest;
                 } else {
-                    finalPredictedExit = hardCeiling; // 压死在 19:00
+                    finalPredictedExit = extendedExit;
                 }
             } else {
-                finalPredictedExit = extendedExit; // 正常滑动延期
+                finalPredictedExit = extendedExit;
             }
         }
 
         return finalPredictedExit;
+    }
+
+    public boolean isUserOfficialAuthorized(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return false;
+        }
+        Integer flag = dashboardMapper.getHasOfficialRoomPermission(userId);
+        return flag != null && flag == 1;
+    }
+
+    /** debug 展示：政策标签 */
+    public String resolvePolicyTag(LocalDateTime entryTime, boolean authorized) {
+        if (authorized) {
+            return "authorized_latest_22";
+        }
+        if (entryTime.toLocalTime().isAfter(BuildingAccessPolicy.NORMAL_ENTRY_DEADLINE)) {
+            return "late_entry_denied";
+        }
+        return "flex_exit_before_1730";
+    }
+
+    /** 由 peak_entry_time 解析代表性入场时刻（取区间起点） */
+    public LocalDateTime parsePeakEntryForToday(String peakEntryTime, LocalDate day) {
+        if (peakEntryTime == null || peakEntryTime.isBlank()) {
+            return day.atTime(9, 0);
+        }
+        String first = peakEntryTime.split(",")[0].trim();
+        try {
+            String[] parts = first.split(":");
+            int h = Integer.parseInt(parts[0].trim());
+            int m = parts.length > 1 ? Integer.parseInt(parts[1].trim()) : 0;
+            return day.atTime(Math.min(23, Math.max(0, h)), Math.min(59, Math.max(0, m)));
+        } catch (Exception e) {
+            return day.atTime(9, 0);
+        }
+    }
+
+    public String formatExitLabel(LocalDateTime exit) {
+        return String.format("%02d:%02d", exit.getHour(), exit.getMinute());
     }
 
     /** 将事件按小数小时线性拆到相邻两个整点桶（07:30 → 0.5×7h + 0.5×8h），兼容一天多次进出。 */

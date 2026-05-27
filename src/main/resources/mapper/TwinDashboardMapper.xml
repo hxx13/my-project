@@ -102,6 +102,30 @@
         LIMIT #{limit}
     </select>
 
+    <select id="searchPersonnelProjectGroupFields" resultType="string">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT DISTINCT project_group_name
+        FROM aro_personnel
+        WHERE project_group_name IS NOT NULL
+          AND TRIM(project_group_name) != ''
+          AND project_group_name LIKE #{pattern}
+        ORDER BY project_group_name ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="listPersonnelLooseByProjectGroup" resultType="map">
+        <bind name="pattern" value="'%' + projectGroupName + '%'" />
+        SELECT user_id, name, head, project_group_name
+        FROM aro_personnel
+        WHERE user_id IS NOT NULL
+          AND TRIM(user_id) != ''
+          AND project_group_name IS NOT NULL
+          AND TRIM(project_group_name) != ''
+          AND project_group_name LIKE #{pattern}
+        ORDER BY name ASC
+        LIMIT #{limit}
+    </select>
+
     <update id="addPersonExp">
         UPDATE aro_personnel
         SET total_exp = COALESCE(total_exp, 0) + #{expToAdd}
@@ -149,6 +173,63 @@
                 OR room_name LIKE #{pattern}
             </if>
         </where>
+    </select>
+
+    <select id="getDebugPredictionUserPage" resultType="map">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT DISTINCT
+            p.user_id AS user_id,
+            p.name AS user_name,
+            p.has_official_room_permission AS has_official_room_permission,
+            p.total_exp AS total_exp
+        FROM aro_personnel p
+        INNER JOIN aro_behavior_prediction b ON b.user_id = p.user_id
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (p.user_id LIKE #{pattern}
+                OR p.name LIKE #{pattern}
+                OR b.room_id LIKE #{pattern}
+                OR b.room_name LIKE #{pattern}
+                OR b.user_name LIKE #{pattern})
+            </if>
+        </where>
+        ORDER BY p.has_official_room_permission DESC,
+                 p.total_exp DESC,
+                 p.name ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="getDebugPredictionUserTotal" resultType="int">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT COUNT(DISTINCT p.user_id)
+        FROM aro_personnel p
+        INNER JOIN aro_behavior_prediction b ON b.user_id = p.user_id
+        <where>
+            <if test="keyword != null and keyword != ''">
+                (p.user_id LIKE #{pattern}
+                OR p.name LIKE #{pattern}
+                OR b.room_id LIKE #{pattern}
+                OR b.room_name LIKE #{pattern}
+                OR b.user_name LIKE #{pattern})
+            </if>
+        </where>
+    </select>
+
+    <select id="getDebugPredictionByUserIds" resultType="map">
+        SELECT *
+        FROM aro_behavior_prediction
+        WHERE user_id IN
+        <foreach collection="userIds" item="uid" open="(" separator="," close=")">
+            #{uid}
+        </foreach>
+        ORDER BY user_id ASC, room_name ASC, update_time DESC
+    </select>
+
+    <select id="getHasOfficialRoomPermission" resultType="int">
+        SELECT has_official_room_permission
+        FROM aro_personnel
+        WHERE user_id = #{userId}
+        LIMIT 1
     </select>
 
     <insert id="saveOrUpdateAnimalOrder">
@@ -293,7 +374,8 @@
               AND log.room_id = ai.room_id
               AND ai.day_type = 'ALL_DAYS'
         WHERE log.accessType = 1
-          AND log.create_time >= CONCAT(CURDATE(), ' 00:00:00')
+          AND CAST(log.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
+          AND CAST(log.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)
           AND log.area_name LIKE #{areaPattern}
           AND NOT EXISTS (
               SELECT 1
@@ -301,7 +383,9 @@
               WHERE out_log.user_id = log.user_id
                 AND out_log.room_id = log.room_id
                 AND out_log.accessType IN (2, 3)
-                AND out_log.create_time > log.create_time
+                AND CAST(out_log.create_time AS DATETIME) &gt; CAST(log.create_time AS DATETIME)
+                AND CAST(out_log.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
+                AND CAST(out_log.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)
           )
         ORDER BY log.create_time DESC
         LIMIT #{limit}
@@ -327,25 +411,30 @@
                SUM(COALESCE(stat.borrowedCards, 0)) AS borrowedCards
         FROM aro_room_settings rs
         LEFT JOIN (
-            SELECT a.room_id,
-                   a.room_name,
-                   a.area_name,
-                   SUM(CASE WHEN a.accessType = 1 THEN 1 ELSE 0 END) AS currentPeople,
-                   SUM(CASE
-                           WHEN a.accessType = 1 AND COALESCE(a.is_shared_card, 0) = 0 THEN 1
-                           WHEN a.accessType IN (2, 3) AND COALESCE(a.is_keep_card, 0) = 1 THEN 1
-                           ELSE 0
-                       END) AS borrowedCards
-            FROM aro_access_log a
-            INNER JOIN (
-                SELECT room_id, user_id, MAX(create_time) AS max_time
-                FROM aro_access_log
-                WHERE create_time >= CONCAT(CURDATE(), ' 00:00:00')
-                GROUP BY room_id, user_id
-            ) latest ON a.room_id = latest.room_id
-                    AND a.user_id = latest.user_id
-                    AND a.create_time = latest.max_time
-            GROUP BY a.room_id, a.room_name, a.area_name
+            SELECT e.room_id,
+                   e.room_name,
+                   e.area_name,
+                   COUNT(DISTINCT e.user_id) AS currentPeople,
+                   COUNT(DISTINCT CASE
+                       WHEN COALESCE(e.is_borrowed_card, 0) = 1
+                            OR COALESCE(e.is_keep_card, 0) = 1
+                       THEN e.user_id
+                   END) AS borrowedCards
+            FROM aro_access_log e
+            WHERE e.accessType = 1
+              AND CAST(e.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
+              AND CAST(e.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM aro_access_log out_log
+                  WHERE out_log.user_id = e.user_id
+                    AND out_log.room_id = e.room_id
+                    AND out_log.accessType IN (2, 3)
+                    AND CAST(out_log.create_time AS DATETIME) &gt; CAST(e.create_time AS DATETIME)
+                    AND CAST(out_log.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
+                    AND CAST(out_log.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)
+              )
+            GROUP BY e.room_id, e.room_name, e.area_name
         ) stat ON (
             rs.room_id = stat.room_id
             OR rs.room_id = stat.room_name
@@ -479,7 +568,77 @@
           AND accessType = 1
     </select>
 
-    <sql id="FilteredDebugWhere">
+    <!-- debug 流水页：单校区/单楼层（TwinApiController getFilteredDebugLogs / getFilteredDebugStats） -->
+    <sql id="FilteredDebugWhereSingle">
+        <if test="keyword != null and keyword != ''">
+            <bind name="keywordPattern" value="'%' + keyword + '%'" />
+            AND (
+                name LIKE #{keywordPattern}
+                OR user_id LIKE #{keywordPattern}
+                OR project_group_names LIKE #{keywordPattern}
+            )
+        </if>
+        <if test="startTime != null and startTime != ''"> AND create_time &gt;= #{startTime} </if>
+        <if test="endTime != null and endTime != ''"> AND create_time &lt;= #{endTime} </if>
+        <if test="actionType != null"> AND accessType = #{actionType} </if>
+        <if test="campus != null and campus != ''">
+            <bind name="campusPattern" value="'%' + campus + '%'" />
+            AND area_name LIKE #{campusPattern}
+        </if>
+        <if test="floor != null and floor != ''"> AND room_name LIKE CONCAT(#{floor}, '%') </if>
+        <if test="roomName != null and roomName != ''">
+            <bind name="roomPattern" value="'%' + roomName + '%'" />
+            AND room_name LIKE #{roomPattern}
+        </if>
+        <if test="excludeBlacklist != null and excludeBlacklist == true">
+            AND user_id NOT IN (SELECT user_id FROM twin_blacklist)
+        </if>
+    </sql>
+
+    <!-- 统计聚合（aro_access_log log 别名，避免与 aro_personnel 列歧义） -->
+    <sql id="FilteredDebugAggregationWhereLog">
+        <if test="keyword != null and keyword != ''">
+            <bind name="keywordPattern" value="'%' + keyword + '%'" />
+            AND (
+                log.name LIKE #{keywordPattern}
+                OR log.user_id LIKE #{keywordPattern}
+                OR log.project_group_names LIKE #{keywordPattern}
+            )
+        </if>
+        <if test="startTime != null and startTime != ''"> AND log.create_time &gt;= #{startTime} </if>
+        <if test="endTime != null and endTime != ''"> AND log.create_time &lt;= #{endTime} </if>
+        <if test="actionType != null"> AND log.accessType = #{actionType} </if>
+        <if test="campusList != null and campusList.size() > 0">
+            AND (
+            <foreach collection="campusList" item="c" separator=" OR ">
+                log.area_name LIKE CONCAT('%', #{c}, '%')
+            </foreach>
+            )
+        </if>
+        <if test="(campusList == null or campusList.size() == 0) and campus != null and campus != ''">
+            <bind name="campusPattern" value="'%' + campus + '%'" />
+            AND log.area_name LIKE #{campusPattern}
+        </if>
+        <if test="floorList != null and floorList.size() > 0">
+            AND (
+            <foreach collection="floorList" item="f" separator=" OR ">
+                log.room_name LIKE CONCAT(#{f}, '%')
+            </foreach>
+            )
+        </if>
+        <if test="(floorList == null or floorList.size() == 0) and floor != null and floor != ''">
+            AND log.room_name LIKE CONCAT(#{floor}, '%')
+        </if>
+        <if test="roomName != null and roomName != ''">
+            <bind name="roomPattern" value="'%' + roomName + '%'" />
+            AND log.room_name LIKE #{roomPattern}
+        </if>
+        <if test="excludeBlacklist != null and excludeBlacklist == true">
+            AND log.user_id NOT IN (SELECT user_id FROM twin_blacklist)
+        </if>
+    </sql>
+
+    <sql id="FilteredDebugAggregationWhere">
         <if test="keyword != null and keyword != ''">
             <bind name="keywordPattern" value="'%' + keyword + '%'" />
             AND (
@@ -520,18 +679,23 @@
     </sql>
 
     <select id="listFilteredDebugLogsForAggregation" resultType="map">
-        SELECT user_id AS userId,
-               name,
-               accessType,
-               create_time AS createTime,
-               area_name AS areaName,
-               room_name AS roomName,
-               room_id AS roomId,
-               project_group_names AS projectGroupNames
-        FROM aro_access_log
+        SELECT log.user_id AS userId,
+               log.name,
+               log.accessType,
+               log.create_time AS createTime,
+               log.area_name AS areaName,
+               log.room_name AS roomName,
+               log.room_id AS roomId,
+               log.department_id AS departmentId,
+               log.user_type_names AS userTypeNames,
+               log.project_group_names AS projectGroupNames,
+               p.department_name AS personnelDepartmentName,
+               p.user_type_names AS personnelUserTypeNames
+        FROM aro_access_log log
+        LEFT JOIN aro_personnel p ON p.user_id = log.user_id
         WHERE 1 = 1
-        <include refid="FilteredDebugWhere"/>
-        ORDER BY create_time ASC
+        <include refid="FilteredDebugAggregationWhereLog"/>
+        ORDER BY log.create_time ASC
         LIMIT 300000
     </select>
 
@@ -599,7 +763,7 @@
                SUM(CASE WHEN is_keep_card = 1 THEN 1 ELSE 0 END) AS totalKeep
         FROM aro_access_log
         WHERE 1 = 1
-        <include refid="FilteredDebugWhere"/>
+        <include refid="FilteredDebugWhereSingle"/>
     </select>
 
     <select id="getBlacklist" resultType="map">
@@ -621,24 +785,32 @@
         WHERE user_id = #{userId}
     </delete>
 
+  <!-- 业务日内仍有未配平「进入」的用户（与雷达滞留口径一致，非「最后一条流水」） -->
     <select id="getTodayActiveUsersForRoomStatus" resultType="map">
-        SELECT a.user_id,
-               a.name AS userName,
-               a.room_id AS roomId,
-               a.room_name AS roomName,
-               a.area_name AS areaName,
-               a.is_borrowed_card,
-               DATE_FORMAT(a.create_time, '%H:%i:%s') AS entryTime
-        FROM aro_access_log a
-        INNER JOIN (
-            SELECT user_id, MAX(create_time) AS max_time
-            FROM aro_access_log
-            WHERE DATE(create_time) = CURDATE()
-            GROUP BY user_id
-        ) latest ON a.user_id = latest.user_id AND a.create_time = latest.max_time
-        WHERE a.accessType = 1
-          AND a.room_name IS NOT NULL
-        ORDER BY a.area_name, a.room_name, a.create_time DESC
+        SELECT e.user_id,
+               e.name AS userName,
+               e.room_id AS roomId,
+               e.room_name AS roomName,
+               e.area_name AS areaName,
+               e.is_borrowed_card,
+               DATE_FORMAT(CAST(e.create_time AS DATETIME), '%H:%i:%s') AS entryTime,
+               e.create_time AS enterTimeFull
+        FROM aro_access_log e
+        WHERE e.accessType = 1
+          AND CAST(e.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
+          AND CAST(e.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)
+          AND e.room_name IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM aro_access_log out_log
+              WHERE out_log.user_id = e.user_id
+                AND out_log.room_id = e.room_id
+                AND out_log.accessType IN (2, 3)
+                AND CAST(out_log.create_time AS DATETIME) &gt; CAST(e.create_time AS DATETIME)
+                AND CAST(out_log.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
+                AND CAST(out_log.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)
+          )
+        ORDER BY e.area_name, e.room_name, e.create_time DESC
     </select>
 
     <select id="countTodayPuxiVisits" resultType="int">

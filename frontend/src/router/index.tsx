@@ -46,13 +46,17 @@ import AdminAssetTransferRecordPage from "@/pages/AdminAssetTransferRecordPage";
 import AdminPagePermissionSettingsPage from "@/pages/AdminPagePermissionSettingsPage";
 import AdminScheduleManagerPage from "@/pages/AdminScheduleManagerPage";
 import AdminDahuaSwingTasksPage from "@/pages/AdminDahuaSwingTasksPage";
+import AdminDahuaSwingStatsDailyPage from "@/pages/AdminDahuaSwingStatsDailyPage";
+import AdminDahuaSwingStatsBackfillPage from "@/pages/AdminDahuaSwingStatsBackfillPage";
 import AdminDahuaSwingRecordsPage from "@/pages/AdminDahuaSwingRecordsPage";
 import AdminDahuaSwingRulesPage from "@/pages/AdminDahuaSwingRulesPage";
+import AdminAccessFusionPage from "@/pages/AdminAccessFusionPage";
+import AdminAccessCleanRuleProfilesPage from "@/pages/AdminAccessCleanRuleProfilesPage";
+import AdminAccessAuditSourcePage from "@/pages/AdminAccessAuditSourcePage";
 import AdminStudentViolationsPage from "@/pages/AdminStudentViolationsPage";
 import AdminDoorControlPage from "@/pages/AdminDoorControlPage";
 import AdminCageShelfPage from "@/pages/AdminCageShelfPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
-import AdminAutomationLogMappingsPage from "@/pages/AdminAutomationLogMappingsPage";
 import AnimalRoomTelemetryPage from "@/pages/AnimalRoomTelemetryPage";
 import AnimalRoomCockpitPage from "@/pages/AnimalRoomCockpitPage";
 import DigitalTwinScreenPage from "@/pages/DigitalTwinScreenPage";
@@ -171,7 +175,6 @@ export const router = createHashRouter([
                             { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage/>},
                             { path: "cage-shelves", element: <AdminCageShelfPage/>},
                             { path: "automation-logs", element: <AdminAutomationLogsPage/>},
-                                    { path: "automation-log-labels", element: <AdminAutomationLogMappingsPage/>},
                                     { path: "telemetry-watchlists", element: <AdminTelemetryWatchlistsPage/>},
                                     { path: "telemetry-archive", element: <AdminTelemetryArchivePage/>},
                                     {
@@ -189,8 +192,13 @@ export const router = createHashRouter([
                                     { path: "registration-invites", element: <AdminInviteCodesPage/>},
                                     { path: "schedule-manager", element: <AdminScheduleManagerPage/>},
                                     { path: "dahua-swing-tasks", element: <AdminDahuaSwingTasksPage/>},
+                                    { path: "dahua-swing-stats-tasks", element: <AdminDahuaSwingStatsDailyPage/>},
+                                    { path: "dahua-swing-stats-backfill", element: <AdminDahuaSwingStatsBackfillPage/>},
                                     { path: "dahua-swing-rules", element: <AdminDahuaSwingRulesPage/>},
                                     { path: "dahua-swing-records", element: <AdminDahuaSwingRecordsPage/>},
+                                    { path: "access-audit-source", element: <AdminAccessAuditSourcePage/>},
+                                    { path: "access-fusion", element: <AdminAccessFusionPage/>},
+                                    { path: "access-clean-rule-profiles", element: <AdminAccessCleanRuleProfilesPage/>},
                                     { path: "student-violations", element: <AdminStudentViolationsPage/>},
                                     { path: "supplies", element: <AdminSuppliesMallPage/>},
                                     { path: "supplies/mine", element: <AdminSuppliesMinePage/>},

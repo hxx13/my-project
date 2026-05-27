@@ -3,6 +3,8 @@ import { toast } from "react-hot-toast";
 import { completeRepairOrder, deleteRepairOrder, fetchRepairOrders, fetchRepairRecycle, purgeAllRepairRecycle, purgeRepairRecycleByIds, restoreRepairRecycle, startRepairOrder, type RepairOrderRecord } from "@/api/domains/repair.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { WorkorderImageThumb } from "@/components/WorkorderImageThumb";
+import { WorkorderNotificationReadButton } from "@/components/WorkorderNotificationReadButton";
+import { useWorkorderUnreadFlags } from "@/features/notification/useWorkorderUnreadFlags";
 
 const STATUS_TEXT: Record<string, string> = {
   PENDING: "待处理",
@@ -18,6 +20,8 @@ export default function RepairProcessPage() {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [recycleRows, setRecycleRows] = useState<RepairOrderRecord[]>([]);
   const [selectedRecycleIds, setSelectedRecycleIds] = useState<string[]>([]);
+  const orderIds = rows.map((r) => r.id);
+  const { isUnread: isRepairNoticeUnread } = useWorkorderUnreadFlags("REPAIR", orderIds);
 
   const loadData = async () => {
     setLoading(true);
@@ -122,7 +126,14 @@ export default function RepairProcessPage() {
               <div key={row.id} className="rounded-lg border border-slate-200 p-3 space-y-2">
                 <div className="flex flex-wrap items-center justify-between">
                   <div className="font-medium">{row.location}</div>
-                  <div className="text-sm text-slate-600">{STATUS_TEXT[row.status]}</div>
+                  <div className="flex items-center gap-2">
+                    <WorkorderNotificationReadButton
+                      bizType="REPAIR"
+                      bizId={row.id}
+                      unreadOverride={isRepairNoticeUnread(row.id)}
+                    />
+                    <div className="text-sm text-slate-600">{STATUS_TEXT[row.status]}</div>
+                  </div>
                 </div>
                 <div className="text-sm text-slate-700">{row.content}</div>
                 {row.requestImages?.length > 0 && (

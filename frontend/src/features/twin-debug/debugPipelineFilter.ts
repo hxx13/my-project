@@ -22,19 +22,27 @@ export const defaultDebugPipelineFilter = (): DebugPipelineFilter => ({
 });
 
 /** 组装后端查询参数（与 twinApi fetchFilteredDebugLogs 一致） */
-export function buildDebugPipelineQueryParams(filters: DebugPipelineFilter): Record<string, string | boolean> {
-  const params: Record<string, string | boolean> = { ...filters };
-  if (params.startTime && typeof params.startTime === "string" && !params.startTime.includes(":")) {
-    params.startTime = `${params.startTime} 00:00:00`;
+export function buildDebugPipelineQueryParams(
+  filters: DebugPipelineFilter
+): Record<string, string | number | boolean> {
+  const params: Record<string, string | number | boolean> = {
+    excludeBlacklist: filters.excludeBlacklist,
+  };
+  if (filters.keyword.trim()) params.keyword = filters.keyword.trim();
+  if (filters.startTime) {
+    params.startTime = filters.startTime.includes(":")
+      ? filters.startTime
+      : `${filters.startTime} 00:00:00`;
   }
-  if (params.endTime && typeof params.endTime === "string" && !params.endTime.includes(":")) {
-    params.endTime = `${params.endTime} 23:59:59`;
+  if (filters.endTime) {
+    params.endTime = filters.endTime.includes(":") ? filters.endTime : `${filters.endTime} 23:59:59`;
   }
-  if (!params.actionType) delete params.actionType;
-  if (!params.roomName) delete params.roomName;
-  if (!params.campus) delete params.campus;
-  if (!params.floor) delete params.floor;
-  if (!params.keyword) delete params.keyword;
+  if (filters.actionType === "1" || filters.actionType === "2") {
+    params.actionType = Number(filters.actionType);
+  }
+  if (filters.campus.trim()) params.campus = filters.campus.trim();
+  if (filters.floor.trim()) params.floor = filters.floor.trim();
+  if (filters.roomName.trim()) params.roomName = filters.roomName.trim();
   return params;
 }
 

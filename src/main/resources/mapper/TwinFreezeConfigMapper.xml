@@ -30,12 +30,26 @@
         ADD COLUMN second_freeze_auto_signout_enabled TINYINT NOT NULL DEFAULT 0 COMMENT '第二次冻结命中时：今日曾豁免且仍在馆者自动执行完整离开'
     </update>
 
+    <select id="countDailyExemptRevokeAutoSignoutColumn" resultType="java.lang.Integer">
+        SELECT COUNT(1)
+        FROM information_schema.COLUMNS
+        WHERE table_schema = DATABASE()
+          AND table_name = 'twin_freeze_config'
+          AND column_name = 'daily_exempt_revoke_auto_signout_enabled'
+    </select>
+
+    <update id="addDailyExemptRevokeAutoSignoutColumn">
+        ALTER TABLE twin_freeze_config
+        ADD COLUMN daily_exempt_revoke_auto_signout_enabled TINYINT NOT NULL DEFAULT 0 COMMENT '每日豁免回收后是否自动签离'
+    </update>
+
     <resultMap id="TwinFreezeConfigMap" type="com.example.demo.modules.twin.entity.TwinFreezeConfigRow">
         <id column="id" property="id"/>
         <result column="enabled" property="enabled"/>
         <result column="freeze_time" property="freezeTime"/>
         <result column="second_freeze_time" property="secondFreezeTime"/>
         <result column="second_freeze_auto_signout_enabled" property="secondFreezeAutoSignoutEnabled"/>
+        <result column="daily_exempt_revoke_auto_signout_enabled" property="dailyExemptRevokeAutoSignoutEnabled"/>
         <result column="timezone" property="timezone"/>
         <result column="updated_by" property="updatedBy"/>
         <result column="updated_at" property="updatedAt"/>
@@ -43,14 +57,15 @@
     </resultMap>
 
     <select id="selectById" resultMap="TwinFreezeConfigMap">
-        SELECT id, enabled, freeze_time, second_freeze_time, second_freeze_auto_signout_enabled, timezone, updated_by, updated_at, last_auto_freeze_run_date
+        SELECT id, enabled, freeze_time, second_freeze_time, second_freeze_auto_signout_enabled,
+               daily_exempt_revoke_auto_signout_enabled, timezone, updated_by, updated_at, last_auto_freeze_run_date
         FROM twin_freeze_config
         WHERE id = #{id}
     </select>
 
     <insert id="insertIgnoreDefault">
-        INSERT IGNORE INTO twin_freeze_config (id, enabled, freeze_time, second_freeze_time, second_freeze_auto_signout_enabled, timezone, updated_by)
-        VALUES (#{id}, 1, '18:00', NULL, 0, 'Asia/Shanghai', 'system')
+        INSERT IGNORE INTO twin_freeze_config (id, enabled, freeze_time, second_freeze_time, second_freeze_auto_signout_enabled, daily_exempt_revoke_auto_signout_enabled, timezone, updated_by)
+        VALUES (#{id}, 1, '18:00', NULL, 0, 0, 'Asia/Shanghai', 'system')
     </insert>
 
     <update id="updateConfig">
@@ -59,6 +74,7 @@
             freeze_time = #{freezeTime},
             second_freeze_time = #{secondFreezeTime},
             second_freeze_auto_signout_enabled = #{secondFreezeAutoSignoutEnabled},
+            daily_exempt_revoke_auto_signout_enabled = #{dailyExemptRevokeAutoSignoutEnabled},
             timezone = #{timezone},
             updated_by = #{updatedBy},
             updated_at = NOW()

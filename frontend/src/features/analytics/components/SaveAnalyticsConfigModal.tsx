@@ -78,8 +78,16 @@ export function SaveAnalyticsConfigModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border bg-white shadow-xl">
+    <div
+      data-modal-layer="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        data-modal-scroll
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h3 className="font-semibold text-neutral-900">保存统计配置</h3>
           <button type="button" onClick={onClose} className="rounded p-1 text-neutral-400 hover:bg-neutral-100">

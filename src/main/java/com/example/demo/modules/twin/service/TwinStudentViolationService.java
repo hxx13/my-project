@@ -1,5 +1,7 @@
 package com.example.demo.modules.twin.service;
 
+import com.example.demo.modules.auth.service.UserDisplayNameService;
+import com.example.demo.modules.twin.dto.DashboardViolationBoardItemDTO;
 import com.example.demo.modules.twin.dto.ScanStudentViolationNoticeDTO;
 import com.example.demo.modules.twin.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.mapper.TwinStudentViolationMapper;
@@ -12,8 +14,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -23,13 +30,17 @@ public class TwinStudentViolationService {
 
     private final TwinStudentViolationMapper violationMapper;
     private final ObjectMapper objectMapper;
+    private final UserDisplayNameService userDisplayNameService;
 
     /** 检测到表不存在后短路，避免每次扫码/列表都打库抛错（执行 DDL 后需重启应用或等后续扩展热恢复） */
     private final AtomicBoolean violationTableAbsent = new AtomicBoolean(false);
 
-    public TwinStudentViolationService(TwinStudentViolationMapper violationMapper, ObjectMapper objectMapper) {
+    public TwinStudentViolationService(TwinStudentViolationMapper violationMapper,
+                                       ObjectMapper objectMapper,
+                                       UserDisplayNameService userDisplayNameService) {
         this.violationMapper = violationMapper;
         this.objectMapper = objectMapper;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     private static boolean isTwinStudentViolationTableMissing(Throwable e) {
@@ -137,6 +148,61 @@ public class TwinStudentViolationService {
         }
     }
 
+    /**
+     * 主页大屏「违规惩戒公示」：ACTIVE + 未过期，每人最新一条；
+     * summary 折叠换行并按字符数截断，coverImageUrl 取附图第一张（无则 null）。
+     */
+    public List<DashboardViolationBoardItemDTO> listDashboardBoard(int limit, int summaryMaxLen) {
+        if (violationTableAbsent.get()) {
+            return Collections.emptyList();
+        }
+        touchExpireStale();
+        if (violationTableAbsent.get()) {
+            return Collections.emptyList();
+        }
+        int lim = Math.min(Math.max(limit, 1), 500);
+        int maxLen = Math.min(Math.max(summaryMaxLen, 10), 200);
+        List<TwinStudentViolation> rows;
+        try {
+            rows = violationMapper.selectActiveForDashboardBoard(lim);
+        } catch (Exception e) {
+            if (isTwinStudentViolationTableMissing(e)) {
+                markTableAbsentOnce();
+                return Collections.emptyList();
+            }
+            log.warn("[student-violation] 大屏公示查询失败: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+        if (rows == null || rows.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<DashboardViolationBoardItemDTO> out = new ArrayList<>(rows.size());
+        for (TwinStudentViolation row : rows) {
+            DashboardViolationBoardItemDTO dto = new DashboardViolationBoardItemDTO();
+            dto.setId(row.getId());
+            String name = userDisplayNameService.resolveDisplayName(row.getTargetUserId());
+            dto.setDisplayName(StringUtils.hasText(name) ? name : row.getTargetUserId());
+            dto.setSummary(buildSummary(row.getViolationText(), maxLen));
+            List<String> imgs = parseImageUrls(row.getImageUrls());
+            dto.setCoverImageUrl(imgs.isEmpty() ? null : imgs.get(0));
+            dto.setCreatedAt(row.getCreatedAt());
+            out.add(dto);
+        }
+        return out;
+    }
+
+    private static String buildSummary(String rawText, int maxLen) {
+        if (!StringUtils.hasText(rawText)) {
+            return "";
+        }
+        // 折叠换行/制表符为单空格，避免大屏单行高度被破坏
+        String folded = rawText.replaceAll("[\\r\\n\\t]+", " ").replaceAll(" {2,}", " ").trim();
+        if (folded.length() <= maxLen) {
+            return folded;
+        }
+        return folded.substring(0, maxLen) + "…";
+    }
+
     public List<TwinStudentViolation> listRecent(String targetUserId, int limit) {
         if (violationTableAbsent.get()) {
             return Collections.emptyList();
@@ -217,6 +283,66 @@ public class TwinStudentViolationService {
             throw e;
         }
         return row;
+    }
+
+    /**
+     * 批量新建违规：每人独立一条 ACTIVE（已有 ACTIVE 会先 SUPERSEDED）。
+     *
+     * @return createdCount、failed（userId + message）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> createBatch(
+            List<String> targetUserIds,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId
+    ) {
+        if (targetUserIds == null || targetUserIds.isEmpty()) {
+            throw new IllegalArgumentException("缺少 targetUserIds");
+        }
+        Set<String> unique = new LinkedHashSet<>();
+        for (String id : targetUserIds) {
+            if (StringUtils.hasText(id)) {
+                unique.add(id.trim());
+            }
+        }
+        if (unique.isEmpty()) {
+            throw new IllegalArgumentException("缺少有效的 targetUserId");
+        }
+        if (unique.size() > 200) {
+            throw new IllegalArgumentException("单次批量最多 200 人");
+        }
+        List<Map<String, String>> failed = new ArrayList<>();
+        int created = 0;
+        for (String tid : unique) {
+            try {
+                create(
+                        tid,
+                        violationText,
+                        imageUrls,
+                        forbidEnter,
+                        maxEnterSuccess,
+                        showNoticeEveryScan,
+                        expireAfterDays,
+                        createdByUserId
+                );
+                created++;
+            } catch (Exception e) {
+                Map<String, String> f = new HashMap<>();
+                f.put("userId", tid);
+                String msg = e.getMessage();
+                f.put("message", msg != null && !msg.isBlank() ? msg : "创建失败");
+                failed.add(f);
+            }
+        }
+        Map<String, Object> out = new HashMap<>();
+        out.put("createdCount", created);
+        out.put("failed", failed);
+        return out;
     }
 
     public boolean clear(long id, String clearedByUserId) {

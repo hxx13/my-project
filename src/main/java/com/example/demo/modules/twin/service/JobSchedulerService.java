@@ -1,8 +1,10 @@
 package com.example.demo.modules.twin.service;
 
 import com.example.demo.modules.telemetry.dto.TelemetryWinccDockPollConfigDto;
+import com.example.demo.modules.twin.dto.JobRunOutcome;
 import com.example.demo.modules.twin.entity.TwinJobScheduleConfig;
 import com.example.demo.modules.twin.mapper.TwinJobScheduleConfigMapper;
+import com.example.demo.modules.twin.support.TwinTimingDiagnostics;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -35,7 +37,9 @@ public class JobSchedulerService {
 
     public List<TwinJobScheduleConfig> listAll() {
         ensureDefaults();
-        return mapper.selectAll();
+        return mapper.selectAll().stream()
+                .filter(cfg -> !JobExecutionRegistry.isDeprecatedJob(cfg.getJobKey()))
+                .toList();
     }
 
     /**
@@ -126,6 +130,12 @@ public class JobSchedulerService {
     public TwinJobScheduleConfig updateSchedule(TwinJobScheduleConfig input, String updatedBy) {
         ensureDefaults();
         TwinJobScheduleConfig existing = mapper.selectByJobKey(input.getJobKey());
+        if (existing == null) {
+            throw new IllegalArgumentException("未知任务: " + input.getJobKey());
+        }
+        if (!StringUtils.hasText(input.getJobName())) {
+            input.setJobName(existing.getJobName() != null ? existing.getJobName() : input.getJobKey());
+        }
         if (input.getPollIntervalSeconds() == null) {
             if (existing != null && existing.getPollIntervalSeconds() != null) {
                 input.setPollIntervalSeconds(existing.getPollIntervalSeconds());
@@ -133,8 +143,11 @@ public class JobSchedulerService {
                 input.setPollIntervalSeconds(60);
             }
         }
-        int clampedPoll = Math.max(10, Math.min(3600, input.getPollIntervalSeconds()));
-        input.setPollIntervalSeconds(clampedPoll);
+        input.setPollIntervalSeconds(JobSchedulePolicy.clampPollInterval(input.getJobKey(), input.getPollIntervalSeconds()));
+        if (input.getRevokeAutoSignoutEnabled() == null) {
+            input.setRevokeAutoSignoutEnabled(
+                    existing.getRevokeAutoSignoutEnabled() != null ? existing.getRevokeAutoSignoutEnabled() : 0);
+        }
 
         if (isSingleTimeJob(input.getJobKey())) {
             // 单次定时任务不使用时间段窗口，固定全天，避免误配窗口导致不触发。
@@ -146,20 +159,39 @@ public class JobSchedulerService {
         }
         validate(input);
         input.setUpdatedBy(updatedBy);
-        mapper.updateSchedule(input);
+        int affected = mapper.updateSchedule(input);
+        if (affected <= 0) {
+            throw new IllegalStateException("配置未写入数据库，任务不存在: " + input.getJobKey());
+        }
         return mapper.selectByJobKey(input.getJobKey());
     }
 
-    public void runManual(String jobKey, String updatedBy) {
+    /**
+     * 管理员手动触发。若任务已在执行则抛错（避免前端误报「已触发」）。
+     *
+     * @return true 表示已启动执行
+     */
+    public JobRunOutcome runManual(String jobKey, String updatedBy) {
         ensureDefaults();
-        runWithStatus(jobKey, updatedBy);
+        return runWithStatus(jobKey, updatedBy, false);
     }
 
     /**
-     * 冻结联动任务对齐：
-     * - RUN_REAPER：第一次冻结
-     * - RUN_REAPER_SECOND：第二次冻结
-     * - DAILY_EXEMPT_RESET：每日豁免回收
+     * 「每日豁免权回收」任务专用：回收后对今日曾豁免且流水仍在馆者自动签离（与冻结总开关无关）。
+     */
+    public boolean isDailyExemptRevokeAutoSignoutEnabled() {
+        ensureDefaults();
+        TwinJobScheduleConfig cfg = mapper.selectByJobKey(JobExecutionRegistry.JOB_DAILY_EXEMPT_RESET);
+        return cfg != null
+                && cfg.getRevokeAutoSignoutEnabled() != null
+                && cfg.getRevokeAutoSignoutEnabled() == 1;
+    }
+
+    /**
+     * 冻结联动任务对齐（仅跑批冻结，不含每日豁免回收）：
+     * - RUN_REAPER：第一次冻结，时刻=freezeTime
+     * - RUN_REAPER_SECOND：第二次冻结，时刻=secondFreezeTime
+     * <p>{@link JobExecutionRegistry#JOB_DAILY_EXEMPT_RESET} 由「定时管理」页独立配置，禁止在此覆盖。</p>
      */
     public void syncFreezeJobs(boolean enabled, String firstFreezeTime, String secondFreezeTime, String updatedBy) {
         ensureDefaults();
@@ -168,7 +200,6 @@ public class JobSchedulerService {
         String secondTime = StringUtils.hasText(secondFreezeTime) ? parseTime(secondFreezeTime).format(HM) : null;
         int en = enabled ? 1 : 0;
         upsertFreezeJob(JobExecutionRegistry.JOB_RUN_REAPER, en, firstTime, by);
-        upsertFreezeJob(JobExecutionRegistry.JOB_DAILY_EXEMPT_RESET, en, firstTime, by);
         upsertFreezeJob(JobExecutionRegistry.JOB_RUN_REAPER_SECOND, (en == 1 && StringUtils.hasText(secondTime)) ? 1 : 0, secondTime == null ? "23:59" : secondTime, by);
     }
 
@@ -176,15 +207,14 @@ public class JobSchedulerService {
         ensureDefaults();
         LocalDateTime now = LocalDateTime.now().withSecond(0).withNano(0);
         for (TwinJobScheduleConfig cfg : mapper.selectAll()) {
-            if (JobExecutionRegistry.JOB_TELEMETRY_WINCC_UI.equals(cfg.getJobKey())
-                    || JobExecutionRegistry.JOB_TELEMETRY_WINCC_LIMITS_UI.equals(cfg.getJobKey())) {
+            if (skipSchedulerTick(cfg)) {
                 continue;
             }
             if (cfg.getEnabled() == null || cfg.getEnabled() != 1) {
                 continue;
             }
             if (shouldRun(cfg, now)) {
-                runWithStatus(cfg.getJobKey(), "system-scheduler");
+                runWithStatus(cfg.getJobKey(), "system-scheduler", true);
             }
         }
     }
@@ -193,30 +223,46 @@ public class JobSchedulerService {
         ensureDefaults();
         LocalDateTime now = LocalDateTime.now().withSecond(0).withNano(0);
         for (TwinJobScheduleConfig cfg : mapper.selectAll()) {
-            if (JobExecutionRegistry.JOB_TELEMETRY_WINCC_UI.equals(cfg.getJobKey())
-                    || JobExecutionRegistry.JOB_TELEMETRY_WINCC_LIMITS_UI.equals(cfg.getJobKey())) {
+            if (skipSchedulerTick(cfg)) {
                 continue;
             }
             if (cfg.getEnabled() == null || cfg.getEnabled() != 1) {
                 continue;
             }
             if (isMissed(cfg, now)) {
-                runWithStatus(cfg.getJobKey(), "system-bootstrap");
+                runWithStatus(cfg.getJobKey(), "system-bootstrap", true);
             }
         }
     }
 
-    private void runWithStatus(String jobKey, String updatedBy) {
-        boolean automated = "system-scheduler".equals(updatedBy) || "system-bootstrap".equals(updatedBy);
-        if (automated && registry.isRunning(jobKey)) {
-            return;
+    private static boolean skipSchedulerTick(TwinJobScheduleConfig cfg) {
+        if (cfg == null || !StringUtils.hasText(cfg.getJobKey())) {
+            return true;
         }
+        if (JobExecutionRegistry.isDeprecatedJob(cfg.getJobKey())) {
+            return true;
+        }
+        return JobExecutionRegistry.JOB_TELEMETRY_WINCC_UI.equals(cfg.getJobKey())
+                || JobExecutionRegistry.JOB_TELEMETRY_WINCC_LIMITS_UI.equals(cfg.getJobKey());
+    }
+
+    /**
+     * @param skipIfRunning true=调度器/补跑：任务已在跑则跳过；false=手动：已在跑则抛错
+     */
+    private JobRunOutcome runWithStatus(String jobKey, String updatedBy, boolean skipIfRunning) {
+        if (registry.isRunning(jobKey)) {
+            if (skipIfRunning) {
+                return JobRunOutcome.noop(jobKey, "任务正在执行中，本次跳过", Map.of("skipped", true));
+            }
+            throw new IllegalStateException("任务正在执行中，请稍后再试: " + registry.jobNameMap().getOrDefault(jobKey, jobKey));
+        }
+        boolean automated = "system-scheduler".equals(updatedBy) || "system-bootstrap".equals(updatedBy);
         String triggerType = automated ? "TIMER" : "MANUAL";
         String triggerReason = "system-bootstrap".equals(updatedBy) ? "BOOTSTRAP_CATCHUP" : ("system-scheduler".equals(updatedBy) ? "SCHEDULE_TICK" : "MANUAL_RUN");
         LocalDateTime startedAt = LocalDateTime.now();
         mapper.markRunning(jobKey, startedAt, updatedBy);
-        boolean reaperJob = com.example.demo.modules.twin.service.JobExecutionRegistry.JOB_RUN_REAPER.equals(jobKey)
-                || com.example.demo.modules.twin.service.JobExecutionRegistry.JOB_RUN_REAPER_SECOND.equals(jobKey);
+        boolean reaperJob = JobExecutionRegistry.JOB_RUN_REAPER.equals(jobKey)
+                || JobExecutionRegistry.JOB_RUN_REAPER_SECOND.equals(jobKey);
         if (reaperJob) {
             com.example.demo.modules.twin.support.FreezeReaperAuditContext.begin(triggerType, updatedBy, jobKey);
         }
@@ -231,10 +277,13 @@ public class JobSchedulerService {
                 "定时任务已启动，来源=" + updatedBy + "，开始时间=" + startedAt,
                 updatedBy
         );
+        long jobStartMs = System.currentTimeMillis();
         try {
-            registry.execute(jobKey);
+            JobRunOutcome outcome = registry.execute(jobKey, !automated);
             LocalDateTime finishedAt = LocalDateTime.now();
             mapper.markSuccess(jobKey, finishedAt, updatedBy);
+            TwinTimingDiagnostics.logJob(jobKey, triggerType, System.currentTimeMillis() - jobStartMs, true,
+                    outcome != null ? outcome.getSummary() : "ok");
             automationLogService.write(
                     TwinAutomationLogService.TYPE_SCHEDULER,
                     jobKey,
@@ -243,10 +292,13 @@ public class JobSchedulerService {
                     null,
                     jobKey,
                     true,
-                    "定时任务执行成功，开始时间=" + startedAt + "，完成时间=" + finishedAt,
+                    "定时任务执行成功：" + outcome.getSummary() + "，完成时间=" + finishedAt,
                     updatedBy
             );
+            return outcome;
         } catch (Exception e) {
+            TwinTimingDiagnostics.logJob(jobKey, triggerType, System.currentTimeMillis() - jobStartMs, false,
+                    trimError(e.getMessage()));
             mapper.markFailed(jobKey, LocalDateTime.now(), trimError(e.getMessage()), updatedBy);
             automationLogService.write(
                     TwinAutomationLogService.TYPE_SCHEDULER,
@@ -290,14 +342,15 @@ public class JobSchedulerService {
         if (!matchesDay(cfg, now.getDayOfWeek())) {
             return false;
         }
-        if (!isSingleTimeJob(cfg.getJobKey()) && !inWindow(cfg, now.toLocalTime())) {
-            return false;
+        String jobKey = cfg.getJobKey();
+        if (JobSchedulePolicy.isPollInWindow(jobKey)) {
+            if (!inWindow(cfg, now.toLocalTime())) {
+                return false;
+            }
+            return shouldRunByPollInterval(cfg, now);
         }
-        // ARO 穿甲弹：与大华门禁拉取一致，在窗口内由 UnifiedScheduleDispatcher 每分钟 tick 一次，
-        // 不再依赖 schedule_time（管理页「平台轮询任务」表格未配置该字段，默认 02:00 会落在窗口外导致永不执行）。
-        if (JobExecutionRegistry.JOB_ARO_PENETRATION_POLL.equals(cfg.getJobKey())) {
-            LocalDateTime lastRun = cfg.getLastRunAt();
-            return lastRun == null || !lastRun.withSecond(0).withNano(0).equals(now);
+        if (!isSingleTimeJob(jobKey) && !inWindow(cfg, now.toLocalTime())) {
+            return false;
         }
         LocalTime plan = parseTime(cfg.getScheduleTime());
         if (!plan.equals(now.toLocalTime())) {
@@ -307,8 +360,17 @@ public class JobSchedulerService {
         return lastRun == null || !lastRun.withSecond(0).withNano(0).equals(now);
     }
 
+    private boolean shouldRunByPollInterval(TwinJobScheduleConfig cfg, LocalDateTime now) {
+        LocalDateTime lastRun = cfg.getLastRunAt();
+        if (lastRun == null) {
+            return true;
+        }
+        int pollSec = JobSchedulePolicy.clampPollInterval(cfg.getJobKey(), cfg.getPollIntervalSeconds());
+        return !lastRun.plusSeconds(pollSec).isAfter(now);
+    }
+
     private boolean isMissed(TwinJobScheduleConfig cfg, LocalDateTime now) {
-        if (JobExecutionRegistry.JOB_ARO_PENETRATION_POLL.equals(cfg.getJobKey())) {
+        if (JobSchedulePolicy.isPollInWindow(cfg.getJobKey())) {
             return false;
         }
         LocalDateTime latestPlan = latestPlannedTime(cfg, now);
@@ -424,9 +486,79 @@ public class JobSchedulerService {
                 row.setScheduleEndTime("22:00");
             }
             row.setWeekDays("1,2,3,4,5,6,7");
-            row.setPollIntervalSeconds(60);
+            row.setPollIntervalSeconds(JobSchedulePolicy.defaultPollIntervalSeconds(e.getKey()));
+            row.setRevokeAutoSignoutEnabled(0);
             row.setUpdatedBy("system-init");
             mapper.upsertBase(row);
+        }
+        disableDeprecatedScheduleJobs();
+        migrateLegacyStatsPullScheduleJob();
+        initTelemetryArchivePurgeSchedule();
+    }
+
+    /** 新装默认开启 WinCC 归档清理（03:40），可在定时任务管理改时刻 */
+    private void initTelemetryArchivePurgeSchedule() {
+        try {
+            TwinJobScheduleConfig cfg =
+                    mapper.selectByJobKey(JobExecutionRegistry.JOB_TELEMETRY_ARCHIVE_PURGE);
+            if (cfg == null) {
+                return;
+            }
+            if (cfg.getLastRunAt() != null) {
+                return;
+            }
+            if (cfg.getEnabled() != null && cfg.getEnabled() == 1) {
+                return;
+            }
+            cfg.setEnabled(1);
+            cfg.setScheduleTime("03:40");
+            cfg.setScheduleType("DAILY");
+            cfg.setWeekDays("1,2,3,4,5,6,7");
+            cfg.setUpdatedBy("system-init-archive-purge");
+            mapper.updateSchedule(cfg);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** 将已废弃的合并 Job 配置迁移到「昨日日批」独立 Job */
+    private void migrateLegacyStatsPullScheduleJob() {
+        try {
+            TwinJobScheduleConfig legacy =
+                    mapper.selectByJobKey(JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL);
+            TwinJobScheduleConfig day =
+                    mapper.selectByJobKey(JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_PREVIOUS_DAY);
+            if (legacy == null || day == null) {
+                return;
+            }
+            boolean legacyOn = legacy.getEnabled() != null && legacy.getEnabled() == 1;
+            boolean dayOn = day.getEnabled() != null && day.getEnabled() == 1;
+            if (legacyOn && !dayOn) {
+                day.setEnabled(1);
+                if (StringUtils.hasText(legacy.getScheduleTime())) {
+                    day.setScheduleTime(legacy.getScheduleTime());
+                }
+                if (StringUtils.hasText(legacy.getScheduleType())) {
+                    day.setScheduleType(legacy.getScheduleType());
+                }
+                if (StringUtils.hasText(legacy.getWeekDays())) {
+                    day.setWeekDays(legacy.getWeekDays());
+                }
+                day.setUpdatedBy("migrate-from-DAHUA_SWING_STATS_PULL");
+                mapper.updateSchedule(day);
+            }
+        } catch (Exception ignored) {
+            // 迁移失败不阻断启动
+        }
+    }
+
+    private void disableDeprecatedScheduleJobs() {
+        for (String key : JobExecutionRegistry.deprecatedJobKeys()) {
+            try {
+                jdbcTemplate.update(
+                        "UPDATE twin_job_schedule_config SET enabled = 0, updated_by = 'system-deprecate' WHERE job_key = ?",
+                        key);
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -446,7 +578,12 @@ public class JobSchedulerService {
                 || JobExecutionRegistry.JOB_DH_CHANNEL_REFRESH.equals(jobKey)
                 || JobExecutionRegistry.JOB_RUN_REAPER.equals(jobKey)
                 || JobExecutionRegistry.JOB_RUN_REAPER_SECOND.equals(jobKey)
-                || JobExecutionRegistry.JOB_DAILY_EXEMPT_RESET.equals(jobKey);
+                || JobExecutionRegistry.JOB_DAILY_EXEMPT_RESET.equals(jobKey)
+                || JobExecutionRegistry.JOB_ACCESS_CLEAN_PACKAGE_DAILY.equals(jobKey)
+                || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_PREVIOUS_DAY.equals(jobKey)
+                || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_PREVIOUS_WEEK.equals(jobKey)
+                || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_SINCE_LAST.equals(jobKey)
+                || JobExecutionRegistry.JOB_TELEMETRY_ARCHIVE_PURGE.equals(jobKey);
     }
 
     private void ensureTable() {
@@ -481,6 +618,8 @@ public class JobSchedulerService {
                     "ALTER TABLE twin_job_schedule_config ADD COLUMN schedule_end_time VARCHAR(8) NOT NULL DEFAULT '22:00'");
             ensureColumnExists("twin_job_schedule_config", "poll_interval_seconds",
                     "ALTER TABLE twin_job_schedule_config ADD COLUMN poll_interval_seconds INT NOT NULL DEFAULT 60 COMMENT '程序坞轮询秒(TELEMETRY_WINCC_UI)'");
+            ensureColumnExists("twin_job_schedule_config", "revoke_auto_signout_enabled",
+                    "ALTER TABLE twin_job_schedule_config ADD COLUMN revoke_auto_signout_enabled TINYINT NOT NULL DEFAULT 0 COMMENT 'DAILY_EXEMPT_RESET: 今日曾豁免且仍在馆时自动签离'");
             tableReady = true;
         }
     }

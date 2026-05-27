@@ -27,6 +27,8 @@ import com.example.demo.modules.twin.dto.DahuaIssueCardRequest;
 import com.example.demo.modules.twin.service.DahuaIssueException;
 import com.example.demo.modules.twin.entity.TwinCardMapping;
 import com.example.demo.modules.twin.support.ScanPopupEntryWindowEvaluator;
+import com.example.demo.modules.twin.support.ScanPopupFlowLog;
+import com.example.demo.common.time.BusinessTimeWindow;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,6 +53,9 @@ public class TwinScanController {
 
     @Autowired
     private TwinDashboardMapper dashboardMapper;
+
+    @Autowired
+    private BusinessTimeWindow businessTimeWindow;
 
     @Autowired
     private TwinScanAppService twinScanAppService;
@@ -132,6 +137,7 @@ public class TwinScanController {
     ) {
         ScanExecuteResponseDTO result = new ScanExecuteResponseDTO();
         User operator = authContextService.resolveUserFromBearer(authorization);
+        ScanPopupFlowLog.ExecuteSummary flowLog = new ScanPopupFlowLog.ExecuteSummary();
         try {
             String userId = (String) payload.get("userId");
             String roomId = (String) payload.get("roomId");
@@ -147,6 +153,11 @@ public class TwinScanController {
 
             String userName = payload.containsKey("userName") ? (String) payload.get("userName") : "未知人员";
 
+            flowLog.userId = userId;
+            flowLog.userName = userName;
+            flowLog.accessType = accessType;
+            flowLog.borrowedCard = isBorrowedCard;
+
             String dahuaSeq = null;
             String physicalCardNo = null;
             com.example.demo.modules.twin.entity.TwinCardMapping mapping = twinCardMappingService.getByAroUserId(userId);
@@ -154,14 +165,10 @@ public class TwinScanController {
                 dahuaSeq = mapping.getDahuaSeq();
                 physicalCardNo = mapping.getCardNo();
             }
+            flowLog.hasPhysicalMapping = mapping != null;
 
             String roomLabel = (roomName != null && !roomName.isBlank()) ? roomName : "（房间名未传）";
-            log.info("[scan-exec] 1/4 🎯 执行打卡 userId={} 物理卡号={} 房间={} 动作={} 领借卡={}",
-                    userId,
-                    physicalCardNo != null ? physicalCardNo : "无",
-                    roomLabel,
-                    accessType == 1 ? "进入" : "离开",
-                    isBorrowedCard ? "是" : "否");
+            flowLog.roomLabel = roomLabel;
 
             Map<String, Object> swingCfg = dahuaSwingRuleConfigService.getConfig();
             ZoneId winZone;
@@ -170,21 +177,26 @@ public class TwinScanController {
             } catch (Exception e) {
                 winZone = ZoneId.systemDefault();
             }
-            if (accessType == 1 && !ScanPopupEntryWindowEvaluator.isEntryAllowedNow(swingCfg, winZone)) {
+            if (accessType == 1
+                    && !ScanPopupEntryWindowEvaluator.isEntryAllowedNow(swingCfg, winZone)
+                    && !twinCardMappingService.isLinkageRuleExempt(userId)) {
                 result.setSuccess(false);
                 result.setMessage("当前不在允许扫码进入的时段内，请稍后再试");
+                flowLog.fail("非开放时段");
                 return Result.success(result);
             }
 
             if (accessType == 1 && twinStudentViolationService.isEnterBlocked(userId)) {
                 result.setSuccess(false);
                 result.setMessage("违规处理中：已被禁止进入或进入次数已达上限，请联系管理员在「学生违规管理」中解除。");
+                flowLog.fail("违规禁入");
                 return Result.success(result);
             }
 
             if (accessType == 1 && unboundNoticeConfigService.isUnboundEnterForbidden(mapping != null, operator, operatorRoleHint)) {
                 result.setSuccess(false);
                 result.setMessage("未绑定校园卡：当前策略禁止扫码进入，请先完成绑卡或在「学生违规管理」中调整未绑卡提示设置。");
+                flowLog.fail("未绑卡禁入");
                 return Result.success(result);
             }
 
@@ -198,10 +210,9 @@ public class TwinScanController {
                 result.setSuccess(false);
                 String aroMsg = aroService.getLastAroErrorMessage();
                 result.setMessage((aroMsg == null || aroMsg.isBlank()) ? "打卡被官方系统拒绝，请检查人员权限！" : aroMsg);
+                flowLog.fail("ARO拒绝");
                 return Result.success(result);
             }
-
-            log.info("[scan-exec] 2/4 ✅ 官方 ARO 已确认登记 userId={}", userId);
 
             // 关键同步规则：
             // 任何“离开(accessType=2)”在 ARO 官方登记成功后，都必须清理大华联动状态，
@@ -220,13 +231,12 @@ public class TwinScanController {
                 try {
                     twinCardMappingService.updateCardStatus(physicalCardNo, "NORMAL");
                 } catch (Exception e) {
-                    log.error("[scan-exec] pre-unfreeze failed userId={} cardNo={} err={}", userId, physicalCardNo, e.getMessage(), e);
+                    log.error("[扫码·登记] 预解冻失败 id={} cardNo={} err={}", userId, physicalCardNo, e.getMessage(), e);
                     result.setSuccess(false);
                     result.setMessage("官方系统登记成功，但大华预解冻失败，无法下发门禁权限，请联系管理员！");
+                    flowLog.fail("预解冻失败");
                     return Result.success(result);
                 }
-            } else if (accessType == 1 && physicalCardNo != null) {
-                log.info("[scan-exec] skip-pre-unfreeze enter_unfreeze_disabled userId={} cardNo={}", userId, physicalCardNo);
             }
 
             String effectiveRoomId = roomId;
@@ -235,7 +245,6 @@ public class TwinScanController {
             }
             // 长期保管卡豁免必须先于门禁派发/待激活计时：否则先起算待激活再写豁免，会出现「库里有待激活行但人已是豁免」的短暂不一致
             if (isKeepCard && physicalCardNo != null) {
-                log.info("[scan-exec] 联动豁免 已开启 userId={} 姓名={} 原因=长期保管卡", userId, userName);
                 twinCardMappingService.updateExemptFlagByUserId(userId, 1);
             }
 
@@ -276,15 +285,15 @@ public class TwinScanController {
                 }
             } catch (Exception linkageEx) {
                 if (accessType == 2) {
-                    log.error("[scan-exec] exit-dahua-linkage failed userId={} err={}", userId, linkageEx.getMessage(), linkageEx);
+                    log.error("[扫码·登记] 离开联动失败 id={} err={}", userId, linkageEx.getMessage(), linkageEx);
                     result.setSuccess(false);
                     String detail = linkageEx.getMessage() != null ? linkageEx.getMessage() : linkageEx.getClass().getSimpleName();
                     result.setMessage("官方系统离开登记成功，但大华联动（权限回收/冻结）失败，请联系管理员。详情：" + detail);
+                    flowLog.fail("离开联动失败");
                     return Result.success(result);
                 }
                 throw linkageEx;
             }
-            log.info("[scan-exec] 3/4 🔐 门禁联动已处理 userId={} 房间={} exitDeferSec={}", userId, roomLabel, deferSec);
 
             // =================================================================
             // 🎯 第三关：使用 RPG 引擎返回本次操作真实经验增量
@@ -313,9 +322,10 @@ public class TwinScanController {
                         result.setMessage(actMsg + " 本次经验 +" + expAdded);
                     }
                 } catch (Exception e) {
-                    log.error("[scan-exec] hardware-sync failed userId={} cardNo={} err={}", userId, physicalCardNo, e.getMessage(), e);
+                    log.error("[扫码·登记] 门禁收尾失败 id={} cardNo={} err={}", userId, physicalCardNo, e.getMessage(), e);
                     result.setSuccess(false);
                     result.setMessage("官方系统登记成功，但大华物理门禁响应失败，请联系管理员手动开门！");
+                    flowLog.fail("门禁收尾失败");
                     return Result.success(result);
                 }
             } else {
@@ -336,13 +346,14 @@ public class TwinScanController {
                 }
             }
 
-            log.info("[scan-exec] 4/4 ✅ 打卡请求收尾 userId={} 物理卡号={}", userId, physicalCardNo != null ? physicalCardNo : "无");
+            String extra = healedNoLeaveConflict ? "状态自愈" : null;
+            flowLog.ok("已登记", ScanPopupFlowLog.linkageShort(accessType, dispatchResult, deferSec, isKeepCard), expAdded, extra);
 
             if (result.isSuccess() && accessType == 1 && userId != null && !userId.isBlank()) {
                 try {
                     twinStudentViolationService.recordSuccessfulEnter(userId);
                 } catch (Exception ve) {
-                    log.warn("[scan-exec] 违规进入计数失败 userId={} err={}", userId, ve.getMessage());
+                    log.debug("[扫码·登记] 违规计数失败 id={} err={}", userId, ve.getMessage());
                 }
             }
 
@@ -367,9 +378,12 @@ public class TwinScanController {
             }
 
         } catch (Exception e) {
-            log.error("[scan-exec] ❌ 异常 {} err={}", e.getClass().getSimpleName(), e.getMessage(), e);
+            log.error("[扫码·登记] 异常 {} err={}", e.getClass().getSimpleName(), e.getMessage(), e);
             result.setSuccess(false);
             result.setMessage("系统执行异常: " + e.getMessage());
+            flowLog.fail(e.getMessage());
+        } finally {
+            ScanPopupFlowLog.logExecute(flowLog);
         }
         return Result.success(result);
     }
@@ -472,7 +486,9 @@ public class TwinScanController {
             @RequestParam(value = "roomId", required = false) String roomId) {
         try {
             // 直接调用咱们刚刚写在 Mapper 里的神级 SQL
-            java.util.List<java.util.Map<String, Object>> statusList = dashboardMapper.getRoomCardStatusList(roomId);
+            BusinessTimeWindow.Window day = businessTimeWindow.todayWindow();
+            java.util.List<java.util.Map<String, Object>> statusList = dashboardMapper.getRoomCardStatusList(
+                    roomId, day.startInclusive(), day.endExclusive());
 
             // 如果查的是单个房间，直接返回那个对象；如果是全校，返回数组
             if (roomId != null && !roomId.isEmpty()) {

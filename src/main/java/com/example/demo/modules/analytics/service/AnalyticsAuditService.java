@@ -1,5 +1,6 @@
 package com.example.demo.modules.analytics.service;
 
+import com.example.demo.modules.accessfusion.service.AccessAudienceConstants;
 import com.example.demo.modules.analytics.dto.AnalyticsAuditLogDto;
 import com.example.demo.modules.analytics.entity.AnalyticsAuditLog;
 import com.example.demo.modules.analytics.entity.AnalyticsUserView;
@@ -109,7 +110,92 @@ public class AnalyticsAuditService {
         } else {
             out.put("byRoom", List.of());
         }
+        if (snap.get("auxiliaryFlow") != null) {
+            out.put("auxiliaryFlow", snap.get("auxiliaryFlow"));
+        }
+        if (snap.get("queryProvenance") != null) {
+            out.put("queryProvenance", snap.get("queryProvenance"));
+        }
         return out;
+    }
+
+    /**
+     * 强制重算：按当前 filter 覆盖写入该视图下已有全部周期快照（与配置 JSON 是否变更无关）。
+     */
+    public void refreshAllSnapshotsForView(AnalyticsUserView view) {
+        if (view == null || view.getIsSubscribed() == null || view.getIsSubscribed() != 1) {
+            return;
+        }
+        if (isCageReport(view)) {
+            runAuditForView(view);
+            return;
+        }
+        List<AnalyticsAuditLog> existing =
+                auditLogMapper.selectAllByView(view.getUserId(), view.getId(), 500);
+        log.info(
+                "[analytics-audit] force refresh viewId={} existingSnapshots={}",
+                view.getId(),
+                existing.size());
+        if (existing.isEmpty()) {
+            runAuditForView(view);
+            return;
+        }
+        int idx = 0;
+        for (AnalyticsAuditLog auditLog : existing) {
+            idx++;
+            try {
+                refreshSnapshotPeriod(view, auditLog, idx, existing.size());
+            } catch (Exception e) {
+                log.warn(
+                        "[analytics-audit] refresh snapshot failed viewId={} {} {}: {}",
+                        view.getId(),
+                        auditLog.getPeriodType(),
+                        auditLog.getPeriodLabel(),
+                        e.getMessage());
+            }
+        }
+        runAuditForView(view);
+    }
+
+    private void refreshSnapshotPeriod(
+            AnalyticsUserView view, AnalyticsAuditLog auditLog, int cycleIndex, int cycleTotal) {
+        if (auditLog == null
+                || !StringUtils.hasText(auditLog.getPeriodType())
+                || !StringUtils.hasText(auditLog.getPeriodLabel())) {
+            return;
+        }
+        switch (auditLog.getPeriodType()) {
+            case "day" -> writeDayPeriod(view, LocalDate.parse(auditLog.getPeriodLabel()), cycleIndex, cycleTotal);
+            case "week" -> {
+                LocalDate monday = parseWeekMondayFromLabel(auditLog.getPeriodLabel());
+                if (monday != null) {
+                    writeWeekPeriod(view, monday, cycleIndex, cycleTotal);
+                }
+            }
+            case "month" -> writeMonthPeriod(
+                    view, LocalDate.parse(auditLog.getPeriodLabel() + "-01"), cycleIndex, cycleTotal);
+            default -> { }
+        }
+    }
+
+    private static LocalDate parseWeekMondayFromLabel(String periodLabel) {
+        if (!StringUtils.hasText(periodLabel)) {
+            return null;
+        }
+        try {
+            int dash = periodLabel.indexOf("-W");
+            if (dash < 0) {
+                return null;
+            }
+            int year = Integer.parseInt(periodLabel.substring(0, dash));
+            int week = Integer.parseInt(periodLabel.substring(dash + 2));
+            return LocalDate.of(year, 1, 4)
+                    .with(ISO_WEEK.weekBasedYear(), year)
+                    .with(ISO_WEEK.weekOfWeekBasedYear(), week)
+                    .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public void runAuditForView(AnalyticsUserView view) {
@@ -337,9 +423,7 @@ public class AnalyticsAuditService {
         boolean cageReport = isCageReport(view);
         AnalyticsAuditLog existing =
                 auditLogMapper.selectByViewPeriodLabel(view.getId(), periodType, periodLabel);
-        if (existing != null && !cageReport) {
-            return;
-        }
+        // 隔离服：同 periodLabel 允许覆盖更新（配置变更后自动重算）
         Map<String, Object> curReport;
         if (cageReport) {
             CageAnalyticsFilterParams cageParams = CageAnalyticsFilterParams.fromMap(filter);
@@ -412,12 +496,21 @@ public class AnalyticsAuditService {
         if (existing != null) {
             row.setId(existing.getId());
             auditLogMapper.updatePeriodSnapshot(row);
-            log.info(
-                    "[cage-occupancy-audit] snapshot refreshed viewId={} {} {} slots={}",
-                    view.getId(),
-                    periodType,
-                    periodLabel,
-                    curRounds);
+            if (cageReport) {
+                log.info(
+                        "[cage-occupancy-audit] snapshot refreshed viewId={} {} {} slots={}",
+                        view.getId(),
+                        periodType,
+                        periodLabel,
+                        curRounds);
+            } else {
+                log.debug(
+                        "[analytics-audit] snapshot refreshed viewId={} {} {} events={}",
+                        view.getId(),
+                        periodType,
+                        periodLabel,
+                        curRounds);
+            }
         } else {
             auditLogMapper.insert(row);
             if (cageReport) {
@@ -442,10 +535,51 @@ public class AnalyticsAuditService {
         try {
             Map<String, Object> snap = new LinkedHashMap<>();
             snap.put("summary", report.get("summary"));
+            Object summaryObj = report.get("summary");
+            if (summaryObj instanceof Map<?, ?> sm) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> summary = (Map<String, Object>) sm;
+                if (summary.get("filterSnapshot") != null) {
+                    snap.put("filterSnapshot", summary.get("filterSnapshot"));
+                }
+                Map<String, Object> quality = new LinkedHashMap<>();
+                String ds = summary.get("dataSource") != null ? String.valueOf(summary.get("dataSource")) : "aro";
+                quality.put("dataSource", "cleaned".equals(ds) ? "dahua_cleaned" : ds);
+                if (summary.get("studentEvents") != null) {
+                    quality.put("studentEvents", summary.get("studentEvents"));
+                } else if (summary.get("studentSets") != null) {
+                    quality.put("studentSets", summary.get("studentSets"));
+                }
+                if (summary.get("staffEvents") != null) {
+                    quality.put("staffEvents", summary.get("staffEvents"));
+                } else if (summary.get("staffSets") != null) {
+                    quality.put("staffSets", summary.get("staffSets"));
+                }
+                if (summary.get("reviewPendingCount") != null) {
+                    quality.put("lowConfidenceCount", summary.get("reviewPendingCount"));
+                }
+                if ("access_package".equals(ds)) {
+                    quality.put(
+                            "metricNote",
+                            "条数/涉及人数=清洗总库；课题组/涉及学生人数=ARO 流水（订阅校区楼层进出）；学生部门ID="
+                                    + AccessAudienceConstants.studentRuleLabel());
+                } else if ("cleaned".equals(ds)) {
+                    quality.put(
+                            "metricNote",
+                            "隔离服人次来自大华摆闸清洗管线（门禁规则/去抖），与 ARO 在馆状态可能短期不一致");
+                }
+                snap.put("dataQuality", quality);
+            }
             snap.put("byProjectGroup", report.get("byProjectGroup"));
             snap.put("byPi", report.get("byPi"));
             snap.put("byRoom", report.get("byRoom"));
             snap.put("byRegion", report.get("byRegion"));
+            if (report.get("auxiliaryFlow") != null) {
+                snap.put("auxiliaryFlow", report.get("auxiliaryFlow"));
+            }
+            if (report.get("queryProvenance") != null) {
+                snap.put("queryProvenance", report.get("queryProvenance"));
+            }
             snap.put("periodLabel", periodLabel);
             snap.put("savedAt", LocalDateTime.now().format(DT_FMT));
             if (cageReport) {
@@ -484,8 +618,32 @@ public class AnalyticsAuditService {
         dto.setDeltaRounds(row.getDeltaRounds());
         dto.setDeltaPct(row.getDeltaPct());
         dto.setTopGroups(readTopGroups(row.getTopGroupsJson()));
+        enrichAudienceFromSnapshot(dto, row.getTopGroupsJson());
         dto.setCreatedAt(row.getCreatedAt());
         return dto;
+    }
+
+    private void enrichAudienceFromSnapshot(AnalyticsAuditLogDto dto, String json) {
+        Map<String, Object> snap = readSnapshot(json);
+        Object summaryObj = snap.get("summary");
+        if (!(summaryObj instanceof Map<?, ?> summary)) {
+            return;
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> s = (Map<String, Object>) summary;
+        if (s.get("studentEvents") instanceof Number n) {
+            dto.setStudentRounds(n.longValue());
+        } else if (s.get("studentSets") instanceof Number n) {
+            dto.setStudentRounds(n.longValue());
+        }
+        if (s.get("staffEvents") instanceof Number n) {
+            dto.setStaffRounds(n.longValue());
+        } else if (s.get("staffSets") instanceof Number n) {
+            dto.setStaffRounds(n.longValue());
+        }
+        if (s.get("uniqueStudentUsers") instanceof Number n) {
+            dto.setCurrentStudentUsers(n.intValue());
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -570,7 +728,15 @@ public class AnalyticsAuditService {
         if (summary == null) {
             return 0L;
         }
-        long v = toLong(summary.get("totalOccupiedSlots"));
+        long v = toLong(summary.get("totalEvents"));
+        if (v > 0) {
+            return v;
+        }
+        v = toLong(summary.get("totalSets"));
+        if (v > 0) {
+            return v;
+        }
+        v = toLong(summary.get("totalOccupiedSlots"));
         if (v > 0) {
             return v;
         }

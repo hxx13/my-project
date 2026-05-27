@@ -22,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.example.demo.common.time.BusinessTimeWindow;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
 
 import org.slf4j.Logger;
@@ -47,6 +48,9 @@ public class TwinApiController {
 
     @Autowired
     private TwinDashboardMapper dashboardMapper;
+
+    @Autowired
+    private BusinessTimeWindow businessTimeWindow;
 
     @Autowired
     private TwinAutomationLogService twinAutomationLogService;
@@ -129,16 +133,19 @@ public class TwinApiController {
             @RequestParam(defaultValue = "15") int limit,
             @RequestParam(defaultValue = "浦东") String areaName) { // 🟢 1. 核心修改：增加 areaName 参数，默认值为“浦东”
         // 2. 🟢 核心修改：将 areaName 传给 Mapper 进行数据库过滤
-        List<Map<String, Object>> rawWarnings = dashboardMapper.getActiveRetentionWarnings(limit, areaName);
+        BusinessTimeWindow.Window day = businessTimeWindow.todayWindow();
+        List<Map<String, Object>> rawWarnings = dashboardMapper.getActiveRetentionWarnings(
+                limit, areaName, day.startInclusive(), day.endExclusive());
         List<Map<String, Object>> processedData = new ArrayList<>();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        java.time.ZoneId zone = businessTimeWindow.getZoneId();
         for (Map<String, Object> warning : rawWarnings) {
             try {
                 // A. 解析入场时间
                 String enterTimeStr = (String) warning.get("enterTime");
                 LocalDateTime realEntryTime = LocalDateTime.parse(enterTimeStr.substring(0, 19), formatter);
-                // B. 获取当前服务器绝对时间
-                LocalDateTime currentNow = LocalDateTime.now();
+                // B. 业务时区当前时刻（与流水日界一致）
+                LocalDateTime currentNow = LocalDateTime.now(zone);
                 // 从 SQL 中提取预估画像数据
                 Object medianObj = warning.get("aiDurationMins");
                 Object probObj = warning.get("aiOvertimeProb");
@@ -146,8 +153,20 @@ public class TwinApiController {
                 double prob = probObj != null ? ((Number) probObj).doubleValue() : 0.0;
                 // C. 喂给引擎计算智能离开时间
                 // 引擎内部的“软天花板”逻辑对全校区通用
+                boolean authorized = false;
+                Object permObj = warning.get("hasOfficialRoomPermission");
+                if (permObj == null) permObj = warning.get("has_official_room_permission");
+                if (permObj instanceof Number) {
+                    authorized = ((Number) permObj).intValue() == 1;
+                } else if (permObj != null) {
+                    String ps = String.valueOf(permObj);
+                    authorized = "1".equals(ps) || "true".equalsIgnoreCase(ps);
+                }
+                if (!authorized && warning.get("userId") != null) {
+                    authorized = predictionEngineService.isUserOfficialAuthorized(String.valueOf(warning.get("userId")));
+                }
                 LocalDateTime smartExitTime = predictionEngineService.calculateSmartExitTime(
-                        realEntryTime, medianMins, prob, currentNow
+                        realEntryTime, medianMins, prob, currentNow, authorized
                 );
                 // D. 算出被引力压缩或滑动延期后的最终分钟数
                 long finalAiDurationMins = Duration.between(realEntryTime, smartExitTime).toMinutes();

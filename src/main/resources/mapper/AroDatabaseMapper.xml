@@ -105,4 +105,28 @@
               ) r
     </select>
 
+    <select id="findTodayUnexitedEntersForUser" resultType="map">
+        SELECT log.id AS id,
+               log.user_id AS userId,
+               log.name AS name,
+               log.room_id AS roomId,
+               log.room_name AS roomName,
+               log.area_name AS areaName,
+               log.floor_name AS floorName,
+               log.project_group_names AS projectGroupNames,
+               log.create_time AS enterTime
+        FROM aro_access_log log
+        WHERE log.user_id = #{userId}
+          AND log.accessType = 1
+          AND log.create_time &gt;= CONCAT(CURDATE(), ' 00:00:00')
+          AND NOT EXISTS (
+              SELECT 1
+              FROM aro_access_log out_log
+              WHERE out_log.user_id = log.user_id
+                AND out_log.room_id = log.room_id
+                AND out_log.accessType IN (2, 3)
+                AND out_log.create_time &gt; log.create_time
+          )
+    </select>
+
 </mapper>

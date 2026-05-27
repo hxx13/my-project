@@ -37,6 +37,13 @@ skills:
     status: "completed"
     priority: 2
 
+  accessfusion:
+    name: "门禁清洗与统计投喂"
+    path: "skills/modules/accessfusion/skill-accessfusion.yaml"
+    package: "com.example.demo.modules.accessfusion"
+    status: "completed"
+    priority: 2
+
   pagepermission:
     name: "页面权限（Web/小程序）"
     path: "skills/modules/pagepermission/skill-pagepermission.yaml"

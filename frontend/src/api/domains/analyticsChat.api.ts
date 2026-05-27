@@ -46,11 +46,18 @@ export async function fetchAnalyticsChatSessions(reportKey: AnalyticsReportKey, 
   return parseResult<AnalyticsChatSession[]>(res);
 }
 
-export async function createAnalyticsChatSession(reportKey: AnalyticsReportKey, viewId: number, title?: string) {
+export async function createAnalyticsChatSession(
+  reportKey: AnalyticsReportKey,
+  options: { viewId: number; title?: string } | { auditLogId: number; title?: string }
+) {
+  const body =
+    "auditLogId" in options
+      ? { reportKey, auditLogId: options.auditLogId, title: options.title }
+      : { reportKey, viewId: options.viewId, title: options.title };
   const res = await fetch("/api/v1/analytics/chat/sessions", {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
-    body: JSON.stringify({ reportKey, viewId, title }),
+    body: JSON.stringify(body),
   });
   return parseResult<AnalyticsChatSession>(res);
 }

@@ -100,6 +100,22 @@
         LIMIT #{limit}
     </select>
 
+    <select id="selectActiveForDashboardBoard" resultMap="TwinStudentViolationMap">
+        SELECT *
+        FROM twin_student_violation
+        WHERE status = 'ACTIVE'
+          AND (expire_at IS NULL OR expire_at &gt; NOW())
+          AND id IN (
+              SELECT MAX(id)
+              FROM twin_student_violation
+              WHERE status = 'ACTIVE'
+                AND (expire_at IS NULL OR expire_at &gt; NOW())
+              GROUP BY target_user_id
+          )
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{limit}
+    </select>
+
     <select id="selectById" resultMap="TwinStudentViolationMap">
         SELECT * FROM twin_student_violation WHERE id = #{id}
     </select>

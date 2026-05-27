@@ -138,6 +138,8 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     const toasterResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const exitNoticeFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const entryModeAtExecuteRef = useRef<"OWN" | "BORROWED" | null>(null);
+    /** 每次进/出成功只处理一次，避免 onRefresh 改 currentState 后重复 invalidate roomOverview */
+    const executeSuccessHandledKeyRef = useRef<string | null>(null);
 
     const { data: runtimeConfig = {} } = useQuery({
         queryKey: ["public-runtime-config"],
@@ -232,6 +234,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     useEffect(() => {
         if (!executeData?.success) {
             lastExecutedActionRef.current = null;
+            executeSuccessHandledKeyRef.current = null;
         }
     }, [executeData?.success]);
 
@@ -284,7 +287,18 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         const successAction: "ENTER" | "EXIT" =
             lastExecutedActionRef.current ?? (currentState === "INSIDE" ? "EXIT" : "ENTER");
         const modeForNotice = entryModeAtExecuteRef.current ?? entryMode;
+        const executeKey = [
+            successAction,
+            executeData?.message ?? "",
+            executeData?.expAdded ?? "",
+            actedRoomId ?? autoActionRoomId ?? "",
+        ].join("|");
+        if (executeSuccessHandledKeyRef.current === executeKey) {
+            return;
+        }
+        executeSuccessHandledKeyRef.current = executeKey;
 
+        // 保存后仅合并容量概览，禁止整表轮询；见 post-save-no-full-refresh.mdc
         queryClient.invalidateQueries({ queryKey: ["roomOverview"] }).catch(() => undefined);
         const gainedExp = getExpGainFromResult(executeData);
         if (gainedExp > 0) {
@@ -451,8 +465,9 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     const handleRoomClick = (room: RoomInfo, index: number) => {
         if (!user || isWorking || actedRoomId || isRefreshing) return;
         if (isExecuteSuccess && lastExecutedActionRef.current === action) return;
-        if (isRoomLocked(room)) return;
-        if (globalUserState === 3) {
+        if (action === "ENTER" && isEnterLocked(room)) return;
+        if (action === "EXIT" && isExitLocked(room)) return;
+        if (action === "ENTER" && globalUserState === 3) {
             setShowRiskModal(true);
             return;
         }
@@ -495,16 +510,19 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         return Number(byId.total || 0) > 0 && Number(byId.count || 0) >= Number(byId.total || 0);
     };
 
-    const isRoomLocked = (room: RoomInfo) =>
+    /** 非开放时段等仅限制进入；离开仅在校验异常时禁用 */
+    const isEnterLocked = (room: RoomInfo) =>
         Boolean(
             isStateUnknown ||
-                (action === "ENTER" && room.enterBlocked) ||
-                (action === "ENTER" && room.isDisabled) ||
+                room.enterBlocked ||
+                room.isDisabled ||
                 globalUserState === 3 ||
-                (action === "ENTER" && isRoomFull(room)) ||
-                (action === "ENTER" && entryTimeBlocked) ||
-                (action === "ENTER" && enterLocked)
+                isRoomFull(room) ||
+                entryTimeBlocked ||
+                enterLocked
         );
+    const isExitLocked = (room: RoomInfo) => Boolean(isStateUnknown);
+    const isRoomLocked = (room: RoomInfo) => (action === "ENTER" ? isEnterLocked(room) : isExitLocked(room));
     const getButtonText = (room: RoomInfo, roomId: string): string => {
         const isActed = actedRoomId === roomId || autoActionRoomId === roomId;
         const isFinished = finishedRooms.includes(roomId);
@@ -513,7 +531,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             if (isSameActionSuccess || isFinished) return "已完成";
         }
         if (isStateUnknown) return "状态同步异常，请重试";
-        if (globalUserState === 3) return action === "EXIT" ? `[滞留封禁] 无法操作 ${room.displayName}` : `[已封禁] 拒绝进入 ${room.displayName}`;
+        if (action === "ENTER" && globalUserState === 3) return `[已封禁] 拒绝进入 ${room.displayName}`;
         if (action === "ENTER" && isRoomFull(room)) return `[满员] 无法进入 ${room.displayName}`;
         if (action === "ENTER" && entryTimeBlocked) return `[非开放时段] 无法进入 ${room.displayName}`;
         if (action === "ENTER" && unboundEnterLocked) return `[未绑卡] 禁止进入 ${room.displayName}`;
@@ -556,6 +574,8 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             setKeepCardState,
             clearInlineMessage: () => setInlineMessage(""),
             getKeepCardState: (index) => Boolean(keepCardStates[index]),
+            isEnterLocked,
+            isExitLocked,
             isRoomLocked,
             getButtonText,
             dismissAccessNotice,

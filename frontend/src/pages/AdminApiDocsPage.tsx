@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { fetchAdminApiDocs, type ApiDocItem } from "@/api/domains/docs.api";
 import { authStorage } from "@/features/auth/authStorage";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 
 type TryState = {
   values: Record<string, string>;
@@ -70,12 +71,9 @@ export default function AdminApiDocsPage() {
   }, [filtered]);
 
   const copyText = async (text: string, success: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success(success);
-    } catch {
-      toast.error("复制失败，请手动复制");
-    }
+    const ok = await copyTextToClipboard(text);
+    if (ok) toast.success(success);
+    else toast.error("复制失败，请手动复制");
   };
 
   const buildCurl = (it: ApiDocItem) => {

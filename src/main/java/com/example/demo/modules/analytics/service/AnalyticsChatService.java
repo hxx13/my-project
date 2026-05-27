@@ -1,11 +1,14 @@
 package com.example.demo.modules.analytics.service;
 
+import com.example.demo.modules.analytics.entity.AnalyticsAuditLog;
 import com.example.demo.modules.analytics.entity.AnalyticsChatMessage;
 import com.example.demo.modules.analytics.entity.AnalyticsChatSession;
 import com.example.demo.modules.analytics.entity.AnalyticsUserView;
+import com.example.demo.modules.analytics.mapper.AnalyticsAuditLogMapper;
 import com.example.demo.modules.analytics.mapper.AnalyticsChatMessageMapper;
 import com.example.demo.modules.analytics.mapper.AnalyticsChatSessionMapper;
 import com.example.demo.modules.analytics.mapper.AnalyticsUserViewMapper;
+import com.example.demo.modules.llm.LlmInsightModules;
 import com.example.demo.modules.llm.service.DashScopeChatClient;
 import com.example.demo.modules.llm.service.LlmConfigService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,18 +35,9 @@ public class AnalyticsChatService {
     private static final int SESSION_LIST_LIMIT = 50;
     private static final int MESSAGE_LIMIT = 200;
 
-    private static final String SYSTEM_PROMPT =
-            """
-            你是实验室隔离服使用统计的分析助手。用户会基于已封箱数据提问：可能含多条统计配置（views[]），每条配置下有各期清算（periods[]），含轮次、环比、课题组/地区房间汇总。
-            要求：
-            1. 用中文回答，结构清晰，可用小标题与列表。
-            2. 必须基于提供的 JSON 推断，不得编造；跨配置对比时写明 viewName。
-            3. 回答异常月份、耗量峰值、地区/房间/课题组等问题时，引用 viewName（若适用）、periodLabel 与字段名。
-            4. 不要输出 JSON，除非用户明确要求。
-            """;
-
     private final AnalyticsChatSessionMapper sessionMapper;
     private final AnalyticsChatMessageMapper messageMapper;
+    private final AnalyticsAuditLogMapper auditLogMapper;
     private final AnalyticsUserViewMapper viewMapper;
     private final AnalyticsChatContextService contextService;
     private final DashScopeChatClient chatClient;
@@ -54,6 +48,7 @@ public class AnalyticsChatService {
     public AnalyticsChatService(
             AnalyticsChatSessionMapper sessionMapper,
             AnalyticsChatMessageMapper messageMapper,
+            AnalyticsAuditLogMapper auditLogMapper,
             AnalyticsUserViewMapper viewMapper,
             AnalyticsChatContextService contextService,
             DashScopeChatClient chatClient,
@@ -62,6 +57,7 @@ public class AnalyticsChatService {
             @Qualifier("heavyCalcExecutor") Executor heavyCalcExecutor) {
         this.sessionMapper = sessionMapper;
         this.messageMapper = messageMapper;
+        this.auditLogMapper = auditLogMapper;
         this.viewMapper = viewMapper;
         this.contextService = contextService;
         this.chatClient = chatClient;
@@ -88,6 +84,37 @@ public class AnalyticsChatService {
         row.setContextJson(contextJson);
         sessionMapper.insert(row);
         return toSessionSummary(row);
+    }
+
+    /** AI 解读弹窗内针对单条清算快照的追问会话。 */
+    public Map<String, Object> createSessionForAuditLog(
+            String userId, String reportKey, long auditLogId, String title) {
+        AnalyticsAuditLog auditRow = requireAuditLog(userId, auditLogId);
+        String resolvedKey =
+                auditRow.getReportKey() != null ? auditRow.getReportKey().trim() : LlmInsightModules.ISOLATION_USAGE;
+        if (StringUtils.hasText(reportKey)
+                && !resolvedKey.equals(reportKey.trim())) {
+            throw new IllegalArgumentException("清算记录与报表类型不一致");
+        }
+        String contextJson = contextService.buildContextJsonForAuditLog(userId, auditLogId);
+        String label = auditRow.getViewName() + " · " + auditRow.getPeriodLabel();
+        AnalyticsChatSession row = new AnalyticsChatSession();
+        row.setUserId(userId);
+        row.setReportKey(resolvedKey);
+        row.setViewId(auditRow.getViewId());
+        row.setViewName(label);
+        row.setTitle(StringUtils.hasText(title) ? title.trim() : "解读追问");
+        row.setContextJson(contextJson);
+        sessionMapper.insert(row);
+        return toSessionSummary(row);
+    }
+
+    private AnalyticsAuditLog requireAuditLog(String userId, long auditLogId) {
+        AnalyticsAuditLog row = auditLogMapper.selectById(auditLogId);
+        if (row == null || !userId.equals(row.getUserId())) {
+            throw new IllegalArgumentException("清算记录不存在");
+        }
+        return row;
     }
 
     private String resolveSessionViewName(String userId, long viewId, String reportKey) {
@@ -132,7 +159,16 @@ public class AnalyticsChatService {
         llmConfigService.assertReady();
 
         if (refreshContext) {
-            String fresh = contextService.buildContextJson(userId, session.getViewId(), session.getReportKey());
+            String fresh;
+            if (contextService.isSingleAuditLogContext(session.getContextJson())) {
+                Long aid = contextService.auditLogIdFromContext(session.getContextJson());
+                if (aid == null) {
+                    throw new IllegalStateException("会话上下文缺少 auditLogId");
+                }
+                fresh = contextService.buildContextJsonForAuditLog(userId, aid);
+            } else {
+                fresh = contextService.buildContextJson(userId, session.getViewId(), session.getReportKey());
+            }
             sessionMapper.updateContext(sessionId, userId, fresh);
             session.setContextJson(fresh);
         }
@@ -162,7 +198,7 @@ public class AnalyticsChatService {
         StringBuilder answer = new StringBuilder();
         AtomicReference<String> modelUsed = new AtomicReference<>();
         try {
-            emitThinkingSteps(emitter, thinking, userContent, session);
+            appendThinking(thinking, emitter, "正在根据封箱数据组织回答…");
             List<Map<String, String>> messages = buildLlmMessages(session, userContent);
             chatClient.streamChatWithFallback(
                     messages,
@@ -204,38 +240,26 @@ public class AnalyticsChatService {
         }
     }
 
-    private void emitThinkingSteps(
-            SseEmitter emitter, StringBuilder thinking, String userContent, AnalyticsChatSession session)
-            throws InterruptedException {
-        boolean allViews = contextService.isReportScope(session.getViewId());
-        String[] steps = {
-            allViews
-                    ? "正在封箱全部统计配置下的多期清算数据…"
-                    : "正在加载封箱统计数据（配置：" + session.getViewName() + "）…",
-            "解析用户问题：" + abbreviate(userContent, 60),
-            allViews
-                    ? "横向比对各配置、各期 currentRounds / deltaPct，定位异常与峰值…"
-                    : "横向比对各期 currentRounds / deltaPct，定位异常与峰值月份…",
-            "汇总 byProjectGroup（课题组）与 byRegion（地区/房间）排名…",
-            "组织结论与可操作建议…"
-        };
-        for (String step : steps) {
-            if (thinking.length() > 0) {
-                thinking.append("\n");
-            }
-            thinking.append(step);
-            sendEvent(emitter, "thinking", Map.of("text", step, "append", true));
-            Thread.sleep(280);
+    private void appendThinking(StringBuilder thinking, SseEmitter emitter, String step) {
+        if (thinking.length() > 0) {
+            thinking.append("\n");
         }
+        thinking.append(step);
+        sendEvent(emitter, "thinking", Map.of("text", step, "append", true));
     }
 
     private List<Map<String, String>> buildLlmMessages(AnalyticsChatSession session, String userContent) {
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", SYSTEM_PROMPT));
+        String rk = session.getReportKey() != null ? session.getReportKey().trim() : LlmInsightModules.ISOLATION_USAGE;
+        messages.add(Map.of("role", "system", "content", LlmInsightModules.defaultChatSystemPrompt(rk)));
         messages.add(Map.of(
                 "role", "system",
                 "content",
                 "以下为封箱的统计数据 JSON（仅作分析依据）：\n" + session.getContextJson()));
+        String periodIndex = contextService.buildPeriodIndexHint(session.getContextJson());
+        if (StringUtils.hasText(periodIndex)) {
+            messages.add(Map.of("role", "system", "content", periodIndex));
+        }
 
         List<AnalyticsChatMessage> history =
                 messageMapper.selectBySession(session.getId(), MESSAGE_LIMIT);

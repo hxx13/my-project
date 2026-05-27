@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessCleanExecutionLogMapper">
+
+    <sql id="logColumns">
+        id, stats_pull_task_id AS statsPullTaskId, clean_rule_profile_id AS cleanRuleProfileId,
+        DATE_FORMAT(execution_date, '%Y-%m-%d') AS executionDate,
+        DATE_FORMAT(coverage_day, '%Y-%m-%d') AS coverageDay,
+        channel_code AS channelCode,
+        DATE_FORMAT(window_start, '%Y-%m-%d %H:%i:%s') AS windowStart,
+        DATE_FORMAT(window_end, '%Y-%m-%d %H:%i:%s') AS windowEnd,
+        channel_codes_json AS channelCodesJson, status,
+        total_scanned AS totalScanned, included_count AS includedCount,
+        excluded_count AS excludedCount, review_count AS reviewCount,
+        config_snapshot_json AS configSnapshotJson, note_text AS noteText,
+        DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+        DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_clean_execution_log (
+            stats_pull_task_id, clean_rule_profile_id, execution_date, coverage_day, channel_code,
+            window_start, window_end, channel_codes_json, status,
+            total_scanned, included_count, excluded_count, review_count,
+            config_snapshot_json, note_text
+        ) VALUES (
+            #{statsPullTaskId}, #{cleanRuleProfileId}, #{executionDate}, #{coverageDay}, #{channelCode},
+            #{windowStart}, #{windowEnd}, #{channelCodesJson}, #{status},
+            #{totalScanned}, #{includedCount}, #{excludedCount}, #{reviewCount},
+            #{configSnapshotJson}, #{noteText}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE access_clean_execution_log SET
+            execution_date = #{executionDate},
+            coverage_day = #{coverageDay},
+            channel_code = #{channelCode},
+            window_start = #{windowStart},
+            window_end = #{windowEnd},
+            status = #{status},
+            total_scanned = #{totalScanned},
+            included_count = #{includedCount},
+            excluded_count = #{excludedCount},
+            review_count = #{reviewCount},
+            config_snapshot_json = #{configSnapshotJson},
+            note_text = #{noteText}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanExecutionLog">
+        SELECT <include refid="logColumns"/> FROM access_clean_execution_log WHERE id = #{id}
+    </select>
+
+    <select id="selectByTaskChannelDay" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanExecutionLog">
+        SELECT <include refid="logColumns"/> FROM access_clean_execution_log
+        WHERE stats_pull_task_id = #{statsPullTaskId}
+          AND channel_code = #{channelCode}
+          AND coverage_day = #{coverageDay}
+          AND (config_snapshot_json IS NULL OR config_snapshot_json NOT LIKE '%"logType":"BATCH_SUMMARY"%')
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
+
+    <sql id="logFilter">
+        <where>
+            <if test="statsPullTaskId != null">AND stats_pull_task_id = #{statsPullTaskId}</if>
+            <if test="cleanRuleProfileId != null">AND clean_rule_profile_id = #{cleanRuleProfileId}</if>
+            <if test="executionDate != null and executionDate != ''">AND execution_date = #{executionDate}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+        </where>
+    </sql>
+
+    <select id="selectByFilter" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanExecutionLog">
+        SELECT <include refid="logColumns"/> FROM access_clean_execution_log
+        <include refid="logFilter"/>
+        ORDER BY COALESCE(coverage_day, execution_date) DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countByFilter" resultType="int">
+        SELECT COUNT(*) FROM access_clean_execution_log <include refid="logFilter"/>
+    </select>
+
+    <delete id="deleteById">DELETE FROM access_clean_execution_log WHERE id = #{id}</delete>
+
+    <delete id="deleteAll">DELETE FROM access_clean_execution_log</delete>
+
+    <update id="refreshCountsFromItems">
+        UPDATE access_clean_execution_log el SET
+            total_scanned = (
+                SELECT COUNT(*) FROM access_clean_package_item i
+                WHERE JSON_CONTAINS(el.config_snapshot_json, CAST(i.last_run_id AS JSON), '$.lastRunId')
+            )
+        WHERE el.id = #{executionLogId}
+    </update>
+</mapper>

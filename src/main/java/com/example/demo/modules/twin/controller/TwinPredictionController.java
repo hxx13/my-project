@@ -5,6 +5,7 @@ import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.service.JobExecutionRegistry;
 import com.example.demo.modules.twin.service.JobSchedulerService;
 import com.example.demo.modules.twin.service.RoomConfigService;
+import com.example.demo.modules.twin.service.PredictionDebugAssemblerService;
 import com.example.demo.modules.twin.service.TwinPredictionEngineService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,6 +36,9 @@ public class TwinPredictionController {
     private RoomConfigService roomConfigService;
     @Autowired
     private JobSchedulerService jobSchedulerService;
+
+    @Autowired
+    private PredictionDebugAssemblerService predictionDebugAssembler;
 
     /**
      * 🛠️ 接口 1：手动触发模型重算 (后台调试用)
@@ -133,20 +137,33 @@ public class TwinPredictionController {
         return "请查看 IDEA / 服务器后端控制台，预测面板已生成！";
     }
     /**
-     * 🖥️ 接口 3：为前端控制台提供预测数据分页列表
+     * 为前端 Debug 预测库提供按人分页列表（排序与 aro_personnel 档案库一致，房间内嵌聚合）。
      */
     @GetMapping("/admin/list")
-    @Operation(summary = "分页查询预测结果")
+    @Operation(summary = "分页查询预测结果（按人聚合）")
     public Map<String, Object> getPredictionList(@RequestParam(defaultValue = "1") int page,
-                                                 @RequestParam(defaultValue = "100") int size,
+                                                 @RequestParam(defaultValue = "16") int size,
                                                  @RequestParam(required = false, defaultValue = "") String keyword) {
         int offset = (page - 1) * size;
-        // 把 keyword 传给 Mapper
-        List<Map<String, Object>> list = dashboardMapper.getDebugPredictionList(keyword, size, offset);
-        int total = dashboardMapper.getPredictionTotalCount(keyword);
+        String kw = keyword != null ? keyword.trim() : "";
+        List<Map<String, Object>> userPage = dashboardMapper.getDebugPredictionUserPage(kw, size, offset);
+        int total = dashboardMapper.getDebugPredictionUserTotal(kw);
+
+        List<String> userIds = new ArrayList<>();
+        for (Map<String, Object> u : userPage) {
+            Object id = u.get("user_id");
+            if (id != null && !String.valueOf(id).isBlank()) {
+                userIds.add(String.valueOf(id).trim());
+            }
+        }
+
+        List<Map<String, Object>> predictionRows = userIds.isEmpty()
+                ? List.of()
+                : dashboardMapper.getDebugPredictionByUserIds(userIds);
+        List<Map<String, Object>> assembled = predictionDebugAssembler.assembleUserPage(userPage, predictionRows);
 
         Map<String, Object> result = new HashMap<>();
-        result.put("data", list);
+        result.put("data", assembled);
         result.put("total", total);
 
         Map<String, Object> response = new HashMap<>();

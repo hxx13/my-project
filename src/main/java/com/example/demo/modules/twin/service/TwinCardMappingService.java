@@ -1,5 +1,6 @@
 package com.example.demo.modules.twin.service;
 
+import com.example.demo.common.time.BusinessTimeWindow;
 import com.example.demo.modules.twin.entity.TwinCardMapping;
 import com.example.demo.modules.twin.mapper.TwinCardMappingMapper;
 import com.example.demo.modules.twin.support.FreezeReaperAuditContext;
@@ -32,6 +33,9 @@ public class TwinCardMappingService {
     @Autowired
     private TwinCardMappingMapper mappingMapper;
 
+    @Autowired
+    private BusinessTimeWindow businessTimeWindow;
+
     // 💥 注入大华硬件物理控制中枢
     @Autowired
     private com.example.demo.modules.dahua.service.DahuaHardwareService dahuaHardwareService;
@@ -39,6 +43,10 @@ public class TwinCardMappingService {
     @Lazy
     @Autowired
     private TwinAutomationLogService twinAutomationLogService;
+
+    @Lazy
+    @Autowired
+    private DahuaAutoSignoutService dahuaAutoSignoutService;
 
     // 🚨 核心防爆盾：双向极速索引缓存 (ConcurrentHashMap 保证线程安全)
     private final Map<String, TwinCardMapping> cardNoCache = new ConcurrentHashMap<>();
@@ -510,11 +518,210 @@ public class TwinCardMappingService {
         try {
             int rows = mappingMapper.revokeExpiredExemptionsByExpireAt();
             if (rows > 0) {
-                syncCacheExpiredExemptFlags();
+                syncCacheClearedExemptFlags();
                 log.info("[豁免时效] 已自动收回 {} 份到期豁免", rows);
             }
         } catch (Exception e) {
             log.warn("[豁免时效] 到期收回失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 定时管理「每日豁免回收」：
+     * <ul>
+     *   <li>无条件收回当前 flag=1 的豁免；</li>
+     *   <li>仅当 {@code autoSignoutOnRevoke}（定时管理任务配置，与冻结总开关无关）时，
+     *       对<strong>今日曾豁免</strong>且<strong>今日流水仍判定在馆</strong>者执行自动签离；</li>
+     *   <li>未申请豁免的滞留者、流水已离开者、时效到期自动收回者均不签离。</li>
+     * </ul>
+     *
+     * @return [0]=收回条数 [1]=自动签离成功数
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public int[] runDailyExemptMaintenance(boolean autoSignoutOnRevoke) {
+        List<TwinCardMapping> exemptedToday;
+        try {
+            exemptedToday = mappingMapper.findMappingsExemptedToday();
+        } catch (Exception e) {
+            log.error("[豁免回收] 查询今日豁免轨迹失败: {}", e.getMessage());
+            throw e;
+        }
+        if (exemptedToday == null) {
+            exemptedToday = List.of();
+        }
+
+        List<TwinCardMapping> activeBefore;
+        try {
+            activeBefore = mappingMapper.findAllActiveExemptions();
+        } catch (Exception e) {
+            log.error("[豁免回收] 查询生效豁免失败: {}", e.getMessage());
+            throw e;
+        }
+        if (activeBefore == null) {
+            activeBefore = List.of();
+        }
+
+        int revoked = 0;
+        if (!activeBefore.isEmpty()) {
+            try {
+                revoked = mappingMapper.forceRevokeAllActiveExemptions();
+            } catch (Exception e) {
+                log.error("[豁免回收] 兜底收回失败: {}", e.getMessage());
+                throw e;
+            }
+            syncCacheAfterForceRevoke(activeBefore);
+            for (TwinCardMapping snap : activeBefore) {
+                writeScheduledExemptRevokeLog(snap);
+            }
+        } else {
+            log.info("[豁免回收] 库中无 freeze_exempt_flag=1，无需收回");
+        }
+
+        int signoutOk = 0;
+        int signoutFail = 0;
+        int signoutSkippedNoUser = 0;
+        int signoutSkippedNotInside = 0;
+        if (!autoSignoutOnRevoke) {
+            log.info("[豁免回收] 兜底收回={}；定时任务未开启「回收后自动签离」（twin_job_schedule_config.revoke_auto_signout_enabled）",
+                    revoked);
+            return new int[] {revoked, signoutOk};
+        }
+        if (exemptedToday.isEmpty()) {
+            log.info("[豁免回收] 兜底收回={}；今日无豁免授予记录，跳过签离", revoked);
+            return new int[] {revoked, signoutOk};
+        }
+
+        java.util.Set<String> stillInside = new java.util.HashSet<>();
+        BusinessTimeWindow.Window day = businessTimeWindow.todayWindow();
+        List<String> insideIds = mappingMapper.findTodayStillInsideUserIdsByAccessLog(
+                day.startInclusive(), day.endExclusive());
+        if (insideIds != null) {
+            for (String id : insideIds) {
+                if (id != null && !id.isBlank()) {
+                    stillInside.add(id.trim());
+                }
+            }
+        }
+
+        for (TwinCardMapping snap : exemptedToday) {
+            String userId = snap.getAroUserId();
+            if (userId == null || userId.isBlank()) {
+                signoutSkippedNoUser++;
+                log.warn("[豁免回收] 今日曾豁免但无法签离：aro_user_id 为空，卡号={}", nullToDash(snap.getCardNo()));
+                continue;
+            }
+            String uid = userId.trim();
+            if (!stillInside.contains(uid)) {
+                signoutSkippedNotInside++;
+                log.info("[豁免回收] 跳过签离 userId={}：今日曾豁免但流水已离开或未进入（非滞留）", uid);
+                continue;
+            }
+            try {
+                if (dahuaAutoSignoutService.autoSignout(
+                        uid,
+                        "TIMER",
+                        TwinAutomationLogService.TRIGGER_DAILY_EXEMPT_REVOKE_AUTO_SIGNOUT,
+                        buildExemptRevokeSignoutDetail(snap))) {
+                    signoutOk++;
+                } else {
+                    signoutFail++;
+                    log.warn("[豁免回收] 自动签离未成功 userId={} 卡号={}（详见自动化日志）",
+                            uid, nullToDash(snap.getCardNo()));
+                }
+            } catch (Exception e) {
+                signoutFail++;
+                log.warn("[豁免回收] 自动签离异常 userId={}: {}", uid, e.getMessage());
+            }
+        }
+        log.info("[豁免回收] 兜底收回={} 今日曾豁免={} 流水在馆={} 签离成功={} 失败={} 跳过(无userId)={} 跳过(已离开)={}",
+                revoked, exemptedToday.size(), stillInside.size(), signoutOk, signoutFail,
+                signoutSkippedNoUser, signoutSkippedNotInside);
+        return new int[] {revoked, signoutOk};
+    }
+
+    private void writeScheduledExemptRevokeLog(TwinCardMapping snap) {
+        String userId = snap.getAroUserId() != null ? snap.getAroUserId().trim() : null;
+        String name = snap.getUserName() != null ? snap.getUserName().trim() : "";
+        String detail = "定时兜底收回冻结豁免（无视豁免时效、授予日与流水规则）。"
+                + "姓名=" + (name.isEmpty() ? "-" : name)
+                + "，卡号=" + nullToDash(snap.getCardNo())
+                + "，授予日=" + nullToDash(snap.getFreezeExemptGrantDate())
+                + "，授予时间=" + nullToDash(snap.getExemptGrantedAt())
+                + "，原到期=" + nullToDash(snap.getFreezeExemptExpireAt());
+        twinAutomationLogService.write(
+                TwinAutomationLogService.TYPE_EXEMPTION,
+                TwinAutomationLogService.EVENT_EXEMPT_REVOKED,
+                "TIMER",
+                TwinAutomationLogService.TRIGGER_DAILY_EXEMPT_RESET_FALLBACK,
+                userId,
+                snap.getCardNo(),
+                true,
+                detail,
+                "job-daily-exempt-reset");
+    }
+
+    private static String buildExemptRevokeSignoutDetail(TwinCardMapping snap) {
+        return "因定时兜底收回豁免，按配置执行自动签离。卡号=" + nullToDash(snap.getCardNo())
+                + "，原到期=" + nullToDash(snap.getFreezeExemptExpireAt());
+    }
+
+    private static String nullToDash(String v) {
+        return v == null || v.isBlank() ? "-" : v.trim();
+    }
+
+    private void syncCacheAfterForceRevoke(List<TwinCardMapping> revoked) {
+        for (TwinCardMapping snap : revoked) {
+            if (snap == null) {
+                continue;
+            }
+            clearExemptFieldsInCache(snap.getAroUserId(), snap.getCardNo());
+        }
+    }
+
+    private void clearExemptFieldsInCache(String aroUserId, String cardNo) {
+        if (aroUserId != null && !aroUserId.isBlank()) {
+            TwinCardMapping m = userIdCache.get(aroUserId.trim());
+            if (m != null) {
+                m.setFreezeExemptFlag(0);
+                m.setFreezeExemptGrantDate(null);
+                m.setExemptGrantedAt(null);
+                m.setFreezeExemptExpireAt(null);
+                m.setLastModifiedTime(getCurrentTime());
+            }
+        }
+        if (cardNo != null && !cardNo.isBlank()) {
+            String key = cardNo.trim();
+            for (String k : List.of(key, key.toUpperCase(), key.toLowerCase())) {
+                TwinCardMapping m = cardNoCache.get(k);
+                if (m != null) {
+                    m.setFreezeExemptFlag(0);
+                    m.setFreezeExemptGrantDate(null);
+                    m.setExemptGrantedAt(null);
+                    m.setFreezeExemptExpireAt(null);
+                    m.setLastModifiedTime(getCurrentTime());
+                }
+            }
+        }
+    }
+
+    /** 将缓存中仍为豁免态的条目与库对齐（收回后 flag 应为 0）。 */
+    private void syncCacheClearedExemptFlags() {
+        for (TwinCardMapping m : userIdCache.values()) {
+            if (m == null || m.getFreezeExemptFlag() == null || m.getFreezeExemptFlag() != 1) {
+                continue;
+            }
+            String uid = m.getAroUserId();
+            if (uid == null || uid.isBlank()) {
+                continue;
+            }
+            TwinCardMapping db = mappingMapper.findByAroUserId(uid.trim());
+            if (db == null || db.getFreezeExemptFlag() == null || db.getFreezeExemptFlag() != 1) {
+                m.setFreezeExemptFlag(0);
+                m.setFreezeExemptGrantDate(null);
+                m.setExemptGrantedAt(null);
+                m.setFreezeExemptExpireAt(null);
+                m.setLastModifiedTime(getCurrentTime());
+            }
         }
     }
 
@@ -549,6 +756,9 @@ public class TwinCardMappingService {
     public int resetDailyExemptions() {
         try {
             int rows = mappingMapper.resetDailyExemptions();
+            if (rows > 0) {
+                syncCacheClearedExemptFlags();
+            }
             System.out.println("🧹 [系统自检] 每日豁免权洗刷完成，共收回 " + rows + " 份过期特权。");
             return rows;
         } catch (Exception e) {
@@ -595,6 +805,7 @@ public class TwinCardMappingService {
         try {
             int revokedCount = mappingMapper.revokeExpiredExemptionsByTodayKeepCard();
             if (revokedCount > 0) {
+                syncCacheClearedExemptFlags();
                 System.out.println("🚨 [风控纠偏] 发现并褫夺了 " + revokedCount + " 份昨天的过期豁免权！系统状态已绝对对齐。");
             } else {
                 System.out.println("✅ [风控纠偏] 当前系统中所有豁免权均合法有效，无过期特权泄漏。");

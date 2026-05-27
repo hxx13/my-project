@@ -27,6 +27,9 @@ public interface TwinStudentViolationMapper {
             @Param("limit") int limit
     );
 
+    /** 主页大屏公示：仅 ACTIVE 且未过期，每人最新一条；按创建时间倒序 */
+    List<TwinStudentViolation> selectActiveForDashboardBoard(@Param("limit") int limit);
+
     TwinStudentViolation selectById(@Param("id") long id);
 
     int updateEditableById(TwinStudentViolation row);

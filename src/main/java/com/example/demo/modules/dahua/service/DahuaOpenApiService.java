@@ -10,7 +10,9 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -106,12 +108,104 @@ public class DahuaOpenApiService {
     }
 
     /**
+     * 写入大华 combined 刷卡记录查询的刷卡时间窗（与官方请求示例一致：仅 start/endSwingTime）。
+     * 历史回溯分段上界常为次日 00:00:00，此处换算为上一自然日 23:59:59，避免漏掉段内最后一天。
+     */
+    public static void applySwingRecordTimeRange(Map<String, Object> query, LocalDateTime swingStart, LocalDateTime swingEnd) {
+        if (query == null || swingStart == null || swingEnd == null) {
+            return;
+        }
+        LocalDateTime endInclusive = toInclusiveSwingEndTime(swingStart, swingEnd);
+        query.put("startSwingTime", formatDateTime(swingStart));
+        query.put("endSwingTime", formatDateTime(endInclusive));
+        query.remove("startCreateTime");
+        query.remove("endCreateTime");
+    }
+
+    /**
+     * 实时短窗轮询：在刷卡时间窗外再带入库时间（文档对 create 窗的说明主要面向实时分页防错位）。
+     */
+    public static void applySwingRecordTimeRangeForLivePoll(
+            Map<String, Object> query, LocalDateTime swingStart, LocalDateTime swingEnd) {
+        applySwingRecordTimeRange(query, swingStart, swingEnd);
+        if (query == null || swingStart == null || swingEnd == null) {
+            return;
+        }
+        LocalDateTime endInclusive = toInclusiveSwingEndTime(swingStart, swingEnd);
+        query.put("startCreateTime", formatDateTime(swingStart.minusMinutes(30)));
+        query.put("endCreateTime", formatDateTime(endInclusive));
+    }
+
+    /**
+     * 分段结束为次日 0 点时，转为段内最后一天的 23:59:59（对齐文档单日示例 endSwingTime）。
+     */
+    public static LocalDateTime toInclusiveSwingEndTime(LocalDateTime swingStart, LocalDateTime swingEndBound) {
+        if (swingEndBound == null) {
+            return null;
+        }
+        if (swingStart == null || !swingEndBound.isAfter(swingStart)) {
+            return swingEndBound.with(LocalTime.of(23, 59, 59));
+        }
+        boolean midnight =
+                swingEndBound.getHour() == 0
+                        && swingEndBound.getMinute() == 0
+                        && swingEndBound.getSecond() == 0;
+        if (midnight) {
+            long daysBetween = ChronoUnit.DAYS.between(swingStart.toLocalDate(), swingEndBound.toLocalDate());
+            if (daysBetween >= 1) {
+                return swingEndBound.toLocalDate().minusDays(1).atTime(23, 59, 59);
+            }
+            return swingEndBound.toLocalDate().atTime(23, 59, 59);
+        }
+        return swingEndBound;
+    }
+
+    /**
+     * 移除空字符串等无效可选筛选，避免大华侧按空值过滤导致 pageData 恒为空。
+     */
+    public static void sanitizeSwingRecordQuery(Map<String, Object> query) {
+        if (query == null) {
+            return;
+        }
+        removeIfBlank(query, "personName", "personCode", "cardNumber", "deptIds", "category");
+        Object openType = query.get("openType");
+        if (openType != null && String.valueOf(openType).isBlank()) {
+            query.remove("openType");
+        }
+        Object enterOrExit = query.get("enterOrExit");
+        if (enterOrExit != null && String.valueOf(enterOrExit).isBlank()) {
+            query.remove("enterOrExit");
+        }
+        Object openResult = query.get("openResult");
+        if (openResult != null && String.valueOf(openResult).isBlank()) {
+            query.remove("openResult");
+        }
+        Object channelCodes = query.get("channelCodes");
+        if (channelCodes instanceof List<?> list && list.isEmpty()) {
+            query.remove("channelCodes");
+        }
+    }
+
+    private static void removeIfBlank(Map<String, Object> query, String... keys) {
+        for (String key : keys) {
+            Object v = query.get(key);
+            if (v == null) {
+                continue;
+            }
+            if (String.valueOf(v).isBlank()) {
+                query.remove(key);
+            }
+        }
+    }
+
+    /**
      * 大华门禁刷卡记录分页查询（接口不保证总页数/总行数可用，调用方需自行按 pageData 为空停止）。
      */
     public Map<String, Object> fetchSwingCardRecordByConditionCombined(Map<String, Object> body) {
         if (body == null) {
             body = new HashMap<>();
         }
+        sanitizeSwingRecordQuery(body);
         Object pageNum = body.get("pageNum");
         Object pageSize = body.get("pageSize");
         if (parseInt(pageNum, 0) <= 0) {

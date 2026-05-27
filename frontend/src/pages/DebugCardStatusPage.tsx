@@ -218,7 +218,7 @@ function RoomStatusCard({ config, activeStatus, activeTab }: { config: any, acti
                         </div>
 
                         <div className="flex flex-col gap-1 bg-violet-50/80 p-1.5 rounded-md border border-violet-100">
-                            <span className="text-[9px] font-bold text-violet-700 px-0.5">流水 room_id（可多值共限载）</span>
+                            <span className="text-[9px] font-bold text-violet-700 px-0.5">房间id,逗号分隔</span>
                             <div className="flex items-center gap-1">
                                 <input
                                     type="text"
@@ -426,11 +426,8 @@ export default function DebugCardStatusPage() {
             <AdminToolbar className="mb-6 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
                 <AdminToolbarPrimary className="min-w-0 max-w-[min(48vw,24rem)] shrink">
                     <h1 className="flex items-center gap-2 truncate text-2xl font-black text-slate-800">
-                        <Activity className="h-7 w-7 shrink-0 text-blue-600" /> 房间调度调试
+                        <Activity className="h-7 w-7 shrink-0 text-blue-600" /> 房间监控
                     </h1>
-                    <p className="truncate text-xs text-slate-500 sm:text-sm">
-                        多后室共前室限载时：别名可填多个流水房间名，流水 room_id 支持逗号/中文逗号/分号分隔，人数按合并结果计算。
-                    </p>
                 </AdminToolbarPrimary>
                 <AdminToolbarActions className="ml-auto flex min-w-0 shrink-0 flex-nowrap items-center gap-2 sm:gap-3">
                     <DebugDangerousOpsMenu

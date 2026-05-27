@@ -34,6 +34,51 @@ export interface CreateStudentViolationPayload {
   expireAfterDays: number | null;
 }
 
+export type BatchCreateStudentViolationPayload = Omit<CreateStudentViolationPayload, "targetUserId"> & {
+  targetUserIds: string[];
+};
+
+export interface BatchCreateStudentViolationResult {
+  createdCount: number;
+  failed: { userId: string; message: string }[];
+}
+
+/** 人员档案库中的课题组名（已按逗号拆分去重） */
+export async function searchViolationProjectGroups(keyword: string, limit = 30) {
+  const sp = new URLSearchParams();
+  sp.set("keyword", keyword.trim());
+  sp.set("limit", String(limit));
+  const res = await adminHttp.get<ApiResponse<string[]>>(
+    `/twin/student-violations/personnel/project-groups/search?${sp.toString()}`
+  );
+  return res.data?.data || [];
+}
+
+export interface ProjectGroupMemberRow {
+  user_id: string;
+  name?: string;
+  head?: string;
+  project_group_name?: string;
+}
+
+export async function listViolationPersonnelByProjectGroup(projectGroupName: string, limit = 500) {
+  const sp = new URLSearchParams();
+  sp.set("projectGroupName", projectGroupName.trim());
+  sp.set("limit", String(limit));
+  const res = await adminHttp.get<ApiResponse<ProjectGroupMemberRow[]>>(
+    `/twin/student-violations/personnel/by-project-group?${sp.toString()}`
+  );
+  return res.data?.data || [];
+}
+
+export async function batchCreateStudentViolations(body: BatchCreateStudentViolationPayload) {
+  const res = await adminHttp.post<ApiResponse<BatchCreateStudentViolationResult>>(
+    "/twin/student-violations/batch",
+    body
+  );
+  return res.data?.data;
+}
+
 export async function listStudentViolations(params: { targetUserId?: string; limit?: number }) {
   const sp = new URLSearchParams();
   sp.set("limit", String(params.limit ?? 50));

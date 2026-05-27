@@ -220,6 +220,54 @@ public class DashboardCodexConfigSeed implements ApplicationRunner {
                     0,
                     1
             );
+            ensureDef(
+                    "dashboard_codex",
+                    "dashboard.codex.violation_board_enabled",
+                    "启用大屏违规惩戒公示",
+                    "关闭后主页右侧卡片仅显示公告 Tab，不再切换到惩戒公示。",
+                    "BOOLEAN",
+                    null,
+                    "true",
+                    0,
+                    0,
+                    1
+            );
+            ensureDef(
+                    "dashboard_codex",
+                    "dashboard.codex.violation_board_max_items",
+                    "公示最多展示人数",
+                    "大屏惩戒公示一次最多拉取多少条 ACTIVE 违规（每人最新一条）；建议 50～200。",
+                    "STRING",
+                    null,
+                    "100",
+                    0,
+                    0,
+                    1
+            );
+            ensureDef(
+                    "dashboard_codex",
+                    "dashboard.codex.violation_board_summary_max_len",
+                    "公示说明截断字符数",
+                    "服务端会折叠换行并按字符数截断 violation_text；范围 10～200，默认 60。",
+                    "STRING",
+                    null,
+                    "60",
+                    0,
+                    0,
+                    1
+            );
+            ensureDef(
+                    "dashboard_codex",
+                    "dashboard.codex.notice_tab_seconds",
+                    "公告 Tab 兜底切换秒数",
+                    "主页轮播在公告 Tab 滚到底后即切到惩戒；若长度不足无法触发滚动，按本秒数兜底切换（默认 12）。",
+                    "STRING",
+                    null,
+                    "12",
+                    0,
+                    0,
+                    1
+            );
 
         } catch (Exception e) {
             log.warn("[dashboard_codex] 配置定义初始化跳过（可能尚未创建 sys_system_config_def 表）: {}", e.getMessage());

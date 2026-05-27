@@ -5,7 +5,7 @@ import { Trophy, Activity } from 'lucide-react';
 import { useDashboardSciFiVisual } from '@/features/dashboard-scifi-theme/DashboardSciFiVisualContext';
 
 const REGIONS = ['TOTAL', 'PUDONG', 'PUXI'] as const;
-const REGION_NAMES = ['总榜', '浦东', '浦西'];
+const REGION_NAMES = ['统计', '浦东', '浦西'];
 
 type RankListItem = { name?: string; value?: number; count?: number };
 
@@ -162,7 +162,7 @@ export function MonthlyRankCarousel() {
                                 : "bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-500"
                         }`}
                     >
-                        进入活跃榜单
+                        进出活跃度
                     </span>
                 </div>
 

@@ -1,17 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <!--
-      控制台仅输出日志正文（无前缀）。会覆盖 application.properties 里的 logging.pattern.console。
-      需要恢复时间/级别/类名时：删除本文件或改下方 pattern。
-      logging.level.* 仍由 Spring Boot 从 application.properties 注入，不受影响。
+      标准控制台日志：含时间/级别/线程/类名，高亮着色。
+      logging.level.* 仍由 Spring Boot 从 application.properties 注入。
+      运行时可通过 /api/admin/logging/level 动态调节级别，重启恢复本文件默认值。
     -->
 
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%msg%n</pattern>
+            <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) : %msg%n</pattern>
             <charset>UTF-8</charset>
         </encoder>
     </appender>
+
+    <!-- 框架/网络库噪音 → 保持静默 -->
+    <logger name="io.netty" level="ERROR"/>
+    <logger name="com.corundumstudio.socketio" level="ERROR"/>
+    <logger name="org.apache.coyote.http11.Http11Processor" level="ERROR"/>
+
+    <!-- 业务模块默认 INFO，运行时可通过管理端动态切换 -->
+    <logger name="com.example.demo" level="INFO"/>
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>

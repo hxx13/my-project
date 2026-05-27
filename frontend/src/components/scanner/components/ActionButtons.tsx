@@ -17,7 +17,8 @@ interface ActionButtonsProps {
     finishedRooms: string[];
     autoActionRoomId: string;
     getButtonText: (room: RoomInfo, roomId: string) => string;
-    isRoomLocked: (room: RoomInfo) => boolean;
+    isEnterLocked: (room: RoomInfo) => boolean;
+    isExitLocked: (room: RoomInfo) => boolean;
     getKeepCardState: (index: number) => boolean;
     setKeepCardState: (index: number, checked: boolean) => void;
 }
@@ -39,7 +40,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                 {safeRooms.map((room, idx) => {
                     const roomId = room.officialRoomId || room.id;
                     const isFinished = finishedRooms.includes(roomId);
-                    if (action === "ENTER" || props.isRoomLocked(room)) {
+                    if (action === "ENTER") {
                         return (
                             <motion.div
                                 key={roomId}
@@ -55,7 +56,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                                 </div>
                                 <AnimatedRoomButton
                                     text={props.getButtonText(room, roomId)}
-                                    disabled={props.isRoomLocked(room)}
+                                    disabled={props.isEnterLocked(room)}
                                     density={density}
                                     onClick={() => onRoomClick(room, idx)}
                                 />
@@ -82,7 +83,10 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                                 isSuccess={Boolean(exitCelebrateRoomId && exitCelebrateRoomId === roomId)}
                                 isFinished={isFinished}
                                 density={density}
-                                onClick={() => onRoomClick(room, idx)}
+                                onClick={() => {
+                                    if (props.isExitLocked(room)) return;
+                                    onRoomClick(room, idx);
+                                }}
                             />
                         </motion.div>
                     );

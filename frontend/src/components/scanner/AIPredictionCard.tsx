@@ -57,7 +57,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
     // ==========================================
     const generate24HTrackData = () => {
         const dayStart = 7;
-        const dayEnd = 19;
+        const dayEnd = 22;
         const seg = dayEnd - dayStart + 1;
         const width = 300;
         const height = 45;
@@ -265,7 +265,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
 
                     {/* 图例区：明确告知使用者两条线的含义 */}
                     <div className="flex justify-between items-end px-1 mb-1.5 z-10">
-                        <span className="text-[9px] font-bold text-slate-400 tracking-wider">07:00–19:00 出入条件分布（多房间均值）</span>
+                        <span className="text-[9px] font-bold text-slate-400 tracking-wider">07:00–22:00 出入条件分布（多房间均值）</span>
                         <div className="flex gap-2">
                             <span className="text-[8px] flex items-center gap-1 text-slate-400"><span className={`w-1.5 h-1.5 rounded-full ${isPink ? 'bg-rose-400' : 'bg-blue-400'}`}></span> 入场</span>
                             <span className="text-[8px] flex items-center gap-1 text-slate-500"><span className={`w-1.5 h-1.5 rounded-full border border-dashed ${isPink ? 'border-rose-400' : 'border-blue-400'}`}></span> 离场</span>
@@ -304,6 +304,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                         <span className="text-[8px] font-bold text-slate-600">11:00</span>
                         <span className="text-[8px] font-bold text-slate-600">15:00</span>
                         <span className="text-[8px] font-bold text-slate-600">19:00</span>
+                        <span className="text-[8px] font-bold text-slate-600">22:00</span>
                     </div>
                 </div>
 

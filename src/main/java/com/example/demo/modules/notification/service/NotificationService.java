@@ -9,6 +9,7 @@ import com.example.demo.modules.policy.entity.BizCapabilityPolicy;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
 import com.example.demo.modules.notification.dto.NotificationView;
 import com.example.demo.modules.notification.dto.PublishNotificationEvent;
+import com.example.demo.modules.notification.dto.UnreadBizKeysRequest;
 import com.example.demo.modules.notification.entity.Notification;
 import com.example.demo.modules.notification.entity.NotifyRule;
 import com.example.demo.modules.notification.entity.NotifyTemplate;
@@ -150,12 +151,96 @@ public class NotificationService {
         return set.isEmpty() ? null : new ArrayList<>(set);
     }
 
-    public void markRead(String userId, String notificationId) {
-        notificationMapper.markRead(userId, notificationId, LocalDateTime.now());
+    public int markRead(String userId, String notificationId) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(notificationId)) {
+            return 0;
+        }
+        return notificationMapper.markRead(userId.trim(), notificationId.trim(), LocalDateTime.now());
     }
 
-    public void markAllRead(String userId) {
-        notificationMapper.markAllRead(userId, LocalDateTime.now());
+    public int markAllRead(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return 0;
+        }
+        return notificationMapper.markAllRead(userId.trim(), LocalDateTime.now());
+    }
+
+    /**
+     * 按业务单标记已读：同一 bizType+bizId 下当前用户全部通知（CREATED/STARTED/COMPLETED 等）一并已读，供工单页与消息中心联动。
+     */
+    public int markReadByBiz(String userId, String bizType, String bizId) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(bizType) || !StringUtils.hasText(bizId)) {
+            return 0;
+        }
+        return notificationMapper.markReadByBiz(
+                userId.trim(),
+                normalizeBizFilter(bizType),
+                bizId.trim(),
+                LocalDateTime.now());
+    }
+
+    public boolean hasUnreadByBiz(String userId, String bizType, String bizId) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(bizType) || !StringUtils.hasText(bizId)) {
+            return false;
+        }
+        return notificationMapper.countUnreadByBiz(userId.trim(), normalizeBizFilter(bizType), bizId.trim()) > 0;
+    }
+
+    /** 教职工消息页「待处理」Tab 角标：工单类未读通知条数（已读后不再计入，与工单是否完结解耦） */
+    public int countUnreadStaffWorkInbox(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return 0;
+        }
+        return notificationMapper.countUnreadStaffWorkInbox(userId.trim());
+    }
+
+    public int countUnreadWorkOrderForApplicant(String userId, String bizType) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(bizType)) {
+            return 0;
+        }
+        return notificationMapper.countUnreadWorkOrderForApplicant(userId.trim(), normalizeBizFilter(bizType));
+    }
+
+    public int countUnreadWorkOrderForProcessor(String userId, String bizType) {
+        if (!StringUtils.hasText(userId) || !StringUtils.hasText(bizType)) {
+            return 0;
+        }
+        return notificationMapper.countUnreadWorkOrderForProcessor(userId.trim(), normalizeBizFilter(bizType));
+    }
+
+    /**
+     * 批量查询业务单是否仍有未读通知。返回 compositeKey → true（格式 REPAIR|RO_xxx）。
+     */
+    public Map<String, Boolean> resolveUnreadBizFlags(String userId, List<UnreadBizKeysRequest.BizKeyItem> keys) {
+        Map<String, Boolean> out = new LinkedHashMap<>();
+        if (!StringUtils.hasText(userId) || keys == null || keys.isEmpty()) {
+            return out;
+        }
+        LinkedHashSet<String> composite = new LinkedHashSet<>();
+        for (UnreadBizKeysRequest.BizKeyItem item : keys) {
+            if (item == null || !StringUtils.hasText(item.getBizType()) || !StringUtils.hasText(item.getBizId())) {
+                continue;
+            }
+            String ck = toBizCompositeKey(item.getBizType(), item.getBizId());
+            composite.add(ck);
+            out.putIfAbsent(ck, false);
+        }
+        if (composite.isEmpty()) {
+            return out;
+        }
+        List<String> unreadKeys = notificationMapper.listUnreadBizCompositeKeys(userId.trim(), new ArrayList<>(composite));
+        if (unreadKeys != null) {
+            for (String k : unreadKeys) {
+                if (StringUtils.hasText(k)) {
+                    out.put(k.trim(), true);
+                }
+            }
+        }
+        return out;
+    }
+
+    public static String toBizCompositeKey(String bizType, String bizId) {
+        return normalizeBizFilter(bizType) + "|" + (bizId == null ? "" : bizId.trim());
     }
 
     public int countUnread(String userId) {

@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import { AccessFusionWorkspacePanel } from "@/features/access-fusion/AccessFusionWorkspacePanel";
+import { DahuaSwingStatsAuditPanel } from "@/features/dahua-swing-stats/DahuaSwingStatsAuditPanel";
+import { AccessSwingRecordsPanel } from "@/features/dahua-swing-records/AccessSwingRecordsPanel";
 import { normalizeChannelCode, resolveChannelLabelsByCodes } from "@/utils/dahuaChannelUtils";
 import {
   createDahuaSwingTask,
@@ -76,7 +80,20 @@ const OPEN_TYPE_OPTIONS = [
   { code: 49, name: "按钮开门" },
 ];
 
+type HubTab = "realtime" | "audit" | "records" | "clean";
+
 export default function AdminDahuaSwingTasksPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get("tab") || "realtime";
+  const tab: HubTab =
+    rawTab === "audit" || rawTab === "records" || rawTab === "clean" ? rawTab : "realtime";
+  const profilesOpen = searchParams.get("profiles") === "1";
+  const setTab = (next: HubTab) => {
+    const p = new URLSearchParams(searchParams);
+    p.set("tab", next);
+    setSearchParams(p, { replace: true });
+  };
+
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<DahuaSwingTask[]>([]);
   const [form, setForm] = useState<TaskUiForm>(defaultForm());
@@ -292,8 +309,38 @@ export default function AdminDahuaSwingTasksPage() {
 
   return (
     <div className="p-6 space-y-4">
+      <div>
+        <h1 className="text-xl font-bold text-slate-800">门禁数据工作台</h1>
+        <p className="text-sm text-slate-500 mt-1">实时拉取、审计批量拉取、记录库与统计清洗总库同一入口管理。</p>
+        <div className="mt-3 flex flex-wrap gap-2 border-b pb-2">
+          {(
+            [
+              ["realtime", "实时拉取"],
+              ["audit", "审计拉取"],
+              ["records", "门禁记录库"],
+              ["clean", "统计清洗"],
+            ] as const
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              type="button"
+              className={`rounded-t px-3 py-1.5 text-xs font-medium ${
+                tab === k ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-100"
+              }`}
+              onClick={() => setTab(k)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {tab === "audit" ? <DahuaSwingStatsAuditPanel /> : null}
+      {tab === "records" ? <AccessSwingRecordsPanel /> : null}
+      {tab === "clean" ? <AccessFusionWorkspacePanel initialProfilesOpen={profilesOpen} /> : null}
+      {tab === "realtime" ? (
+        <>
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-slate-800">大华门禁拉取任务</h1>
+        <h2 className="text-sm font-semibold text-slate-700">实时拉取任务</h2>
         <button
           type="button"
           className="h-9 rounded bg-slate-900 px-3 text-xs text-white"
@@ -797,6 +844,8 @@ export default function AdminDahuaSwingTasksPage() {
           </tbody>
         </table>
       </div>
+        </>
+      ) : null}
     </div>
   );
 }

@@ -10,8 +10,11 @@ import org.springframework.stereotype.Component;
 /**
  * 清理归档表中超过保留期的样本（默认 30 天）。
  */
+/**
+ * 旧版独立 cron 清理；默认关闭，请使用定时任务 {@code TELEMETRY_ARCHIVE_PURGE}。
+ */
 @Component
-@ConditionalOnProperty(prefix = "app.telemetry.archive", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "app.telemetry.archive", name = "legacy-cron-purge", havingValue = "true")
 public class TelemetryArchivePurgeScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(TelemetryArchivePurgeScheduler.class);

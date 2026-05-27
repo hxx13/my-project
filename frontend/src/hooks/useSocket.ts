@@ -1,18 +1,12 @@
 import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { resolveSocketUrl } from '@/config/socketUrl';
+import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
 
 export const useSocket = () => {
     const [socket, setSocket] = useState<Socket | null>(null);
 
     useEffect(() => {
-        const socketInstance = io(resolveSocketUrl(), {
-            transports: ['websocket'], // 强制使用 websocket，拒绝 xhr 轮询降级
-            autoConnect: true,
-            reconnection: true,        // 断线自动重连
-            reconnectionAttempts: 10,
-            reconnectionDelay: 2000,
-        });
+        const socketInstance = io(resolveSocketUrl(), SOCKET_IO_CLIENT_OPTIONS);
 
         // 2. 状态监听雷达
         socketInstance.on('connect', () => {

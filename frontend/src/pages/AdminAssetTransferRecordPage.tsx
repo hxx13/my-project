@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import { ClipboardList, Download } from "lucide-react";
 import {
   appendTransferAfterPhotos,
@@ -424,7 +425,7 @@ export default function AdminAssetTransferRecordPage() {
       setLatestLinkByRequest((prev) => ({ ...prev, [r.id]: (data.links || [])[0] }));
       const copyText = created.downloadUrl || created.downloadPath;
       if (copyText) {
-        await navigator.clipboard.writeText(copyText);
+        await copyTextToClipboard(copyText);
       }
       toast.success(created.reused ? "已复用链接（已复制）" : "已生成链接（已复制）");
     } catch (e) {
@@ -893,7 +894,7 @@ export default function AdminAssetTransferRecordPage() {
                             className="rounded border border-slate-300 px-2 py-1"
                             onClick={async () => {
                               const text = displayLink(item);
-                              await navigator.clipboard.writeText(text);
+                              await copyTextToClipboard(text);
                               toast.success("已复制");
                             }}
                           >

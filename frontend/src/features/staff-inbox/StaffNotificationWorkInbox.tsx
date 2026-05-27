@@ -1,11 +1,22 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type MouseEvent } from "react";
 import toast from "react-hot-toast";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import {
   fetchNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
+  toBizCompositeKey,
+  type BizKeyInput,
   type NotificationRecord,
+  workKindToBizType,
 } from "@/api/domains/notification.api";
+import {
+  bizKeyFromWorkKind,
+  loadUnreadBizFlagMap,
+  markAllNotificationsReadSynced,
+  markBizNotificationsReadSynced,
+  markNotificationReadSynced,
+  NOTIFICATION_READ_CHANGED_EVENT,
+  type NotificationReadChangedDetail,
+} from "@/features/notification/notificationReadSync";
 import {
   fetchPurchaseOrderDetail,
   fetchPurchaseOrders,
@@ -45,6 +56,8 @@ export interface StaffInboxUnifiedItem {
   title: string;
   sub: string;
   sortAt: number;
+  /** 该业务单是否仍有未读通知（与 read-by-biz 联动） */
+  hasUnreadNotice?: boolean;
 }
 
 type UnifiedItem = StaffInboxUnifiedItem;
@@ -142,6 +155,20 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
   const [fulfilling, setFulfilling] = useState(false);
   const [claimLinkRows, setClaimLinkRows] = useState<SupplyClaimPdfLinkItem[]>([]);
   const [claimLinkLoading, setClaimLinkLoading] = useState(false);
+  const attachUnreadFlags = useCallback(async (items: UnifiedItem[]) => {
+    const keys: BizKeyInput[] = [];
+    for (const item of items) {
+      const k = bizKeyFromWorkKind(item.workKind, item.id);
+      if (k) keys.push(k);
+    }
+    if (!keys.length) return items.map((it) => ({ ...it, hasUnreadNotice: false }));
+    const flags = await loadUnreadBizFlagMap(keys);
+    return items.map((it) => {
+      const bt = workKindToBizType(it.workKind);
+      const ck = bt ? toBizCompositeKey(bt, it.id) : "";
+      return { ...it, hasUnreadNotice: ck ? !!flags[ck] : false };
+    });
+  }, []);
 
   const closeModals = () => {
     setModalKind(null);
@@ -173,6 +200,34 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
     },
     [onlyUnread, canStaff]
   );
+
+  useEffect(() => {
+    const onReadChanged = (ev: Event) => {
+      const d = (ev as CustomEvent<NotificationReadChangedDetail>).detail;
+      if (d?.all) {
+        setRows((prev) => prev.map((r) => ({ ...r, isRead: 1 })));
+        setUnifiedPending((prev) => prev.map((it) => ({ ...it, hasUnreadNotice: false })));
+        setUnifiedDone((prev) => prev.map((it) => ({ ...it, hasUnreadNotice: false })));
+        return;
+      }
+      if (d?.bizType && d?.bizId) {
+        const ck = toBizCompositeKey(d.bizType, d.bizId);
+        const mark = (it: UnifiedItem) => {
+          const bt = workKindToBizType(it.workKind);
+          return bt && toBizCompositeKey(bt, it.id) === ck ? { ...it, hasUnreadNotice: false } : it;
+        };
+        setUnifiedPending((prev) => prev.map(mark));
+        setUnifiedDone((prev) => prev.map(mark));
+        setRows((prev) =>
+          prev.map((r) =>
+            r.bizType && r.bizId && toBizCompositeKey(r.bizType, r.bizId) === ck ? { ...r, isRead: 1 } : r
+          )
+        );
+      }
+    };
+    window.addEventListener(NOTIFICATION_READ_CHANGED_EVENT, onReadChanged);
+    return () => window.removeEventListener(NOTIFICATION_READ_CHANGED_EVENT, onReadChanged);
+  }, []);
 
   const loadPendingUnified = useCallback(
     async (showLoading: boolean) => {
@@ -222,14 +277,14 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
         pushOrders(pProc.data || [], "采购", "purchase");
 
         merged.sort((a, b) => b.sortAt - a.sortAt);
-        setUnifiedPending(merged);
+        setUnifiedPending(await attachUnreadFlags(merged));
       } catch {
         setUnifiedPending([]);
       } finally {
         setPendingLoading(false);
       }
     },
-    [canStaff, isAdmin]
+    [canStaff, isAdmin, attachUnreadFlags]
   );
 
   const loadDoneUnified = useCallback(
@@ -277,14 +332,14 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
         pushDone(pDone.data || [], "采购", "purchase");
 
         merged.sort((a, b) => b.sortAt - a.sortAt);
-        setUnifiedDone(merged);
+        setUnifiedDone(await attachUnreadFlags(merged));
       } catch {
         setUnifiedDone([]);
       } finally {
         setDoneLoading(false);
       }
     },
-    [canStaff, isAdmin]
+    [canStaff, isAdmin, attachUnreadFlags]
   );
 
   useEffect(() => {
@@ -326,12 +381,13 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
   useEffect(() => {
     if (!onCountsChange) return;
     const noticeUnread = rows.reduce((n, r) => n + (r.isRead === 0 ? 1 : 0), 0);
+    const pendingUnread = unifiedPending.filter((it) => it.hasUnreadNotice).length;
     onCountsChange({
       noticeUnread,
-      pendingCount: unifiedPending.length,
+      pendingCount: pendingUnread,
       doneCount: unifiedDone.length,
     });
-  }, [rows, unifiedPending.length, unifiedDone.length, onCountsChange]);
+  }, [rows, unifiedPending, unifiedDone.length, onCountsChange]);
 
   const openClaimModal = async (orderId: string) => {
     try {
@@ -366,7 +422,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
       const links = await listSupplyClaimPdfLinks(claimDetail.id);
       setClaimLinkRows(links.links || []);
       const copyText = created.downloadUrl || created.downloadPath;
-      if (copyText) await navigator.clipboard.writeText(copyText);
+      if (copyText) await copyTextToClipboard(copyText);
       toast.success(created.reused ? "已复用链接（已复制）" : "已生成链接（已复制）");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "获取链接失败");
@@ -462,21 +518,60 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
     }
   };
 
-  const handleRead = async (id: string) => {
+  const handleRead = async (id: string, row?: NotificationRecord) => {
     try {
-      await markNotificationRead(id);
-      await loadData({ showLoading: false, showError: true });
+      await markNotificationReadSynced(id, {
+        bizType: row?.bizType,
+        bizId: row?.bizId,
+      });
+      // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
+      setRows((prev) => prev.map((r) => (r.id === id ? { ...r, isRead: 1 } : r)));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "标记已读失败");
     }
   };
 
-  const handleReadAll = async () => {
-    if (!window.confirm("确认全部标记已读？")) return;
+  const handleWorkItemRead = async (item: UnifiedItem, e: MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const bt = workKindToBizType(item.workKind);
+    if (!bt) return;
     try {
-      await markAllNotificationsRead();
+      await markBizNotificationsReadSynced(bt, item.id);
+      const ck = toBizCompositeKey(bt, item.id);
+      const clear = (it: UnifiedItem) =>
+        workKindToBizType(it.workKind) === bt && it.id === item.id ? { ...it, hasUnreadNotice: false } : it;
+      setUnifiedPending((prev) => prev.map(clear));
+      setUnifiedDone((prev) => prev.map(clear));
+      setRows((prev) =>
+        prev.map((r) =>
+          r.bizType && r.bizId && toBizCompositeKey(r.bizType, r.bizId) === ck ? { ...r, isRead: 1 } : r
+        )
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "标记已读失败");
+    }
+  };
+
+  const workItemReadBtn = (item: UnifiedItem) =>
+    item.hasUnreadNotice ? (
+      <button
+        type="button"
+        className="rounded border border-blue-300 px-2 py-0.5 text-[10px] text-blue-700"
+        onClick={(e) => void handleWorkItemRead(item, e)}
+      >
+        已读
+      </button>
+    ) : null;
+
+  const handleReadAll = async () => {
+    if (!window.confirm("确认将全部通知标记已读？（含报修/采购/物资等所有状态）")) return;
+    try {
+      await markAllNotificationsReadSynced();
       toast.success("已全部标记为已读");
-      await loadData({ showLoading: false, showError: true });
+      setRows((prev) => prev.map((r) => ({ ...r, isRead: 1 })));
+      setUnifiedPending((prev) => prev.map((it) => ({ ...it, hasUnreadNotice: false })));
+      setUnifiedDone((prev) => prev.map((it) => ({ ...it, hasUnreadNotice: false })));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "操作失败");
     }
@@ -596,7 +691,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                         className="mt-1.5 self-end text-[11px] text-blue-700 underline"
                         onClick={(e) => {
                           e.stopPropagation();
-                          void handleRead(row.id);
+                          void handleRead(row.id, row);
                         }}
                       >
                         标记已读
@@ -612,7 +707,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                 <div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
                   <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                     待处理
-                    {countBadge(unifiedPending.length)}
+                    {countBadge(unifiedPending.filter((it) => it.hasUnreadNotice).length)}
                   </div>
                 </div>
                 {pendingLoading ? (
@@ -632,6 +727,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                           <div className="truncate font-medium text-slate-900">{item.title}</div>
                           <div className="truncate text-[11px] text-slate-500">{item.sub}</div>
                         </button>
+                        <div className="mt-1 flex justify-end px-0.5 pb-0.5">{workItemReadBtn(item)}</div>
                       </li>
                     ))}
                   </ul>
@@ -669,7 +765,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                                   try {
                                     const created = await createOrReuseSupplyClaimPdfLink(item.id);
                                     const text = created.downloadUrl || created.downloadPath;
-                                    if (text) await navigator.clipboard.writeText(text);
+                                    if (text) await copyTextToClipboard(text);
                                     toast.success(created.reused ? "已复用链接（已复制）" : "已生成链接（已复制）");
                                   } catch (error) {
                                     toast.error(error instanceof Error ? error.message : "获取链接失败");
@@ -747,7 +843,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                           className="rounded border border-blue-300 px-2 py-1 text-blue-700"
                           onClick={(e) => {
                             e.stopPropagation();
-                            void handleRead(row.id);
+                            void handleRead(row.id, row);
                           }}
                         >
                           标记已读
@@ -782,6 +878,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                           <div className="font-medium text-slate-900">{item.title}</div>
                           <div className="text-xs text-slate-500">{item.sub}</div>
                         </button>
+                        <div className="mt-1 flex justify-end px-1">{workItemReadBtn(item)}</div>
                       </li>
                     ))}
                   </ul>
@@ -817,7 +914,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                                   try {
                                     const created = await createOrReuseSupplyClaimPdfLink(item.id);
                                     const text = created.downloadUrl || created.downloadPath;
-                                    if (text) await navigator.clipboard.writeText(text);
+                                    if (text) await copyTextToClipboard(text);
                                     toast.success(created.reused ? "已复用链接（已复制）" : "已生成链接（已复制）");
                                   } catch (error) {
                                     toast.error(error instanceof Error ? error.message : "获取链接失败");
@@ -898,7 +995,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                           type="button"
                           className="rounded border border-slate-300 px-2 py-0.5"
                           onClick={async () => {
-                            await navigator.clipboard.writeText(displayClaimLink(item));
+                            await copyTextToClipboard(displayClaimLink(item));
                             toast.success("已复制");
                           }}
                         >

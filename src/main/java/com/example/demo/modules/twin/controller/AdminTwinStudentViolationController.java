@@ -7,6 +7,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.twin.dto.UnboundCardNoticeSettingsDTO;
 import com.example.demo.modules.twin.entity.TwinStudentViolation;
+import com.example.demo.modules.twin.service.TwinPersonnelArchiveQueryService;
 import com.example.demo.modules.twin.service.TwinStudentViolationNoticeConfigService;
 import com.example.demo.modules.twin.service.TwinStudentViolationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,17 +30,20 @@ public class AdminTwinStudentViolationController {
 
     private final TwinStudentViolationService violationService;
     private final TwinStudentViolationNoticeConfigService unboundNoticeConfigService;
+    private final TwinPersonnelArchiveQueryService personnelArchiveQueryService;
     private final AuthContextService authContextService;
     private final UserDisplayNameService userDisplayNameService;
 
     public AdminTwinStudentViolationController(
             TwinStudentViolationService violationService,
             TwinStudentViolationNoticeConfigService unboundNoticeConfigService,
+            TwinPersonnelArchiveQueryService personnelArchiveQueryService,
             AuthContextService authContextService,
             UserDisplayNameService userDisplayNameService
     ) {
         this.violationService = violationService;
         this.unboundNoticeConfigService = unboundNoticeConfigService;
+        this.personnelArchiveQueryService = personnelArchiveQueryService;
         this.authContextService = authContextService;
         this.userDisplayNameService = userDisplayNameService;
     }
@@ -144,6 +148,77 @@ public class AdminTwinStudentViolationController {
         }
         boolean ok = violationService.delete(id);
         return ok ? Result.success() : Result.error("记录不存在");
+    }
+
+    @GetMapping("/personnel/project-groups/search")
+    @Operation(summary = "检索课题组名（人员档案库 aro_personnel，拆分逗号分隔）")
+    public Result<?> searchProjectGroups(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam("keyword") String keyword,
+            @RequestParam(value = "limit", defaultValue = "30") int limit
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        return Result.success(personnelArchiveQueryService.searchProjectGroupNames(keyword, limit));
+    }
+
+    @GetMapping("/personnel/by-project-group")
+    @Operation(summary = "列出某课题组下的人员（档案库，精确匹配拆分后的课题组 token）")
+    public Result<?> listPersonnelByProjectGroup(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam("projectGroupName") String projectGroupName,
+            @RequestParam(value = "limit", defaultValue = "500") int limit
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        if (!StringUtils.hasText(projectGroupName)) {
+            return Result.error("缺少 projectGroupName");
+        }
+        return Result.success(personnelArchiveQueryService.listMembersByProjectGroup(projectGroupName, limit));
+    }
+
+    @PostMapping("/batch")
+    @Operation(summary = "批量新建违规记录（每人一条；单次最多 200 人）")
+    public Result<?> createBatch(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody BatchCreateStudentViolationBody body
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        User admin = authContextService.resolveUserFromBearer(authorization);
+        if (admin == null) {
+            return Result.error("未登录或令牌无效");
+        }
+        if (body == null || body.getTargetUserIds() == null || body.getTargetUserIds().isEmpty()) {
+            return Result.error("缺少 targetUserIds");
+        }
+        Integer maxEnter = body.getMaxEnterSuccess();
+        if (maxEnter != null && maxEnter < 0) {
+            return Result.error("进入次数上限不能为负数");
+        }
+        try {
+            Map<String, Object> summary = violationService.createBatch(
+                    body.getTargetUserIds(),
+                    body.getViolationText() != null ? body.getViolationText() : "",
+                    body.getImageUrls(),
+                    Boolean.TRUE.equals(body.getForbidEnter()),
+                    maxEnter,
+                    body.getShowNoticeEveryScan() == null || Boolean.TRUE.equals(body.getShowNoticeEveryScan()),
+                    body.getExpireAfterDays(),
+                    admin.getId()
+            );
+            return Result.success(summary);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("批量创建失败: " + readableError(e));
+        }
     }
 
     @PostMapping
@@ -283,6 +358,17 @@ public class AdminTwinStudentViolationController {
     @Data
     public static class CreateStudentViolationBody {
         private String targetUserId;
+        private String violationText;
+        private List<String> imageUrls;
+        private Boolean forbidEnter;
+        private Integer maxEnterSuccess;
+        private Boolean showNoticeEveryScan;
+        private Integer expireAfterDays;
+    }
+
+    @Data
+    public static class BatchCreateStudentViolationBody {
+        private List<String> targetUserIds;
         private String violationText;
         private List<String> imageUrls;
         private Boolean forbidEnter;

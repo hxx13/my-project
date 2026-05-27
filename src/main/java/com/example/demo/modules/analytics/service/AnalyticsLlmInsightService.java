@@ -31,6 +31,7 @@ public class AnalyticsLlmInsightService {
     private final AnalyticsAuditService auditService;
     private final AnalyticsAuditLogMapper auditLogMapper;
     private final AnalyticsLlmInsightMapper insightMapper;
+    private final AnalyticsInsightPayloadService payloadService;
     private final DashScopeChatClient chatClient;
     private final LlmConfigService llmConfigService;
     private final ObjectMapper objectMapper;
@@ -39,15 +40,21 @@ public class AnalyticsLlmInsightService {
             AnalyticsAuditService auditService,
             AnalyticsAuditLogMapper auditLogMapper,
             AnalyticsLlmInsightMapper insightMapper,
+            AnalyticsInsightPayloadService payloadService,
             DashScopeChatClient chatClient,
             LlmConfigService llmConfigService,
             ObjectMapper objectMapper) {
         this.auditService = auditService;
         this.auditLogMapper = auditLogMapper;
         this.insightMapper = insightMapper;
+        this.payloadService = payloadService;
         this.chatClient = chatClient;
         this.llmConfigService = llmConfigService;
         this.objectMapper = objectMapper;
+    }
+
+    public Map<String, Object> getInsightDataPackage(String userId, long auditLogId) {
+        return payloadService.buildDataPackage(userId, auditLogId);
     }
 
     public Map<String, Object> getInsightPrompt(String reportKey) {
@@ -135,8 +142,9 @@ public class AnalyticsLlmInsightService {
         if (auditRow == null || !userId.equals(auditRow.getUserId())) {
             throw new IllegalArgumentException("记录不存在");
         }
-        String reportKey = auditRow.getReportKey() != null ? auditRow.getReportKey() : LlmInsightModules.ISOLATION_USAGE;
-        Map<String, Object> detail = auditService.getDetailForUser(userId, auditLogId);
+        String reportKey =
+                auditRow.getReportKey() != null ? auditRow.getReportKey().trim() : LlmInsightModules.ISOLATION_USAGE;
+        auditService.getDetailForUser(userId, auditLogId);
         if (!forceRefresh) {
             AnalyticsLlmInsight cached = insightMapper.selectByAuditLogId(auditLogId);
             if (cached != null) {
@@ -144,7 +152,7 @@ public class AnalyticsLlmInsightService {
             }
         }
         llmConfigService.assertReady();
-        String payloadJson = buildCompactPayload(detail);
+        String payloadJson = payloadService.buildSnapshotJson(userId, auditLogId);
         String userInstruction = StringUtils.hasText(userPromptOverride)
                 ? userPromptOverride.trim()
                 : llmConfigService.getInsightUserPrompt(reportKey);
@@ -203,42 +211,6 @@ public class AnalyticsLlmInsightService {
         } catch (Exception e) {
             throw new IllegalStateException("解读缓存损坏: " + e.getMessage());
         }
-    }
-
-    private String buildCompactPayload(Map<String, Object> detail) {
-        try {
-            Map<String, Object> compact = new LinkedHashMap<>();
-            compact.put("periodLabel", detail.get("periodLabel"));
-            compact.put("periodType", detail.get("periodType"));
-            compact.put("viewName", detail.get("viewName"));
-            compact.put("currentRounds", detail.get("currentRounds"));
-            compact.put("previousRounds", detail.get("previousRounds"));
-            compact.put("deltaRounds", detail.get("deltaRounds"));
-            compact.put("deltaPct", detail.get("deltaPct"));
-            compact.put("summary", detail.get("summary"));
-            compact.put("byProjectGroup", topN(detail.get("byProjectGroup"), 15));
-            compact.put("byPi", topN(detail.get("byPi"), 12));
-            compact.put("byRoom", topN(detail.get("byRoom"), 15));
-            compact.put("byRegion", topN(detail.get("byRegion"), 10));
-            return objectMapper.writeValueAsString(compact);
-        } catch (Exception e) {
-            throw new IllegalStateException("构建分析载荷失败: " + e.getMessage());
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> topN(Object raw, int limit) {
-        if (!(raw instanceof List<?> list)) {
-            return List.of();
-        }
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Object item : list) {
-            if (item instanceof Map<?, ?> m) {
-                out.add((Map<String, Object>) m);
-            }
-            if (out.size() >= limit) break;
-        }
-        return out;
     }
 
     private Map<String, Object> parseInsightJson(String raw) {

@@ -14,8 +14,30 @@ adminHttp.interceptors.request.use((config) => {
   return config;
 });
 
+function rejectIfBusinessFailed(data: unknown): void {
+  if (!data || typeof data !== "object") return;
+  const body = data as Record<string, unknown>;
+  if (body.success === false) {
+    throw new Error(
+      (typeof body.message === "string" && body.message) ||
+        (typeof body.msg === "string" && body.msg) ||
+        "请求失败"
+    );
+  }
+  if (body.code != null && body.code !== 200) {
+    throw new Error(
+      (typeof body.message === "string" && body.message) ||
+        (typeof body.msg === "string" && body.msg) ||
+        `请求失败(${body.code})`
+    );
+  }
+}
+
 adminHttp.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    rejectIfBusinessFailed(response.data);
+    return response;
+  },
   (error: AxiosError<Record<string, unknown>>) => {
     const data = (error.response?.data ?? {}) as Record<string, unknown>;
     const code = data.code != null ? String(data.code) : "";

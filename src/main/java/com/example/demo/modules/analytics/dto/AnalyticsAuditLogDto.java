@@ -17,11 +17,14 @@ public class AnalyticsAuditLogDto {
     private LocalDateTime previousStart;
     private LocalDateTime previousEnd;
     private Long currentRounds;
+    private Long studentRounds;
+    private Long staffRounds;
     private Long previousRounds;
     private Integer currentUsers;
     private Integer previousUsers;
     private Integer currentGroups;
     private Integer previousGroups;
+    private Integer currentStudentUsers;
     private Long deltaRounds;
     private BigDecimal deltaPct;
     private List<Map<String, Object>> topGroups;
@@ -115,6 +118,22 @@ public class AnalyticsAuditLogDto {
         this.currentRounds = currentRounds;
     }
 
+    public Long getStudentRounds() {
+        return studentRounds;
+    }
+
+    public void setStudentRounds(Long studentRounds) {
+        this.studentRounds = studentRounds;
+    }
+
+    public Long getStaffRounds() {
+        return staffRounds;
+    }
+
+    public void setStaffRounds(Long staffRounds) {
+        this.staffRounds = staffRounds;
+    }
+
     public Long getPreviousRounds() {
         return previousRounds;
     }
@@ -153,6 +172,14 @@ public class AnalyticsAuditLogDto {
 
     public void setPreviousGroups(Integer previousGroups) {
         this.previousGroups = previousGroups;
+    }
+
+    public Integer getCurrentStudentUsers() {
+        return currentStudentUsers;
+    }
+
+    public void setCurrentStudentUsers(Integer currentStudentUsers) {
+        this.currentStudentUsers = currentStudentUsers;
     }
 
     public Long getDeltaRounds() {

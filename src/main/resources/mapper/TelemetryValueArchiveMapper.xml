@@ -33,6 +33,29 @@
         DELETE FROM telemetry_value_archive WHERE sample_at &lt; #{cutoff}
     </delete>
 
+    <delete id="deleteOlderThanBatch">
+        DELETE FROM telemetry_value_archive
+        WHERE sample_at &lt; #{cutoff}
+        ORDER BY sample_at ASC
+        LIMIT #{limit}
+    </delete>
+
+    <select id="countAll" resultType="long">
+        SELECT COUNT(1) FROM telemetry_value_archive
+    </select>
+
+    <select id="countOlderThan" resultType="long">
+        SELECT COUNT(1) FROM telemetry_value_archive WHERE sample_at &lt; #{cutoff}
+    </select>
+
+    <select id="selectOldestSampleAt" resultType="java.time.LocalDateTime">
+        SELECT MIN(sample_at) FROM telemetry_value_archive
+    </select>
+
+    <select id="selectNewestSampleAt" resultType="java.time.LocalDateTime">
+        SELECT MAX(sample_at) FROM telemetry_value_archive
+    </select>
+
     <sql id="filterWhere">
         <where>
             <if test="variableQ != null and variableQ != ''">

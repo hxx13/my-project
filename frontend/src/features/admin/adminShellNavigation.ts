@@ -1,5 +1,5 @@
 import type { PublicPagePermissionNode } from "@/api/domains/pagePermission.api";
-import { ADMIN_NAV_REGISTRY, titleForUnknownAdminPath } from "@/features/admin/adminNavRegistry";
+import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems, titleForUnknownAdminPath } from "@/features/admin/adminNavRegistry";
 import { normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 
 /**
@@ -8,7 +8,7 @@ import { normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
  */
 
 const REGISTRY_SIDEBAR_PATHS = new Set(
-  ADMIN_NAV_REGISTRY.flatMap((g) => g.items.map((it) => normalizeAdminPath(it.path)))
+  ADMIN_NAV_REGISTRY.flatMap((g) => collectRegistryGroupItems(g).map((it) => normalizeAdminPath(it.path)))
 );
 
 /** 注册表未列名、但路由存在的子页：用于页题；壳层「返回」仍由 shouldShowAdminShellBack 控制 */

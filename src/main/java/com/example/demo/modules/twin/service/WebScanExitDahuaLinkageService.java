@@ -109,7 +109,7 @@ public class WebScanExitDahuaLinkageService {
         }
         if (!linkageHasPostExitWork(card, isKeepCard)) {
             cancelPendingDeferredExitForUser(uid);
-            log.info("[scan-exit-dahua] skip-deferred-linkage-no-work userId={}", uid);
+            log.debug("[scan-exit-dahua] skip-deferred-linkage-no-work userId={}", uid);
             return AccessRuleDispatchResult.SCAN_LINKAGE_EXIT_DISABLED;
         }
 
@@ -122,7 +122,7 @@ public class WebScanExitDahuaLinkageService {
         ScheduledFuture<?> fut = twinSwingTaskScheduler.schedule(() -> {
             try {
                 runLinkage(uid, rid, card, keep);
-                log.info("[scan-exit-dahua] deferred linkage done userId={} roomId={} delaySec={}", uid, rid, d);
+                log.debug("[scan-exit-dahua] deferred linkage done userId={} roomId={} delaySec={}", uid, rid, d);
             } catch (Exception e) {
                 log.warn("[scan-exit-dahua] deferred linkage failed userId={} roomId={} err={}", uid, rid, e.getMessage(), e);
             } finally {
@@ -137,7 +137,7 @@ public class WebScanExitDahuaLinkageService {
         if (prev != null && !prev.isDone()) {
             prev.cancel(false);
         }
-        log.info("[scan-exit-dahua] deferred linkage scheduled userId={} roomId={} delaySec={}", uid, rid, d);
+        log.debug("[scan-exit-dahua] deferred linkage scheduled userId={} roomId={} delaySec={}", uid, rid, d);
         return null;
     }
 
@@ -153,7 +153,7 @@ public class WebScanExitDahuaLinkageService {
         if (f != null && !f.isDone()) {
             boolean cancelled = f.cancel(false);
             if (cancelled) {
-                log.info("[scan-exit-dahua] cancelled pending deferred linkage userId={}", uid);
+                log.debug("[scan-exit-dahua] cancelled pending deferred linkage userId={}", uid);
             }
         }
     }
@@ -164,7 +164,7 @@ public class WebScanExitDahuaLinkageService {
             dispatchResult = accessRuleDispatchService.tryRevokeAccessForScanExit(effectiveRoomId, userId);
         } else {
             dispatchResult = AccessRuleDispatchResult.SCAN_LINKAGE_EXIT_DISABLED;
-            log.info("[scan-exit-dahua] skip-revoke exit_dispatch_disabled userId={}", userId);
+            log.debug("[scan-exit-dahua] skip-revoke exit_dispatch_disabled userId={}", userId);
         }
         if (!isKeepCard) {
             try {
@@ -178,7 +178,7 @@ public class WebScanExitDahuaLinkageService {
                 && !physicalCardNo.isBlank()) {
             twinCardMappingService.updateCardStatus(physicalCardNo, "FROZEN");
         } else if (physicalCardNo != null && !physicalCardNo.isBlank()) {
-            log.info("[scan-exit-dahua] skip-freeze exit_freeze_disabled userId={} cardNo={}", userId, physicalCardNo);
+            log.debug("[scan-exit-dahua] skip-freeze exit_freeze_disabled userId={} cardNo={}", userId, physicalCardNo);
         }
         return dispatchResult;
     }

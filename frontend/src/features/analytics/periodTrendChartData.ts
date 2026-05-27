@@ -8,7 +8,10 @@ export type TrendChartPoint = {
   axisLabel: string;
   /** 完整周期标识（如 2026-05-16、2026-W20） */
   periodKey: string;
+  /** 总条数（清洗纳入记录） */
   personTimes: number;
+  studentCount: number;
+  staffCount: number;
   highlight: TrendHighlight;
   deltaRounds?: number;
 };
@@ -20,28 +23,17 @@ export type TrendChartMeta = {
 };
 
 const FILL = {
-  default: "#a5b4fc",
-  yesterday: "#10b981",
-  dayBefore: "#f59e0b",
-  latest: "#7c3aed",
-  previous: "#94a3b8",
+  student: "#6366f1",
+  staff: "#94a3b8",
   empty: "#e2e8f0",
 } as const;
 
-export function trendBarFill(highlight: TrendHighlight, hasValue: boolean): string {
-  if (!hasValue) return FILL.empty;
-  switch (highlight) {
-    case "yesterday":
-      return FILL.yesterday;
-    case "dayBefore":
-      return FILL.dayBefore;
-    case "latest":
-      return FILL.latest;
-    case "previous":
-      return FILL.previous;
-    default:
-      return FILL.default;
-  }
+export function trendStudentFill(hasValue: boolean): string {
+  return hasValue ? FILL.student : FILL.empty;
+}
+
+export function trendStaffFill(hasValue: boolean): string {
+  return hasValue ? FILL.staff : FILL.empty;
 }
 
 function dedupeByPeriodLabel(logs: AnalyticsAuditLog[] | null | undefined): Map<string, AnalyticsAuditLog> {
@@ -68,44 +60,82 @@ function addDays(d: Date, n: number): Date {
   return x;
 }
 
-/** 日：当月所有已结束自然日；高亮昨日、前日 */
-function buildDayTrend(logs: AnalyticsAuditLog[]): TrendChartMeta {
+function pointFromLog(log: AnalyticsAuditLog | undefined, highlight: TrendHighlight): TrendChartPoint {
+  const total = log?.currentRounds ?? 0;
+  const student = log?.studentRounds ?? 0;
+  const staff = log?.staffRounds ?? Math.max(0, total - student);
+  return {
+    axisLabel: "",
+    periodKey: log?.periodLabel ?? "",
+    personTimes: total,
+    studentCount: student,
+    staffCount: staff,
+    highlight,
+    deltaRounds: log?.deltaRounds,
+  };
+}
+
+const DAY_PERIOD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function parseDayPeriodKey(periodKey: string): { y: number; m: number; d: number } | null {
+  const m = DAY_PERIOD_RE.exec(periodKey);
+  if (!m) return null;
+  return { y: Number(m[1]), m: Number(m[2]) - 1, d: Number(m[3]) };
+}
+
+/**
+ * 日趋势：横轴范围由当前查看的快照日决定。
+ * - 选中 5 号 → 仅 1—5 日；选中上月 30 号 → 上月 1—30 日。
+ * - 未选具体日（无合法 periodKey）→ 当前月 1 日至昨日。
+ */
+function buildDayTrend(logs: AnalyticsAuditLog[], highlightPeriodKey?: string): TrendChartMeta {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const yesterday = addDays(today, -1);
   const dayBefore = addDays(today, -2);
-  const y = today.getFullYear();
-  const m = today.getMonth();
-  const monthPrefix = `${y}-${String(m + 1).padStart(2, "0")}`;
-  const daysInMonth = new Date(y, m + 1, 0).getDate();
   const byLabel = dedupeByPeriodLabel(logs);
+
+  const selected = highlightPeriodKey ? parseDayPeriodKey(highlightPeriodKey) : null;
+  const y = selected?.y ?? yesterday.getFullYear();
+  const m = selected?.m ?? yesterday.getMonth();
+  const endDay = selected?.d ?? yesterday.getDate();
+  const monthPrefix = `${y}-${String(m + 1).padStart(2, "0")}`;
+  const viewingCurrentMonth =
+    y === yesterday.getFullYear() && m === yesterday.getMonth();
 
   const yesterdayKey = isoDate(yesterday);
   const dayBeforeKey = isoDate(dayBefore);
 
   const points: TrendChartPoint[] = [];
-  for (let d = 1; d <= daysInMonth; d++) {
+  for (let d = 1; d <= endDay; d++) {
     const periodKey = `${monthPrefix}-${String(d).padStart(2, "0")}`;
-    const dayDate = new Date(y, m, d);
-    if (dayDate > yesterday) continue;
+    if (!selected) {
+      const dayDate = new Date(y, m, d);
+      if (dayDate > yesterday) continue;
+    }
 
     const log = byLabel.get(periodKey);
     let highlight: TrendHighlight = "none";
-    if (periodKey === yesterdayKey) highlight = "yesterday";
-    else if (periodKey === dayBeforeKey) highlight = "dayBefore";
+    if (highlightPeriodKey && periodKey === highlightPeriodKey) {
+      highlight = "latest";
+    } else if (viewingCurrentMonth) {
+      if (periodKey === yesterdayKey) highlight = "yesterday";
+      else if (periodKey === dayBeforeKey) highlight = "dayBefore";
+    }
 
-    points.push({
-      axisLabel: `${d}日`,
-      periodKey,
-      personTimes: log?.currentRounds ?? 0,
-      highlight,
-      deltaRounds: log?.deltaRounds,
-    });
+    const p = pointFromLog(log, highlight);
+    p.axisLabel = `${d}日`;
+    p.periodKey = periodKey;
+    points.push(p);
   }
 
+  const title = selected
+    ? `${y}年${m + 1}月每日条数（1—${endDay}日）`
+    : "本月每日条数趋势";
+
   return {
-    title: "本月每日人次趋势",
-    subtitle: `横轴为 ${monthPrefix} 各自然日；高亮昨日（${yesterdayKey}）与前日（${dayBeforeKey}）`,
+    title,
+    subtitle: selected ? `当前查看：${highlightPeriodKey}` : "",
     points,
   };
 }
@@ -116,8 +146,7 @@ function parseWeekSortKey(label: string): number {
   return Number(m[1]) * 100 + Number(m[2]);
 }
 
-/** 周：最近 10 个完整周；高亮最近两周 */
-function buildWeekTrend(logs: AnalyticsAuditLog[]): TrendChartMeta {
+function buildWeekTrend(logs: AnalyticsAuditLog[], highlightPeriodKey?: string): TrendChartMeta {
   const byLabel = dedupeByPeriodLabel(logs);
   const sorted = [...byLabel.entries()]
     .sort((a, b) => parseWeekSortKey(b[0]) - parseWeekSortKey(a[0]))
@@ -128,18 +157,20 @@ function buildWeekTrend(logs: AnalyticsAuditLog[]): TrendChartMeta {
   const latestKey = keys[keys.length - 1];
   const previousKey = keys[keys.length - 2];
 
-  const points = sorted.map(([periodKey, log]) => ({
-    axisLabel: periodKey.replace(/^\d{4}-/, ""),
-    periodKey,
-    personTimes: log.currentRounds,
-    highlight:
-      periodKey === latestKey ? ("latest" as const) : periodKey === previousKey ? ("previous" as const) : ("none" as const),
-    deltaRounds: log.deltaRounds,
-  }));
+  const points = sorted.map(([periodKey, log]) => {
+    let highlight: TrendHighlight = "none";
+    if (highlightPeriodKey && periodKey === highlightPeriodKey) highlight = "latest";
+    else if (periodKey === latestKey) highlight = "latest";
+    else if (periodKey === previousKey) highlight = "previous";
+    const p = pointFromLog(log, highlight);
+    p.axisLabel = periodKey.replace(/^\d{4}-/, "");
+    p.periodKey = periodKey;
+    return p;
+  });
 
   return {
-    title: "近 10 周人次趋势",
-    subtitle: "高亮最近一周与上一周（用于周环比）",
+    title: "近 10 周条数趋势",
+    subtitle: "",
     points,
   };
 }
@@ -150,8 +181,7 @@ function parseMonthSortKey(label: string): number {
   return Number(m[1]) * 100 + Number(m[2]);
 }
 
-/** 月：最近 10 个月；高亮最近两月 */
-function buildMonthTrend(logs: AnalyticsAuditLog[]): TrendChartMeta {
+function buildMonthTrend(logs: AnalyticsAuditLog[], highlightPeriodKey?: string): TrendChartMeta {
   const byLabel = dedupeByPeriodLabel(logs);
   const sorted = [...byLabel.entries()]
     .sort((a, b) => parseMonthSortKey(b[0]) - parseMonthSortKey(a[0]))
@@ -162,18 +192,20 @@ function buildMonthTrend(logs: AnalyticsAuditLog[]): TrendChartMeta {
   const latestKey = keys[keys.length - 1];
   const previousKey = keys[keys.length - 2];
 
-  const points = sorted.map(([periodKey, log]) => ({
-    axisLabel: periodKey,
-    periodKey,
-    personTimes: log.currentRounds,
-    highlight:
-      periodKey === latestKey ? ("latest" as const) : periodKey === previousKey ? ("previous" as const) : ("none" as const),
-    deltaRounds: log.deltaRounds,
-  }));
+  const points = sorted.map(([periodKey, log]) => {
+    let highlight: TrendHighlight = "none";
+    if (highlightPeriodKey && periodKey === highlightPeriodKey) highlight = "latest";
+    else if (periodKey === latestKey) highlight = "latest";
+    else if (periodKey === previousKey) highlight = "previous";
+    const p = pointFromLog(log, highlight);
+    p.axisLabel = periodKey;
+    p.periodKey = periodKey;
+    return p;
+  });
 
   return {
-    title: "近 10 个月人次趋势",
-    subtitle: "高亮最近一月与上一月（用于月环比）",
+    title: "近 10 个月条数趋势",
+    subtitle: "",
     points,
   };
 }
@@ -181,15 +213,16 @@ function buildMonthTrend(logs: AnalyticsAuditLog[]): TrendChartMeta {
 export function buildPeriodTrendChart(
   cycle: AnalyticsCompareCycle,
   historyLogs?: AnalyticsAuditLog[] | null,
+  highlightPeriodKey?: string,
 ): TrendChartMeta {
   const logs = (historyLogs ?? []).filter((l) => l?.periodType === cycle);
   switch (cycle) {
     case "day":
-      return buildDayTrend(logs);
+      return buildDayTrend(logs, highlightPeriodKey);
     case "week":
-      return buildWeekTrend(logs);
+      return buildWeekTrend(logs, highlightPeriodKey);
     case "month":
-      return buildMonthTrend(logs);
+      return buildMonthTrend(logs, highlightPeriodKey);
     default:
       return { title: "", subtitle: "", points: [] };
   }

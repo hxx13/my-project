@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { Pencil, RefreshCw, Save, Trash2 } from "lucide-react";
 import {
   createScanPopupAnnouncement,
   deleteScanPopupAnnouncement,
@@ -192,8 +193,16 @@ export function ScanPopupAnnouncementSection() {
               />
               每次扫码自动展开
             </label>
-            <AdminButton type="button" disabled={settingsSaving || settingsLoading} onClick={() => void saveSettings()}>
-              {settingsSaving ? "保存中…" : "保存全局配置"}
+            <AdminButton
+              type="button"
+              tone="primary"
+              className="gap-1.5"
+              loading={settingsSaving}
+              disabled={settingsLoading}
+              onClick={() => void saveSettings()}
+            >
+              <Save className="h-4 w-4" aria-hidden />
+              保存全局配置
             </AdminButton>
           </div>
           <div>
@@ -274,9 +283,10 @@ export function ScanPopupAnnouncementSection() {
               />
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <AdminButton type="button" tone="primary" disabled={saving} onClick={() => void saveAnnouncement()}>
-              {saving ? "保存中…" : editId != null ? "保存修改" : "发布公告"}
+          <div className="flex flex-wrap gap-2 border-t border-neutral-100 pt-3">
+            <AdminButton type="button" tone="primary" loading={saving} className="gap-1.5" onClick={() => void saveAnnouncement()}>
+              <Save className="h-4 w-4" aria-hidden />
+              {editId != null ? "保存修改" : "发布公告"}
             </AdminButton>
             {editId != null ? (
               <AdminButton type="button" tone="secondary" onClick={resetForm}>
@@ -289,7 +299,8 @@ export function ScanPopupAnnouncementSection() {
 
       <AdminFormCard title="公告列表" description="按排序与 ID 倒序；扫码端多条时支持上一条/下一条翻页。">
         <div className="mb-3 flex justify-end">
-          <AdminButton type="button" tone="secondary" disabled={listLoading} onClick={() => void loadList()}>
+          <AdminButton type="button" tone="secondary" loading={listLoading} className="gap-1.5" onClick={() => void loadList()}>
+            <RefreshCw className="h-4 w-4" aria-hidden />
             刷新列表
           </AdminButton>
         </div>
@@ -300,21 +311,41 @@ export function ScanPopupAnnouncementSection() {
         ) : (
           <ul className="divide-y divide-neutral-100 rounded-lg border border-neutral-200">
             {rows.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm">
+              <li
+                key={r.id}
+                className={cn(
+                  "flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm transition-colors",
+                  editId === r.id && "bg-violet-50/80"
+                )}
+              >
                 <div className="min-w-0">
                   <div className="font-medium text-neutral-900">
                     #{r.id} {r.title}
                     {r.enabled === false ? (
                       <span className="ml-2 text-xs text-neutral-400">（已停用）</span>
                     ) : null}
+                    {editId === r.id ? (
+                      <span className="ml-2 rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-violet-800">
+                        编辑中
+                      </span>
+                    ) : null}
                   </div>
                   <div className="text-xs text-neutral-500">排序 {r.sortOrder ?? 0}</div>
                 </div>
-                <div className="flex shrink-0 gap-2">
-                  <AdminButton type="button" tone="secondary" size="sm" onClick={() => pickRow(r)}>
+                <div className="flex shrink-0 gap-1.5">
+                  <AdminButton
+                    type="button"
+                    tone="secondary"
+                    size="sm"
+                    active={editId === r.id}
+                    className="gap-1"
+                    onClick={() => pickRow(r)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden />
                     编辑
                   </AdminButton>
-                  <AdminButton type="button" tone="destructive" size="sm" onClick={() => void onDelete(r.id)}>
+                  <AdminButton type="button" tone="destructive" size="sm" className="gap-1" onClick={() => void onDelete(r.id)}>
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
                     删除
                   </AdminButton>
                 </div>

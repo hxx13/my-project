@@ -29,16 +29,19 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
 
     useEffect(() => {
         const loadWarnings = async () => {
+            if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+                return;
+            }
             try {
-                // 💥 2. 在调用接口时，把当前校区传过去！
                 const data = await fetchRetentionWarnings(100, activeTab);
                 setWarnings(data || []);
             } catch (error) {
                 console.error("❌ 滞留雷达拉取失败:", error);
+                setWarnings([]);
             }
         };
         loadWarnings();
-        const intervalId = setInterval(loadWarnings, 30000);
+        const intervalId = setInterval(loadWarnings, 60_000);
         return () => clearInterval(intervalId);
     }, [activeTab]);
 
@@ -128,7 +131,7 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
                                 ? "bg-clip-text text-transparent bg-gradient-to-r from-cyan-200 via-fuchsia-200 to-cyan-300 drop-shadow-[0_0_12px_rgba(34,211,238,0.35)]"
                                 : "bg-clip-text text-transparent bg-gradient-to-r from-rose-800 to-rose-500"
                         }`}>
-                        AI 预测雷达
+                        AI 滞留监控
                     </span>
                 </div>
 
@@ -163,7 +166,7 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
                         </span>
-                        <span className={`text-[10px] font-bold ${sf ? "text-cyan-300" : "text-rose-500"}`}>实时预测中</span>
+                        <span className={`text-[10px] font-bold ${sf ? "text-cyan-300" : "text-rose-500"}`}>实时监测中</span>
                     </div>
                 </div>
             </div>
@@ -190,7 +193,14 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
                             const isExtended = passedMins >= aiPredictedMins;
 
                             const enterStr = String(evt.enterTime ?? "");
-                            const timeStr = enterStr ? enterStr.split(" ")[1]?.substring(0, 5) ?? "--:--" : "--:--";
+                            const enterParts = enterStr.split(" ");
+                            const enterDatePart = enterParts[0] ?? "";
+                            const enterClock = enterParts[1]?.substring(0, 5) ?? "--:--";
+                            const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+                            const timeStr =
+                                enterDatePart && enterDatePart !== todayYmd
+                                    ? `${enterDatePart.slice(5)} ${enterClock}`
+                                    : enterClock;
                             const nowStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
                             const exitDate = new Date(enterDate.getTime() + aiPredictedMins * 60000);

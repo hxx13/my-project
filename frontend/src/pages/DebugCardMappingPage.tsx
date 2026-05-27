@@ -106,6 +106,7 @@ export default function DebugCardMappingPage() {
         freezeTime: "18:00",
         secondFreezeTime: "",
         secondFreezeAutoSignoutEnabled: false,
+        dailyExemptRevokeAutoSignoutEnabled: false,
     });
     /** 1=第一次定时 2=第二次定时 */
     const [freezeSlotModal, setFreezeSlotModal] = useState<null | 1 | 2>(null);
@@ -293,6 +294,7 @@ export default function DebugCardMappingPage() {
                 freezeTime: data?.freezeTime || "18:00",
                 secondFreezeTime: data?.secondFreezeTime || "",
                 secondFreezeAutoSignoutEnabled: data?.secondFreezeAutoSignoutEnabled === true,
+                dailyExemptRevokeAutoSignoutEnabled: data?.dailyExemptRevokeAutoSignoutEnabled === true,
             });
         } catch (e) {
             console.error(e);
@@ -537,6 +539,7 @@ export default function DebugCardMappingPage() {
                 freezeTime: freezeForm.freezeTime,
                 secondFreezeTime: freezeForm.secondFreezeTime || undefined,
                 secondFreezeAutoSignoutEnabled: freezeForm.secondFreezeAutoSignoutEnabled,
+                dailyExemptRevokeAutoSignoutEnabled: freezeForm.dailyExemptRevokeAutoSignoutEnabled,
                 timezone: FREEZE_TIMEZONE_CN,
             });
             alert("自动冻结配置已保存");
@@ -651,6 +654,7 @@ export default function DebugCardMappingPage() {
     const role = authStorage.getRole() || "STUDENT";
     const canCardIssue = hasMinRole(role, "STAFF");
     const canReaper = hasMinRole(role, "SUPER_ADMIN");
+    const canGrantExempt = hasMinRole(role, "ADMIN");
     const canFreezeCfg = hasMinRole(role, "STAFF");
     const showCardPageMenu = canCardIssue || canReaper || canFreezeCfg;
 
@@ -796,6 +800,7 @@ export default function DebugCardMappingPage() {
                                         </div>
                                     </td>
                                     <td className="p-3 text-center">
+                                        {canGrantExempt ? (
                                         <button
                                             type="button"
                                             onClick={() => {
@@ -812,6 +817,9 @@ export default function DebugCardMappingPage() {
                                         >
                                             {isExempt ? '👑 已豁免' : '受控'}
                                         </button>
+                                        ) : (
+                                            <span className="text-xs text-slate-400">{isExempt ? '已豁免' : '受控'}</span>
+                                        )}
                                         {isExempt && exemptRemain ? (
                                             <div className="mt-1 text-[10px] text-amber-600 font-mono">{exemptRemain}</div>
                                         ) : null}
@@ -879,14 +887,29 @@ export default function DebugCardMappingPage() {
                         </p>
 
                         {freezeSlotModal === 1 && (
-                            <label className="flex items-center gap-2 text-sm text-slate-700 mb-4 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={freezeForm.enabled}
-                                    onChange={(e) => setFreezeForm((prev) => ({ ...prev, enabled: e.target.checked }))}
-                                />
-                                启用每日自动冻结
-                            </label>
+                            <>
+                                <label className="flex items-center gap-2 text-sm text-slate-700 mb-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={freezeForm.enabled}
+                                        onChange={(e) => setFreezeForm((prev) => ({ ...prev, enabled: e.target.checked }))}
+                                    />
+                                    启用每日自动冻结
+                                </label>
+                                <label className="flex items-center gap-2 text-sm text-slate-700 mb-4 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={freezeForm.dailyExemptRevokeAutoSignoutEnabled}
+                                        onChange={(e) =>
+                                            setFreezeForm((prev) => ({
+                                                ...prev,
+                                                dailyExemptRevokeAutoSignoutEnabled: e.target.checked,
+                                            }))
+                                        }
+                                    />
+                                    （已迁移）请改在「定时管理 → 每日豁免权回收」勾选「回收后签离」
+                                </label>
+                            </>
                         )}
 
                         {freezeSlotModal === 2 && (

@@ -37,15 +37,30 @@ public class AnalyticsAuditAsyncService {
         try {
             boolean cage = view != null && AnalyticsReportRegistry.REPORT_CAGE_OCCUPANCY.equals(view.getReportKey());
             boolean doBackfill = backfillHistory && !cage && StringUtils.hasText(backfillUntil);
-            log.info("[analytics-audit] async start viewId={} backfill={}", viewId, doBackfill);
+            log.debug("[analytics-audit] async start viewId={} backfill={}", viewId, doBackfill);
             auditService.runAuditForView(view);
             if (doBackfill) {
                 LocalDate until = auditService.parseBackfillUntil(backfillUntil);
                 auditService.backfillAuditForView(view, until);
             }
-            log.info("[analytics-audit] async done viewId={}", viewId);
+            log.debug("[analytics-audit] async done viewId={}", viewId);
         } catch (Exception e) {
             log.warn("[analytics-audit] async failed viewId={}: {}", viewId, e.getMessage(), e);
+        }
+    }
+
+    @Async("heavyCalcExecutor")
+    public void refreshSnapshotsAsync(long viewId, String userId) {
+        AnalyticsUserView view = loadSubscribedView(viewId, userId);
+        if (view == null) {
+            return;
+        }
+        try {
+            log.debug("[analytics-audit] async refresh start viewId={}", viewId);
+            auditService.refreshAllSnapshotsForView(view);
+            log.debug("[analytics-audit] async refresh done viewId={}", viewId);
+        } catch (Exception e) {
+            log.warn("[analytics-audit] async refresh failed viewId={}: {}", viewId, e.getMessage(), e);
         }
     }
 
@@ -56,10 +71,10 @@ public class AnalyticsAuditAsyncService {
             return;
         }
         try {
-            log.info("[analytics-audit] async backfill start viewId={}", viewId);
+            log.debug("[analytics-audit] async backfill start viewId={}", viewId);
             LocalDate until = auditService.parseBackfillUntil(backfillUntil);
             auditService.backfillAuditForView(view, until);
-            log.info("[analytics-audit] async backfill done viewId={}", viewId);
+            log.debug("[analytics-audit] async backfill done viewId={}", viewId);
         } catch (Exception e) {
             log.warn("[analytics-audit] async backfill failed viewId={}: {}", viewId, e.getMessage(), e);
         }

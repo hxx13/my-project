@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS access_clean_execution_log (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    stats_pull_task_id BIGINT NULL COMMENT '审计拉取任务',
+    clean_rule_profile_id BIGINT NULL COMMENT '清洗规则方案',
+    execution_date DATE NOT NULL COMMENT '业务日/覆盖日',
+    coverage_day DATE NULL COMMENT '清洗覆盖自然日（按日分段）',
+    channel_code VARCHAR(128) NULL COMMENT '单通道',
+    window_start DATETIME NULL,
+    window_end DATETIME NULL,
+    channel_codes_json VARCHAR(2048) NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'SUCCESS' COMMENT 'RUNNING|SUCCESS|FAILED|EDITED',
+    total_scanned INT NOT NULL DEFAULT 0,
+    included_count INT NOT NULL DEFAULT 0,
+    excluded_count INT NOT NULL DEFAULT 0,
+    review_count INT NOT NULL DEFAULT 0,
+    config_snapshot_json MEDIUMTEXT NULL,
+    note_text VARCHAR(1024) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_exec_log_task_date (stats_pull_task_id, execution_date),
+    KEY idx_exec_log_profile_date (clean_rule_profile_id, execution_date),
+    KEY idx_exec_log_status (status, execution_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

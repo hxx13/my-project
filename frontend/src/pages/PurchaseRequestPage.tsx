@@ -4,6 +4,8 @@ import { toast } from "react-hot-toast";
 import { createPurchaseOrder, fetchPurchaseOrders, type PurchaseOrderRecord, withdrawPurchaseOrder } from "@/api/domains/purchase.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { WorkorderImageThumb } from "@/components/WorkorderImageThumb";
+import { WorkorderNotificationReadButton } from "@/components/WorkorderNotificationReadButton";
+import { useWorkorderUnreadFlags } from "@/features/notification/useWorkorderUnreadFlags";
 
 const STATUS_TEXT: Record<string, string> = {
   PENDING: "待处理",
@@ -28,6 +30,9 @@ export default function PurchaseRequestPage() {
   const [previewUrl, setPreviewUrl] = useState<string>("");
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / size)), [total, size]);
+
+    const orderIds = rows.map((r) => r.id);
+  const { isUnread: isPurchaseNoticeUnread } = useWorkorderUnreadFlags("PURCHASE", orderIds);
 
   const loadData = async () => {
     setLoading(true);
@@ -149,7 +154,14 @@ export default function PurchaseRequestPage() {
               <div key={row.id} className="rounded-lg border border-slate-200 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="font-medium">{row.location}</div>
-                  <div className="text-sm text-slate-600">{STATUS_TEXT[row.status]}</div>
+                  <div className="flex items-center gap-2">
+                    <WorkorderNotificationReadButton
+                      bizType="PURCHASE"
+                      bizId={row.id}
+                      unreadOverride={isPurchaseNoticeUnread(row.id)}
+                    />
+                    <div className="text-sm text-slate-600">{STATUS_TEXT[row.status]}</div>
+                  </div>
                 </div>
                 <div className="text-sm text-slate-700 mt-1">{row.content}</div>
                 {row.requestImages?.length > 0 && (

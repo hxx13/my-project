@@ -24,6 +24,12 @@ public class TwinAutomationLogService {
     public static final String TYPE_AUTO_SIGNOUT = "AUTO_SIGNOUT";
     public static final String TYPE_SCHEDULER = "SCHEDULER";
     public static final String TYPE_EXEMPTION = "EXEMPTION";
+
+    /** 定时兜底收回单人豁免（无视时效/流水） */
+    public static final String EVENT_EXEMPT_REVOKED = "EXEMPT_REVOKED";
+    public static final String TRIGGER_DAILY_EXEMPT_RESET_FALLBACK = "DAILY_EXEMPT_RESET_FALLBACK";
+    /** 豁免收回后联动自动签离 */
+    public static final String TRIGGER_DAILY_EXEMPT_REVOKE_AUTO_SIGNOUT = "DAILY_EXEMPT_REVOKE_AUTO_SIGNOUT";
     /** 扫码/大华联动关键步骤（便于溯源，不写高频 analyze） */
     public static final String TYPE_ACCESS_TRACE = "ACCESS_TRACE";
 

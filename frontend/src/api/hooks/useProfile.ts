@@ -11,7 +11,6 @@ export const useRoomOverviewQuery = () =>
         queryFn: fetchRoomOverview,
         select: (data) => (Array.isArray(data) ? data : []),
         initialData: [],
-        staleTime: 0,
-        refetchInterval: 5000,
+        staleTime: 30_000,
         refetchOnMount: "always",
     });

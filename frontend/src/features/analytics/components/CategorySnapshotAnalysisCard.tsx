@@ -1,16 +1,9 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Minus, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
 import type { AnalyticsAuditLog, CagePiRow, CageRoomRow, IsolationUsageQueryResult } from "@/api/domains/analytics.api";
 import { MeasuredChartBox } from "@/features/analytics/components/MeasuredChartBox";
+import { SnapshotProvenanceInfoButton } from "@/features/analytics/components/SnapshotProvenanceInfoButton";
 import { PeriodTrendBarChart } from "@/features/analytics/components/PeriodTrendBarChart";
 import type { AnalyticsCompareCycle } from "@/features/analytics/analyticsPipelineFilter";
 import { buildPeriodTrendChart } from "@/features/analytics/periodTrendChartData";
@@ -27,6 +20,9 @@ type Props = {
   hint: string;
   log: AnalyticsAuditLog;
   historyLogs: AnalyticsAuditLog[];
+  /** 趋势图中高亮当前查看的 periodLabel */
+  highlightPeriodKey?: string;
+  viewingHistorical?: boolean;
   detail?: IsolationUsageQueryResult;
   loading?: boolean;
   error?: Error | null;
@@ -40,6 +36,8 @@ export function CategorySnapshotAnalysisCard({
   hint,
   log,
   historyLogs = [],
+  highlightPeriodKey,
+  viewingHistorical = false,
   detail,
   loading,
   error,
@@ -47,12 +45,12 @@ export function CategorySnapshotAnalysisCard({
   metricUnit = "人次",
   onOpenInsight,
 }: Props) {
-  const [compareExpanded, setCompareExpanded] = useState(false);
   const [topGroupsExpanded, setTopGroupsExpanded] = useState(false);
   const [topPiExpanded, setTopPiExpanded] = useState(false);
   const [topRoomsExpanded, setTopRoomsExpanded] = useState(false);
 
   const isCageMetric = metricUnit === "笼位";
+  const isAccessPackage = detail?.summary?.dataSource === "access_package";
 
   const delta = log.deltaRounds;
   const pct = log.deltaPct;
@@ -60,12 +58,10 @@ export function CategorySnapshotAnalysisCard({
   const trendLabel = trend === "up" ? "较上期增加" : trend === "down" ? "较上期减少" : "与上期持平";
 
   const safeHistory = historyLogs ?? [];
-  const trendMeta = useMemo(() => buildPeriodTrendChart(cycle, safeHistory), [cycle, safeHistory]);
-
-  const compareChart = [
-    { name: "上期", value: log.previousRounds, fill: "#cbd5e1" },
-    { name: "本期", value: log.currentRounds, fill: trend === "up" ? "#10b981" : trend === "down" ? "#f43f5e" : "#7c6cf0" },
-  ];
+  const trendMeta = useMemo(
+    () => buildPeriodTrendChart(cycle, safeHistory, highlightPeriodKey),
+    [cycle, safeHistory, highlightPeriodKey]
+  );
 
   const groups = detail?.byProjectGroup ?? [];
   const pis: CagePiRow[] = detail?.byPi ?? [];
@@ -74,8 +70,8 @@ export function CategorySnapshotAnalysisCard({
   const slotMetric = (row: { personTimes?: number; occupiedSlots?: number }) =>
     row.occupiedSlots ?? row.personTimes ?? 0;
 
-  const topGroups = groups.slice(0, 8).map((g) => ({
-    name: g.groupName.length > 12 ? `${g.groupName.slice(0, 12)}…` : g.groupName,
+  const allGroupsChart = groups.map((g) => ({
+    name: g.groupName.length > 10 ? `${g.groupName.slice(0, 10)}…` : g.groupName,
     fullName: g.groupName,
     personTimes: slotMetric(g),
   }));
@@ -87,7 +83,19 @@ export function CategorySnapshotAnalysisCard({
   }));
 
   const summary = detail?.summary;
-  const topGroupsChartHeight = Math.min(200, Math.max(80, topGroups.length * 28));
+  // 快照 detail 与 header 同源；优先 summary（与下方课题组分布一致），避免 log 列滞后
+  const scopeGroups = summary?.uniqueGroups ?? log.currentGroups;
+  const involvedUsersPrev = log.previousUsers;
+  const involvedUsersCur = summary?.uniqueUsers ?? log.currentUsers;
+  const truncated = summary?.truncated === true;
+  const distributionGroupCount = groups.length;
+  const scopeGroupsStale =
+    !loading &&
+    !error &&
+    distributionGroupCount > 0 &&
+    scopeGroups != null &&
+    distributionGroupCount !== scopeGroups;
+  const allGroupsChartHeight = Math.min(480, Math.max(140, allGroupsChart.length * 36));
   const topPiChartHeight = Math.min(200, Math.max(80, topPis.length * 28));
 
   return (
@@ -109,12 +117,27 @@ export function CategorySnapshotAnalysisCard({
           </button>
         ) : null}
         <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-600">
-          {CYCLE_TITLE[cycle]} · 最新快照
+          {CYCLE_TITLE[cycle]} · {viewingHistorical ? "查看快照" : "最新快照"}
         </p>
         <h3 className="mt-2 text-2xl font-black leading-tight tracking-tight text-neutral-900 sm:text-3xl">
           {hint}
         </h3>
-        <p className="mt-1.5 text-lg font-bold tabular-nums text-violet-800 sm:text-xl">{log.periodLabel}</p>
+        <p className="mt-1.5 inline-flex items-center justify-center gap-1.5 text-lg font-bold tabular-nums text-violet-800 sm:text-xl">
+          {log.periodLabel}
+          {isAccessPackage && !isCageMetric ? (
+            <SnapshotProvenanceInfoButton loading={loading} detail={detail} />
+          ) : null}
+        </p>
+        {truncated ? (
+          <p className="mt-2 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 inline-block">
+            清洗库明细已抽样；涉及人数仍按全量 SQL；ARO 课题组与分布图同源
+          </p>
+        ) : null}
+        {scopeGroupsStale ? (
+          <p className="mt-2 text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 inline-block">
+            课题组数与分布不一致，请在左侧对该期执行「更新当前配置并重算」
+          </p>
+        ) : null}
       </header>
 
       <div className="space-y-3 p-4">
@@ -123,14 +146,18 @@ export function CategorySnapshotAnalysisCard({
           <PeriodRoundsCard
             previousRounds={log.previousRounds}
             currentRounds={log.currentRounds}
-            metricUnit={metricUnit}
+            studentRounds={log.studentRounds}
+            staffRounds={log.staffRounds}
+            previousInvolvedUsers={isAccessPackage ? involvedUsersPrev : undefined}
+            currentInvolvedUsers={isAccessPackage ? involvedUsersCur : undefined}
+            metricUnit={isAccessPackage ? "条" : metricUnit}
           />
           <ScopeSummaryCard
-            uniqueGroups={summary?.uniqueGroups}
-            uniqueUsers={summary?.uniqueUsers}
+            uniqueGroups={scopeGroups}
             uniquePis={summary?.uniquePis}
             uniqueRooms={summary?.uniqueRooms}
             isCageMetric={isCageMetric}
+            isAccessPackage={isAccessPackage}
             loading={loading}
             error={error}
           />
@@ -138,40 +165,7 @@ export function CategorySnapshotAnalysisCard({
 
         <PeriodTrendBarChart cycle={cycle} meta={trendMeta} />
 
-        <div className="rounded-lg border border-neutral-200/90 bg-neutral-50/50">
-          <button
-            type="button"
-            onClick={() => setCompareExpanded((v) => !v)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-neutral-600 hover:bg-neutral-100/80"
-          >
-            {compareExpanded ? (
-              <ChevronDown className="h-3.5 w-3.5 text-violet-600" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )}
-            本期 vs 上期简图
-            <span className="font-normal text-neutral-400">（点击展开）</span>
-          </button>
-          {compareExpanded ? (
-            <div className="border-t border-neutral-200/80 px-3 pb-3 pt-2">
-              <MeasuredChartBox height={128}>
-                <BarChart data={compareChart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 12, fontWeight: 600 }} />
-                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} width={36} />
-                  <Tooltip formatter={(v) => [`${v} ${metricUnit}`, ""]} />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={48}>
-                    {compareChart.map((entry, i) => (
-                      <Cell key={i} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </MeasuredChartBox>
-            </div>
-          ) : null}
-        </div>
-
-        {detail && topGroups.length > 0 ? (
+        {detail && allGroupsChart.length > 0 ? (
           <div className="rounded-lg border border-neutral-200/90 bg-neutral-50/50">
             <button
               type="button"
@@ -183,23 +177,33 @@ export function CategorySnapshotAnalysisCard({
               ) : (
                 <ChevronRight className="h-3.5 w-3.5" />
               )}
-              {`课题组${metricUnit} Top（本期）`}
+              {`课题组${isAccessPackage ? "（ARO 流水）" : metricUnit}（本期，全部 ${allGroupsChart.length} 个）`}
               {!topGroupsExpanded ? (
                 <span className="font-normal text-neutral-400">（点击展开）</span>
               ) : null}
             </button>
             {topGroupsExpanded ? (
               <div className="border-t border-neutral-200/80 px-3 pb-3 pt-2">
-                <MeasuredChartBox height={topGroupsChartHeight}>
-                  <BarChart layout="vertical" data={topGroups} margin={{ left: 4, right: 12 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
-                    <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 10 }} />
+                <MeasuredChartBox height={allGroupsChartHeight}>
+                  <BarChart
+                    data={allGroupsChart}
+                    margin={{ top: 8, right: 8, left: 4, bottom: allGroupsChart.length > 6 ? 56 : 24 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 9 }}
+                      interval={0}
+                      angle={allGroupsChart.length > 6 ? -40 : 0}
+                      textAnchor={allGroupsChart.length > 6 ? "end" : "middle"}
+                      height={allGroupsChart.length > 6 ? 56 : 24}
+                    />
+                    <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={40} />
                     <Tooltip
-                      formatter={(v) => [Number(v ?? 0), metricUnit]}
+                      formatter={(v) => [Number(v ?? 0), isAccessPackage ? "条" : metricUnit]}
                       labelFormatter={(_, p) => (p?.[0]?.payload as { fullName?: string })?.fullName ?? ""}
                     />
-                    <Bar dataKey="personTimes" fill="#7c6cf0" radius={[0, 4, 4, 0]} barSize={16} />
+                    <Bar dataKey="personTimes" fill="#7c6cf0" radius={[4, 4, 0, 0]} maxBarSize={32} />
                   </BarChart>
                 </MeasuredChartBox>
               </div>
@@ -349,12 +353,22 @@ function TrendCompareCard({
 function PeriodRoundsCard({
   previousRounds,
   currentRounds,
+  studentRounds,
+  staffRounds,
+  previousInvolvedUsers,
+  currentInvolvedUsers,
   metricUnit = "人次",
 }: {
   previousRounds: number;
   currentRounds: number;
+  studentRounds?: number;
+  staffRounds?: number;
+  previousInvolvedUsers?: number;
+  currentInvolvedUsers?: number;
   metricUnit?: string;
 }) {
+  const showInvolved =
+    previousInvolvedUsers != null || currentInvolvedUsers != null;
   return (
     <div className="flex min-h-[5.5rem] flex-col justify-center rounded-xl border border-violet-200 bg-violet-50/90 px-2.5 py-2 text-center shadow-sm">
       <p className="text-[10px] font-medium text-violet-700/80">{`上期 / 本期（${metricUnit}）`}</p>
@@ -363,67 +377,68 @@ function PeriodRoundsCard({
         <span className="text-sm font-medium text-violet-400">/</span>
         <span className="text-xl font-black text-violet-900">{currentRounds}</span>
       </p>
-      <p className="mt-1 text-[9px] text-violet-600/70">左上期 · 右本期</p>
+      {studentRounds != null && staffRounds != null ? (
+        <p className="mt-1 text-[9px] text-violet-800">
+          学生 {studentRounds} · 工作人员 {staffRounds}
+        </p>
+      ) : null}
+      {showInvolved ? (
+        <p className="mt-1 text-[9px] font-medium text-violet-900/90">
+          涉及人数 {previousInvolvedUsers ?? "—"} / {currentInvolvedUsers ?? "—"}
+          <span className="block text-[8px] font-normal text-violet-700/80">清洗库去重</span>
+        </p>
+      ) : (
+        <p className="mt-1 text-[9px] text-violet-600/70">左上期 · 右本期</p>
+      )}
     </div>
   );
 }
 
 function ScopeSummaryCard({
   uniqueGroups,
-  uniqueUsers,
   uniquePis,
   uniqueRooms,
   isCageMetric,
+  isAccessPackage,
   loading,
   error,
 }: {
   uniqueGroups?: number;
-  uniqueUsers?: number;
   uniquePis?: number;
   uniqueRooms?: number;
   isCageMetric?: boolean;
+  isAccessPackage?: boolean;
   loading?: boolean;
   error?: Error | null;
 }) {
   return (
     <div className="flex min-h-[5.5rem] flex-col justify-center rounded-xl border border-neutral-200 bg-neutral-50/90 px-2.5 py-2 text-center shadow-sm">
       <p className="text-[10px] font-medium text-neutral-500">本期规模</p>
+      {isAccessPackage && !isCageMetric ? (
+        <p className="mt-0.5 text-[9px] leading-snug text-neutral-400">课题组 · ARO 流水</p>
+      ) : null}
       {loading ? (
         <p className="mt-2 text-xs text-neutral-400">加载中…</p>
       ) : error ? (
         <p className="mt-2 text-[10px] leading-snug text-rose-600">加载失败</p>
-      ) : (
-        <div
-          className={cn(
-            "mt-1.5 tabular-nums",
-            isCageMetric ? "grid grid-cols-2 gap-2" : "flex items-center justify-center gap-3"
-          )}
-        >
-          {!isCageMetric ? (
-            <>
-              <div>
-                <p className="text-[9px] text-neutral-500">课题组</p>
-                <p className="text-lg font-black text-neutral-900">{uniqueGroups ?? "—"}</p>
-              </div>
-              <span className="text-neutral-300">·</span>
-            </>
-          ) : null}
+      ) : isCageMetric ? (
+        <div className="mt-1.5 grid grid-cols-2 gap-2 tabular-nums">
           <div>
-            <p className="text-[9px] text-neutral-500">{isCageMetric ? "PI课题组" : "涉及人数"}</p>
-            <p className="text-lg font-black text-neutral-900">
-              {isCageMetric ? (uniquePis ?? "—") : (uniqueUsers ?? "—")}
-            </p>
+            <p className="text-[9px] text-neutral-500">PI课题组</p>
+            <p className="text-lg font-black text-neutral-900">{uniquePis ?? "—"}</p>
           </div>
-          {isCageMetric ? (
-            <div>
-              <p className="text-[9px] text-neutral-500">房间</p>
-              <p className="text-lg font-black text-neutral-900">{uniqueRooms ?? "—"}</p>
-            </div>
-          ) : null}
+          <div>
+            <p className="text-[9px] text-neutral-500">房间</p>
+            <p className="text-lg font-black text-neutral-900">{uniqueRooms ?? "—"}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-1.5 tabular-nums">
+          <p className="text-[9px] text-neutral-500">课题组</p>
+          <p className="text-2xl font-black text-neutral-900">{uniqueGroups ?? "—"}</p>
         </div>
       )}
     </div>
   );
 }
-
 

@@ -1,22 +1,23 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, BellOff, Pencil, Share2, Sparkles, Trash2, Upload } from "lucide-react";
+import { Bell, BellOff, Pencil, Settings2, Share2, Sparkles, Trash2, Upload } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
   deleteAnalyticsView,
   fetchAnalyticsViews,
   fetchAuditLogDetail,
   generateAnalyticsLlmInsightBatch,
+  previewIsolationUsage,
   saveAnalyticsView,
   scopeFilterOnly,
   setAnalyticsViewSubscription,
   updateAnalyticsView,
   type AnalyticsUserView,
+  type IsolationUsageQueryResult,
 } from "@/api/domains/analytics.api";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
-import { AnalyticsConfigCollapsible } from "@/features/analytics/components/AnalyticsConfigCollapsible";
+import { AnalyticsConfigSettingsModal } from "@/features/analytics/components/AnalyticsConfigSettingsModal";
 import { EditAnalyticsViewModal } from "@/features/analytics/components/EditAnalyticsViewModal";
-import { IsolationUsageReportLayout } from "@/features/analytics/components/IsolationUsageReportLayout";
 import {
   AnalyticsLlmInsightDialog,
   type InsightDialogTarget,
@@ -30,13 +31,25 @@ import { SettlementRecordsPanel } from "@/features/analytics/components/Settleme
 import { AnalyticsViewShareModal } from "@/features/analytics/components/AnalyticsViewShareModal";
 import {
   defaultAnalyticsDraftFilter,
-  migrateAnalyticsFilter,
+  draftFromSavedFilter,
   type AnalyticsDraftFilter,
 } from "@/features/analytics/analyticsPipelineFilter";
+import {
+  draftDiffersFromSaved,
+  formatSavedChannelScope,
+} from "@/features/analytics/analyticsChannelScopeHint";
 import { useGroupedAuditLogs } from "@/features/analytics/hooks/useGroupedAuditLogs";
 import { cn } from "@/lib/utils";
 
 const REPORT_KEY = "isolation_usage";
+
+function formatPreviewTime(v?: string): string {
+  if (!v) return "";
+  const s = v.trim().replace("T", " ");
+  if (s.length === 10) return `${s} 00:00:00`;
+  if (s.length === 16) return `${s}:00`;
+  return s.length >= 19 ? s.slice(0, 19) : s;
+}
 
 export function IsolationUsageReportPanel() {
   const qc = useQueryClient();
@@ -48,6 +61,10 @@ export function IsolationUsageReportPanel() {
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [insightDialog, setInsightDialog] = useState<InsightDialogTarget | null>(null);
   const [shareModal, setShareModal] = useState<"create" | "import" | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] = useState<IsolationUsageQueryResult | null>(null);
+  const [applyingConfig, setApplyingConfig] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
 
   const { data: views = [] } = useQuery({
     queryKey: ["analytics", "views", REPORT_KEY],
@@ -59,6 +76,20 @@ export function IsolationUsageReportPanel() {
     [views, activeViewId]
   );
 
+  const savedDraft = useMemo(
+    () => (activeView ? draftFromSavedFilter(activeView.filter as Record<string, unknown>) : defaultAnalyticsDraftFilter()),
+    [activeView]
+  );
+
+  const activeFilterKey = activeView ? JSON.stringify(activeView.filter ?? {}) : "";
+
+  const configDirty = useMemo(
+    () => (activeView ? draftDiffersFromSaved(draft, savedDraft) : false),
+    [activeView, draft, savedDraft]
+  );
+
+  const savedChannelLabel = useMemo(() => formatSavedChannelScope(savedDraft), [savedDraft]);
+
   const { compareCycles, latestByCycle, grouped } = useGroupedAuditLogs(REPORT_KEY, activeView);
 
   const latestIdsByCycle = useMemo(
@@ -66,8 +97,14 @@ export function IsolationUsageReportPanel() {
     [latestByCycle]
   );
 
-  const isHistoricalSelection =
-    selectedLogId != null && !latestIdsByCycle.has(selectedLogId);
+  const selectedLog = useMemo(() => {
+    if (selectedLogId == null) return null;
+    for (const list of grouped.values()) {
+      const hit = list.find((l) => l.id === selectedLogId);
+      if (hit) return hit;
+    }
+    return null;
+  }, [grouped, selectedLogId]);
 
   const openInsightDialog = (
     auditLogId: number,
@@ -83,17 +120,19 @@ export function IsolationUsageReportPanel() {
     });
   };
 
-  const { data: historicalDetail, isLoading: historicalLoading, error: historicalError } = useQuery({
-    queryKey: ["analytics", "audit-detail", "historical", selectedLogId],
-    queryFn: () => fetchAuditLogDetail(selectedLogId!),
-    enabled: isHistoricalSelection,
-  });
-
   useEffect(() => {
     if (activeViewId == null && views.length > 0) {
       setActiveViewId(views[0].id);
     }
   }, [views, activeViewId]);
+
+  useEffect(() => {
+    if (activeView) {
+      setDraft(draftFromSavedFilter(activeView.filter as Record<string, unknown>));
+    } else {
+      setDraft(defaultAnalyticsDraftFilter());
+    }
+  }, [activeViewId, activeFilterKey]);
 
   useEffect(() => {
     setSelectedLogId(null);
@@ -108,8 +147,63 @@ export function IsolationUsageReportPanel() {
 
   const applyView = (v: AnalyticsUserView) => {
     setActiveViewId(v.id);
-    setDraft(migrateAnalyticsFilter(v.filter as Record<string, unknown>));
+    setDraft(draftFromSavedFilter(v.filter as Record<string, unknown>));
     setSelectedLogId(null);
+  };
+
+  const openConfigSettings = () => {
+    if (!activeView) {
+      toast.error("请先在左侧选择一条统计配置");
+      return;
+    }
+    setDraft(draftFromSavedFilter(activeView.filter as Record<string, unknown>));
+    setConfigOpen(true);
+  };
+
+  const openEditView = (v: AnalyticsUserView) => {
+    setActiveViewId(v.id);
+    setDraft(draftFromSavedFilter(v.filter as Record<string, unknown>));
+    setEditView(v);
+  };
+
+  const applyToActiveView = async () => {
+    if (!activeView) {
+      toast.error("请先在左侧选择一条统计配置");
+      return;
+    }
+    if (!activeView.subscribed) {
+      toast.error("该配置未订阅，请先开启订阅或使用「另存为新配置」并勾选订阅");
+      return;
+    }
+    setApplyingConfig(true);
+    try {
+      const filter = scopeFilterOnly(draft);
+      const updated = await updateAnalyticsView(activeView.id, {
+        name: activeView.name,
+        filter,
+        forceRecalcSnapshots: true,
+      });
+      qc.setQueryData<AnalyticsUserView[]>(["analytics", "views", REPORT_KEY], (prev) =>
+        (prev ?? []).map((v) => (v.id === updated.id ? updated : v))
+      );
+      setDraft(draftFromSavedFilter(updated.filter as Record<string, unknown>));
+      setSelectedLogId(null);
+      // 保存后仅合并/刷新快照与明细，禁止整表无关 reload（post-save-no-full-refresh.mdc）
+      const invalidateSnapshots = () => {
+        void qc.invalidateQueries({ queryKey: ["analytics", "audit-logs", REPORT_KEY] });
+        void qc.invalidateQueries({ queryKey: ["analytics", "audit-detail"] });
+      };
+      invalidateSnapshots();
+      for (const delay of [2500, 6000, 12000]) {
+        window.setTimeout(invalidateSnapshots, delay);
+      }
+      toast.success("已保存配置，正在强制重算全部已有快照（约数秒后可刷新查看）", { duration: 7000 });
+      setConfigOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "更新失败");
+    } finally {
+      setApplyingConfig(false);
+    }
   };
 
   const handleSaveConfig = async (opts: SaveConfigOptions) => {
@@ -128,7 +222,7 @@ export function IsolationUsageReportPanel() {
         saved,
       ]);
       setActiveViewId(saved.id);
-      setDraft(migrateAnalyticsFilter(saved.filter as Record<string, unknown>));
+      setDraft(draftFromSavedFilter(saved.filter as Record<string, unknown>));
       if (opts.subscribe) {
         void qc.invalidateQueries({ queryKey: ["analytics", "audit-logs", REPORT_KEY] });
       }
@@ -162,7 +256,7 @@ export function IsolationUsageReportPanel() {
         (prev ?? []).map((v) => (v.id === id ? withSub : v))
       );
       if (activeViewId === id) {
-        setDraft(migrateAnalyticsFilter(withSub.filter as Record<string, unknown>));
+        setDraft(draftFromSavedFilter(withSub.filter as Record<string, unknown>));
       }
       void qc.invalidateQueries({ queryKey: ["analytics", "audit-logs", REPORT_KEY] });
       setEditView(null);
@@ -199,6 +293,38 @@ export function IsolationUsageReportPanel() {
     }
   };
 
+  const runConfigPreview = async () => {
+    const log = selectedLog ?? [...latestByCycle.values()][0];
+    if (!log) {
+      toast.error("请先选择或生成一条清算快照");
+      return;
+    }
+    setPreviewing(true);
+    setPreviewResult(null);
+    try {
+      const detail = await fetchAuditLogDetail(log.id);
+      const start = formatPreviewTime(detail.currentStart);
+      const end = formatPreviewTime(detail.currentEnd);
+      if (!start || !end) {
+        toast.error("无法解析快照时间窗");
+        return;
+      }
+      const live = await previewIsolationUsage(scopeFilterOnly(draft), start, end);
+      setPreviewResult(live);
+      const liveTotal = live.summary?.totalEvents ?? live.summary?.totalPersonTimes ?? 0;
+      const snapTotal = log.currentRounds;
+      const diff = liveTotal - snapTotal;
+      toast.success(
+        `当前配置试算 ${liveTotal} 条 · 快照 ${snapTotal} 条${diff !== 0 ? `（差 ${diff > 0 ? "+" : ""}${diff}）` : ""}`,
+        { duration: 6000 }
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "试算失败");
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const runBatchInsight = async () => {
     if (!activeView?.id) {
       toast.error("请先选择统计配置");
@@ -225,22 +351,77 @@ export function IsolationUsageReportPanel() {
 
   return (
     <div className="space-y-3">
-      <AnalyticsConfigCollapsible
+      {activeView ? (
+        <div
+          className={cn(
+            "rounded-lg border px-3 py-2 text-xs",
+            configDirty
+              ? "border-amber-300 bg-amber-50 text-amber-950"
+              : "border-violet-200 bg-violet-50/80 text-violet-950"
+          )}
+        >
+          <p>
+            <strong>已保存配置</strong>：{savedChannelLabel}
+            {configDirty ? (
+              <>
+                {" "}
+                · 当前草稿与已保存不一致，请点击「设置」修改后使用<strong>「更新当前配置并重算」</strong>，否则快照仍按旧通道口径。
+              </>
+            ) : (
+              " · 修改通道或周期后请「更新当前配置并重算」。"
+            )}
+          </p>
+          <p className="mt-1 text-[10px] text-neutral-600">
+            数据前置：各通道须已在{" "}
+            <a href="#/admin/dahua-swing-tasks?tab=audit" className="text-indigo-700 underline">
+              定时审计拉取
+            </a>{" "}
+            完成拉取并清洗入库；总库按通道合并，与「门禁统计清洗」按任务查看维度不同。
+          </p>
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50"
+          onClick={openConfigSettings}
+        >
+          <Settings2 className="h-4 w-4 text-violet-600" />
+          设置
+        </button>
+        <button
+          type="button"
+          disabled={previewing}
+          className="rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-xs font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+          onClick={() => void runConfigPreview()}
+        >
+          {previewing ? "试算中…" : "按当前配置试算（对比选中快照）"}
+        </button>
+        {previewResult ? (
+          <span className="text-[11px] text-neutral-500">
+            试算 {previewResult.summary?.totalEvents ?? previewResult.summary?.totalPersonTimes ?? 0} 条
+          </span>
+        ) : null}
+      </div>
+
+      <AnalyticsConfigSettingsModal
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
         draft={draft}
         onDraftChange={setDraft}
-        onSaveClick={() => setShowSaveModal(true)}
-        defaultOpen={false}
+        onSaveClick={() => {
+          setConfigOpen(false);
+          setShowSaveModal(true);
+        }}
+        onApplyActive={activeView ? () => void applyToActiveView() : undefined}
+        activeViewName={activeView?.name}
+        activeViewSubscribed={activeView?.subscribed}
+        applying={applyingConfig}
       />
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
-        <aside
-          className={cn(
-            "w-full shrink-0 space-y-3 xl:w-72",
-            "xl:sticky xl:top-20 xl:z-10 xl:self-start",
-            "xl:max-h-[calc(100dvh-5rem)] xl:overflow-y-auto xl:overscroll-y-contain xl:pr-0.5",
-            "[scrollbar-width:thin]"
-          )}
-        >
+        <aside className="w-full shrink-0 space-y-3 xl:w-72 xl:sticky xl:top-20 xl:z-10 xl:self-start">
           <AdminFormCard title="统计配置">
             <div className="-mt-1 mb-2 flex justify-end gap-1">
               <button
@@ -288,7 +469,7 @@ export function IsolationUsageReportPanel() {
                       {v.subscribed ? <Bell className="mr-1 inline h-3 w-3 text-violet-600" /> : null}
                       {v.name}
                     </button>
-                    <button type="button" className="shrink-0 p-1 text-neutral-400" onClick={() => setEditView(v)}>
+                    <button type="button" className="shrink-0 p-1 text-neutral-400" onClick={() => openEditView(v)}>
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button type="button" className="shrink-0 p-1 text-neutral-400" onClick={() => void toggleSubscription(v)}>
@@ -311,6 +492,8 @@ export function IsolationUsageReportPanel() {
             reportKey={REPORT_KEY}
             view={activeView}
             selectedLogId={selectedLogId}
+            selectedLog={selectedLog}
+            latestByCycle={latestByCycle}
             latestIdsByCycle={latestIdsByCycle}
             onSelectLog={setSelectedLogId}
           />
@@ -331,44 +514,12 @@ export function IsolationUsageReportPanel() {
             compareCycles={compareCycles}
             latestByCycle={latestByCycle}
             grouped={grouped}
+            selectedLogId={selectedLogId}
+            selectedLog={selectedLog}
             onOpenInsight={openInsightDialog}
             viewName={activeView?.name}
+            metricUnit="条"
           />
-
-          {isHistoricalSelection ? (
-            <section className="rounded-2xl border border-amber-200/80 bg-amber-50/30 p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-amber-900">
-                  历史期次明细 · {historicalDetail?.periodLabel ?? "…"}
-                </h3>
-                {selectedLogId != null ? (
-                  <button
-                    type="button"
-                    onClick={(e) =>
-                      openInsightDialog(selectedLogId, historicalDetail?.periodLabel ?? "", e)
-                    }
-                    className="inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-xs font-semibold text-violet-800 hover:bg-violet-50"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" aria-hidden />
-                    AI 解读
-                  </button>
-                ) : null}
-              </div>
-              {historicalLoading ? (
-                <p className="text-sm text-neutral-500">加载中…</p>
-              ) : historicalError ? (
-                <p className="text-sm text-rose-700">{(historicalError as Error).message}</p>
-              ) : historicalDetail ? (
-                <>
-                  <IsolationUsageReportLayout
-                    report={historicalDetail}
-                    fromSnapshot
-                    periodLabel={historicalDetail.periodLabel}
-                  />
-                </>
-              ) : null}
-            </section>
-          ) : null}
         </main>
       </div>
 
@@ -407,6 +558,7 @@ export function IsolationUsageReportPanel() {
             ...imported,
           ]);
           if (imported[0]) applyView(imported[0]);
+          void qc.invalidateQueries({ queryKey: ["analytics", "views", REPORT_KEY] });
           void qc.invalidateQueries({ queryKey: ["analytics", "audit-logs", REPORT_KEY] });
         }}
       />

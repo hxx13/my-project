@@ -13,6 +13,16 @@ public class AnalyticsUserViewUpsertRequest {
     private Boolean backfillHistory;
     /** 回溯截止日 yyyy-MM-dd（含） */
     private String backfillUntil;
+    /** 为 true 时强制重算该视图下全部已有快照（与 filter 是否变更无关） */
+    private Boolean forceRecalcSnapshots;
+
+    public Boolean getForceRecalcSnapshots() {
+        return forceRecalcSnapshots;
+    }
+
+    public void setForceRecalcSnapshots(Boolean forceRecalcSnapshots) {
+        this.forceRecalcSnapshots = forceRecalcSnapshots;
+    }
 
     public String getReportKey() {
         return reportKey;

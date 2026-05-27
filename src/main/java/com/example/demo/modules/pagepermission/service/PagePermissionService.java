@@ -433,7 +433,9 @@ public class PagePermissionService {
                 || path.startsWith("/admin/dahua-issue")
                 || path.startsWith("/admin/dahua-swing-tasks")
                 || path.startsWith("/admin/dahua-swing-rules")
-                || path.startsWith("/admin/dahua-swing-records")) {
+                || path.startsWith("/admin/dahua-swing-records")
+                || path.startsWith("/admin/access-audit-source")
+                || path.startsWith("/admin/access-fusion")) {
             return "ADMIN";
         }
         if (path.startsWith("/admin")) return "STAFF";

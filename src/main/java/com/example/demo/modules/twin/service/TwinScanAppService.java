@@ -7,7 +7,10 @@ import com.example.demo.modules.twin.dto.scan.ScanUserInfoDTO;
 import com.example.demo.modules.twin.dto.scan.ScanUserRpgDTO;
 import com.example.demo.modules.twin.entity.TwinCardMapping;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
+import com.example.demo.modules.twin.support.ScanAnalyzeTimingTrace;
 import com.example.demo.modules.twin.support.ScanPopupEntryWindowEvaluator;
+import com.example.demo.modules.twin.support.ScanPopupFlowLog;
+import com.example.demo.modules.twin.support.TwinTimingDiagnostics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +57,9 @@ public class TwinScanAppService {
     @Autowired
     private TwinScanPopupAnnouncementService scanPopupAnnouncementService;
 
+    @Autowired
+    private ScanAnalyzeTimingTrace analyzeTimingTrace;
+
     @Value("${app.business-timezone:Asia/Shanghai}")
     private String businessTimeZone;
 
@@ -63,16 +69,15 @@ public class TwinScanAppService {
         String traceId = "SCAN-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmssSSS"));
         LocalDateTime startAt = LocalDateTime.now();
         boolean looksLikeCardToken = CARD_INPUT_PATTERN.matcher(cleanInput).matches();
-        log.info("[scan-flow:{}] 1/5 💳 本次读入：{}{}",
-                traceId,
-                looksLikeCardToken ? "物理卡号=" + cleanInput : "检索键入",
-                looksLikeCardToken ? "" : " 内容=" + cleanInput);
+        String inputMode = ScanPopupFlowLog.inputMode(looksLikeCardToken);
+        analyzeTimingTrace.open(traceId, cleanInput);
 
         try {
             String realPhysicalId = cleanInput;
             String mappedDahuaSeq = null;
             Map<String, Object> matchedUser = null;
 
+            long tCard = System.currentTimeMillis();
             TwinCardMapping mapping = null;
             if (looksLikeCardToken) {
                 mapping = twinCardMappingService.getByCardNo(cleanInput);
@@ -81,8 +86,15 @@ public class TwinScanAppService {
                 realPhysicalId = mapping.getAroUserId();
                 mappedDahuaSeq = mapping.getDahuaSeq();
             }
+            long cardMs = System.currentTimeMillis() - tCard;
+            TwinTimingDiagnostics.logScanPhase(traceId, "mysql.cardMapping", cardMs, mapping != null ? "hit" : "miss");
+            analyzeTimingTrace.step("mysql.twin_card_mapping.getByCardNo", cardMs, mapping != null ? "hit" : "miss");
 
+            long tPersonnel = System.currentTimeMillis();
             List<Map<String, Object>> userList = dashboardMapper.searchPersonnel(realPhysicalId, 1);
+            long personnelMs = System.currentTimeMillis() - tPersonnel;
+            TwinTimingDiagnostics.logScanPhase(traceId, "mysql.searchPersonnel", personnelMs, "rows=" + userList.size());
+            analyzeTimingTrace.step("mysql.dashboard.searchPersonnel", personnelMs, "rows=" + userList.size());
             if (!userList.isEmpty()) {
                 matchedUser = userList.get(0);
                 if (matchedUser.get("user_id") != null && !matchedUser.get("user_id").toString().trim().isEmpty()) {
@@ -90,7 +102,11 @@ public class TwinScanAppService {
                 }
 
                 if (mappedDahuaSeq == null) {
+                    long tRev = System.currentTimeMillis();
                     TwinCardMapping reverseMapping = twinCardMappingService.getByAroUserId(realPhysicalId);
+                    analyzeTimingTrace.step("mysql.twin_card_mapping.getByAroUserId(reverse)",
+                            System.currentTimeMillis() - tRev,
+                            reverseMapping != null ? "hit" : "miss");
                     if (reverseMapping != null && "NORMAL".equals(reverseMapping.getCardStatus())) {
                         mappedDahuaSeq = reverseMapping.getDahuaSeq();
                     }
@@ -101,18 +117,20 @@ public class TwinScanAppService {
                 return result;
             }
 
+            long tMapUser = System.currentTimeMillis();
             TwinCardMapping mappingForUser = twinCardMappingService.getByAroUserId(realPhysicalId);
-            String cardNoForLog = mapping != null ? cleanInput
-                    : (mappingForUser != null ? mappingForUser.getCardNo() : null);
-            if (cardNoForLog != null) {
-                log.info("[scan-flow:{}] 2/5 🔗 绑定 ARO 人员 userId={} 物理卡号={}", traceId, realPhysicalId, cardNoForLog);
-            } else {
-                log.info("[scan-flow:{}] 2/5 🔗 绑定 ARO 人员 userId={}（无本地物理卡映射）", traceId, realPhysicalId);
-            }
-
+            analyzeTimingTrace.step("mysql.twin_card_mapping.getByAroUserId",
+                    System.currentTimeMillis() - tMapUser,
+                    mappingForUser != null ? "hit" : "miss");
             result.setHasPhysicalCardMapping(mappingForUser != null);
 
+            long tScanStatus = System.currentTimeMillis();
             Map<String, Object> scanStatus = twinScanService.processScanStatus(realPhysicalId, traceId);
+            long scanStatusMs = System.currentTimeMillis() - tScanStatus;
+            TwinTimingDiagnostics.logScanPhase(traceId, "processScanStatus(total)", scanStatusMs,
+                    "state=" + scanStatus.get("currentState"));
+            analyzeTimingTrace.step("processScanStatus(total)", scanStatusMs,
+                    "state=" + scanStatus.get("currentState"));
             result.setCurrentState(String.valueOf(scanStatus.get("currentState")));
             if (scanStatus.get("message") != null) {
                 result.setMessage(String.valueOf(scanStatus.get("message")));
@@ -125,7 +143,14 @@ public class TwinScanAppService {
             }
 
             try {
+                long tAroDetail = System.currentTimeMillis();
                 Map<String, Object> riskData = aroService.getUserDetailAndDisciplinary(realPhysicalId);
+                long aroDetailMs = System.currentTimeMillis() - tAroDetail;
+                TwinTimingDiagnostics.logScanPhase(traceId, "aro.userDetail", aroDetailMs, riskData != null ? "ok" : "null");
+                analyzeTimingTrace.step(
+                        "aro.GET https://aro.shsmu.edu.cn/jtu/api/admin/user/detail",
+                        aroDetailMs,
+                        riskData != null ? "ok" : "null");
                 if (riskData != null) {
                     Object stateObj = riskData.get("state");
                     result.setGlobalUserState(stateObj instanceof Number ? ((Number) stateObj).intValue() : 2);
@@ -134,7 +159,7 @@ public class TwinScanAppService {
                     result.setGlobalUserState(2);
                 }
             } catch (Exception e) {
-                log.warn("[scan-flow:{}] ⚠️ 风控查询失败，按默认可用处理 userId={} err={}", traceId, realPhysicalId, e.getMessage());
+                log.debug("[扫码·解析] trace={} 风控查询失败 id={} err={}", traceId, realPhysicalId, e.getMessage());
                 result.setGlobalUserState(2);
             }
 
@@ -152,7 +177,11 @@ public class TwinScanAppService {
             double historicalExp = matchedUser.get("total_exp") != null
                     ? Double.parseDouble(matchedUser.get("total_exp").toString())
                     : 0.0;
-            com.example.demo.modules.aro.dto.RpgStatsDto rpgDto = rpgEngineService.calculateRealtimeExp(realPhysicalId, historicalExp);
+            long tRpg = System.currentTimeMillis();
+            com.example.demo.modules.aro.dto.RpgStatsDto rpgDto =
+                    rpgEngineService.calculateRealtimeExp(realPhysicalId, historicalExp);
+            analyzeTimingTrace.step("mysql.rpg.calculateRealtimeExp",
+                    System.currentTimeMillis() - tRpg, "level=" + rpgDto.getLevel());
             userInfo.setRpg(new ScanUserRpgDTO(
                     rpgDto.getExp().intValue(),
                     rpgDto.getLevel(),
@@ -161,7 +190,10 @@ public class TwinScanAppService {
 
             userInfo.setDahuaSeq(mappedDahuaSeq);
             result.setUserInfo(userInfo);
+            long tSwingCfg = System.currentTimeMillis();
             Map<String, Object> swingCfg = dahuaSwingRuleConfigService.getConfig();
+            analyzeTimingTrace.step("mysql.twin_dahua_rule_config.getConfig",
+                    System.currentTimeMillis() - tSwingCfg, "");
             ZoneId winZone;
             try {
                 winZone = ZoneId.of(businessTimeZone != null ? businessTimeZone : "Asia/Shanghai");
@@ -169,49 +201,68 @@ public class TwinScanAppService {
                 winZone = ZoneId.systemDefault();
             }
             result.setScanPopupEntryWindowEnabled(ScanPopupEntryWindowEvaluator.isWindowEnabled(swingCfg));
-            result.setScanPopupEntryAllowedNow(ScanPopupEntryWindowEvaluator.isEntryAllowedNow(swingCfg, winZone));
+            boolean entryAllowedNow = ScanPopupEntryWindowEvaluator.isEntryAllowedNow(swingCfg, winZone);
+            // 风控豁免：非开放时段仍允许扫码进入（与联动豁免同源）
+            if (!entryAllowedNow && twinCardMappingService.isLinkageRuleExempt(realPhysicalId)) {
+                entryAllowedNow = true;
+            }
+            result.setScanPopupEntryAllowedNow(entryAllowedNow);
             try {
+                long tViol = System.currentTimeMillis();
                 result.setStudentViolationNotice(twinStudentViolationService.buildNotice(realPhysicalId));
+                analyzeTimingTrace.step("mysql.twin_student_violation.buildNotice",
+                        System.currentTimeMillis() - tViol, "");
             } catch (Exception e) {
-                log.warn("[scan-flow:{}] 违规通告加载失败 userId={} err={}", traceId, realPhysicalId, e.getMessage());
+                log.debug("[扫码·解析] trace={} 违规通告加载失败 id={} err={}", traceId, realPhysicalId, e.getMessage());
             }
             if (Boolean.FALSE.equals(result.getHasPhysicalCardMapping())) {
                 try {
+                    long tUnbound = System.currentTimeMillis();
                     result.setUnboundCardNotice(
                             unboundNoticeConfigService.buildUnboundNotice(operator, operatorRoleHint)
                     );
+                    analyzeTimingTrace.step("mysql.unbound_notice.build",
+                            System.currentTimeMillis() - tUnbound, "");
                 } catch (Exception e) {
-                    log.warn("[scan-flow:{}] 未绑卡提示加载失败 userId={} err={}", traceId, realPhysicalId, e.getMessage());
+                    log.debug("[扫码·解析] trace={} 未绑卡提示加载失败 id={} err={}", traceId, realPhysicalId, e.getMessage());
                 }
             }
             try {
+                long tAnn = System.currentTimeMillis();
                 result.setScanPopupAnnouncements(
                         scanPopupAnnouncementService.buildBundleForScan(operator, operatorRoleHint)
                 );
+                analyzeTimingTrace.step("mysql.scan_popup_announcement.buildBundle",
+                        System.currentTimeMillis() - tAnn, "");
             } catch (Exception e) {
-                log.warn("[scan-flow:{}] 扫码公告加载失败 userId={} err={}", traceId, realPhysicalId, e.getMessage());
+                log.debug("[扫码·解析] trace={} 公告加载失败 id={} err={}", traceId, realPhysicalId, e.getMessage());
             }
             result.setSuccess(true);
-            long costPre = Duration.between(startAt, LocalDateTime.now()).toMillis();
-            log.info(
-                    "[scan-flow:{}] 5/5 🛡️ 概要 userId={} 场内/场外={} 待离房间数={} 可进房间数={} 风控状态码={} ⏱{}ms",
-                    traceId,
-                    realPhysicalId,
-                    result.getCurrentState(),
-                    result.getPendingRooms() == null ? 0 : result.getPendingRooms().size(),
-                    result.getAllowedRooms() == null ? 0 : result.getAllowedRooms().size(),
-                    result.getGlobalUserState(),
-                    costPre
-            );
         } catch (Exception e) {
-            log.error("[scan-flow:{}] ❌ 解析失败 {}", traceId, e.getMessage(), e);
+            log.error("[扫码·解析] trace={} 异常 {}", traceId, e.getMessage(), e);
             result.setSuccess(false);
             result.setMessage("扫码解析失败: " + e.getMessage());
         } finally {
             long cost = Duration.between(startAt, LocalDateTime.now()).toMillis();
-            if (!result.isSuccess()) {
-                log.info("[scan-flow:{}] ⏱结束 耗时={}ms（未成功）", traceId, cost);
-            }
+            analyzeTimingTrace.close(cost);
+            String userName = result.getUserInfo() != null && result.getUserInfo().getName() != null
+                    ? String.valueOf(result.getUserInfo().getName())
+                    : "";
+            ScanPopupFlowLog.logAnalyze(
+                    traceId,
+                    result.isSuccess(),
+                    cost,
+                    inputMode,
+                    result.getUserInfo() != null ? result.getUserInfo().getUserId() : cleanInput,
+                    userName,
+                    Boolean.TRUE.equals(result.getHasPhysicalCardMapping()),
+                    result.getCurrentState(),
+                    result.getPendingRooms(),
+                    result.getAllowedRooms(),
+                    result.getScanPopupEntryWindowEnabled(),
+                    result.getScanPopupEntryAllowedNow(),
+                    result.getGlobalUserState(),
+                    result.getMessage());
         }
         return result;
     }

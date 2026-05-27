@@ -251,7 +251,8 @@ export function UiverseProfilePopup(props: PopupProps) {
                                     finishedRooms={state.finishedRooms}
                                     autoActionRoomId={autoActionRoomId}
                                     getButtonText={actions.getButtonText}
-                                    isRoomLocked={actions.isRoomLocked}
+                                    isEnterLocked={actions.isEnterLocked}
+                                    isExitLocked={actions.isExitLocked}
                                     getKeepCardState={actions.getKeepCardState}
                                     setKeepCardState={actions.setKeepCardState}
                                 />

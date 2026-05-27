@@ -22,6 +22,8 @@ type Props = {
   reportKey: string;
   view: AnalyticsUserView | null;
   selectedLogId: number | null;
+  selectedLog: AnalyticsAuditLog | null;
+  latestByCycle: Map<AnalyticsCompareCycle, AnalyticsAuditLog>;
   latestIdsByCycle: Set<number>;
   onSelectLog: (id: number) => void;
 };
@@ -30,6 +32,8 @@ export function SettlementRecordsPanel({
   reportKey,
   view,
   selectedLogId,
+  selectedLog,
+  latestByCycle,
   latestIdsByCycle,
   onSelectLog,
 }: Props) {
@@ -84,10 +88,12 @@ export function SettlementRecordsPanel({
                 key={opt.value}
                 label={PERIOD_COMPARE_LABEL[opt.value] ?? opt.label}
                 hint={opt.hint}
+                cycle={opt.value}
                 items={items}
                 showAll={showAllInSection[opt.value] === true}
                 selectedLogId={selectedLogId}
-                latestIdsByCycle={latestIdsByCycle}
+                selectedLog={selectedLog}
+                latestByCycle={latestByCycle}
                 onToggleShowAll={() => toggleShowAll(opt.value)}
                 onSelectLog={onSelectLog}
               />
@@ -102,22 +108,30 @@ export function SettlementRecordsPanel({
 function RecordSection({
   label,
   hint,
+  cycle,
   items,
   showAll,
   selectedLogId,
-  latestIdsByCycle,
+  selectedLog,
+  latestByCycle,
   onToggleShowAll,
   onSelectLog,
 }: {
   label: string;
   hint: string;
+  cycle: AnalyticsCompareCycle;
   items: AnalyticsAuditLog[];
   showAll: boolean;
   selectedLogId: number | null;
-  latestIdsByCycle: Set<number>;
+  selectedLog: AnalyticsAuditLog | null;
+  latestByCycle: Map<AnalyticsCompareCycle, AnalyticsAuditLog>;
   onToggleShowAll: () => void;
   onSelectLog: (id: number) => void;
 }) {
+  const displayedLogId =
+    selectedLog != null && selectedLog.periodType === cycle
+      ? selectedLog.id
+      : (latestByCycle.get(cycle)?.id ?? null);
   const hasMore = items.length > RECENT_PREVIEW_COUNT;
   const preview = items.slice(0, RECENT_PREVIEW_COUNT);
   const extra = items.slice(RECENT_PREVIEW_COUNT);
@@ -133,12 +147,12 @@ function RecordSection({
       </div>
 
       <ul className="space-y-1.5 p-2">
-        {preview.map((log, idx) => (
+        {preview.map((log) => (
           <RecordRow
             key={log.id}
             log={log}
-            isLatest={latestIdsByCycle.has(log.id)}
-            isFirst={idx === 0}
+            isLatest={latestByCycle.get(cycle)?.id === log.id}
+            displayedOnRight={displayedLogId === log.id}
             active={selectedLogId === log.id}
             onClick={() => onSelectLog(log.id)}
           />
@@ -151,7 +165,8 @@ function RecordSection({
             <RecordRow
               key={log.id}
               log={log}
-              isLatest={latestIdsByCycle.has(log.id)}
+              isLatest={latestByCycle.get(cycle)?.id === log.id}
+              displayedOnRight={displayedLogId === log.id}
               active={selectedLogId === log.id}
               onClick={() => onSelectLog(log.id)}
             />
@@ -178,13 +193,13 @@ function RecordRow({
   log,
   active,
   isLatest,
-  isFirst,
+  displayedOnRight,
   onClick,
 }: {
   log: AnalyticsAuditLog;
   active: boolean;
   isLatest?: boolean;
-  isFirst?: boolean;
+  displayedOnRight?: boolean;
   onClick: () => void;
 }) {
   const delta = log.deltaRounds;
@@ -207,9 +222,9 @@ function RecordRow({
       >
         <div className="flex items-center justify-between gap-2">
           <span className="flex min-w-0 items-center gap-1 font-semibold text-neutral-800">
-            {isFirst && isLatest ? <Star className="h-3 w-3 shrink-0 fill-violet-500 text-violet-500" /> : null}
+            {isLatest ? <Star className="h-3 w-3 shrink-0 fill-violet-500 text-violet-500" /> : null}
             <span className="truncate">{log.periodLabel}</span>
-            {isLatest ? (
+            {displayedOnRight ? (
               <span className="shrink-0 rounded bg-violet-100 px-1 py-0.5 text-[9px] font-medium text-violet-700">
                 右侧展示
               </span>
@@ -222,7 +237,7 @@ function RecordRow({
           </span>
         </div>
         <div className="mt-1 flex justify-between tabular-nums text-neutral-600">
-          <span>{log.currentRounds} 人次</span>
+          <span>{log.currentRounds} 条</span>
           <span className="text-neutral-400">上期 {log.previousRounds}</span>
         </div>
       </button>

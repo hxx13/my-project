@@ -100,6 +100,32 @@ export async function markNotificationRead(id: string) {
   await authHttp.patch(`/notifications/${id}/read`);
 }
 
+/** 同一业务单下全部事件通知标为已读（报修/采购/领用等联动） */
+export async function markNotificationsReadByBiz(bizType: string, bizId: string) {
+  await authHttp.patch("/notifications/read-by-biz", { bizType, bizId });
+}
+
+export type BizKeyInput = { bizType: string; bizId: string };
+
+export function toBizCompositeKey(bizType: string, bizId: string) {
+  return `${String(bizType || "").trim().toUpperCase()}|${String(bizId || "").trim()}`;
+}
+
+export function workKindToBizType(workKind: "claim" | "repair" | "purchase"): string | null {
+  if (workKind === "repair") return "REPAIR";
+  if (workKind === "purchase") return "PURCHASE";
+  if (workKind === "claim") return "SUPPLIES_CLAIM";
+  return null;
+}
+
+export async function fetchUnreadBizFlags(keys: BizKeyInput[]): Promise<Record<string, boolean>> {
+  if (!keys.length) return {};
+  const res = await authHttp.post<Result<{ flags: Record<string, boolean> }>>("/notifications/unread-biz-flags", {
+    keys,
+  });
+  return res.data.data?.flags ?? {};
+}
+
 export async function markAllNotificationsRead() {
   await authHttp.patch("/notifications/read-all");
 }

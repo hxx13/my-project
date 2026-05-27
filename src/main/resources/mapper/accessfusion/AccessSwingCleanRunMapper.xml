@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessSwingCleanRunMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_swing_clean_run (
+            channel_code, package_id, trigger_type, stats_task_ids_json, config_snapshot_json,
+            incremental_after_time, window_start, window_end, status,
+            total_scanned, included_count, excluded_count, review_count, started_at
+        ) VALUES (
+            #{channelCode}, #{packageId}, #{triggerType}, #{statsTaskIdsJson}, #{configSnapshotJson},
+            #{incrementalAfterTime}, #{windowStart}, #{windowEnd}, #{status},
+            #{totalScanned}, #{includedCount}, #{excludedCount}, #{reviewCount}, #{startedAt}
+        )
+    </insert>
+
+    <update id="updateDone">
+        UPDATE access_swing_clean_run SET
+            status = #{status},
+            total_scanned = #{totalScanned},
+            included_count = #{includedCount},
+            excluded_count = #{excludedCount},
+            review_count = #{reviewCount},
+            window_start = #{windowStart},
+            window_end = #{windowEnd},
+            error_message = #{errorMessage},
+            finished_at = #{finishedAt}
+        WHERE id = #{id}
+    </update>
+
+    <update id="markSuperseded">
+        UPDATE access_swing_clean_run SET status = 'SUPERSEDED', superseded_by_run_id = #{supersededByRunId}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessfusion.entity.AccessSwingCleanRun">
+        SELECT id, channel_code AS channelCode, package_id AS packageId, trigger_type AS triggerType,
+               stats_task_ids_json AS statsTaskIdsJson, config_snapshot_json AS configSnapshotJson,
+               incremental_after_time AS incrementalAfterTime, window_start AS windowStart, window_end AS windowEnd,
+               status, total_scanned AS totalScanned, included_count AS includedCount,
+               excluded_count AS excludedCount, review_count AS reviewCount,
+               superseded_by_run_id AS supersededByRunId, error_message AS errorMessage,
+               started_at AS startedAt, finished_at AS finishedAt
+        FROM access_swing_clean_run WHERE id = #{id}
+    </select>
+
+    <delete id="deleteById">
+        DELETE FROM access_swing_clean_run WHERE id = #{id}
+    </delete>
+
+    <select id="selectByChannel" resultType="com.example.demo.modules.accessfusion.entity.AccessSwingCleanRun">
+        SELECT id, channel_code AS channelCode, package_id AS packageId, trigger_type AS triggerType,
+               stats_task_ids_json AS statsTaskIdsJson, config_snapshot_json AS configSnapshotJson,
+               incremental_after_time AS incrementalAfterTime, window_start AS windowStart, window_end AS windowEnd,
+               status, total_scanned AS totalScanned, included_count AS includedCount,
+               excluded_count AS excludedCount, review_count AS reviewCount,
+               superseded_by_run_id AS supersededByRunId, error_message AS errorMessage,
+               started_at AS startedAt, finished_at AS finishedAt
+        FROM access_swing_clean_run
+        WHERE channel_code = #{channelCode}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

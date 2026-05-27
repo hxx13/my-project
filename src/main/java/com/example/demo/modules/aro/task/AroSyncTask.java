@@ -2,6 +2,7 @@ package com.example.demo.modules.aro.task;
 
 import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.dto.UniversalEvent;
+import com.example.demo.modules.aro.dto.AroIncrementalSyncResult;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.mapper.AroDatabaseMapper;
@@ -14,7 +15,10 @@ import com.example.demo.modules.twin.component.RoomNormalizer;
 import com.example.demo.modules.twin.support.AccessLogFeedProvenanceBuilder;
 import com.example.demo.modules.twin.support.FreezeReaperAuditContext;
 import com.example.demo.modules.twin.mapper.TwinDashboardMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +30,9 @@ import java.util.*;
 @Component
 @EnableScheduling
 public class AroSyncTask {
+
+    private static final Logger log = LoggerFactory.getLogger(AroSyncTask.class);
+    private static final String EPOCH_WATERMARK = "1970-01-01 00:00:00";
 
     @Autowired private AroService aroService;
     @Autowired private AroDatabaseService aroDatabaseService;
@@ -40,10 +47,46 @@ public class AroSyncTask {
     @Autowired private com.example.demo.modules.twin.service.TwinCardMappingService twinCardMappingService;
     @Autowired private com.example.demo.modules.twin.service.TwinCardMappingService mappingService;
     @Autowired private com.example.demo.modules.twin.service.TwinFreezeConfigService freezeConfigService;
+    @Autowired @Lazy private com.example.demo.modules.twin.service.JobSchedulerService jobSchedulerService;
     @Autowired private com.example.demo.modules.twin.service.DahuaAutoSignoutService dahuaAutoSignoutService;
     @Autowired private com.example.demo.modules.twin.service.TwinAutomationLogService automationLogService;
-    private String lastRecordTime = "1970-01-01 00:00:00";
+    private String lastRecordTime = EPOCH_WATERMARK;
+    private volatile boolean watermarkHydrated = false;
     private boolean isFirstRun = true;
+
+    /** 从库内最新流水恢复增量水位，避免重启后以 1970 水位重复拉取当日全量。 */
+    public synchronized void refreshWatermarkFromDatabase() {
+        watermarkHydrated = false;
+        ensureWatermarkFromDatabase();
+    }
+
+    private synchronized void ensureWatermarkFromDatabase() {
+        if (watermarkHydrated) {
+            return;
+        }
+        try {
+            String latest = aroDatabaseMapper.getLatestAccessLogCreateTime();
+            if (latest != null && !latest.isBlank()) {
+                lastRecordTime = latest.trim();
+                log.info("[ARO Sync] 已从库恢复水位线 watermark={}", lastRecordTime);
+            } else {
+                lastRecordTime = todayStartWatermark();
+                log.info("[ARO Sync] 流水库为空，水位线设为今日零点 {}", lastRecordTime);
+            }
+        } catch (Exception e) {
+            lastRecordTime = todayStartWatermark();
+            log.warn("[ARO Sync] 读取水位线失败，改用今日零点 {}: {}", lastRecordTime, e.getMessage());
+        }
+        watermarkHydrated = true;
+    }
+
+    private static String todayStartWatermark() {
+        return LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + " 00:00:00";
+    }
+
+    private static boolean isEpochWatermark(String wm) {
+        return wm == null || wm.isBlank() || EPOCH_WATERMARK.equals(wm.trim());
+    }
 
 
     // ==========================================================
@@ -55,74 +98,127 @@ public class AroSyncTask {
         // 首次仍触发一次开机后台自检
         if (isFirstRun) {
             isFirstRun = false;
-            System.out.println("🚀 [系统启动] 触发开机自检，已放入后台异步线程默默执行，不阻塞主服务...");
+            log.info("[ARO Sync] 系统启动：触发后台自检（不阻塞主服务）");
             aroStartupAsyncService.executeHeavyStartupCheckAsync();
             return;
         }
-        executeIncrementalSync();
+        executeIncrementalSync(false);
     }
 
-    // ==========================================================
-    // 💥 抽取出来的公共引擎：支持定时器调用，也支持 API 手动调用！
-    // 加入 synchronized 防止手动点击和定时任务撞车并发！
-    // ==========================================================
-    public synchronized void executeIncrementalSync() {
+    public synchronized AroIncrementalSyncResult executeIncrementalSync() {
+        return executeIncrementalSync(false);
+    }
+
+    /**
+     * @param manualTrigger true=管理端手动：按今日 00:00 起全量比对，避免内存水位导致「假成功无日志」
+     */
+    public synchronized AroIncrementalSyncResult executeIncrementalSync(boolean manualTrigger) {
+        if (!manualTrigger) {
+            ensureWatermarkFromDatabase();
+        }
         String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
         String rangeDate = today + " - " + today;
+        String effectiveWatermark = manualTrigger ? todayStartWatermark() : lastRecordTime;
+        if (!manualTrigger && isEpochWatermark(effectiveWatermark)) {
+            effectiveWatermark = todayStartWatermark();
+            lastRecordTime = effectiveWatermark;
+            log.warn("[ARO Sync] 水位仍为默认值，已回退为今日零点 {}", effectiveWatermark);
+        }
 
         int pageNum = 1;
         int pageSize = 100;
+        int apiPages = 0;
+        int apiRecords = 0;
         List<AroRecord> allCandidateRecords = new ArrayList<>();
 
         while (true) {
             List<AroRecord> records = aroService.fetchRecordsByCondition(rangeDate, null, pageNum, pageSize);
-            if (records == null || records.isEmpty()) break;
+            if (records == null || records.isEmpty()) {
+                break;
+            }
+            apiPages++;
+            apiRecords += records.size();
 
             for (AroRecord record : records) {
-                if (record.getCreateTime().compareTo(lastRecordTime) > 0) {
+                if (record != null && record.getCreateTime() != null
+                        && record.getCreateTime().compareTo(effectiveWatermark) > 0) {
                     allCandidateRecords.add(record);
                 }
             }
-            if (records.get(records.size() - 1).getCreateTime().compareTo(lastRecordTime) <= 0) break;
+            AroRecord lastOnPage = records.get(records.size() - 1);
+            if (lastOnPage == null || lastOnPage.getCreateTime() == null
+                    || lastOnPage.getCreateTime().compareTo(effectiveWatermark) <= 0) {
+                break;
+            }
             pageNum++;
-            try { Thread.sleep(1500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            try {
+                Thread.sleep(1500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
 
+        int newInserted = 0;
         if (!allCandidateRecords.isEmpty()) {
-            lastRecordTime = allCandidateRecords.get(0).getCreateTime();
-            Collections.reverse(allCandidateRecords); // 翻转为正序
+            String maxCreateTime = allCandidateRecords.stream()
+                    .map(AroRecord::getCreateTime)
+                    .filter(Objects::nonNull)
+                    .max(String::compareTo)
+                    .orElse(lastRecordTime);
+            lastRecordTime = maxCreateTime;
+            Collections.reverse(allCandidateRecords);
 
-            // 按官方记录ID去重（同批内去重）
             Map<String, AroRecord> uniqueById = new LinkedHashMap<>();
             for (AroRecord record : allCandidateRecords) {
                 if (record == null || record.getId() == null) continue;
                 uniqueById.put(String.valueOf(record.getId()), record);
             }
-            if (uniqueById.isEmpty()) {
-                return;
-            }
 
-            // 与数据库做差集，只保留真正未入库的记录
-            List<String> ids = new ArrayList<>(uniqueById.keySet());
-            Set<String> existingIds = new HashSet<>(aroDatabaseMapper.findExistingAccessLogIds(ids));
-            List<AroRecord> allNewRecords = new ArrayList<>();
-            for (Map.Entry<String, AroRecord> entry : uniqueById.entrySet()) {
-                if (!existingIds.contains(entry.getKey())) {
-                    allNewRecords.add(entry.getValue());
+            if (!uniqueById.isEmpty()) {
+                List<String> ids = new ArrayList<>(uniqueById.keySet());
+                Set<String> existingIds = new HashSet<>(aroDatabaseMapper.findExistingAccessLogIds(ids));
+                List<AroRecord> allNewRecords = new ArrayList<>();
+                for (Map.Entry<String, AroRecord> entry : uniqueById.entrySet()) {
+                    if (!existingIds.contains(entry.getKey())) {
+                        allNewRecords.add(entry.getValue());
+                    }
+                }
+                if (!allNewRecords.isEmpty()) {
+                    aroDatabaseService.batchInsert(allNewRecords);
+                    newInserted = allNewRecords.size();
+                    pushToFrontend(allNewRecords);
+                    pushPieChartUpdate();
                 }
             }
-            if (allNewRecords.isEmpty()) {
-                return;
-            }
-
-            // 1. 流水落库
-            aroDatabaseService.batchInsert(allNewRecords);
-            System.out.println("📡 [ARO Sync] 捕获 " + allNewRecords.size() + " 条新动态，已入库！");
-
-            // 2. 推送前端
-            pushToFrontend(allNewRecords);
-            pushPieChartUpdate();
         }
+
+        String watermarkAfter = lastRecordTime;
+        AroIncrementalSyncResult result = new AroIncrementalSyncResult(
+                manualTrigger, apiPages, apiRecords, allCandidateRecords.size(), newInserted, watermarkAfter);
+        if (newInserted > 0) {
+            log.info(
+                    "[ARO Sync] 新增入库 {} 条（候选 {}，接口 {}）watermark={}",
+                    newInserted,
+                    allCandidateRecords.size(),
+                    apiRecords,
+                    watermarkAfter);
+        } else if (allCandidateRecords.size() > 50 && isEpochWatermark(effectiveWatermark)) {
+            log.warn(
+                    "[ARO Sync] 水位异常：以 {} 为界仍筛出 {} 条候选，请检查水位恢复；当前 watermark={}",
+                    effectiveWatermark,
+                    allCandidateRecords.size(),
+                    watermarkAfter);
+        } else if (log.isDebugEnabled()) {
+            log.debug(
+                    "[ARO Sync] 完成 manual={} apiRecords={} candidates={} newInserted={} watermark={}",
+                    manualTrigger,
+                    apiRecords,
+                    allCandidateRecords.size(),
+                    newInserted,
+                    watermarkAfter);
+        }
+        return result;
     }
 
     /**
@@ -270,9 +366,16 @@ public class AroSyncTask {
      * 阶段二：每日豁免回收（由统一定时管理中心触发）。
      */
     public void dailyExemptResetTask() {
-        System.out.println("🧹 [系统维护] 凌晨 03:00，正在执行每日豁免权回收...");
-        mappingService.reconcileExemptionsByLogs();
-        int rows = mappingService.resetDailyExemptions();
+        System.out.println("🧹 [系统维护] 正在执行每日豁免权回收...");
+        boolean autoSignout = jobSchedulerService.isDailyExemptRevokeAutoSignoutEnabled();
+        if (!autoSignout) {
+            System.out.println("🧹 [系统维护] 回收后自动签离：未开启（定时管理·每日豁免回收 → revoke_auto_signout_enabled=false）");
+        } else {
+            System.out.println("🧹 [系统维护] 回收后自动签离：已开启（仅今日曾豁免且流水仍在馆）");
+        }
+        int[] result = mappingService.runDailyExemptMaintenance(autoSignout);
+        int rows = result != null && result.length > 0 ? result[0] : 0;
+        int signoutOk = result != null && result.length > 1 ? result[1] : 0;
         automationLogService.write(
                 com.example.demo.modules.twin.service.TwinAutomationLogService.TYPE_EXEMPTION,
                 "DAILY_EXEMPT_RESET",
@@ -281,7 +384,11 @@ public class AroSyncTask {
                 null,
                 "DAILY_EXEMPT_RESET",
                 true,
-                "每日豁免权回收完成；重置条数=" + rows,
+                "定时兜底豁免回收完成；收回条数=" + rows
+                        + (autoSignout
+                        ? "；自动签离成功=" + signoutOk + "（仅今日曾豁免+流水在馆）"
+                        : "；未开启定时任务「回收后自动签离」")
+                        + "。时效到期收回不签离。单人明细见 EXEMPT_REVOKED / AUTO_SIGNOUT。",
                 "job-daily-exempt-reset"
         );
     }

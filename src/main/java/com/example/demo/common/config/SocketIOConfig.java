@@ -3,6 +3,7 @@ package com.example.demo.common.config;
 import com.corundumstudio.socketio.Configuration;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.annotation.SpringAnnotationScanner;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 
 import javax.annotation.PreDestroy;
@@ -12,11 +13,14 @@ public class SocketIOConfig {
 
     private SocketIOServer server;
 
+    @Value("${app.socketio.port:9092}")
+    private int socketioPort;
+
     @Bean
     public SocketIOServer socketIOServer() {
         Configuration config = new Configuration();
         config.setHostname("0.0.0.0");
-        config.setPort(9092);
+        config.setPort(socketioPort);
         config.setAllowHeaders("*");
         config.setOrigin("*");
         config.setExceptionListener(new QuietSocketIoExceptionListener());

@@ -46,4 +46,18 @@ public interface TwinCardMappingMapper {
 
     /** 收回 freeze_exempt_expire_at 已到的豁免 */
     int revokeExpiredExemptionsByExpireAt();
+
+    /** 当前库中 freeze_exempt_flag=1 的全部映射（定时兜底回收前快照） */
+    List<TwinCardMapping> findAllActiveExemptions();
+
+    /** 定时兜底：收回全部生效豁免，无视授予日/到期/流水规则 */
+    int forceRevokeAllActiveExemptions();
+
+    /** 今日曾授予豁免（含已提前收回 flag=0） */
+    List<TwinCardMapping> findMappingsExemptedToday();
+
+    /** 今日流水判定仍在馆（有进入、同房间无离开），与雷达滞留口径一致 */
+    List<String> findTodayStillInsideUserIdsByAccessLog(
+            @Param("todayStart") String todayStart,
+            @Param("todayEnd") String todayEnd);
 }

@@ -5,7 +5,7 @@ import { router } from "@/router";
 import { io } from "socket.io-client";
 import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 Store
 import { Toaster } from "react-hot-toast";
-import { resolveSocketUrl } from "@/config/socketUrl";
+import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
 import { SOCKET_CLIENT_FORCE_RELOAD } from "@/config/socketEvents";
 import type { AnimalRoomTelemetryPageDto, TelemetryTagItem } from "@/api/telemetryApi";
 import {
@@ -34,21 +34,25 @@ function GlobalSocketListener() {
 
     useEffect(() => {
         const socketUrl = resolveSocketUrl();
-        const socket = io(socketUrl, {
-            transports: ["websocket"],
-            reconnection: true,
-            reconnectionAttempts: 10,
-            reconnectionDelay: 2000,
-        });
+        const socket = io(socketUrl, SOCKET_IO_CLIENT_OPTIONS);
 
-        socket.on('connect', () => {
-            console.log('🟢 [数字孪生基站] WebSocket 链路已接通！');
+        socket.on("connect", () => {
+            console.log("🟢 [数字孪生基站] WebSocket 链路已接通！");
             setConnected(true);
         });
 
-        socket.on('disconnect', () => {
-            console.log('🔴 [数字孪生基站] WebSocket 链路断开！');
+        socket.on("reconnect", () => {
+            console.log("🟡 [数字孪生基站] WebSocket 已重新连接");
+            setConnected(true);
+        });
+
+        socket.on("disconnect", (reason) => {
+            console.warn("🔴 [数字孪生基站] WebSocket 链路断开，将持续重连。原因:", reason);
             setConnected(false);
+        });
+
+        socket.on("connect_error", (err) => {
+            console.warn("[数字孪生基站] WebSocket 连接失败，将继续重试:", err.message);
         });
 
         // 📡 监听 1：实时进出人员流水

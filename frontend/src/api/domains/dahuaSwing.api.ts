@@ -45,6 +45,8 @@ export interface DahuaSwingRecord {
   personCode?: string;
   personId?: number;
   personName?: string;
+  departmentId?: string;
+  departmentName?: string;
   swingTime?: string;
   createTime?: string;
   openResult?: number;

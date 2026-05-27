@@ -78,6 +78,7 @@ import {
 import { seedAcZonesFromDuctScene } from "@/features/digital-twin-screen/layout/acZoneSeed";
 import { cloneSceneLayoutDocument, sceneLayoutDocsEqual } from "@/features/digital-twin-screen/layout/sceneLayoutClone";
 import { clamp01, clampRoomTopLeftToPlate, snapGrid } from "@/features/digital-twin-screen/layout/planGeometry";
+import { copyTextToClipboard } from "@/lib/copyToClipboard";
 
 /** WorldStack：仅 pan+scale；内层 perspective + rotateX（整块板 3D 斜侧） */
 function DtWorldStack({
@@ -1730,7 +1731,7 @@ export default function DigitalTwinScreenPage() {
     const s = JSON.stringify(bundle);
     clipboardBundleRef.current = bundle;
     try {
-      await navigator.clipboard.writeText(s);
+      await copyTextToClipboard(s);
     } catch {
       /* ignore */
     }

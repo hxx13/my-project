@@ -7,6 +7,7 @@ import com.example.demo.modules.telemetry.dto.TelemetryWatchlistEnrichment;
 import com.example.demo.modules.telemetry.dto.TelemetrySequentialDiagnosticDto;
 import com.example.demo.modules.telemetry.dto.TelemetrySnapshotDto;
 import com.example.demo.modules.telemetry.dto.TelemetryTagItemDto;
+import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveIngestItem;
 import com.example.demo.modules.twin.mapper.TwinJobScheduleConfigMapper;
 import com.example.demo.modules.twin.service.JobExecutionRegistry;
 import org.slf4j.Logger;
@@ -291,8 +292,21 @@ public class TelemetrySnapshotService {
                 }
                 valueTrendWindows.keySet().removeIf(k -> !trendSeen.contains(k));
                 lastItems.set(mapped);
-                telemetryArchiveService.appendAfterRefresh(mapped, Instant.now(),
-                        UUID.randomUUID().toString().replace("-", ""));
+                List<TelemetryArchiveIngestItem> archiveRows = new ArrayList<>(mapped.size());
+                for (TelemetryTagItemDto dto : mapped) {
+                    if (dto == null || !StringUtils.hasText(dto.getVariableName())) {
+                        continue;
+                    }
+                    archiveRows.add(
+                            TelemetryArchiveIngestItem.of(
+                                    dto.getVariableName(),
+                                    dto.getValue(),
+                                    dto.getMetricKindCode(),
+                                    dto.getRoomCanonical(),
+                                    dto.getBundleCode()));
+                }
+                telemetryArchiveService.appendAfterRefresh(
+                        archiveRows, Instant.now(), UUID.randomUUID().toString().replace("-", ""));
                 lastSuccessAt.set(Instant.now());
                 lastError.set(null);
                 lastReachable.set(true);

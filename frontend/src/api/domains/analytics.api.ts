@@ -26,13 +26,41 @@ export type AnalyticsViewFilter = IsolationScopeFilter | CageScopeFilter | Recor
 
 export type IsolationUsageSummary = {
   totalPersonTimes: number;
+  totalEvents?: number;
+  studentEvents?: number;
+  staffEvents?: number;
+  totalSets?: number;
+  studentSets?: number;
+  staffSets?: number;
+  directionScope?: string;
   totalOccupiedSlots?: number;
   uniqueGroups?: number;
   uniqueUsers?: number;
+  /** ARO 流水 userId 去重（学生部门）；快照可含此字段，本期规模卡片不展示 */
+  uniqueStudentUsers?: number;
+  aroFlowLogCount?: number;
   uniquePis?: number;
   uniqueRooms?: number;
   rawLogCount?: number;
   truncated?: boolean;
+  /** access_package | cleaned | aro */
+  dataSource?: string;
+  metricNote?: string;
+  channelScope?: string;
+  reviewPendingCount?: number;
+  filterSnapshot?: Record<string, unknown>;
+  queryTrace?: Record<string, unknown>;
+};
+
+export type FlowAuxiliarySnapshot = {
+  dataSource?: string;
+  note?: string;
+  flowScope?: string;
+  byProjectGroup?: ProjectGroupRow[];
+  byRoom?: CageRoomRow[];
+  rawLogCount?: number;
+  uniqueGroups?: number;
+  uniqueStudentUsers?: number;
 };
 
 export type ProjectGroupRow = {
@@ -65,6 +93,7 @@ export type IsolationUsageQueryResult = {
   byProjectGroup: ProjectGroupRow[];
   byPi?: CagePiRow[];
   byRoom?: CageRoomRow[];
+  auxiliaryFlow?: FlowAuxiliarySnapshot;
   fromSnapshot?: boolean;
   periodKey?: string;
   periodLabel?: string;
@@ -72,6 +101,15 @@ export type IsolationUsageQueryResult = {
   previousRounds?: number;
   deltaRounds?: number;
   deltaPct?: number | null;
+  currentStart?: string;
+  currentEnd?: string;
+  filterSnapshot?: Record<string, unknown>;
+  queryProvenance?: {
+    startTime?: string;
+    endTime?: string;
+    totalMs?: number;
+    steps?: Array<Record<string, unknown>>;
+  };
 };
 
 export type AnalyticsUserView = {
@@ -94,6 +132,12 @@ export type AnalyticsAuditLog = {
   periodType: AnalyticsCompareCycle | string;
   periodLabel: string;
   currentRounds: number;
+  studentRounds?: number;
+  staffRounds?: number;
+  currentUsers?: number;
+  previousUsers?: number;
+  currentGroups?: number;
+  currentStudentUsers?: number;
   previousRounds: number;
   deltaRounds: number;
   deltaPct: number | null;
@@ -116,7 +160,12 @@ export async function fetchAnalyticsReports(): Promise<AnalyticsReportDescriptor
 }
 
 export async function fetchAnalyticsViews(reportKey: string): Promise<AnalyticsUserView[]> {
-  return unwrap(authHttp.get<Result<AnalyticsUserView[]>>("/v1/analytics/views", { params: { reportKey } }));
+  const rows = await unwrap(
+    authHttp.get<Result<AnalyticsUserView[]>>("/v1/analytics/views", { params: { reportKey } })
+  );
+  return (rows ?? []).map((row) =>
+    row && typeof row === "object" ? mapViewDto(row as unknown as Record<string, unknown>) : row
+  );
 }
 
 export type CageAuditProgress = {
@@ -157,6 +206,19 @@ export async function fetchAuditLogDetail(id: number): Promise<IsolationUsageQue
   return unwrap(authHttp.get<Result<IsolationUsageQueryResult & { id: number; periodType: string }>>(`/v1/analytics/audit-logs/${id}/detail`));
 }
 
+/** 按当前配置试算隔离服统计（与快照同 Facade 口径，不写库） */
+export async function previewIsolationUsage(
+  filter: AnalyticsViewFilter,
+  startTime: string,
+  endTime: string
+): Promise<IsolationUsageQueryResult> {
+  return unwrap(
+    authHttp.post<Result<IsolationUsageQueryResult>>("/v1/analytics/isolation-usage/preview", filter, {
+      params: { startTime, endTime },
+    })
+  );
+}
+
 export async function saveAnalyticsView(body: {
   reportKey: string;
   name: string;
@@ -167,15 +229,26 @@ export async function saveAnalyticsView(body: {
 
 export async function updateAnalyticsView(
   id: number,
-  body: { name: string; filter: AnalyticsViewFilter; reportKey?: string }
+  body: {
+    name: string;
+    filter: AnalyticsViewFilter;
+    reportKey?: string;
+    /** 为 true 时强制重算全部已有快照（配置未改也会重算） */
+    forceRecalcSnapshots?: boolean;
+  }
 ): Promise<AnalyticsUserView> {
   return unwrap(
     authHttp.put<Result<AnalyticsUserView>>(`/v1/analytics/views/${id}`, {
       reportKey: body.reportKey ?? "isolation_usage",
       name: body.name,
       filter: body.filter,
+      forceRecalcSnapshots: body.forceRecalcSnapshots === true,
     })
   );
+}
+
+export async function forceRecalcAnalyticsSnapshots(viewId: number): Promise<void> {
+  await unwrap(authHttp.post<Result<null>>(`/v1/analytics/views/${viewId}/force-recalc-snapshots`));
 }
 
 export type AnalyticsSubscriptionOptions = {
@@ -288,6 +361,28 @@ export type LlmInsightPromptBundle = {
   defaultSystemPrompt: string;
 };
 
+export type AnalyticsInsightDataPackage = {
+  auditLogId: number;
+  reportKey: string;
+  moduleLabel: string;
+  metricUnit: string;
+  periodLabel?: string;
+  periodType?: string;
+  viewId?: number;
+  viewName?: string;
+  summaryPreview?: string;
+  snapshotJson?: string;
+};
+
+/** 封箱当前清算快照（不调用大模型），供 AI 解读弹窗投喂 */
+export async function fetchInsightDataPackage(auditLogId: number): Promise<AnalyticsInsightDataPackage> {
+  return unwrap(
+    authHttp.get<Result<AnalyticsInsightDataPackage>>("/v1/analytics/llm/insight-data-package", {
+      params: { auditLogId },
+    })
+  );
+}
+
 export async function fetchLlmInsightPrompt(reportKey: string): Promise<LlmInsightPromptBundle> {
   return unwrap(
     authHttp.get<Result<LlmInsightPromptBundle>>("/v1/analytics/llm/insight-prompt", {
@@ -353,12 +448,45 @@ export type AnalyticsViewShareImportResult = {
   message: string;
 };
 
+function normalizeImportedViews(viewsRaw: unknown, singleView: unknown): AnalyticsUserView[] {
+  if (Array.isArray(viewsRaw)) {
+    const mapped = viewsRaw
+      .map((v) => (v && typeof v === "object" ? mapViewDto(v as Record<string, unknown>) : null))
+      .filter((v): v is AnalyticsUserView => v != null && Number.isFinite(v.id) && v.id > 0);
+    if (mapped.length > 0) return mapped;
+  }
+  if (singleView && typeof singleView === "object") {
+    const one = mapViewDto(singleView as Record<string, unknown>);
+    if (one.id > 0) return [one];
+  }
+  return [];
+}
+
+function parseViewFilter(filterRaw: unknown): AnalyticsUserView["filter"] {
+  if (typeof filterRaw === "string" && filterRaw.trim()) {
+    try {
+      const parsed = JSON.parse(filterRaw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as AnalyticsUserView["filter"];
+      }
+    } catch {
+      /* ignore */
+    }
+    return {};
+  }
+  if (filterRaw && typeof filterRaw === "object" && !Array.isArray(filterRaw)) {
+    return filterRaw as AnalyticsUserView["filter"];
+  }
+  return {};
+}
+
 function mapViewDto(raw: Record<string, unknown>): AnalyticsUserView {
+  const filter = parseViewFilter(raw.filter ?? raw.filterJson);
   return {
     id: Number(raw.id),
     reportKey: String(raw.reportKey ?? ""),
     name: String(raw.name ?? ""),
-    filter: (raw.filter as AnalyticsUserView["filter"]) ?? {},
+    filter,
     defaultView: Boolean(raw.defaultView),
     subscribed: Boolean(raw.subscribed),
     sortOrder: Number(raw.sortOrder ?? 0),
@@ -412,16 +540,15 @@ export async function importAnalyticsViewShare(
   code: string,
   nameSuffix?: string
 ): Promise<AnalyticsViewShareImportResult> {
+  const suffix = nameSuffix?.trim();
   const data = await unwrap(
     authHttp.post<Result<Record<string, unknown>>>("/v1/analytics/share/import", {
       code: code.trim(),
-      ...(nameSuffix?.trim() ? { targetName: nameSuffix.trim() } : {}),
+      ...(suffix ? { targetName: suffix, nameSuffix: suffix } : {}),
     })
   );
-  const viewsRaw = data.views as Record<string, unknown>[] | undefined;
-  const views =
-    viewsRaw?.map((v) => mapViewDto(v)) ??
-    (data.view ? [mapViewDto(data.view as Record<string, unknown>)] : []);
+  const viewsRaw = data.views as unknown;
+  const views = normalizeImportedViews(viewsRaw, data.view);
   if (views.length === 0) {
     throw new Error("导入响应缺少配置数据");
   }

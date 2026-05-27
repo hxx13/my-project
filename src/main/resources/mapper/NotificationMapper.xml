@@ -226,4 +226,81 @@
         ORDER BY n.create_time DESC
         LIMIT #{limit}
     </select>
+
+    <update id="markReadByBiz">
+        UPDATE sys_notification_recipient r
+            INNER JOIN sys_notification n ON n.id = r.notification_id
+        SET r.is_read = 1,
+            r.read_time = #{readTime}
+        WHERE r.recipient_user_id = #{userId}
+          AND (r.is_read IS NULL OR r.is_read = 0)
+          AND UPPER(TRIM(n.biz_type)) = UPPER(TRIM(#{bizType}))
+          AND n.biz_id = #{bizId}
+    </update>
+
+    <select id="countUnreadByBiz" resultType="int">
+        SELECT COUNT(1)
+        FROM sys_notification_recipient r
+                 INNER JOIN sys_notification n ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+          AND (r.is_read IS NULL OR r.is_read = 0)
+          AND UPPER(TRIM(n.biz_type)) = UPPER(TRIM(#{bizType}))
+          AND n.biz_id = #{bizId}
+    </select>
+
+    <select id="countUnreadStaffWorkInbox" resultType="int">
+        SELECT COUNT(1)
+        FROM sys_notification_recipient r
+                 INNER JOIN sys_notification n ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+          AND (r.is_read IS NULL OR r.is_read = 0)
+          AND UPPER(TRIM(n.biz_type)) IN ('REPAIR', 'PURCHASE', 'SUPPLIES_CLAIM')
+    </select>
+
+    <select id="countUnreadWorkOrderForApplicant" resultType="int">
+        SELECT COUNT(1)
+        FROM sys_notification_recipient r
+                 INNER JOIN sys_notification n ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+          AND (r.is_read IS NULL OR r.is_read = 0)
+          AND UPPER(TRIM(n.biz_type)) = UPPER(TRIM(#{bizType}))
+          AND (
+            (UPPER(TRIM(#{bizType})) = 'REPAIR' AND EXISTS (
+                SELECT 1 FROM repair_order o
+                WHERE o.id = n.biz_id AND IFNULL(o.deleted, 0) = 0 AND o.applicant_id = #{userId}
+            ))
+            OR (UPPER(TRIM(#{bizType})) = 'PURCHASE' AND EXISTS (
+                SELECT 1 FROM purchase_order o
+                WHERE o.id = n.biz_id AND IFNULL(o.deleted, 0) = 0 AND o.applicant_id = #{userId}
+            ))
+          )
+    </select>
+
+    <select id="countUnreadWorkOrderForProcessor" resultType="int">
+        SELECT COUNT(1)
+        FROM sys_notification_recipient r
+                 INNER JOIN sys_notification n ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+          AND (r.is_read IS NULL OR r.is_read = 0)
+          AND UPPER(TRIM(n.biz_type)) = UPPER(TRIM(#{bizType}))
+    </select>
+
+    <select id="listUnreadBizCompositeKeys" resultType="string">
+        SELECT CONCAT(UPPER(TRIM(n.biz_type)), '|', n.biz_id)
+        FROM sys_notification_recipient r
+                 INNER JOIN sys_notification n ON n.id = r.notification_id
+        WHERE r.recipient_user_id = #{userId}
+          AND (r.is_read IS NULL OR r.is_read = 0)
+          AND n.biz_id IS NOT NULL
+          AND TRIM(n.biz_id) != ''
+        <if test="compositeKeys != null and compositeKeys.size() &gt; 0">
+            AND CONCAT(UPPER(TRIM(n.biz_type)), '|', n.biz_id) IN
+            <foreach collection="compositeKeys" item="k" open="(" separator="," close=")">
+                #{k}
+            </foreach>
+        </if>
+        <if test="compositeKeys == null or compositeKeys.size() == 0">
+            AND 1 = 0
+        </if>
+    </select>
 </mapper>

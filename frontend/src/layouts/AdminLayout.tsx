@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { BackfillAutoGlobalBanner } from "@/features/dahua-swing-stats/BackfillAutoGlobalBanner";
 import { toast } from "react-hot-toast";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import {
@@ -36,7 +37,13 @@ import {
 } from "@/features/admin/adminPendingBadgesEvents";
 import { cn } from "@/lib/utils";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
-import { createAdminNavContext, buildAdminNavModel, type AdminSidebarNavItem } from "@/features/admin/buildAdminNavModel";
+import {
+  createAdminNavContext,
+  buildAdminNavModel,
+  type AdminSidebarNavGroup,
+  type AdminSidebarNavItem,
+} from "@/features/admin/buildAdminNavModel";
+import { adminNavSubgroupOpenKey } from "@/features/admin/adminNavRegistry";
 import {
   adminChromeTitle,
   collectSidebarEntryPathsFromPerm,
@@ -91,6 +98,10 @@ const SIDEBAR_COLLAPSED_KEY = "aro-admin-sidebar-collapsed";
 function routeMatches(pathname: string, to: string, end?: boolean) {
   if (end) return pathname === to || pathname === `${to}/`;
   return pathname === to || pathname.startsWith(`${to}/`);
+}
+
+function sidebarGroupAllItems(g: AdminSidebarNavGroup): AdminSidebarNavItem[] {
+  return [...g.items, ...(g.subgroups?.flatMap((sg) => sg.items) ?? [])];
 }
 
 function NavPendingBadge({ text }: { text?: string }) {
@@ -362,12 +373,20 @@ export default function AdminLayout() {
     setOpenGroups((prev) => {
       const next = { ...prev };
       for (const g of sidebarGroups) {
-        const hit = g.items.some((it) => routeMatches(pathname, it.to, it.end));
+        const all = sidebarGroupAllItems(g);
+        const hit = all.some((it) => routeMatches(pathname, it.to, it.end));
         if (hit) next[g.id] = true;
-        if (isFriendsSidebarGroupId(g.id) && g.items.length > 0 && prev[g.id] === undefined) {
+        for (const sg of g.subgroups ?? []) {
+          const sgKey = adminNavSubgroupOpenKey(g.id, sg.id);
+          if (sg.items.some((it) => routeMatches(pathname, it.to, it.end))) {
+            next[g.id] = true;
+            next[sgKey] = true;
+          }
+        }
+        if (isFriendsSidebarGroupId(g.id) && all.length > 0 && prev[g.id] === undefined) {
           next[g.id] = true;
         }
-        if (isPersonalSidebarGroupId(g.id) && g.items.length > 0 && prev[g.id] === undefined) {
+        if (isPersonalSidebarGroupId(g.id) && all.length > 0 && prev[g.id] === undefined) {
           next[g.id] = true;
         }
       }
@@ -509,42 +528,143 @@ export default function AdminLayout() {
     const onAfterNav = mode === "mobile" ? () => setMobileNavOpen(false) : undefined;
     const showDesktopCollapse = mode === "desktop";
 
+    const renderSidebarGroups = () =>
+      collapsed ? (
+        <div className="space-y-3">
+          {sidebarGroups.map((g) => (
+            <div key={g.id} className="space-y-1">
+              {sidebarGroupAllItems(g).map((it) => renderNavItem(it, false, collapsed, onAfterNav))}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {sidebarGroups.map((g) => {
+            const open = openGroups[g.id] === true;
+            const personal = isPersonalSidebarGroupId(g.id);
+            const friends = isFriendsSidebarGroupId(g.id);
+            const allItems = sidebarGroupAllItems(g);
+            const pendingTotal = sidebarGroupPendingTotal(allItems);
+            return (
+              <div
+                key={g.id}
+                className={cn(
+                  "rounded-xl border bg-white/[0.03] shadow-sm shadow-black/20 backdrop-blur-[2px]",
+                  personal ? "border-amber-400/25 bg-amber-950/15" : friends ? "border-violet-400/30 bg-violet-950/20" : "border-white/[0.06]"
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(g.id)}
+                  className="flex w-full items-center gap-2 rounded-t-xl px-3 py-2.5 text-left text-xs font-semibold tracking-wide text-neutral-300 transition-colors hover:bg-white/[0.04]"
+                  aria-expanded={open}
+                >
+                  {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                  {friends ? (
+                    <MessagesSquare className="h-3.5 w-3.5 shrink-0 text-violet-300" aria-hidden />
+                  ) : personal ? (
+                    g.id === RECENT_GROUP_ID ? (
+                      <History className="h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden />
+                    ) : g.id === STARS_GROUP_ID ? (
+                      <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400/50 text-amber-200" aria-hidden />
+                    ) : null
+                  ) : null}
+                  <span className="min-w-0 flex-1 truncate">{g.title}</span>
+                  <span className="flex shrink-0 items-center gap-1" aria-label={`${g.title}：${allItems.length} 个入口`}>
+                    {pendingTotal > 0 ? (
+                      <span className="min-w-[1.25rem] rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white shadow-sm tabular-nums">
+                        {pendingTotal > 99 ? "99+" : pendingTotal}
+                      </span>
+                    ) : null}
+                    <span
+                      className="min-w-[1.25rem] rounded-full bg-white/[0.08] px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-neutral-400 ring-1 ring-white/10 tabular-nums"
+                      title="分组内入口数量"
+                    >
+                      {allItems.length > 99 ? "99+" : allItems.length}
+                    </span>
+                  </span>
+                </button>
+                {open ? (
+                  <div className="space-y-1 border-t border-white/[0.06] px-2 pb-2 pt-1">
+                    {g.items.map((it) => renderNavItem(it, true, collapsed, onAfterNav))}
+                    {(g.subgroups ?? []).map((sg) => {
+                      const sgKey = adminNavSubgroupOpenKey(g.id, sg.id);
+                      const sgOpen = openGroups[sgKey] === true;
+                      const sgPending = sidebarGroupPendingTotal(sg.items);
+                      return (
+                        <div key={sgKey} className="rounded-lg border border-white/[0.05] bg-black/10">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroup(sgKey)}
+                            className="flex w-full items-center gap-2 px-2 py-2 text-left text-[11px] font-semibold text-neutral-400 hover:bg-white/[0.04]"
+                            aria-expanded={sgOpen}
+                          >
+                            {sgOpen ? (
+                              <ChevronDown className="h-3 w-3 shrink-0" />
+                            ) : (
+                              <ChevronRight className="h-3 w-3 shrink-0" />
+                            )}
+                            <span className="min-w-0 flex-1 truncate">{sg.title}</span>
+                            {sgPending > 0 ? (
+                              <span className="min-w-[1.1rem] rounded-full bg-rose-600/90 px-1 py-0.5 text-center text-[9px] font-bold text-white tabular-nums">
+                                {sgPending > 99 ? "99+" : sgPending}
+                              </span>
+                            ) : null}
+                          </button>
+                          {sgOpen ? (
+                            <div className="space-y-0.5 px-1 pb-1.5">
+                              {sg.items.map((it) => renderNavItem(it, true, collapsed, onAfterNav))}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      );
+
     return (
-      <>
-        <div
+      <div className="flex min-h-0 flex-1 flex-col">
+        {/* Logo、快捷入口、搜索、收起：固定在「消息」及各文件夹之上 */}
+        <div className={cn("shrink-0", collapsed ? "space-y-1" : "space-y-2")}>
+          <div
             className={cn(
-              "mb-6 flex items-center gap-2 font-semibold text-neutral-50",
-              collapsed ? "mb-4 flex-col justify-center gap-3" : "text-lg"
+              "flex items-center gap-2 font-semibold text-neutral-50",
+              collapsed ? "mb-1 flex-col justify-center gap-3" : "mb-2 text-lg"
             )}
-        >
-          {!collapsed ? (
-            sidebarLogoBroken ? (
-              <span className="min-w-0 truncate text-base tracking-tight">管理后台</span>
-            ) : (
-              <img
-                src={SHSMU_LOGO_URL}
-                alt="上海医学院"
-                className="h-12 w-auto max-w-[min(100%,15rem)] object-contain object-left brightness-0 invert"
-                onError={() => setSidebarLogoBroken(true)}
-              />
-            )
-          ) : (
-            <span title="上海医学院" className="inline-flex max-w-full justify-center">
-              {sidebarLogoBroken ? (
-                <span className="text-[10px] font-semibold leading-tight text-neutral-200">后台</span>
+          >
+            {!collapsed ? (
+              sidebarLogoBroken ? (
+                <span className="min-w-0 truncate text-base tracking-tight">管理后台</span>
               ) : (
                 <img
                   src={SHSMU_LOGO_URL}
-                  alt=""
-                  className="h-11 w-11 object-contain brightness-0 invert"
+                  alt="上海医学院"
+                  className="h-12 w-auto max-w-[min(100%,15rem)] object-contain object-left brightness-0 invert"
                   onError={() => setSidebarLogoBroken(true)}
                 />
-              )}
-            </span>
-          )}
-        </div>
+              )
+            ) : (
+              <span title="上海医学院" className="inline-flex max-w-full justify-center">
+                {sidebarLogoBroken ? (
+                  <span className="text-[10px] font-semibold leading-tight text-neutral-200">后台</span>
+                ) : (
+                  <img
+                    src={SHSMU_LOGO_URL}
+                    alt=""
+                    className="h-11 w-11 object-contain brightness-0 invert"
+                    onError={() => setSidebarLogoBroken(true)}
+                  />
+                )}
+              </span>
+            )}
+          </div>
 
-        <nav data-admin-sidebar-nav className={cn("space-y-2", collapsed && "space-y-1")}>
+          <nav data-admin-sidebar-nav-top className={cn("space-y-2", collapsed && "space-y-1")}>
           <div className="flex w-full min-w-0 flex-row gap-1.5">
             <NavLink
               to="/login"
@@ -631,78 +751,29 @@ export default function AdminLayout() {
               )}
             </button>
           ) : null}
+          </nav>
+        </div>
 
-          {collapsed ? (
-            <div className="space-y-3 border-t border-white/[0.08] pt-3">
-              {sidebarGroups.map((g) => (
-                <div key={g.id} className="space-y-1">
-                  {g.items.map((it) => renderNavItem(it, false, collapsed, onAfterNav))}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-1 border-t border-white/[0.08] pt-3">
-              {sidebarGroups.map((g) => {
-                const open = openGroups[g.id] === true;
-                const personal = isPersonalSidebarGroupId(g.id);
-                const friends = isFriendsSidebarGroupId(g.id);
-                const pendingTotal = sidebarGroupPendingTotal(g.items);
-                return (
-                  <div
-                    key={g.id}
-                    className={cn(
-                      "rounded-xl border bg-white/[0.03] shadow-sm shadow-black/20 backdrop-blur-[2px]",
-                      personal ? "border-amber-400/25 bg-amber-950/15" : friends ? "border-violet-400/30 bg-violet-950/20" : "border-white/[0.06]"
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(g.id)}
-                      className="flex w-full items-center gap-2 rounded-t-xl px-3 py-2.5 text-left text-xs font-semibold tracking-wide text-neutral-300 transition-colors hover:bg-white/[0.04]"
-                      aria-expanded={open}
-                    >
-                      {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
-                      {friends ? (
-                        <MessagesSquare className="h-3.5 w-3.5 shrink-0 text-violet-300" aria-hidden />
-                      ) : personal ? (
-                        g.id === RECENT_GROUP_ID ? (
-                          <History className="h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden />
-                        ) : g.id === STARS_GROUP_ID ? (
-                          <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400/50 text-amber-200" aria-hidden />
-                        ) : null
-                      ) : null}
-                      <span className="min-w-0 flex-1 truncate">{g.title}</span>
-                      <span className="flex shrink-0 items-center gap-1" aria-label={`${g.title}：${g.items.length} 个入口`}>
-                        {pendingTotal > 0 ? (
-                          <span className="min-w-[1.25rem] rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white shadow-sm tabular-nums">
-                            {pendingTotal > 99 ? "99+" : pendingTotal}
-                          </span>
-                        ) : null}
-                        <span
-                          className="min-w-[1.25rem] rounded-full bg-white/[0.08] px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-neutral-400 ring-1 ring-white/10 tabular-nums"
-                          title="分组内入口数量"
-                        >
-                          {g.items.length > 99 ? "99+" : g.items.length}
-                        </span>
-                      </span>
-                    </button>
-                    {open ? (
-                      <div className="space-y-1 border-t border-white/[0.06] px-2 pb-2 pt-1">
-                        {g.items.map((it) => renderNavItem(it, true, collapsed, onAfterNav))}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
+        {/* 「消息」起各文件夹：独立滚动区 */}
+        <div
+          data-admin-sidebar-scroll
+          className={cn(
+            "admin-sidebar-scrollbar-hidden min-h-0 flex-1 overflow-y-auto overscroll-y-contain border-t border-white/[0.08]",
+            collapsed ? "pt-2" : "pt-3"
           )}
-        </nav>
-      </>
+          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        >
+          <nav data-admin-sidebar-nav-groups className={cn(collapsed && "space-y-1")}>
+            {renderSidebarGroups()}
+            <div className="min-h-[50vh] shrink-0 pointer-events-none" aria-hidden />
+          </nav>
+        </div>
+      </div>
     );
   };
 
   return (
-    <div className="flex min-w-0 items-start bg-neutral-100 text-neutral-800">
+    <div className="flex min-h-screen min-w-0 items-start bg-neutral-100 text-neutral-800">
       <AdminCommandPalette
         open={commandOpen}
         onOpenChange={setCommandOpen}
@@ -715,12 +786,10 @@ export default function AdminLayout() {
 
       <aside
         className={cn(
-          "admin-sidebar-scrollbar-hidden sticky top-0 hidden h-screen shrink-0 overflow-y-auto border-r border-white/[0.06] bg-gradient-to-b from-neutral-950 via-neutral-900 to-neutral-950 text-neutral-100 transition-[width,padding] duration-200 ease-out md:flex md:flex-col",
-          // 侧栏底部留白：长列表时最后一条可滚入视口上方约 70% 区域，便于点击；含 safe-area
-          "pb-[max(30vh,calc(env(safe-area-inset-bottom,0px)+5rem))]",
+          "sticky top-0 z-30 hidden h-[100dvh] max-h-[100dvh] shrink-0 self-start overflow-hidden border-r border-white/[0.06] bg-gradient-to-b from-neutral-950 via-neutral-900 to-neutral-950 text-neutral-100 transition-[width,padding] duration-200 ease-out md:flex md:flex-col",
+          "pb-[env(safe-area-inset-bottom,0px)]",
           sidebarCollapsed ? "w-14 px-2 py-4" : "w-64 p-5"
         )}
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         aria-label="后台主导航"
       >
         {renderSidebarChrome("desktop")}
@@ -734,7 +803,7 @@ export default function AdminLayout() {
         >
           <DialogTitle className="sr-only">后台导航菜单</DialogTitle>
           <DialogDescription className="sr-only">与宽屏侧栏相同的分组与链接，小屏下以抽屉展示。</DialogDescription>
-          <div className="flex max-h-[100dvh] flex-col overflow-y-auto px-5 pt-5 pb-[max(30vh,calc(env(safe-area-inset-bottom,0px)+5rem))]">
+          <div className="flex max-h-[100dvh] min-h-0 flex-col overflow-hidden px-5 pt-5 pb-[env(safe-area-inset-bottom,0px)]">
             {renderSidebarChrome("mobile")}
           </div>
         </DialogContent>
@@ -856,8 +925,11 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        <main className="mx-auto min-h-[calc(100dvh-4rem)] w-full max-w-[1600px] min-w-0 overflow-x-hidden bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(0,112,243,0.07),transparent_55%),#fafafa] p-6 sm:p-8">
-          <Outlet />
+        <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(0,112,243,0.07),transparent_55%),#fafafa]">
+          <BackfillAutoGlobalBanner />
+          <div className="mx-auto w-full max-w-[1600px] flex-1 p-6 sm:p-8">
+            <Outlet />
+          </div>
         </main>
       </section>
 

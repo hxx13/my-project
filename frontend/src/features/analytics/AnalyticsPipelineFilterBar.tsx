@@ -18,6 +18,8 @@ type Props = {
   onChange: (next: AnalyticsDraftFilter) => void;
   onClear: () => void;
   invalidateKeys?: string[][];
+  /** 进出方向已在主配置区选择时隐藏 */
+  hideActionType?: boolean;
 };
 
 function Chip({
@@ -45,7 +47,14 @@ function Chip({
   );
 }
 
-export function AnalyticsPipelineFilterBar({ reportKey, filters, onChange, onClear, invalidateKeys }: Props) {
+export function AnalyticsPipelineFilterBar({
+  reportKey,
+  filters,
+  onChange,
+  onClear,
+  invalidateKeys,
+  hideActionType = false,
+}: Props) {
   const queryClient = useQueryClient();
   const [blacklistOpen, setBlacklistOpen] = useState(false);
   const isCageReport = reportKey === "cage_occupancy";
@@ -64,7 +73,7 @@ export function AnalyticsPipelineFilterBar({ reportKey, filters, onChange, onCle
         data-analytics-scope-filters
         className="flex flex-nowrap items-center gap-1.5 overflow-x-auto rounded-xl border border-neutral-200/90 bg-white px-3 py-2 shadow-sm [scrollbar-width:thin]"
       >
-        {!isCageReport ? (
+        {!isCageReport && !hideActionType ? (
           <>
             <select
               value={filters.actionType}

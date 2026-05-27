@@ -53,6 +53,9 @@ public class TwinDahuaSwingSchemaMigrator {
                     person_code VARCHAR(64) NULL,
                     person_id BIGINT NULL,
                     person_name VARCHAR(128) NULL,
+                    department_id VARCHAR(50) NULL,
+                    department_name VARCHAR(128) NULL,
+                    audience_type VARCHAR(16) NULL,
                     swing_time DATETIME NULL,
                     create_time DATETIME NULL,
                     open_result INT NULL,
@@ -108,6 +111,45 @@ public class TwinDahuaSwingSchemaMigrator {
 
         ensureColumnExists("twin_dahua_pull_task", "poll_interval_seconds",
                 "ALTER TABLE twin_dahua_pull_task ADD COLUMN poll_interval_seconds INT NOT NULL DEFAULT 60");
+
+        safeExecute("""
+                CREATE TABLE IF NOT EXISTS twin_dahua_stats_pull_task (
+                    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(128) NOT NULL,
+                    enabled TINYINT NOT NULL DEFAULT 1,
+                    period_mode VARCHAR(32) NOT NULL DEFAULT 'PREVIOUS_DAY',
+                    period_days INT NOT NULL DEFAULT 1,
+                    query_json TEXT NOT NULL,
+                    last_pulled_start DATETIME NULL,
+                    last_pulled_end DATETIME NULL,
+                    last_status VARCHAR(32) NULL,
+                    last_error TEXT NULL,
+                    last_run_at DATETIME NULL,
+                    last_saved_count INT NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    KEY idx_stats_pull_enabled (enabled)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                """);
+        ensureColumnExists("twin_dahua_swing_record", "pull_task_type",
+                "ALTER TABLE twin_dahua_swing_record ADD COLUMN pull_task_type VARCHAR(16) NOT NULL DEFAULT 'REALTIME' AFTER task_id");
+        ensureColumnExists(
+                "twin_dahua_swing_record",
+                "department_id",
+                "ALTER TABLE twin_dahua_swing_record ADD COLUMN department_id VARCHAR(50) NULL COMMENT '大华部门ID' AFTER person_name");
+        ensureColumnExists(
+                "twin_dahua_swing_record",
+                "department_name",
+                "ALTER TABLE twin_dahua_swing_record ADD COLUMN department_name VARCHAR(128) NULL AFTER department_id");
+        ensureColumnExists(
+                "twin_dahua_swing_record",
+                "audience_type",
+                "ALTER TABLE twin_dahua_swing_record ADD COLUMN audience_type VARCHAR(16) NULL COMMENT 'STUDENT|STAFF' AFTER department_name");
+        ensureIndexExists(
+                "twin_dahua_swing_record",
+                "idx_dahua_swing_dept_time",
+                "CREATE INDEX idx_dahua_swing_dept_time ON twin_dahua_swing_record (department_id, swing_time)");
+
         log.info("[twin-dahua-swing-schema] 表结构已就绪");
     }
 
@@ -116,6 +158,29 @@ public class TwinDahuaSwingSchemaMigrator {
             jdbcTemplate.execute(sql);
         } catch (Exception e) {
             log.error("[twin-dahua-swing-schema] SQL执行失败: {}", e.getMessage());
+        }
+    }
+
+    private void ensureIndexExists(String tableName, String indexName, String createSql) {
+        try {
+            Integer cnt =
+                    jdbcTemplate.queryForObject(
+                            """
+                            SELECT COUNT(1) FROM information_schema.STATISTICS
+                            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?
+                            """,
+                            Integer.class,
+                            tableName,
+                            indexName);
+            if (cnt == null || cnt <= 0) {
+                safeExecute(createSql);
+            }
+        } catch (Exception e) {
+            log.error(
+                    "[twin-dahua-swing-schema] 检查索引失败 table={}, index={}, err={}",
+                    tableName,
+                    indexName,
+                    e.getMessage());
         }
     }
 

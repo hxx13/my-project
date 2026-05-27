@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.accessfusion.mapper.AccessCleanedEventMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO access_cleaned_event (
+            batch_id, raw_event_id, user_id, person_name, channel_code, room_id, room_name, area_name, floor_name,
+            direction, access_type, inference_method, confidence, flags_json, project_group_names, event_time,
+            needs_review, ai_suggested_direction
+        ) VALUES (
+            #{batchId}, #{rawEventId}, #{userId}, #{personName}, #{channelCode}, #{roomId}, #{roomName}, #{areaName},
+            #{floorName}, #{direction}, #{accessType}, #{inferenceMethod}, #{confidence}, #{flagsJson},
+            #{projectGroupNames}, #{eventTime}, #{needsReview}, #{aiSuggestedDirection}
+        )
+    </insert>
+
+    <delete id="deleteByBatchId">DELETE FROM access_cleaned_event WHERE batch_id = #{batchId}</delete>
+
+    <update id="updateReview">
+        UPDATE access_cleaned_event SET
+            direction = #{direction}, access_type = #{accessType},
+            inference_method = #{inferenceMethod}, confidence = #{confidence}, needs_review = #{needsReview}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateAiSuggestion">
+        UPDATE access_cleaned_event SET ai_suggested_direction = #{aiSuggestedDirection} WHERE id = #{id}
+    </update>
+
+    <select id="selectReviewQueue" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanedEvent">
+        SELECT id, batch_id AS batchId, raw_event_id AS rawEventId, user_id AS userId, person_name AS personName,
+               channel_code AS channelCode, room_id AS roomId, room_name AS roomName, area_name AS areaName,
+               floor_name AS floorName, direction, access_type AS accessType, inference_method AS inferenceMethod,
+               confidence, flags_json AS flagsJson, project_group_names AS projectGroupNames, event_time AS eventTime,
+               needs_review AS needsReview, ai_suggested_direction AS aiSuggestedDirection
+        FROM access_cleaned_event
+        WHERE needs_review = 1
+        ORDER BY event_time DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countReviewQueue" resultType="int">
+        SELECT COUNT(*) FROM access_cleaned_event WHERE needs_review = 1
+    </select>
+
+    <select id="selectByBatchId" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanedEvent">
+        SELECT id, batch_id AS batchId, raw_event_id AS rawEventId, user_id AS userId, person_name AS personName,
+               channel_code AS channelCode, room_id AS roomId, room_name AS roomName, area_name AS areaName,
+               floor_name AS floorName, direction, access_type AS accessType, inference_method AS inferenceMethod,
+               confidence, flags_json AS flagsJson, project_group_names AS projectGroupNames, event_time AS eventTime,
+               needs_review AS needsReview, ai_suggested_direction AS aiSuggestedDirection
+        FROM access_cleaned_event
+        WHERE batch_id = #{batchId}
+        ORDER BY event_time ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectById" resultType="com.example.demo.modules.accessfusion.entity.AccessCleanedEvent">
+        SELECT id, batch_id AS batchId, raw_event_id AS rawEventId, user_id AS userId, person_name AS personName,
+               channel_code AS channelCode, room_id AS roomId, room_name AS roomName, area_name AS areaName,
+               floor_name AS floorName, direction, access_type AS accessType, inference_method AS inferenceMethod,
+               confidence, flags_json AS flagsJson, project_group_names AS projectGroupNames, event_time AS eventTime,
+               needs_review AS needsReview, ai_suggested_direction AS aiSuggestedDirection
+        FROM access_cleaned_event WHERE id = #{id}
+    </select>
+
+    <sql id="AggregationWhere">
+        <if test="startTime != null and startTime != ''">AND event_time &gt;= #{startTime}</if>
+        <if test="endTime != null and endTime != ''">AND event_time &lt;= #{endTime}</if>
+        <if test="actionType != null">AND access_type = #{actionType}</if>
+        <if test="campusList != null and campusList.size() > 0">
+            AND (
+            <foreach collection="campusList" item="c" separator=" OR ">
+                area_name LIKE CONCAT('%', #{c}, '%')
+            </foreach>
+            )
+        </if>
+        <if test="floorList != null and floorList.size() > 0">
+            AND (
+            <foreach collection="floorList" item="f" separator=" OR ">
+                room_name LIKE CONCAT(#{f}, '%')
+            </foreach>
+            )
+        </if>
+        <if test="roomName != null and roomName != ''">
+            AND room_name LIKE CONCAT('%', #{roomName}, '%')
+        </if>
+        <if test="excludeBlacklist">
+            AND user_id NOT IN (SELECT user_id FROM twin_blacklist)
+        </if>
+    </sql>
+
+    <select id="listForAggregation" resultType="map">
+        SELECT user_id AS userId,
+               person_name AS name,
+               access_type AS accessType,
+               DATE_FORMAT(event_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               area_name AS areaName,
+               room_name AS roomName,
+               room_id AS roomId,
+               project_group_names AS projectGroupNames
+        FROM access_cleaned_event
+        WHERE 1 = 1
+        <include refid="AggregationWhere"/>
+        ORDER BY event_time ASC
+        LIMIT 500000
+    </select>
+</mapper>
