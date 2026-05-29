@@ -23,4 +23,15 @@ public class AuthContextService {
         }
         return jwtTokenService.validateTokenAndResolveUser(token);
     }
+
+    public boolean isImpersonated(String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return false;
+        }
+        String token = authHeader.substring("Bearer ".length()).trim();
+        if (token.isBlank()) {
+            return false;
+        }
+        return jwtTokenService.isImpersonatedToken(token);
+    }
 }

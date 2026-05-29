@@ -64,6 +64,7 @@ import {
 } from "@/features/admin/adminNavPersonalization";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { hasMinRole } from "@/features/auth/roleAccess";
+import { adminInputClass } from "@/features/admin/adminFormUi";
 import { AdminChromeContextMenu, type AdminChromeContextMenuPayload } from "@/features/admin/AdminChromeContextMenu";
 import {
   parseAdminNavLinkFromEventTarget,
@@ -145,6 +146,12 @@ export default function AdminLayout() {
   const [sidebarLogoBroken, setSidebarLogoBroken] = useState(false);
   const [pageHelpOpen, setPageHelpOpen] = useState(false);
 
+  /** ARO account binding — SUPER_ADMIN only */
+  const [aroBinding, setAroBinding] = useState<null | false | { aroUserId: string; name: string; departmentName: string; createdAt: string }>(null);
+  const [aroBindDialogOpen, setAroBindDialogOpen] = useState(false);
+  const [aroBindUserId, setAroBindUserId] = useState("");
+  const [aroUnbindDialogOpen, setAroUnbindDialogOpen] = useState(false);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
@@ -208,6 +215,22 @@ export default function AdminLayout() {
     return () => {
       cancelled = true;
     };
+  }, [role]);
+
+  /** Fetch ARO account binding status for SUPER_ADMIN */
+  useEffect(() => {
+    if (!hasMinRole(role, "SUPER_ADMIN")) return;
+    const token = authStorage.getToken();
+    if (!token) return;
+    fetch("/api/admin/account/binding", {
+      headers: { Authorization: "Bearer " + token },
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch binding");
+        return res.json();
+      })
+      .then((wrapper) => setAroBinding(wrapper?.data || false))
+      .catch(() => setAroBinding(false));
   }, [role]);
 
   const pullPendingBadges = useCallback(() => {
@@ -899,6 +922,57 @@ export default function AdminLayout() {
                 </div>
                 <div className="px-2 py-1 text-[10px] text-[var(--twin-mute)] sm:block">当前角色 · {role}</div>
                 <DropdownMenuSeparator />
+                {hasMinRole(role, "SUPER_ADMIN") && aroBinding === false && (
+                  <DropdownMenuItem onSelect={() => setAroBindDialogOpen(true)}>
+                    <UserRound className="mr-2 h-4 w-4" />
+                    绑定ARO账号
+                  </DropdownMenuItem>
+                )}
+                {hasMinRole(role, "SUPER_ADMIN") && aroBinding && aroBinding !== false && (
+                  <>
+                    <DropdownMenuItem disabled className="text-[var(--twin-mute)] opacity-70">
+                      <UserRound className="mr-2 h-4 w-4" />
+                      ARO绑定: {aroBinding.name} ({aroBinding.aroUserId})
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={async () => {
+                        const currentToken = authStorage.getToken();
+                        const currentRole = authStorage.getRole();
+                        const currentUserInfo = authStorage.getUserInfo();
+                        try {
+                          localStorage.setItem("admin_original_auth", JSON.stringify({
+                            token: currentToken,
+                            role: currentRole,
+                            userInfo: currentUserInfo,
+                          }));
+                        } catch {
+                          /* ignore */
+                        }
+                        try {
+                          const res = await fetch("/api/auth/impersonate", {
+                            method: "POST",
+                            headers: { Authorization: "Bearer " + currentToken },
+                          });
+                          if (!res.ok) throw new Error("Impersonation failed");
+                          const wrapper = await res.json() as { code: number; data: { token: string; aroUserId: string } };
+                          const { token, aroUserId } = wrapper.data;
+                          authStorage.setAuth(token, "STUDENT", null);
+                          toast.success("已切换至学生视图");
+                          navigate("/student/home");
+                        } catch {
+                          toast.error("切换学生视图失败");
+                        }
+                      }}
+                    >
+                      <UserRound className="mr-2 h-4 w-4" />
+                      切换学生视图
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setAroUnbindDialogOpen(true)}>
+                      <UserRound className="mr-2 h-4 w-4" />
+                      解除ARO绑定
+                    </DropdownMenuItem>
+                  </>
+                )}
                 {hasMinRole(role, "STAFF") ? (
                   <DropdownMenuItem
                     onSelect={() => {
@@ -981,6 +1055,129 @@ export default function AdminLayout() {
               }}
             >
               退出登录
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ARO 绑定弹窗 */}
+      <Dialog open={aroBindDialogOpen} onOpenChange={setAroBindDialogOpen}>
+        <DialogContent className="z-[320] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>绑定ARO账号</DialogTitle>
+            <DialogDescription>输入要绑定的ARO用户ID</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <input
+              className={adminInputClass}
+              placeholder="ARO用户ID"
+              value={aroBindUserId}
+              onChange={(e) => setAroBindUserId(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && aroBindUserId.trim()) {
+                  e.preventDefault();
+                  const btn = document.getElementById("aro-bind-submit-btn") as HTMLButtonElement | null;
+                  btn?.click();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              size="default"
+              onClick={() => {
+                setAroBindDialogOpen(false);
+                setAroBindUserId("");
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              id="aro-bind-submit-btn"
+              size="default"
+              disabled={!aroBindUserId.trim()}
+              onClick={async () => {
+                const token = authStorage.getToken();
+                try {
+                  const res = await fetch("/api/admin/account/bind-aro", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: "Bearer " + token,
+                    },
+                    body: JSON.stringify({ aroUserId: aroBindUserId.trim() }),
+                  });
+                  if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error((errData as any).message || "绑定失败");
+                  }
+                  toast.success("绑定成功");
+                  setAroBindDialogOpen(false);
+                  setAroBindUserId("");
+                  // Refresh binding status
+                  try {
+                    const bindRes = await fetch("/api/admin/account/binding", {
+                      headers: { Authorization: "Bearer " + token },
+                    });
+                    if (bindRes.ok) {
+                      const wrapper = await bindRes.json();
+                      setAroBinding(wrapper?.data || false);
+                    }
+                  } catch {
+                    /* ignore */
+                  }
+                } catch (e: any) {
+                  toast.error(e?.message || "绑定失败，请检查ARO用户ID是否正确");
+                }
+              }}
+            >
+              确认绑定
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ARO 解绑确认弹窗 */}
+      <Dialog open={aroUnbindDialogOpen} onOpenChange={setAroUnbindDialogOpen}>
+        <DialogContent className="z-[320] sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>解除ARO绑定</DialogTitle>
+            <DialogDescription>
+              确定要解除当前账号的ARO绑定吗？
+              {aroBinding && aroBinding !== false && (
+                <span className="mt-1 block">当前绑定: {aroBinding.name} ({aroBinding.aroUserId})</span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              size="default"
+              onClick={() => setAroUnbindDialogOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              size="default"
+              onClick={async () => {
+                const token = authStorage.getToken();
+                try {
+                  const res = await fetch("/api/admin/account/bind-aro", {
+                    method: "DELETE",
+                    headers: { Authorization: "Bearer " + token },
+                  });
+                  if (!res.ok) throw new Error("解除绑定失败");
+                  toast.success("已解除ARO绑定");
+                  setAroUnbindDialogOpen(false);
+                  setAroBinding(false);
+                } catch {
+                  toast.error("解除绑定失败");
+                }
+              }}
+            >
+              解除绑定
             </Button>
           </DialogFooter>
         </DialogContent>

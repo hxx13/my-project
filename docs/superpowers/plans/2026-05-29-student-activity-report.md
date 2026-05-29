@@ -1475,6 +1475,283 @@ Only if adjustments needed during verification.
 
 ---
 
+### Task 14: Bug 修复 — 学生端「我的房间」未拿到真实房间数据
+
+**问题定位**：`StudentRoomService.getFilteredRooms()` 查询 `RoomMappingRoomMapper.selectPage()`（room_mapping 表），与小程序房间概览接口 `/wechat-overview` 使用的 `RoomConfigService.getAllActiveRooms()`（room_config 表）不一致。导致房间列表与实际可用房间不匹配，且 occupancy 的 roomName 键与 access_log 对不上。
+
+**Files:**
+- Modify: `src/main/java/com/example/demo/modules/student/service/StudentRoomService.java`
+
+- [ ] **Step 1: 重构 Service 使用 room_config 数据源**
+
+将 `RoomMappingRoomMapper` 替换为 `RoomConfigService`：
+
+```java
+package com.example.demo.modules.student.service;
+
+import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.student.mapper.StudentRoomPinMapper;
+import com.example.demo.modules.twin.common.dto.RoomDashboardRenderDTO;
+import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
+import com.example.demo.modules.twin.common.service.RoomConfigService;
+import com.example.demo.modules.twin.dashboard.service.TwinDashboardAggregationService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+public class StudentRoomService {
+
+    private static final Logger log = LoggerFactory.getLogger(StudentRoomService.class);
+
+    private static final int DEFAULT_CAPACITY = 20;
+
+    private final RoomConfigService roomConfigService;
+    private final TwinDashboardAggregationService aggregationService;
+    private final StudentRoomPinMapper pinMapper;
+    private final TwinDashboardMapper dashboardMapper;
+
+    public StudentRoomService(RoomConfigService roomConfigService,
+                               TwinDashboardAggregationService aggregationService,
+                               StudentRoomPinMapper pinMapper,
+                               TwinDashboardMapper dashboardMapper) {
+        this.roomConfigService = roomConfigService;
+        this.aggregationService = aggregationService;
+        this.pinMapper = pinMapper;
+        this.dashboardMapper = dashboardMapper;
+    }
+
+    public Map<String, Object> getRooms(User user, String pinned, String floor,
+                                         String status, String search,
+                                         int page, int size) {
+        boolean pinnedOnly = "1".equals(pinned);
+
+        if (pinnedOnly) {
+            return getPinnedRooms(user);
+        }
+
+        return getFilteredRooms(user, floor, search, page, size);
+    }
+
+    /** 我的房间：复用小程序 wechat-overview 数据管道，获取用户当前在馆房间 */
+    private Map<String, Object> getPinnedRooms(User user) {
+        List<String> pinnedRoomIds = pinMapper.selectPinnedRoomIds(user.getId());
+        List<RoomDashboardRenderDTO> allRooms = roomConfigService.getAllActiveRooms();
+
+        // 获取各校区实时在馆数据
+        Map<String, RoomDashboardRenderDTO> roomIndex = new LinkedHashMap<>();
+        for (RoomDashboardRenderDTO room : allRooms) {
+            roomIndex.put(room.getRoomId(), room);
+        }
+
+        List<Map<String, Object>> data = new ArrayList<>();
+        for (String roomId : pinnedRoomIds) {
+            RoomDashboardRenderDTO room = roomIndex.get(roomId);
+            if (room == null) {
+                continue;
+            }
+            data.add(buildRoomItemFromDashboard(room, true));
+        }
+        return Map.of("data", data, "total", data.size(), "page", 1, "size", data.size());
+    }
+
+    /** 全部房间：基于 room_config 分页，含 occupancy */
+    private Map<String, Object> getFilteredRooms(User user, String floor, String search,
+                                                   int page, int size) {
+        List<RoomDashboardRenderDTO> allRooms = roomConfigService.getAllActiveRooms();
+
+        // 楼层 / 搜索过滤
+        List<RoomDashboardRenderDTO> filtered = allRooms.stream()
+                .filter(r -> {
+                    if (floor != null && !floor.isEmpty()) {
+                        String roomName = r.getRoomName() != null ? r.getRoomName() : "";
+                        if (!roomName.startsWith(floor)) return false;
+                    }
+                    if (search != null && !search.isEmpty()) {
+                        String kw = search.toLowerCase();
+                        String roomName = r.getRoomName() != null ? r.getRoomName().toLowerCase() : "";
+                        String campus = r.getCampus() != null ? r.getCampus().toLowerCase() : "";
+                        if (!roomName.contains(kw) && !campus.contains(kw)) return false;
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
+
+        long total = filtered.size();
+        int offset = (page - 1) * size;
+        List<RoomDashboardRenderDTO> paged = filtered.stream().skip(offset).limit(size).toList();
+
+        Set<String> pinnedIds = new HashSet<>(pinMapper.selectPinnedRoomIds(user.getId()));
+
+        List<Map<String, Object>> data = paged.stream()
+                .map(r -> buildRoomItemFromDashboard(r, pinnedIds.contains(r.getRoomId())))
+                .collect(Collectors.toList());
+
+        return Map.of("data", data, "total", (int) total, "page", page, "size", size);
+    }
+
+    public void togglePin(User user, String roomId) {
+        if (pinMapper.exists(user.getId(), roomId) > 0) {
+            pinMapper.delete(user.getId(), roomId);
+        } else {
+            pinMapper.insert(user.getId(), roomId);
+        }
+    }
+
+    private Map<String, Object> buildRoomItemFromDashboard(RoomDashboardRenderDTO room, boolean isPinned) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("roomId", room.getRoomId());
+        item.put("roomName", room.getRoomName() != null ? room.getRoomName() : "");
+        item.put("floor", deriveFloor(room.getRoomName()));
+        item.put("zone", room.getCampus() != null ? room.getCampus() : "");
+
+        int occupants = room.getOccupants() != null ? room.getOccupants().size() : 0;
+        int capacity = room.getTotalCapacity() > 0 ? room.getTotalCapacity() : getRoomCapacity(room.getRoomId());
+        double rate = capacity > 0 ? (occupants * 100.0 / capacity) : 0;
+
+        item.put("occupantCount", occupants);
+        item.put("capacity", capacity);
+        item.put("occupancyRate", (int) Math.round(rate));
+
+        String status;
+        if (rate > 90) status = "full";
+        else if (rate >= 50) status = "busy";
+        else status = "idle";
+        item.put("status", status);
+        item.put("isPinned", isPinned);
+
+        return item;
+    }
+
+    private String deriveFloor(String roomName) {
+        if (roomName == null) return "";
+        // 从房间名提取楼层：如 "A-301" → "3F"
+        for (int i = 0; i < roomName.length(); i++) {
+            char c = roomName.charAt(i);
+            if (c >= '1' && c <= '9') {
+                return c + "F";
+            }
+        }
+        return "";
+    }
+
+    private Integer getRoomCapacity(String roomId) {
+        try {
+            Integer cap = dashboardMapper.getRoomCapacityByRoomId(roomId);
+            return cap != null && cap > 0 ? cap : DEFAULT_CAPACITY;
+        } catch (Exception e) {
+            log.warn("Failed to get capacity for room {}", roomId, e);
+            return DEFAULT_CAPACITY;
+        }
+    }
+}
+```
+
+关键变更：
+- 移除 `RoomMappingRoomMapper` 依赖，改用 `RoomConfigService.getAllActiveRooms()`（与小程序同源）
+- 移除 `getRoomOccupancyMap()` 的静态方法，改用 `RoomDashboardRenderDTO.getOccupants()` 实时在馆数据
+- `buildRoomItemFromDashboard()` 直接读取 DTO 的 occupants 列表（实时刷卡数据）
+
+- [ ] **Step 2: 编译验证**
+
+Run: `cd d:/codex/verson.1.2/20260416 && ./mvnw compile -q -pl .`
+Expected: BUILD SUCCESS
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/main/java/com/example/demo/modules/student/service/StudentRoomService.java
+git commit -m "fix: use room_config data pipeline for student rooms page"
+```
+
+---
+
+### Task 15: Bug 修复 — 学生端笼架下拉列表未接入真实数据
+
+**问题定位**：`StudentCageShelfService.getFilterOptions()` 的 cascade 下拉树仅查询 `snapshotMapper.selectDistinctShelves()`（只返回已刷新过的笼架），不包含未刷新但已导入的笼架。与管理员后台 `/api/v1/cage-shelves/filter-options`（查询 `cageShelfMapper.listIndexes()`）不一致，导致学生端下拉列表缺少大量已导入笼架。
+
+**Files:**
+- Modify: `src/main/java/com/example/demo/modules/student/service/StudentCageShelfService.java`
+
+- [ ] **Step 1: 修复 getFilterOptions 使用 indexes 表构建下拉**
+
+替换 `getFilterOptions()` 方法，从 `cageShelfMapper.listIndexes()` 构建 cascade 树：
+
+找到第51-99行的 `getFilterOptions` 方法，替换为：
+
+```java
+public Map<String, Object> getFilterOptions(User user) {
+    // 从 indexes 表拉取全部已导入笼架（与管理员后台同源），不依赖快照
+    List<Map<String, Object>> allShelves = cageShelfMapper.listIndexes(null, null, null, null, 100000, 0);
+
+    List<Map<String, Object>> campuses = new ArrayList<>();
+    List<Map<String, Object>> areas = new ArrayList<>();
+    List<Map<String, Object>> floors = new ArrayList<>();
+    List<Map<String, Object>> rooms = new ArrayList<>();
+    List<Map<String, Object>> shelfList = new ArrayList<>();
+
+    java.util.Set<String> seenCampuses = new java.util.LinkedHashSet<>();
+    java.util.Set<String> seenAreas = new java.util.LinkedHashSet<>();
+    java.util.Set<String> seenFloors = new java.util.LinkedHashSet<>();
+    java.util.Set<String> seenRooms = new java.util.LinkedHashSet<>();
+    java.util.Set<String> seenShelves = new java.util.LinkedHashSet<>();
+
+    for (Map<String, Object> s : allShelves) {
+        String campusName = String.valueOf(s.getOrDefault("campusName", ""));
+        String areaName = String.valueOf(s.getOrDefault("areaName", ""));
+        String floorName = String.valueOf(s.getOrDefault("floorName", ""));
+        String roomName = String.valueOf(s.getOrDefault("roomName", ""));
+        String shelveId = String.valueOf(s.getOrDefault("shelveId", ""));
+        String shelveName = String.valueOf(s.getOrDefault("shelveName", ""));
+
+        if (!campusName.isEmpty() && seenCampuses.add(campusName)) {
+            campuses.add(Map.of("id", campusName, "name", campusName));
+        }
+        if (!areaName.isEmpty() && seenAreas.add(areaName)) {
+            areas.add(Map.of("id", areaName, "name", areaName));
+        }
+        if (!floorName.isEmpty() && seenFloors.add(floorName)) {
+            floors.add(Map.of("id", floorName, "name", floorName));
+        }
+        if (!roomName.isEmpty() && seenRooms.add(roomName)) {
+            rooms.add(Map.of("id", roomName, "name", roomName));
+        }
+        if (!shelveId.isEmpty() && seenShelves.add(shelveId)) {
+            shelfList.add(Map.of("id", shelveId, "name", shelveName));
+        }
+    }
+
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("campuses", campuses);
+    out.put("areas", areas);
+    out.put("floors", floors);
+    out.put("rooms", rooms);
+    out.put("shelves", shelfList);
+    return out;
+}
+```
+
+同时删除不再使用的 `resolveUserGroupNames` 调用（该方法仍在 `getShelfDetail` 中使用，保留不动）。
+
+- [ ] **Step 2: 编译验证**
+
+Run: `cd d:/codex/verson.1.2/20260416 && ./mvnw compile -q -pl .`
+Expected: BUILD SUCCESS
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/main/java/com/example/demo/modules/student/service/StudentCageShelfService.java
+git commit -m "fix: use cage shelf indexes table for student filter options"
+```
+
+---
+
 ## Summary
 
 | # | Task | Files |
@@ -1490,5 +1767,7 @@ Only if adjustments needed during verification.
 | 9 | Charts | `ActivityHeatmapChart.tsx` + `ActivityTrendChart.tsx` (new) |
 | 10 | ReportPanel | `StudentActivityReportPanel.tsx` (new) |
 | 11 | Page 挂载 | `AdminAnalyticsPage.tsx` |
-| 12 | Bug 修复 | `AdminPersonnelPage.tsx` |
+| 12 | Bug 修复 — 翻页 | `AdminPersonnelPage.tsx` |
 | 13 | 验证 | 启动应用 + 手动测试 |
+| 14 | Bug 修复 — 房间 | `StudentRoomService.java` |
+| 15 | Bug 修复 — 笼架 | `StudentCageShelfService.java` |

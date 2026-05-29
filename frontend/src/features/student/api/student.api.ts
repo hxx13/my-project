@@ -266,7 +266,7 @@ export async function fetchRooms(
 }
 
 /**
- * 切换房间置顶状态
+ * 切换房间收藏状态
  * PUT /api/student/rooms/:roomId/pin
  */
 export async function toggleRoomPin(roomId: string): Promise<void> {
@@ -400,4 +400,227 @@ export async function createFeedbackTicket(
     throw new Error(res.data?.message || "提交工单失败");
   }
   return res.data.data;
+}
+
+// ======================== 笼架信息 API ========================
+
+/** 笼架筛选选项（按课题组范围过滤） */
+export interface CageShelfFilterOptions {
+  campuses: { campusId: number; campusName: string }[];
+  areas: { areaId: string; areaName: string }[];
+  floors: { floorId: string; floorName: string }[];
+  rooms: { roomId: string; roomName: string }[];
+  shelves: { shelveId: string; shelveName: string }[];
+}
+
+/** 笼架筛选选项查询参数 */
+export interface CageShelfFilterOptionsParams {
+  campusId?: number;
+  areaId?: string;
+  floorId?: string;
+  roomId?: string;
+}
+
+/** 笼架单元格 */
+export interface CageShelfCell {
+  x: number;
+  y: number;
+  position: string;        // "A-1" 到 "H-10"
+  empty: boolean;
+  visible: boolean;        // 当前用户是否有权限查看详情
+  stateLabel: string;
+  projectPiName?: string;
+  departmentName?: string;
+  animalCageType?: number;
+  cageBoxQrCode?: string;
+  aupNumber?: string;
+  rawDataJson?: string | null; // ARO 原始数据 JSON
+}
+
+/** 笼位标注 */
+export interface CageCellAnnotation {
+  shelveId?: string;
+  positionX?: number;
+  positionY?: number;
+  positionLabel?: string;
+  richText?: string | null;
+  images?: string | null;       // JSON array of image URLs
+  aroRawData?: string | null;  // Cached ARO official data JSON
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** 笼架详情 */
+export interface CageShelfDetail {
+  shelfMeta: {
+    campusName: string;
+    areaName: string;
+    floorName: string;
+    roomName: string;
+    shelveId: string;
+    shelveName: string;
+  };
+  grid: CageShelfCell[];
+  totalCells: number;
+  filledCells: number;
+  latestBatchId?: string | null;
+}
+
+/**
+ * 获取笼架筛选选项（按课题组范围过滤，支持级联参数）
+ * GET /api/student/cage-shelves/filter-options
+ */
+export async function fetchStudentCageShelfFilterOptions(
+  params: CageShelfFilterOptionsParams = {}
+): Promise<CageShelfFilterOptions> {
+  const res = await authHttp.get<Result<CageShelfFilterOptions>>(
+    "/student/cage-shelves/filter-options",
+    { params }
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取筛选选项失败");
+  }
+  return res.data.data;
+}
+
+/**
+ * 获取笼架详情（含 8x10 网格数据）
+ * GET /api/student/cage-shelves/:shelveId/detail
+ */
+export async function fetchStudentCageShelfDetail(
+  shelveId: string
+): Promise<CageShelfDetail> {
+  const res = await authHttp.get<Result<CageShelfDetail>>(
+    `/student/cage-shelves/${shelveId}/detail`
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取笼架详情失败");
+  }
+  return res.data.data;
+}
+
+/**
+ * 触发笼架快照刷新
+ * POST /api/student/cage-shelves/refresh
+ */
+export async function refreshStudentCageShelf(): Promise<{
+  message: string;
+  refreshedShelves: number;
+}> {
+  const res = await authHttp.post<
+    Result<{ message: string; refreshedShelves: number }>
+  >("/student/cage-shelves/refresh");
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "刷新失败");
+  }
+  return res.data.data;
+}
+
+// ======================== 房间在室人员 API ========================
+
+/** 房间在室人员条目 */
+export interface RoomOccupant {
+  userId: string;
+  userName: string;
+  entryTime: string;
+  entryType: "OWN_CARD" | "BORROWED_CARD";
+}
+
+/** 房间在室状态 */
+export interface RoomStatusData {
+  areaName: string;
+  roomName: string;
+  roomId: number;
+  totalCapacity: number;
+  campusUserCount: number;
+  borrowedCardCount: number;
+  remainingCards: number;
+  occupants: RoomOccupant[];
+}
+
+/**
+ * 获取所有房间的在室人员详情（房卡监控数据）
+ * GET /api/v1/twin/cards/status
+ */
+export async function fetchRoomStatusList(): Promise<RoomStatusData[]> {
+  const res = await authHttp.get<RoomStatusData[]>(
+    "/v1/twin/cards/status"
+  );
+  return Array.isArray(res.data) ? res.data : [];
+}
+
+// ======================== AI 行为预测 API ========================
+
+/** AI 预测单条记录 */
+export interface AiPredictionRecord {
+  user_id: string;
+  user_name: string;
+  room_id: string;
+  room_name: string;
+  peak_entry_time?: string;
+  median_duration_mins?: number;
+  predicted_exit_label?: string;
+  overtime_prob?: number;
+  visit_count?: number;
+  next_room_prob?: string;
+  entry_curve?: string;
+  exit_curve?: string;
+  weekly_entry_curve?: string;
+  weekly_exit_curve?: string;
+  update_time?: string;
+}
+
+/**
+ * 获取当前学生的 AI 行为预测画像
+ * GET /api/student/ai-profile
+ */
+export async function fetchStudentAiProfile(): Promise<AiPredictionRecord[]> {
+  const res = await authHttp.get<Result<AiPredictionRecord[]>>(
+    "/student/ai-profile"
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取 AI 画像失败");
+  }
+  return res.data.data ?? [];
+}
+
+// ======================== 笼位标注 API ========================
+
+/**
+ * 获取笼位标注信息
+ * GET /api/student/cage-shelves/{shelveId}/cells/{x}/{y}/annotation
+ */
+export async function fetchCellAnnotation(
+  shelveId: string,
+  x: number,
+  y: number,
+): Promise<CageCellAnnotation | null> {
+  const res = await authHttp.get<Result<CageCellAnnotation | null>>(
+    `/student/cage-shelves/${shelveId}/cells/${x}/${y}/annotation`,
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取标注失败");
+  }
+  return res.data.data ?? null;
+}
+
+/**
+ * 保存笼位标注
+ * PUT /api/student/cage-shelves/{shelveId}/cells/{x}/{y}/annotation
+ */
+export async function saveCellAnnotation(
+  shelveId: string,
+  x: number,
+  y: number,
+  position: string,
+  data: { richText?: string; images?: string; aroRawData?: string },
+): Promise<void> {
+  const res = await authHttp.put<Result<void>>(
+    `/student/cage-shelves/${shelveId}/cells/${x}/${y}/annotation`,
+    { position, ...data },
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "保存标注失败");
+  }
 }

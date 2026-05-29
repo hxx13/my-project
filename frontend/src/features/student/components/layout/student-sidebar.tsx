@@ -7,6 +7,7 @@ import {
   Bell,
   MessageSquare,
   Settings,
+  LayoutGrid,
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { to: "/student/home", icon: Home, label: "首页" },
   { to: "/student/records", icon: FileText, label: "出入记录" },
   { to: "/student/rooms", icon: DoorOpen, label: "我的房间" },
+  { to: "/student/cage-shelf", icon: LayoutGrid, label: "笼架信息" },
   { to: "/student/stats", icon: BarChart3, label: "数据统计" },
   { to: "/student/notifications", icon: Bell, label: "通知" },
 ];

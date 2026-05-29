@@ -40,4 +40,21 @@ public interface AroDatabaseMapper {
 
     /** 今日仍有未配平 ENTER 的流水（用于官方已清退时的本地对齐） */
     List<Map<String, Object>> findTodayUnexitedEntersForUser(@Param("userId") String userId);
+
+    /** 学生端分页查询出入记录 */
+    List<Map<String, Object>> selectAccessRecordsByUserId(
+            @Param("userId") String userId,
+            @Param("offset") int offset,
+            @Param("limit") int limit
+    );
+
+    /** 学生端出入记录总数 */
+    int countAccessRecordsByUserId(@Param("userId") String userId);
+
+    /** 学生端统计：按日期范围查询出入记录 */
+    List<Map<String, Object>> selectAccessLogsByUserAndDateRange(
+            @Param("userId") String userId,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate
+    );
 }

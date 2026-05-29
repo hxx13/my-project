@@ -2,9 +2,12 @@ import React, { useState, useMemo } from "react";
 import {
   FileText,
   AlertTriangle,
-  ChevronDown,
-  ChevronRight,
   ChevronLeft,
+  ChevronRight,
+  LogIn,
+  LogOut,
+  Clock,
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStudentAccessRecords } from "../hooks/use-student-access-records";
@@ -19,7 +22,6 @@ import {
   Skeleton,
   StudentButton,
   StudentInput,
-  StudentSelect,
 } from "../components/ui";
 
 /* ------------------------------------------------------------------ */
@@ -39,43 +41,56 @@ function getDefaultStartDate(): string {
   return formatDate(d);
 }
 
-const PAGE_SIZE = 20;
-
-const thClass =
-  "px-4 py-3 text-left text-[13px] font-medium text-[var(--student-body)]";
-const tdClass = "px-4 py-3 text-[13px] text-[var(--student-ink)]";
-
-function handleRowKeyDown(e: React.KeyboardEvent, handler: () => void) {
-  if (e.key === "Enter" || e.key === " ") {
-    e.preventDefault();
-    handler();
-  }
+function formatTimeDisplay(iso: string): string {
+  if (!iso) return "";
+  // "2026-05-29 14:30:00" -> "14:30"
+  const match = iso.match(/[\sT](\d{2}:\d{2})/);
+  return match ? match[1] : iso;
 }
 
+function formatDateDisplay(iso: string): string {
+  if (!iso) return "";
+  // "2026-05-29 14:30:00" -> "05-29"
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[2]}-${match[3]}` : iso;
+}
+
+function groupByDate<T extends { eventTime?: string; time?: string }>(
+  items: T[],
+): { date: string; items: T[] }[] {
+  const map = new Map<string, T[]>();
+  for (const item of items) {
+    const ts = (item as any).eventTime || (item as any).time || "";
+    const dateKey = ts.substring(0, 10); // "2026-05-29"
+    if (!map.has(dateKey)) map.set(dateKey, []);
+    map.get(dateKey)!.push(item);
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([date, items]) => ({ date, items }));
+}
+
+const FETCH_SIZE = 200; // 一次拉取足够多，日期筛选后客户端分页
+const PAGE_SIZE = 50;
+
 /* ------------------------------------------------------------------ */
-/*  Shared Table Skeleton                                               */
+/*  Skeleton                                                            */
 /* ------------------------------------------------------------------ */
 
-function TableSkeleton({ cols = 5, rows = 6 }: { cols?: number; rows?: number }) {
+function RecordsSkeleton({ count = 8 }: { count?: number }) {
   return (
-    <div className="space-y-0 border border-[var(--student-border)] rounded-[var(--student-radius-md)]">
-      <div
-        className="flex gap-4 px-4 py-3 bg-[var(--student-canvas-soft-2)]"
-      >
-        <Skeleton className="h-4 w-4" variant="circular" />
-        {Array.from({ length: cols - 1 }).map((_, i) => (
-          <Skeleton key={i} className="h-4 w-20" />
-        ))}
-      </div>
-      {Array.from({ length: rows }).map((_, i) => (
+    <div className="space-y-3">
+      {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="flex gap-4 px-4 py-3 border-b border-[var(--student-hairline)]"
+          className="flex items-center gap-3 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-white p-3"
         >
-          <Skeleton className="h-4 w-4" variant="circular" />
-          {Array.from({ length: cols - 1 }).map((_, j) => (
-            <Skeleton key={j} className="h-4 w-20" />
-          ))}
+          <Skeleton variant="circular" className="size-8 shrink-0" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-3 w-40" />
+          </div>
+          <Skeleton className="h-6 w-12 rounded-full" />
         </div>
       ))}
     </div>
@@ -96,13 +111,11 @@ function Pagination({
   onPageChange: (p: number) => void;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
   if (total <= 0) return null;
 
   return (
     <div className="flex items-center justify-between mt-4 text-sm text-[var(--student-mute)]">
-      <span>共 {total} 条记录</span>
-
+      <span>共 {total} 条</span>
       <div className="flex items-center gap-2">
         <StudentButton
           variant="ghost"
@@ -113,11 +126,9 @@ function Pagination({
           <ChevronLeft className="size-4" />
           上一页
         </StudentButton>
-
         <span className="text-[var(--student-foreground)] min-w-[3rem] text-center">
           {page} / {totalPages}
         </span>
-
         <StudentButton
           variant="ghost"
           size="sm"
@@ -133,8 +144,27 @@ function Pagination({
 }
 
 /* ------------------------------------------------------------------ */
-/*  Record entry type (subset of StudentAccessRecord for display)       */
+/*  Date Group Header                                                    */
 /* ------------------------------------------------------------------ */
+
+function DateGroupHeader({ date }: { date: string }) {
+  const d = new Date(date);
+  const weekDays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  const label = `${date} ${weekDays[d.getDay()]}`;
+  return (
+    <div className="flex items-center gap-2 pt-2 first:pt-0">
+      <div className="h-px flex-1 bg-[var(--student-hairline)]" />
+      <span className="text-xs font-medium text-[var(--student-mute)] shrink-0">
+        {label}
+      </span>
+      <div className="h-px flex-1 bg-[var(--student-hairline)]" />
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  RecordsTab                                                          */
+/* ================================================================== */
 
 interface RecordEntry {
   id: string;
@@ -144,18 +174,12 @@ interface RecordEntry {
   personName: string;
 }
 
-/* ================================================================== */
-/*  RecordsTab (module-scope)                                           */
-/* ================================================================== */
-
 interface RecordsTabProps {
   records: RecordEntry[];
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
   total: number;
-  expandedIds: Set<string>;
-  onToggleExpand: (id: string) => void;
   page: number;
   onPageChange: (page: number) => void;
 }
@@ -166,20 +190,12 @@ function RecordsTab({
   isError,
   onRetry,
   total,
-  expandedIds,
-  onToggleExpand,
   page,
   onPageChange,
 }: RecordsTabProps) {
-  if (isLoading) return <TableSkeleton rows={6} />;
-
-  if (isError) {
-    return (
-      <ErrorRetry message="加载出入记录失败" onRetry={onRetry} />
-    );
-  }
-
-  if (records.length === 0) {
+  if (isLoading) return <RecordsSkeleton />;
+  if (isError) return <ErrorRetry message="加载出入记录失败" onRetry={onRetry} />;
+  if (records.length === 0)
     return (
       <EmptyState
         icon={FileText}
@@ -187,122 +203,80 @@ function RecordsTab({
         description="近期没有出入记录数据"
       />
     );
-  }
+
+  const grouped = groupByDate(records);
 
   return (
     <div>
-      <div className="w-full overflow-auto rounded-[var(--student-radius-md)] border border-[var(--student-border)]">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-[var(--student-canvas-soft-2)]">
-              <th className={cn(thClass, "w-10")} />
-              <th className={thClass}>时间</th>
-              <th className={thClass}>类型</th>
-              <th className={thClass}>房间</th>
-              <th className={thClass}>门禁点/人员</th>
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((record) => {
-              const expanded = expandedIds.has(record.id);
-
-              return (
-                <React.Fragment key={record.id}>
-                  <tr
-                    tabIndex={0}
-                    role="button"
-                    aria-expanded={expanded}
-                    className={cn(
-                      "border-b border-[var(--student-hairline)] transition-colors hover:bg-[var(--student-canvas-soft)] cursor-pointer",
-                      expanded && "bg-[var(--student-canvas-soft)]",
-                    )}
-                    onClick={() => onToggleExpand(record.id)}
-                    onKeyDown={(e) =>
-                      handleRowKeyDown(e, () => onToggleExpand(record.id))
-                    }
-                  >
-                    <td className={cn(tdClass, "w-10")}>
-                      {expanded ? (
-                        <ChevronDown className="size-4" />
-                      ) : (
-                        <ChevronRight className="size-4" />
-                      )}
-                    </td>
-                    <td className={tdClass}>{record.eventTime}</td>
-                    <td className={tdClass}>
-                      <Badge
-                        variant={
-                          record.eventType === "进入" ? "success" : "warning"
-                        }
-                      >
-                        {record.eventType}
-                      </Badge>
-                    </td>
-                    <td className={tdClass}>{record.roomName}</td>
-                    <td className={tdClass}>{record.personName}</td>
-                  </tr>
-
-                  {expanded && (
-                    <tr
-                      key={`${record.id}-detail`}
-                      className="border-b border-[var(--student-hairline)] bg-[var(--student-canvas-soft-2)]"
-                    >
-                      <td colSpan={5} className="px-4 py-3">
-                        <div className="grid grid-cols-4 gap-4 text-[13px] text-[var(--student-ink)]">
-                          <div>
-                            <span className="text-[var(--student-mute)]">
-                              授权方式
-                            </span>
-                            <br />
-                            <span>刷卡</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--student-mute)]">
-                              设备编号
-                            </span>
-                            <br />
-                            <span>N/A</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--student-mute)]">
-                              在室时长
-                            </span>
-                            <br />
-                            <span>待统计</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--student-mute)]">
-                              记录 ID
-                            </span>
-                            <br />
-                            <span className="font-mono text-xs">
-                              {record.id}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
+      <div className="space-y-1">
+        {grouped.map(({ date, items }) => (
+          <div key={date} className="space-y-0.5">
+            <DateGroupHeader date={date} />
+            {items.map((record) => (
+              <div
+                key={record.id}
+                className="flex items-center gap-3 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-white px-4 py-2.5 hover:bg-[var(--student-canvas-soft)] transition-colors"
+              >
+                {/* Icon */}
+                <div
+                  className={cn(
+                    "size-8 shrink-0 rounded-full flex items-center justify-center",
+                    record.eventType === "进入"
+                      ? "bg-emerald-50 text-emerald-600"
+                      : "bg-amber-50 text-amber-600",
                   )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                >
+                  {record.eventType === "进入" ? (
+                    <LogIn className="size-4" />
+                  ) : (
+                    <LogOut className="size-4" />
+                  )}
+                </div>
 
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-medium text-[var(--student-ink)]">
+                      {record.eventType}
+                    </span>
+                    <Badge
+                      variant={record.eventType === "进入" ? "success" : "warning"}
+                      className="text-[11px]"
+                    >
+                      {record.eventType}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5 text-[12px] text-[var(--student-mute)]">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="size-3" />
+                      {formatTimeDisplay(record.eventTime)}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="size-3" />
+                      {record.roomName}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Time on right */}
+                <span className="text-[11px] text-[var(--student-mute)] shrink-0">
+                  {formatDateDisplay(record.eventTime)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
       <Pagination page={page} total={total} onPageChange={onPageChange} />
     </div>
   );
 }
 
 /* ================================================================== */
-/*  ViolationsTab (module-scope)                                        */
+/*  ViolationsTab                                                       */
 /* ================================================================== */
 
-const statusVariant: Record<
-  ViolationData["status"],
-  "warning" | "success" | "error"
-> = {
+const statusVariant: Record<ViolationData["status"], "warning" | "success" | "error"> = {
   pending: "warning",
   processed: "success",
   appealing: "error",
@@ -320,8 +294,6 @@ interface ViolationsTabProps {
   isError: boolean;
   onRetry: () => void;
   total: number;
-  expandedIds: Set<string>;
-  onToggleExpand: (id: string) => void;
   page: number;
   onPageChange: (page: number) => void;
 }
@@ -332,20 +304,12 @@ function ViolationsTab({
   isError,
   onRetry,
   total,
-  expandedIds,
-  onToggleExpand,
   page,
   onPageChange,
 }: ViolationsTabProps) {
-  if (isLoading) return <TableSkeleton cols={6} rows={6} />;
-
-  if (isError) {
-    return (
-      <ErrorRetry message="加载违规记录失败" onRetry={onRetry} />
-    );
-  }
-
-  if (violations.length === 0) {
+  if (isLoading) return <RecordsSkeleton count={5} />;
+  if (isError) return <ErrorRetry message="加载违规记录失败" onRetry={onRetry} />;
+  if (violations.length === 0)
     return (
       <EmptyState
         icon={AlertTriangle}
@@ -353,109 +317,67 @@ function ViolationsTab({
         description="暂无违规记录，请继续保持"
       />
     );
-  }
+
+  const grouped = groupByDate(violations);
 
   return (
     <div>
-      <div className="w-full overflow-auto rounded-[var(--student-radius-md)] border border-[var(--student-border)]">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-[var(--student-canvas-soft-2)]">
-              <th className={cn(thClass, "w-10")} />
-              <th className={thClass}>时间</th>
-              <th className={thClass}>类型</th>
-              <th className={thClass}>房间</th>
-              <th className={thClass}>扣分</th>
-              <th className={thClass}>状态</th>
-            </tr>
-          </thead>
-          <tbody>
-            {violations.map((v) => {
-              const expanded = expandedIds.has(v.id);
+      <div className="space-y-1">
+        {grouped.map(({ date, items }) => (
+          <div key={date} className="space-y-0.5">
+            <DateGroupHeader date={date} />
+            {items.map((v) => (
+              <div
+                key={v.id}
+                className="flex items-center gap-3 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-white px-4 py-2.5 hover:bg-[var(--student-canvas-soft)] transition-colors"
+              >
+                {/* Icon */}
+                <div className="size-8 shrink-0 rounded-full bg-red-50 text-red-500 flex items-center justify-center">
+                  <AlertTriangle className="size-4" />
+                </div>
 
-              return (
-                <React.Fragment key={v.id}>
-                  <tr
-                    tabIndex={0}
-                    role="button"
-                    aria-expanded={expanded}
-                    className={cn(
-                      "border-b border-[var(--student-hairline)] transition-colors hover:bg-[var(--student-canvas-soft)] cursor-pointer",
-                      expanded && "bg-[var(--student-canvas-soft)]",
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-medium text-[var(--student-ink)]">
+                      {v.type}
+                    </span>
+                    <Badge variant={statusVariant[v.status]}>
+                      {statusLabel[v.status]}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5 text-[12px] text-[var(--student-mute)]">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="size-3" />
+                      {formatTimeDisplay(v.time)}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin className="size-3" />
+                      {v.roomName}
+                    </span>
+                    {v.doorName && (
+                      <span className="text-[11px]">门禁: {v.doorName}</span>
                     )}
-                    onClick={() => onToggleExpand(v.id)}
-                    onKeyDown={(e) =>
-                      handleRowKeyDown(e, () => onToggleExpand(v.id))
-                    }
-                  >
-                    <td className={cn(tdClass, "w-10")}>
-                      {expanded ? (
-                        <ChevronDown className="size-4" />
-                      ) : (
-                        <ChevronRight className="size-4" />
-                      )}
-                    </td>
-                    <td className={tdClass}>{v.time}</td>
-                    <td className={tdClass}>{v.type}</td>
-                    <td className={tdClass}>{v.roomName}</td>
-                    <td className={tdClass}>
-                      <span className="text-[var(--student-error)] font-medium">
-                        {v.penalty}
-                      </span>
-                    </td>
-                    <td className={tdClass}>
-                      <Badge variant={statusVariant[v.status]}>
-                        {statusLabel[v.status]}
-                      </Badge>
-                    </td>
-                  </tr>
+                  </div>
+                  <div className="mt-0.5 text-[12px] text-[var(--student-body)]">
+                    {v.description}
+                  </div>
+                </div>
 
-                  {expanded && (
-                    <tr
-                      key={`${v.id}-detail`}
-                      className="border-b border-[var(--student-hairline)] bg-[var(--student-canvas-soft-2)]"
-                    >
-                      <td colSpan={6} className="px-4 py-3">
-                        <div className="grid grid-cols-4 gap-4 text-[13px] text-[var(--student-ink)]">
-                          <div>
-                            <span className="text-[var(--student-mute)]">
-                              违规描述
-                            </span>
-                            <br />
-                            <span>{v.description}</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--student-mute)]">
-                              处理人
-                            </span>
-                            <br />
-                            <span>{v.processedBy || "--"}</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--student-mute)]">
-                              处理时间
-                            </span>
-                            <br />
-                            <span>{v.processedTime || "--"}</span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--student-mute)]">
-                              门禁点
-                            </span>
-                            <br />
-                            <span>{v.doorName}</span>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                {/* Penalty & date on right */}
+                <div className="text-right shrink-0">
+                  <div className="text-[13px] font-semibold text-[var(--student-error)]">
+                    {v.penalty}
+                  </div>
+                  <div className="text-[11px] text-[var(--student-mute)]">
+                    {formatDateDisplay(v.time)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
-
       <Pagination page={page} total={total} onPageChange={onPageChange} />
     </div>
   );
@@ -466,28 +388,16 @@ function ViolationsTab({
 /* ================================================================== */
 
 export default function StudentRecordsPage() {
-  const [activeTab, setActiveTab] = useState<"records" | "violations">(
-    "records",
-  );
-
+  const [activeTab, setActiveTab] = useState<"records" | "violations">("records");
   const [startDate, setStartDate] = useState(getDefaultStartDate);
   const [endDate, setEndDate] = useState(() => formatDate(new Date()));
-  const [typeFilter, setTypeFilter] = useState("");
-  const [roomFilter, setRoomFilter] = useState("");
-
   const [recordsPage, setRecordsPage] = useState(1);
   const [violationsPage, setViolationsPage] = useState(1);
 
-  const [expandedRecords, setExpandedRecords] = useState<Set<string>>(
-    new Set(),
-  );
-  const [expandedViolations, setExpandedViolations] = useState<Set<string>>(
-    new Set(),
-  );
-
+  // Fetch all records (large batch), then filter + paginate client-side
   const recordsQuery = useStudentAccessRecords({
-    page: recordsPage,
-    size: PAGE_SIZE,
+    page: 1,
+    size: FETCH_SIZE,
   });
 
   const violationsQuery = useStudentViolations({
@@ -497,120 +407,69 @@ export default function StudentRecordsPage() {
     endDate,
   });
 
-  const filteredRecords = useMemo(() => {
-    const data = recordsQuery.data?.data ?? [];
-    return data.filter((r) => {
-      if (typeFilter && r.eventType !== typeFilter) return false;
-      if (roomFilter && !r.roomName.includes(roomFilter)) return false;
+  // Client-side date filter → client-side paginate
+  const { filteredRecords, filteredTotal } = useMemo(() => {
+    const all = recordsQuery.data?.data ?? [];
+    const filtered = all.filter((r) => {
       if (startDate && r.eventTime < startDate) return false;
       if (endDate && r.eventTime > endDate + "T23:59:59") return false;
       return true;
     });
-  }, [recordsQuery.data, typeFilter, roomFilter, startDate, endDate]);
+    const start = (recordsPage - 1) * PAGE_SIZE;
+    const paged = filtered.slice(start, start + PAGE_SIZE);
+    return { filteredRecords: paged, filteredTotal: filtered.length };
+  }, [recordsQuery.data, startDate, endDate, recordsPage]);
 
+  const violations = violationsQuery.data?.data ?? [];
   const violationsTotal = violationsQuery.data?.total ?? 0;
-
-  const roomOptions = useMemo(() => {
-    const names = new Set(
-      (recordsQuery.data?.data ?? []).map((r) => r.roomName).filter(Boolean),
-    );
-    return Array.from(names).map((n) => ({ value: n, label: n }));
-  }, [recordsQuery.data]);
-
-  function toggleRecordExpand(id: string) {
-    setExpandedRecords((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleViolationExpand(id: string) {
-    setExpandedViolations((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
 
   return (
     <div className="p-6 bg-[var(--student-canvas-soft)] min-h-full">
-      <Tabs
-        variant="pills"
-        tabs={[
-          { id: "records", label: "出入记录" },
-          {
-            id: "violations",
-            label:
-              violationsTotal > 0
-                ? `⚠️ 违规记录 (${violationsTotal})`
-                : "⚠️ 违规记录",
-          },
-        ]}
-        activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as "records" | "violations")}
-      />
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <Tabs
+          variant="pills"
+          tabs={[
+            { id: "records", label: "出入记录" },
+            {
+              id: "violations",
+              label: violationsTotal > 0
+                ? `违规记录 (${violationsTotal})`
+                : "违规记录",
+            },
+          ]}
+          activeTab={activeTab}
+          onTabChange={(id) => setActiveTab(id as "records" | "violations")}
+        />
+      </div>
 
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3 mt-4 mb-4">
-        <div className="w-36">
+      {/* Date filter bar */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div className="flex items-center gap-2 text-[13px] text-[var(--student-mute)]">
+          <span>日期范围:</span>
           <StudentInput
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              if (activeTab === "records") setRecordsPage(1);
+              else setViolationsPage(1);
+            }}
           />
-        </div>
-
-        <div className="w-36">
+          <span>至</span>
           <StudentInput
             type="date"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => {
+              setEndDate(e.target.value);
+              if (activeTab === "records") setRecordsPage(1);
+              else setViolationsPage(1);
+            }}
           />
         </div>
-
-        {activeTab === "records" && (
-          <div className="w-28">
-            <StudentSelect
-              placeholder="进出类型"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              options={[
-                { value: "进入", label: "进入" },
-                { value: "离开", label: "离开" },
-              ]}
-            />
-          </div>
-        )}
-
-        <div className="w-28">
-          <StudentSelect
-            placeholder="房间筛选"
-            value={roomFilter}
-            onChange={(e) => setRoomFilter(e.target.value)}
-            options={roomOptions}
-          />
-        </div>
-
-        <StudentButton
-          variant="secondary"
-          size="sm"
-          onClick={() => {
-            if (activeTab === "records") {
-              setRecordsPage(1);
-            } else {
-              setViolationsPage(1);
-              violationsQuery.refetch();
-            }
-          }}
-        >
-          查询
-        </StudentButton>
       </div>
 
-      {/* Content area */}
+      {/* Content */}
       <StudentCard variant="bordered" padding="md">
         {activeTab === "records" ? (
           <RecordsTab
@@ -618,21 +477,17 @@ export default function StudentRecordsPage() {
             isLoading={recordsQuery.isLoading}
             isError={recordsQuery.isError}
             onRetry={() => recordsQuery.refetch()}
-            total={recordsQuery.data?.total ?? 0}
-            expandedIds={expandedRecords}
-            onToggleExpand={toggleRecordExpand}
+            total={filteredTotal}
             page={recordsPage}
             onPageChange={setRecordsPage}
           />
         ) : (
           <ViolationsTab
-            violations={violationsQuery.data?.data ?? []}
+            violations={violations}
             isLoading={violationsQuery.isLoading}
             isError={violationsQuery.isError}
             onRetry={() => violationsQuery.refetch()}
             total={violationsTotal}
-            expandedIds={expandedViolations}
-            onToggleExpand={toggleViolationExpand}
             page={violationsPage}
             onPageChange={setViolationsPage}
           />

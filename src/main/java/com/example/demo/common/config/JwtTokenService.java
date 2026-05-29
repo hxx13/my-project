@@ -1,5 +1,6 @@
 package com.example.demo.common.config;
 
+import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import io.jsonwebtoken.Claims;
@@ -51,6 +52,19 @@ public class JwtTokenService {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(user.getId())
+                .claim("role", user.getRole().name())
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(30, ChronoUnit.DAYS)))
+                .signWith(secretKey)
+                .compact();
+    }
+
+    public String generateImpersonationToken(User staffUser, String aroUserId) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(aroUserId)
+                .claim("role", RoleEnum.STUDENT.name())
+                .claim("impersonatedBy", staffUser.getId())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(30, ChronoUnit.DAYS)))
                 .signWith(secretKey)
@@ -79,6 +93,10 @@ public class JwtTokenService {
             if (userId == null || userId.isBlank()) {
                 return null;
             }
+
+            // Standard token: look up from User table.
+            // Impersonation tokens also resolved here — the ARO user's sys_user
+            // row is auto-created during binding.
             User user = userMapper.findById(userId);
             if (user == null) {
                 return null;
@@ -94,6 +112,23 @@ public class JwtTokenService {
     }
 
     private static final int REFRESH_WINDOW_DAYS = 60;
+
+    public boolean isImpersonatedToken(String token) {
+        if (token == null || token.isBlank() || token.startsWith(LEGACY_MOCK_PREFIX)) {
+            return false;
+        }
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(secretKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+            String impersonatedBy = claims.get("impersonatedBy", String.class);
+            return impersonatedBy != null && !impersonatedBy.isBlank();
+        } catch (JwtException e) {
+            return false;
+        }
+    }
 
     public User validateTokenForRefresh(String token) {
         try {
@@ -116,6 +151,7 @@ public class JwtTokenService {
                 log.debug("[JWT] Token 签发超过 {} 天，拒绝刷新 userId={}", REFRESH_WINDOW_DAYS, userId);
                 return null;
             }
+
             User user = userMapper.findById(userId);
             if (user == null || (user.getStatus() != null && user.getStatus() == 0)) return null;
             return user;

@@ -26,10 +26,57 @@
     </insert>
 
     <select id="getTodayRecords" resultType="map">
-        SELECT create_time, accessType AS action
+        SELECT id,
+               create_time  AS event_time,
+               CASE WHEN accessType = 1 THEN '进入'
+                    WHEN accessType = 2 THEN '离开'
+                    WHEN accessType = 3 THEN '离开'
+                    ELSE '其他'
+               END         AS event_type,
+               room_name,
+               name         AS person_name
         FROM aro_access_log
         WHERE user_id = #{userId}
           AND create_time >= #{todayStart}
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectAccessRecordsByUserId" resultType="map">
+        SELECT id,
+               create_time  AS event_time,
+               CASE WHEN accessType = 1 THEN '进入'
+                    WHEN accessType = 2 THEN '离开'
+                    WHEN accessType = 3 THEN '离开'
+                    ELSE '其他'
+               END         AS event_type,
+               room_name,
+               name         AS person_name
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countAccessRecordsByUserId" resultType="int">
+        SELECT COUNT(*)
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+    </select>
+
+    <select id="selectAccessLogsByUserAndDateRange" resultType="map">
+        SELECT id,
+               create_time  AS event_time,
+               CASE WHEN accessType = 1 THEN '进入'
+                    WHEN accessType = 2 THEN '离开'
+                    WHEN accessType = 3 THEN '离开'
+                    ELSE '其他'
+               END         AS event_type,
+               room_name,
+               name         AS person_name
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+          AND create_time &gt;= #{startDate}
+          AND create_time &lt;= #{endDate}
         ORDER BY create_time ASC
     </select>
 

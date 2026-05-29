@@ -34,9 +34,10 @@ class AroNewsHtmlSanitizerTest {
 
     @Test
     void qowtSectionHeadings_useStrong() {
+        // Wrap in a container so bare <p is="..."> elements are parsed predictably
         String qowt = """
-                <p is="qowt-word-para" class="qowt-stl-3"><span>一、首次登记</span></p>
-                <p is="qowt-word-para" class="qowt-stl-5"><span>正文说明</span></p>
+                <div><p is="qowt-word-para" class="qowt-stl-3"><span>一、首次登记</span></p>
+                <p is="qowt-word-para" class="qowt-stl-5"><span>正文说明</span></p></div>
                 """;
         String out = AroNewsHtmlSanitizer.forMiniProgramRichText(qowt);
         assertTrue(out.contains("<strong>一、首次登记</strong>"), () -> out);

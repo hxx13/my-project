@@ -76,13 +76,16 @@ public final class AroNewsHtmlSanitizer {
 
     /**
      * 只取最内层段落块，避免 qowt-section / p / qowt-word-para 嵌套时重复三遍。
+     * Jsoup select() 会返回元素自身，因此需要排除自身匹配。
      */
     static List<Element> collectLeafParagraphs(Element root) {
         List<Element> blocks = new ArrayList<>();
 
         Elements candidates = root.select("p, qowt-word-para");
         for (Element el : candidates) {
-            if (!el.select("p, qowt-word-para").isEmpty()) {
+            Elements nested = el.select("p, qowt-word-para");
+            nested.remove(el); // select() includes the element itself
+            if (!nested.isEmpty()) {
                 continue;
             }
             blocks.add(el);
@@ -97,7 +100,9 @@ public final class AroNewsHtmlSanitizer {
             if (!is.contains("para")) {
                 continue;
             }
-            if (!el.select("p, qowt-word-para, [is]").isEmpty()) {
+            Elements nested = el.select("p, qowt-word-para, [is]");
+            nested.remove(el); // select() includes the element itself
+            if (!nested.isEmpty()) {
                 continue;
             }
             blocks.add(el);

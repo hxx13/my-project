@@ -13,7 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/student")
-@Tag(name = "学生房间", description = "学生端房间管理与置顶")
+@Tag(name = "学生房间", description = "学生端房间管理与收藏")
 public class StudentRoomController {
 
     private final AuthContextService authContextService;
@@ -44,7 +44,7 @@ public class StudentRoomController {
     }
 
     @PutMapping("/rooms/{roomId}/pin")
-    @Operation(summary = "切换房间置顶状态")
+    @Operation(summary = "切换房间收藏状态")
     public Result<Void> togglePin(@PathVariable String roomId,
                                    HttpServletRequest request) {
         User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));

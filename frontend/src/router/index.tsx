@@ -68,7 +68,6 @@ import AdminLoginBrandingPage from "@/pages/AdminLoginBrandingPage";
 import AdminInviteCodesPage from "@/pages/AdminInviteCodesPage";
 import AdminContentHubPage from "@/pages/AdminContentHubPage";
 import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
-import StudentLoginPage from "@/features/student/pages/student-login";
 import StudentRegisterPage from "@/features/student/pages/student-register";
 import StudentLayout from "@/features/student/components/layout/student-layout";
 import StudentHomePage from "@/features/student/pages/student-home";
@@ -78,6 +77,7 @@ import StudentStatsPage from "@/features/student/pages/student-stats";
 import StudentNotificationsPage from "@/features/student/pages/student-notifications";
 import StudentFeedbackPage from "@/features/student/pages/student-feedback";
 import StudentSettingsPage from "@/features/student/pages/student-settings";
+import StudentCageShelfPage from "@/features/student/pages/student-cage-shelf";
 
 export const router = createHashRouter([
     {
@@ -89,7 +89,6 @@ export const router = createHashRouter([
         element: <RegisterStaffPage/>,
     },
     // 学生端公开路由
-    { path: "/student/login", element: <StudentLoginPage /> },
     { path: "/student/register", element: <StudentRegisterPage /> },
     // 学生端受保护路由
     {
@@ -104,6 +103,7 @@ export const router = createHashRouter([
             { path: "notifications", element: <StudentNotificationsPage /> },
             { path: "feedback", element: <StudentFeedbackPage /> },
             { path: "settings", element: <StudentSettingsPage /> },
+            { path: "cage-shelf", element: <StudentCageShelfPage /> },
         ],
     },
     {

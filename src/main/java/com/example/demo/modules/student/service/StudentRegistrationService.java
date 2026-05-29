@@ -24,7 +24,6 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -140,8 +139,15 @@ public class StudentRegistrationService {
             return Result.fail(404, "ARO人员库中不存在该用户ID: " + req.getUserId());
         }
 
+        String aroUserId = req.getUserId();
+
+        // 若 ARO 用户已存在 sys_user 记录（绑定/WeChat 注册等），不允许重复注册
+        if (userMapper.findById(aroUserId) != null) {
+            return Result.fail(409, "该 ARO 账号已被注册或绑定，请直接登录或联系管理员");
+        }
+
         User user = new User();
-        user.setId("STU_" + UUID.randomUUID().toString().replace("-", ""));
+        user.setId(aroUserId);
         user.setUsername(username);
         user.setPassword(passwordCredentialService.encodeForStorage(req.getPassword()));
         user.setRole(RoleEnum.STUDENT);

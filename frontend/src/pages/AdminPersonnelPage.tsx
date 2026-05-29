@@ -52,6 +52,7 @@ export default function AdminPersonnelPage() {
   const [nickOpen, setNickOpen] = useState(false);
   const [nickRowId, setNickRowId] = useState("");
   const [nickDraft, setNickDraft] = useState("");
+  const [aroBindings, setAroBindings] = useState<Record<string, any>>({});
 
   const {
     data: personnelData,
@@ -87,6 +88,48 @@ export default function AdminPersonnelPage() {
     }
     setSystemNicknameDrafts(next);
   }, [systemRows, activeTab]);
+
+  const refreshAroBindings = () => {
+    const token = authStorage.getToken();
+    fetch("/api/admin/aro-bindings", { headers: { Authorization: "Bearer " + token } })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json && json.success && Array.isArray(json.data)) {
+          const map: Record<string, any> = {};
+          for (const b of json.data) {
+            if (b.userId) map[b.userId] = b;
+          }
+          setAroBindings(map);
+        }
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (isSuperAdmin) {
+      refreshAroBindings();
+    }
+  }, [activeTab, isSuperAdmin]);
+
+  const handleUnbindAro = async (userId: string) => {
+    if (!window.confirm("确认解除该用户的 ARO 绑定吗？")) return;
+    try {
+      const token = authStorage.getToken();
+      const res = await fetch(`/api/admin/personnel/${userId}/aro-binding`, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer " + token },
+      });
+      const json = await res.json();
+      if (json && json.success) {
+        toast.success("已解除 ARO 绑定");
+        refreshAroBindings();
+      } else {
+        toast.error(json?.message || "解除绑定失败");
+      }
+    } catch {
+      toast.error("解除绑定失败");
+    }
+  };
 
   const canEditSystemNicknameRow = (rowId: string) =>
     rowId !== BUILTIN_SUPER_ADMIN_ID && (isSuperAdmin || (myUserId.length > 0 && rowId === myUserId));
@@ -425,6 +468,12 @@ export default function AdminPersonnelPage() {
               {activeTab === "system" ? (
                 <th className="px-2 py-2 text-left font-medium">展示昵称</th>
               ) : null}
+              {activeTab === "personnel" && isSuperAdmin ? (
+                <th className="px-2 py-2 text-left font-medium">已绑定账号</th>
+              ) : null}
+              {activeTab === "system" && isSuperAdmin ? (
+                <th className="px-2 py-2 text-left font-medium">ARO绑定</th>
+              ) : null}
               <th className="px-2 py-2 text-left font-medium">角色</th>
               <th className="px-2 py-2 text-left font-medium">密码</th>
             </tr>
@@ -432,7 +481,7 @@ export default function AdminPersonnelPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={activeTab === "personnel" ? 4 : 5}>
+                <td className="px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={activeTab === "personnel" ? (isSuperAdmin ? 5 : 4) : activeTab === "system" && isSuperAdmin ? 6 : 5}>
                   加载中…
                 </td>
               </tr>
@@ -476,6 +525,18 @@ export default function AdminPersonnelPage() {
                       )}
                     </div>
                   </td>
+                  {isSuperAdmin ? (
+                    <td className="px-2 py-1.5 align-middle">
+                      {row.username ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                          {row.username}
+                          <span className="text-emerald-500">({ROLE_LABEL_MAP[row.role || "STUDENT"]})</span>
+                        </span>
+                      ) : (
+                        <span className="text-[var(--twin-mute)]">-</span>
+                      )}
+                    </td>
+                  ) : null}
                   <td className="px-2 py-1.5 align-middle">
                     <select
                       disabled={row.id === BUILTIN_SUPER_ADMIN_ID}
@@ -570,6 +631,28 @@ export default function AdminPersonnelPage() {
                       </button>
                     )}
                   </td>
+                  {isSuperAdmin ? (
+                    <td className="px-2 py-1.5 align-middle">
+                      {(() => {
+                        const b = aroBindings[row.id];
+                        if (!b) return <span className="text-[var(--twin-mute)]">-</span>;
+                        return (
+                          <div className="flex items-center gap-1">
+                            <span className="text-[11px] text-[var(--twin-body)]">
+                              {b.name || b.aroUserId} ({b.aroUserId})
+                            </span>
+                            <button
+                              type="button"
+                              className={`${inkBtn} border-rose-200 text-rose-700 hover:bg-rose-50`}
+                              onClick={() => handleUnbindAro(row.id)}
+                            >
+                              解绑
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </td>
+                  ) : null}
                   <td className="px-2 py-1.5 align-middle">
                     <select
                       disabled={row.id === BUILTIN_SUPER_ADMIN_ID}

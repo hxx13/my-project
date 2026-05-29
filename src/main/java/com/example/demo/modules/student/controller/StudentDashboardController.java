@@ -35,4 +35,14 @@ public class StudentDashboardController {
         StudentDashboardResponse dashboard = studentDashboardService.buildDashboard(user);
         return Result.success(dashboard);
     }
+
+    @GetMapping("/ai-profile")
+    @Operation(summary = "获取当前学生的 AI 行为预测画像")
+    public Result<?> getAiProfile(HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) {
+            return Result.fail(401, "未登录或登录已过期");
+        }
+        return Result.success(studentDashboardService.getAiPredictions(user.getId()));
+    }
 }

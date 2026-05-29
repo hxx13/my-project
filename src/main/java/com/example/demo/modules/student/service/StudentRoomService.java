@@ -1,5 +1,6 @@
 package com.example.demo.modules.student.service;
 
+import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.student.mapper.StudentRoomPinMapper;
 import com.example.demo.modules.twin.common.dto.RoomDashboardRenderDTO;
@@ -21,44 +22,97 @@ public class StudentRoomService {
     private final TwinDashboardAggregationService aggregationService;
     private final StudentRoomPinMapper pinMapper;
     private final TwinDashboardMapper dashboardMapper;
+    private final AroService aroService;
 
     public StudentRoomService(TwinDashboardAggregationService aggregationService,
                                StudentRoomPinMapper pinMapper,
-                               TwinDashboardMapper dashboardMapper) {
+                               TwinDashboardMapper dashboardMapper,
+                               AroService aroService) {
         this.aggregationService = aggregationService;
         this.pinMapper = pinMapper;
         this.dashboardMapper = dashboardMapper;
+        this.aroService = aroService;
     }
 
     public Map<String, Object> getRooms(User user, String pinned, String floor,
                                          String status, String search,
                                          int page, int size) {
-        boolean pinnedOnly = "1".equals(pinned);
+        boolean myRoomsOnly = "1".equals(pinned);
 
-        if (pinnedOnly) {
-            return getPinnedRooms(user);
+        if (myRoomsOnly) {
+            return getMyRooms(user);
         }
 
         return getFilteredRooms(user, floor, search, page, size);
     }
 
-    /** My rooms: reuse mini-program wechat-overview data pipeline */
-    private Map<String, Object> getPinnedRooms(User user) {
-        List<String> pinnedRoomIds = pinMapper.selectPinnedRoomIds(user.getId());
+    /**
+     * "我的" tab: call ARO examOfflineRoom API to get user's room permissions,
+     * then match via capacityBindRoomId tokens against dashboard rooms.
+     * Favorited rooms are sorted first.
+     */
+    private Map<String, Object> getMyRooms(User user) {
+        Set<String> aroRoomIds = resolveAllowedAroRoomIds(user.getId());
         List<RoomDashboardRenderDTO> allRooms = aggregationService.getWechatMiniProgramData(null);
-
-        Map<String, RoomDashboardRenderDTO> roomIndex = new LinkedHashMap<>();
-        for (RoomDashboardRenderDTO room : allRooms) {
-            roomIndex.put(String.valueOf(room.getRoomId()), room);
-        }
+        Set<String> favRoomIds = new HashSet<>(pinMapper.selectPinnedRoomIds(user.getId()));
 
         List<Map<String, Object>> data = new ArrayList<>();
-        for (String roomId : pinnedRoomIds) {
-            RoomDashboardRenderDTO room = roomIndex.get(roomId);
-            if (room == null) continue;
-            data.add(buildRoomItemFromDashboard(room, true));
+        for (RoomDashboardRenderDTO room : allRooms) {
+            Set<String> bindTokens = splitCapacityBindTokens(room.getCapacityBindRoomId());
+            if (bindTokens.isEmpty()) continue;
+            // Check if any of the user's ARO room IDs matches a capacityBind token
+            boolean hasAccess = bindTokens.stream().anyMatch(aroRoomIds::contains);
+            if (!hasAccess) continue;
+            boolean isFav = favRoomIds.contains(String.valueOf(room.getRoomId()));
+            data.add(buildRoomItemFromDashboard(room, isFav));
         }
+
+        // Favorites first
+        data.sort((a, b) -> {
+            boolean aFav = Boolean.TRUE.equals(a.get("isPinned"));
+            boolean bFav = Boolean.TRUE.equals(b.get("isPinned"));
+            if (aFav && !bFav) return -1;
+            if (!aFav && bFav) return 1;
+            return 0;
+        });
+
         return Map.of("data", data, "total", data.size(), "page", 1, "size", data.size());
+    }
+
+    /**
+     * Call ARO API to get the user's permitted room IDs.
+     * Returns a set of ARO room ID strings (e.g. "1374909123426246657").
+     */
+    private Set<String> resolveAllowedAroRoomIds(String userId) {
+        Set<String> ids = new LinkedHashSet<>();
+        try {
+            List<Map<String, Object>> rooms = aroService.getExamOfflineRoom(userId);
+            for (Map<String, Object> room : rooms) {
+                Object idObj = room.get("id");
+                if (idObj != null) {
+                    ids.add(String.valueOf(idObj));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[student-room] ARO examOfflineRoom failed for userId={}: {}", userId, e.getMessage());
+        }
+        return ids;
+    }
+
+    /**
+     * Split capacityBindRoomId into a set of individual ARO room ID tokens.
+     * Supports comma, Chinese comma, semicolon, and whitespace delimiters.
+     */
+    private Set<String> splitCapacityBindTokens(String raw) {
+        if (raw == null || raw.isBlank()) return Set.of();
+        Set<String> tokens = new LinkedHashSet<>();
+        for (String part : raw.split("[;；,，\\s]+")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                tokens.add(trimmed);
+            }
+        }
+        return tokens;
     }
 
     /** All rooms: based on room_config with live ARO occupancy, paginated */

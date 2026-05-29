@@ -12,7 +12,7 @@ export default function AuthGuard({ requireRole, children }: AuthGuardProps) {
   const hasToken = authStorage.hasToken();
 
   if (!hasToken) {
-    const loginPath = requireRole === "STUDENT" ? "/student/login" : "/login";
+    const loginPath = "/login";
     return <Navigate to={loginPath} replace state={{ from: location }} />;
   }
 

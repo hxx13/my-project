@@ -13,7 +13,8 @@ export async function resolveDefaultPathAfterLogin(role: string): Promise<string
       return "/admin";
     }
   } catch {
-    /* 权限拉取失败时回前台，避免卡在登录 */
+    /* 权限拉取失败时按角色回退，避免卡在登录页 */
+    if (hasMinRole(role, "STAFF")) return "/admin";
   }
   return "/";
 }

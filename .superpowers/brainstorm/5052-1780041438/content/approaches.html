@@ -1,0 +1,40 @@
+<h2>学生活跃度统计 - 三种实现方案</h2>
+<p class="subtitle">选择架构方案，决定页面在现有系统中如何集成</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>嵌入统计与审计框架（推荐）</h3>
+      <p>在 AnalyticsReportRegistry 注册新报表 student_activity，新建 StudentActivityReportPanel，复用已有配置管理/快照/订阅体系。报表目录左侧栏自然新增一项，与隔离服、笼架报表平级。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>复用权限、配置保存、AI解读等基础设施</li><li>与现有报表交互一致，用户零学习成本</li><li>前端只需新增一个 Panel 组件 + API</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>受限于报表框架的 UI 模式</li><li>活跃度排序/图表需求与框架通用组件略有差异</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>独立后台页面</h3>
+      <p>新建独立路由 /admin/student-activity，完全自定义的页面布局和后端 API，不受 analytics 框架约束。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>UI 设计完全自由，可以做复杂的图表交互</li><li>后端 API 轻量，不需走快照/清算流程</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>权限、配置保存等需重新实现</li><li>报表目录不统一，入口分散</li><li>与现有统计分析体系割裂</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>混合模式 — 注册报表 + 独立布局</h3>
+      <p>在报表目录注册，但 Panel 内使用自定义布局（不套用 KPI strip + 快照模式），后端走轻量 API 实时查询而非预清算。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优点</h4><ul><li>入口统一（报表目录），体验独立（定制UI）</li><li>实时查询，无需等待快照清算</li></ul></div>
+        <div class="cons"><h4>缺点</h4><ul><li>破坏框架一致性，后续维护需理解两套模式</li><li>不能复用 AI 解读、分享导入等高级功能</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

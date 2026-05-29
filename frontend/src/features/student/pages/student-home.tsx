@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import {
   FileText,
   AlertTriangle,
@@ -7,9 +8,15 @@ import {
   Plus,
   Key,
   Pin,
+  X,
+  Brain,
+  Clock,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStudentDashboard } from "../hooks/use-student-dashboard";
+import { useStudentAiProfile } from "../hooks/use-student-ai-profile";
+import type { AiPredictionRecord } from "../api/student.api";
 import {
   StudentCard,
   Badge,
@@ -184,6 +191,8 @@ function DashboardSkeleton() {
 export default function StudentHomePage() {
   const navigate = useNavigate();
   const { data, isLoading, isError, error, refetch } = useStudentDashboard();
+  const { data: aiData } = useStudentAiProfile();
+  const [showAiModal, setShowAiModal] = useState(false);
 
   /* ---- loading ---- */
   if (isLoading) return <DashboardSkeleton />;
@@ -268,7 +277,7 @@ export default function StudentHomePage() {
             <QuickActionItem
               icon={BarChart3}
               label="AI 个人画像"
-              disabled
+              onClick={() => setShowAiModal(true)}
             />
           </div>
         </StudentCard>
@@ -434,6 +443,72 @@ export default function StudentHomePage() {
           </div>
         </div>
       </main>
+
+      {/* ---- AI 个人画像 Modal ---- */}
+      {showAiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAiModal(false)}>
+          <div
+            className="w-full max-w-lg max-h-[75vh] overflow-hidden rounded-xl border border-[var(--student-hairline)] bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[var(--student-hairline)] px-5 py-3">
+              <div className="flex items-center gap-2">
+                <Brain className="size-5 text-indigo-500" />
+                <h3 className="text-sm font-semibold text-[var(--student-ink)]">AI 个人画像</h3>
+              </div>
+              <button onClick={() => setShowAiModal(false)} className="rounded-md p-1 hover:bg-[var(--student-canvas-soft)]">
+                <X className="size-4 text-[var(--student-mute)]" />
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              {aiData && aiData.length > 0 ? (
+                <div className="divide-y divide-[var(--student-hairline)]">
+                  {aiData.map((item, i) => (
+                    <div key={i} className="px-5 py-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-semibold text-[var(--student-ink)]">{item.room_name}</span>
+                        <span className="text-[11px] text-[var(--student-mute)]">访问 {item.visit_count ?? "?"} 次</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[12px]">
+                        {item.median_duration_mins != null && (
+                          <div className="flex items-center gap-1 text-[var(--student-mute)]">
+                            <Clock className="size-3" />
+                            平均停留 {item.median_duration_mins} 分钟
+                          </div>
+                        )}
+                        {item.peak_entry_time && (
+                          <div className="flex items-center gap-1 text-[var(--student-mute)]">
+                            <TrendingUp className="size-3" />
+                            高峰 {item.peak_entry_time}
+                          </div>
+                        )}
+                        {item.predicted_exit_label && (
+                          <div className="col-span-2 text-[var(--student-mute)]">
+                            预计离开: <span className="font-medium text-[var(--student-ink)]">{item.predicted_exit_label}</span>
+                          </div>
+                        )}
+                        {item.overtime_prob != null && item.overtime_prob > 0.5 && (
+                          <div className="col-span-2">
+                            <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                              超时风险 {Math.round(item.overtime_prob * 100)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-5 py-12 text-center text-[13px] text-[var(--student-mute)]">
+                  <Brain className="size-10 mx-auto mb-3 text-[var(--student-mute)]/40" />
+                  暂无 AI 行为预测数据
+                  <p className="mt-1 text-[11px]">数据积累足够后系统将自动生成行为画像</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

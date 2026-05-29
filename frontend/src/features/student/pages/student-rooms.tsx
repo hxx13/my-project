@@ -1,16 +1,11 @@
 import { useState, useCallback, useMemo } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import {
-  Star,
-  Building2,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
+import { Star, Building2, X, Clock, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStudentRooms } from "../hooks/use-student-rooms";
-import { toggleRoomPin } from "../api/student.api";
-import type { RoomData, FetchRoomsParams } from "../api/student.api";
+import { toggleRoomPin, fetchRoomStatusList } from "../api/student.api";
+import type { RoomData, FetchRoomsParams, RoomStatusData } from "../api/student.api";
 import {
   RoomCard,
   ViewToggle,
@@ -29,15 +24,11 @@ import type { Column } from "../components/ui";
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 
-const PAGE_SIZE = 12;
+/** 校区 tab 一次拉取足够多的房间，前端按校区过滤，不翻页 */
+const CAMPUS_PAGE_SIZE = 200;
 
-const FLOOR_OPTIONS = [
-  { value: "1F", label: "1F" },
-  { value: "2F", label: "2F" },
-  { value: "3F", label: "3F" },
-  { value: "4F", label: "4F" },
-  { value: "5F", label: "5F" },
-];
+const CAMPUS_TABS = ["浦东", "浦西"] as const;
+type CampusTab = (typeof CAMPUS_TABS)[number];
 
 const STATUS_OPTIONS = [
   { value: "idle", label: "空闲" },
@@ -76,13 +67,12 @@ function RoomsSkeleton({ viewMode }: { viewMode: "card" | "list" }) {
       </div>
       <div className="flex items-center gap-3 mb-4">
         <Skeleton className="h-9 flex-1" />
-        <Skeleton className="h-9 w-28" />
         <Skeleton className="h-9 w-24" />
       </div>
       {viewMode === "card" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} variant="rectangular" className="h-[108px]" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <Skeleton key={i} variant="rectangular" className="h-[120px]" />
           ))}
         </div>
       ) : (
@@ -105,7 +95,7 @@ export default function StudentRoomsPage() {
   const queryClient = useQueryClient();
 
   /* ---- Local state ---- */
-  const [activeTab, setActiveTab] = useState<"pinned" | "all">("pinned");
+  const [activeTab, setActiveTab] = useState<"pinned" | CampusTab>("pinned");
 
   const [viewMode, setViewMode] = useState<"card" | "list">(() => {
     try {
@@ -118,23 +108,40 @@ export default function StudentRoomsPage() {
   });
 
   const [search, setSearch] = useState("");
-  const [floor, setFloor] = useState("");
   const [status, setStatus] = useState("");
-  const [page, setPage] = useState(1);
+  const [occupantRoom, setOccupantRoom] = useState<RoomData | null>(null); // 当前打开在室人员弹窗的房间
 
-  /* ---- Query params — only one fires at a time ---- */
+  /* ---- Query params — "我的" = pinned, campus tabs = all rooms filtered client-side ---- */
   const params = useMemo<FetchRoomsParams>(() => {
     if (activeTab === "pinned") {
       return { pinned: "1" };
     }
-    const p: FetchRoomsParams = { page, size: PAGE_SIZE };
+    // 拉取全部房间，前端按校区过滤，不翻页
+    const p: FetchRoomsParams = { page: 1, size: CAMPUS_PAGE_SIZE };
     if (search) p.search = search;
-    if (floor) p.floor = floor;
     if (status) p.status = status;
     return p;
-  }, [activeTab, page, search, floor, status]);
+  }, [activeTab, search, status]);
 
   const { data, isLoading, isError, error, refetch } = useStudentRooms(params);
+
+  /* ---- Room status (occupant details) query ---- */
+  const { data: roomStatusList } = useQuery<RoomStatusData[]>({
+    queryKey: ["room-status"],
+    queryFn: fetchRoomStatusList,
+    staleTime: 60_000, // 1 min cache
+    enabled: true,
+  });
+
+  const getOccRoom = useCallback(
+    (room: RoomData): RoomStatusData | null => {
+      if (!roomStatusList) return null;
+      return roomStatusList.find(
+        (rs) => rs.roomName === room.roomName,
+      ) ?? null;
+    },
+    [roomStatusList],
+  );
 
   /* ---- Pin toggle mutation ---- */
   const pinMutation = useMutation({
@@ -154,8 +161,7 @@ export default function StudentRoomsPage() {
 
   /* ---- Handlers ---- */
   const handleTabChange = useCallback((tabId: string) => {
-    setActiveTab(tabId as "pinned" | "all");
-    setPage(1);
+    setActiveTab(tabId as "pinned" | CampusTab);
   }, []);
 
   const handleViewChange = useCallback((v: "card" | "list") => {
@@ -170,15 +176,6 @@ export default function StudentRoomsPage() {
   const onSearchChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearch(e.target.value);
-      setPage(1);
-    },
-    [],
-  );
-
-  const onFloorChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      setFloor(e.target.value);
-      setPage(1);
     },
     [],
   );
@@ -186,29 +183,30 @@ export default function StudentRoomsPage() {
   const onStatusChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       setStatus(e.target.value);
-      setPage(1);
     },
     [],
   );
 
   /* ---- Derived data ---- */
-  const rooms = data?.data ?? [];
-  const total = data?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const allRooms = data?.data ?? [];
 
-  // Pinned items sort to top automatically in both views
+  // Filter + sort by campus tab
   const roomsForDisplay = useMemo(() => {
-    if (!rooms.length) return rooms;
-    return [...rooms].sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return 0;
-    });
-  }, [rooms]);
+    if (activeTab === "pinned") {
+      return [...allRooms].sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return a.roomName.localeCompare(b.roomName, "zh-CN", { numeric: true });
+      });
+    }
+    // Campus tab: only rooms belonging to that campus, natural sort by roomName
+    const filtered = allRooms.filter((r) => (r.zone || "") === activeTab);
+    return filtered.sort((a, b) =>
+      a.roomName.localeCompare(b.roomName, "zh-CN", { numeric: true }),
+    );
+  }, [allRooms, activeTab]);
 
-  // Tab labels — counts are only accurate for the active tab
-  const pinnedCount = activeTab === "pinned" ? rooms.length : "...";
-  const allCount = activeTab === "all" ? total : "...";
+  const pinnedCount = activeTab === "pinned" ? allRooms.length : "...";
 
   /* ---- Table columns (list view) ---- */
   const columns = useMemo<Column<RoomData>[]>(
@@ -223,7 +221,7 @@ export default function StudentRoomsPage() {
               handleTogglePin(row.roomId);
             }}
             className="p-1 rounded hover:bg-[var(--student-canvas-soft)] transition-colors"
-            aria-label={row.isPinned ? "取消置顶" : "置顶"}
+            aria-label={row.isPinned ? "取消收藏" : "收藏"}
           >
             <Star
               className={cn(
@@ -322,8 +320,9 @@ export default function StudentRoomsPage() {
         <Tabs
           variant="pills"
           tabs={[
-            { id: "pinned", label: `⭐ 我的置顶 (${pinnedCount})` },
-            { id: "all", label: `全部房间 (${allCount})` },
+            { id: "pinned", label: `⭐ 我的 (${pinnedCount})` },
+            { id: "浦东", label: "浦东" },
+            { id: "浦西", label: "浦西" },
           ]}
           activeTab={activeTab}
           onTabChange={handleTabChange}
@@ -331,19 +330,13 @@ export default function StudentRoomsPage() {
         <ViewToggle value={viewMode} onChange={handleViewChange} />
       </div>
 
-      {/* Filter bar — only on "all" tab */}
-      {activeTab === "all" && (
+      {/* Filter bar — only on campus tabs */}
+      {activeTab !== "pinned" && (
         <div className="flex items-center gap-3 mb-4">
           <StudentInput
             placeholder="搜索房间..."
             value={search}
             onChange={onSearchChange}
-          />
-          <StudentSelect
-            placeholder="楼层"
-            options={FLOOR_OPTIONS}
-            value={floor}
-            onChange={onFloorChange}
           />
           <StudentSelect
             placeholder="状态"
@@ -361,13 +354,13 @@ export default function StudentRoomsPage() {
           title="暂无房间数据"
           description={
             activeTab === "pinned"
-              ? "你还没有置顶任何房间，切换到「全部房间」可浏览所有可用房间"
+              ? "你还没有收藏的房间，切换到「浦东」或「浦西」浏览房间并收藏"
               : "未找到符合条件的房间，请尝试调整筛选条件"
           }
         />
       ) : viewMode === "card" ? (
-        /* ---- Card Grid View ---- */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        /* ---- Card Grid — flat, naturally sorted (matches mini-program) ---- */
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {roomsForDisplay.map((room) => (
             <RoomCard
               key={room.roomId}
@@ -379,9 +372,7 @@ export default function StudentRoomsPage() {
               status={room.status}
               isPinned={room.isPinned}
               onTogglePin={() => handleTogglePin(room.roomId)}
-              onClick={() =>
-                navigate(`/student/rooms?highlight=${room.roomId}`)
-              }
+              onClick={() => setOccupantRoom(room)}
             />
           ))}
         </div>
@@ -391,46 +382,86 @@ export default function StudentRoomsPage() {
           columns={columns}
           data={roomsForDisplay}
           rowKey={(row) => row.roomId}
-          onRowClick={(row) =>
-            navigate(`/student/rooms?highlight=${row.roomId}`)
-          }
+          onRowClick={(row) => setOccupantRoom(row)}
         />
       )}
 
-      {/* Pagination — on "all" tab for both views */}
-      {activeTab === "all" && totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 mt-6">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className={cn(
-              "inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-[var(--student-radius-md)] transition-colors",
-              page <= 1
-                ? "text-[var(--student-mute)] cursor-not-allowed"
-                : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)]",
-            )}
-          >
-            <ChevronLeft className="size-4" />
-            上一页
-          </button>
-          <span className="text-sm text-[var(--student-body)]">
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className={cn(
-              "inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-[var(--student-radius-md)] transition-colors",
-              page >= totalPages
-                ? "text-[var(--student-mute)] cursor-not-allowed"
-                : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)]",
-            )}
-          >
-            下一页
-            <ChevronRight className="size-4" />
-          </button>
-        </div>
-      )}
+      {/* ---- Occupant Modal ---- */}
+      {occupantRoom && (() => {
+        const occ = getOccRoom(occupantRoom);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOccupantRoom(null)}>
+            <div
+              className="w-full max-w-md max-h-[70vh] overflow-hidden rounded-xl border border-[var(--student-hairline)] bg-white shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-[var(--student-hairline)] px-5 py-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--student-ink)]">{occupantRoom.roomName}</h3>
+                  <p className="text-[11px] text-[var(--student-mute)]">{occupantRoom.floor} · {occupantRoom.zone}</p>
+                </div>
+                <button
+                  onClick={() => setOccupantRoom(null)}
+                  className="rounded-md p-1 hover:bg-[var(--student-canvas-soft)] transition-colors"
+                >
+                  <X className="size-4 text-[var(--student-mute)]" />
+                </button>
+              </div>
+
+              {/* Stats bar */}
+              <div className="flex items-center gap-4 border-b border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-5 py-2.5 text-[12px]">
+                <span>
+                  在室 <span className="font-semibold text-[var(--student-ink)]">{occ?.campusUserCount ?? occupantRoom.occupantCount}</span> 人
+                </span>
+                {occ && occ.borrowedCardCount > 0 && (
+                  <span className="text-[var(--student-mute)]">
+                    借卡 {occ.borrowedCardCount} 人
+                  </span>
+                )}
+                <span className="text-[var(--student-mute)]">
+                  容量 {occupantRoom.capacity} 人
+                </span>
+              </div>
+
+              {/* Occupant list */}
+              <div className="max-h-[50vh] overflow-y-auto">
+                {occ && occ.occupants.length > 0 ? (
+                  occ.occupants.map((o, i) => (
+                    <div
+                      key={o.userId || i}
+                      className="flex items-center gap-3 border-b border-[var(--student-hairline)] px-5 py-3 last:border-b-0 hover:bg-[var(--student-canvas-soft)]/50 transition-colors"
+                    >
+                      <div className={cn(
+                        "size-8 shrink-0 rounded-full flex items-center justify-center",
+                        o.entryType === "BORROWED_CARD" ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600",
+                      )}>
+                        <User className="size-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-medium text-[var(--student-ink)]">
+                          {o.userName}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-[var(--student-mute)]">
+                          <Clock className="size-3" />
+                          <span>进入 {o.entryTime}</span>
+                          {o.entryType === "BORROWED_CARD" && (
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">借卡</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-5 py-8 text-center text-[13px] text-[var(--student-mute)]">
+                    暂无在室人员数据
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -1,11 +1,13 @@
 package com.example.demo.modules.student.service;
 
+import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
+import com.example.demo.modules.student.mapper.CageCellAnnotationMapper;
 import com.example.demo.modules.student.mapper.StudentCageShelfSnapshotMapper;
 import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,67 +39,33 @@ public class StudentCageShelfService {
     private final AroPersonnelMapper aroPersonnelMapper;
     private final CageShelfMapper cageShelfMapper;
     private final StudentCageShelfSnapshotMapper snapshotMapper;
+    private final CageCellAnnotationMapper annotationMapper;
 
     public StudentCageShelfService(AroService aroService,
                                    AroPersonnelMapper aroPersonnelMapper,
                                    CageShelfMapper cageShelfMapper,
-                                   StudentCageShelfSnapshotMapper snapshotMapper) {
+                                   StudentCageShelfSnapshotMapper snapshotMapper,
+                                   CageCellAnnotationMapper annotationMapper) {
         this.aroService = aroService;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.cageShelfMapper = cageShelfMapper;
         this.snapshotMapper = snapshotMapper;
+        this.annotationMapper = annotationMapper;
     }
 
     // ---- filter options ----
 
-    public Map<String, Object> getFilterOptions(User user) {
-        // Pull all imported cage shelves from indexes table (same source as admin page),
-        // NOT from snapshots which only contain refreshed shelves.
-        List<Map<String, Object>> allShelves = cageShelfMapper.listIndexes(null, null, null, null, 100000, 0);
-
-        List<Map<String, Object>> campuses = new ArrayList<>();
-        List<Map<String, Object>> areas = new ArrayList<>();
-        List<Map<String, Object>> floors = new ArrayList<>();
-        List<Map<String, Object>> rooms = new ArrayList<>();
-        List<Map<String, Object>> shelfList = new ArrayList<>();
-
-        Set<String> seenCampuses = new LinkedHashSet<>();
-        Set<String> seenAreas = new LinkedHashSet<>();
-        Set<String> seenFloors = new LinkedHashSet<>();
-        Set<String> seenRooms = new LinkedHashSet<>();
-        Set<String> seenShelves = new LinkedHashSet<>();
-
-        for (Map<String, Object> s : allShelves) {
-            String campusName = String.valueOf(s.getOrDefault("campusName", ""));
-            String areaName = String.valueOf(s.getOrDefault("areaName", ""));
-            String floorName = String.valueOf(s.getOrDefault("floorName", ""));
-            String roomName = String.valueOf(s.getOrDefault("roomName", ""));
-            String shelveId = String.valueOf(s.getOrDefault("shelveId", ""));
-            String shelveName = String.valueOf(s.getOrDefault("shelveName", ""));
-
-            if (!campusName.isEmpty() && seenCampuses.add(campusName)) {
-                campuses.add(Map.of("id", campusName, "name", campusName));
-            }
-            if (!areaName.isEmpty() && seenAreas.add(areaName)) {
-                areas.add(Map.of("id", areaName, "name", areaName));
-            }
-            if (!floorName.isEmpty() && seenFloors.add(floorName)) {
-                floors.add(Map.of("id", floorName, "name", floorName));
-            }
-            if (!roomName.isEmpty() && seenRooms.add(roomName)) {
-                rooms.add(Map.of("id", roomName, "name", roomName));
-            }
-            if (!shelveId.isEmpty() && seenShelves.add(shelveId)) {
-                shelfList.add(Map.of("id", shelveId, "name", shelveName));
-            }
-        }
-
+    /**
+     * 级联筛选选项：与教职工后台 CageShelfService.filterOptions() 使用相同的 Mapper 方法，
+     * 每级根据上级选择逐步缩小范围，不做课题组过滤（笼架索引本身是全局的）。
+     */
+    public Map<String, Object> getFilterOptions(User user, Integer campusId, String areaId, String floorId, String roomId) {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("campuses", campuses);
-        out.put("areas", areas);
-        out.put("floors", floors);
-        out.put("rooms", rooms);
-        out.put("shelves", shelfList);
+        out.put("campuses", cageShelfMapper.listCampuses());
+        out.put("areas", cageShelfMapper.listAreas(campusId));
+        out.put("floors", cageShelfMapper.listFloors(campusId, areaId, null));
+        out.put("rooms", cageShelfMapper.listRooms(campusId, areaId, null, floorId, null));
+        out.put("shelves", cageShelfMapper.listShelves(campusId, areaId, floorId, null, null, roomId, null));
         return out;
     }
 
@@ -123,22 +91,19 @@ public class StudentCageShelfService {
         // Get all occupied cells from the latest snapshot (unfiltered)
         List<Map<String, Object>> rawCells = snapshotMapper.selectGridByShelve(shelveId, latestBatchId);
 
-        // Resolve user's project groups for visibility check
-        List<String> groupNames = resolveUserGroupNames(user.getId());
+        // Admin+ bypass project group visibility check
+        boolean isAdmin = isAdminUser(user);
+        List<String> groupNames = isAdmin ? List.of() : resolveUserGroupNames(user.getId());
 
         // Build position-indexed map
         Map<String, Map<String, Object>> byPos = new HashMap<>();
         for (Map<String, Object> cell : rawCells) {
             Object xObj = cell.get("positionX");
             Object yObj = cell.get("positionY");
-            if (xObj == null || yObj == null) {
-                continue;
-            }
+            if (xObj == null || yObj == null) continue;
             int x = toIntVal(xObj);
             int y = toIntVal(yObj);
-            if (x < 1 || x > 8 || y < 1 || y > 10) {
-                continue;
-            }
+            if (x < 1 || x > 8 || y < 1 || y > 10) continue;
             byPos.put(y + "-" + x, cell);
         }
 
@@ -157,27 +122,30 @@ public class StudentCageShelfService {
                     emptyCell.put("visible", true);
                     grid.add(emptyCell);
                 } else {
-                    boolean visible = isCellVisible(cell, groupNames);
+                    boolean visible = isAdmin || isCellVisible(cell, groupNames);
                     Map<String, Object> gridCell = new LinkedHashMap<>();
                     gridCell.put("x", x);
                     gridCell.put("y", y);
                     gridCell.put("position", toPosition(x, y));
                     gridCell.put("empty", false);
                     gridCell.put("visible", visible);
+                    // Always include occupancy status (color coding) — everyone can see
+                    gridCell.put("animalCageType", cell.getOrDefault("animalCageType", null));
+                    gridCell.put("stateLabel", cell.getOrDefault("stateLabel", "未知"));
                     if (visible) {
-                        gridCell.put("stateLabel", cell.getOrDefault("stateLabel", "未知"));
+                        // Full detail: project/QR/AUP info
                         gridCell.put("projectPiName", cell.getOrDefault("projectPiName", ""));
                         gridCell.put("departmentName", cell.getOrDefault("departmentName", ""));
                         gridCell.put("cageBoxQrCode", cell.getOrDefault("cageBoxQrCode", ""));
                         gridCell.put("aupNumber", cell.getOrDefault("aupNumber", ""));
-                        gridCell.put("animalCageType", cell.getOrDefault("animalCageType", null));
+                        // Enhanced ARO fields
+                        gridCell.put("rawDataJson", cell.getOrDefault("rawDataJson", null));
                     } else {
-                        gridCell.put("stateLabel", "无权限查看");
-                        gridCell.put("projectPiName", "");
-                        gridCell.put("departmentName", "");
+                        gridCell.put("projectPiName", "***");
+                        gridCell.put("departmentName", "***");
                         gridCell.put("cageBoxQrCode", "");
                         gridCell.put("aupNumber", "");
-                        gridCell.put("animalCageType", null);
+                        gridCell.put("rawDataJson", null);
                     }
                     grid.add(gridCell);
                 }
@@ -205,11 +173,16 @@ public class StudentCageShelfService {
 
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> refreshShelves(User user) {
-        // Rate limit: once per hour
-        String oneHourAgo = LocalDateTime.now().minusHours(1).format(DT_FMT);
-        int recentRefreshes = snapshotMapper.countRecentRefreshByUser(user.getId(), oneHourAgo);
-        if (recentRefreshes > 0) {
-            throw new IllegalStateException("请勿频繁刷新，每小时仅可刷新一次。距离上次刷新不足1小时，请稍后再试。");
+        // Check if any snapshot exists for this user's accessible scope
+        boolean hasExistingData = snapshotMapper.countByRefreshedBy(user.getId()) > 0;
+
+        // Rate limit: once per hour, but only if data already exists (first access is free)
+        if (hasExistingData) {
+            String oneHourAgo = LocalDateTime.now().minusHours(1).format(DT_FMT);
+            int recentRefreshes = snapshotMapper.countRecentRefreshByUser(user.getId(), oneHourAgo);
+            if (recentRefreshes > 0) {
+                throw new IllegalStateException("请勿频繁刷新，每小时仅可刷新一次。距离上次刷新不足1小时，请稍后再试。");
+            }
         }
 
         String now = LocalDateTime.now().format(DT_FMT);
@@ -384,6 +357,12 @@ public class StudentCageShelfService {
             log.warn("[student-cage-shelf] 解析用户课题组失败 userId={} err={}", userId, e.getMessage());
             return List.of();
         }
+    }
+
+    /** Admin role or above bypasses project-group restrictions. */
+    private boolean isAdminUser(User user) {
+        if (user == null || user.getRole() == null) return false;
+        return user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
     }
 
     private boolean isCellVisible(Map<String, Object> cell, List<String> groupNames) {
@@ -597,5 +576,43 @@ public class StudentCageShelfService {
         }
         String s = String.valueOf(status).trim();
         return "0".equals(s) || "0.0".equals(s);
+    }
+
+    // ---- cell annotations ----
+
+    public Map<String, Object> getAnnotation(User user, String shelveId, int x, int y) {
+        return annotationMapper.selectByPosition(shelveId, x, y);
+    }
+
+    public void upsertAnnotation(User user, String shelveId, int x, int y, String position,
+                                  String richText, String images, String aroRawData) {
+        // Permission check: must be admin+ or same project group
+        if (!isAdminUser(user)) {
+            List<String> groups = resolveUserGroupNames(user.getId());
+            if (groups.isEmpty()) {
+                throw new IllegalStateException("无权限编辑：未能识别您的课题组");
+            }
+            // Fetch the snapshot cell to check project ownership
+            String batchId = snapshotMapper.selectLatestBatchId(shelveId);
+            if (batchId == null) {
+                throw new IllegalStateException("无权限编辑：该笼架暂无快照数据");
+            }
+            List<Map<String, Object>> cells = snapshotMapper.selectGridByShelve(shelveId, batchId);
+            boolean authorized = false;
+            for (Map<String, Object> cell : cells) {
+                int cx = toIntVal(cell.get("positionX"));
+                int cy = toIntVal(cell.get("positionY"));
+                if (cx == x && cy == y) {
+                    if (isCellVisible(cell, groups)) {
+                        authorized = true;
+                    }
+                    break;
+                }
+            }
+            if (!authorized) {
+                throw new IllegalStateException("无权限编辑：该笼位不属于您的课题组");
+            }
+        }
+        annotationMapper.upsert(shelveId, x, y, position, richText, images, aroRawData, user.getId());
     }
 }

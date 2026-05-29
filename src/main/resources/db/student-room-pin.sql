@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS student_room_pin (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    room_id VARCHAR(128) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_room (user_id, room_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

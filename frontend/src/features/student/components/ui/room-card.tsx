@@ -2,24 +2,27 @@ import { cn } from "@/lib/utils";
 
 type RoomStatus = "idle" | "busy" | "full";
 
-const statusConfig: Record<RoomStatus, { color: string; label: string; bgClass: string; textClass: string }> = {
+const statusConfig: Record<RoomStatus, { color: string; label: string; bgClass: string; textClass: string; dotClass: string }> = {
   idle: {
     color: "#16a34a",
     label: "空闲",
     bgClass: "bg-[var(--student-success-soft)]",
     textClass: "text-[var(--student-success)]",
+    dotClass: "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]",
   },
   busy: {
     color: "#d97706",
     label: "较满",
     bgClass: "bg-[var(--student-warning-soft)]",
     textClass: "text-[var(--student-warning)]",
+    dotClass: "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
   },
   full: {
     color: "#dc2626",
     label: "已满",
     bgClass: "bg-[var(--student-error-soft)]",
     textClass: "text-[var(--student-error)]",
+    dotClass: "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]",
   },
 };
 
@@ -49,16 +52,15 @@ export function RoomCard({
   className,
 }: RoomCardProps) {
   const config = statusConfig[status];
-  const occupancyRatio = capacity > 0 ? (occupantCount / capacity) * 100 : 0;
+  const pct = capacity > 0 ? Math.round((occupantCount / capacity) * 100) : 0;
 
   return (
     <div
       onClick={onClick}
       className={cn(
-        "group relative cursor-pointer rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-white p-[14px] transition-shadow hover:shadow-sm",
+        "group relative cursor-pointer rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-white p-[14px] transition-shadow hover:shadow-md",
         className,
       )}
-      style={{ borderLeft: `3px solid ${config.color}` }}
     >
       {/* Pin button — visible on hover */}
       {onTogglePin && (
@@ -96,24 +98,34 @@ export function RoomCard({
       </div>
 
       {/* Second row: floor · zone */}
-      <div className="mb-[4px] text-[11px] text-[var(--student-mute)]">
+      <div className="mb-[6px] text-[11px] text-[var(--student-mute)]">
         {floor} · {zone}
       </div>
 
-      {/* Third row: occupant count */}
-      <div className="mb-[8px] text-[11px] text-[var(--student-body)]">
-        在室 {occupantCount}人 / 容量 {capacity}人
-      </div>
-
-      {/* Progress bar */}
-      <div className="h-[4px] w-full overflow-hidden rounded-[var(--student-radius-pill)] bg-[var(--student-hairline)]">
-        <div
-          className="h-full rounded-[var(--student-radius-pill)] transition-all"
-          style={{
-            width: `${Math.min(occupancyRatio, 100)}%`,
-            backgroundColor: config.color,
-          }}
+      {/* Third row: traffic-light indicator + occupancy */}
+      <div className="flex items-center gap-2.5">
+        {/* Large traffic-light dot (mini-program style) */}
+        <span
+          className={cn("inline-block size-3 shrink-0 rounded-full", config.dotClass)}
+          title={config.label}
         />
+        {/* Occupancy stats */}
+        <span className="text-[12px] font-medium text-[var(--student-ink)]">
+          {occupantCount}/{capacity}
+        </span>
+        {/* Progress bar */}
+        <div className="flex-1 h-1.5 rounded-full bg-[var(--student-hairline)] overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{
+              width: `${Math.min(pct, 100)}%`,
+              backgroundColor: config.color,
+            }}
+          />
+        </div>
+        <span className="text-[11px] text-[var(--student-mute)] tabular-nums">
+          {pct}%
+        </span>
       </div>
     </div>
   );

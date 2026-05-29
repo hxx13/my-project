@@ -224,7 +224,7 @@ public class AccessDirectionInferenceEngine {
                 return mode;
             }
         }
-        return "DAHUA_ENTER_EXIT";
+        return "BIDIRECTIONAL_TOGGLE";
     }
 
     private static String zoneKey(InferredAccessEvent ev) {
