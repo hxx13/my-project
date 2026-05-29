@@ -5,6 +5,7 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.student.dto.StudentProfileResponse;
 import com.example.demo.modules.student.service.StudentProfileService;
+import com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
@@ -20,11 +21,15 @@ public class StudentProfileController {
 
     private final AuthContextService authContextService;
     private final StudentProfileService studentProfileService;
+    // TODO: connect to real violation data
+    private final TwinStudentViolationMapper twinStudentViolationMapper;
 
     public StudentProfileController(AuthContextService authContextService,
-                                    StudentProfileService studentProfileService) {
+                                    StudentProfileService studentProfileService,
+                                    TwinStudentViolationMapper twinStudentViolationMapper) {
         this.authContextService = authContextService;
         this.studentProfileService = studentProfileService;
+        this.twinStudentViolationMapper = twinStudentViolationMapper;
     }
 
     @GetMapping("/profile")
@@ -54,6 +59,24 @@ public class StudentProfileController {
     public Result<Map<String, Object>> getPermissions() {
         Map<String, Object> data = Map.of(
                 "rooms", Collections.emptyList()
+        );
+        return Result.success(data);
+    }
+
+    @GetMapping("/violations")
+    @Operation(summary = "获取学生违规记录")
+    public Result<Map<String, Object>> getViolations(@RequestParam(defaultValue = "1") int page,
+                                                     @RequestParam(defaultValue = "20") int size,
+                                                     @RequestParam(required = false) String startDate,
+                                                     @RequestParam(required = false) String endDate,
+                                                     HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) {
+            return Result.fail(401, "未登录或登录已过期");
+        }
+        Map<String, Object> data = Map.of(
+                "data", Collections.emptyList(),
+                "total", 0
         );
         return Result.success(data);
     }
