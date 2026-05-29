@@ -45,13 +45,14 @@ function QuickActionItem({
   onClick,
   disabled = false,
 }: {
-  icon: typeof FileText;
+  icon: React.ElementType;
   label: string;
   onClick?: () => void;
   disabled?: boolean;
 }) {
   const button = (
     <button
+      aria-disabled={disabled || undefined}
       onClick={disabled ? undefined : onClick}
       className={cn(
         "flex items-center gap-2.5 w-full px-1 py-2 rounded-[var(--student-radius-sm)] text-left transition-colors",
@@ -61,6 +62,7 @@ function QuickActionItem({
       )}
     >
       <Icon
+        aria-hidden="true"
         className="size-4 text-[var(--student-primary)] shrink-0"
         strokeWidth={1.5}
       />
@@ -221,7 +223,7 @@ export default function StudentHomePage() {
             </div>
 
             <h2 className="text-[16px] font-bold text-[var(--student-foreground)]">
-              {profile.name}
+              {profile.name || "--"}
             </h2>
 
             <p className="text-[12px] text-[var(--student-mute-foreground)] mt-0.5">
@@ -321,6 +323,7 @@ export default function StudentHomePage() {
               ))}
               {/* "+" add card — always visible */}
               <button
+                aria-label="添加房间"
                 onClick={() => navigate("/student/rooms")}
                 className="w-[200px] h-[108px] flex items-center justify-center rounded-[var(--student-radius-md)] border-2 border-dashed border-[var(--student-hairline)] bg-[var(--student-mute)]/30 hover:bg-[var(--student-mute)]/50 transition-colors"
               >
