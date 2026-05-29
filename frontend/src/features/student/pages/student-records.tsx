@@ -172,11 +172,21 @@ export default function StudentRecordsPage() {
     return data.filter((r) => {
       if (typeFilter && r.eventType !== typeFilter) return false;
       if (roomFilter && !r.roomName.includes(roomFilter)) return false;
+      if (startDate && r.eventTime < startDate) return false;
+      if (endDate && r.eventTime > endDate + "T23:59:59") return false;
       return true;
     });
-  }, [recordsQuery.data, typeFilter, roomFilter]);
+  }, [recordsQuery.data, typeFilter, roomFilter, startDate, endDate]);
 
   const violationsTotal = violationsQuery.data?.total ?? 0;
+
+  /* ---- extract unique room names for room filter ---- */
+  const roomOptions = useMemo(() => {
+    const names = new Set(
+      (recordsQuery.data?.data ?? []).map((r) => r.roomName).filter(Boolean),
+    );
+    return Array.from(names).map((n) => ({ value: n, label: n }));
+  }, [recordsQuery.data]);
 
   /* ---- toggle helpers ---- */
   function toggleRecordExpand(id: string) {
@@ -243,7 +253,7 @@ export default function StudentRecordsPage() {
                 <th className={thClass}>时间</th>
                 <th className={thClass}>类型</th>
                 <th className={thClass}>房间</th>
-                <th className={thClass}>人员</th>
+                <th className={thClass}>门禁点/人员</th>
               </tr>
             </thead>
             <tbody>
@@ -553,7 +563,7 @@ export default function StudentRecordsPage() {
             placeholder="房间筛选"
             value={roomFilter}
             onChange={(e) => setRoomFilter(e.target.value)}
-            options={[]}
+            options={roomOptions}
           />
         </div>
 
@@ -563,7 +573,6 @@ export default function StudentRecordsPage() {
           onClick={() => {
             if (activeTab === "records") {
               setRecordsPage(1);
-              recordsQuery.refetch();
             } else {
               setViolationsPage(1);
               violationsQuery.refetch();
