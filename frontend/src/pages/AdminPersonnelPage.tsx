@@ -317,6 +317,7 @@ export default function AdminPersonnelPage() {
           className="min-w-0 flex-1 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2.5 py-1.5 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)] focus:border-[var(--twin-hairline-strong)] focus:bg-[var(--twin-canvas)] focus:outline-none"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
+              setPage(1);
               activeTab === "personnel" ? refetchPersonnel() : refetchSystem();
             }
           }}
@@ -324,7 +325,7 @@ export default function AdminPersonnelPage() {
         <button
           type="button"
           className={toolBtnPrimary}
-          onClick={() => { activeTab === "personnel" ? refetchPersonnel() : refetchSystem(); }}
+          onClick={() => { setPage(1); activeTab === "personnel" ? refetchPersonnel() : refetchSystem(); }}
         >
           查询
         </button>
