@@ -73,8 +73,10 @@ import StudentRegisterPage from "@/features/student/pages/student-register";
 import StudentLayout from "@/features/student/components/layout/student-layout";
 import StudentHomePage from "@/features/student/pages/student-home";
 import StudentRecordsPage from "@/features/student/pages/student-records";
-import StudentPermissionsPage from "@/features/student/pages/student-permissions";
-import StudentProfilePage from "@/features/student/pages/student-profile";
+import StudentRoomsPage from "@/features/student/pages/student-rooms";
+import StudentStatsPage from "@/features/student/pages/student-stats";
+import StudentNotificationsPage from "@/features/student/pages/student-notifications";
+import StudentFeedbackPage from "@/features/student/pages/student-feedback";
 import StudentSettingsPage from "@/features/student/pages/student-settings";
 
 export const router = createHashRouter([
@@ -97,8 +99,10 @@ export const router = createHashRouter([
             { index: true, element: <Navigate to="/student/home" replace /> },
             { path: "home", element: <StudentHomePage /> },
             { path: "records", element: <StudentRecordsPage /> },
-            { path: "permissions", element: <StudentPermissionsPage /> },
-            { path: "profile", element: <StudentProfilePage /> },
+            { path: "rooms", element: <StudentRoomsPage /> },
+            { path: "stats", element: <StudentStatsPage /> },
+            { path: "notifications", element: <StudentNotificationsPage /> },
+            { path: "feedback", element: <StudentFeedbackPage /> },
             { path: "settings", element: <StudentSettingsPage /> },
         ],
     },

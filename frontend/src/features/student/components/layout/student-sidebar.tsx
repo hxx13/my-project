@@ -2,8 +2,10 @@ import { NavLink } from "react-router-dom";
 import {
   Home,
   FileText,
-  Key,
-  User,
+  DoorOpen,
+  BarChart3,
+  Bell,
+  MessageSquare,
   Settings,
   ChevronsLeft,
   ChevronsRight,
@@ -24,9 +26,14 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: "/student/home", icon: Home, label: "首页" },
   { to: "/student/records", icon: FileText, label: "出入记录" },
-  { to: "/student/permissions", icon: Key, label: "门禁权限" },
-  { to: "/student/profile", icon: User, label: "个人档案" },
-  { to: "/student/settings", icon: Settings, label: "账户设置" },
+  { to: "/student/rooms", icon: DoorOpen, label: "我的房间" },
+  { to: "/student/stats", icon: BarChart3, label: "数据统计" },
+  { to: "/student/notifications", icon: Bell, label: "通知" },
+];
+
+const bottomItems: NavItem[] = [
+  { to: "/student/feedback", icon: MessageSquare, label: "帮助反馈" },
+  { to: "/student/settings", icon: Settings, label: "设置" },
 ];
 
 export function StudentSidebar({ collapsed, onToggle }: StudentSidebarProps) {
@@ -53,8 +60,32 @@ export function StudentSidebar({ collapsed, onToggle }: StudentSidebarProps) {
       </div>
 
       {/* Navigation items */}
-      <nav className="flex-1 py-3 space-y-1 overflow-y-auto">
+      <nav className="py-3 space-y-1 overflow-y-auto">
         {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end
+            title={collapsed ? item.label : undefined}
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 rounded-md text-sm transition-colors",
+                collapsed ? "justify-center mx-2 py-2.5 px-0" : "mx-2 py-2.5 px-3",
+                isActive
+                  ? "bg-[var(--student-primary-soft)] text-[var(--student-primary)] border-l-[3px] border-[var(--student-primary)] font-medium"
+                  : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] border-l-[3px] border-transparent",
+              )
+            }
+          >
+            <item.icon className="h-5 w-5 shrink-0" />
+            {!collapsed && <span className="truncate">{item.label}</span>}
+          </NavLink>
+        ))}
+      </nav>
+
+      {/* Bottom navigation items */}
+      <nav className="shrink-0 border-t border-[var(--student-hairline)] py-3 space-y-1">
+        {bottomItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
