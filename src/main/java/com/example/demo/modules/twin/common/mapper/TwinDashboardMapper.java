@@ -233,5 +233,19 @@ public interface TwinDashboardMapper {
     Integer getRoomCapacityByRoomId(@Param("roomId") String roomId);
 
     int upsertRoomCapacity(@Param("roomId") String roomId, @Param("capacity") Integer capacity);
+
+    /** 按课题组模糊搜索人员 userId 列表 */
+    List<String> listUserIdsByProjectGroup(
+            @Param("groupName") String groupName,
+            @Param("limit") int limit);
+
+    /** 按 userId 列表 + 时间范围拉取进出流水（供 Java 层配对） */
+    List<Map<String, Object>> listAccessLogsByUserIds(
+            @Param("userIds") List<String> userIds,
+            @Param("startTime") String startTime,
+            @Param("endTime") String endTime);
+
+    /** 统计课题组总数（去重拆分后，仅计数） */
+    int countDistinctProjectGroups(@Param("keyword") String keyword);
 }
 
