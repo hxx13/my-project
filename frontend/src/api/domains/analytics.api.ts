@@ -439,6 +439,48 @@ export type AnalyticsViewSharePreview = {
   snapshotNote: string;
 };
 
+// ---- 学生活跃度统计 ----
+
+export type StudentActivityGroup = {
+  name: string;
+};
+
+export type StudentActivitySummary = {
+  memberCount: number;
+  totalEntries: number;
+  totalDurationMinutes: number;
+  avgDailyFreq: number;
+  activeRate: number;
+};
+
+export type StudentActivityMember = {
+  userId: string;
+  userName: string;
+  entryCount: number;
+  totalDurationMinutes: number;
+  dailyAvgFreq: number;
+  lastActiveDate: string | null;
+  daysSinceLastActive: number;
+};
+
+export type StudentActivityResult = {
+  summary: StudentActivitySummary;
+  members: StudentActivityMember[];
+  total: number;
+};
+
+export type HeatmapCell = {
+  dayOfWeek: number;
+  hour: number;
+  count: number;
+};
+
+export type DailyTrendPoint = {
+  date: string;
+  entryCount: number;
+  exitCount: number;
+};
+
 export type AnalyticsViewShareImportResult = {
   views: AnalyticsUserView[];
   view?: AnalyticsUserView;
@@ -564,4 +606,47 @@ export async function importAnalyticsViewShare(
 
 export async function revokeAnalyticsViewShare(shareId: number): Promise<void> {
   await unwrap(authHttp.post<Result<null>>(`/v1/analytics/share/${shareId}/revoke`));
+}
+
+export async function fetchStudentActivityGroups(keyword?: string): Promise<StudentActivityGroup[]> {
+  const data = await unwrap(
+    authHttp.get<Result<{ groups: StudentActivityGroup[] }>>("/v1/analytics/student-activity/groups", {
+      params: keyword ? { keyword } : {},
+    })
+  );
+  return data.groups ?? [];
+}
+
+export async function fetchStudentActivityMembers(params: {
+  groupName: string;
+  startTime: string;
+  endTime: string;
+  sortBy?: string;
+  order?: string;
+  page?: number;
+  size?: number;
+}): Promise<StudentActivityResult> {
+  return unwrap(
+    authHttp.get<Result<StudentActivityResult>>("/v1/analytics/student-activity/members", { params })
+  );
+}
+
+export async function fetchStudentActivityHeatmap(params: {
+  groupName: string;
+  startTime: string;
+  endTime: string;
+}): Promise<HeatmapCell[]> {
+  return unwrap(
+    authHttp.get<Result<HeatmapCell[]>>("/v1/analytics/student-activity/heatmap", { params })
+  );
+}
+
+export async function fetchStudentActivityDailyTrend(params: {
+  groupName: string;
+  startTime: string;
+  endTime: string;
+}): Promise<DailyTrendPoint[]> {
+  return unwrap(
+    authHttp.get<Result<DailyTrendPoint[]>>("/v1/analytics/student-activity/daily-trend", { params })
+  );
 }
