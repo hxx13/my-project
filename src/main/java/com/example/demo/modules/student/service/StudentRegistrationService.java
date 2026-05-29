@@ -23,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -51,6 +52,9 @@ public class StudentRegistrationService {
      * 解码上传的 QR 码图片，提取 19 位 user_id 并匹配 aro_personnel 表
      */
     public StudentQrVerifyResponse verifyQrAndMatchPersonnel(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return StudentQrVerifyResponse.fail("请上传二维码图片");
+        }
         try {
             BufferedImage image = ImageIO.read(file.getInputStream());
             if (image == null) {
@@ -77,8 +81,10 @@ public class StudentRegistrationService {
             );
         } catch (NotFoundException e) {
             return StudentQrVerifyResponse.fail("二维码解析失败，请确认图片包含有效二维码");
+        } catch (IOException e) {
+            return StudentQrVerifyResponse.fail("图片读取失败，请确认上传了有效的图片文件");
         } catch (Exception e) {
-            return StudentQrVerifyResponse.fail("二维码处理异常: " + e.getMessage());
+            return StudentQrVerifyResponse.fail("图片处理失败，请重试");
         }
     }
 
@@ -108,6 +114,9 @@ public class StudentRegistrationService {
         if (req == null || !StringUtils.hasText(req.getUserId())) {
             return Result.fail(400, "用户ID(user_id)不能为空");
         }
+        if (!DIGIT_19.matcher(req.getUserId()).matches()) {
+            return Result.fail(400, "用户ID(user_id)必须为19位数字");
+        }
         if (!StringUtils.hasText(req.getUsername())) {
             return Result.fail(400, "用户名不能为空");
         }
@@ -119,6 +128,9 @@ public class StudentRegistrationService {
         }
 
         String username = req.getUsername().trim();
+        if (username.length() < 3 || username.length() > 64) {
+            return Result.fail(400, "用户名长度需在3-64个字符之间");
+        }
         if (userMapper.findByUsername(username) != null) {
             return Result.fail(409, "用户名已被占用");
         }
