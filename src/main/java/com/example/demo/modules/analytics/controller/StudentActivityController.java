@@ -1,8 +1,10 @@
 package com.example.demo.modules.analytics.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.analytics.service.StudentActivityService;
+import com.example.demo.modules.auth.entity.User;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
@@ -28,7 +30,8 @@ public class StudentActivityController {
     public Result<Map<String, Object>> listGroups(
             @RequestHeader(value = "Authorization", required = false) String auth,
             @RequestParam(required = false) String keyword) {
-        if (authContextService.resolveUserFromBearer(auth) == null) return Result.error("未登录");
+        Result<?> denied = requireStaff(auth);
+        if (denied != null) return Result.error(denied.getMessage());
         List<Map<String, Object>> groups = studentActivityService.listGroups(keyword);
         Map<String, Object> data = new HashMap<>();
         data.put("groups", groups);
@@ -46,7 +49,8 @@ public class StudentActivityController {
             @RequestParam(defaultValue = "desc") String order,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        if (authContextService.resolveUserFromBearer(auth) == null) return Result.error("未登录");
+        Result<?> denied = requireStaff(auth);
+        if (denied != null) return Result.error(denied.getMessage());
         Map<String, Object> data = studentActivityService.queryMemberActivity(
                 groupName, startTime, endTime, sortBy, order, page, size);
         return Result.success(data);
@@ -59,7 +63,8 @@ public class StudentActivityController {
             @RequestParam String groupName,
             @RequestParam String startTime,
             @RequestParam String endTime) {
-        if (authContextService.resolveUserFromBearer(auth) == null) return Result.error("未登录");
+        Result<?> denied = requireStaff(auth);
+        if (denied != null) return Result.error(denied.getMessage());
         return Result.success(studentActivityService.heatmap(groupName, startTime, endTime));
     }
 
@@ -70,7 +75,20 @@ public class StudentActivityController {
             @RequestParam String groupName,
             @RequestParam String startTime,
             @RequestParam String endTime) {
-        if (authContextService.resolveUserFromBearer(auth) == null) return Result.error("未登录");
+        Result<?> denied = requireStaff(auth);
+        if (denied != null) return Result.error(denied.getMessage());
         return Result.success(studentActivityService.dailyTrend(groupName, startTime, endTime));
+    }
+
+    private Result<?> requireStaff(String authorization) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        if (user == null) {
+            return Result.error("未登录");
+        }
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
+            return Result.error("需要教职工及以上权限");
+        }
+        return null;
     }
 }
