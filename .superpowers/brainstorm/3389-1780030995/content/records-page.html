@@ -1,0 +1,124 @@
+<h2>出入记录页：列表 + 违规 Tab</h2>
+<p class="subtitle">/student/records — 个人进出流水，点击展开详情，违规记录作为子 Tab</p>
+
+<div class="mockup">
+  <div class="mockup-header">出入记录页布局</div>
+  <div class="mockup-body">
+    <div style="display:flex;flex-direction:column;gap:14px;padding:12px;background:#f5f5f5;border-radius:12px;">
+
+      <!-- Tabs: 出入记录 / 违规记录 -->
+      <div style="display:flex;gap:0;background:#fff;border-radius:8px;padding:4px;border:1px solid #e5e5e5;width:fit-content;">
+        <div style="padding:7px 20px;background:#ede9fe;color:#7c3aed;border-radius:6px;font-size:13px;font-weight:600;">📋 出入记录</div>
+        <div style="padding:7px 20px;color:#8c8c8c;font-size:13px;">⚠️ 违规记录 (0)</div>
+      </div>
+
+      <!-- Filters -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <input type="date" style="padding:7px 12px;border:1px solid #e5e5e5;border-radius:8px;font-size:12px;" value="2026-05-22">
+        <span style="color:#8c8c8c;font-size:12px;">至</span>
+        <input type="date" style="padding:7px 12px;border:1px solid #e5e5e5;border-radius:8px;font-size:12px;" value="2026-05-29">
+        <select style="padding:7px 12px;border:1px solid #e5e5e5;border-radius:8px;font-size:12px;color:#525252;">
+          <option>全部类型</option><option>进入</option><option>离开</option>
+        </select>
+        <select style="padding:7px 12px;border:1px solid #e5e5e5;border-radius:8px;font-size:12px;color:#525252;">
+          <option>全部房间</option><option>动物房 B</option><option>实验室 A</option>
+        </select>
+        <button style="padding:7px 16px;background:#8b5cf6;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;">查询</button>
+      </div>
+
+      <!-- Table with expandable rows -->
+      <div style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;overflow:hidden;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <tr style="background:#fafafa;border-bottom:1px solid #e5e5e5;">
+            <th style="text-align:left;padding:10px 14px;color:#8c8c8c;font-weight:600;font-size:11px;width:30px;"></th>
+            <th style="text-align:left;padding:10px 14px;color:#8c8c8c;font-weight:600;font-size:11px;">时间</th>
+            <th style="text-align:left;padding:10px 14px;color:#8c8c8c;font-weight:600;font-size:11px;">类型</th>
+            <th style="text-align:left;padding:10px 14px;color:#8c8c8c;font-weight:600;font-size:11px;">房间</th>
+            <th style="text-align:left;padding:10px 14px;color:#8c8c8c;font-weight:600;font-size:11px;">门禁点</th>
+          </tr>
+          <!-- Row 1: expanded -->
+          <tr style="border-bottom:1px solid #f0f0f0;background:#fafaff;cursor:pointer;">
+            <td style="padding:10px 14px;color:#8b5cf6;font-size:10px;">▼</td>
+            <td style="padding:10px 14px;font-weight:500;">2026-05-29 14:32:08</td>
+            <td style="padding:10px 14px;"><span style="padding:2px 8px;border-radius:8px;font-size:10px;background:#dcfce7;color:#16a34a;">进入</span></td>
+            <td style="padding:10px 14px;color:#8b5cf6;">动物房 B</td>
+            <td style="padding:10px 14px;color:#8c8c8c;">3F 东门禁 #02</td>
+          </tr>
+          <!-- Expanded detail -->
+          <tr style="border-bottom:1px solid #e5e5e5;background:#fafaff;">
+            <td colspan="5" style="padding:0 14px 14px;">
+              <div style="margin-left:30px;display:flex;gap:24px;font-size:11px;color:#525252;background:#f5f5ff;border-radius:8px;padding:12px 16px;">
+                <div><span style="color:#8c8c8c;">授权方式：</span>人脸识别</div>
+                <div><span style="color:#8c8c8c;">设备编号：</span>DH-3F-E-002</div>
+                <div><span style="color:#8c8c8c;">在室时长：</span>5h 22min</div>
+                <div><span style="color:#8c8c8c;">记录 ID：</span>AC20260529143208001</div>
+              </div>
+            </td>
+          </tr>
+          <!-- Row 2: collapsed -->
+          <tr style="border-bottom:1px solid #f0f0f0;cursor:pointer;">
+            <td style="padding:10px 14px;color:#8c8c8c;font-size:10px;">▶</td>
+            <td style="padding:10px 14px;">2026-05-29 12:10:22</td>
+            <td style="padding:10px 14px;"><span style="padding:2px 8px;border-radius:8px;font-size:10px;background:#fef3c7;color:#d97706;">离开</span></td>
+            <td style="padding:10px 14px;color:#8b5cf6;">实验室 A</td>
+            <td style="padding:10px 14px;color:#8c8c8c;">2F 西门禁 #01</td>
+          </tr>
+          <!-- Row 3: collapsed -->
+          <tr style="border-bottom:1px solid #f0f0f0;cursor:pointer;">
+            <td style="padding:10px 14px;color:#8c8c8c;font-size:10px;">▶</td>
+            <td style="padding:10px 14px;">2026-05-29 09:15:45</td>
+            <td style="padding:10px 14px;"><span style="padding:2px 8px;border-radius:8px;font-size:10px;background:#dcfce7;color:#16a34a;">进入</span></td>
+            <td style="padding:10px 14px;color:#8b5cf6;">实验室 A</td>
+            <td style="padding:10px 14px;color:#8c8c8c;">2F 西门禁 #01</td>
+          </tr>
+          <!-- Row 4: collapsed -->
+          <tr>
+            <td style="padding:10px 14px;color:#8c8c8c;font-size:10px;">▶</td>
+            <td style="padding:10px 14px;">2026-05-28 18:00:15</td>
+            <td style="padding:10px 14px;"><span style="padding:2px 8px;border-radius:8px;font-size:10px;background:#fef3c7;color:#d97706;">离开</span></td>
+            <td style="padding:10px 14px;color:#8b5cf6;">动物房 B</td>
+            <td style="padding:10px 14px;color:#8c8c8c;">3F 东门禁 #02</td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#8c8c8c;">
+        <span>共 156 条记录</span>
+        <div style="display:flex;gap:4px;">
+          <span style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:6px;">上一页</span>
+          <span style="padding:4px 10px;background:#8b5cf6;color:#fff;border-radius:6px;">1</span>
+          <span style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:6px;">2</span>
+          <span style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:6px;">3</span>
+          <span style="padding:4px 10px;color:#8c8c8c;">...</span>
+          <span style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:6px;">16</span>
+          <span style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:6px;">下一页</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>设计要点</h3>
+  <div style="display:flex;gap:16px;">
+    <div class="pros-cons" style="flex:1;">
+      <div class="pros"><h4>交互规范（参考教职工后台）</h4><ul>
+        <li><strong>点击行展开详情</strong> — 展开后显示授权方式、设备编号、在室时长、记录 ID</li>
+        <li><strong>双 Tab 设计</strong> — "出入记录"和"违规记录"同页切换，违规记录格式类似，增加违规类型/扣分/处理状态列</li>
+        <li><strong>时间范围默认近 7 天</strong> — 支持自定义日期范围</li>
+        <li><strong>筛选器</strong> — 进出类型（进入/离开）、房间、日期范围</li>
+        <li><strong>分页</strong> — 后端分页，page/pageSize 参数</li>
+      </ul></div>
+    </div>
+    <div class="pros-cons" style="flex:1;">
+      <div class="pros"><h4>违规记录 Tab 列定义</h4><ul>
+        <li>违规时间、违规类型（未授权进入/超时/其他）</li>
+        <li>关联房间、门禁点</li>
+        <li>扣分/处罚状态（待处理/已处理/申诉中）</li>
+        <li>展开显示：违规详情描述、处理人、处理时间</li>
+        <li>违规数显示在 Tab 标签上（红点 Badge）</li>
+      </ul></div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,103 @@
+<h2>通知公告页：双源统一信息流</h2>
+<p class="subtitle">/student/notifications — ARO 官方新闻 + 平台公告，统一展示，类型区分</p>
+
+<div class="mockup">
+  <div class="mockup-header">通知页布局</div>
+  <div class="mockup-body">
+    <div style="display:flex;flex-direction:column;gap:12px;padding:12px;background:#f5f5f5;border-radius:12px;">
+
+      <!-- Filter bar -->
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div style="padding:6px 14px;background:#8b5cf6;color:#fff;border-radius:6px;font-size:12px;font-weight:500;">全部</div>
+        <div style="padding:6px 14px;background:#fff;color:#525252;border-radius:6px;font-size:12px;border:1px solid #e5e5e5;">🔴 ARO 官方</div>
+        <div style="padding:6px 14px;background:#fff;color:#525252;border-radius:6px;font-size:12px;border:1px solid #e5e5e5;">🔵 平台公告</div>
+        <div style="margin-left:auto;font-size:12px;color:#8c8c8c;">共 8 条，2 条未读</div>
+      </div>
+
+      <!-- Notification list -->
+      <div style="display:flex;flex-direction:column;gap:6px;">
+
+        <!-- Unread ARO -->
+        <div style="background:#fafaff;border:1px solid #e5e5ff;border-radius:10px;padding:14px 16px;display:flex;align-items:start;gap:12px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:#dc2626;margin-top:6px;flex-shrink:0;"></div>
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="padding:2px 8px;border-radius:6px;font-size:10px;font-weight:500;background:#fee2e2;color:#dc2626;">ARO 官方</span>
+              <span style="font-size:11px;color:#8c8c8c;">2026-05-28</span>
+            </div>
+            <div style="font-weight:600;font-size:14px;color:#1a1a1a;">关于动物房使用规范的最新通知</div>
+            <div style="font-size:12px;color:#8c8c8c;margin-top:4px;line-height:1.5;">根据 ARO 管理要求，自 6 月 1 日起，所有进入动物房 B 的人员需提前预约...</div>
+          </div>
+        </div>
+
+        <!-- Unread Platform -->
+        <div style="background:#fafaff;border:1px solid #e5e5ff;border-radius:10px;padding:14px 16px;display:flex;align-items:start;gap:12px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:#dc2626;margin-top:6px;flex-shrink:0;"></div>
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="padding:2px 8px;border-radius:6px;font-size:10px;font-weight:500;background:#dbeafe;color:#2563eb;">平台公告</span>
+              <span style="font-size:11px;color:#8c8c8c;">2026-05-27</span>
+            </div>
+            <div style="font-weight:600;font-size:14px;color:#1a1a1a;">系统升级维护通知</div>
+            <div style="font-size:12px;color:#8c8c8c;margin-top:4px;line-height:1.5;">平台将于 6 月 2 日凌晨 2:00-4:00 进行系统升级，届时门禁系统可能短暂中断...</div>
+          </div>
+        </div>
+
+        <!-- Read ARO -->
+        <div style="background:#fff;border:1px solid #f0f0f0;border-radius:10px;padding:14px 16px;display:flex;align-items:start;gap:12px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:transparent;margin-top:6px;flex-shrink:0;"></div>
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="padding:2px 8px;border-radius:6px;font-size:10px;font-weight:500;background:#fee2e2;color:#dc2626;">ARO 官方</span>
+              <span style="font-size:11px;color:#8c8c8c;">2026-05-20</span>
+            </div>
+            <div style="font-weight:600;font-size:14px;color:#525252;">安全培训通知：生物安全操作规范</div>
+            <div style="font-size:12px;color:#a0a0a0;margin-top:4px;line-height:1.5;">请各位同学于 6 月 15 日前完成线上安全培训课程...</div>
+          </div>
+        </div>
+
+        <!-- Read Platform -->
+        <div style="background:#fff;border:1px solid #f0f0f0;border-radius:10px;padding:14px 16px;display:flex;align-items:start;gap:12px;">
+          <div style="width:8px;height:8px;border-radius:50%;background:transparent;margin-top:6px;flex-shrink:0;"></div>
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="padding:2px 8px;border-radius:6px;font-size:10px;font-weight:500;background:#dbeafe;color:#2563eb;">平台公告</span>
+              <span style="font-size:11px;color:#8c8c8c;">2026-05-18</span>
+            </div>
+            <div style="font-weight:600;font-size:14px;color:#525252;">新增 AI 个人画像功能</div>
+            <div style="font-size:12px;color:#a0a0a0;margin-top:4px;line-height:1.5;">学生端现已上线个人数据统计功能，可查看进出趋势和房间使用分析...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <div style="display:flex;justify-content:center;gap:4px;font-size:12px;">
+        <span style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:6px;color:#8c8c8c;">上一页</span>
+        <span style="padding:4px 10px;background:#8b5cf6;color:#fff;border-radius:6px;">1</span>
+        <span style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:6px;">2</span>
+        <span style="padding:4px 10px;border:1px solid #e5e5e5;border-radius:6px;color:#8c8c8c;">下一页</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>设计要点</h3>
+  <div style="display:flex;gap:16px;">
+    <div class="pros-cons" style="flex:1;">
+      <div class="pros"><h4>数据架构</h4><ul>
+        <li><strong>双源合并</strong> — ARO 新闻（PublicAroNewsController 已有）+ 平台公告（notification 模块已有），后端合并为统一列表返回</li>
+        <li><strong>统一端点</strong> — <code>/api/student/notifications</code>，type 字段区分 ARO / PLATFORM</li>
+        <li><strong>已读/未读</strong> — 平台公告跟踪已读状态，ARO 新闻根据发布时间判断</li>
+      </ul></div>
+    </div>
+    <div class="pros-cons" style="flex:1;">
+      <div class="pros"><h4>交互规范</h4><ul>
+        <li><strong>类型筛选</strong> — Filter pills：全部 / ARO 官方 / 平台公告</li>
+        <li><strong>未读标记</strong> — 左侧红点 + 浅紫背景区分未读，点击即标记已读</li>
+        <li><strong>内容折叠</strong> — 列表显示标题+摘要（2 行截断），点击展开全文</li>
+        <li><strong>仪表盘同步</strong> — 首页"未读通知"卡片显示最近的 2 条摘要</li>
+      </ul></div>
+    </div>
+  </div>
+</div>

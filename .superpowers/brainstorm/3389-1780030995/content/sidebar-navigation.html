@@ -1,0 +1,147 @@
+<h2>学生端侧边栏导航：两种结构方案</h2>
+<p class="subtitle">基于 Phase2 功能需求，设计侧边栏信息架构</p>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-image">
+      <div style="background:#fafafa;border-radius:12px;padding:16px;display:flex;gap:16px;min-height:420px;">
+        <!-- Sidebar A -->
+        <div style="width:220px;flex-shrink:0;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:2px;">
+          <div style="padding:8px 10px;font-weight:700;font-size:11px;color:#8c8c8c;text-transform:uppercase;letter-spacing:0.5px;">学生中心</div>
+          <div style="padding:8px 10px;border-radius:6px;background:#ede9fe;color:#7c3aed;font-weight:600;font-size:13px;">🏠 首页仪表盘</div>
+          <div style="margin-top:8px;padding:8px 10px;font-weight:700;font-size:11px;color:#8c8c8c;text-transform:uppercase;letter-spacing:0.5px;">个人数据</div>
+          <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">📋 出入记录</div>
+          <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">🚪 我的房间</div>
+          <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">🤖 AI 个人画像</div>
+          <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">⚠️ 违规记录</div>
+          <div style="margin-top:8px;padding:8px 10px;font-weight:700;font-size:11px;color:#8c8c8c;text-transform:uppercase;letter-spacing:0.5px;">信息中心</div>
+          <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">📢 通知公告</div>
+          <div style="margin-top:auto;border-top:1px solid #e5e5e5;padding-top:8px;">
+            <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">💬 帮助反馈</div>
+            <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">⚙️ 设置</div>
+          </div>
+        </div>
+        <!-- Preview pane -->
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#8c8c8c;font-size:13px;">
+          <div style="text-align:center;">
+            <div style="font-weight:600;color:#1a1a1a;margin-bottom:4px;">方案 A：分组折叠式</div>
+            <div>两级分组 · "个人数据" + "信息中心" 两个折叠区</div>
+            <div style="margin-top:4px;font-size:11px;">底部固定：帮助反馈 / 设置</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 分组折叠式</h3>
+      <p>导航按<strong>语义分组</strong>折叠：个人数据区（记录/房间/画像/违规）、信息中心区（通知公告）、底部固定区（帮助/设置）。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优势</h4><ul><li>分类清晰，新手友好</li><li>后期加功能有明确归属区域</li><li>折叠收起节省空间</li></ul></div>
+        <div class="cons"><h4>不足</h4><ul><li>两个分组有点人为割裂感</li><li>折叠增加点击步骤</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-image">
+      <div style="background:#fafafa;border-radius:12px;padding:16px;display:flex;gap:16px;min-height:420px;">
+        <!-- Sidebar B -->
+        <div style="width:220px;flex-shrink:0;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:2px;">
+          <div style="padding:8px 10px;border-radius:6px;background:#ede9fe;color:#7c3aed;font-weight:600;font-size:13px;">🏠 首页</div>
+          <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">📋 出入记录</div>
+          <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">🚪 我的房间</div>
+          <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">🤖 AI 画像</div>
+          <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">📢 通知</div>
+          <div style="margin-top:8px;border-top:1px solid #e5e5e5;padding-top:8px;">
+            <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">💬 反馈</div>
+            <div style="padding:8px 10px;border-radius:6px;font-size:13px;color:#525252;">⚙️ 设置</div>
+          </div>
+        </div>
+        <!-- Preview pane -->
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;color:#8c8c8c;font-size:13px;">
+          <div style="text-align:center;">
+            <div style="font-weight:600;color:#1a1a1a;margin-bottom:4px;">方案 B：扁平列表式</div>
+            <div>7 项平铺 · 无分组标题 · 轻分隔线</div>
+            <div style="margin-top:4px;font-size:11px;">主功能区 5 项 + 底部辅助 2 项</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 扁平列表式</h3>
+      <p>所有导航项<strong>一字排开</strong>，高频项在上，低频项（反馈/设置）用分隔线隔开沉底。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优势</h4><ul><li>零学习成本，一眼看全</li><li>无折叠 = 少一次点击</li><li>适合 5-8 项导航</li></ul></div>
+        <div class="cons"><h4>不足</h4><ul><li>功能 >10 时会变长</li><li>缺少语义组织提示</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>我的推荐：B 扁平列表式</h3>
+  <div class="mockup">
+    <div class="mockup-header">理由</div>
+    <div class="mockup-body">
+      <ul style="padding-left:20px;line-height:2;">
+        <li><strong>当前 7 项导航</strong> — 扁平展示完全够用，分组反而增加认知负担</li>
+        <li><strong>后续可扩展</strong> — 功能超过 8-9 项时，自然演化为分组折叠，不需要一开始就过度设计</li>
+        <li><strong>违规记录不单独占一项</strong> — 数据量小（正常学生 0-几条），集成到"出入记录"页的 Tab 或直接放仪表盘卡片即可</li>
+        <li><strong>与教职工后台风格一致</strong> — 教职工侧边栏也是扁平列表</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>导航项最终建议（5 主 + 2 辅）</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <tr style="border-bottom:1px solid #e5e5e5;">
+      <th style="text-align:left;padding:8px 12px;color:#8c8c8c;font-weight:600;">导航项</th>
+      <th style="text-align:left;padding:8px 12px;color:#8c8c8c;font-weight:600;">路由</th>
+      <th style="text-align:left;padding:8px 12px;color:#8c8c8c;font-weight:600;">数据来源</th>
+      <th style="text-align:left;padding:8px 12px;color:#8c8c8c;font-weight:600;">说明</th>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:10px 12px;font-weight:600;">🏠 首页</td>
+      <td style="padding:10px 12px;color:#8b5cf6;">/student/home</td>
+      <td style="padding:10px 12px;">聚合 API</td>
+      <td style="padding:10px 12px;">仪表盘 V2 设计</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:10px 12px;font-weight:600;">📋 出入记录</td>
+      <td style="padding:10px 12px;color:#8b5cf6;">/student/records</td>
+      <td style="padding:10px 12px;">access API</td>
+      <td style="padding:10px 12px;">含违规 Tab</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:10px 12px;font-weight:600;">🚪 我的房间</td>
+      <td style="padding:10px 12px;color:#8b5cf6;">/student/rooms</td>
+      <td style="padding:10px 12px;">room API</td>
+      <td style="padding:10px 12px;">可访问 + 常用置顶</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:10px 12px;font-weight:600;">🤖 AI 画像</td>
+      <td style="padding:10px 12px;color:#8b5cf6;">/student/ai-portrait</td>
+      <td style="padding:10px 12px;">twin AI API</td>
+      <td style="padding:10px 12px;">个人行为分析</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:10px 12px;font-weight:600;">📢 通知</td>
+      <td style="padding:10px 12px;color:#8b5cf6;">/student/notifications</td>
+      <td style="padding:10px 12px;">news + notice API</td>
+      <td style="padding:10px 12px;">ARO + 平台双源</td>
+    </tr>
+    <tr style="border-bottom:1px solid #f0f0f0;">
+      <td style="padding:10px 12px;">💬 帮助反馈</td>
+      <td style="padding:10px 12px;color:#8b5cf6;">/student/feedback</td>
+      <td style="padding:10px 12px;">feedback API</td>
+      <td style="padding:10px 12px;">底部区</td>
+    </tr>
+    <tr>
+      <td style="padding:10px 12px;">⚙️ 设置</td>
+      <td style="padding:10px 12px;color:#8b5cf6;">/student/settings</td>
+      <td style="padding:10px 12px;">settings API</td>
+      <td style="padding:10px 12px;">底部区（已有）</td>
+    </tr>
+  </table>
+</div>

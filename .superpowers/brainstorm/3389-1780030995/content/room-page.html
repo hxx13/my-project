@@ -1,0 +1,182 @@
+<h2>房间管理页：卡片网格 vs 列表视图</h2>
+<p class="subtitle">/student/rooms — 展示所有可访问房间，支持置顶常用</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#fafafa;border-radius:12px;padding:16px;min-height:360px;">
+        <!-- Tabs -->
+        <div style="display:flex;gap:0;margin-bottom:14px;background:#fff;border-radius:8px;padding:4px;border:1px solid #e5e5e5;">
+          <div style="padding:6px 16px;background:#ede9fe;color:#7c3aed;border-radius:6px;font-size:12px;font-weight:600;">⭐ 我的置顶 (4)</div>
+          <div style="padding:6px 16px;color:#8c8c8c;font-size:12px;">全部房间 (12)</div>
+        </div>
+        <!-- Card Grid 3-col -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div style="background:#fff;border:1px solid #dcfce7;border-radius:10px;padding:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+              <div>
+                <div style="font-weight:600;font-size:13px;">动物房 B <span style="font-size:10px;color:#f59e0b;">⭐</span></div>
+                <div style="font-size:11px;color:#8c8c8c;">3F · 东区</div>
+              </div>
+              <span style="padding:2px 8px;border-radius:8px;font-size:10px;font-weight:500;background:#dcfce7;color:#16a34a;">空闲</span>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:12px;font-size:11px;">
+              <div><span style="color:#8c8c8c;">在室</span> <span style="font-weight:600;">2人</span></div>
+              <div><span style="color:#8c8c8c;">容量</span> <span style="font-weight:600;">8人</span></div>
+            </div>
+            <div style="margin-top:4px;height:4px;background:#e5e5e5;border-radius:2px;"><div style="width:25%;height:4px;background:#16a34a;border-radius:2px;"></div></div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+              <div>
+                <div style="font-weight:600;font-size:13px;">实验室 A <span style="font-size:10px;color:#f59e0b;">⭐</span></div>
+                <div style="font-size:11px;color:#8c8c8c;">2F · 西区</div>
+              </div>
+              <span style="padding:2px 8px;border-radius:8px;font-size:10px;font-weight:500;background:#fef3c7;color:#d97706;">较满</span>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:12px;font-size:11px;">
+              <div><span style="color:#8c8c8c;">在室</span> <span style="font-weight:600;">6人</span></div>
+              <div><span style="color:#8c8c8c;">容量</span> <span style="font-weight:600;">8人</span></div>
+            </div>
+            <div style="margin-top:4px;height:4px;background:#e5e5e5;border-radius:2px;"><div style="width:75%;height:4px;background:#d97706;border-radius:2px;"></div></div>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:start;">
+              <div>
+                <div style="font-weight:600;font-size:13px;">手术室 C <span style="font-size:10px;color:#f59e0b;">⭐</span></div>
+                <div style="font-size:11px;color:#8c8c8c;">1F · 北区</div>
+              </div>
+              <span style="padding:2px 8px;border-radius:8px;font-size:10px;font-weight:500;background:#fee2e2;color:#dc2626;">已满</span>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:12px;font-size:11px;">
+              <div><span style="color:#8c8c8c;">在室</span> <span style="font-weight:600;">4人</span></div>
+              <div><span style="color:#8c8c8c;">容量</span> <span style="font-weight:600;">4人</span></div>
+            </div>
+            <div style="margin-top:4px;height:4px;background:#e5e5e5;border-radius:2px;"><div style="width:100%;height:4px;background:#dc2626;border-radius:2px;"></div></div>
+          </div>
+        </div>
+        <!-- search bar -->
+        <div style="margin-top:14px;display:flex;align-items:center;gap:8px;">
+          <input placeholder="搜索房间..." style="flex:1;padding:8px 12px;border:1px solid #e5e5e5;border-radius:8px;font-size:12px;">
+          <select style="padding:8px 12px;border:1px solid #e5e5e5;border-radius:8px;font-size:12px;color:#525252;">
+            <option>全部楼层</option>
+            <option>1F</option>
+            <option>2F</option>
+            <option>3F</option>
+          </select>
+          <select style="padding:8px 12px;border:1px solid #e5e5e5;border-radius:8px;font-size:12px;color:#525252;">
+            <option>全部状态</option>
+            <option>空闲</option>
+            <option>较满</option>
+            <option>已满</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 卡片网格 + 置顶 Tab</h3>
+      <p>双 Tab 切换（我的置顶/全部房间），3 列卡片网格，搜索+筛选栏。房间信息可视化突出。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优势</h4><ul><li>房间状态一目了然，视觉层次好</li><li>置顶/全部双 Tab 隔离清晰</li><li>搜索 + 楼层/状态筛选</li></ul></div>
+        <div class="cons"><h4>不足</h4><ul><li>房间 >20 间时卡片区滚动变长</li><li>信息密度低于列表</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#fafafa;border-radius:12px;padding:16px;min-height:360px;">
+        <!-- Table header -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <input placeholder="搜索房间..." style="flex:1;padding:6px 10px;border:1px solid #e5e5e5;border-radius:6px;font-size:11px;">
+          <select style="padding:6px 10px;border:1px solid #e5e5e5;border-radius:6px;font-size:11px;"><option>全部状态</option></select>
+        </div>
+        <!-- Table -->
+        <div style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <tr style="background:#fafafa;border-bottom:1px solid #e5e5e5;">
+              <th style="text-align:left;padding:8px 12px;color:#8c8c8c;font-weight:600;font-size:11px;"></th>
+              <th style="text-align:left;padding:8px 12px;color:#8c8c8c;font-weight:600;font-size:11px;">房间名称</th>
+              <th style="text-align:left;padding:8px 12px;color:#8c8c8c;font-weight:600;font-size:11px;">位置</th>
+              <th style="text-align:center;padding:8px 12px;color:#8c8c8c;font-weight:600;font-size:11px;">在室/容量</th>
+              <th style="text-align:center;padding:8px 12px;color:#8c8c8c;font-weight:600;font-size:11px;">占用率</th>
+              <th style="text-align:center;padding:8px 12px;color:#8c8c8c;font-weight:600;font-size:11px;">状态</th>
+            </tr>
+            <tr style="border-bottom:1px solid #f0f0f0;">
+              <td style="padding:8px 12px;color:#f59e0b;">⭐</td>
+              <td style="padding:8px 12px;font-weight:600;">动物房 B</td>
+              <td style="padding:8px 12px;color:#8c8c8c;">3F · 东区</td>
+              <td style="padding:8px 12px;text-align:center;">2 / 8</td>
+              <td style="padding:8px 12px;text-align:center;">
+                <div style="display:inline-block;width:60px;height:4px;background:#e5e5e5;border-radius:2px;vertical-align:middle;"><div style="width:25%;height:4px;background:#16a34a;border-radius:2px;"></div></div>
+                <span style="margin-left:6px;font-size:11px;color:#8c8c8c;">25%</span>
+              </td>
+              <td style="padding:8px 12px;text-align:center;"><span style="padding:2px 8px;border-radius:8px;font-size:10px;background:#dcfce7;color:#16a34a;">空闲</span></td>
+            </tr>
+            <tr style="border-bottom:1px solid #f0f0f0;">
+              <td style="padding:8px 12px;color:#f59e0b;">⭐</td>
+              <td style="padding:8px 12px;font-weight:600;">实验室 A</td>
+              <td style="padding:8px 12px;color:#8c8c8c;">2F · 西区</td>
+              <td style="padding:8px 12px;text-align:center;">6 / 8</td>
+              <td style="padding:8px 12px;text-align:center;">
+                <div style="display:inline-block;width:60px;height:4px;background:#e5e5e5;border-radius:2px;vertical-align:middle;"><div style="width:75%;height:4px;background:#d97706;border-radius:2px;"></div></div>
+                <span style="margin-left:6px;font-size:11px;color:#8c8c8c;">75%</span>
+              </td>
+              <td style="padding:8px 12px;text-align:center;"><span style="padding:2px 8px;border-radius:8px;font-size:10px;background:#fef3c7;color:#d97706;">较满</span></td>
+            </tr>
+            <tr style="border-bottom:1px solid #f0f0f0;">
+              <td style="padding:8px 12px;"></td>
+              <td style="padding:8px 12px;">手术室 C</td>
+              <td style="padding:8px 12px;color:#8c8c8c;">1F · 北区</td>
+              <td style="padding:8px 12px;text-align:center;">4 / 4</td>
+              <td style="padding:8px 12px;text-align:center;">
+                <div style="display:inline-block;width:60px;height:4px;background:#e5e5e5;border-radius:2px;vertical-align:middle;"><div style="width:100%;height:4px;background:#dc2626;border-radius:2px;"></div></div>
+                <span style="margin-left:6px;font-size:11px;color:#8c8c8c;">100%</span>
+              </td>
+              <td style="padding:8px 12px;text-align:center;"><span style="padding:2px 8px;border-radius:8px;font-size:10px;background:#fee2e2;color:#dc2626;">已满</span></td>
+            </tr>
+            <tr>
+              <td style="padding:8px 12px;"></td>
+              <td style="padding:8px 12px;">仪器室 D</td>
+              <td style="padding:8px 12px;color:#8c8c8c;">4F · 东区</td>
+              <td style="padding:8px 12px;text-align:center;">0 / 6</td>
+              <td style="padding:8px 12px;text-align:center;">
+                <div style="display:inline-block;width:60px;height:4px;background:#e5e5e5;border-radius:2px;vertical-align:middle;"><div style="width:0%;height:4px;background:#16a34a;border-radius:2px;"></div></div>
+                <span style="margin-left:6px;font-size:11px;color:#8c8c8c;">0%</span>
+              </td>
+              <td style="padding:8px 12px;text-align:center;"><span style="padding:2px 8px;border-radius:8px;font-size:10px;background:#dcfce7;color:#16a34a;">空闲</span></td>
+            </tr>
+          </table>
+        </div>
+        <div style="margin-top:8px;display:flex;justify-content:space-between;font-size:11px;color:#8c8c8c;">
+          <span>共 12 间，可访问</span>
+          <span>1-4 / 12</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 经典列表视图</h3>
+      <p>单页列表 + 搜索筛选，置顶项 ⭐ 标记并自动排到顶部，点击行展开房间详情。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优势</h4><ul><li>信息密度高，适合房间多</li><li>与出入记录表格风格一致</li><li>点击行可展开操作按钮</li></ul></div>
+        <div class="cons"><h4>不足</h4><ul><li>占用率不够直观</li><li>细进度条视觉弱</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>我的推荐：A 卡片网格（默认）+ B 列表作为切换选项</h3>
+  <div class="mockup">
+    <div class="mockup-header">理由</div>
+    <div class="mockup-body">
+      <ul style="padding-left:20px;line-height:2;">
+        <li><strong>学生房间数通常 5-20 间</strong> — 卡片网格在这个量级视觉最佳</li>
+        <li><strong>卡片天然适合展示"占用率"</strong> — 进度条在卡片中有足够宽度，比表内细条直观得多</li>
+        <li><strong>与仪表盘房间卡片复用组件</strong> — 同一套 RoomCard 组件，仪表盘 4 卡片 + 房间页全量</li>
+        <li><strong>提供视图切换按钮</strong> — 卡片/列表切换，用户自选</li>
+        <li><strong>置顶通过 ⭐ 按钮操作</strong> — 悬停卡片右上角出现置顶/取消按钮，不靠拖拽</li>
+      </ul>
+    </div>
+  </div>
+</div>

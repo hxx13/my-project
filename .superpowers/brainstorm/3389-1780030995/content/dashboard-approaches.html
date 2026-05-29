@@ -1,0 +1,138 @@
+<h2>学生端首页仪表盘：两种设计方向</h2>
+<p class="subtitle">核心问题：课题组信息和个人信息，谁占C位？</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#fafafa;border-radius:12px;padding:16px;min-height:280px;">
+        <div style="display:flex;gap:12px;">
+          <!-- personal sidebar -->
+          <div style="width:200px;flex-shrink:0;display:flex;flex-direction:column;gap:10px;">
+            <div style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:14px;text-align:center;">
+              <div style="width:44px;height:44px;border-radius:50%;background:#ede9fe;color:#8b5cf6;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;margin:0 auto 6px;">张</div>
+              <div style="font-weight:600;font-size:14px;color:#1a1a1a;">张三</div>
+              <div style="font-size:11px;color:#8c8c8c;">神经科学课题组</div>
+              <div style="margin-top:6px;display:inline-block;padding:2px 8px;background:#dcfce7;color:#16a34a;border-radius:10px;font-size:10px;">PI助理</div>
+            </div>
+            <div style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:10px;font-size:11px;color:#525252;">
+              <div style="font-weight:600;margin-bottom:4px;color:#1a1a1a;">快捷入口</div>
+              <div style="padding:4px 6px;border-radius:4px;background:#f5f5f5;margin-bottom:2px;">🔑 我的门禁</div>
+              <div style="padding:4px 6px;border-radius:4px;background:#f5f5f5;margin-bottom:2px;">📋 我的记录</div>
+              <div style="padding:4px 6px;border-radius:4px;background:#f5f5f5;">⚙️ 账户设置</div>
+            </div>
+          </div>
+          <!-- main content area -->
+          <div style="flex:1;display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;gap:8px;">
+              <div style="flex:1;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+                <div style="font-size:10px;color:#8c8c8c;text-transform:uppercase;">今日进出</div>
+                <div style="font-size:24px;font-weight:700;color:#1a1a1a;">3 次</div>
+              </div>
+              <div style="flex:1;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+                <div style="font-size:10px;color:#8c8c8c;text-transform:uppercase;">AI活跃度</div>
+                <div style="font-size:24px;font-weight:700;color:#8b5cf6;">87%</div>
+              </div>
+              <div style="flex:1;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+                <div style="font-size:10px;color:#8c8c8c;text-transform:uppercase;">可进房间</div>
+                <div style="font-size:24px;font-weight:700;color:#16a34a;">12</div>
+              </div>
+            </div>
+            <div style="background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+              <div style="font-weight:600;font-size:13px;color:#1a1a1a;margin-bottom:8px;">我的最近出入记录</div>
+              <div style="font-size:11px;color:#8c8c8c;">暂无记录</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <div style="flex:1;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+                <div style="font-weight:600;font-size:13px;color:#1a1a1a;margin-bottom:4px;">课题组公告</div>
+                <div style="font-size:11px;color:#525252;">安全培训通知 · 6/15</div>
+              </div>
+              <div style="flex:1;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+                <div style="font-weight:600;font-size:13px;color:#1a1a1a;margin-bottom:4px;">官方新闻</div>
+                <div style="font-size:11px;color:#525252;">动物房新规发布</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 个人中心型</h3>
+      <p><strong>C位 = 个人数据</strong>：左侧固定个人卡片+快捷入口，主区域展示"我的"统计数据、记录、动态。课题组信息为辅助卡片。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优势</h4><ul><li>学生直觉："我的后台"</li><li>个人信息一目了然</li><li>适合日常高频个人操作</li></ul></div>
+        <div class="cons"><h4>不足</h4><ul><li>课题组协作感弱</li><li>组长难以批量管理</li><li>扩展性受限于"个人"视角</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="background:#fafafa;border-radius:12px;padding:16px;min-height:280px;">
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <!-- group banner -->
+          <div style="background:linear-gradient(135deg,#ede9fe,#ddd6fe);border-radius:10px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:10px;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;">我的课题组</div>
+              <div style="font-weight:700;font-size:18px;color:#1a1a1a;">神经科学课题组</div>
+              <div style="font-size:12px;color:#525252;">成员 8 人 · 组长: 李教授 · 可进房间 12 间</div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <div style="background:#fff;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;color:#8b5cf6;">组公告</div>
+              <div style="background:#fff;border-radius:6px;padding:6px 10px;font-size:11px;font-weight:600;color:#8b5cf6;">成员</div>
+            </div>
+          </div>
+          <!-- stats row -->
+          <div style="display:flex;gap:8px;">
+            <div style="flex:1;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+              <div style="font-size:10px;color:#8c8c8c;">组内在室人数</div>
+              <div style="font-size:24px;font-weight:700;color:#8b5cf6;">5/8</div>
+            </div>
+            <div style="flex:1;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+              <div style="font-size:10px;color:#8c8c8c;">常用房间占用</div>
+              <div style="font-size:24px;font-weight:700;color:#16a34a;">3间空闲</div>
+            </div>
+            <div style="flex:1;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+              <div style="font-size:10px;color:#8c8c8c;">我的身份</div>
+              <div style="font-size:16px;font-weight:700;color:#1a1a1a;">PI助理</div>
+            </div>
+          </div>
+          <!-- two-column -->
+          <div style="display:flex;gap:8px;">
+            <div style="flex:1;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+              <div style="font-weight:600;font-size:13px;color:#1a1a1a;margin-bottom:6px;">组内动态</div>
+              <div style="font-size:11px;color:#525252;line-height:1.8;">王五 进入 动物房B<br>赵六 离开 实验室A<br>张三 进入 动物房B</div>
+            </div>
+            <div style="flex:1;background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:12px;">
+              <div style="font-weight:600;font-size:13px;color:#1a1a1a;margin-bottom:6px;">通知与公告</div>
+              <div style="font-size:11px;color:#525252;line-height:1.8;">ARO安全培训通知<br>平台公告: 系统升级<br>课题组: 组会通知</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 课题组门户型</h3>
+      <p><strong>C位 = 课题组信息</strong>：顶部课题组横幅（名称/人数/组长/快捷入口），统计数据突出组维度（组内在室人数、房间占用），个人身份以标签形式呈现。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>优势</h4><ul><li>课题组协作感强</li><li>组长可快速掌握全局</li><li>扩展性好——新功能挂在组下</li></ul></div>
+        <div class="cons"><h4>不足</h4><ul><li>个人"我的"感弱于A</li><li>组内隐私需额外处理</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>我的推荐</h3>
+  <div class="mockup">
+    <div class="mockup-header">推荐：B 型为基础 + A 型个人卡片混合 = 双轴仪表盘</div>
+    <div class="mockup-body">
+      <p><strong>理由：</strong></p>
+      <ul style="padding-left:20px;line-height:2;">
+        <li><strong>B 型作为骨架</strong> — 顶部课题组横幅提供"组"维度的全局视野，适合你"按组批量操作"的需求</li>
+        <li><strong>A 型个人卡片嵌入</strong> — 左侧保留精简个人卡片（头像+身份标签+快捷入口），不丢失"我的"感</li>
+        <li><strong>双轴权限模型</strong> — 组级资源（房间/公告/动态）+ 个人级资源（我的记录/违规/设置），天然分层</li>
+        <li><strong>可扩展</strong> — 新功能只需决定挂在"组"轴还是"个人"轴下，导航结构自动清晰</li>
+      </ul>
+    </div>
+  </div>
+</div>
