@@ -13,6 +13,7 @@ public class AnalyticsReportRegistry {
 
     public static final String REPORT_ISOLATION_USAGE = "isolation_usage";
     public static final String REPORT_CAGE_OCCUPANCY = "cage_occupancy";
+    public static final String REPORT_STUDENT_ACTIVITY = "student_activity";
 
     public List<AnalyticsReportDescriptorDto> listReports() {
         return List.of(
@@ -28,6 +29,13 @@ public class AnalyticsReportRegistry {
                         "笼架占用统计",
                         "统计已预约且已放置笼盒的笼位数（实时 ARO 快照），筛选方式与隔离服统计一致。",
                         "笼架与预约",
+                        true
+                ),
+                new AnalyticsReportDescriptorDto(
+                        REPORT_STUDENT_ACTIVITY,
+                        "学生活跃度统计",
+                        "按课题组筛选成员，查看进出次数、在馆时长、时段热力等活跃度指标。",
+                        "人员与活跃度",
                         true
                 )
         );
