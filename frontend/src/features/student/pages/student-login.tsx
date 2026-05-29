@@ -1,9 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { StudentButton } from "../components/ui/button";
-import { StudentInput } from "../components/ui/input";
-import { StudentCard } from "../components/ui/card";
-import { showToast } from "../components/ui/toast";
+import { StudentButton, StudentInput, StudentCard, showToast } from "../components/ui";
 import { loginWeb } from "@/api/domains/auth.api";
 import { authStorage } from "@/features/auth/authStorage";
 

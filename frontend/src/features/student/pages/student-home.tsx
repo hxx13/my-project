@@ -1,5 +1,5 @@
 import { FileText, Key, User } from "lucide-react";
-import { StudentCard } from "../components/ui/card";
+import { StudentCard } from "../components/ui";
 
 const cards = [
   {

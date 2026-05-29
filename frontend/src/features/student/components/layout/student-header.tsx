@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { Bell, LogOut, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authStorage } from "@/features/auth/authStorage";
-import { Avatar } from "../ui/avatar";
+import { Avatar } from "../ui";
 
 interface StudentHeaderProps {
   onMenuClick: () => void;

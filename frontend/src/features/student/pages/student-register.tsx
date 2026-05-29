@@ -1,13 +1,10 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle } from "lucide-react";
-import { QrUploader } from "../components/qr/qr-uploader";
-import { StudentButton } from "../components/ui/button";
-import { StudentInput } from "../components/ui/input";
-import { StudentCard } from "../components/ui/card";
-import { showToast } from "../components/ui/toast";
+import { QrUploader } from "../components/qr";
+import { StudentButton, StudentInput, StudentCard, showToast } from "../components/ui";
 import { authStorage } from "@/features/auth/authStorage";
-import { registerStudent } from "@/features/student/api/student.api";
+import { registerStudent } from "../api";
 import type { AuthUserInfo } from "@/api/domains/auth.api";
 
 type RegisterStep = "qr" | "confirm" | "credentials" | "success";

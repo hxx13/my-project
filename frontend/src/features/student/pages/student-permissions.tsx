@@ -1,5 +1,5 @@
 import { Key } from "lucide-react";
-import { EmptyState } from "../components/ui/empty-state";
+import { EmptyState } from "../components/ui";
 
 export default function StudentPermissionsPage() {
   return (

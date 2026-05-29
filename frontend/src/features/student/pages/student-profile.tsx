@@ -1,10 +1,6 @@
 import { ShieldCheck } from "lucide-react";
-import { useStudentProfile } from "../hooks/use-student-profile";
-import { Avatar } from "../components/ui/avatar";
-import { Badge } from "../components/ui/badge";
-import { Skeleton } from "../components/ui/skeleton";
-import { ErrorRetry } from "../components/ui/error-retry";
-import { StudentCard } from "../components/ui/card";
+import { useStudentProfile } from "../hooks";
+import { Avatar, Badge, Skeleton, ErrorRetry, StudentCard } from "../components/ui";
 
 function ProfileSkeleton() {
   return (

@@ -1,9 +1,6 @@
 import { useState } from "react";
-import { StudentCard } from "../components/ui/card";
-import { StudentInput } from "../components/ui/input";
-import { StudentButton } from "../components/ui/button";
-import { ThemePicker } from "../components/ui/theme-picker";
-import { useStudentTheme } from "../hooks/use-student-theme";
+import { StudentCard, StudentInput, StudentButton, ThemePicker } from "../components/ui";
+import { useStudentTheme } from "../hooks";
 import { changePasswordAfterReset } from "@/api/domains/auth.api";
 
 export default function StudentSettingsPage() {
