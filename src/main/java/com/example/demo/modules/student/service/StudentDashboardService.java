@@ -1,6 +1,5 @@
 package com.example.demo.modules.student.service;
 
-import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.student.dto.StudentDashboardResponse;
 import com.example.demo.modules.student.dto.StudentProfileResponse;
@@ -15,12 +14,9 @@ public class StudentDashboardService {
 
     private static final Logger log = LoggerFactory.getLogger(StudentDashboardService.class);
 
-    private final AroPersonnelMapper aroPersonnelMapper;
     private final StudentProfileService studentProfileService;
 
-    public StudentDashboardService(AroPersonnelMapper aroPersonnelMapper,
-                                    StudentProfileService studentProfileService) {
-        this.aroPersonnelMapper = aroPersonnelMapper;
+    public StudentDashboardService(StudentProfileService studentProfileService) {
         this.studentProfileService = studentProfileService;
     }
 
