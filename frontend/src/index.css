@@ -1,6 +1,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/figtree";
+@import "@/features/student/config/student-design-tokens.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -50,6 +51,25 @@
     --admin-focus-ring: oklch(0.708 0 0 / 0.45);
     --admin-z-command-overlay: 1300;
     --admin-z-command-content: 1301;
+    /* === Twin Design Tokens (Vercel-inspired semantic palette) === */
+    --twin-ink: #171717;
+    --twin-body: #4d4d4d;
+    --twin-mute: #888888;
+    --twin-canvas: #ffffff;
+    --twin-canvas-soft: #fafafa;
+    --twin-canvas-soft-2: #f5f5f5;
+    --twin-hairline: #ebebeb;
+    --twin-hairline-strong: #a1a1a1;
+    --twin-link: #0070f3;
+    --twin-link-deep: #0761d1;
+    --twin-primary: #171717;
+    --twin-on-primary: #ffffff;
+    --twin-error: #ee0000;
+    --twin-error-soft: #f7d4d6;
+    --twin-warning: #f5a623;
+    --twin-warning-soft: #ffefcf;
+    --twin-success: #0070f3;
+    --twin-page-bg: #fafafa;
   }
   .dark {
     --background: oklch(0.145 0 0);
@@ -82,7 +102,26 @@
     --sidebar-accent: oklch(0.269 0 0);
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0)
+    --sidebar-ring: oklch(0.556 0 0);
+    /* Twin dark tokens */
+    --twin-ink: #f7f8f8;
+    --twin-body: #d0d6e0;
+    --twin-mute: #8a8f98;
+    --twin-canvas: #0f1011;
+    --twin-canvas-soft: #010102;
+    --twin-canvas-soft-2: #141516;
+    --twin-hairline: #23252a;
+    --twin-hairline-strong: #34343a;
+    --twin-link: #5e6ad2;
+    --twin-link-deep: #828fff;
+    --twin-primary: #f7f8f8;
+    --twin-on-primary: #010102;
+    --twin-error: #ef4444;
+    --twin-error-soft: #3b1010;
+    --twin-warning: #f59e0b;
+    --twin-warning-soft: #3b2e0a;
+    --twin-success: #27a644;
+    --twin-page-bg: #010102;
   }
   .theme {
     --font-sans: 'Figtree Variable', sans-serif

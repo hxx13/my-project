@@ -1,0 +1,84 @@
+/* 学生端设计令牌 —— Vercel骨架 + Notion色彩 + Airbnb圆角 */
+
+:root {
+  /* === 主色调（默认浅紫） === */
+  --student-primary:          #8b5cf6;
+  --student-primary-hover:    #7c3aed;
+  --student-primary-pressed:  #6d28d9;
+  --student-primary-soft:     #ede9fe;
+  --student-primary-muted:    #ddd6fe;
+  --student-on-primary:       #ffffff;
+
+  /* === 灰度阶梯（Vercel体系） === */
+  --student-ink:              #1a1a1a;
+  --student-body:             #525252;
+  --student-mute:             #8c8c8c;
+  --student-canvas:           #ffffff;
+  --student-canvas-soft:      #fafafa;
+  --student-canvas-soft-2:    #f5f5f5;
+  --student-hairline:         #e5e5e5;
+  --student-hairline-strong:  #a3a3a3;
+
+  /* === 功能色卡 === */
+  --student-accent-access:        #16a34a;
+  --student-accent-access-soft:   #dcfce7;
+  --student-accent-telemetry:     #0284c7;
+  --student-accent-telemetry-soft:#e0f2fe;
+  --student-accent-alert:         #d97706;
+  --student-accent-alert-soft:    #fef3c7;
+  --student-accent-profile:       #7c3aed;
+  --student-accent-profile-soft:  #ede9fe;
+
+  /* === 语义色 === */
+  --student-success:          #16a34a;
+  --student-success-soft:     #dcfce7;
+  --student-error:            #dc2626;
+  --student-error-soft:       #fee2e2;
+  --student-warning:          #f59e0b;
+  --student-warning-soft:     #fef3c7;
+
+  /* === 圆角 === */
+  --student-radius-xs:   6px;
+  --student-radius-sm:   8px;
+  --student-radius-md:   12px;
+  --student-radius-lg:   16px;
+  --student-radius-xl:   24px;
+  --student-radius-pill: 100px;
+  --student-radius-full: 9999px;
+
+  /* === 阴影（三层） === */
+  --student-shadow-card:
+    0 0 0 1px rgba(0,0,0,0.08),
+    0 1px 2px rgba(0,0,0,0.04),
+    0 2px 4px rgba(0,0,0,0.04);
+  --student-shadow-card-hover:
+    0 0 0 1px rgba(0,0,0,0.08),
+    0 2px 4px rgba(0,0,0,0.06),
+    0 8px 16px rgba(0,0,0,0.06);
+  --student-shadow-modal:
+    0 0 0 1px rgba(0,0,0,0.08),
+    0 8px 16px rgba(0,0,0,0.08),
+    0 24px 48px rgba(0,0,0,0.10);
+}
+
+/* === 主题色变体（5套预设） === */
+[data-student-theme="violet"] {
+  --student-primary: #8b5cf6;
+  --student-primary-soft: #ede9fe;
+}
+[data-student-theme="blue"] {
+  --student-primary: #3b82f6;
+  --student-primary-soft: #dbeafe;
+}
+[data-student-theme="green"] {
+  --student-primary: #22c55e;
+  --student-primary-soft: #dcfce7;
+}
+[data-student-theme="amber"] {
+  --student-primary: #f59e0b;
+  --student-primary-soft: #fef3c7;
+}
+[data-student-theme="rose"] {
+  --student-primary: #f43f5e;
+  --student-primary-soft: #ffe4e6;
+}
