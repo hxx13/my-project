@@ -10,12 +10,14 @@ import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AnalyticsCopilotDialog } from "@/features/analytics/components/AnalyticsCopilotDialog";
 import { CageOccupancyReportPanel } from "@/features/analytics/components/CageOccupancyReportPanel";
 import { IsolationUsageReportPanel } from "@/features/analytics/components/IsolationUsageReportPanel";
+import { StudentActivityReportPanel } from "@/features/analytics/components/StudentActivityReportPanel";
 import { cn } from "@/lib/utils";
 
 const ISOLATION_REPORT_KEY = "isolation_usage";
 const CAGE_REPORT_KEY = "cage_occupancy";
+const STUDENT_ACTIVITY_KEY = "student_activity";
 
-const ANALYTICS_REPORT_KEYS = [ISOLATION_REPORT_KEY, CAGE_REPORT_KEY] as const;
+const ANALYTICS_REPORT_KEYS = [ISOLATION_REPORT_KEY, CAGE_REPORT_KEY, STUDENT_ACTIVITY_KEY] as const;
 
 export default function AdminAnalyticsPage() {
   const { data: reports = [], isLoading } = useQuery({
@@ -97,6 +99,7 @@ export default function AdminAnalyticsPage() {
 
           {activeKey === ISOLATION_REPORT_KEY ? <IsolationUsageReportPanel /> : null}
           {activeKey === CAGE_REPORT_KEY ? <CageOccupancyReportPanel /> : null}
+          {activeKey === STUDENT_ACTIVITY_KEY ? <StudentActivityReportPanel /> : null}
           {!isAnalyticsReport ? (
             <p className="text-sm text-neutral-500">该报表模块即将上线。</p>
           ) : null}
@@ -105,7 +108,7 @@ export default function AdminAnalyticsPage() {
             <AnalyticsCopilotDialog
               open={copilotOpen}
               onClose={() => setCopilotOpen(false)}
-              reportKey={activeKey as typeof ISOLATION_REPORT_KEY | typeof CAGE_REPORT_KEY}
+              reportKey={activeKey as typeof ISOLATION_REPORT_KEY | typeof CAGE_REPORT_KEY | typeof STUDENT_ACTIVITY_KEY}
               configCount={activeViews.length}
             />
           ) : null}
