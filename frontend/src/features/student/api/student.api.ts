@@ -143,3 +143,261 @@ export async function fetchStudentPermissions(): Promise<{ rooms: StudentPermiss
   }
   return res.data.data;
 }
+
+// ======================== Phase 2 类型 ========================
+
+export interface DashboardData {
+  profile: {
+    name: string;
+    departmentName: string;
+    projectGroupName: string;
+    roleLabel: string;
+    authStatus: string;
+  };
+  stats: {
+    todayAccessCount: number;
+    violationCount: number;
+    unreadNoticeCount: number;
+    accessibleRoomCount: number;
+  };
+  pinnedRooms: RoomData[];
+  recentRecords: { time: string; type: string; roomName: string }[];
+  recentNotices: { title: string; type: string; publishDate: string }[];
+}
+
+export interface RoomData {
+  roomId: string;
+  roomName: string;
+  floor: string;
+  zone: string;
+  occupantCount: number;
+  capacity: number;
+  occupancyRate: number;
+  status: 'idle' | 'busy' | 'full';
+  isPinned: boolean;
+}
+
+export interface StatsData {
+  period: { start: string; end: string; days: number };
+  summary: { totalAccess: number; dailyAvg: number; attendanceDays: number; roomCount: number; violationCount: number };
+  dailyTrend: { date: string; count: number }[];
+  hourlyDistribution: { bucket: string; count: number }[];
+  roomDistribution: { roomName: string; count: number; percentage: number }[];
+  avgStayDuration: { roomName: string; durationMinutes: number }[];
+}
+
+export interface NotificationData {
+  id: string;
+  title: string;
+  summary: string;
+  type: 'ARO' | 'PLATFORM';
+  publishDate: string;
+  isRead: boolean;
+  sourceUrl?: string;
+}
+
+export interface ViolationData {
+  id: string;
+  time: string;
+  type: string;
+  roomName: string;
+  doorName: string;
+  description: string;
+  penalty: string;
+  status: 'pending' | 'processed' | 'appealing';
+  processedBy?: string;
+  processedTime?: string;
+}
+
+export interface FaqGroup {
+  category: string;
+  items: { question: string; answer: string }[];
+}
+
+export interface FeedbackTicketData {
+  id: string;
+  subject: string;
+  content: string;
+  type: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ======================== Phase 2 API ========================
+
+/**
+ * 获取学生仪表盘数据
+ * GET /api/student/dashboard
+ */
+export async function fetchDashboard(): Promise<DashboardData> {
+  const res = await authHttp.get<Result<DashboardData>>("/student/dashboard");
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取仪表盘数据失败");
+  }
+  return res.data.data;
+}
+
+/** fetchRooms 查询参数 */
+export interface FetchRoomsParams {
+  pinned?: string;
+  floor?: string;
+  status?: string;
+  search?: string;
+  page?: number;
+  size?: number;
+}
+
+/**
+ * 获取房间列表
+ * GET /api/student/rooms
+ */
+export async function fetchRooms(
+  params: FetchRoomsParams = {}
+): Promise<{ data: RoomData[]; total: number; page: number; size: number }> {
+  const res = await authHttp.get<Result<{ data: RoomData[]; total: number; page: number; size: number }>>(
+    "/student/rooms",
+    { params }
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取房间列表失败");
+  }
+  return res.data.data;
+}
+
+/**
+ * 切换房间置顶状态
+ * PUT /api/student/rooms/:roomId/pin
+ */
+export async function toggleRoomPin(roomId: string): Promise<void> {
+  const res = await authHttp.put<Result<void>>(`/student/rooms/${roomId}/pin`);
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "操作失败");
+  }
+}
+
+/**
+ * 获取学生统计面板数据
+ * GET /api/student/stats
+ */
+export async function fetchStats(period?: string): Promise<StatsData> {
+  const res = await authHttp.get<Result<StatsData>>("/student/stats", {
+    params: period ? { period } : undefined,
+  });
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取统计数据失败");
+  }
+  return res.data.data;
+}
+
+/** fetchNotifications 查询参数 */
+export interface FetchNotificationsParams {
+  type?: string;
+  page?: number;
+  size?: number;
+}
+
+/**
+ * 获取通知消息列表
+ * GET /api/student/notifications
+ */
+export async function fetchNotifications(
+  params: FetchNotificationsParams = {}
+): Promise<{ data: NotificationData[]; total: number; unreadCount: number }> {
+  const res = await authHttp.get<
+    Result<{ data: NotificationData[]; total: number; unreadCount: number }>
+  >("/student/notifications", { params });
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取通知失败");
+  }
+  return res.data.data;
+}
+
+/**
+ * 标记通知已读
+ * PUT /api/student/notifications/:id/read
+ */
+export async function markNotificationRead(id: string): Promise<void> {
+  const res = await authHttp.put<Result<void>>(`/student/notifications/${id}/read`);
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "标记已读失败");
+  }
+}
+
+/** fetchViolations 查询参数 */
+export interface FetchViolationsParams {
+  page?: number;
+  size?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+/**
+ * 获取违规记录列表
+ * GET /api/student/violations
+ */
+export async function fetchViolations(
+  params: FetchViolationsParams = {}
+): Promise<{ data: ViolationData[]; total: number }> {
+  const res = await authHttp.get<Result<{ data: ViolationData[]; total: number }>>(
+    "/student/violations",
+    { params }
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取违规记录失败");
+  }
+  return res.data.data;
+}
+
+/**
+ * 获取常见问题分组
+ * GET /api/student/feedback/faq
+ */
+export async function fetchFaqGroups(): Promise<FaqGroup[]> {
+  const res = await authHttp.get<Result<FaqGroup[]>>("/student/feedback/faq");
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取 FAQ 失败");
+  }
+  return res.data.data;
+}
+
+/**
+ * 获取反馈工单列表
+ * GET /api/student/feedback/tickets
+ */
+export async function fetchFeedbackTickets(
+  page: number = 1,
+  size: number = 10
+): Promise<{ data: FeedbackTicketData[]; total: number }> {
+  const res = await authHttp.get<
+    Result<{ data: FeedbackTicketData[]; total: number }>
+  >("/student/feedback/tickets", { params: { page, size } });
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取工单失败");
+  }
+  return res.data.data;
+}
+
+/** createFeedbackTicket 请求体 */
+export interface CreateFeedbackTicketBody {
+  subject: string;
+  content: string;
+  type: string;
+}
+
+/**
+ * 创建反馈工单
+ * POST /api/student/feedback/tickets
+ */
+export async function createFeedbackTicket(
+  data: CreateFeedbackTicketBody
+): Promise<FeedbackTicketData> {
+  const res = await authHttp.post<Result<FeedbackTicketData>>(
+    "/student/feedback/tickets",
+    data
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "提交工单失败");
+  }
+  return res.data.data;
+}
