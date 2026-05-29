@@ -1,13 +1,28 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { authStorage } from "@/features/auth/authStorage";
+import { hasMinRole } from "@/features/auth/roleAccess";
 
-export default function AuthGuard() {
+interface AuthGuardProps {
+  requireRole?: string;
+  children?: React.ReactNode;
+}
+
+export default function AuthGuard({ requireRole, children }: AuthGuardProps) {
   const location = useLocation();
   const hasToken = authStorage.hasToken();
 
   if (!hasToken) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    const loginPath = requireRole === "STUDENT" ? "/student/login" : "/login";
+    return <Navigate to={loginPath} replace state={{ from: location }} />;
   }
 
-  return <Outlet />;
+  if (requireRole) {
+    const role = authStorage.getRole() ?? "STUDENT";
+    if (!hasMinRole(role, requireRole)) {
+      const target = role === "STUDENT" ? "/student/home" : "/admin";
+      return <Navigate to={target} replace />;
+    }
+  }
+
+  return <>{children ?? <Outlet />}</>;
 }

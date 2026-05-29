@@ -26,6 +26,7 @@ import AdminNotificationPage from "@/pages/AdminNotificationPage";
 import AdminSettingsPage from "@/pages/AdminSettingsPage";
 import AdminApiDocsPage from "@/pages/AdminApiDocsPage";
 import AdminExternalCommConfigPage from "@/pages/AdminExternalCommConfigPage";
+import AdminLoggingConsolePage from "@/pages/AdminLoggingConsolePage";
 import AdminDoorGroupStoragePage from "@/pages/AdminDoorGroupStoragePage";
 import AdminDepartmentStoragePage from "@/pages/AdminDepartmentStoragePage";
 import AdminDeviceChannelPage from "@/pages/AdminDeviceChannelPage";
@@ -67,6 +68,14 @@ import AdminLoginBrandingPage from "@/pages/AdminLoginBrandingPage";
 import AdminInviteCodesPage from "@/pages/AdminInviteCodesPage";
 import AdminContentHubPage from "@/pages/AdminContentHubPage";
 import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
+import StudentLoginPage from "@/features/student/pages/student-login";
+import StudentRegisterPage from "@/features/student/pages/student-register";
+import StudentLayout from "@/features/student/components/layout/student-layout";
+import StudentHomePage from "@/features/student/pages/student-home";
+import StudentRecordsPage from "@/features/student/pages/student-records";
+import StudentPermissionsPage from "@/features/student/pages/student-permissions";
+import StudentProfilePage from "@/features/student/pages/student-profile";
+import StudentSettingsPage from "@/features/student/pages/student-settings";
 
 export const router = createHashRouter([
     {
@@ -76,6 +85,22 @@ export const router = createHashRouter([
     {
         path: "/register",
         element: <RegisterStaffPage/>,
+    },
+    // 学生端公开路由
+    { path: "/student/login", element: <StudentLoginPage /> },
+    { path: "/student/register", element: <StudentRegisterPage /> },
+    // 学生端受保护路由
+    {
+        path: "/student",
+        element: <AuthGuard requireRole="STUDENT"><StudentLayout /></AuthGuard>,
+        children: [
+            { index: true, element: <Navigate to="/student/home" replace /> },
+            { path: "home", element: <StudentHomePage /> },
+            { path: "records", element: <StudentRecordsPage /> },
+            { path: "permissions", element: <StudentPermissionsPage /> },
+            { path: "profile", element: <StudentProfilePage /> },
+            { path: "settings", element: <StudentSettingsPage /> },
+        ],
     },
     {
         element: <AuthGuard/>,
@@ -211,6 +236,7 @@ export const router = createHashRouter([
                                 children: [
                                     { path: "personnel", element: <AdminPersonnelPage/>},
                                     { path: "settings", element: <AdminSettingsPage/>},
+                                    { path: "logging-console", element: <AdminLoggingConsolePage/>},
                                     { path: "external-comm-config", element: <AdminExternalCommConfigPage/>},
                                     { path: "api-docs", element: <AdminApiDocsPage/>},
                                     { path: "page-permissions", element: <AdminPagePermissionSettingsPage/>},
