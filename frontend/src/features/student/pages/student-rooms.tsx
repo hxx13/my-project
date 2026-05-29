@@ -45,19 +45,19 @@ const STATUS_OPTIONS = [
   { value: "full", label: "已满" },
 ];
 
-const STATUS_BADGE_VARIANT: Record<string, "success" | "warning" | "error"> = {
+const STATUS_BADGE_VARIANT: Record<RoomData["status"], "success" | "warning" | "error"> = {
   idle: "success",
   busy: "warning",
   full: "error",
 };
 
-const STATUS_LABEL: Record<string, string> = {
+const STATUS_LABEL: Record<RoomData["status"], string> = {
   idle: "空闲",
   busy: "较满",
   full: "已满",
 };
 
-const STATUS_BAR_COLOR: Record<string, string> = {
+const STATUS_BAR_COLOR: Record<RoomData["status"], string> = {
   idle: "#16a34a",
   busy: "#d97706",
   full: "#dc2626",
