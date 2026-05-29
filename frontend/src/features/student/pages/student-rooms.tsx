@@ -367,61 +367,24 @@ export default function StudentRoomsPage() {
         />
       ) : viewMode === "card" ? (
         /* ---- Card Grid View ---- */
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {roomsForDisplay.map((room) => (
-              <RoomCard
-                key={room.roomId}
-                roomName={room.roomName}
-                floor={room.floor}
-                zone={room.zone}
-                occupantCount={room.occupantCount}
-                capacity={room.capacity}
-                status={room.status}
-                isPinned={room.isPinned}
-                onTogglePin={() => handleTogglePin(room.roomId)}
-                onClick={() =>
-                  navigate(`/student/rooms?highlight=${room.roomId}`)
-                }
-              />
-            ))}
-          </div>
-
-          {/* Pagination — only on "all" tab in card view */}
-          {activeTab === "all" && totalPages > 1 && (
-            <div className="flex items-center justify-center gap-4 mt-6">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className={cn(
-                  "inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-[var(--student-radius-md)] transition-colors",
-                  page <= 1
-                    ? "text-[var(--student-mute)] cursor-not-allowed"
-                    : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)]",
-                )}
-              >
-                <ChevronLeft className="size-4" />
-                上一页
-              </button>
-              <span className="text-sm text-[var(--student-body)]">
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className={cn(
-                  "inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-[var(--student-radius-md)] transition-colors",
-                  page >= totalPages
-                    ? "text-[var(--student-mute)] cursor-not-allowed"
-                    : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)]",
-                )}
-              >
-                下一页
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-          )}
-        </>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {roomsForDisplay.map((room) => (
+            <RoomCard
+              key={room.roomId}
+              roomName={room.roomName}
+              floor={room.floor}
+              zone={room.zone}
+              occupantCount={room.occupantCount}
+              capacity={room.capacity}
+              status={room.status}
+              isPinned={room.isPinned}
+              onTogglePin={() => handleTogglePin(room.roomId)}
+              onClick={() =>
+                navigate(`/student/rooms?highlight=${room.roomId}`)
+              }
+            />
+          ))}
+        </div>
       ) : (
         /* ---- List View ---- */
         <Table<RoomData>
@@ -432,6 +395,41 @@ export default function StudentRoomsPage() {
             navigate(`/student/rooms?highlight=${row.roomId}`)
           }
         />
+      )}
+
+      {/* Pagination — on "all" tab for both views */}
+      {activeTab === "all" && totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 mt-6">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className={cn(
+              "inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-[var(--student-radius-md)] transition-colors",
+              page <= 1
+                ? "text-[var(--student-mute)] cursor-not-allowed"
+                : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)]",
+            )}
+          >
+            <ChevronLeft className="size-4" />
+            上一页
+          </button>
+          <span className="text-sm text-[var(--student-body)]">
+            {page} / {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className={cn(
+              "inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-[var(--student-radius-md)] transition-colors",
+              page >= totalPages
+                ? "text-[var(--student-mute)] cursor-not-allowed"
+                : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)]",
+            )}
+          >
+            下一页
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
       )}
     </div>
   );
