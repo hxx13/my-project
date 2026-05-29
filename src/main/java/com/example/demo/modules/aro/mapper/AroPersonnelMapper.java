@@ -3,6 +3,9 @@ package com.example.demo.modules.aro.mapper;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Result;
+import org.apache.ibatis.annotations.Results;
+import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -15,4 +18,10 @@ public interface AroPersonnelMapper {
             @Param("text") String text,
             @Param("hasOfficialRoomPermission") int hasOfficialRoomPermission,
             @Param("currentTime") String currentTime);
+
+    @Select("SELECT * FROM aro_personnel WHERE user_id = #{userId}")
+    @Results({
+            @Result(property = "id", column = "user_id")
+    })
+    AroPersonnel findByUserId(@Param("userId") String userId);
 }
