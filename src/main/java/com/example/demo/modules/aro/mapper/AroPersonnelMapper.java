@@ -24,4 +24,10 @@ public interface AroPersonnelMapper {
             @Result(property = "id", column = "user_id")
     })
     AroPersonnel findByUserId(@Param("userId") String userId);
+
+    @Select("SELECT * FROM aro_personnel WHERE name = #{name}")
+    @Results({
+            @Result(property = "id", column = "user_id")
+    })
+    AroPersonnel findByName(@Param("name") String name);
 }

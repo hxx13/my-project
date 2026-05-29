@@ -47,4 +47,6 @@ public class User {
      * 认证来源：WECHAT_ARO（微信+ARO 学号/工号绑定）、WEB_PASSWORD（Web 账号密码体系）。
      */
     private String authProfile;
+
+    private String createTime;
 }

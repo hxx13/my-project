@@ -16,10 +16,11 @@
         <result property="miniBindType" column="mini_bind_type"/>
         <result property="miniPreferencesJson" column="mini_preferences_json"/>
         <result property="authProfile" column="auth_profile"/>
+        <result property="createTime" column="create_time"/>
     </resultMap>
 
     <sql id="User_Column_List">
-        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile
+        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, create_time
     </sql>
 
     <select id="findByUsername" resultMap="UserResultMap">
