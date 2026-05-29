@@ -103,6 +103,12 @@ export default function RegisterStaffPage() {
             去登录
           </Link>
         </p>
+        <p className="mt-3 text-center text-sm text-slate-400">
+          学生注册？
+          <Link to="/student/register" className="ml-1 text-blue-400 hover:text-blue-300">
+            进入学生中心注册
+          </Link>
+        </p>
       </div>
     </div>
   );

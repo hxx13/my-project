@@ -414,6 +414,12 @@ export default function LoginPage() {
                   去注册
                 </Link>
               </p>
+              <p className="mt-3 text-center text-sm text-[#9a8b72]">
+                学生用户？
+                <Link to="/student/login" className="ml-1 font-medium text-[#e8c547] hover:text-[#f5e6a8]">
+                  进入学生中心
+                </Link>
+              </p>
             </div>
           </aside>
         </>
