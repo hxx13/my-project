@@ -938,4 +938,48 @@
             max_capacity = VALUES(max_capacity)
     </insert>
 
+    <select id="listUserIdsByProjectGroup" resultType="string">
+        SELECT user_id
+        FROM aro_personnel
+        WHERE project_group_name LIKE CONCAT('%', #{groupName}, '%')
+           OR project_groups LIKE CONCAT('%', #{groupName}, '%')
+        LIMIT #{limit}
+    </select>
+
+    <select id="listAccessLogsByUserIds" resultType="map">
+        SELECT log.id,
+               log.user_id,
+               log.accessType,
+               log.create_time,
+               log.name,
+               log.project_group_names,
+               log.area_name,
+               log.room_name
+        FROM aro_access_log log
+        WHERE log.user_id IN
+        <foreach collection="userIds" item="uid" open="(" close=")" separator=",">
+            #{uid}
+        </foreach>
+        <if test="startTime != null and startTime != ''">
+            AND log.create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null and endTime != ''">
+            AND log.create_time &lt;= #{endTime}
+        </if>
+        ORDER BY log.user_id, log.create_time ASC
+    </select>
+
+    <select id="countDistinctProjectGroups" resultType="int">
+        SELECT COUNT(DISTINCT TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(project_group_name, ',', n.n), ',', -1)))
+        FROM aro_personnel
+        JOIN (
+            SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
+            UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
+        ) n ON CHAR_LENGTH(project_group_name) - CHAR_LENGTH(REPLACE(project_group_name, ',', '')) &gt;= n.n - 1
+        WHERE project_group_name IS NOT NULL AND TRIM(project_group_name) != ''
+        <if test="keyword != null and keyword != ''">
+            AND project_group_name LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+    </select>
+
 </mapper>
