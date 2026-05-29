@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
-import { createPurchaseOrder, fetchPurchaseOrders, type PurchaseOrderRecord, withdrawPurchaseOrder } from "@/api/domains/purchase.api";
+import { usePurchaseList, useCreatePurchase, useWithdrawPurchase } from "@/api/hooks/usePurchase";
+import type { PurchaseOrderRecord } from "@/api/domains/purchase.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { WorkorderImageThumb } from "@/components/WorkorderImageThumb";
 import { WorkorderNotificationReadButton } from "@/components/WorkorderNotificationReadButton";
 import { useWorkorderUnreadFlags } from "@/features/notification/useWorkorderUnreadFlags";
+import DataSkeleton from "@/components/ui/DataSkeleton";
+import EmptyState from "@/components/ui/EmptyState";
+import { Button } from "@/components/ui/button";
 
 const STATUS_TEXT: Record<string, string> = {
   PENDING: "待处理",
@@ -23,34 +26,23 @@ export default function PurchaseRequestPage() {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [size] = useState(10);
-  const [rows, setRows] = useState<PurchaseOrderRecord[]>([]);
-  const [total, setTotal] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [previewUrl, setPreviewUrl] = useState("");
 
+  const {
+    data: listData,
+    isLoading,
+    refetch,
+  } = usePurchaseList({ page, size, status, dateFrom, dateTo });
+
+  const rows: PurchaseOrderRecord[] = listData?.data ?? [];
+  const total = listData?.total ?? 0;
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / size)), [total, size]);
 
-    const orderIds = rows.map((r) => r.id);
+  const orderIds = rows.map((r) => r.id);
   const { isUnread: isPurchaseNoticeUnread } = useWorkorderUnreadFlags("PURCHASE", orderIds);
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchPurchaseOrders({ page, size, status, dateFrom, dateTo });
-      setRows(data.data);
-      setTotal(data.total);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, size]);
+  const createMutation = useCreatePurchase();
+  const withdrawMutation = useWithdrawPurchase();
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -69,51 +61,52 @@ export default function PurchaseRequestPage() {
       toast.error("请填写申请位置和采购内容");
       return;
     }
-    setSubmitting(true);
-    try {
-      await createPurchaseOrder({
-        location: location.trim(),
-        content: content.trim(),
-        requestImages: imageUrls,
-        isPublic,
-      });
-      toast.success("采购申请创建成功");
-      setLocation("");
-      setContent("");
-      setImageUrls([]);
-      setIsPublic(true);
-      setPage(1);
-      await loadData();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "创建失败");
-    } finally {
-      setSubmitting(false);
-    }
+    createMutation.mutate(
+      { location: location.trim(), content: content.trim(), requestImages: imageUrls, isPublic },
+      {
+        onSuccess: () => {
+          setLocation("");
+          setContent("");
+          setImageUrls([]);
+          setIsPublic(true);
+          setPage(1);
+        },
+      }
+    );
   };
 
-  const handleWithdraw = async (id: string) => {
+  const handleWithdraw = (id: string) => {
     if (!window.confirm("确认撤回该订单吗？处理中和已处理订单不可撤回。")) return;
-    try {
-      await withdrawPurchaseOrder(id);
-      toast.success("已撤回");
-      await loadData();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "撤回失败");
-    }
+    withdrawMutation.mutate(id);
+  };
+
+  const handleQuery = () => {
+    setPage(1);
+    void refetch();
   };
 
   return (
     <div className="p-6 space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="text-lg font-semibold mb-4">新增采购申请</h2>
+      <section className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-twin-level-2">
+        <h2 className="text-lg font-semibold text-[var(--twin-ink)] mb-4">新增采购申请</h2>
         <form onSubmit={onSubmit} className="space-y-3">
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="申请位置" value={location} onChange={(e) => setLocation(e.target.value)} />
-          <textarea className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm min-h-24" placeholder="采购内容" value={content} onChange={(e) => setContent(e.target.value)} />
+          <input
+            className="w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)] placeholder:text-[var(--twin-mute)]"
+            placeholder="申请位置"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+          />
+          <textarea
+            className="w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm text-[var(--twin-ink)] min-h-24 bg-[var(--twin-canvas)] placeholder:text-[var(--twin-mute)]"
+            placeholder="采购内容"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+          />
           <div className="flex flex-wrap items-center gap-3">
             <input type="file" multiple accept="image/*" onChange={(e) => handleUpload(e.target.files)} />
-            <span className="text-xs text-slate-500">已上传 {imageUrls.length} 张</span>
+            <span className="text-xs text-[var(--twin-mute)]">已上传 {imageUrls.length} 张</span>
           </div>
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-4 text-sm text-[var(--twin-body)]">
             <label className="inline-flex items-center gap-1">
               <input type="radio" checked={!isPublic} onChange={() => setIsPublic(false)} />
               个人
@@ -130,40 +123,51 @@ export default function PurchaseRequestPage() {
               ))}
             </div>
           )}
-          <button type="submit" disabled={submitting} className="rounded-lg bg-blue-600 px-4 py-2 text-white disabled:opacity-50">
-            {submitting ? "提交中..." : "提交采购申请"}
-          </button>
+          <Button type="submit" disabled={createMutation.isPending}>
+            {createMutation.isPending ? "提交中..." : "提交采购申请"}
+          </Button>
         </form>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <section className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-twin-level-2">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <select className="rounded border border-slate-300 px-2 py-1 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select
+            className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm bg-[var(--twin-canvas)] text-[var(--twin-ink)]"
+            value={status}
+            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+          >
             <option value="">全部状态</option>
             <option value="PENDING">待处理</option>
             <option value="PROCESSING">处理中</option>
             <option value="COMPLETED">已完成</option>
           </select>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded border border-slate-300 px-2 py-1 text-sm" />
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded border border-slate-300 px-2 py-1 text-sm" />
-          <button className="rounded bg-slate-800 px-3 py-1 text-white text-sm" onClick={() => { setPage(1); loadData(); }}>查询</button>
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm bg-[var(--twin-canvas)] text-[var(--twin-ink)]" />
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm bg-[var(--twin-canvas)] text-[var(--twin-ink)]" />
+          <Button variant="secondary" size="sm" onClick={handleQuery}>
+            查询
+          </Button>
         </div>
-        {loading ? <div className="text-sm text-slate-500">加载中...</div> : (
+
+        {isLoading ? (
+          <DataSkeleton variant="table" rows={4} />
+        ) : rows.length === 0 ? (
+          <EmptyState title="暂无采购记录" description="提交第一条采购单开始使用" />
+        ) : (
           <div className="space-y-3">
             {rows.map((row) => (
-              <div key={row.id} className="rounded-lg border border-slate-200 p-3">
+              <div key={row.id} className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-medium">{row.location}</div>
+                  <div className="font-medium text-[var(--twin-ink)]">{row.location}</div>
                   <div className="flex items-center gap-2">
                     <WorkorderNotificationReadButton
                       bizType="PURCHASE"
                       bizId={row.id}
                       unreadOverride={isPurchaseNoticeUnread(row.id)}
                     />
-                    <div className="text-sm text-slate-600">{STATUS_TEXT[row.status]}</div>
+                    <div className="text-sm text-[var(--twin-body)]">{STATUS_TEXT[row.status]}</div>
                   </div>
                 </div>
-                <div className="text-sm text-slate-700 mt-1">{row.content}</div>
+                <div className="text-sm text-[var(--twin-body)] mt-1">{row.content}</div>
                 {row.requestImages?.length > 0 && (
                   <div className="mt-2 flex flex-nowrap gap-2 overflow-x-auto pb-1">
                     {row.requestImages.map((url) => (
@@ -178,16 +182,16 @@ export default function PurchaseRequestPage() {
                     ))}
                   </div>
                 )}
-                <div className="mt-2 text-xs text-slate-500">
+                <div className="mt-2 text-xs text-[var(--twin-mute)]">
                   时间线：提交 {row.createTime || "-"} / 开始 {row.startTime || "-"} / 完成 {row.finishTime || "-"}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">
+                <div className="mt-1 text-xs text-[var(--twin-mute)]">
                   可见范围：{row.isPublic === 1 ? "公开" : "个人"}
                 </div>
                 <div className="mt-2 flex justify-end">
                   <button
                     type="button"
-                    disabled={row.status !== "PENDING"}
+                    disabled={row.status !== "PENDING" || withdrawMutation.isPending}
                     className="rounded bg-amber-600 px-3 py-1 text-xs text-white disabled:cursor-not-allowed disabled:opacity-40"
                     onClick={() => handleWithdraw(row.id)}
                   >
@@ -196,18 +200,26 @@ export default function PurchaseRequestPage() {
                 </div>
               </div>
             ))}
-            {rows.length === 0 && <div className="text-sm text-slate-500">暂无数据</div>}
           </div>
         )}
-        <div className="mt-3 flex items-center justify-end gap-2 text-sm">
-          <button className="rounded border px-2 py-1 disabled:opacity-40" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>上一页</button>
+
+        <div className="mt-3 flex items-center justify-end gap-2 text-sm text-[var(--twin-body)]">
+          <button className="rounded border border-[var(--twin-hairline)] px-2 py-1 disabled:opacity-40" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>上一页</button>
           <span>{page}/{totalPages}</span>
-          <button className="rounded border px-2 py-1 disabled:opacity-40" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>下一页</button>
+          <button className="rounded border border-[var(--twin-hairline)] px-2 py-1 disabled:opacity-40" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>下一页</button>
         </div>
       </section>
+
       {previewUrl && (
-        <div className="fixed inset-0 z-[1200] bg-black/70 flex items-center justify-center p-4" onClick={() => setPreviewUrl("")}>
-          <img src={previewUrl} alt="预览图片" className="max-h-[90vh] max-w-[90vw] rounded-lg border border-white/20 object-contain" />
+        <div
+          className="fixed inset-0 z-[1200] bg-black/70 flex items-center justify-center p-4"
+          onClick={() => setPreviewUrl("")}
+        >
+          <img
+            src={previewUrl}
+            alt="预览图片"
+            className="max-h-[90vh] max-w-[90vw] rounded-lg border border-white/20 object-contain"
+          />
         </div>
       )}
     </div>

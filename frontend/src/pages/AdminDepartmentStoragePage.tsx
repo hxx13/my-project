@@ -1,34 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { useQuery } from "@tanstack/react-query";
 import {
   fetchDahuaDepartments,
   refreshDahuaDepartments,
   type DahuaDepartmentRow,
 } from "@/api/twinApi";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import DataSkeleton from "@/components/ui/DataSkeleton";
 
 type TreeRow = DahuaDepartmentRow & { depth: number };
 
 export default function AdminDepartmentStoragePage() {
-  const [rows, setRows] = useState<DahuaDepartmentRow[]>([]);
   const [keyword, setKeyword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [appliedKeyword, setAppliedKeyword] = useState("");
 
-  const load = async (kw: string) => {
-    setLoading(true);
-    try {
-      const data = await fetchDahuaDepartments(1, 2000, kw);
-      setRows(data.list || []);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "加载部门缓存失败");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load("");
-  }, []);
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: ["dahuaDepartments", appliedKeyword] as const,
+    queryFn: () => fetchDahuaDepartments(1, 2000, appliedKeyword).then((d) => d.list || []),
+    placeholderData: (prev) => prev,
+  });
 
   const treeRows = useMemo(() => {
     if (!rows.length) return [] as TreeRow[];
@@ -58,28 +49,29 @@ export default function AdminDepartmentStoragePage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold">部门落库信息（结构树）</h2>
-      <div className="rounded border bg-white p-4 space-y-3">
+      <h2 className="text-lg font-semibold text-[var(--twin-ink)]">部门落库信息（结构树）</h2>
+      <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 space-y-3 shadow-twin-level-1">
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="按部门名/departmentSn/ID检索"
-            className="w-full max-w-md rounded border px-3 py-2 text-sm"
+            className="w-full max-w-md rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
           />
           <button
-            className="rounded bg-blue-600 px-3 py-2 text-sm text-white"
-            onClick={() => void load(keyword.trim())}
+            className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]"
+            onClick={() => setAppliedKeyword(keyword.trim())}
           >
             查询
           </button>
           <button
-            className="rounded border px-3 py-2 text-sm"
+            className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]"
             onClick={async () => {
               try {
                 await refreshDahuaDepartments();
                 toast.success("部门缓存刷新完成");
-                await load(keyword.trim());
+                setKeyword("");
+                setAppliedKeyword("");
               } catch (error) {
                 toast.error(error instanceof Error ? error.message : "刷新失败");
               }
@@ -89,37 +81,37 @@ export default function AdminDepartmentStoragePage() {
           </button>
         </div>
 
-        {loading ? (
-          <div className="text-sm text-slate-500">加载中...</div>
+        {isLoading ? (
+          <DataSkeleton variant="table" rows={6} />
         ) : (
           <AdminDataTableWrap scrollable>
-            <table className="min-w-full border text-sm">
-              <thead className="bg-slate-50">
+            <table className="min-w-full border border-[var(--twin-hairline)] text-sm">
+              <thead className="bg-[var(--twin-canvas-soft)]">
                 <tr>
-                  <th className="border px-2 py-2 text-left">ID</th>
-                  <th className="border px-2 py-2 text-left">部门名称（树）</th>
-                  <th className="border px-2 py-2 text-left">parentId</th>
-                  <th className="border px-2 py-2 text-left">departmentSn</th>
-                  <th className="border px-2 py-2 text-left">更新时间</th>
+                  <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">ID</th>
+                  <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">部门名称（树）</th>
+                  <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">parentId</th>
+                  <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">departmentSn</th>
+                  <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">更新时间</th>
                 </tr>
               </thead>
               <tbody>
                 {treeRows.map((r) => (
                   <tr key={r.id}>
-                    <td className="border px-2 py-2">{r.id}</td>
-                    <td className="border px-2 py-2">
+                    <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.id}</td>
+                    <td className="border border-[var(--twin-hairline)] px-2 py-2 text-[var(--twin-ink)]">
                       <span style={{ marginLeft: `${r.depth * 16}px` }}>
                         {r.depth > 0 ? "└ " : ""}{r.name || "-"}
                       </span>
                     </td>
-                    <td className="border px-2 py-2">{r.parentId ?? "-"}</td>
-                    <td className="border px-2 py-2">{r.departmentSn || "-"}</td>
-                    <td className="border px-2 py-2">{r.updatedAt || "-"}</td>
+                    <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.parentId ?? "-"}</td>
+                    <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.departmentSn || "-"}</td>
+                    <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.updatedAt || "-"}</td>
                   </tr>
                 ))}
                 {treeRows.length === 0 && (
                   <tr>
-                    <td className="border px-2 py-4 text-center text-slate-500" colSpan={5}>
+                    <td className="border border-[var(--twin-hairline)] px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={5}>
                       暂无数据
                     </td>
                   </tr>

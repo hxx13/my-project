@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Radio } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import {
   fetchExternalCommConfigOverview,
   type ExternalCommConfigItem,
@@ -10,6 +11,7 @@ import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminToolbarSearchField } from "@/components/admin/AdminToolbarSearchField";
 import { adminHintClass } from "@/features/admin/adminFormUi";
+import DataSkeleton from "@/components/ui/DataSkeleton";
 
 const SECTION_LABELS: Record<string, string> = {
   hardcoded: "代码硬编码",
@@ -18,28 +20,13 @@ const SECTION_LABELS: Record<string, string> = {
 };
 
 export default function AdminExternalCommConfigPage() {
-  const [overview, setOverview] = useState<ExternalCommConfigOverview>({
-    hardcoded: [],
-    applicationProperties: [],
-    environmentVariables: [],
-  });
   const [keyword, setKeyword] = useState("");
   const [showSensitive, setShowSensitive] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const data = await fetchExternalCommConfigOverview();
-        setOverview(data);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "加载外部通信配置失败");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const { data: overview, isLoading } = useQuery({
+    queryKey: ["externalCommConfigOverview"] as const,
+    queryFn: fetchExternalCommConfigOverview,
+  });
 
   const filterRows = (rows: ExternalCommConfigItem[]) => {
     const key = keyword.trim().toLowerCase();
@@ -53,26 +40,26 @@ export default function AdminExternalCommConfigPage() {
     });
   };
 
-  const sections = useMemo(
-    () => [
+  const sections = useMemo(() => {
+    if (!overview) return [];
+    return [
       { id: "hardcoded", title: SECTION_LABELS.hardcoded, rows: filterRows(overview.hardcoded) },
       { id: "props", title: SECTION_LABELS.applicationProperties, rows: filterRows(overview.applicationProperties) },
       { id: "env", title: SECTION_LABELS.environmentVariables, rows: filterRows(overview.environmentVariables) },
-    ],
-    [overview, keyword],
-  );
+    ];
+  }, [overview, keyword]);
 
   return (
     <AdminPageShell
       title={
         <span className="inline-flex items-center gap-2">
-          <Radio className="h-6 w-6 shrink-0 text-[#0070f3]" aria-hidden />
+          <Radio className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
           外部通信配置
         </span>
       }
       description="只读巡检页：汇总硬编码、配置文件与环境变量中的通信相关项，便于核对密钥与端点是否配置正确。"
     >
-      <div className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-900">
+      <div className="rounded-twin-lg border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-900">
         本页不支持在线修改。敏感字段默认脱敏，点击「查看」后仅在当前浏览器会话中显示明文。
       </div>
 
@@ -85,8 +72,8 @@ export default function AdminExternalCommConfigPage() {
         />
       </AdminFormCard>
 
-      {loading ? (
-        <div className="flex min-h-[160px] items-center justify-center text-sm text-neutral-500">加载中…</div>
+      {isLoading ? (
+        <DataSkeleton variant="card" rows={6} />
       ) : (
         <div className="grid gap-4 lg:grid-cols-3">
           {sections.map((sec) => (
@@ -102,17 +89,17 @@ export default function AdminExternalCommConfigPage() {
                     return (
                       <div
                         key={`${sec.id}-${row.key}`}
-                        className="rounded-lg border border-neutral-200 bg-neutral-50/80 p-2.5 text-xs"
+                        className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2.5 text-xs"
                       >
-                        <p className="break-all font-medium text-neutral-800">{row.key}</p>
-                        <p className="mt-1 break-all text-neutral-600">值：{row.exists ? displayValue || "（空）" : "未设置"}</p>
-                        <p className="mt-1 break-all text-neutral-500">来源：{row.source}</p>
+                        <p className="break-all font-medium text-[var(--twin-ink)]">{row.key}</p>
+                        <p className="mt-1 break-all text-[var(--twin-body)]">值：{row.exists ? displayValue || "（空）" : "未设置"}</p>
+                        <p className="mt-1 break-all text-[var(--twin-mute)]">来源：{row.source}</p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {row.masked ? (
-                            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">敏感</span>
+                            <span className="rounded-twin-sm bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">敏感</span>
                           ) : null}
                           {!row.modifiable ? (
-                            <span className="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-600">只读</span>
+                            <span className="rounded-twin-sm bg-[var(--twin-canvas-soft-2)] px-1.5 py-0.5 text-[10px] text-[var(--twin-body)]">只读</span>
                           ) : null}
                           {canView ? (
                             <AdminButton

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchPagePermissionTree,
   notifyWebPublicPagePermissionsUpdated,
@@ -13,6 +14,7 @@ import {
 } from "@/api/domains/pagePermission.api";
 import { AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import DataSkeleton from "@/components/ui/DataSkeleton";
 
 const ROLE_OPTIONS: MinRole[] = ["STUDENT", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
 
@@ -160,20 +162,51 @@ function normPathForPlatform(platform: PagePlatform, routePath: string) {
   return platform === "WEB" ? normalizeAdminPath(routePath) : normalizeMiniPermissionPath(routePath);
 }
 
+function patchNode(list: PagePermissionNode[], nodeKey: string, patch: { minRole: MinRole; enabled: number }): PagePermissionNode[] {
+  return list.map((node) => {
+    if (node.nodeKey === nodeKey) {
+      return { ...node, minRole: patch.minRole, enabled: patch.enabled };
+    }
+    if (node.children?.length) {
+      return { ...node, children: patchNode(node.children, nodeKey, patch) };
+    }
+    return node;
+  });
+}
+
 export default function AdminPagePermissionSettingsPage() {
+  const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const lastAppliedFocusPath = useRef<string | null>(null);
   const [platform, setPlatform] = useState<PagePlatform>("WEB");
-  const [loading, setLoading] = useState(false);
-  const [rows, setRows] = useState<PagePermissionNode[]>([]);
   const [draftByNode, setDraftByNode] = useState<Record<string, { minRole: MinRole; enabled: number }>>({});
   const [savingNodeKey, setSavingNodeKey] = useState<string>("");
+
+  const permQueryKey = ["pagePermissionTree", platform] as const;
+
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: permQueryKey,
+    queryFn: async () => {
+      const data = await fetchPagePermissionTree(platform);
+      const flat = flatten(data || []);
+      const drafts: Record<string, { minRole: MinRole; enabled: number }> = {};
+      flat.forEach((it) => {
+        drafts[it.nodeKey] = {
+          minRole: (it.minRole || "STUDENT") as MinRole,
+          enabled: it.enabled === 1 ? 1 : 0,
+        };
+      });
+      setDraftByNode((prev) => ({ ...prev, ...drafts }));
+      return data || [];
+    },
+  });
+
   const flatRows = useMemo(() => flatten(rows), [rows]);
 
   const focusPathParam = searchParams.get("focusPath");
 
   useEffect(() => {
-    if (!focusPathParam || loading || flatRows.length === 0) return;
+    if (!focusPathParam || isLoading || flatRows.length === 0) return;
     const decoded = decodeURIComponent(focusPathParam);
     if (lastAppliedFocusPath.current === decoded) return;
     const norm = normPathForPlatform(platform, decoded);
@@ -215,61 +248,40 @@ export default function AdminPagePermissionSettingsPage() {
       },
       { replace: true }
     );
-  }, [focusPathParam, flatRows, loading, platform, setSearchParams]);
-
-  const patchNode = (list: PagePermissionNode[], nodeKey: string, patch: { minRole: MinRole; enabled: number }): PagePermissionNode[] =>
-    list.map((node) => {
-      if (node.nodeKey === nodeKey) {
-        return { ...node, minRole: patch.minRole, enabled: patch.enabled };
-      }
-      if (node.children?.length) {
-        return { ...node, children: patchNode(node.children, nodeKey, patch) };
-      }
-      return node;
-    });
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchPagePermissionTree(platform);
-      setRows(data || []);
-      const drafts: Record<string, { minRole: MinRole; enabled: number }> = {};
-      flatten(data || []).forEach((it) => {
-        drafts[it.nodeKey] = {
-          minRole: (it.minRole || "STUDENT") as MinRole,
-          enabled: it.enabled === 1 ? 1 : 0,
-        };
-      });
-      setDraftByNode(drafts);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [platform]);
+  }, [focusPathParam, flatRows, isLoading, platform, setSearchParams]);
 
   useEffect(() => {
     lastAppliedFocusPath.current = null;
   }, [platform]);
 
+  const handleReScan = async () => {
+    await scanPagePermissions();
+    toast.success("已重新扫描");
+    await qc.invalidateQueries({ queryKey: permQueryKey });
+    notifyWebPublicPagePermissionsUpdated();
+  };
+
+  const handleResetDefaults = async () => {
+    if (!window.confirm("确认重置当前平台为默认权限？")) return;
+    await resetPagePermissionDefaults(platform);
+    toast.success("已重置默认");
+    await qc.invalidateQueries({ queryKey: permQueryKey });
+    if (platform === "WEB") notifyWebPublicPagePermissionsUpdated();
+  };
+
   return (
     <AdminPageShell
       title="页面权限设置"
       description={
-        <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+        <div className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3 text-xs text-[var(--twin-body)]">
           <p>
             说明：每行展示「中文标题 + 节点注解」。<strong>入口展示名</strong>列对应库内{" "}
-            <code className="rounded bg-white px-1">display_name</code>（扫描时从注册表/页面标题推断）。
+            <code className="rounded-twin-sm bg-[var(--twin-canvas)] px-1">display_name</code>（扫描时从注册表/页面标题推断）。
           </p>
           <p>同一路径可能有多个入口节点（例如侧栏、首页快捷、我的页），请分别按业务需要控制。</p>
           <p>超级管理员可在侧栏入口上<strong>右键</strong>打开快捷面板改权；保存失败会提示具体原因（常见为：子入口角色低于父页面角色）。</p>
-          <p className="text-slate-500">
-            自动发现规则见仓库 <code className="rounded bg-white px-1">docs/page-permission-discovery.md</code>。
+          <p className="text-[var(--twin-mute)]">
+            自动发现规则见仓库 <code className="rounded-twin-sm bg-[var(--twin-canvas)] px-1">docs/page-permission-discovery.md</code>。
           </p>
         </div>
       }
@@ -277,26 +289,15 @@ export default function AdminPagePermissionSettingsPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="rounded border border-slate-300 px-3 py-1 text-sm"
-            onClick={async () => {
-              await scanPagePermissions();
-              toast.success("已重新扫描");
-              await load();
-              notifyWebPublicPagePermissionsUpdated();
-            }}
+            className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]"
+            onClick={() => void handleReScan()}
           >
             重新扫描
           </button>
           <button
             type="button"
-            className="rounded border border-amber-300 px-3 py-1 text-sm text-amber-700"
-            onClick={async () => {
-              if (!window.confirm("确认重置当前平台为默认权限？")) return;
-              await resetPagePermissionDefaults(platform);
-              toast.success("已重置默认");
-              await load();
-              if (platform === "WEB") notifyWebPublicPagePermissionsUpdated();
-            }}
+            className="rounded-twin-sm border border-amber-300 px-3 py-1 text-sm font-medium text-amber-700"
+            onClick={() => void handleResetDefaults()}
           >
             重置默认
           </button>
@@ -306,139 +307,155 @@ export default function AdminPagePermissionSettingsPage() {
       <div className="mb-3 flex gap-2">
         <button
           type="button"
-          className={`rounded px-3 py-1 text-sm ${platform === "WEB" ? "bg-blue-600 text-white" : "border border-slate-300"}`}
+          className={`rounded-twin-sm px-3 py-1 text-sm ${
+            platform === "WEB"
+              ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]"
+              : "border border-[var(--twin-hairline)]"
+          }`}
           onClick={() => setPlatform("WEB")}
         >
           网页前端
         </button>
         <button
           type="button"
-          className={`rounded px-3 py-1 text-sm ${platform === "MINI" ? "bg-blue-600 text-white" : "border border-slate-300"}`}
+          className={`rounded-twin-sm px-3 py-1 text-sm ${
+            platform === "MINI"
+              ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]"
+              : "border border-[var(--twin-hairline)]"
+          }`}
           onClick={() => setPlatform("MINI")}
         >
           小程序端
         </button>
       </div>
 
-      <AdminTableShell
-        loading={loading}
-        empty={!loading && flatRows.length === 0}
-        emptyMessage='暂无数据，请点击「重新扫描」'
-        onRetry={() => void load()}
-        scrollable
-      >
-        <table>
-          <thead>
-            <tr>
-              <th className="border-b px-2 py-2 text-left">节点</th>
-              <th className="border-b px-2 py-2 text-left">入口展示名</th>
-              <th className="border-b px-2 py-2 text-left">类型</th>
-              <th className="border-b px-2 py-2 text-left">路径</th>
-              <th className="border-b px-2 py-2 text-left">来源</th>
-              <th className="border-b px-2 py-2 text-left">最小角色</th>
-              <th className="border-b px-2 py-2 text-left">开关</th>
-              <th className="border-b px-2 py-2 text-left">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {flatRows.map((row) => (
-              <tr key={row.nodeKey} id={rowDomIdForNodeKey(row.nodeKey)} className="scroll-mt-24 transition-shadow">
-                <td className="border-b px-2 py-2 text-xs">
-                  <div style={{ paddingLeft: `${row.depth * 16}px` }}>
-                    <div className="font-medium">{titleZh(row)}</div>
-                    <div className="text-slate-500">{annotation(row)}</div>
-                    {PATH_BRIEF_MAP[row.pathOrRoute] && (
-                      <div className="text-[11px] text-slate-600">{PATH_BRIEF_MAP[row.pathOrRoute]}</div>
+      {isLoading ? (
+        <DataSkeleton variant="table" rows={8} />
+      ) : (
+        <AdminTableShell
+          loading={false}
+          empty={flatRows.length === 0}
+          emptyMessage="暂无数据，请点击「重新扫描」"
+          onRetry={() => qc.invalidateQueries({ queryKey: permQueryKey })}
+          scrollable
+        >
+          <table>
+            <thead>
+              <tr>
+                <th className="border-b border-[var(--twin-hairline)] px-2 py-2 text-left">节点</th>
+                <th className="border-b border-[var(--twin-hairline)] px-2 py-2 text-left">入口展示名</th>
+                <th className="border-b border-[var(--twin-hairline)] px-2 py-2 text-left">类型</th>
+                <th className="border-b border-[var(--twin-hairline)] px-2 py-2 text-left">路径</th>
+                <th className="border-b border-[var(--twin-hairline)] px-2 py-2 text-left">来源</th>
+                <th className="border-b border-[var(--twin-hairline)] px-2 py-2 text-left">最小角色</th>
+                <th className="border-b border-[var(--twin-hairline)] px-2 py-2 text-left">开关</th>
+                <th className="border-b border-[var(--twin-hairline)] px-2 py-2 text-left">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {flatRows.map((row) => (
+                <tr key={row.nodeKey} id={rowDomIdForNodeKey(row.nodeKey)} className="scroll-mt-24 transition-shadow">
+                  <td className="border-b border-[var(--twin-hairline)] px-2 py-2 text-xs">
+                    <div style={{ paddingLeft: `${row.depth * 16}px` }}>
+                      <div className="font-medium">{titleZh(row)}</div>
+                      <div className="text-[var(--twin-mute)]">{annotation(row)}</div>
+                      {PATH_BRIEF_MAP[row.pathOrRoute] && (
+                        <div className="text-[11px] text-[var(--twin-body)]">{PATH_BRIEF_MAP[row.pathOrRoute]}</div>
+                      )}
+                      <div className="text-[var(--twin-mute)]">{row.nodeKey}</div>
+                    </div>
+                  </td>
+                  <td className="border-b border-[var(--twin-hairline)] px-2 py-2 text-xs text-[var(--twin-body)]">
+                    {row.nodeType === "ENTRY" ? (
+                      <span className="font-medium text-[var(--twin-ink)]">{(row.displayName || "").trim() || "—"}</span>
+                    ) : (
+                      <span className="text-[var(--twin-mute)]">—</span>
                     )}
-                    <div className="text-slate-400">{row.nodeKey}</div>
-                  </div>
-                </td>
-                <td className="border-b px-2 py-2 text-xs text-slate-700">
-                  {row.nodeType === "ENTRY" ? (
-                    <span className="font-medium text-slate-900">{(row.displayName || "").trim() || "—"}</span>
-                  ) : (
-                    <span className="text-slate-400">—</span>
-                  )}
-                </td>
-                <td className="border-b px-2 py-2 text-xs">{nodeTypeZh(row.nodeType)}</td>
-                <td className="border-b px-2 py-2 text-xs">{row.pathOrRoute}</td>
-                <td className="border-b px-2 py-2 text-xs">{sourceZh(row.entrySource)}</td>
-                <td className="border-b px-2 py-2">
-                  <select
-                    className="rounded border px-2 py-1 text-xs"
-                    value={(draftByNode[row.nodeKey]?.minRole || row.minRole) as MinRole}
-                    onChange={(e) =>
-                      setDraftByNode((prev) => ({
-                        ...prev,
-                        [row.nodeKey]: {
-                          minRole: e.target.value as MinRole,
-                          enabled: prev[row.nodeKey]?.enabled ?? (row.enabled === 1 ? 1 : 0),
-                        },
-                      }))
-                    }
-                  >
-                    {ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role}>
-                        {ROLE_LABEL[role]}（{role}）
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="border-b px-2 py-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={(draftByNode[row.nodeKey]?.enabled ?? row.enabled) === 1}
-                    onChange={(e) =>
-                      setDraftByNode((prev) => ({
-                        ...prev,
-                        [row.nodeKey]: {
-                          minRole: prev[row.nodeKey]?.minRole ?? (row.minRole as MinRole),
-                          enabled: e.target.checked ? 1 : 0,
-                        },
-                      }))
-                    }
-                  />
-                </td>
-                <td className="border-b px-2 py-2">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="rounded border border-blue-300 px-2 py-0.5 text-xs text-blue-700"
-                      disabled={savingNodeKey === row.nodeKey}
-                      onClick={async () => {
-                        const draft = draftByNode[row.nodeKey] || { minRole: row.minRole as MinRole, enabled: row.enabled === 1 ? 1 : 0 };
-                        try {
-                          setSavingNodeKey(row.nodeKey);
-                          await updatePagePermission(row.nodeKey, { minRole: draft.minRole, enabled: draft.enabled });
-                          setRows((prev) => patchNode(prev, row.nodeKey, draft));
-                          toast.success("已保存");
-                          if (platform === "WEB") notifyWebPublicPagePermissionsUpdated();
-                        } catch (error) {
-                          toast.error(error instanceof Error ? error.message : "保存失败");
-                        } finally {
-                          setSavingNodeKey("");
-                        }
-                      }}
+                  </td>
+                  <td className="border-b border-[var(--twin-hairline)] px-2 py-2 text-xs">{nodeTypeZh(row.nodeType)}</td>
+                  <td className="border-b border-[var(--twin-hairline)] px-2 py-2 text-xs">{row.pathOrRoute}</td>
+                  <td className="border-b border-[var(--twin-hairline)] px-2 py-2 text-xs">{sourceZh(row.entrySource)}</td>
+                  <td className="border-b border-[var(--twin-hairline)] px-2 py-2">
+                    <select
+                      className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
+                      value={(draftByNode[row.nodeKey]?.minRole || row.minRole) as MinRole}
+                      onChange={(e) =>
+                        setDraftByNode((prev) => ({
+                          ...prev,
+                          [row.nodeKey]: {
+                            minRole: e.target.value as MinRole,
+                            enabled: prev[row.nodeKey]?.enabled ?? (row.enabled === 1 ? 1 : 0),
+                          },
+                        }))
+                      }
                     >
-                      {savingNodeKey === row.nodeKey ? "保存中..." : "保存"}
-                    </button>
-                    {canPreviewPath(row.pathOrRoute, platform) && (
+                      {ROLE_OPTIONS.map((role) => (
+                        <option key={role} value={role}>
+                          {ROLE_LABEL[role]}（{role}）
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="border-b border-[var(--twin-hairline)] px-2 py-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={(draftByNode[row.nodeKey]?.enabled ?? row.enabled) === 1}
+                      onChange={(e) =>
+                        setDraftByNode((prev) => ({
+                          ...prev,
+                          [row.nodeKey]: {
+                            minRole: prev[row.nodeKey]?.minRole ?? (row.minRole as MinRole),
+                            enabled: e.target.checked ? 1 : 0,
+                          },
+                        }))
+                      }
+                    />
+                  </td>
+                  <td className="border-b border-[var(--twin-hairline)] px-2 py-2">
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="rounded border border-emerald-300 px-2 py-0.5 text-xs text-emerald-700"
-                        onClick={() => window.open(`/#${row.pathOrRoute}`, "_blank", "noopener,noreferrer")}
+                        className="rounded-twin-sm border border-[var(--twin-primary)] px-2 py-0.5 text-xs text-[var(--twin-link-deep)]"
+                        disabled={savingNodeKey === row.nodeKey}
+                        onClick={async () => {
+                          const draft = draftByNode[row.nodeKey] || {
+                            minRole: row.minRole as MinRole,
+                            enabled: row.enabled === 1 ? 1 : 0,
+                          };
+                          try {
+                            setSavingNodeKey(row.nodeKey);
+                            await updatePagePermission(row.nodeKey, { minRole: draft.minRole, enabled: draft.enabled });
+                            qc.setQueryData(permQueryKey, (prev: PagePermissionNode[] | undefined) =>
+                              patchNode(prev || [], row.nodeKey, draft)
+                            );
+                            toast.success("已保存");
+                            if (platform === "WEB") notifyWebPublicPagePermissionsUpdated();
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : "保存失败");
+                          } finally {
+                            setSavingNodeKey("");
+                          }
+                        }}
                       >
-                        进入
+                        {savingNodeKey === row.nodeKey ? "保存中..." : "保存"}
                       </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </AdminTableShell>
+                      {canPreviewPath(row.pathOrRoute, platform) && (
+                        <button
+                          type="button"
+                          className="rounded-twin-sm border border-emerald-300 px-2 py-0.5 text-xs text-emerald-700"
+                          onClick={() => window.open(`/#${row.pathOrRoute}`, "_blank", "noopener,noreferrer")}
+                        >
+                          进入
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </AdminTableShell>
+      )}
     </AdminPageShell>
   );
 }
-

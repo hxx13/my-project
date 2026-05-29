@@ -4,7 +4,9 @@
 >
 > **创建日期**：2026-05-27
 >
-> **状态**：P0 已完成 (2026-05-27)，P1 部分完成 (2026-05-27)，P2 已完成 (2026-05-27)，P3 待执行
+> **更新日期**：2026-05-28（融入渗透测试安全审计结果）
+>
+> **状态**：P0 已完成 (2026-05-27)，P0-安全 待执行，P1 部分完成 (2026-05-27)，P2 已完成 (2026-05-27)，P3 待执行
 
 ---
 
@@ -17,6 +19,7 @@
 | 阶段 | 目标 | 周期 | 严重项 |
 |------|------|------|--------|
 | P0 紧急修复 | 消除安全硬编码 + 日志可用 | ✅ 已完成 (2026-05-27) | 4 项 |
+| **P0-安全 紧急加固** | **线上渗透漏洞修复** | **1-3 天** | **6 项** |
 | P1 短期改进 | 分层修复 + SQL 规范 + 跨域治理 | 1 周 | 6 项 |
 | P2 中期优化 | 并发健壮性 + 异常体系 + 包名重构 | 2 周 | 3 项 |
 | P3 长期演进 | 工程化完善 + 自动化检查 | 持续 | 3 项 |
@@ -144,6 +147,191 @@ HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
 
 ---
 
+## 二-补充、P0-安全 紧急加固（线上渗透测试审计）
+
+> **审计日期**：2026-05-28
+>
+> **审计方式**：黑盒渗透测试，基于 `http://47.101.61.184:8080` 生产环境
+>
+> **发现问题**：2 严重 + 4 高危 + 5 中危 + 2 低危
+
+### 2S.1 登录接口防暴力破解（严重）
+
+**现状**：`POST /api/auth/login/web` 无任何速率限制，连续 5 次快速请求均正常返回。攻击者可无限制尝试用户名/密码组合。
+
+**攻击面**：
+- 弱密码账号可被字典攻击枚举
+- 无验证码、无 IP 黑名单、无账号锁定机制
+
+**改造方案**：
+
+```
+1. 引入 Guava RateLimiter 或 Spring Interceptor 实现 IP 级别限流
+   - 同一 IP：5 次/分钟，超过后要求验证码或临时封禁 15 分钟
+   - 同一账号：连续失败 5 次锁定 30 分钟
+
+2. 短期方案（1 天内可上线）：
+   @Component
+   public class LoginRateLimiter {
+       private final LoadingCache<String, AtomicInteger> ipCounters =
+           CacheBuilder.newBuilder()
+               .expireAfterWrite(1, TimeUnit.MINUTES)
+               .build();
+       
+       public boolean tryAcquire(String ip) {
+           AtomicInteger c = ipCounters.getUnchecked(ip);
+           return c.incrementAndGet() <= 5;  // 每分钟 5 次
+       }
+   }
+
+3. 长期方案：接入 Redis + 滑动窗口算法，登录失败后引入图片验证码
+```
+
+### 2S.2 CORS 配置收紧（严重）
+
+**现状**：P0 2.4 已将 `@CrossOrigin` 迁移到全局 `WebMvcConfig`，但当前配置过于宽松：
+
+```
+# 渗透测试发现的实际 CORS 行为
+Access-Control-Allow-Origin: http://localhost:3000   ← 仅限 localhost:3000
+Access-Control-Allow-Methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+Access-Control-Allow-Headers: Content-Type
+Access-Control-Max-Age: 3600
+```
+
+**风险**：`localhost:3000` 是常见前端开发端口。若攻击者能在受害者机器上运行本地服务（XSS、钓鱼、恶意 npm 包），可通过跨域请求携带 Cookie/Token 调用 API。
+
+**改造方案**：
+
+```
+1. 将 allowedOriginPatterns 从 "*" 改为仅生产域名白名单：
+   registry.addCorsMappings("/api/**")
+       .allowedOriginPatterns("https://前端生产域名")
+       .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE")
+       .allowedHeaders("*")
+       .allowCredentials(true)
+       .maxAge(3600);
+
+2. 开发环境通过 application-dev.properties 单独放开 localhost
+3. 小程序无需 CORS（云函数中转），不受影响
+```
+
+### 2S.3 安全响应头缺失（高危）
+
+**现状**：所有 HTTP 响应均缺少安全相关 Header：
+
+| 缺失的 Header | 风险 |
+|---------------|------|
+| `Content-Security-Policy` | XSS 攻击无浏览器层面防护 |
+| `X-Frame-Options: DENY` | 页面可被 iframe 嵌入（Clickjacking） |
+| `X-Content-Type-Options: nosniff` | MIME 类型嗅探攻击 |
+| `Strict-Transport-Security` | 无 HSTS，无法强制浏览器 HTTPS |
+| `Referrer-Policy` | Referrer 泄露敏感 URL |
+| `Permissions-Policy` | 浏览器特性权限未受控 |
+
+**改造方案**：
+
+```java
+// WebMvcConfig 或独立 SecurityHeaderFilter
+@Override
+public void addInterceptors(InterceptorRegistry registry) {
+    registry.addInterceptor(new SecurityHeaderInterceptor());
+}
+
+// SecurityHeaderInterceptor.java
+public class SecurityHeaderInterceptor implements HandlerInterceptor {
+    @Override
+    public void postHandle(HttpServletRequest req, HttpServletResponse resp,
+                           Object handler, ModelAndView mv) {
+        resp.setHeader("X-Content-Type-Options", "nosniff");
+        resp.setHeader("X-Frame-Options", "DENY");
+        resp.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+        resp.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+        // CSP 较复杂，先以 Report-Only 模式上线：
+        resp.setHeader("Content-Security-Policy-Report-Only",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'");
+    }
+}
+```
+
+### 2S.4 HTTP 明文传输（高危）
+
+**现状**：全程 HTTP，登录 Token 明文传输。**无 HTTPS**。
+
+**风险**：中间人攻击可窃听 Token、密码、业务数据。该 IP 位于公网，任何同网段设备均可抓包。
+
+**改造方案**：
+
+```
+1. 申请/配置 SSL 证书（Let's Encrypt 免费或阿里云 SSL）
+2. Spring Boot 配置 HTTPS：
+   server.port=8443
+   server.ssl.key-store=classpath:keystore.p12
+   server.ssl.key-store-password=${SSL_KEY_PASSWORD}
+   server.ssl.keyStoreType=PKCS12
+3. 添加 HTTP → HTTPS 重定向（Tomcat 或 Nginx 反向代理）
+4. 添加 HSTS Header（max-age=31536000; includeSubDomains）
+5. Cookie 设置 Secure + SameSite=Strict
+```
+
+### 2S.5 Swagger UI 公开暴露（高危）
+
+**现状**：
+- `/swagger-ui/index.html` 无需认证即可访问
+- `/v3/api-docs/swagger-config` 公开 API 文档配置
+- Swagger 默认加载 petstore 示例（非生产 API docs），但 UI 本身暴露攻击面
+
+**风险**：API 接口枚举、请求参数结构泄露、Swagger UI Try-It-Out 功能可被利用。
+
+**改造方案**：
+
+```
+1. 最短方案（立即执行）：
+   - application.properties 添加 springdoc.api-docs.enabled=false
+   - 或 springdoc.swagger-ui.enabled=false
+
+2. 若需保留供内部使用：
+   - 添加 Spring Security 路径保护：
+     http.authorizeRequests()
+         .antMatchers("/swagger-ui/**", "/v3/api-docs/**").authenticated()
+   - 或通过 Nginx IP 白名单限制访问
+
+3. 当前 /v3/api-docs 返回 500（可能是 springdoc 配置问题），应一并修复
+```
+
+### 2S.6 错误信息泄露框架细节（中危）
+
+**现状**：多处 API 返回过于详细的错误信息：
+
+| 端点 | 请求 | 响应 | 泄露信息 |
+|------|------|------|----------|
+| `/api/auth/login/web` | `POST "invalid"` | `JSON parse error: Unrecognized token 'invalid': was expecting...` | Jackson 解析器版本/类型 |
+| 各类接口 | 不支持的 method | `请求方法不支持: GET /xxx，请使用 [POST]` | 暴露有效 HTTP 方法 |
+| 各类接口 | 参数错误 | 多种格式的错误 JSON | 可指纹识别后端框架 |
+
+**风险**：帮助攻击者识别技术栈版本、查找已知 CVE。
+
+**改造方案**：
+
+```java
+// GlobalExceptionHandler 统一处理
+@ExceptionHandler(HttpMessageNotReadableException.class)
+public ResponseEntity<Result<Void>> handleJsonParseError() {
+    return ResponseEntity.badRequest()
+        .body(Result.error(400, "请求格式错误"));  // 不暴露具体解析错误
+}
+
+@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+public ResponseEntity<Result<Void>> handleMethodNotSupported() {
+    return ResponseEntity.status(405)
+        .body(Result.error(405, "请求方法不支持"));  // 不暴露允许的方法列表
+}
+
+// 所有对外响应走统一 Result 包装，message 不包含内部异常细节
+```
+
+---
+
 ## 三、P1 短期改进（架构健康）
 
 ### 3.1 Controller 禁止直接调用 Mapper ✅ 已完成
@@ -185,6 +373,57 @@ HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
 **改动摘要**：
 - `AroSyncTask.isFirstRun` → `firstRun`（私有内部字段，无外部影响）
 - Entity/DTO 的 `isPublic` / `isNewItem` 未改：这些字段参与 MyBatis 映射和 JSON 序列化，改名会联动影响 DB 层和前端 API 契约。建议在前后端大版本升级时统一处理。
+
+### 3.7 统一 HTTP 错误状态码（中危） 🔴 新增
+
+**发现来源**：渗透测试审计 (2026-05-28)
+
+**现状**：
+
+| 场景 | 当前状态码 | 应返回 |
+|------|-----------|--------|
+| 登录失败（密码错误） | `200` + `"账号或密码错误"` | `401` |
+| Token 缺失/过期 | `200`/`500` + message | `401` |
+| 业务校验失败 | `500` + `"服务繁忙"` | `400` |
+| JSON 解析失败 | `400`（正确） | — |
+
+**问题**：
+- 使用 `500` 掩盖了正常鉴权失败，造成监控误报
+- 登录失败返回 `200` 导致 WAF/日志系统无法识别攻击模式
+- `"服务繁忙，请稍后重试"` 被用于鉴权失败、服务异常、参数错误等多种场景，无法区分
+
+**改造方案**：
+
+```
+1. 鉴权拦截器返回 ResponseEntity(401) 而非 200
+2. 业务校验异常统一返回 400（TwinBusinessException → 400）
+3. 仅真正的未预期异常返回 500
+4. 审计 @ExceptionHandler 和 GlobalExceptionHandler 的所有分支
+5. 涉及文件：
+   - AuthInterceptor / TokenInterceptor
+   - GlobalExceptionHandler
+   - Controller 中 catch 后返回的硬编码 Result
+```
+
+### 3.8 API 响应去框架指纹（中危） 🔴 新增
+
+**发现来源**：渗透测试审计 (2026-05-28)
+
+**现状**：
+- 未授权接口返回 `{"code":400,"message":"接口不存在: GET xxx","success":false,"data":null}`
+- JSON 解析错误暴露 Jackson 完整错误信息
+- 所有接口返回统一 JSON 格式，可确认后端为 Spring Boot + Jackson
+
+**改造方案**：
+
+```
+1. 404 统一返回简洁 JSON（不暴露请求路径和方法）
+2. JSON 解析错误不输出 Jackson 内部细节
+3. 考虑在生产环境移除或加密 X-Application-Context 等响应头（当前已无此头，良好）
+4. application.properties 添加：
+   server.error.whitelabel.enabled=false
+   spring.jackson.serialization.FAIL_ON_EMPTY_BEANS=false
+```
 
 ---
 
@@ -252,22 +491,72 @@ HttpsURLConnection.setDefaultHostnameVerifier((hostname, session) -> true);
 → equals/hashCode 由业务明确指定，不由 Lombok 自动生成
 ```
 
-### 5.3 异常信息脱敏
+### 5.3 异常信息脱敏（含渗透测试发现）
+
+**渗透测试发现**：
+- `POST /api/auth/login/web` 未登录/登录失败时返回 `"账号或密码错误"` — 可被用于账号枚举（区分 "账号不存在" vs "密码错误"）
+- 未授权路径返回 `"接口不存在: GET /xxx"` 泄露内部路由
 
 ```
-Controller 层统一返回 "操作失败" 而非 e.getMessage()
+Controller 层统一返回 "操作失败" 或 "请求参数错误" 而非 e.getMessage()
 → GlobalExceptionHandler 已有兜底处理
 → 新增业务异常时走 TwinBusinessException.of(code, msg)
 → 不在 Controller 中 catch(Exception) 并直接返回消息
+→ 鉴权失败统一返回 "用户名或密码错误"（不区分具体原因），防止账号枚举
+→ 404 统一返回 "资源不存在"（不暴露具体路径）
 ```
 
-### 5.4 前端同步改进
+### 5.4 前端合成改进
 
 | 项 | 说明 |
 |----|------|
 | API 调用统一 | 消除裸 axios 调用，全部走 authHttp/adminHttp/http |
 | 类型安全 | 考虑从 springdoc 自动生成 TS 类型（见架构文档建议） |
 | 状态分层 | TanStack Query 管服务端数据，Zustand 管 UI 状态 |
+
+### 5.5 安全持续监控 🔴 新增
+
+**发现来源**：渗透测试审计 (2026-05-28)
+
+| 项 | 说明 | 优先级 |
+|----|------|--------|
+| 登录监控告警 | 对 `/api/auth/login/web` 添加登录失败计数 + 异常告警（Redis + Prometheus） | P1 |
+| 定期渗透测试 | 每季度或每次大版本发布前执行黑盒渗透 | P2 |
+| WAF 接入 | 生产环境前置 Web 应用防火墙（阿里云 WAF / Cloudflare） | P1 |
+| 依赖漏洞扫描 | CI 集成 `trivy` 或 `snyk` 扫描 Java/JS 依赖 CVE | P2 |
+| API 访问审计日志 | 记录所有 API 调用的 IP、User-Agent、耗时、响应码（已有 AOP 审计基础） | P2 |
+| Source Map 保护 | 前端构建禁止在生产环境发布 `.js.map` 文件（Vite `build.sourcemap: false`） | P1 |
+| JWT Token 安全 | 评估 Token 有效期、Refresh Token 轮换策略、JWT 签名算法强度 | P2 |
+
+### 5.6 前端 Source Map 与资源泄露防护 🔴 新增
+
+**发现来源**：渗透测试审计 (2026-05-28)
+
+**现状**：前端 JS Bundle 的 source map（`index-B6SR3XLp.js.map`）在生产环境可公开访问（HTTP 200），攻击者可直接读取未混淆的完整源码，包括：
+- 所有 API 路由（870+ 条已提取）
+- Axios 实例配置（baseURL、timeout）
+- 业务逻辑代码
+- 内部模块结构
+
+**改造方案**：
+
+```
+1. Vite 构建配置：
+   // vite.config.ts
+   build: {
+     sourcemap: false,  // 生产环境禁用
+   }
+
+2. Nginx/Spring Boot 静态资源规则：
+   # 拒绝 .map 文件请求
+   location ~* \.map$ {
+       deny all;
+   }
+
+3. 构建后检查脚本：
+   # CI 中添加：确认 dist/ 目录下无 .map 文件
+   find dist/ -name "*.map" | wc -l | xargs -I{} bash -c '[ {} -eq 0 ] || exit 1'
+```
 
 ---
 
@@ -276,10 +565,29 @@ Controller 层统一返回 "操作失败" 而非 e.getMessage()
 | 阶段 | 严重项 | 一般项 | 建议项 | 预估工期 |
 |------|--------|--------|--------|----------|
 | P0 | ✅ 4 | 0 | 0 | 已完成 2026-05-27 |
-| P1 | ✅ 3 / ⏸ 3 | 3 | 0 | 部分完成 2026-05-27 |
+| P0-安全 | 🔴 6 | 1 | 0 | 1-3 天 |
+| P1 | ✅ 3 / ⏸ 3 | 3 + 🔴 2 | 0 | 部分完成 2026-05-27 |
 | P2 | ✅ 4 / ⏸ 1 | 7 | 2 | 已完成 2026-05-27 |
-| P3 | 3 | 8 | 7 | 持续 |
-| **合计** | **13** | **18** | **9** | — |
+| P3 | 3 + 🔴 2 | 8 | 7 | 持续 |
+| **合计** | **20** | **21** | **9** | — |
+
+> 🔴 = 渗透测试审计新增项 (2026-05-28)
+
+### 渗透测试发现与改造路线对照
+
+| 渗透发现 | 风险等级 | 对应路线项 | 阶段 |
+|----------|----------|-----------|------|
+| 登录接口无限流 | 严重 | 2S.1 | P0-安全 |
+| CORS 允许 localhost:3000 | 严重 | 2S.2 | P0-安全 |
+| 缺少安全响应头 | 高危 | 2S.3 | P0-安全 |
+| HTTP 明文传输 | 高危 | 2S.4 | P0-安全 |
+| Swagger UI 公开暴露 | 高危 | 2S.5 | P0-安全 |
+| 错误信息泄露框架细节 | 中危 | 2S.6 | P0-安全 |
+| Source Map 公开可访问 | 中危 | 5.6 | P3 |
+| 错误状态码混乱 | 中危 | 3.7 | P1 |
+| API 指纹泄露 | 中危 | 3.8 | P1 |
+| 公开登录品牌配置接口 | 低危 | 5.3 | P3 |
+| 安全监控缺失 | 建议 | 5.5 | P3 |
 
 ---
 

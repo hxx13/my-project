@@ -6,5 +6,6 @@
       "Edit",
       "WebFetch"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true
 }

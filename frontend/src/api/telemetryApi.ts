@@ -1,5 +1,4 @@
 import type { QueryClient } from "@tanstack/react-query";
-import axios from "axios";
 import { authHttp } from "@/api/core/authHttp";
 import type {
   FacilityLayoutRulesV1,
@@ -122,7 +121,7 @@ export async function fetchWinccTelemetrySnapshot(
   const sync = options?.sync === true;
   const vn = options?.variableNames?.trim();
   const res = await authHttp.get<ApiResult<TelemetrySnapshot>>(
-    "/api/v1/telemetry/wincc/snapshot",
+    "/v1/telemetry/wincc/snapshot",
     {
       params: {
         sync: sync ? "true" : "false",
@@ -204,7 +203,7 @@ export async function fetchWinccAnimalRoomHub(
   const soloWidthPx = options?.soloWidthPx ?? 960;
   const campus = options?.campus;
   const hubClient = options?.hubClient;
-  const res = await authHttp.get<ApiResult<AnimalRoomHubDto>>("/api/v1/telemetry/wincc/animal-room-hub", {
+  const res = await authHttp.get<ApiResult<AnimalRoomHubDto>>("/v1/telemetry/wincc/animal-room-hub", {
     params: {
       sync: sync ? "true" : "false",
       soloWidthPx,
@@ -616,7 +615,7 @@ export function formatTelemetryTs(iso: string | null | undefined): string {
 
 export async function fetchWinccDockPollConfig(): Promise<TelemetryWinccDockPollConfig> {
   const res = await authHttp.get<ApiResult<TelemetryWinccDockPollConfig>>(
-    "/api/v1/telemetry/wincc/dock-poll-config"
+    "/v1/telemetry/wincc/dock-poll-config"
   );
   const body = res.data;
   if (!body?.success || body.data == null) {
@@ -627,7 +626,7 @@ export async function fetchWinccDockPollConfig(): Promise<TelemetryWinccDockPoll
 
 export async function fetchWinccSequentialDiagnostic(): Promise<TelemetrySequentialDiagnostic> {
   const res = await authHttp.get<ApiResult<TelemetrySequentialDiagnostic>>(
-    "/api/v1/telemetry/wincc/diagnostic/sequential-built-in-then-watchlist"
+    "/v1/telemetry/wincc/diagnostic/sequential-built-in-then-watchlist"
   );
   const body = res.data;
   if (!body?.success || body.data == null) {
@@ -652,7 +651,7 @@ export async function queryWatchlistAlarmLimits(
   variableNames: string[],
   currentValueByVariable?: Record<string, string | null | undefined>
 ): Promise<WatchlistAlarmLimitsBatch> {
-  const res = await authHttp.post<ApiResult<WatchlistAlarmLimitsBatch>>("/api/v1/telemetry/watchlists/alarm-limits/query", {
+  const res = await authHttp.post<ApiResult<WatchlistAlarmLimitsBatch>>("/v1/telemetry/watchlists/alarm-limits/query", {
     variableNames,
     currentValueByVariable: currentValueByVariable ?? {},
   });
@@ -677,7 +676,7 @@ export async function patchWatchlistTagAlarmOverrides(
 ): Promise<TelemetryWatchlistTagDto> {
   const code = encodeURIComponent(bundleCode);
   const res = await authHttp.patch<ApiResult<TelemetryWatchlistTagDto>>(
-    `/api/v1/telemetry/watchlists/${code}/tags/${tagId}/alarm-overrides`,
+    `/v1/telemetry/watchlists/${code}/tags/${tagId}/alarm-overrides`,
     payload
   );
   const body = res.data;

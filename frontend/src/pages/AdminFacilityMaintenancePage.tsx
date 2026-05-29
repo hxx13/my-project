@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, ArrowDown, ArrowUp, Download, Plus, RefreshCw, Settings, Trash2, Upload } from "lucide-react";
 import DailyInspectionPanel from "@/components/facility-maintenance/DailyInspectionPanel";
-import { AdminToolbar, AdminToolbarActions } from "@/components/admin/AdminToolbar";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
@@ -46,7 +46,6 @@ import {
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 
 type TabKey = "inspection" | "consumables" | "replacements";
-
 type SettingsTabKey = "sites" | "options" | "templates" | "catalog" | "presets";
 
 const LEDGER_TABS: { key: TabKey; label: string }[] = [
@@ -64,13 +63,11 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
-/** 当前浏览器本地时间 → `yyyy-MM-ddTHH:mm:ss`，与后端 `LocalDateTime` 墙上时间一致，避免 `toISOString()` 转 UTC 差 8 小时 */
 function toLocalWallClockFromDate(d: Date): string {
   const z = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
 }
 
-/** `<input type="datetime-local">` 的 `yyyy-MM-ddTHH:mm` → 后端可解析的本地时间串 */
 function toDatetimeLocalString(d = new Date()): string {
   const z = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`;
@@ -119,17 +116,77 @@ function fmTemplateSiteColumnLabel(t: FmTemplate, sitesList: FmSite[]): string {
   return ids.map((id) => sitesList.find((x) => x.id === id)?.name || id).join("、");
 }
 
+const inputClass = "w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm";
+const btnPrimaryClass = "rounded-twin-lg bg-[var(--twin-primary)] px-3 py-2 text-sm text-[var(--twin-on-primary)] hover:opacity-90";
+const btnSecondaryClass = "rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-sm text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]";
+const btnDangerClass = "rounded-twin-lg border px-3 py-1.5 text-sm";
+
 export default function AdminFacilityMaintenancePage() {
+  const qc = useQueryClient();
   const [tab, setTab] = useState<TabKey>("inspection");
-  const [loading, setLoading] = useState(false);
-  const [sites, setSites] = useState<FmSite[]>([]);
-  const [optionSets, setOptionSets] = useState<FmOptionSet[]>([]);
-  const [templates, setTemplates] = useState<FmTemplate[]>([]);
   const [filterSiteId, setFilterSiteId] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTabKey>("sites");
-  const [consumableCatalog, setConsumableCatalog] = useState<FmConsumableCatalog[]>([]);
-  const [replacementPresets, setReplacementPresets] = useState<FmReplacementFilterPreset[]>([]);
+  const [newCatalogName, setNewCatalogName] = useState("");
+  const [newCatalogUnit, setNewCatalogUnit] = useState("件");
+  const [newPresetLabel, setNewPresetLabel] = useState("");
+  const [consPage, setConsPage] = useState(1);
+  const [repPage, setRepPage] = useState(1);
+
+  const { data: sites = [], isFetching: sitesFetching } = useQuery({
+    queryKey: ["fmSites"] as const,
+    queryFn: () => fetchFmSites(true),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: consumableCatalog = [] } = useQuery({
+    queryKey: ["fmConsumableCatalog"] as const,
+    queryFn: () => fetchFmConsumableCatalog(true),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: replacementPresets = [] } = useQuery({
+    queryKey: ["fmReplacementPresets"] as const,
+    queryFn: () => fetchFmReplacementFilterPresets(true),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: optionSets = [] } = useQuery({
+    queryKey: ["fmOptionSets"] as const,
+    queryFn: fetchFmOptionSets,
+    enabled: settingsOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ["fmTemplates"] as const,
+    queryFn: () => fetchFmTemplates(undefined),
+    enabled: settingsOpen,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const consQueryKey = useMemo(
+    () => ["fmConsumableLines", { siteId: filterSiteId || undefined, page: consPage }] as const,
+    [filterSiteId, consPage]
+  );
+  const { data: consData } = useQuery({
+    queryKey: consQueryKey,
+    queryFn: () => fetchFmConsumableLines({ siteId: filterSiteId || undefined, page: consPage, size: 20 }),
+    enabled: tab === "consumables",
+    placeholderData: (prev) => prev,
+  });
+
+  const repQueryKey = useMemo(
+    () => ["fmReplacementRecords", { siteId: filterSiteId || undefined, page: repPage }] as const,
+    [filterSiteId, repPage]
+  );
+  const { data: repData } = useQuery({
+    queryKey: repQueryKey,
+    queryFn: () => fetchFmReplacementRecords({ siteId: filterSiteId || undefined, page: repPage, size: 20 }),
+    enabled: tab === "replacements",
+    placeholderData: (prev) => prev,
+  });
+
   const replacementFilterDisplay = useCallback(
     (raw: unknown) => {
       const ft = raw == null ? "" : String(raw).trim();
@@ -140,89 +197,6 @@ export default function AdminFacilityMaintenancePage() {
     },
     [replacementPresets]
   );
-  const [newCatalogName, setNewCatalogName] = useState("");
-  const [newCatalogUnit, setNewCatalogUnit] = useState("件");
-  const [newPresetLabel, setNewPresetLabel] = useState("");
-
-  const [consPage, setConsPage] = useState(1);
-  const [consData, setConsData] = useState<{ rows: Record<string, unknown>[]; total: number } | null>(null);
-  const [repPage, setRepPage] = useState(1);
-  const [repData, setRepData] = useState<{ rows: Record<string, unknown>[]; total: number } | null>(null);
-
-  const loadSites = useCallback(async () => {
-    const list = await fetchFmSites(true);
-    setSites(list || []);
-  }, []);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      await loadSites();
-      if (tab === "consumables") {
-        setConsData(
-          await fetchFmConsumableLines({
-            siteId: filterSiteId || undefined,
-            page: consPage,
-            size: 20,
-          })
-        );
-      }
-      if (tab === "replacements") {
-        setRepData(
-          await fetchFmReplacementRecords({
-            siteId: filterSiteId || undefined,
-            page: repPage,
-            size: 20,
-          })
-        );
-      }
-    } catch (e) {
-      toast.error((e as Error).message || "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [tab, filterSiteId, consPage, repPage, loadSites]);
-
-  const loadSettingsData = useCallback(async () => {
-    try {
-      await loadSites();
-      setOptionSets((await fetchFmOptionSets()) || []);
-      setTemplates((await fetchFmTemplates(undefined)) || []);
-      setConsumableCatalog((await fetchFmConsumableCatalog(true)) || []);
-      setReplacementPresets((await fetchFmReplacementFilterPresets(true)) || []);
-    } catch {
-      toast.error("加载设置数据失败");
-    }
-  }, [loadSites]);
-
-  useEffect(() => {
-    if (settingsOpen) void loadSettingsData();
-  }, [settingsOpen, loadSettingsData]);
-
-  useEffect(() => {
-    if (tab === "consumables") {
-      void (async () => {
-        try {
-          setConsumableCatalog((await fetchFmConsumableCatalog(false)) || []);
-        } catch {
-          /* ignore */
-        }
-      })();
-    }
-    if (tab === "replacements") {
-      void (async () => {
-        try {
-          setReplacementPresets((await fetchFmReplacementFilterPresets(false)) || []);
-        } catch {
-          /* ignore */
-        }
-      })();
-    }
-  }, [tab]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
 
   const siteOptions = useMemo(
     () =>
@@ -268,9 +242,8 @@ export default function AdminFacilityMaintenancePage() {
         toast.success("已保存");
         const id = siteEdit.id;
         setSiteOpen(false);
-        // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
-        setSites((prev) =>
-          prev.map((s) =>
+        qc.setQueryData(["fmSites"], (prev: FmSite[] | undefined) =>
+          (prev || []).map((s) =>
             s.id === id
               ? { ...s, name: siteName.trim(), code: siteCode.trim() || undefined, sortOrder: siteOrder }
               : s
@@ -280,9 +253,8 @@ export default function AdminFacilityMaintenancePage() {
         const created = await createFmSite({ name: siteName.trim(), code: siteCode.trim() || undefined, sortOrder: siteOrder });
         toast.success("已创建");
         setSiteOpen(false);
-        // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
-        setSites((prev) => [
-          ...prev,
+        qc.setQueryData(["fmSites"], (prev: FmSite[] | undefined) => [
+          ...(prev || []),
           { id: created.id, name: siteName.trim(), code: siteCode.trim() || undefined, sortOrder: siteOrder },
         ]);
       }
@@ -323,13 +295,13 @@ export default function AdminFacilityMaintenancePage() {
       }
       toast.success("已保存");
       setOptOpen(false);
-      setOptionSets((await fetchFmOptionSets()) || []);
+      qc.invalidateQueries({ queryKey: ["fmOptionSets"] });
     } catch (e) {
       toast.error((e as Error).message);
     }
   };
 
-  // --- Template modal（可视化编辑项；禁止手写 JSON）---
+  // --- Template modal ---
   const [tplOpen, setTplOpen] = useState(false);
   const [tplEdit, setTplEdit] = useState<FmTemplate | null>(null);
   const [tplName, setTplName] = useState("");
@@ -395,22 +367,13 @@ export default function AdminFacilityMaintenancePage() {
     }
     try {
       if (tplEdit) {
-        await patchFmTemplate(tplEdit.id, {
-          siteIds: tplSiteIds,
-          name: tplName.trim(),
-          items,
-        });
+        await patchFmTemplate(tplEdit.id, { siteIds: tplSiteIds, name: tplName.trim(), items });
       } else {
-        await createFmTemplate({
-          siteIds: tplSiteIds,
-          name: tplName.trim(),
-          items,
-        });
+        await createFmTemplate({ siteIds: tplSiteIds, name: tplName.trim(), items });
       }
       toast.success("已保存");
       setTplOpen(false);
-      // 保存后仅同步模板列表，禁止整表 load — post-save-no-full-refresh.mdc
-      setTemplates((await fetchFmTemplates(undefined)) || []);
+      qc.invalidateQueries({ queryKey: ["fmTemplates"] });
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -446,8 +409,9 @@ export default function AdminFacilityMaintenancePage() {
         createdByName: "",
         note: cNote || undefined,
       };
-      // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
-      setConsData((prev) => (prev ? { ...prev, rows: [newRow, ...prev.rows], total: prev.total + 1 } : prev));
+      qc.setQueryData(consQueryKey, (prev: typeof consData | undefined) =>
+        prev ? { ...prev, rows: [newRow, ...prev.rows], total: prev.total + 1 } : prev
+      );
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -479,8 +443,9 @@ export default function AdminFacilityMaintenancePage() {
         createdByName: "",
         note: rNote || undefined,
       };
-      // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
-      setRepData((prev) => (prev ? { ...prev, rows: [newRow, ...prev.rows], total: prev.total + 1 } : prev));
+      qc.setQueryData(repQueryKey, (prev: typeof repData | undefined) =>
+        prev ? { ...prev, rows: [newRow, ...prev.rows], total: prev.total + 1 } : prev
+      );
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -508,29 +473,20 @@ export default function AdminFacilityMaintenancePage() {
             ? `已导入耗材 ${r.consumables} 条`
             : `已导入更换 ${r.replacements} 条`;
       toast.success(msg);
-      // 导入后仅刷新当前台账分页，禁止整表 load — post-save-no-full-refresh.mdc
-      if (scope === "inspection") {
-        /* 当日巡查表在独立面板中维护；导入后请在该页切换日期或点击刷新 */
-      } else if (scope === "consumables") {
-        setConsData(
-          await fetchFmConsumableLines({
-            siteId: filterSiteId || undefined,
-            page: consPage,
-            size: 20,
-          })
-        );
-      } else {
-        setRepData(
-          await fetchFmReplacementRecords({
-            siteId: filterSiteId || undefined,
-            page: repPage,
-            size: 20,
-          })
-        );
+      if (scope === "consumables") {
+        qc.invalidateQueries({ queryKey: ["fmConsumableLines"] });
+      } else if (scope === "replacements") {
+        qc.invalidateQueries({ queryKey: ["fmReplacementRecords"] });
       }
     } catch (e) {
       toast.error((e as Error).message);
     }
+  };
+
+  const handleRefresh = () => {
+    qc.invalidateQueries({ queryKey: ["fmSites"] });
+    if (tab === "consumables") qc.invalidateQueries({ queryKey: consQueryKey });
+    if (tab === "replacements") qc.invalidateQueries({ queryKey: repQueryKey });
   };
 
   return (
@@ -556,8 +512,8 @@ export default function AdminFacilityMaintenancePage() {
           >
             <Settings className="h-4 w-4" aria-hidden /> 设置
           </AdminButton>
-          <AdminButton type="button" tone="secondary" className="inline-flex items-center gap-2" onClick={() => void refresh()}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden />
+          <AdminButton type="button" tone="secondary" className="inline-flex items-center gap-2" onClick={handleRefresh}>
+            <RefreshCw className={`h-4 w-4 ${sitesFetching ? "animate-spin" : ""}`} aria-hidden />
             刷新
           </AdminButton>
         </>
@@ -571,8 +527,8 @@ export default function AdminFacilityMaintenancePage() {
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
-              className={`rounded-lg px-3 py-2 text-sm font-medium ${
-                tab === t.key ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"
+              className={`rounded-twin-lg px-3 py-2 text-sm font-medium ${
+                tab === t.key ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
               }`}
             >
               {t.label}
@@ -600,18 +556,18 @@ export default function AdminFacilityMaintenancePage() {
             aria-modal="true"
             onClick={() => setSettingsOpen(false)}
           >
-            <div className="my-6 w-full max-w-5xl rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="my-6 w-full max-w-5xl rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4" onClick={(e) => e.stopPropagation()}>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold text-slate-900">系统设置</h2>
+                <h2 className="text-lg font-semibold text-[var(--twin-ink)]">系统设置</h2>
                 <button
                   type="button"
-                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  className="rounded-twin-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
                   onClick={() => setSettingsOpen(false)}
                 >
                   关闭
                 </button>
               </div>
-              <div className="mb-4 flex flex-wrap gap-2 border-b border-slate-100 pb-3">
+              <div className="mb-4 flex flex-wrap gap-2 border-b border-[var(--twin-hairline)] pb-3">
                 {(
                   [
                     ["sites", "机房"],
@@ -625,8 +581,8 @@ export default function AdminFacilityMaintenancePage() {
                     key={k}
                     type="button"
                     onClick={() => setSettingsTab(k)}
-                    className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                      settingsTab === k ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    className={`rounded-twin-lg px-3 py-1.5 text-sm font-medium ${
+                      settingsTab === k ? "bg-[var(--twin-ink)] text-[var(--twin-canvas)]" : "bg-[var(--twin-canvas-soft)] text-[var(--twin-body)] hover:bg-[var(--twin-hairline)]"
                     }`}
                   >
                     {label}
@@ -634,12 +590,12 @@ export default function AdminFacilityMaintenancePage() {
                 ))}
               </div>
               {settingsTab === "sites" && (
-                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <span className="font-medium text-slate-800">机房地点</span>
+                <div className="overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1">
+            <div className="flex items-center justify-between border-b border-[var(--twin-hairline)] px-4 py-3">
+              <span className="font-medium text-[var(--twin-ink)]">机房地点</span>
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+                className="inline-flex items-center gap-1 rounded-twin-lg bg-[var(--twin-primary)] px-3 py-1.5 text-sm text-[var(--twin-on-primary)] hover:opacity-90"
                 onClick={openNewSite}
               >
                 <Plus className="h-4 w-4" /> 新增
@@ -647,7 +603,7 @@ export default function AdminFacilityMaintenancePage() {
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-slate-600">
+                <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                   <tr>
                     <th className="px-4 py-2">名称</th>
                     <th className="px-4 py-2">编码</th>
@@ -658,14 +614,14 @@ export default function AdminFacilityMaintenancePage() {
                 </thead>
                 <tbody>
                   {(sites || []).map((s) => (
-                    <tr key={s.id} className="border-t border-slate-100">
+                    <tr key={s.id} className="border-t border-[var(--twin-hairline)]">
                       <td className="px-4 py-2">{s.name}</td>
                       <td className="px-4 py-2">{s.code || "-"}</td>
                       <td className="px-4 py-2">{s.sortOrder ?? s.sort_order ?? 0}</td>
                       <td className="px-4 py-2">{s.disabled ? "停用" : "正常"}</td>
                       <td className="px-4 py-2">
                         <div className="flex flex-wrap gap-x-3 gap-y-1">
-                          <button type="button" className="text-blue-600 hover:underline" onClick={() => openEditSite(s)}>
+                          <button type="button" className="text-[var(--twin-link)] hover:underline" onClick={() => openEditSite(s)}>
                             编辑
                           </button>
                           {!s.disabled ? (
@@ -677,8 +633,9 @@ export default function AdminFacilityMaintenancePage() {
                                 try {
                                   await patchFmSite(s.id, { disabled: 1 });
                                   toast.success("已停用");
-                                  // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
-                                  setSites((prev) => prev.map((x) => (x.id === s.id ? { ...x, disabled: 1 } : x)));
+                                  qc.setQueryData(["fmSites"], (prev: FmSite[] | undefined) =>
+                                    (prev || []).map((x) => (x.id === s.id ? { ...x, disabled: 1 } : x))
+                                  );
                                 } catch (e) {
                                   toast.error((e as Error).message);
                                 }
@@ -694,8 +651,9 @@ export default function AdminFacilityMaintenancePage() {
                                 try {
                                   await patchFmSite(s.id, { disabled: 0 });
                                   toast.success("已启用");
-                                  // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
-                                  setSites((prev) => prev.map((x) => (x.id === s.id ? { ...x, disabled: 0 } : x)));
+                                  qc.setQueryData(["fmSites"], (prev: FmSite[] | undefined) =>
+                                    (prev || []).map((x) => (x.id === s.id ? { ...x, disabled: 0 } : x))
+                                  );
                                 } catch (e) {
                                   toast.error((e as Error).message);
                                 }
@@ -717,8 +675,9 @@ export default function AdminFacilityMaintenancePage() {
                               try {
                                 await deleteFmSitePermanent(s.id);
                                 toast.success("已删除");
-                                // 删除后仅从列表移除该行，禁止整表 load（post-save-no-full-refresh.mdc）
-                                setSites((prev) => prev.filter((x) => x.id !== s.id));
+                                qc.setQueryData(["fmSites"], (prev: FmSite[] | undefined) =>
+                                  (prev || []).filter((x) => x.id !== s.id)
+                                );
                               } catch (e) {
                                 toast.error((e as Error).message);
                               }
@@ -737,28 +696,28 @@ export default function AdminFacilityMaintenancePage() {
               )}
 
               {settingsTab === "options" && (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <span className="font-medium text-slate-800">下拉选项集</span>
+          <div className="overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1">
+            <div className="flex items-center justify-between border-b border-[var(--twin-hairline)] px-4 py-3">
+              <span className="font-medium text-[var(--twin-ink)]">下拉选项集</span>
               <button
                 type="button"
-                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white"
+                className="inline-flex items-center gap-1 rounded-twin-lg bg-[var(--twin-primary)] px-3 py-1.5 text-sm text-[var(--twin-on-primary)] hover:opacity-90"
                 onClick={openNewOpt}
               >
                 <Plus className="h-4 w-4" /> 新增
               </button>
             </div>
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-[var(--twin-hairline)]">
               {(optionSets || []).map((o) => (
                 <div key={o.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3">
                   <div>
                     <div className="font-medium">{o.name}</div>
-                    <div className="text-xs text-slate-500 mt-1">
+                    <div className="text-xs text-[var(--twin-mute)] mt-1">
                       {(o.items || []).map((i) => i.label).join("、") || "（无选项）"}
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button type="button" className="text-blue-600 text-sm" onClick={() => openEditOpt(o)}>
+                    <button type="button" className="text-[var(--twin-link)] text-sm" onClick={() => openEditOpt(o)}>
                       编辑
                     </button>
                     <button
@@ -769,7 +728,7 @@ export default function AdminFacilityMaintenancePage() {
                         try {
                           await deleteFmOptionSet(o.id);
                           toast.success("已删除");
-                          setOptionSets((await fetchFmOptionSets()) || []);
+                          qc.invalidateQueries({ queryKey: ["fmOptionSets"] });
                         } catch (e) {
                           toast.error((e as Error).message);
                         }
@@ -785,16 +744,16 @@ export default function AdminFacilityMaintenancePage() {
               )}
 
               {settingsTab === "templates" && (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <span className="font-medium text-slate-800">巡查模板</span>
-              <button type="button" className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={openNewTpl}>
+          <div className="overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1">
+            <div className="flex items-center justify-between border-b border-[var(--twin-hairline)] px-4 py-3">
+              <span className="font-medium text-[var(--twin-ink)]">巡查模板</span>
+              <button type="button" className="inline-flex items-center gap-1 rounded-twin-lg bg-[var(--twin-primary)] px-3 py-1.5 text-sm text-[var(--twin-on-primary)] hover:opacity-90" onClick={openNewTpl}>
                 <Plus className="h-4 w-4" /> 新增模板
               </button>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-slate-600">
+                <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                   <tr>
                     <th className="px-4 py-2">名称</th>
                     <th className="px-4 py-2">机房</th>
@@ -804,12 +763,12 @@ export default function AdminFacilityMaintenancePage() {
                 </thead>
                 <tbody>
                   {(templates || []).map((t) => (
-                    <tr key={t.id} className="border-t border-slate-100">
+                    <tr key={t.id} className="border-t border-[var(--twin-hairline)]">
                       <td className="px-4 py-2">{t.name}</td>
                       <td className="px-4 py-2">{fmTemplateSiteColumnLabel(t, sites)}</td>
                       <td className="px-4 py-2">{(t.items || []).length}</td>
                       <td className="px-4 py-2 space-x-2">
-                        <button type="button" className="text-blue-600 hover:underline" onClick={() => void openEditTpl(t)}>
+                        <button type="button" className="text-[var(--twin-link)] hover:underline" onClick={() => void openEditTpl(t)}>
                           编辑
                         </button>
                         <button
@@ -820,7 +779,7 @@ export default function AdminFacilityMaintenancePage() {
                             try {
                               await deleteFmTemplate(t.id);
                               toast.success("已删除");
-                              setTemplates((await fetchFmTemplates(undefined)) || []);
+                              qc.invalidateQueries({ queryKey: ["fmTemplates"] });
                             } catch (e) {
                               toast.error((e as Error).message);
                             }
@@ -839,20 +798,20 @@ export default function AdminFacilityMaintenancePage() {
 
               {settingsTab === "catalog" && (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="flex flex-wrap items-end gap-2 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
                     <div className="min-w-[140px] flex-1">
-                      <label className="mb-1 block text-xs text-slate-500">名称</label>
+                      <label className="mb-1 block text-xs text-[var(--twin-mute)]">名称</label>
                       <input
-                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
+                        className="w-full rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 text-sm"
                         value={newCatalogName}
                         onChange={(e) => setNewCatalogName(e.target.value)}
                         placeholder="如：手套"
                       />
                     </div>
                     <div className="w-28">
-                      <label className="mb-1 block text-xs text-slate-500">默认单位</label>
+                      <label className="mb-1 block text-xs text-[var(--twin-mute)]">默认单位</label>
                       <input
-                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
+                        className="w-full rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 text-sm"
                         value={newCatalogUnit}
                         onChange={(e) => setNewCatalogUnit(e.target.value)}
                         placeholder="件"
@@ -860,7 +819,7 @@ export default function AdminFacilityMaintenancePage() {
                     </div>
                     <button
                       type="button"
-                      className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white"
+                      className={btnPrimaryClass}
                       onClick={async () => {
                         if (!newCatalogName.trim()) {
                           toast.error("请填写名称");
@@ -875,7 +834,7 @@ export default function AdminFacilityMaintenancePage() {
                           toast.success("已添加");
                           setNewCatalogName("");
                           setNewCatalogUnit("件");
-                          await loadSettingsData();
+                          qc.invalidateQueries({ queryKey: ["fmConsumableCatalog"] });
                         } catch (e) {
                           toast.error((e as Error).message);
                         }
@@ -884,9 +843,9 @@ export default function AdminFacilityMaintenancePage() {
                       新增
                     </button>
                   </div>
-                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                  <div className="overflow-x-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)]">
                     <table className="min-w-full text-left text-sm">
-                      <thead className="bg-slate-50 text-slate-600">
+                      <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                         <tr>
                           <th className="px-3 py-2">名称</th>
                           <th className="px-3 py-2">单位</th>
@@ -897,7 +856,7 @@ export default function AdminFacilityMaintenancePage() {
                       </thead>
                       <tbody>
                         {(consumableCatalog || []).map((c) => (
-                          <tr key={c.id} className="border-t border-slate-100">
+                          <tr key={c.id} className="border-t border-[var(--twin-hairline)]">
                             <td className="px-3 py-2">{c.name}</td>
                             <td className="px-3 py-2">{c.unit || "-"}</td>
                             <td className="px-3 py-2">{c.sortOrder ?? 0}</td>
@@ -905,14 +864,14 @@ export default function AdminFacilityMaintenancePage() {
                             <td className="px-3 py-2 space-x-2">
                               <button
                                 type="button"
-                                className="text-blue-600 text-sm hover:underline"
+                                className="text-[var(--twin-link)] text-sm hover:underline"
                                 onClick={async () => {
                                   const u = prompt("单位", c.unit || "");
                                   if (u === null) return;
                                   try {
                                     await patchFmConsumableCatalog(c.id, { unit: u.trim() || null });
                                     toast.success("已更新");
-                                    await loadSettingsData();
+                                    qc.invalidateQueries({ queryKey: ["fmConsumableCatalog"] });
                                   } catch (e) {
                                     toast.error((e as Error).message);
                                   }
@@ -922,12 +881,12 @@ export default function AdminFacilityMaintenancePage() {
                               </button>
                               <button
                                 type="button"
-                                className="text-blue-600 text-sm hover:underline"
+                                className="text-[var(--twin-link)] text-sm hover:underline"
                                 onClick={async () => {
                                   try {
                                     await patchFmConsumableCatalog(c.id, { disabled: c.disabled ? 0 : 1 });
                                     toast.success("已更新");
-                                    await loadSettingsData();
+                                    qc.invalidateQueries({ queryKey: ["fmConsumableCatalog"] });
                                   } catch (e) {
                                     toast.error((e as Error).message);
                                   }
@@ -943,7 +902,7 @@ export default function AdminFacilityMaintenancePage() {
                                   try {
                                     await deleteFmConsumableCatalog(c.id);
                                     toast.success("已删除");
-                                    await loadSettingsData();
+                                    qc.invalidateQueries({ queryKey: ["fmConsumableCatalog"] });
                                   } catch (e) {
                                     toast.error((e as Error).message);
                                   }
@@ -962,11 +921,11 @@ export default function AdminFacilityMaintenancePage() {
 
               {settingsTab === "presets" && (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="flex flex-wrap items-end gap-2 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
                     <div className="min-w-[200px] flex-1">
-                      <label className="mb-1 block text-xs text-slate-500">类型名称（如初效/中效/高效）</label>
+                      <label className="mb-1 block text-xs text-[var(--twin-mute)]">类型名称（如初效/中效/高效）</label>
                       <input
-                        className="w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
+                        className="w-full rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 text-sm"
                         value={newPresetLabel}
                         onChange={(e) => setNewPresetLabel(e.target.value)}
                         placeholder="初效"
@@ -974,7 +933,7 @@ export default function AdminFacilityMaintenancePage() {
                     </div>
                     <button
                       type="button"
-                      className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white"
+                      className={btnPrimaryClass}
                       onClick={async () => {
                         if (!newPresetLabel.trim()) {
                           toast.error("请填写名称");
@@ -987,7 +946,7 @@ export default function AdminFacilityMaintenancePage() {
                           });
                           toast.success("已添加");
                           setNewPresetLabel("");
-                          await loadSettingsData();
+                          qc.invalidateQueries({ queryKey: ["fmReplacementPresets"] });
                         } catch (e) {
                           toast.error((e as Error).message);
                         }
@@ -996,9 +955,9 @@ export default function AdminFacilityMaintenancePage() {
                       新增
                     </button>
                   </div>
-                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                  <div className="overflow-x-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)]">
                     <table className="min-w-full text-left text-sm">
-                      <thead className="bg-slate-50 text-slate-600">
+                      <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                         <tr>
                           <th className="px-3 py-2">名称</th>
                           <th className="px-3 py-2">排序</th>
@@ -1008,21 +967,21 @@ export default function AdminFacilityMaintenancePage() {
                       </thead>
                       <tbody>
                         {(replacementPresets || []).map((p) => (
-                          <tr key={p.id} className="border-t border-slate-100">
+                          <tr key={p.id} className="border-t border-[var(--twin-hairline)]">
                             <td className="px-3 py-2">{p.label}</td>
                             <td className="px-3 py-2">{p.sortOrder ?? 0}</td>
                             <td className="px-3 py-2">{p.disabled ? "停用" : "正常"}</td>
                             <td className="px-3 py-2 space-x-2">
                               <button
                                 type="button"
-                                className="text-blue-600 text-sm hover:underline"
+                                className="text-[var(--twin-link)] text-sm hover:underline"
                                 onClick={async () => {
                                   const n = prompt("名称", p.label);
                                   if (n === null || !n.trim()) return;
                                   try {
                                     await patchFmReplacementFilterPreset(p.id, { label: n.trim() });
                                     toast.success("已更新");
-                                    await loadSettingsData();
+                                    qc.invalidateQueries({ queryKey: ["fmReplacementPresets"] });
                                   } catch (e) {
                                     toast.error((e as Error).message);
                                   }
@@ -1032,12 +991,12 @@ export default function AdminFacilityMaintenancePage() {
                               </button>
                               <button
                                 type="button"
-                                className="text-blue-600 text-sm hover:underline"
+                                className="text-[var(--twin-link)] text-sm hover:underline"
                                 onClick={async () => {
                                   try {
                                     await patchFmReplacementFilterPreset(p.id, { disabled: p.disabled ? 0 : 1 });
                                     toast.success("已更新");
-                                    await loadSettingsData();
+                                    qc.invalidateQueries({ queryKey: ["fmReplacementPresets"] });
                                   } catch (e) {
                                     toast.error((e as Error).message);
                                   }
@@ -1053,7 +1012,7 @@ export default function AdminFacilityMaintenancePage() {
                                   try {
                                     await deleteFmReplacementFilterPreset(p.id);
                                     toast.success("已删除");
-                                    await loadSettingsData();
+                                    qc.invalidateQueries({ queryKey: ["fmReplacementPresets"] });
                                   } catch (e) {
                                     toast.error((e as Error).message);
                                   }
@@ -1074,24 +1033,24 @@ export default function AdminFacilityMaintenancePage() {
         )}
 
         {tab === "inspection" && (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1">
             <DailyInspectionPanel />
           </div>
         )}
 
         {tab === "consumables" && consData && (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+          <div className="overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--twin-hairline)] px-4 py-3">
               <span className="font-medium">耗材登记</span>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  className={`inline-flex items-center gap-1 ${btnSecondaryClass}`}
                   onClick={() => void doLedgerExport("consumables")}
                 >
                   <Download className="h-4 w-4" /> 导出 Excel
                 </button>
-                <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                <label className={`inline-flex cursor-pointer items-center gap-1 ${btnSecondaryClass}`}>
                   <Upload className="h-4 w-4" /> 导入
                   <input
                     type="file"
@@ -1100,26 +1059,26 @@ export default function AdminFacilityMaintenancePage() {
                     onChange={(e) => void onLedgerImport(e.target.files?.[0] ?? null, "consumables")}
                   />
                 </label>
-                <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => setCOpen(true)}>
+                <button type="button" className={btnPrimaryClass} onClick={() => setCOpen(true)}>
                   新增
                 </button>
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] table-auto border-collapse border border-slate-200 text-sm">
-              <thead className="bg-slate-50 text-slate-600">
+              <table className="w-full min-w-[720px] table-auto border-collapse border border-[var(--twin-hairline)] text-sm">
+              <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                 <tr>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium whitespace-nowrap">时间</th>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium whitespace-nowrap">机房</th>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium">耗材</th>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium whitespace-nowrap">数量</th>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium whitespace-nowrap">登记人</th>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium whitespace-nowrap">操作</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">时间</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">机房</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium">耗材</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">数量</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">登记人</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {consData.rows.map((row) => (
-                  <tr key={String(row.id)} className="border-t border-slate-100">
+                  <tr key={String(row.id)} className="border-t border-[var(--twin-hairline)]">
                     <td className="max-w-[11rem] whitespace-normal break-words px-3 py-2 align-top">
                       {formatDateTimeAsiaShanghai(rowPick(row as Record<string, unknown>, "occurredAt", "occurred_at"))}
                     </td>
@@ -1145,8 +1104,7 @@ export default function AdminFacilityMaintenancePage() {
                           try {
                             await deleteFmConsumableLine(String(row.id));
                             toast.success("已删除");
-                            // 删除后仅从列表移除该行，禁止整表 load（post-save-no-full-refresh.mdc）
-                            setConsData((prev) =>
+                            qc.setQueryData(consQueryKey, (prev: typeof consData | undefined) =>
                               prev
                                 ? {
                                     ...prev,
@@ -1172,18 +1130,18 @@ export default function AdminFacilityMaintenancePage() {
         )}
 
         {tab === "replacements" && repData && (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
+          <div className="overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--twin-hairline)] px-4 py-3">
               <span className="font-medium">更换记录</span>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  className={`inline-flex items-center gap-1 ${btnSecondaryClass}`}
                   onClick={() => void doLedgerExport("replacements")}
                 >
                   <Download className="h-4 w-4" /> 导出 Excel
                 </button>
-                <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                <label className={`inline-flex cursor-pointer items-center gap-1 ${btnSecondaryClass}`}>
                   <Upload className="h-4 w-4" /> 导入
                   <input
                     type="file"
@@ -1192,26 +1150,26 @@ export default function AdminFacilityMaintenancePage() {
                     onChange={(e) => void onLedgerImport(e.target.files?.[0] ?? null, "replacements")}
                   />
                 </label>
-                <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => setROpen(true)}>
+                <button type="button" className={btnPrimaryClass} onClick={() => setROpen(true)}>
                   新增
                 </button>
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] table-auto border-collapse border border-slate-200 text-sm">
-              <thead className="bg-slate-50 text-slate-600">
+              <table className="w-full min-w-[760px] table-auto border-collapse border border-[var(--twin-hairline)] text-sm">
+              <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                 <tr>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium whitespace-nowrap">更换时间</th>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium whitespace-nowrap">机房</th>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium">类型</th>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium whitespace-nowrap">距上次(天)</th>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium whitespace-nowrap">登记人</th>
-                  <th className="border-b border-slate-200 px-3 py-2 text-left font-medium whitespace-nowrap">操作</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">更换时间</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">机房</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium">类型</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">距上次(天)</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">登记人</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium whitespace-nowrap">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {repData.rows.map((row) => (
-                  <tr key={String(row.id)} className="border-t border-slate-100">
+                  <tr key={String(row.id)} className="border-t border-[var(--twin-hairline)]">
                     <td className="max-w-[11rem] whitespace-normal break-words px-3 py-2 align-top">
                       {formatDateTimeAsiaShanghai(rowPick(row as Record<string, unknown>, "replacedAt", "replaced_at"))}
                     </td>
@@ -1238,8 +1196,7 @@ export default function AdminFacilityMaintenancePage() {
                           try {
                             await deleteFmReplacementRecord(String(row.id));
                             toast.success("已删除");
-                            // 删除后仅从列表移除该行，禁止整表 load（post-save-no-full-refresh.mdc）
-                            setRepData((prev) =>
+                            qc.setQueryData(repQueryKey, (prev: typeof repData | undefined) =>
                               prev
                                 ? {
                                     ...prev,
@@ -1266,32 +1223,32 @@ export default function AdminFacilityMaintenancePage() {
 
       </div>
 
-      {/* Modals — simple fixed overlay */}
+      {/* Modals */}
       {siteOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+          <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4">
             <h3 className="mb-3 font-semibold">{siteEdit ? "编辑机房" : "新增机房"}</h3>
             <div className="space-y-2">
-              <input className="w-full rounded border px-3 py-2 text-sm" placeholder="名称" value={siteName} onChange={(e) => setSiteName(e.target.value)} />
+              <input className={inputClass} placeholder="名称" value={siteName} onChange={(e) => setSiteName(e.target.value)} />
               <input
-                className="w-full rounded border px-3 py-2 text-sm"
+                className={inputClass}
                 placeholder={siteEdit ? "编码（可清空后保存为不填）" : "编码留空则自动生成"}
                 value={siteCode}
                 onChange={(e) => setSiteCode(e.target.value)}
               />
               <input
                 type="number"
-                className="w-full rounded border px-3 py-2 text-sm"
+                className={inputClass}
                 placeholder="排序"
                 value={siteOrder}
                 onChange={(e) => setSiteOrder(Number(e.target.value))}
               />
             </div>
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setSiteOpen(false)}>
+              <button type="button" className={btnDangerClass} onClick={() => setSiteOpen(false)}>
                 取消
               </button>
-              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => void saveSite()}>
+              <button type="button" className={btnPrimaryClass} onClick={() => void saveSite()}>
                 保存
               </button>
             </div>
@@ -1301,20 +1258,20 @@ export default function AdminFacilityMaintenancePage() {
 
       {optOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+          <div className="w-full max-w-lg rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4">
             <h3 className="mb-3 font-semibold">{optEdit ? "编辑选项集" : "新增选项集"}</h3>
-            <input className="mb-2 w-full rounded border px-3 py-2 text-sm" placeholder="名称" value={optName} onChange={(e) => setOptName(e.target.value)} />
+            <input className={`mb-2 ${inputClass}`} placeholder="名称" value={optName} onChange={(e) => setOptName(e.target.value)} />
             <textarea
-              className="h-40 w-full rounded border px-3 py-2 text-sm font-mono"
+              className="h-40 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm font-mono"
               placeholder="每行一个选项"
               value={optLines}
               onChange={(e) => setOptLines(e.target.value)}
             />
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setOptOpen(false)}>
+              <button type="button" className={btnDangerClass} onClick={() => setOptOpen(false)}>
                 取消
               </button>
-              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => void saveOpt()}>
+              <button type="button" className={btnPrimaryClass} onClick={() => void saveOpt()}>
                 保存
               </button>
             </div>
@@ -1324,19 +1281,19 @@ export default function AdminFacilityMaintenancePage() {
 
       {tplOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
-          <div className="my-8 w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
+          <div className="my-8 w-full max-w-3xl rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4">
             <h3 className="mb-3 font-semibold">{tplEdit ? "编辑模板" : "新增模板"}</h3>
-            <input className="mb-2 w-full rounded border px-3 py-2 text-sm" placeholder="模板名称" value={tplName} onChange={(e) => setTplName(e.target.value)} />
+            <input className={`mb-2 ${inputClass}`} placeholder="模板名称" value={tplName} onChange={(e) => setTplName(e.target.value)} />
             <div className="mb-4 space-y-2">
-              <p className="text-xs text-slate-500">适用机房（不勾选表示全局模板）</p>
-              <div className="flex max-h-36 flex-wrap gap-x-4 gap-y-2 overflow-y-auto rounded border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs text-[var(--twin-mute)]">适用机房（不勾选表示全局模板）</p>
+              <div className="flex max-h-36 flex-wrap gap-x-4 gap-y-2 overflow-y-auto rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
                 {sites
                   .filter((s) => Number(s.disabled) !== 1)
                   .map((s) => (
-                    <label key={s.id} className="flex cursor-pointer items-center gap-2 text-sm text-slate-800">
+                    <label key={s.id} className="flex cursor-pointer items-center gap-2 text-sm text-[var(--twin-ink)]">
                       <input
                         type="checkbox"
-                        className="rounded border-slate-300"
+                        className="rounded border-[var(--twin-hairline-strong)]"
                         checked={tplSiteIds.includes(s.id)}
                         onChange={(e) => {
                           const on = e.target.checked;
@@ -1351,12 +1308,12 @@ export default function AdminFacilityMaintenancePage() {
                   ))}
               </div>
             </div>
-            <p className="mb-2 text-xs text-slate-500">巡查项（可视化配置；下拉型需先在「下拉选项」中维护选项集）</p>
+            <p className="mb-2 text-xs text-[var(--twin-mute)]">巡查项（可视化配置；下拉型需先在「下拉选项」中维护选项集）</p>
             <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
               {tplItemRows.map((row, idx) => (
-                <div key={idx} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2">
+                <div key={idx} className="flex flex-wrap items-center gap-2 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
                   <input
-                    className="min-w-[100px] flex-1 rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                    className="min-w-[100px] flex-1 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1.5 text-sm"
                     placeholder="字段标签"
                     value={row.label}
                     onChange={(e) => {
@@ -1365,7 +1322,7 @@ export default function AdminFacilityMaintenancePage() {
                     }}
                   />
                   <select
-                    className="rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                    className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1.5 text-sm"
                     value={row.fieldType}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -1382,7 +1339,7 @@ export default function AdminFacilityMaintenancePage() {
                   </select>
                   {row.fieldType === "SELECT" && (
                     <select
-                      className="min-w-[160px] rounded border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      className="min-w-[160px] rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1.5 text-sm"
                       value={row.optionSetId}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -1397,7 +1354,7 @@ export default function AdminFacilityMaintenancePage() {
                       ))}
                     </select>
                   )}
-                  <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-slate-600">
+                  <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-[var(--twin-body)]">
                     <input
                       type="checkbox"
                       checked={row.required}
@@ -1411,7 +1368,7 @@ export default function AdminFacilityMaintenancePage() {
                     <button
                       type="button"
                       title="上移"
-                      className="rounded border border-slate-200 bg-white p-1.5 disabled:opacity-30"
+                      className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 disabled:opacity-30"
                       disabled={idx === 0}
                       onClick={() => setTplItemRows((r) => moveArr(r, idx, -1))}
                     >
@@ -1420,7 +1377,7 @@ export default function AdminFacilityMaintenancePage() {
                     <button
                       type="button"
                       title="下移"
-                      className="rounded border border-slate-200 bg-white p-1.5 disabled:opacity-30"
+                      className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 disabled:opacity-30"
                       disabled={idx === tplItemRows.length - 1}
                       onClick={() => setTplItemRows((r) => moveArr(r, idx, 1))}
                     >
@@ -1429,7 +1386,7 @@ export default function AdminFacilityMaintenancePage() {
                     <button
                       type="button"
                       title="删除此行"
-                      className="rounded border border-slate-200 bg-white p-1.5 text-rose-600"
+                      className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 text-rose-600"
                       onClick={() => setTplItemRows((r) => r.filter((_, i) => i !== idx))}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1440,7 +1397,7 @@ export default function AdminFacilityMaintenancePage() {
             </div>
             <button
               type="button"
-              className="mt-3 text-sm font-medium text-blue-600 hover:underline"
+              className="mt-3 text-sm font-medium text-[var(--twin-link)] hover:underline"
               onClick={() =>
                 setTplItemRows((r) => [...r, { label: "", fieldType: "TEXT", optionSetId: "", required: false }])
               }
@@ -1448,10 +1405,10 @@ export default function AdminFacilityMaintenancePage() {
               + 添加一行
             </button>
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setTplOpen(false)}>
+              <button type="button" className={btnDangerClass} onClick={() => setTplOpen(false)}>
                 取消
               </button>
-              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => void saveTpl()}>
+              <button type="button" className={btnPrimaryClass} onClick={() => void saveTpl()}>
                 保存
               </button>
             </div>
@@ -1461,14 +1418,14 @@ export default function AdminFacilityMaintenancePage() {
 
       {cOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl space-y-2">
+          <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4 space-y-2">
             <h3 className="font-semibold">耗材登记</h3>
-            <select className="w-full rounded border px-3 py-2 text-sm" value={cSite} onChange={(e) => setCSite(e.target.value)}>
+            <select className={inputClass} value={cSite} onChange={(e) => setCSite(e.target.value)}>
               <option value="">机房</option>
               {siteOptions}
             </select>
             <input
-              className="w-full rounded border px-3 py-2 text-sm"
+              className={inputClass}
               placeholder="耗材名称（可选预设或手输）"
               list="fm-cons-catalog"
               value={cName}
@@ -1488,14 +1445,14 @@ export default function AdminFacilityMaintenancePage() {
                   </option>
                 ))}
             </datalist>
-            <input className="w-full rounded border px-3 py-2 text-sm" placeholder="数量" value={cQty} onChange={(e) => setCQty(e.target.value)} />
-            <input className="w-full rounded border px-3 py-2 text-sm" placeholder="单位" value={cUnit} onChange={(e) => setCUnit(e.target.value)} />
-            <input className="w-full rounded border px-3 py-2 text-sm" placeholder="备注" value={cNote} onChange={(e) => setCNote(e.target.value)} />
+            <input className={inputClass} placeholder="数量" value={cQty} onChange={(e) => setCQty(e.target.value)} />
+            <input className={inputClass} placeholder="单位" value={cUnit} onChange={(e) => setCUnit(e.target.value)} />
+            <input className={inputClass} placeholder="备注" value={cNote} onChange={(e) => setCNote(e.target.value)} />
             <div className="flex justify-end gap-2 pt-2">
-              <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setCOpen(false)}>
+              <button type="button" className={btnDangerClass} onClick={() => setCOpen(false)}>
                 取消
               </button>
-              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => void saveCons()}>
+              <button type="button" className={btnPrimaryClass} onClick={() => void saveCons()}>
                 保存
               </button>
             </div>
@@ -1505,14 +1462,14 @@ export default function AdminFacilityMaintenancePage() {
 
       {rOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl space-y-2">
+          <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4 space-y-2">
             <h3 className="font-semibold">更换记录</h3>
-            <select className="w-full rounded border px-3 py-2 text-sm" value={rSite} onChange={(e) => setRSite(e.target.value)}>
+            <select className={inputClass} value={rSite} onChange={(e) => setRSite(e.target.value)}>
               <option value="">机房</option>
               {siteOptions}
             </select>
             <input
-              className="w-full rounded border px-3 py-2 text-sm"
+              className={inputClass}
               placeholder="过滤器类型（可选预设或手输）"
               list="fm-rep-presets"
               value={rType}
@@ -1525,13 +1482,13 @@ export default function AdminFacilityMaintenancePage() {
                   <option key={p.id} value={p.label} />
                 ))}
             </datalist>
-            <input type="datetime-local" className="w-full rounded border px-3 py-2 text-sm" value={rAt} onChange={(e) => setRAt(e.target.value)} />
-            <input className="w-full rounded border px-3 py-2 text-sm" placeholder="备注" value={rNote} onChange={(e) => setRNote(e.target.value)} />
+            <input type="datetime-local" className={inputClass} value={rAt} onChange={(e) => setRAt(e.target.value)} />
+            <input className={inputClass} placeholder="备注" value={rNote} onChange={(e) => setRNote(e.target.value)} />
             <div className="flex justify-end gap-2 pt-2">
-              <button type="button" className="rounded-lg border px-3 py-1.5 text-sm" onClick={() => setROpen(false)}>
+              <button type="button" className={btnDangerClass} onClick={() => setROpen(false)}>
                 取消
               </button>
-              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white" onClick={() => void saveRep()}>
+              <button type="button" className={btnPrimaryClass} onClick={() => void saveRep()}>
                 保存
               </button>
             </div>

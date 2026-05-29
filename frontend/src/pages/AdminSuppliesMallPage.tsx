@@ -7,14 +7,13 @@ import toast from "react-hot-toast";
 import {
   createSupplyClaim,
   fetchSupplyCart,
-  fetchSupplyCategories,
   fetchSupplyClaimDetail,
-  fetchSupplyItems,
   revisePendingSupplyClaimLines,
   saveSupplyCart,
   type SupplyCategory,
   type SupplyItem,
 } from "@/api/domains/supplies.api";
+import { useSupplyCategories, useSupplyItems } from "@/api/hooks/useSupplies";
 import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -24,12 +23,10 @@ import type { PublicPagePermissionNode } from "@/api/domains/pagePermission.api"
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { webImageSrc } from "@/utils/mediaUrl";
 
-/** 物资列表单列最小宽度（px）：与步进器同排保证可读；禁止再缩小以免字被挤没；仅改此数值即可调列宽。 */
 const SUPPLIES_MALL_CARD_MIN_COL_PX = 300;
 
 const LEGACY_WEB_CART_PREFIX = "aro_web_supplies_cart_v1_";
 
-/** 仅用于迁移旧版本「仅本机 localStorage」购物车到云端。 */
 function readLegacyWebSuppliesCart(userId: string): Record<number, number> {
   const id = userId.trim();
   if (!id) return {};
@@ -83,11 +80,8 @@ export default function AdminSuppliesMallPage() {
 
   const [permNodes, setPermNodes] = useState<PublicPagePermissionNode[]>([]);
   const [capMap, setCapMap] = useState<Record<string, { canProcess: boolean }>>({});
-  const [categories, setCategories] = useState<SupplyCategory[]>([]);
   const [activeCat, setActiveCat] = useState<number | "all">("all");
-  const [items, setItems] = useState<SupplyItem[]>([]);
   const [cart, setCart] = useState<Record<number, number>>({});
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
@@ -101,12 +95,16 @@ export default function AdminSuppliesMallPage() {
 
   const claimCap = capMap.SUPPLIES_CLAIM;
   const adminCap = capMap.SUPPLIES_ADMIN;
-  /** 与小程序 supplies/index：showProcessEntry / showAdminEntry 对齐（能力策略 + WEB 侧栏入口权限）。 */
   const showProcessEntry = superOk && !!claimCap?.canProcess;
   const showAdminEntry =
     superOk &&
     !!adminCap?.canProcess &&
     canShowWebEntry(permNodes, "/admin/supplies/manage", "sidebar", role, "SUPER_ADMIN");
+
+  const { data: categories = [] } = useSupplyCategories();
+  const { data: rawItems = [], isLoading: itemsLoading } = useSupplyItems(activeCat);
+
+  const items = useMemo(() => rawItems.map(normalizeNovelty), [rawItems]);
 
   const flushRemoteCart = useCallback(async (payload: Record<number, number>) => {
     try {
@@ -129,7 +127,6 @@ export default function AdminSuppliesMallPage() {
     [flushRemoteCart],
   );
 
-  /** 保存后仅合并当前购物车并防抖同步云端，禁止整表 load；云端与小程序同源。post-save-no-full-refresh.mdc */
   const syncCart = useCallback(
     (next: Record<number, number>) => {
       cartRef.current = next;
@@ -190,30 +187,6 @@ export default function AdminSuppliesMallPage() {
     };
   }, []);
 
-  const loadCategories = useCallback(async () => {
-    try {
-      const data = await fetchSupplyCategories();
-      setCategories(data);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "加载分类失败");
-    }
-  }, []);
-
-  const loadItems = useCallback(
-    async (silent = false) => {
-      if (!silent) setLoading(true);
-      try {
-        const data = await fetchSupplyItems(activeCat === "all" ? undefined : activeCat);
-        setItems((data || []).map(normalizeNovelty));
-      } catch (e) {
-        if (!silent) toast.error(e instanceof Error ? e.message : "加载物资失败");
-      } finally {
-        if (!silent) setLoading(false);
-      }
-    },
-    [activeCat],
-  );
-
   useEffect(() => {
     let mounted = true;
     const loadPerm = async () => {
@@ -247,30 +220,6 @@ export default function AdminSuppliesMallPage() {
       mounted = false;
     };
   }, []);
-
-  useEffect(() => {
-    void loadCategories();
-  }, [loadCategories]);
-
-  useEffect(() => {
-    void loadItems();
-  }, [loadItems]);
-
-  useEffect(() => {
-    const refresh = () => void loadItems(true);
-    const timer = window.setInterval(refresh, 30000);
-    const onFocus = () => refresh();
-    const onVisible = () => {
-      if (!document.hidden) refresh();
-    };
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [loadItems]);
 
   const refreshMineBadge = useCallback(() => {
     void fetchPendingBadges().then((b) => {
@@ -456,7 +405,6 @@ export default function AdminSuppliesMallPage() {
         setReviseClaimId(null);
         syncCartImmediate({});
         setCartSheetOpen(false);
-        await loadItems(true);
         window.dispatchEvent(new Event(ADMIN_PENDING_BADGES_REFRESH_EVENT));
         navigate("/admin/supplies/mine");
         return;
@@ -465,7 +413,6 @@ export default function AdminSuppliesMallPage() {
       toast.success("领用单已提交");
       syncCartImmediate({});
       setCartSheetOpen(false);
-      await loadItems(true);
       window.dispatchEvent(new Event(ADMIN_PENDING_BADGES_REFRESH_EVENT));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "提交失败");
@@ -485,20 +432,20 @@ export default function AdminSuppliesMallPage() {
   return (
     <div className="flex h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] min-h-0 flex-col gap-2">
       <div className="shrink-0">
-        <h2 className="text-lg font-semibold text-slate-800">领用物资</h2>
-        <p className="text-xs text-slate-500">
+        <h2 className="text-lg font-semibold text-[var(--twin-ink)]">领用物资</h2>
+        <p className="text-xs text-[var(--twin-mute)]">
           选择分类与数量，提交后待管理员确认出库（下单不占库存）。购物车已保存到服务端，与小程序领用物资页同一账号互通，换设备可继续选购。
         </p>
       </div>
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-[#f4f5f7] shadow-sm">
-      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] shadow-twin-level-2">
+      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2">
         <div className="min-w-0 flex-1">
           <input
             type="text"
             value={searchKeyword}
             onChange={(e) => setSearchKeyword(e.target.value)}
             placeholder="搜索当前物资"
-            className="h-8 w-full max-w-md rounded-full border border-slate-200 bg-slate-50 px-3 text-xs outline-none ring-sky-500 focus:ring-2"
+            className="h-8 w-full max-w-md rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 text-xs outline-none ring-sky-500 focus:ring-2"
           />
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
@@ -528,7 +475,7 @@ export default function AdminSuppliesMallPage() {
           <Link
             to="/admin/supplies/mine"
             state={{ returnTo: returnToForChild }}
-            className="relative rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+            className="relative rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-1.5 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft-2)]"
           >
             我的记录
             {mineBadgeText ? (
@@ -547,12 +494,12 @@ export default function AdminSuppliesMallPage() {
       ) : null}
 
       <div className="flex min-h-0 flex-1 flex-row">
-        <aside className="w-[128px] shrink-0 overflow-y-auto border-r border-slate-200 bg-slate-50 py-2">
+        <aside className="w-[128px] shrink-0 overflow-y-auto border-r border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] py-2">
           <button
             type="button"
             onClick={() => setActiveCat("all")}
             className={`block w-full px-3 py-2 text-left text-xs leading-snug ${
-              activeCat === "all" ? "border-l-2 border-sky-500 bg-white font-semibold text-sky-700" : "text-slate-600 hover:bg-white/80"
+              activeCat === "all" ? "border-l-2 border-sky-500 bg-[var(--twin-canvas)] font-semibold text-sky-700" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]/80"
             }`}
           >
             全部
@@ -563,7 +510,7 @@ export default function AdminSuppliesMallPage() {
               type="button"
               onClick={() => setActiveCat(c.id)}
               className={`block w-full px-3 py-2 text-left text-xs leading-snug ${
-                activeCat === c.id ? "border-l-2 border-sky-500 bg-white font-semibold text-sky-700" : "text-slate-600 hover:bg-white/80"
+                activeCat === c.id ? "border-l-2 border-sky-500 bg-[var(--twin-canvas)] font-semibold text-sky-700" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]/80"
               }`}
             >
               {c.name}
@@ -572,9 +519,9 @@ export default function AdminSuppliesMallPage() {
         </aside>
 
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-2">
-          {loading ? <div className="p-4 text-xs text-slate-500">加载中…</div> : null}
-          {!loading && filteredItems.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500">暂无物资</div>
+          {itemsLoading ? <div className="p-4 text-xs text-[var(--twin-mute)]">加载中…</div> : null}
+          {!itemsLoading && filteredItems.length === 0 ? (
+            <div className="p-8 text-center text-sm text-[var(--twin-mute)]">暂无物资</div>
           ) : null}
           <div
             className="grid gap-2"
@@ -588,9 +535,9 @@ export default function AdminSuppliesMallPage() {
               return (
                 <div
                   key={item.id}
-                  className="flex min-w-0 flex-row gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm"
+                  className="flex min-w-0 flex-row gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 shadow-sm"
                 >
-                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-slate-100">
+                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-[var(--twin-canvas-soft)]">
                     {cover ? (
                       <button
                         type="button"
@@ -600,7 +547,7 @@ export default function AdminSuppliesMallPage() {
                         <img src={cover} alt="" className="h-full w-full object-cover" />
                       </button>
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-slate-400">
+                      <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-[var(--twin-mute)]">
                         {String(item.name || "?").trim().charAt(0) || "?"}
                       </div>
                     )}
@@ -609,7 +556,7 @@ export default function AdminSuppliesMallPage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex min-w-0 flex-1 items-center justify-start gap-1">
                         <span
-                          className="min-w-0 shrink truncate text-left text-xs font-semibold leading-snug text-slate-900"
+                          className="min-w-0 shrink truncate text-left text-xs font-semibold leading-snug text-[var(--twin-ink)]"
                           title={String(item.name || "").trim() || undefined}
                         >
                           {item.name}
@@ -621,10 +568,10 @@ export default function AdminSuppliesMallPage() {
                           <span className="shrink-0 whitespace-nowrap text-[10px] font-bold text-emerald-600">进货!</span>
                         ) : null}
                       </div>
-                      <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200 bg-slate-50 p-0.5">
+                      <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0.5">
                         <button
                           type="button"
-                          className={`h-6 w-6 shrink-0 rounded text-xs font-bold ${qty <= 0 ? "text-slate-300" : "text-slate-700 hover:bg-white"}`}
+                          className={`h-6 w-6 shrink-0 rounded text-xs font-bold ${qty <= 0 ? "text-[var(--twin-mute)]" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"}`}
                           disabled={qty <= 0}
                           onClick={() => decFromCart(item.id)}
                         >
@@ -648,13 +595,13 @@ export default function AdminSuppliesMallPage() {
                     </div>
                     {item.subtitle ? (
                       <div
-                        className="mt-0.5 truncate text-left text-[11px] text-slate-500"
+                        className="mt-0.5 truncate text-left text-[11px] text-[var(--twin-mute)]"
                         title={String(item.subtitle || "").trim() || undefined}
                       >
                         {item.subtitle}
                       </div>
                     ) : null}
-                    <div className="mt-0.5 truncate text-left text-[11px] text-slate-600">
+                    <div className="mt-0.5 truncate text-left text-[11px] text-[var(--twin-body)]">
                       {item.stockMode === "QUANTIFIED" ? `库存 ${item.stockQty}` : item.stockQty >= 1 ? "有货" : "缺货"}
                     </div>
                   </div>
@@ -665,11 +612,11 @@ export default function AdminSuppliesMallPage() {
         </div>
       </div>
 
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-3 py-2 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
         <button
           type="button"
           onClick={openCartSheet}
-          className="relative rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
+          className="relative rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-4 py-2 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft-2)]"
         >
           购物车
           {cartCount > 0 ? (
@@ -694,28 +641,28 @@ export default function AdminSuppliesMallPage() {
           onClick={() => setCartSheetOpen(false)}
         >
           <div
-            className="mx-2 mb-2 flex min-h-0 max-h-[90%] flex-col overflow-hidden rounded-xl bg-white shadow-[0_-8px_28px_rgba(0,0,0,0.15)] sm:mx-3 sm:mb-3"
+            className="mx-2 mb-2 flex min-h-0 max-h-[90%] flex-col overflow-hidden rounded-twin-xl bg-[var(--twin-canvas)] shadow-[0_-8px_28px_rgba(0,0,0,0.15)] sm:mx-3 sm:mb-3"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="shrink-0 border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-800">购物车</div>
+            <div className="shrink-0 border-b border-[var(--twin-hairline)] px-4 py-3 text-sm font-semibold text-[var(--twin-ink)]">购物车</div>
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
               {cartLines.map((line) => {
                 const item = items.find((x) => x.id === line.id);
                 return (
-                  <div key={line.id} className="mb-2 flex gap-2 rounded-lg border border-slate-100 bg-slate-50/80 p-2">
+                  <div key={line.id} className="mb-2 flex gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
                     {line.cover ? (
                       <img src={line.cover} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
                     ) : (
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-slate-200 text-xs font-bold text-slate-500">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-[var(--twin-canvas-soft-2)] text-xs font-bold text-[var(--twin-mute)]">
                         {line.initial}
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium text-slate-900">{line.name}</div>
+                      <div className="truncate text-sm font-medium text-[var(--twin-ink)]">{line.name}</div>
                       <div className="mt-1 flex items-center gap-0.5">
                         <button
                           type="button"
-                          className="h-7 w-7 rounded border border-slate-200 bg-white text-sm"
+                          className="h-7 w-7 rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-sm"
                           onClick={() => decFromCart(line.id)}
                         >
                           −
@@ -735,7 +682,7 @@ export default function AdminSuppliesMallPage() {
                             syncCart(next);
                             if (Number.isFinite(n) && n > max) toast.error(`最多 ${max}`);
                           }}
-                          className="h-7 w-12 rounded border border-slate-200 text-center text-xs"
+                          className="h-7 w-12 rounded border border-[var(--twin-hairline)] text-center text-xs"
                         />
                         <button
                           type="button"
@@ -751,8 +698,8 @@ export default function AdminSuppliesMallPage() {
                 );
               })}
             </div>
-            <div className="flex shrink-0 items-center justify-between border-t border-slate-100 px-4 py-3">
-              <span className="text-xs text-slate-600">共 {cartCount} 件</span>
+            <div className="flex shrink-0 items-center justify-between border-t border-[var(--twin-hairline)] px-4 py-3">
+              <span className="text-xs text-[var(--twin-body)]">共 {cartCount} 件</span>
               <button type="button" className="text-xs font-medium text-sky-600 hover:underline" onClick={() => setCartSheetOpen(false)}>
                 收起
               </button>

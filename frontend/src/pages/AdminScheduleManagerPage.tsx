@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchScheduleJobs,
   runScheduleJobNow,
@@ -19,6 +20,7 @@ import {
   type DahuaSwingStatsPullTask,
 } from "@/api/domains/dahuaSwingStats.api";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import DataSkeleton from "@/components/ui/DataSkeleton";
 import {
   STATS_PULL_SCHEDULE_JOB,
   STATS_PULL_SCHEDULE_SECTIONS,
@@ -40,11 +42,9 @@ type EditState = Record<string, ScheduleJobRow>;
 type DahuaEditState = Record<number, { enabled: number; pollIntervalSeconds: number; weekDays: string; startTime: string; endTime: string }>;
 type StatsEditState = Record<number, { enabled: number }>;
 
-/** 动物房 WinCC 测量值高频轮询：与程序坞页 GET /telemetry/wincc/dock-poll-config 对应 */
 const TELEMETRY_WINCC_UI_KEY = "TELEMETRY_WINCC_UI";
 const TELEMETRY_WINCC_POLL_KEYS = new Set([TELEMETRY_WINCC_UI_KEY, "TELEMETRY_WINCC_LIMITS_UI"]);
 
-/** 已下线，仅过滤历史库行 */
 const DEPRECATED_JOB_KEYS = new Set([
   "ACCESS_RAW_BACKFILL",
   "ACCESS_EVENT_CLEAN_DAILY",
@@ -52,9 +52,7 @@ const DEPRECATED_JOB_KEYS = new Set([
   "DAHUA_SWING_STATS_PULL",
 ]);
 
-/** 与后端 JobSchedulePolicy.isPollInWindow 一致：窗口内按轮询间隔执行 */
 const PLATFORM_POLL_KEYS = new Set(["ARO_PENETRATION_POLL"]);
-
 const FREEZE_KEYS = new Set(["RUN_REAPER", "RUN_REAPER_SECOND", "DAILY_EXEMPT_RESET"]);
 const DAILY_EXEMPT_RESET_KEY = "DAILY_EXEMPT_RESET";
 const SINGLE_KEYS = new Set([
@@ -76,25 +74,58 @@ const SINGLE_KEYS = new Set([
 ]);
 
 const WINCC_POLL_KEYS = TELEMETRY_WINCC_POLL_KEYS;
+const SCHEDULE_JOBS_KEY = ["scheduleJobs"] as const;
+const DAHUA_TASKS_KEY = ["dahuaSwingTasks"] as const;
+const STATS_TASKS_KEY = ["dahuaSwingStatsTasks"] as const;
 
 export default function AdminScheduleManagerPage() {
-  const [rows, setRows] = useState<ScheduleJobRow[]>([]);
+  const qc = useQueryClient();
   const [draft, setDraft] = useState<EditState>({});
-  const [loading, setLoading] = useState(false);
-  const [dahuaRows, setDahuaRows] = useState<DahuaSwingTask[]>([]);
   const [dahuaDraft, setDahuaDraft] = useState<DahuaEditState>({});
-  const [statsRows, setStatsRows] = useState<DahuaSwingStatsPullTask[]>([]);
   const [statsDraft, setStatsDraft] = useState<StatsEditState>({});
   const [savingKey, setSavingKey] = useState<string>("");
-  const loadToastOnce = useRef(false);
+  const dahuaInit = useRef(false);
+  const statsInit = useRef(false);
 
-  const refreshScheduleStatus = useCallback(async () => {
-    const list = await fetchScheduleJobs();
-    const normalized = list.map(normalizeScheduleRow).filter((r) => !DEPRECATED_JOB_KEYS.has(r.jobKey));
-    setRows(normalized);
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: SCHEDULE_JOBS_KEY,
+    queryFn: async () => {
+      const list = await fetchScheduleJobs();
+      return list.map(normalizeScheduleRow).filter((r) => !DEPRECATED_JOB_KEYS.has(r.jobKey));
+    },
+    placeholderData: (prev) => prev,
+  });
+
+  const { data: dahuaRows = [] } = useQuery({
+    queryKey: DAHUA_TASKS_KEY,
+    queryFn: listDahuaSwingTasks,
+  });
+
+  const { data: statsRows = [] } = useQuery({
+    queryKey: STATS_TASKS_KEY,
+    queryFn: async () => {
+      const tasks = await listDahuaSwingStatsTasks();
+      return tasks.filter((t) => !isHistoricalTask(t));
+    },
+  });
+
+  useEffect(() => {
+    const id = window.setInterval(async () => {
+      try {
+        const list = await fetchScheduleJobs();
+        const normalized = list.map(normalizeScheduleRow).filter((r) => !DEPRECATED_JOB_KEYS.has(r.jobKey));
+        qc.setQueryData(SCHEDULE_JOBS_KEY, normalized);
+      } catch {
+        /* silent polling */
+      }
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [qc]);
+
+  useEffect(() => {
     setDraft((prev) => {
       const next = { ...prev };
-      for (const r of normalized) {
+      for (const r of rows) {
         const cur = next[r.jobKey];
         if (!cur) {
           next[r.jobKey] = r;
@@ -104,76 +135,36 @@ export default function AdminScheduleManagerPage() {
       }
       return next;
     });
-  }, []);
-
-  const load = useCallback(async (options?: { showLoading?: boolean }) => {
-    const showLoading = options?.showLoading ?? true;
-    if (showLoading) setLoading(true);
-    try {
-      const list = await fetchScheduleJobs();
-      const normalized = list.map(normalizeScheduleRow).filter((r) => !DEPRECATED_JOB_KEYS.has(r.jobKey));
-      setRows(normalized);
-      const state: EditState = {};
-      for (const r of normalized) {
-        state[r.jobKey] = r;
-      }
-      setDraft(state);
-    } catch (e) {
-      if (!loadToastOnce.current) {
-        loadToastOnce.current = true;
-        toast.error(e instanceof Error ? e.message : "加载定时任务失败");
-      }
-    }
-    try {
-      const tasks = await listDahuaSwingTasks();
-      setDahuaRows(tasks);
-      const ds: DahuaEditState = {};
-      for (const t of tasks) {
-        if (!t.id) continue;
-        const query = parseTaskQuery(t.queryJson);
-        ds[t.id] = {
-          enabled: t.enabled ?? 0,
-          pollIntervalSeconds: Number(t.pollIntervalSeconds || 60),
-          weekDays: normalizeWeekDays(query.execWeekDays),
-          startTime: normalizeTime(query.execStartTime, "07:00"),
-          endTime: normalizeTime(query.execEndTime, "22:00"),
-        };
-      }
-      setDahuaDraft(ds);
-    } catch {
-      setDahuaRows([]);
-      setDahuaDraft({});
-    }
-    try {
-      const statsTasks = (await listDahuaSwingStatsTasks()).filter((t) => !isHistoricalTask(t));
-      setStatsRows(statsTasks);
-      const ss: StatsEditState = {};
-      for (const t of statsTasks) {
-        if (!t.id) continue;
-        ss[t.id] = { enabled: t.enabled ?? 0 };
-      }
-      setStatsDraft(ss);
-    } catch {
-      setStatsRows([]);
-      setStatsDraft({});
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  }, []);
+  }, [rows]);
 
   useEffect(() => {
-    void load({ showLoading: true });
-  }, [load]);
+    if (dahuaRows.length === 0 || dahuaInit.current) return;
+    const ds: DahuaEditState = {};
+    for (const t of dahuaRows) {
+      if (!t.id) continue;
+      const query = parseTaskQuery(t.queryJson);
+      ds[t.id] = {
+        enabled: t.enabled ?? 0,
+        pollIntervalSeconds: Number(t.pollIntervalSeconds || 60),
+        weekDays: normalizeWeekDays(query.execWeekDays),
+        startTime: normalizeTime(query.execStartTime, "07:00"),
+        endTime: normalizeTime(query.execEndTime, "22:00"),
+      };
+    }
+    setDahuaDraft(ds);
+    dahuaInit.current = true;
+  }, [dahuaRows]);
 
-  /** 静默刷新执行状态列，避免编辑草稿时被整表覆盖 */
   useEffect(() => {
-    const id = window.setInterval(() => {
-      void refreshScheduleStatus().catch(() => {
-        /* 定时静默失败忽略 */
-      });
-    }, 15000);
-    return () => window.clearInterval(id);
-  }, [refreshScheduleStatus]);
+    if (statsRows.length === 0 || statsInit.current) return;
+    const ss: StatsEditState = {};
+    for (const t of statsRows) {
+      if (!t.id) continue;
+      ss[t.id] = { enabled: t.enabled ?? 0 };
+    }
+    setStatsDraft(ss);
+    statsInit.current = true;
+  }, [statsRows]);
 
   const exceptions = useMemo(
     () => ["流水线页面中的强制同步ARO流水", "房卡调度页面中的强制同步流水（独立定时，不在此处配置）"],
@@ -301,9 +292,10 @@ export default function AdminScheduleManagerPage() {
           ? { revokeAutoSignoutEnabled: (row.revokeAutoSignoutEnabled ?? 0) === 1 }
           : {}),
       });
-      // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
       const merged = normalizeScheduleRow({ ...row, ...saved });
-      setRows((prev) => prev.map((x) => (x.jobKey === jobKey ? { ...x, ...merged } : x)));
+      qc.setQueryData(SCHEDULE_JOBS_KEY, (prev: ScheduleJobRow[] | undefined) =>
+        (prev || []).map((x) => (x.jobKey === jobKey ? { ...x, ...merged } : x))
+      );
       setDraft((prev) => ({ ...prev, [jobKey]: merged }));
       toast.success("保存成功");
     } catch (e) {
@@ -342,16 +334,10 @@ export default function AdminScheduleManagerPage() {
         pollIntervalSeconds: Math.max(10, Number(d.pollIntervalSeconds || 60)),
         queryJson,
       });
-      // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
-      setDahuaRows((prev) =>
-        prev.map((r) =>
+      qc.setQueryData(DAHUA_TASKS_KEY, (prev: DahuaSwingTask[] | undefined) =>
+        (prev || []).map((r) =>
           r.id === task.id
-            ? {
-                ...r,
-                enabled: d.enabled,
-                pollIntervalSeconds: Math.max(10, Number(d.pollIntervalSeconds || 60)),
-                queryJson,
-              }
+            ? { ...r, enabled: d.enabled, pollIntervalSeconds: Math.max(10, Number(d.pollIntervalSeconds || 60)), queryJson }
             : r
         )
       );
@@ -373,18 +359,10 @@ export default function AdminScheduleManagerPage() {
     if (!d) return;
     setSavingKey(`stats-${task.id}`);
     try {
-      await updateDahuaSwingStatsTask(task.id, {
-        ...task,
-        enabled: d.enabled,
-      });
+      await updateDahuaSwingStatsTask(task.id, { ...task, enabled: d.enabled });
       toast.success("日批任务开关已保存");
-      // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
-      setStatsRows((prev) =>
-        prev.map((r) =>
-          r.id === task.id
-            ? { ...r, enabled: d.enabled }
-            : r
-        )
+      qc.setQueryData(STATS_TASKS_KEY, (prev: DahuaSwingStatsPullTask[] | undefined) =>
+        (prev || []).map((r) => (r.id === task.id ? { ...r, enabled: d.enabled } : r))
       );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
@@ -401,7 +379,11 @@ export default function AdminScheduleManagerPage() {
       toast.success("已触发统计拉取");
       const list = await listDahuaSwingStatsTasks();
       const row = list.find((x) => x.id === taskId);
-      if (row) setStatsRows((prev) => prev.map((r) => (r.id === taskId ? row : r)));
+      if (row) {
+        qc.setQueryData(STATS_TASKS_KEY, (prev: DahuaSwingStatsPullTask[] | undefined) =>
+          (prev || []).map((r) => (r.id === taskId ? row : r))
+        );
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "执行失败");
     } finally {
@@ -416,7 +398,7 @@ export default function AdminScheduleManagerPage() {
       const result = await executeDahuaSwingTask(taskId);
       toast.success(`已触发执行，本次入库 ${result?.saved ?? 0} 条`);
       const tasks = await listDahuaSwingTasks();
-      setDahuaRows(tasks);
+      qc.setQueryData(DAHUA_TASKS_KEY, tasks);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "执行失败");
     } finally {
@@ -446,7 +428,9 @@ export default function AdminScheduleManagerPage() {
         detail += ` · 通道${m.channels ?? 0} 成功${m.ok ?? 0} 跳过${m.skipNoAuto ?? 0}`;
       }
       toast.success(detail, { duration: outcome.noop ? 8000 : 5000 });
-      await refreshScheduleStatus();
+      const list = await fetchScheduleJobs();
+      const normalized = list.map(normalizeScheduleRow).filter((r) => !DEPRECATED_JOB_KEYS.has(r.jobKey));
+      qc.setQueryData(SCHEDULE_JOBS_KEY, normalized);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "执行失败");
     } finally {
@@ -454,10 +438,15 @@ export default function AdminScheduleManagerPage() {
     }
   };
 
+  const btnClass = "rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1";
+  const inputClass = "rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1";
+  const weekBtnClass = "rounded-twin-sm border border-[var(--twin-hairline)] px-1.5 py-0.5 text-xs";
+  const weekBtnActiveClass = "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]";
+
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold">定时管理</h2>
-      <div className="rounded border bg-white p-4 text-sm text-slate-600">
+      <h2 className="text-lg font-semibold text-[var(--twin-ink)]">定时管理</h2>
+      <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-sm text-[var(--twin-body)]">
         <div>说明：除以下任务外，其余手动触发任务统一在本页配置。</div>
         <ul className="list-disc pl-6 mt-2">
           {exceptions.map((x) => (
@@ -465,34 +454,34 @@ export default function AdminScheduleManagerPage() {
           ))}
         </ul>
       </div>
-      {loading ? (
-        <div className="text-sm text-slate-500">加载中...</div>
+      {isLoading ? (
+        <DataSkeleton variant="card" rows={8} />
       ) : (
         <div className="space-y-4">
-          <div className="rounded border bg-white p-3">
-            <div className="mb-2 text-base font-semibold text-slate-800">A. 窗口轮询任务</div>
-            <div className="mb-3 text-xs text-slate-500">
+          <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3">
+            <div className="mb-2 text-base font-semibold text-[var(--twin-ink)]">A. 窗口轮询任务</div>
+            <div className="mb-3 text-xs text-[var(--twin-mute)]">
               仅在<strong>执行窗口</strong>内按<strong>轮询间隔(秒)</strong>重复检查。WinCC 两行由专用调度读取（不参与统一定时 tick）。
               审计门禁批量拉取在下方 B 区按<strong>昨日 / 上周 / 水位</strong>拆成三个独立到点 Job（回溯无定时，仅工作台手动）。
             </div>
             {rangeGroupedRows.map((group) => (
               <div key={group.title} className="mb-4">
-                <div className="mb-2 text-sm font-semibold text-slate-700">{group.title}</div>
+                <div className="mb-2 text-sm font-semibold text-[var(--twin-body)]">{group.title}</div>
                 <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
                   <table className="min-w-full text-sm">
-                    <thead className="bg-slate-50">
+                    <thead className="bg-[var(--twin-canvas-soft)]">
                       <tr>
-                        <th className="border px-2 py-2 text-left">任务</th>
-                        <th className="border px-2 py-2 text-left">开关</th>
-                        <th className="border px-2 py-2 text-left">计划</th>
-                        <th className="border px-2 py-2 text-left">窗口开始</th>
-                        <th className="border px-2 py-2 text-left">窗口结束</th>
-                        <th className="border px-2 py-2 text-left">轮询(秒)</th>
-                        <th className="border px-2 py-2 text-left">每周</th>
-                        <th className="border px-2 py-2 text-left">上次执行</th>
-                        <th className="border px-2 py-2 text-left">上次成功</th>
-                        <th className="border px-2 py-2 text-left">状态</th>
-                        <th className="border px-2 py-2 text-left">操作</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">任务</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">开关</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">计划</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">窗口开始</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">窗口结束</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">轮询(秒)</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">每周</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">上次执行</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">上次成功</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">状态</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">操作</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -500,27 +489,27 @@ export default function AdminScheduleManagerPage() {
                         const d = draft[r.jobKey] || r;
                         return (
                           <tr key={r.jobKey}>
-                            <td className="border px-2 py-2">{r.jobName}</td>
-                            <td className="border px-2 py-2">
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.jobName}</td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">
                               <input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDraft(r.jobKey, { enabled: e.target.checked ? 1 : 0 })} />
                             </td>
-                            <td className="border px-2 py-2">
-                              <select className="rounded border px-2 py-1" value={d.scheduleType || "DAILY"} onChange={(e) => updateDraft(r.jobKey, { scheduleType: e.target.value as "DAILY" | "WEEKLY" })}>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">
+                              <select className={inputClass} value={d.scheduleType || "DAILY"} onChange={(e) => updateDraft(r.jobKey, { scheduleType: e.target.value as "DAILY" | "WEEKLY" })}>
                                 <option value="DAILY">每天</option>
                                 <option value="WEEKLY">每周</option>
                               </select>
                             </td>
-                            <td className="border px-2 py-2">
-                              <input type="time" className="rounded border px-2 py-1" value={d.scheduleStartTime || "07:00"} onChange={(e) => updateDraft(r.jobKey, { scheduleStartTime: e.target.value })} />
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">
+                              <input type="time" className={inputClass} value={d.scheduleStartTime || "07:00"} onChange={(e) => updateDraft(r.jobKey, { scheduleStartTime: e.target.value })} />
                             </td>
-                            <td className="border px-2 py-2">
-                              <input type="time" className="rounded border px-2 py-1" value={d.scheduleEndTime || "22:00"} onChange={(e) => updateDraft(r.jobKey, { scheduleEndTime: e.target.value })} />
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">
+                              <input type="time" className={inputClass} value={d.scheduleEndTime || "22:00"} onChange={(e) => updateDraft(r.jobKey, { scheduleEndTime: e.target.value })} />
                             </td>
-                            <td className="border px-2 py-2">
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">
                               {TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey) || PLATFORM_POLL_KEYS.has(r.jobKey) ? (
                                 <input
                                   type="number"
-                                  className="w-24 rounded border px-2 py-1"
+                                  className="w-24 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1"
                                   min={10}
                                   max={PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600}
                                   value={d.pollIntervalSeconds ?? 60}
@@ -528,41 +517,38 @@ export default function AdminScheduleManagerPage() {
                                     updateDraft(r.jobKey, {
                                       pollIntervalSeconds: Math.max(
                                         10,
-                                        Math.min(
-                                          PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600,
-                                          Number(e.target.value || 60)
-                                        )
+                                        Math.min(PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600, Number(e.target.value || 60))
                                       ),
                                     })
                                   }
                                 />
                               ) : (
-                                <span className="text-slate-400">-</span>
+                                <span className="text-[var(--twin-mute)]">-</span>
                               )}
                             </td>
-                            <td className="border px-2 py-2">
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">
                               {d.scheduleType === "WEEKLY" ? (
                                 <div className="flex flex-wrap gap-1">
                                   {weekOptions.map((w) => {
                                     const selected = (d.weekDays || "").split(",").includes(String(w.id));
                                     return (
-                                      <button key={w.id} onClick={() => toggleWeek(r.jobKey, w.id)} className={`rounded border px-1.5 py-0.5 text-xs ${selected ? "bg-blue-600 text-white" : ""}`}>
+                                      <button key={w.id} onClick={() => toggleWeek(r.jobKey, w.id)} className={`${weekBtnClass} ${selected ? weekBtnActiveClass : ""}`}>
                                         {w.label}
                                       </button>
                                     );
                                   })}
                                 </div>
                               ) : (
-                                <span className="text-slate-400">-</span>
+                                <span className="text-[var(--twin-mute)]">-</span>
                               )}
                             </td>
-                            <td className="border px-2 py-2">{r.lastRunAt || "-"}</td>
-                            <td className="border px-2 py-2">{r.lastSuccessAt || "-"}</td>
-                            <td className="border px-2 py-2">{r.lastStatus || "-"}</td>
-                            <td className="border px-2 py-2">
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastRunAt || "-"}</td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastSuccessAt || "-"}</td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastStatus || "-"}</td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">
                               <div className="flex gap-2">
-                                <button className="rounded border px-2 py-1" disabled={savingKey === r.jobKey} onClick={() => void save(r.jobKey)}>保存</button>
-                                <button className="rounded border px-2 py-1" disabled={savingKey === r.jobKey} onClick={() => void runNow(r.jobKey)}>立即执行</button>
+                                <button className={btnClass} disabled={savingKey === r.jobKey} onClick={() => void save(r.jobKey)}>保存</button>
+                                <button className={btnClass} disabled={savingKey === r.jobKey} onClick={() => void runNow(r.jobKey)}>立即执行</button>
                               </div>
                             </td>
                           </tr>
@@ -575,20 +561,20 @@ export default function AdminScheduleManagerPage() {
             ))}
 
             <div className="mt-4">
-              <div className="mb-2 text-sm font-semibold text-slate-700">即时门禁拉取（轮询+时间段，孪生联动）</div>
+              <div className="mb-2 text-sm font-semibold text-[var(--twin-body)]">即时门禁拉取（轮询+时间段，孪生联动）</div>
               <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50">
+                  <thead className="bg-[var(--twin-canvas-soft)]">
                     <tr>
-                      <th className="border px-2 py-2 text-left">任务</th>
-                      <th className="border px-2 py-2 text-left">开关</th>
-                      <th className="border px-2 py-2 text-left">轮询频率(秒)</th>
-                      <th className="border px-2 py-2 text-left">窗口开始</th>
-                      <th className="border px-2 py-2 text-left">窗口结束</th>
-                      <th className="border px-2 py-2 text-left">每周</th>
-                      <th className="border px-2 py-2 text-left">上次执行</th>
-                      <th className="border px-2 py-2 text-left">状态</th>
-                      <th className="border px-2 py-2 text-left">操作</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">任务</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">开关</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">轮询频率(秒)</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">窗口开始</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">窗口结束</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">每周</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">上次执行</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">状态</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -598,29 +584,29 @@ export default function AdminScheduleManagerPage() {
                       if (!d) return null;
                       return (
                         <tr key={r.id}>
-                          <td className="border px-2 py-2">{r.name || `任务#${r.id}`}</td>
-                          <td className="border px-2 py-2"><input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDahuaDraft(r.id!, { enabled: e.target.checked ? 1 : 0 })} /></td>
-                          <td className="border px-2 py-2"><input type="number" className="w-24 rounded border px-2 py-1" min={10} value={d.pollIntervalSeconds} onChange={(e) => updateDahuaDraft(r.id!, { pollIntervalSeconds: Number(e.target.value || 60) })} /></td>
-                          <td className="border px-2 py-2"><input type="time" className="rounded border px-2 py-1" value={d.startTime} onChange={(e) => updateDahuaDraft(r.id!, { startTime: e.target.value })} /></td>
-                          <td className="border px-2 py-2"><input type="time" className="rounded border px-2 py-1" value={d.endTime} onChange={(e) => updateDahuaDraft(r.id!, { endTime: e.target.value })} /></td>
-                          <td className="border px-2 py-2">
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.name || `任务#${r.id}`}</td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDahuaDraft(r.id!, { enabled: e.target.checked ? 1 : 0 })} /></td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="number" className="w-24 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1" min={10} value={d.pollIntervalSeconds} onChange={(e) => updateDahuaDraft(r.id!, { pollIntervalSeconds: Number(e.target.value || 60) })} /></td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="time" className={inputClass} value={d.startTime} onChange={(e) => updateDahuaDraft(r.id!, { startTime: e.target.value })} /></td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="time" className={inputClass} value={d.endTime} onChange={(e) => updateDahuaDraft(r.id!, { endTime: e.target.value })} /></td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">
                             <div className="flex flex-wrap gap-1">
                               {weekOptions.map((w) => {
                                 const selected = (d.weekDays || "").split(",").includes(String(w.id));
                                 return (
-                                  <button key={w.id} onClick={() => toggleDahuaWeek(r.id!, w.id)} className={`rounded border px-1.5 py-0.5 text-xs ${selected ? "bg-indigo-600 text-white" : ""}`}>
+                                  <button key={w.id} onClick={() => toggleDahuaWeek(r.id!, w.id)} className={`${weekBtnClass} ${selected ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : ""}`}>
                                     {w.label}
                                   </button>
                                 );
                               })}
                             </div>
                           </td>
-                          <td className="border px-2 py-2">{r.lastRunAt || "-"}</td>
-                          <td className="border px-2 py-2">{r.lastStatus || "-"}</td>
-                          <td className="border px-2 py-2">
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastRunAt || "-"}</td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastStatus || "-"}</td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">
                             <div className="flex gap-2">
-                              <button className="rounded border px-2 py-1" disabled={savingKey === `dahua-${r.id}`} onClick={() => void saveDahua(r)}>保存</button>
-                              <button className="rounded border px-2 py-1" disabled={savingKey === `dahua-${r.id}`} onClick={() => void runDahuaNow(r.id)}>立即执行</button>
+                              <button className={btnClass} disabled={savingKey === `dahua-${r.id}`} onClick={() => void saveDahua(r)}>保存</button>
+                              <button className={btnClass} disabled={savingKey === `dahua-${r.id}`} onClick={() => void runDahuaNow(r.id)}>立即执行</button>
                             </div>
                           </td>
                         </tr>
@@ -633,10 +619,10 @@ export default function AdminScheduleManagerPage() {
 
             <div className="mt-4 space-y-4">
               <div>
-                <div className="mb-1 text-sm font-semibold text-slate-700">审计拉取任务（按策略参与对应定时 Job）</div>
-                <p className="mb-2 text-xs text-slate-500">
+                <div className="mb-1 text-sm font-semibold text-[var(--twin-body)]">审计拉取任务（按策略参与对应定时 Job）</div>
+                <p className="mb-2 text-xs text-[var(--twin-mute)]">
                   <strong>回溯</strong>不在此配置，仅在{" "}
-                  <a href="#/admin/dahua-swing-tasks?tab=audit" className="text-indigo-700 underline">
+                  <a href="#/admin/dahua-swing-tasks?tab=audit" className="text-[var(--twin-link-deep)] underline">
                     门禁数据工作台 · 审计拉取
                   </a>{" "}
                   手动执行。下方勾选「参与定时」仅对<strong>同策略</strong>的到点 Job 生效；到点时刻在 B 区分别配置：
@@ -659,24 +645,24 @@ export default function AdminScheduleManagerPage() {
                 const sectionRows = statsRowsByPeriod.get(section.periodMode) ?? [];
                 return (
                   <div key={section.periodMode}>
-                    <div className="mb-1 text-xs font-semibold text-slate-600">
+                    <div className="mb-1 text-xs font-semibold text-[var(--twin-body)]">
                       {section.title} · 对应 Job <code className="text-[10px]">{section.jobKey}</code>
                     </div>
                     <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
                       <table className="min-w-full text-sm">
-                        <thead className="bg-slate-50">
+                        <thead className="bg-[var(--twin-canvas-soft)]">
                           <tr>
-                            <th className="border px-2 py-2 text-left">任务</th>
-                            <th className="border px-2 py-2 text-left">参与本策略定时</th>
-                            <th className="border px-2 py-2 text-left">上次数据窗</th>
-                            <th className="border px-2 py-2 text-left">状态</th>
-                            <th className="border px-2 py-2 text-left">操作</th>
+                            <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">任务</th>
+                            <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">参与本策略定时</th>
+                            <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">上次数据窗</th>
+                            <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">状态</th>
+                            <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">操作</th>
                           </tr>
                         </thead>
                         <tbody>
                           {sectionRows.length === 0 ? (
                             <tr>
-                              <td colSpan={5} className="border px-2 py-4 text-center text-xs text-slate-400">
+                              <td colSpan={5} className="border border-[var(--twin-hairline)] px-2 py-4 text-center text-xs text-[var(--twin-mute)]">
                                 暂无 {section.title} 任务
                               </td>
                             </tr>
@@ -687,8 +673,8 @@ export default function AdminScheduleManagerPage() {
                               if (!d) return null;
                               return (
                                 <tr key={r.id}>
-                                  <td className="border px-2 py-2">{r.name || `任务#${r.id}`}</td>
-                                  <td className="border px-2 py-2">
+                                  <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.name || `任务#${r.id}`}</td>
+                                  <td className="border border-[var(--twin-hairline)] px-2 py-2">
                                     <input
                                       type="checkbox"
                                       checked={d.enabled === 1}
@@ -697,7 +683,7 @@ export default function AdminScheduleManagerPage() {
                                       }
                                     />
                                   </td>
-                                  <td className="border px-2 py-2 text-xs">
+                                  <td className="border border-[var(--twin-hairline)] px-2 py-2 text-xs">
                                     {r.lastPulledStart && r.lastPulledEnd ? (
                                       <>
                                         {r.lastPulledStart}
@@ -708,12 +694,12 @@ export default function AdminScheduleManagerPage() {
                                       "-"
                                     )}
                                   </td>
-                                  <td className="border px-2 py-2">{r.lastStatus || "-"}</td>
-                                  <td className="border px-2 py-2">
+                                  <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastStatus || "-"}</td>
+                                  <td className="border border-[var(--twin-hairline)] px-2 py-2">
                                     <div className="flex gap-2">
                                       <button
                                         type="button"
-                                        className="rounded border px-2 py-1"
+                                        className={btnClass}
                                         disabled={savingKey === `stats-${r.id}`}
                                         onClick={() => void saveStats(r)}
                                       >
@@ -721,7 +707,7 @@ export default function AdminScheduleManagerPage() {
                                       </button>
                                       <button
                                         type="button"
-                                        className="rounded border px-2 py-1"
+                                        className={btnClass}
                                         disabled={savingKey === `stats-${r.id}`}
                                         onClick={() => void runStatsNow(r.id)}
                                       >
@@ -742,36 +728,36 @@ export default function AdminScheduleManagerPage() {
             </div>
           </div>
 
-          <div className="rounded border bg-white p-3">
-            <div className="mb-2 text-base font-semibold text-slate-800">B. 每日定时（到点执行一次）</div>
-            <div className="mb-3 text-xs text-slate-500">
+          <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3">
+            <div className="mb-2 text-base font-semibold text-[var(--twin-ink)]">B. 每日定时（到点执行一次）</div>
+            <div className="mb-3 text-xs text-[var(--twin-mute)]">
               仅需配置<strong>执行时刻</strong>与周计划，无需时间段与轮询间隔。支持重启补跑（错过计划点会在重启自检时补齐）。
               <strong>审计门禁·每日到点</strong>：拉取昨日窗后，各任务若开启「拉取后自动清洗」则写入总库（开关在{" "}
-              <a href="#/admin/dahua-swing-tasks?tab=audit" className="text-indigo-700 underline">
+              <a href="#/admin/dahua-swing-tasks?tab=audit" className="text-[var(--twin-link-deep)] underline">
                 定时审计拉取
               </a>
               ）。<strong>门禁统计·自动入库</strong>：独立增量任务，仍看各任务同一开关。
             </div>
 
             <div className="mb-4">
-              <div className="mb-2 text-sm font-semibold text-slate-700">冻结联动任务</div>
-              <p className="mb-2 text-xs text-amber-800/90 bg-amber-50 border border-amber-200/80 rounded px-2 py-1.5">
+              <div className="mb-2 text-sm font-semibold text-[var(--twin-body)]">冻结联动任务</div>
+              <p className="mb-2 text-xs text-amber-800/90 bg-amber-50 border border-amber-200/80 rounded-twin-sm px-2 py-1.5">
                 「每日豁免权回收」在本页单独配置开关与执行时间，不再随冻结总开关绑定。可勾选「回收后自动签离」：仅对<strong>今日曾豁免且流水仍判定在馆</strong>者签离；时效到期收回、未申请豁免的滞留者不签离（与 AI 雷达口径一致，跨日后不计入当日雷达）。
               </p>
               <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
                 <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50">
+                  <thead className="bg-[var(--twin-canvas-soft)]">
                     <tr>
-                      <th className="border px-2 py-2 text-left">任务</th>
-                      <th className="border px-2 py-2 text-left">开关</th>
-                      <th className="border px-2 py-2 text-left">计划</th>
-                      <th className="border px-2 py-2 text-left">执行时间</th>
-                      <th className="border px-2 py-2 text-left">每周</th>
-                      <th className="border px-2 py-2 text-left">回收后签离</th>
-                      <th className="border px-2 py-2 text-left">上次执行</th>
-                      <th className="border px-2 py-2 text-left">上次成功</th>
-                      <th className="border px-2 py-2 text-left">状态</th>
-                      <th className="border px-2 py-2 text-left">操作</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">任务</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">开关</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">计划</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">执行时间</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">每周</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">回收后签离</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">上次执行</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">上次成功</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">状态</th>
+                      <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -779,56 +765,54 @@ export default function AdminScheduleManagerPage() {
                       const d = draft[r.jobKey] || r;
                       return (
                         <tr key={r.jobKey}>
-                          <td className="border px-2 py-2">{r.jobName}</td>
-                          <td className="border px-2 py-2"><input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDraft(r.jobKey, { enabled: e.target.checked ? 1 : 0 })} /></td>
-                          <td className="border px-2 py-2">
-                            <select className="rounded border px-2 py-1" value={d.scheduleType || "DAILY"} onChange={(e) => updateDraft(r.jobKey, { scheduleType: e.target.value as "DAILY" | "WEEKLY" })}>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.jobName}</td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDraft(r.jobKey, { enabled: e.target.checked ? 1 : 0 })} /></td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">
+                            <select className={inputClass} value={d.scheduleType || "DAILY"} onChange={(e) => updateDraft(r.jobKey, { scheduleType: e.target.value as "DAILY" | "WEEKLY" })}>
                               <option value="DAILY">每天</option>
                               <option value="WEEKLY">每周</option>
                             </select>
                           </td>
-                          <td className="border px-2 py-2"><input type="time" className="rounded border px-2 py-1" value={d.scheduleTime || "03:00"} onChange={(e) => updateDraft(r.jobKey, { scheduleTime: e.target.value })} /></td>
-                          <td className="border px-2 py-2">
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="time" className={inputClass} value={d.scheduleTime || "03:00"} onChange={(e) => updateDraft(r.jobKey, { scheduleTime: e.target.value })} /></td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">
                             {d.scheduleType === "WEEKLY" ? (
                               <div className="flex flex-wrap gap-1">
                                 {weekOptions.map((w) => {
                                   const selected = (d.weekDays || "").split(",").includes(String(w.id));
                                   return (
-                                    <button key={w.id} onClick={() => toggleWeek(r.jobKey, w.id)} className={`rounded border px-1.5 py-0.5 text-xs ${selected ? "bg-blue-600 text-white" : ""}`}>
+                                    <button key={w.id} onClick={() => toggleWeek(r.jobKey, w.id)} className={`${weekBtnClass} ${selected ? weekBtnActiveClass : ""}`}>
                                       {w.label}
                                     </button>
                                   );
                                 })}
                               </div>
                             ) : (
-                              <span className="text-slate-400">-</span>
+                              <span className="text-[var(--twin-mute)]">-</span>
                             )}
                           </td>
-                          <td className="border px-2 py-2">
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">
                             {r.jobKey === DAILY_EXEMPT_RESET_KEY ? (
                               <label className="flex items-center gap-1 text-xs cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={(d.revokeAutoSignoutEnabled ?? 0) === 1}
                                   onChange={(e) =>
-                                    updateDraft(r.jobKey, {
-                                      revokeAutoSignoutEnabled: e.target.checked ? 1 : 0,
-                                    })
+                                    updateDraft(r.jobKey, { revokeAutoSignoutEnabled: e.target.checked ? 1 : 0 })
                                   }
                                 />
                                 今日曾豁免且仍在馆
                               </label>
                             ) : (
-                              <span className="text-slate-400">-</span>
+                              <span className="text-[var(--twin-mute)]">-</span>
                             )}
                           </td>
-                          <td className="border px-2 py-2">{r.lastRunAt || "-"}</td>
-                          <td className="border px-2 py-2">{r.lastSuccessAt || "-"}</td>
-                          <td className="border px-2 py-2">{r.lastStatus || "-"}</td>
-                          <td className="border px-2 py-2">
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastRunAt || "-"}</td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastSuccessAt || "-"}</td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastStatus || "-"}</td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2">
                             <div className="flex gap-2">
-                              <button className="rounded border px-2 py-1" disabled={savingKey === r.jobKey} onClick={() => void save(r.jobKey)}>保存</button>
-                              <button className="rounded border px-2 py-1" disabled={savingKey === r.jobKey} onClick={() => void runNow(r.jobKey)}>立即执行</button>
+                              <button className={btnClass} disabled={savingKey === r.jobKey} onClick={() => void save(r.jobKey)}>保存</button>
+                              <button className={btnClass} disabled={savingKey === r.jobKey} onClick={() => void runNow(r.jobKey)}>立即执行</button>
                             </div>
                           </td>
                         </tr>
@@ -841,9 +825,9 @@ export default function AdminScheduleManagerPage() {
 
             {singleGroupedRows.map((group) => (
               <div key={group.title} className="mb-4">
-                <div className="mb-2 text-sm font-semibold text-slate-700">{group.title}</div>
+                <div className="mb-2 text-sm font-semibold text-[var(--twin-body)]">{group.title}</div>
                 {group.title === "门禁统计（每日到点）" ? (
-                  <p className="mb-2 text-xs text-slate-500">
+                  <p className="mb-2 text-xs text-[var(--twin-mute)]">
                     三个审计拉取 Job 互不合并：<strong>昨日日批</strong>、<strong>上周周批</strong>、<strong>水位增量</strong>各配独立到点时刻，仅执行对应 periodMode 且已勾选参与定时的任务；<strong>历史回溯无定时</strong>。
                     「昨日日批」到点后还会跑全局增量入库并刷新隔离服/笼架订阅；周批/水位仅拉取+任务级自动清洗。
                     <strong className="ml-1">门禁统计·自动入库</strong>（
@@ -852,17 +836,17 @@ export default function AdminScheduleManagerPage() {
                 ) : null}
                 <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
                   <table className="min-w-full text-sm">
-                    <thead className="bg-slate-50">
+                    <thead className="bg-[var(--twin-canvas-soft)]">
                       <tr>
-                        <th className="border px-2 py-2 text-left">任务</th>
-                        <th className="border px-2 py-2 text-left">开关</th>
-                        <th className="border px-2 py-2 text-left">计划</th>
-                        <th className="border px-2 py-2 text-left">执行时间</th>
-                        <th className="border px-2 py-2 text-left">每周</th>
-                        <th className="border px-2 py-2 text-left">上次执行</th>
-                        <th className="border px-2 py-2 text-left">上次成功</th>
-                        <th className="border px-2 py-2 text-left">状态</th>
-                        <th className="border px-2 py-2 text-left">操作</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">任务</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">开关</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">计划</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">执行时间</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">每周</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">上次执行</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">上次成功</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">状态</th>
+                        <th className="border border-[var(--twin-hairline)] px-2 py-2 text-left">操作</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -870,38 +854,38 @@ export default function AdminScheduleManagerPage() {
                         const d = draft[r.jobKey] || r;
                         return (
                           <tr key={r.jobKey}>
-                            <td className="border px-2 py-2">{r.jobName}</td>
-                            <td className="border px-2 py-2"><input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDraft(r.jobKey, { enabled: e.target.checked ? 1 : 0 })} /></td>
-                            <td className="border px-2 py-2">
-                              <select className="rounded border px-2 py-1" value={d.scheduleType || "DAILY"} onChange={(e) => updateDraft(r.jobKey, { scheduleType: e.target.value as "DAILY" | "WEEKLY" })}>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.jobName}</td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDraft(r.jobKey, { enabled: e.target.checked ? 1 : 0 })} /></td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">
+                              <select className={inputClass} value={d.scheduleType || "DAILY"} onChange={(e) => updateDraft(r.jobKey, { scheduleType: e.target.value as "DAILY" | "WEEKLY" })}>
                                 <option value="DAILY">每天</option>
                                 <option value="WEEKLY">每周</option>
                               </select>
                             </td>
-                            <td className="border px-2 py-2"><input type="time" className="rounded border px-2 py-1" value={d.scheduleTime || "03:00"} onChange={(e) => updateDraft(r.jobKey, { scheduleTime: e.target.value })} /></td>
-                            <td className="border px-2 py-2">
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="time" className={inputClass} value={d.scheduleTime || "03:00"} onChange={(e) => updateDraft(r.jobKey, { scheduleTime: e.target.value })} /></td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">
                               {d.scheduleType === "WEEKLY" ? (
                                 <div className="flex flex-wrap gap-1">
                                   {weekOptions.map((w) => {
                                     const selected = (d.weekDays || "").split(",").includes(String(w.id));
                                     return (
-                                      <button key={w.id} onClick={() => toggleWeek(r.jobKey, w.id)} className={`rounded border px-1.5 py-0.5 text-xs ${selected ? "bg-blue-600 text-white" : ""}`}>
+                                      <button key={w.id} onClick={() => toggleWeek(r.jobKey, w.id)} className={`${weekBtnClass} ${selected ? weekBtnActiveClass : ""}`}>
                                         {w.label}
                                       </button>
                                     );
                                   })}
                                 </div>
                               ) : (
-                                <span className="text-slate-400">-</span>
+                                <span className="text-[var(--twin-mute)]">-</span>
                               )}
                             </td>
-                            <td className="border px-2 py-2">{r.lastRunAt || "-"}</td>
-                            <td className="border px-2 py-2">{r.lastSuccessAt || "-"}</td>
-                            <td className="border px-2 py-2">{r.lastStatus || "-"}</td>
-                            <td className="border px-2 py-2">
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastRunAt || "-"}</td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastSuccessAt || "-"}</td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.lastStatus || "-"}</td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2">
                               <div className="flex gap-2">
-                                <button className="rounded border px-2 py-1" disabled={savingKey === r.jobKey} onClick={() => void save(r.jobKey)}>保存</button>
-                                <button className="rounded border px-2 py-1" disabled={savingKey === r.jobKey} onClick={() => void runNow(r.jobKey)}>立即执行</button>
+                                <button className={btnClass} disabled={savingKey === r.jobKey} onClick={() => void save(r.jobKey)}>保存</button>
+                                <button className={btnClass} disabled={savingKey === r.jobKey} onClick={() => void runNow(r.jobKey)}>立即执行</button>
                               </div>
                             </td>
                           </tr>
@@ -953,13 +937,7 @@ function normalizeScheduleRow(r: ScheduleJobRow): ScheduleJobRow {
     scheduleEndTime: normalizeTime(r.scheduleEndTime, "22:00"),
     pollIntervalSeconds:
       TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey) || PLATFORM_POLL_KEYS.has(r.jobKey)
-        ? Math.max(
-            10,
-            Math.min(
-              PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600,
-              Number(r.pollIntervalSeconds ?? 60)
-            )
-          )
+        ? Math.max(10, Math.min(PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600, Number(r.pollIntervalSeconds ?? 60)))
         : r.pollIntervalSeconds,
   };
 }

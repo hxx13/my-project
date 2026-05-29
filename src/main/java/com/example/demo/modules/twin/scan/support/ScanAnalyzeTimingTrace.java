@@ -1,8 +1,8 @@
 package com.example.demo.modules.twin.scan.support;
 
+import com.example.demo.common.config.DebugToggleService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -14,21 +14,21 @@ import java.util.function.Supplier;
 /**
  * {@code GET /api/v1/twin/scan/analyze} 全链路分段耗时：仅输出 ARO 与慢步骤，避免低耗时 MySQL 刷屏。
  * <p>异步线程（如并行 ARO）须使用 {@link #stepForTrace(String, String, long, String)}。</p>
+ * <p>开关 {@code scan.analyze_timing_console} 支持运行时热切换，由 {@link DebugToggleService} 管理。</p>
  */
 @Component
 public class ScanAnalyzeTimingTrace {
 
     private static final Logger log = LoggerFactory.getLogger(ScanAnalyzeTimingTrace.class);
 
-    @Value("${app.scan.analyze-timing-console:true}")
-    private boolean consoleEnabled;
-
-    /** 非 ARO 步骤低于此毫秒不打印分段/汇总行 */
-    @Value("${app.scan.analyze-timing-console-min-ms:300}")
-    private long segmentMinMs;
+    private final DebugToggleService debugToggleService;
 
     private final ConcurrentHashMap<String, Ctx> activeTraces = new ConcurrentHashMap<>();
     private final ThreadLocal<String> currentTraceId = new ThreadLocal<>();
+
+    public ScanAnalyzeTimingTrace(DebugToggleService debugToggleService) {
+        this.debugToggleService = debugToggleService;
+    }
 
     public void open(String traceId, String inputKey) {
         String tid = traceId == null ? "?" : traceId;
@@ -90,12 +90,12 @@ public class ScanAnalyzeTimingTrace {
                 .filter(s -> shouldEmitSegment(s.phase, s.costMs))
                 .sorted(Comparator.comparingLong((Step s) -> s.costMs).reversed())
                 .toList();
-        if (!consoleEnabled || report.isEmpty()) {
+        if (!debugToggleService.isScanTimingConsoleEnabled() || report.isEmpty()) {
             return;
         }
         String header = String.format(
                 "========== [扫码·analyze 耗时汇总] trace=%s input=%s total=%dms 慢步骤=%d (阈值非ARO>=%dms) ==========",
-                c.traceId, abbrev(c.inputKey, 40), totalMs, report.size(), segmentMinMs);
+                c.traceId, abbrev(c.inputKey, 40), totalMs, report.size(), debugToggleService.getScanTimingConsoleMinMs());
         emit(header);
         int rank = 1;
         for (Step s : report) {
@@ -106,13 +106,13 @@ public class ScanAnalyzeTimingTrace {
     }
 
     private boolean shouldEmitSegment(String phase, long costMs) {
-        if (!consoleEnabled) {
+        if (!debugToggleService.isScanTimingConsoleEnabled()) {
             return false;
         }
         if (isAroPhase(phase)) {
             return true;
         }
-        return costMs >= segmentMinMs;
+        return costMs >= debugToggleService.getScanTimingConsoleMinMs();
     }
 
     private static boolean isAroPhase(String phase) {

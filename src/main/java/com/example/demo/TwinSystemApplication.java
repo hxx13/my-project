@@ -9,7 +9,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.client.RestTemplate;
 
 @SpringBootApplication
-@MapperScan({"com.example.demo.modules.*.mapper", "com.example.demo.modules.accessfusion.mapper"})
+@MapperScan({"com.example.demo.modules.*.mapper", "com.example.demo.modules.twin.*.mapper", "com.example.demo.modules.accessfusion.mapper"})
 @EnableScheduling
 @EnableAsync
 public class TwinSystemApplication {

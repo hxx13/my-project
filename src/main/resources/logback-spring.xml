@@ -13,6 +13,9 @@
         </encoder>
     </appender>
 
+    <!-- Web 端日志查看器：环形缓冲区 Appender -->
+    <appender name="RING_BUFFER" class="com.example.demo.common.support.RingBufferAppender"/>
+
     <!-- 框架/网络库噪音 → 保持静默 -->
     <logger name="io.netty" level="ERROR"/>
     <logger name="com.corundumstudio.socketio" level="ERROR"/>
@@ -23,5 +26,6 @@
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="RING_BUFFER"/>
     </root>
 </configuration>

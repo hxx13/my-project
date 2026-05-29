@@ -276,8 +276,8 @@ export function CategorySnapshotAnalysisCard({
                       </tr>
                     </thead>
                     <tbody>
-                      {rooms.slice(0, 20).map((r) => (
-                        <tr key={`${r.location ?? ""}-${r.roomName}`} className="border-t border-neutral-100">
+                      {rooms.slice(0, 20).map((r, i) => (
+                        <tr key={`${r.location ?? ""}-${r.roomName}-${i}`} className="border-t border-neutral-100">
                           <td className="py-1 font-medium text-neutral-800">{r.roomName}</td>
                           <td className="max-w-[10rem] truncate py-1 text-neutral-600" title={r.location}>
                             {r.location ?? "—"}

@@ -24,7 +24,15 @@ export function DebugPredictionPersonCard({user}: { user: DebugPredictionUserDto
     const [expandedRooms, setExpandedRooms] = useState(false);
     const [chartsOpen, setChartsOpen] = useState(false);
 
-    const rooms = user.rooms ?? [];
+    const rooms = useMemo(() => {
+        const raw = user.rooms ?? [];
+        const seen = new Set<string>();
+        return raw.filter((r) => {
+            if (!r.roomId || seen.has(r.roomId)) return false;
+            seen.add(r.roomId);
+            return true;
+        });
+    }, [user.rooms]);
     const primary = rooms[0];
     const policyLabel = policyTagLabel(primary?.policyTag);
     const avgDuration = useMemo(() => {

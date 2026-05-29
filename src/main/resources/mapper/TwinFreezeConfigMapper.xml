@@ -2,7 +2,7 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.modules.twin.mapper.TwinFreezeConfigMapper">
+<mapper namespace="com.example.demo.modules.twin.card.mapper.TwinFreezeConfigMapper">
 
     <select id="countSecondFreezeColumn" resultType="java.lang.Integer">
         SELECT COUNT(1)
@@ -43,7 +43,7 @@
         ADD COLUMN daily_exempt_revoke_auto_signout_enabled TINYINT NOT NULL DEFAULT 0 COMMENT '每日豁免回收后是否自动签离'
     </update>
 
-    <resultMap id="TwinFreezeConfigMap" type="com.example.demo.modules.twin.entity.TwinFreezeConfigRow">
+    <resultMap id="TwinFreezeConfigMap" type="com.example.demo.modules.twin.card.entity.TwinFreezeConfigRow">
         <id column="id" property="id"/>
         <result column="enabled" property="enabled"/>
         <result column="freeze_time" property="freezeTime"/>

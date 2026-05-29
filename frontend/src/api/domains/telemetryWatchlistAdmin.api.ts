@@ -88,15 +88,15 @@ async function unwrapOk(p: Promise<{ data: ApiResult<unknown> }>): Promise<void>
 }
 
 export async function listTelemetryWatchlists(): Promise<TelemetryWatchlistBundle[]> {
-  return unwrap(authHttp.get<ApiResult<TelemetryWatchlistBundle[]>>("/api/v1/telemetry/watchlists"));
+  return unwrap(authHttp.get<ApiResult<TelemetryWatchlistBundle[]>>("/v1/telemetry/watchlists"));
 }
 
 export async function listTelemetryWatchlistZonesWithTags(): Promise<TelemetryWatchlistZone[]> {
-  return unwrap(authHttp.get<ApiResult<TelemetryWatchlistZone[]>>("/api/v1/telemetry/watchlists/admin/zones-with-tags"));
+  return unwrap(authHttp.get<ApiResult<TelemetryWatchlistZone[]>>("/v1/telemetry/watchlists/admin/zones-with-tags"));
 }
 
 export async function listTelemetryMetricKinds(): Promise<TelemetryMetricKind[]> {
-  return unwrap(authHttp.get<ApiResult<TelemetryMetricKind[]>>("/api/v1/telemetry/watchlists/metric-kinds"));
+  return unwrap(authHttp.get<ApiResult<TelemetryMetricKind[]>>("/v1/telemetry/watchlists/metric-kinds"));
 }
 
 export async function createTelemetryMetricKind(body: {
@@ -106,7 +106,7 @@ export async function createTelemetryMetricKind(body: {
   sortOrder?: number;
   active?: boolean;
 }): Promise<TelemetryMetricKind> {
-  return unwrap(authHttp.post<ApiResult<TelemetryMetricKind>>("/api/v1/telemetry/watchlists/metric-kinds", body));
+  return unwrap(authHttp.post<ApiResult<TelemetryMetricKind>>("/v1/telemetry/watchlists/metric-kinds", body));
 }
 
 export async function updateTelemetryMetricKind(
@@ -115,7 +115,7 @@ export async function updateTelemetryMetricKind(
 ): Promise<TelemetryMetricKind> {
   return unwrap(
     authHttp.put<ApiResult<TelemetryMetricKind>>(
-      `/api/v1/telemetry/watchlists/metric-kinds/${encodeURIComponent(code)}`,
+      `/v1/telemetry/watchlists/metric-kinds/${encodeURIComponent(code)}`,
       body
     )
   );
@@ -123,7 +123,7 @@ export async function updateTelemetryMetricKind(
 
 export async function deleteTelemetryMetricKind(code: string): Promise<void> {
   await unwrapOk(
-    authHttp.delete<ApiResult<unknown>>(`/api/v1/telemetry/watchlists/metric-kinds/${encodeURIComponent(code)}`)
+    authHttp.delete<ApiResult<unknown>>(`/v1/telemetry/watchlists/metric-kinds/${encodeURIComponent(code)}`)
   );
 }
 
@@ -131,16 +131,16 @@ export async function createTelemetryWatchlist(body: {
   code: string;
   displayName: string;
 }): Promise<TelemetryWatchlistBundle> {
-  return unwrap(authHttp.post<ApiResult<TelemetryWatchlistBundle>>("/api/v1/telemetry/watchlists", body));
+  return unwrap(authHttp.post<ApiResult<TelemetryWatchlistBundle>>("/v1/telemetry/watchlists", body));
 }
 
 export async function deleteTelemetryWatchlist(code: string): Promise<void> {
-  await unwrapOk(authHttp.delete<ApiResult<unknown>>(`/api/v1/telemetry/watchlists/${encodeURIComponent(code)}`));
+  await unwrapOk(authHttp.delete<ApiResult<unknown>>(`/v1/telemetry/watchlists/${encodeURIComponent(code)}`));
 }
 
 export async function setTelemetryWatchlistPollEnabled(code: string, includeInWinccPoll: boolean): Promise<void> {
   await unwrapOk(
-    authHttp.patch<ApiResult<unknown>>(`/api/v1/telemetry/watchlists/${encodeURIComponent(code)}/poll-enabled`, {
+    authHttp.patch<ApiResult<unknown>>(`/v1/telemetry/watchlists/${encodeURIComponent(code)}/poll-enabled`, {
       includeInWinccPoll,
     })
   );
@@ -148,25 +148,25 @@ export async function setTelemetryWatchlistPollEnabled(code: string, includeInWi
 
 export async function activateTelemetryWatchlist(code: string): Promise<void> {
   await unwrapOk(
-    authHttp.post<ApiResult<unknown>>(`/api/v1/telemetry/watchlists/${encodeURIComponent(code)}/activate`)
+    authHttp.post<ApiResult<unknown>>(`/v1/telemetry/watchlists/${encodeURIComponent(code)}/activate`)
   );
 }
 
 export async function listTelemetryWatchlistTagsAll(code: string): Promise<TelemetryWatchlistTag[]> {
   return unwrap(
     authHttp.get<ApiResult<TelemetryWatchlistTag[]>>(
-      `/api/v1/telemetry/watchlists/${encodeURIComponent(code)}/tags/all`
+      `/v1/telemetry/watchlists/${encodeURIComponent(code)}/tags/all`
     )
   );
 }
 
 export async function getTelemetryGlobalAlarmLimits(): Promise<TelemetryGlobalAlarmLimits> {
-  return unwrap(authHttp.get<ApiResult<TelemetryGlobalAlarmLimits>>("/api/v1/telemetry/watchlists/global-alarm-limits"));
+  return unwrap(authHttp.get<ApiResult<TelemetryGlobalAlarmLimits>>("/v1/telemetry/watchlists/global-alarm-limits"));
 }
 
 export async function putTelemetryGlobalAlarmLimits(body: TelemetryGlobalAlarmLimits): Promise<TelemetryGlobalAlarmLimits> {
   return unwrap(
-    authHttp.put<ApiResult<TelemetryGlobalAlarmLimits>>("/api/v1/telemetry/watchlists/global-alarm-limits", body)
+    authHttp.put<ApiResult<TelemetryGlobalAlarmLimits>>("/v1/telemetry/watchlists/global-alarm-limits", body)
   );
 }
 
@@ -191,7 +191,7 @@ export async function replaceTelemetryWatchlistTags(
   }));
   return unwrap(
     authHttp.put<ApiResult<{ saved: number }>>(
-      `/api/v1/telemetry/watchlists/${encodeURIComponent(code)}/tags`,
+      `/v1/telemetry/watchlists/${encodeURIComponent(code)}/tags`,
       body,
       { params: sourceFilename ? { sourceFilename } : {} }
     )
@@ -205,7 +205,7 @@ export async function importTelemetryWatchlistCsv(
 ): Promise<{ imported: number }> {
   return unwrap(
     authHttp.post<ApiResult<{ imported: number }>>(
-      `/api/v1/telemetry/watchlists/${encodeURIComponent(code)}/import`,
+      `/v1/telemetry/watchlists/${encodeURIComponent(code)}/import`,
       { csvText, sourceFilename: sourceFilename ?? null }
     )
   );
@@ -220,7 +220,7 @@ export async function importTelemetryWatchlistCsvFile(
   fd.append("file", file);
   return unwrap(
     authHttp.post<ApiResult<{ imported: number }>>(
-      `/api/v1/telemetry/watchlists/${encodeURIComponent(code)}/import-file`,
+      `/v1/telemetry/watchlists/${encodeURIComponent(code)}/import-file`,
       fd
     )
   );
@@ -234,7 +234,7 @@ export async function importTelemetryWatchlistCsvFileQuick(
   fd.append("file", file);
   return unwrap(
     authHttp.post<ApiResult<{ imported: number; bundleCode: string; displayName: string }>>(
-      "/api/v1/telemetry/watchlists/quick-import-file",
+      "/v1/telemetry/watchlists/quick-import-file",
       fd
     )
   );

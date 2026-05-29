@@ -2,9 +2,9 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.modules.twin.mapper.TwinAutomationLogMapper">
+<mapper namespace="com.example.demo.modules.twin.common.mapper.TwinAutomationLogMapper">
 
-    <resultMap id="BaseMap" type="com.example.demo.modules.twin.entity.TwinAutomationLog">
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.common.entity.TwinAutomationLog">
         <id property="id" column="id"/>
         <result property="automationType" column="automation_type"/>
         <result property="eventKey" column="event_key"/>
@@ -19,7 +19,7 @@
         <result property="userName" column="user_name"/>
     </resultMap>
 
-    <insert id="insert" parameterType="com.example.demo.modules.twin.entity.TwinAutomationLog" useGeneratedKeys="true" keyProperty="id">
+    <insert id="insert" parameterType="com.example.demo.modules.twin.common.entity.TwinAutomationLog" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO twin_automation_log
         (automation_type, event_key, trigger_type, trigger_reason, user_id, target_id, success, detail, event_time, created_by)
         VALUES

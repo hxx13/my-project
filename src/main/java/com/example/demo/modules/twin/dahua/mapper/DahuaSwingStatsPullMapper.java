@@ -1,10 +1,12 @@
 package com.example.demo.modules.twin.dahua.mapper;
 
 import com.example.demo.modules.twin.dahua.entity.DahuaSwingStatsPullTask;
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
+@Mapper
 public interface DahuaSwingStatsPullMapper {
     List<DahuaSwingStatsPullTask> listTasks();
 

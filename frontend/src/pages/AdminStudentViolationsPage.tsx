@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
   Bell,
@@ -53,10 +54,10 @@ type LockMode = "single" | "batch";
 type PageTabId = "unbound" | "announcement" | "create" | "records";
 
 const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
-  { id: "unbound", label: "未绑卡提示", icon: <CreditCard className="h-4 w-4 text-slate-500" aria-hidden /> },
-  { id: "announcement", label: "扫码弹窗公告", icon: <Bell className="h-4 w-4 text-slate-500" aria-hidden /> },
-  { id: "create", label: "新建违规", icon: <UserPlus className="h-4 w-4 text-slate-500" aria-hidden /> },
-  { id: "records", label: "违规记录", icon: <ShieldAlert className="h-4 w-4 text-slate-500" aria-hidden /> },
+  { id: "unbound", label: "未绑卡提示", icon: <CreditCard className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
+  { id: "announcement", label: "扫码弹窗公告", icon: <Bell className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
+  { id: "create", label: "新建违规", icon: <UserPlus className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
+  { id: "records", label: "违规记录", icon: <ShieldAlert className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
 ];
 
 const LOCK_MODE_OPTIONS: { value: LockMode; label: string }[] = [
@@ -65,7 +66,7 @@ const LOCK_MODE_OPTIONS: { value: LockMode; label: string }[] = [
 ];
 
 const inputBase =
-  "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm outline-none transition placeholder:text-neutral-400 focus-visible:border-neutral-300 focus-visible:ring-2 focus-visible:ring-[color:var(--admin-focus-ring)]/40";
+  "w-full rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] shadow-twin-level-1 outline-none transition placeholder:text-[var(--twin-mute)] focus-visible:border-[var(--twin-hairline-strong)] focus-visible:ring-2 focus-visible:ring-[color:var(--admin-focus-ring)]/40";
 
 function parseRowImageUrls(row: StudentViolationRow): string[] {
   const raw = row.imageUrls;
@@ -86,41 +87,20 @@ function personDisplayName(r: StudentViolationRow): string {
   return n || r.targetUserId;
 }
 
-/** 违规记录状态中文（库内仍存英文枚举） */
 function violationStatusLabel(status: string | undefined): { text: string; hint?: string; className: string } {
   switch (status) {
     case "ACTIVE":
-      return {
-        text: "生效中",
-        hint: "扫码弹窗与大屏公示均可能展示",
-        className: "font-medium text-rose-700",
-      };
+      return { text: "生效中", hint: "扫码弹窗与大屏公示均可能展示", className: "font-medium text-rose-700" };
     case "SUPERSEDED":
-      return {
-        text: "已被覆盖",
-        hint: "同一人新建违规时，旧记录由系统自动归档；仅留档，不再生效",
-        className: "text-amber-800",
-      };
+      return { text: "已被覆盖", hint: "同一人新建违规时，旧记录由系统自动归档；仅留档，不再生效", className: "text-amber-800" };
     case "CLEARED":
-      return {
-        text: "已解除",
-        hint: "管理员手动「解除」",
-        className: "text-emerald-800",
-      };
+      return { text: "已解除", hint: "管理员手动「解除」", className: "text-emerald-800" };
     case "PROCESSED":
-      return {
-        text: "已处理",
-        hint: "管理员标记「已处理」，扫码不再弹窗",
-        className: "text-slate-700",
-      };
+      return { text: "已处理", hint: "管理员标记「已处理」，扫码不再弹窗", className: "text-[var(--twin-body)]" };
     case "EXPIRED":
-      return {
-        text: "已过期",
-        hint: "超过到期时间，系统自动失效",
-        className: "text-neutral-500",
-      };
+      return { text: "已过期", hint: "超过到期时间，系统自动失效", className: "text-[var(--twin-mute)]" };
     default:
-      return { text: status || "—", className: "text-neutral-600" };
+      return { text: status || "—", className: "text-[var(--twin-body)]" };
   }
 }
 
@@ -131,6 +111,7 @@ function parsePageTab(raw: string | null): PageTabId {
 
 export default function AdminStudentViolationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const qc = useQueryClient();
   const activeTab = parsePageTab(searchParams.get("tab"));
   const setActiveTab = (id: PageTabId) => {
     setSearchParams(
@@ -143,8 +124,6 @@ export default function AdminStudentViolationsPage() {
     );
   };
 
-  const [rows, setRows] = useState<StudentViolationRow[]>([]);
-  const [loading, setLoading] = useState(false);
   const [personKeyword, setPersonKeyword] = useState("");
   const [searchUserResult, setSearchUserResult] = useState<Array<Record<string, unknown>>>([]);
   const personSearchTimer = useRef<number | null>(null);
@@ -184,48 +163,34 @@ export default function AdminStudentViolationsPage() {
   const [unboundText, setUnboundText] = useState("");
   const [unboundUrls, setUnboundUrls] = useState<string[]>([]);
   const [unboundUploading, setUnboundUploading] = useState(false);
-  const [unboundLoading, setUnboundLoading] = useState(false);
   const [unboundSaving, setUnboundSaving] = useState(false);
 
-  const loadUnboundSettings = useCallback(async () => {
-    setUnboundLoading(true);
-    try {
-      const s = await getUnboundCardNoticeSettings();
-      setUnboundEnabled(s.enabled);
-      setUnboundShowEvery(s.showNoticeEveryScan);
-      setUnboundForbidEnter(Boolean(s.forbidEnter));
-      setUnboundApplyRoles(s.applyRoleCodes ?? ["STUDENT"]);
-      setUnboundText(s.violationText ?? "");
-      setUnboundUrls(s.imageUrls ?? []);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "未绑卡提示配置加载失败");
-    } finally {
-      setUnboundLoading(false);
-    }
-  }, []);
+  const violationsQueryKey = useMemo(
+    () => ["studentViolations", picked?.userId || "all"] as const,
+    [picked?.userId]
+  );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await listStudentViolations({
-        targetUserId: picked?.userId || undefined,
-        limit: 400,
-      });
-      setRows(list);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [picked?.userId]);
+  const { data: rows = [], isLoading } = useQuery({
+    queryKey: violationsQueryKey,
+    queryFn: () => listStudentViolations({ targetUserId: picked?.userId || undefined, limit: 400 }),
+    placeholderData: (prev) => prev,
+  });
+
+  const { data: unboundSettings, isLoading: unboundLoading } = useQuery({
+    queryKey: ["unboundCardNoticeSettings"] as const,
+    queryFn: getUnboundCardNoticeSettings,
+  });
 
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    void loadUnboundSettings();
-  }, [loadUnboundSettings]);
+    if (unboundSettings) {
+      setUnboundEnabled(unboundSettings.enabled);
+      setUnboundShowEvery(unboundSettings.showNoticeEveryScan);
+      setUnboundForbidEnter(Boolean(unboundSettings.forbidEnter));
+      setUnboundApplyRoles(unboundSettings.applyRoleCodes ?? ["STUDENT"]);
+      setUnboundText(unboundSettings.violationText ?? "");
+      setUnboundUrls(unboundSettings.imageUrls ?? []);
+    }
+  }, [unboundSettings]);
 
   const uploadUnboundImages = useCallback(async (files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith("image/"));
@@ -265,6 +230,7 @@ export default function AdminStudentViolationsPage() {
       setUnboundApplyRoles(saved.applyRoleCodes ?? ["STUDENT"]);
       setUnboundText(saved.violationText ?? "");
       setUnboundUrls(saved.imageUrls ?? []);
+      qc.setQueryData(["unboundCardNoticeSettings"], saved);
       toast.success("未绑卡提示已保存");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
@@ -469,8 +435,7 @@ export default function AdminStudentViolationsPage() {
         toast.success("已保存违规记录");
         clearPickedPerson();
         resetViolationForm();
-        // 新建会影响多条 ACTIVE/SUPERSEDED 关系，需全量对齐列表
-        await load();
+        await qc.invalidateQueries({ queryKey: ["studentViolations"] });
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "保存失败");
       } finally {
@@ -511,7 +476,7 @@ export default function AdminStudentViolationsPage() {
       }
       resetBatchGroup();
       resetViolationForm();
-      await load();
+      await qc.invalidateQueries({ queryKey: ["studentViolations"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "批量保存失败");
     } finally {
@@ -527,7 +492,7 @@ export default function AdminStudentViolationsPage() {
     try {
       await clearStudentViolation(id);
       toast.success("已解除");
-      await load();
+      await qc.invalidateQueries({ queryKey: violationsQueryKey });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "解除失败");
     }
@@ -599,11 +564,12 @@ export default function AdminStudentViolationsPage() {
       toast.success("已保存修改");
       setEditOpen(false);
       setEditId(null);
-      // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
       if (updated) {
-        setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+        qc.setQueryData(violationsQueryKey, (prev: StudentViolationRow[] | undefined) =>
+          (prev || []).map((r) => (r.id === updated.id ? updated : r))
+        );
       } else {
-        await load();
+        await qc.invalidateQueries({ queryKey: violationsQueryKey });
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
@@ -621,8 +587,9 @@ export default function AdminStudentViolationsPage() {
         setEditOpen(false);
         setEditId(null);
       }
-      // 删除后仅从列表移除该行，禁止整表 load（post-save-no-full-refresh.mdc）
-      setRows((prev) => prev.filter((x) => x.id !== r.id));
+      qc.setQueryData(violationsQueryKey, (prev: StudentViolationRow[] | undefined) =>
+        (prev || []).filter((x) => x.id !== r.id)
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "删除失败");
     }
@@ -633,7 +600,7 @@ export default function AdminStudentViolationsPage() {
     try {
       await markStudentViolationProcessed(id);
       toast.success("已标记处理");
-      await load();
+      await qc.invalidateQueries({ queryKey: violationsQueryKey });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
     }
@@ -649,8 +616,8 @@ export default function AdminStudentViolationsPage() {
             type="button"
             tone="secondary"
             className="inline-flex items-center gap-2"
-            loading={loading}
-            onClick={() => void load()}
+            loading={isLoading}
+            onClick={() => qc.invalidateQueries({ queryKey: violationsQueryKey })}
           >
             <RefreshCw className="h-4 w-4" aria-hidden />
             刷新列表
@@ -678,30 +645,30 @@ export default function AdminStudentViolationsPage() {
       >
         <div className="space-y-4">
           <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm text-neutral-800">
+            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-neutral-300"
+                className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
                 checked={unboundEnabled}
                 disabled={unboundLoading}
                 onChange={(e) => setUnboundEnabled(e.target.checked)}
               />
               启用未绑卡提示
             </label>
-            <label className="flex items-center gap-2 text-sm text-neutral-800">
+            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-neutral-300"
+                className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
                 checked={unboundShowEvery}
                 disabled={unboundLoading}
                 onChange={(e) => setUnboundShowEvery(e.target.checked)}
               />
               每次扫码都自动展开提示
             </label>
-            <label className="flex items-center gap-2 text-sm text-neutral-800">
+            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-neutral-300"
+                className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
                 checked={unboundForbidEnter}
                 disabled={unboundLoading || !unboundEnabled}
                 onChange={(e) => setUnboundForbidEnter(e.target.checked)}
@@ -710,8 +677,8 @@ export default function AdminStudentViolationsPage() {
             </label>
           </div>
           <div>
-            <label className="text-xs font-medium text-neutral-600">{SCAN_OPERATOR_ROLE_LABEL}</label>
-            <p className="mt-0.5 text-[11px] text-neutral-500">{SCAN_OPERATOR_ROLE_HINT_UNBOUND}</p>
+            <label className="text-xs font-medium text-[var(--twin-body)]">{SCAN_OPERATOR_ROLE_LABEL}</label>
+            <p className="mt-0.5 text-[11px] text-[var(--twin-mute)]">{SCAN_OPERATOR_ROLE_HINT_UNBOUND}</p>
             <div className="mt-2 flex flex-wrap gap-3">
               {UNBOUND_APPLY_ROLE_OPTIONS.map((opt) => {
                 const checked = unboundApplyRoles.includes(opt.code);
@@ -719,14 +686,14 @@ export default function AdminStudentViolationsPage() {
                   <label
                     key={opt.code}
                     className={cn(
-                      "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm",
-                      checked ? "border-indigo-300 bg-indigo-50 text-indigo-900" : "border-neutral-200 bg-white text-neutral-700",
+                      "flex cursor-pointer items-center gap-2 rounded-twin-lg border px-3 py-2 text-sm",
+                      checked ? "border-indigo-300 bg-indigo-50 text-indigo-900" : "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)]",
                       (unboundLoading || !unboundEnabled) && "cursor-not-allowed opacity-60"
                     )}
                   >
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-neutral-300"
+                      className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
                       checked={checked}
                       disabled={unboundLoading || !unboundEnabled}
                       onChange={(e) => {
@@ -746,7 +713,7 @@ export default function AdminStudentViolationsPage() {
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-neutral-600">提示文案</label>
+            <label className="text-xs font-medium text-[var(--twin-body)]">提示文案</label>
             <textarea
               className={cn(inputBase, "mt-1.5 min-h-[88px] resize-y")}
               value={unboundText}
@@ -756,7 +723,7 @@ export default function AdminStudentViolationsPage() {
             />
           </div>
           <div>
-            <label className="text-xs font-medium text-neutral-600">提示附图（可选）</label>
+            <label className="text-xs font-medium text-[var(--twin-body)]">提示附图（可选）</label>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <AdminFilePickButton
                 multiple
@@ -765,12 +732,12 @@ export default function AdminStudentViolationsPage() {
                   if (files?.length) void uploadUnboundImages(Array.from(files));
                 }}
               />
-              {unboundUploading ? <span className="text-xs text-neutral-500">上传中…</span> : null}
+              {unboundUploading ? <span className="text-xs text-[var(--twin-mute)]">上传中…</span> : null}
             </div>
             {unboundUrls.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2">
                 {unboundUrls.map((u) => (
-                  <div key={u} className="relative h-16 w-16 overflow-hidden rounded-lg border border-neutral-200">
+                  <div key={u} className="relative h-16 w-16 overflow-hidden rounded-twin-lg border border-[var(--twin-hairline)]">
                     <img src={u} alt="" className="h-full w-full object-cover" />
                     <AdminButton
                       type="button"
@@ -819,7 +786,7 @@ export default function AdminStudentViolationsPage() {
           description="单人锁定或按课题组批量勾选成员；提交后扫码侧按每人最新 ACTIVE 展示。"
         >
           <div className="mb-4">
-            <label className="text-xs font-medium text-neutral-600">锁定方式</label>
+            <label className="text-xs font-medium text-[var(--twin-body)]">锁定方式</label>
             <div className="mt-1.5">
               <AdminSegmentedControl
                 options={LOCK_MODE_OPTIONS}
@@ -833,12 +800,12 @@ export default function AdminStudentViolationsPage() {
           {lockMode === "single" ? (
             <div className="relative space-y-3">
               <div>
-                <label className="text-xs font-medium text-neutral-600">检索人员</label>
-                <p className="mt-0.5 text-[11px] text-neutral-500">键入自动预检，可回车；选中后锁定对象。</p>
+                <label className="text-xs font-medium text-[var(--twin-body)]">检索人员</label>
+                <p className="mt-0.5 text-[11px] text-[var(--twin-mute)]">键入自动预检，可回车；选中后锁定对象。</p>
                 <input
                   type="text"
                   disabled={Boolean(picked)}
-                  className={cn(inputBase, "mt-1.5 disabled:bg-neutral-50 disabled:text-neutral-500")}
+                  className={cn(inputBase, "mt-1.5 disabled:bg-[var(--twin-canvas-soft)] disabled:text-[var(--twin-mute)]")}
                   placeholder="输入姓名或工号…"
                   value={personKeyword}
                   onKeyDown={(e) => {
@@ -860,7 +827,7 @@ export default function AdminStudentViolationsPage() {
               </div>
               {searchUserResult.length > 0 && !picked ? (
                 <div
-                  className="absolute left-0 right-0 top-[5.5rem] z-20 max-h-[220px] overflow-y-auto overscroll-y-contain rounded-xl border border-neutral-200/90 bg-white p-1.5 shadow-lg ring-1 ring-black/[0.04]"
+                  className="absolute left-0 right-0 top-[5.5rem] z-20 max-h-[220px] overflow-y-auto overscroll-y-contain rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 shadow-twin-level-3 ring-1 ring-black/[0.04]"
                   role="listbox"
                   aria-label="人员预检结果"
                 >
@@ -878,19 +845,19 @@ export default function AdminStudentViolationsPage() {
                       className={adminPickableRowClass}
                       onClick={() => pickPersonFromHit(rp)}
                     >
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-50">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
                           {headSrc ? (
                             <img src={headSrc} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                           ) : (
-                            <User className="h-4 w-4 text-neutral-400" />
+                            <User className="h-4 w-4 text-[var(--twin-mute)]" />
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-sm font-semibold text-neutral-900">{safeName}</span>
-                            <span className="shrink-0 font-mono text-[10px] text-neutral-500">{safeId}</span>
+                            <span className="truncate text-sm font-semibold text-[var(--twin-ink)]">{safeName}</span>
+                            <span className="shrink-0 font-mono text-[10px] text-[var(--twin-mute)]">{safeId}</span>
                           </div>
-                          <div className="mt-0.5 truncate text-xs text-neutral-500">{safeGroup}</div>
+                          <div className="mt-0.5 truncate text-xs text-[var(--twin-mute)]">{safeGroup}</div>
                         </div>
                       </button>
                     );
@@ -898,8 +865,8 @@ export default function AdminStudentViolationsPage() {
                 </div>
               ) : null}
               {picked ? (
-                <div className="flex items-center gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50/80 p-3 ring-1 ring-indigo-100/80">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm">
+                <div className="flex items-center gap-3 rounded-twin-xl border border-indigo-200/80 bg-indigo-50/80 p-3 ring-1 ring-indigo-100/80">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white shadow-twin-level-1">
                     <Check className="h-4 w-4" aria-hidden />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -918,12 +885,12 @@ export default function AdminStudentViolationsPage() {
           ) : (
             <div className="relative space-y-3">
               <div>
-                <label className="text-xs font-medium text-neutral-600">检索课题组</label>
-                <p className="mt-0.5 text-[11px] text-neutral-500">数据来自人员档案库；选中课题组后可勾选该组下成员批量锁定。</p>
+                <label className="text-xs font-medium text-[var(--twin-body)]">检索课题组</label>
+                <p className="mt-0.5 text-[11px] text-[var(--twin-mute)]">数据来自人员档案库；选中课题组后可勾选该组下成员批量锁定。</p>
                 <input
                   type="text"
                   disabled={Boolean(selectedGroup)}
-                  className={cn(inputBase, "mt-1.5 disabled:bg-neutral-50 disabled:text-neutral-500")}
+                  className={cn(inputBase, "mt-1.5 disabled:bg-[var(--twin-canvas-soft)] disabled:text-[var(--twin-mute)]")}
                   placeholder="输入课题组名称…"
                   value={groupKeyword}
                   onKeyDown={(e) => {
@@ -950,7 +917,7 @@ export default function AdminStudentViolationsPage() {
               </div>
               {groupSuggestions.length > 0 && !selectedGroup ? (
                 <div
-                  className="absolute left-0 right-0 top-[5.5rem] z-20 max-h-[200px] overflow-y-auto overscroll-y-contain rounded-xl border border-neutral-200/90 bg-white p-1.5 shadow-lg ring-1 ring-black/[0.04]"
+                  className="absolute left-0 right-0 top-[5.5rem] z-20 max-h-[200px] overflow-y-auto overscroll-y-contain rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 shadow-twin-level-3 ring-1 ring-black/[0.04]"
                   role="listbox"
                   aria-label="课题组检索结果"
                 >
@@ -958,7 +925,7 @@ export default function AdminStudentViolationsPage() {
                     <button
                       key={g}
                       type="button"
-                      className={cn(adminPickableRowClass, "px-3 py-2 text-sm font-medium text-neutral-900")}
+                      className={cn(adminPickableRowClass, "px-3 py-2 text-sm font-medium text-[var(--twin-ink)]")}
                       onClick={() => pickProjectGroup(g)}
                     >
                       {g}
@@ -967,7 +934,7 @@ export default function AdminStudentViolationsPage() {
                 </div>
               ) : null}
               {selectedGroup ? (
-                <div className="flex items-center gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50/80 p-3 ring-1 ring-indigo-100/80">
+                <div className="flex items-center gap-3 rounded-twin-xl border border-indigo-200/80 bg-indigo-50/80 p-3 ring-1 ring-indigo-100/80">
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold text-indigo-700">已选课题组</div>
                     <div className="text-sm font-semibold text-indigo-950">{selectedGroup}</div>
@@ -983,9 +950,9 @@ export default function AdminStudentViolationsPage() {
                 </div>
               ) : null}
               {selectedGroup && !groupMembersLoading && groupMembers.length > 0 ? (
-                <div className="rounded-xl border border-neutral-200/90 bg-neutral-50/50 p-2">
+                <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
-                    <span className="text-xs font-medium text-neutral-600">课题组成员</span>
+                    <span className="text-xs font-medium text-[var(--twin-body)]">课题组成员</span>
                     <div className="flex gap-2">
                       <AdminButton
                         type="button"
@@ -1014,26 +981,26 @@ export default function AdminStudentViolationsPage() {
                         <label
                           key={m.userId}
                           className={cn(
-                            "flex cursor-pointer items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors",
-                            checked ? "border-indigo-200 bg-white" : "border-transparent bg-white/60 hover:bg-white"
+                            "flex cursor-pointer items-center gap-2.5 rounded-twin-lg border px-2.5 py-2 transition-colors",
+                            checked ? "border-indigo-200 bg-[var(--twin-canvas)]" : "border-transparent bg-[var(--twin-canvas-soft)] hover:bg-[var(--twin-canvas)]"
                           )}
                         >
                           <input
                             type="checkbox"
-                            className="h-4 w-4 shrink-0 rounded border-neutral-300"
+                            className="h-4 w-4 shrink-0 rounded border-[var(--twin-hairline-strong)]"
                             checked={checked}
                             onChange={(e) => toggleBatchMember(m.userId, e.target.checked)}
                           />
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-50">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
                             {headSrc ? (
                               <img src={headSrc} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
-                              <User className="h-3.5 w-3.5 text-neutral-400" />
+                              <User className="h-3.5 w-3.5 text-[var(--twin-mute)]" />
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-medium text-neutral-900">{m.name}</div>
-                            <div className="font-mono text-[10px] text-neutral-500">{m.userId}</div>
+                            <div className="truncate text-sm font-medium text-[var(--twin-ink)]">{m.name}</div>
+                            <div className="font-mono text-[10px] text-[var(--twin-mute)]">{m.userId}</div>
                           </div>
                         </label>
                       );
@@ -1048,7 +1015,7 @@ export default function AdminStudentViolationsPage() {
           )}
 
           <div>
-            <label className="text-xs font-medium text-neutral-600">违规说明</label>
+            <label className="text-xs font-medium text-[var(--twin-body)]">违规说明</label>
             <textarea
               className={cn(inputBase, "mt-1.5 min-h-[100px] resize-y")}
               value={violationText}
@@ -1058,26 +1025,26 @@ export default function AdminStudentViolationsPage() {
           </div>
 
           <div>
-            <label className="text-xs font-medium text-neutral-600">违规图片（可多选上传）</label>
+            <label className="text-xs font-medium text-[var(--twin-body)]">违规图片（可多选上传）</label>
             <div
-              className="mt-1.5 rounded-lg border border-dashed border-neutral-200 bg-neutral-50/80 p-3 outline-none transition focus-within:border-neutral-300 focus-within:ring-2 focus-within:ring-[#0070f3]/20"
+              className="mt-1.5 rounded-twin-lg border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3 outline-none transition focus-within:border-[var(--twin-hairline-strong)] focus-within:ring-2 focus-within:ring-[#0070f3]/20"
               tabIndex={0}
               onPaste={onPasteNewViolationImages}
               aria-label="违规图片：选择文件或点击此处后 Ctrl+V 粘贴截图"
             >
-              <p className="mb-2 text-[11px] leading-snug text-neutral-500">
-                点击本区域使其获得焦点后，可用 <kbd className="rounded border border-neutral-200 bg-white px-1 font-mono text-[10px]">Ctrl</kbd>+
-                <kbd className="rounded border border-neutral-200 bg-white px-1 font-mono text-[10px]">V</kbd> 粘贴剪贴板中的截图（与「选择图片」相同上传流程）。
+              <p className="mb-2 text-[11px] leading-snug text-[var(--twin-mute)]">
+                点击本区域使其获得焦点后，可用 <kbd className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1 font-mono text-[10px]">Ctrl</kbd>+
+                <kbd className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1 font-mono text-[10px]">V</kbd> 粘贴剪贴板中的截图（与「选择图片」相同上传流程）。
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <AdminFilePickButton multiple disabled={uploading} onFiles={(files) => void onFiles(files)} />
-                {uploading ? <span className="text-xs text-neutral-500">上传中…</span> : null}
+                {uploading ? <span className="text-xs text-[var(--twin-mute)]">上传中…</span> : null}
               </div>
             </div>
             {imageUrls.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2">
                 {imageUrls.map((u) => (
-                  <div key={u} className="relative h-16 w-16 overflow-hidden rounded-lg border border-neutral-200">
+                  <div key={u} className="relative h-16 w-16 overflow-hidden rounded-twin-lg border border-[var(--twin-hairline)]">
                     <img src={u} alt="" className="h-full w-full object-cover" />
                     <AdminButton
                       type="button"
@@ -1096,26 +1063,26 @@ export default function AdminStudentViolationsPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex items-center gap-2 text-sm text-neutral-800">
+            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-neutral-300 text-neutral-900 focus-visible:ring-2 focus-visible:ring-[#0070f3]/25"
+                className="h-4 w-4 rounded border-[var(--twin-hairline-strong)] text-[var(--twin-ink)] focus-visible:ring-2 focus-visible:ring-[#0070f3]/25"
                 checked={forbidEnter}
                 onChange={(e) => setForbidEnter(e.target.checked)}
               />
               立即禁止扫码进入
             </label>
-            <label className="flex items-center gap-2 text-sm text-neutral-800">
+            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-neutral-300 text-neutral-900 focus-visible:ring-2 focus-visible:ring-[#0070f3]/25"
+                className="h-4 w-4 rounded border-[var(--twin-hairline-strong)] text-[var(--twin-ink)] focus-visible:ring-2 focus-visible:ring-[#0070f3]/25"
                 checked={showEvery}
                 onChange={(e) => setShowEvery(e.target.checked)}
               />
               每次扫码都提示违规内容
             </label>
             <div>
-              <label className="text-xs font-medium text-neutral-600">可以「进入」次数上限（留空=不限制）</label>
+              <label className="text-xs font-medium text-[var(--twin-body)]">可以「进入」次数上限（留空=不限制）</label>
               <input
                 className={cn(inputBase, "mt-1")}
                 inputMode="numeric"
@@ -1125,7 +1092,7 @@ export default function AdminStudentViolationsPage() {
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-neutral-600">封禁天数计时（留空=不计时）</label>
+              <label className="text-xs font-medium text-[var(--twin-body)]">封禁天数计时（留空=不计时）</label>
               <input
                 className={cn(inputBase, "mt-1")}
                 inputMode="numeric"
@@ -1136,7 +1103,7 @@ export default function AdminStudentViolationsPage() {
             </div>
           </div>
 
-          <div className="border-t border-neutral-100 pt-4">
+          <div className="border-t border-[var(--twin-hairline)] pt-4">
             <AdminButton
               type="button"
               tone="primary"
@@ -1158,16 +1125,16 @@ export default function AdminStudentViolationsPage() {
           activeTab={activeTab}
           className="space-y-3"
         >
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-[var(--twin-mute)]">
             {picked
               ? `当前筛选：「${picked.name}」的最近 400 条（在「新建违规」页锁定人员后生效）`
               : "显示全员最近 400 条；扫码与大屏仅取每人最新「生效中」记录。「已被覆盖」为同一人再次新建时系统自动归档的旧记录。"}
           </p>
           <AdminTableShell
-            loading={loading}
-            empty={!loading && rows.length === 0}
+            loading={isLoading}
+            empty={!isLoading && rows.length === 0}
             emptyMessage="暂无违规记录"
-            onRetry={() => void load()}
+            onRetry={() => qc.invalidateQueries({ queryKey: violationsQueryKey })}
             scrollable
           >
             <table className="min-w-full text-left text-sm">
@@ -1188,14 +1155,14 @@ export default function AdminStudentViolationsPage() {
                   const st = violationStatusLabel(r.status);
                   return (
                     <tr key={r.id} className="align-top">
-                      <td className="px-3 py-2 font-mono text-xs text-neutral-700">{r.id}</td>
+                      <td className="px-3 py-2 font-mono text-xs text-[var(--twin-body)]">{r.id}</td>
                       <td className="px-3 py-2">
-                        <div className="font-medium text-neutral-900">{personDisplayName(r)}</div>
-                        <div className="mt-1 line-clamp-2 max-w-[240px] text-xs text-neutral-600">{r.violationText || "—"}</div>
+                        <div className="font-medium text-[var(--twin-ink)]">{personDisplayName(r)}</div>
+                        <div className="mt-1 line-clamp-2 max-w-[240px] text-xs text-[var(--twin-body)]">{r.violationText || "—"}</div>
                         {imgs.length ? (
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {imgs.slice(0, 3).map((u) => (
-                              <img key={u} src={u} alt="" className="h-10 w-10 rounded-md border border-neutral-100 object-cover" />
+                              <img key={u} src={u} alt="" className="h-10 w-10 rounded-twin-md border border-[var(--twin-hairline)] object-cover" />
                             ))}
                           </div>
                         ) : null}
@@ -1209,7 +1176,7 @@ export default function AdminStudentViolationsPage() {
                       <td className="px-3 py-2 text-xs">
                         {r.maxEnterSuccess != null ? `${r.enterSuccessCount ?? 0}/${r.maxEnterSuccess}` : "—"}
                       </td>
-                      <td className="px-3 py-2 text-xs text-neutral-600">{r.expireAt ? String(r.expireAt).slice(0, 16) : "—"}</td>
+                      <td className="px-3 py-2 text-xs text-[var(--twin-body)]">{r.expireAt ? String(r.expireAt).slice(0, 16) : "—"}</td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
                           <AdminButton type="button" tone="secondary" size="sm" className="gap-1" onClick={() => openEdit(r)}>
@@ -1262,18 +1229,18 @@ export default function AdminStudentViolationsPage() {
           onClick={() => !savingEdit && setEditOpen(false)}
         >
           <div
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-neutral-200/90 bg-white shadow-xl ring-1 ring-black/[0.04]"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-4 ring-1 ring-black/[0.04]"
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-violation-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-5 py-4">
+            <div className="flex items-start justify-between gap-3 border-b border-[var(--twin-hairline)] px-5 py-4">
               <div className="min-w-0">
-                <h4 id="edit-violation-title" className="text-base font-semibold tracking-tight text-neutral-950">
+                <h4 id="edit-violation-title" className="text-base font-semibold tracking-tight text-[var(--twin-ink)]">
                   编辑违规 #{editId}
                 </h4>
-                <p className="mt-1 text-xs text-neutral-500">人员 {editTargetLabel}</p>
+                <p className="mt-1 text-xs text-[var(--twin-mute)]">人员 {editTargetLabel}</p>
               </div>
               <AdminButton
                 type="button"
@@ -1289,7 +1256,7 @@ export default function AdminStudentViolationsPage() {
             </div>
             <div className="space-y-3 px-5 py-4">
               <div>
-                <label className="text-xs font-medium text-neutral-600">违规说明</label>
+                <label className="text-xs font-medium text-[var(--twin-body)]">违规说明</label>
                 <textarea
                   className={cn(inputBase, "mt-1.5 min-h-[88px] resize-y")}
                   value={editText}
@@ -1297,7 +1264,7 @@ export default function AdminStudentViolationsPage() {
                 />
               </div>
               <div>
-                <label className="text-xs font-medium text-neutral-600">图片</label>
+                <label className="text-xs font-medium text-[var(--twin-body)]">图片</label>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
                   <AdminFilePickButton
                     multiple
@@ -1306,12 +1273,12 @@ export default function AdminStudentViolationsPage() {
                   >
                     添加图片
                   </AdminFilePickButton>
-                  {editUploading ? <span className="text-xs text-neutral-500">上传中…</span> : null}
+                  {editUploading ? <span className="text-xs text-[var(--twin-mute)]">上传中…</span> : null}
                 </div>
                 {editUrls.length > 0 ? (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {editUrls.map((u) => (
-                      <div key={u} className="relative h-14 w-14 overflow-hidden rounded-lg border border-neutral-200">
+                      <div key={u} className="relative h-14 w-14 overflow-hidden rounded-twin-lg border border-[var(--twin-hairline)]">
                         <img src={u} alt="" className="h-full w-full object-cover" />
                         <AdminButton
                           type="button"
@@ -1328,30 +1295,30 @@ export default function AdminStudentViolationsPage() {
                   </div>
                 ) : null}
               </div>
-              <label className="flex items-center gap-2 text-sm text-neutral-800">
+              <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-neutral-300"
+                  className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
                   checked={editForbid}
                   onChange={(e) => setEditForbid(e.target.checked)}
                 />
                 立即禁止扫码进入
               </label>
-              <label className="flex items-center gap-2 text-sm text-neutral-800">
+              <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-neutral-300"
+                  className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
                   checked={editShowEvery}
                   onChange={(e) => setEditShowEvery(e.target.checked)}
                 />
                 每次扫码都提示违规内容
               </label>
               <div>
-                <label className="text-xs font-medium text-neutral-600">进入次数上限（留空=不限制）</label>
+                <label className="text-xs font-medium text-[var(--twin-body)]">进入次数上限（留空=不限制）</label>
                 <input className={cn(inputBase, "mt-1")} inputMode="numeric" value={editMax} onChange={(e) => setEditMax(e.target.value)} />
               </div>
-              <fieldset className="space-y-2 rounded-lg border border-neutral-200/90 bg-neutral-50/50 p-3">
-                <legend className="px-1 text-xs font-medium text-neutral-600">到期时间</legend>
+              <fieldset className="space-y-2 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3">
+                <legend className="px-1 text-xs font-medium text-[var(--twin-body)]">到期时间</legend>
                 <label className="flex items-center gap-2 text-sm">
                   <input type="radio" name="em" checked={editExpireMode === "KEEP"} onChange={() => setEditExpireMode("KEEP")} />
                   保持不变
@@ -1375,7 +1342,7 @@ export default function AdminStudentViolationsPage() {
                 ) : null}
               </fieldset>
             </div>
-            <div className="flex justify-end gap-2 border-t border-neutral-100 px-5 py-4">
+            <div className="flex justify-end gap-2 border-t border-[var(--twin-hairline)] px-5 py-4">
               <AdminButton type="button" tone="secondary" disabled={savingEdit} onClick={() => setEditOpen(false)}>
                 取消
               </AdminButton>

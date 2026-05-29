@@ -1,25 +1,27 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   downloadPersonalClaimExcel,
   fetchSupplyClaimDetail,
-  fetchSupplyPendingTasks,
-  fetchSupplyRecentClosedClaims,
-  deleteAdminSupplyClaim,
-  fetchAdminClaimRecycle,
-  fulfillSupplyClaim,
-  purgeAdminClaimRecycle,
-  purgeAdminClaimRecycleByIds,
-  purgeAllAdminClaimRecycle,
-  restoreAdminClaimRecycle,
   type SupplyClaimOrder,
   type SupplyClaimLine,
-  type SupplyClaimPdfLinkItem,
 } from "@/api/domains/supplies.api";
+import {
+  useSupplyPendingTasks,
+  useSupplyRecentClosed,
+  useFulfillSupplyClaim,
+  useDeleteAdminSupplyClaim,
+  useAdminClaimRecycle,
+  usePurgeAdminClaimByIds,
+  usePurgeAllAdminClaims,
+  useRestoreAdminClaim,
+} from "@/api/hooks/useSupplies";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
+import DataSkeleton from "@/components/ui/DataSkeleton";
+import EmptyState from "@/components/ui/EmptyState";
 
 type TabKey = "pending" | "done";
 
@@ -55,48 +57,20 @@ export default function AdminSuppliesProcessPage() {
   const canProcess = hasMinRole(role, "SENIOR");
   const canReadMine = hasMinRole(role, "STAFF");
   const [activeTab, setActiveTab] = useState<TabKey>("pending");
-  const [loading, setLoading] = useState(false);
-  const [pendingRows, setPendingRows] = useState<SupplyClaimOrder[]>([]);
-  const [doneRows, setDoneRows] = useState<SupplyClaimOrder[]>([]);
   const [detail, setDetail] = useState<SupplyClaimOrder | null>(null);
   const [grantMap, setGrantMap] = useState<Record<number, boolean>>({});
-  const [fulfilling, setFulfilling] = useState(false);
-  const [linkModalClaim, setLinkModalClaim] = useState<SupplyClaimOrder | null>(null);
-  const [pdfLinkRows, setPdfLinkRows] = useState<SupplyClaimPdfLinkItem[]>([]);
-  const [pdfBusy, setPdfBusy] = useState(false);
-
-  const [recycleRows, setRecycleRows] = useState<SupplyClaimOrder[]>([]);
   const [selectedRecycleIds, setSelectedRecycleIds] = useState<string[]>([]);
 
-  const loadRecycle = async () => {
-    const recycle = await fetchAdminClaimRecycle({ page: 1, size: 200 });
-    setRecycleRows(recycle.data || []);
-  };
+  const { data: pendingRows = [], isLoading: pendingLoading } = useSupplyPendingTasks();
+  const { data: doneRows = [], isLoading: doneLoading } = useSupplyRecentClosed(60);
+  const { data: recycleData, isLoading: recycleLoading } = useAdminClaimRecycle({ page: 1, size: 200 });
+  const recycleRows = recycleData?.data ?? [];
 
-  const loadData = async () => {
-    if (!canReadMine) return;
-    setLoading(true);
-    try {
-      const [pending, done] = await Promise.all([
-        fetchSupplyPendingTasks(),
-        fetchSupplyRecentClosedClaims(60),
-      ]);
-      setPendingRows(pending || []);
-      setDoneRows(done || []);
-      if (canProcess) {
-        await loadRecycle();
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const fulfillMut = useFulfillSupplyClaim();
+  const deleteMut = useDeleteAdminSupplyClaim();
+  const purgeByIdsMut = usePurgeAdminClaimByIds();
+  const purgeAllMut = usePurgeAllAdminClaims();
+  const restoreMut = useRestoreAdminClaim();
 
   const openClaimDetail = async (id: string) => {
     try {
@@ -114,21 +88,16 @@ export default function AdminSuppliesProcessPage() {
 
   const submitFulfill = async () => {
     if (!detail || !canProcess || detail.status !== "PENDING") return;
-    const payload = (detail.lines || []).map((line: SupplyClaimLine) => ({
+    const lines = (detail.lines || []).map((line: SupplyClaimLine) => ({
       lineId: line.id,
       grant: !!grantMap[line.id],
     }));
-    setFulfilling(true);
     try {
-      await fulfillSupplyClaim(detail.id, payload);
-      toast.success("已完成出库");
+      await fulfillMut.mutateAsync({ id: detail.id, lines });
       setDetail(null);
       setGrantMap({});
-      await loadData();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "出库失败");
-    } finally {
-      setFulfilling(false);
+    } catch {
+      // error handled by mutation
     }
   };
 
@@ -148,34 +117,36 @@ export default function AdminSuppliesProcessPage() {
     }
   };
 
+  const loading = pendingLoading || doneLoading;
+
   const renderClaimCard = (row: SupplyClaimOrder, done = false) => (
-    <div key={row.id} className="rounded-lg border border-slate-200 bg-white p-3">
+    <div key={row.id} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="font-medium">{applicantLabel(row)}</div>
-        <div className="text-xs text-slate-500">{claimStatusText(row.status)}</div>
+        <div className="font-medium text-[var(--twin-ink)]">{applicantLabel(row)}</div>
+        <div className="text-xs text-[var(--twin-mute)]">{claimStatusText(row.status)}</div>
       </div>
-      <div className="mt-1 text-xs text-slate-500">
+      <div className="mt-1 text-xs text-[var(--twin-mute)]">
         申请：{toTextTime(row.createdAt)}
         {done ? ` | 完成：${toTextTime(row.fulfilledAt)}` : ""}
       </div>
       <div className="mt-2 flex flex-wrap justify-end gap-2">
         <button
           type="button"
-          className="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700"
+          className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700"
           onClick={() => goAuditExport(row.id)}
         >
           预览/导出页
         </button>
         <button
           type="button"
-          className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700"
+          className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs font-medium text-[var(--twin-body)]"
           onClick={() => void exportClaimExcel(row.id)}
         >
           导出 Excel
         </button>
         <button
           type="button"
-          className="rounded border border-blue-300 px-2 py-1 text-xs text-blue-700"
+          className="rounded-full bg-sky-600 px-3 py-1 text-xs font-medium text-white"
           onClick={() => openClaimDetail(row.id)}
         >
           查看并处理
@@ -183,12 +154,10 @@ export default function AdminSuppliesProcessPage() {
         {canProcess ? (
           <button
             type="button"
-            className="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700"
-            onClick={async () => {
+            className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700"
+            onClick={() => {
               if (!window.confirm("确认删除该申请单到回收站？")) return;
-              await deleteAdminSupplyClaim(row.id);
-              toast.success("已移入回收站");
-              await loadData();
+              deleteMut.mutate(row.id);
             }}
           >
             删除申请单
@@ -199,7 +168,7 @@ export default function AdminSuppliesProcessPage() {
   );
 
   if (!canReadMine) {
-    return <div className="p-6 text-sm text-slate-500">无权限访问物资处理页。</div>;
+    return <div className="p-6 text-sm text-[var(--twin-body)]">无权限访问物资处理页。</div>;
   }
 
   return (
@@ -210,20 +179,20 @@ export default function AdminSuppliesProcessPage() {
         title="物资处理台"
         description="处理待出库领用单、查看已结单与回收站；预览/导出跳转至领用审计页的个人单次视图。"
       />
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
+      <section className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-twin-level-1">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">物资处理台</h2>
-          <div className="flex gap-2">
+          <h2 className="text-lg font-semibold text-[var(--twin-ink)]">物资处理台</h2>
+          <div className="inline-flex rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0.5 text-xs font-medium">
             <button
               type="button"
-              className={`rounded px-3 py-1 text-xs ${activeTab === "pending" ? "bg-blue-600 text-white" : "border border-slate-300 text-slate-700"}`}
+              className={`rounded-full px-4 py-1.5 ${activeTab === "pending" ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm" : "text-[var(--twin-body)]"}`}
               onClick={() => setActiveTab("pending")}
             >
               待处理
             </button>
             <button
               type="button"
-              className={`rounded px-3 py-1 text-xs ${activeTab === "done" ? "bg-blue-600 text-white" : "border border-slate-300 text-slate-700"}`}
+              className={`rounded-full px-4 py-1.5 ${activeTab === "done" ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm" : "text-[var(--twin-body)]"}`}
               onClick={() => setActiveTab("done")}
             >
               已处理
@@ -231,61 +200,63 @@ export default function AdminSuppliesProcessPage() {
           </div>
         </div>
 
-        {loading ? <div className="text-sm text-slate-500">加载中...</div> : null}
+        {loading ? <DataSkeleton variant="table" rows={4} /> : null}
 
         {!loading && activeTab === "pending" ? (
           <div className="space-y-2">
             {pendingRows.map((row) => renderClaimCard(row, false))}
-            {pendingRows.length === 0 ? <div className="text-sm text-slate-500">暂无待处理物资单</div> : null}
+            {pendingRows.length === 0 ? <EmptyState title="暂无待处理物资单" /> : null}
           </div>
         ) : null}
 
         {!loading && activeTab === "done" ? (
           <div className="space-y-2">
             {doneRows.map((row) => renderClaimCard(row, true))}
-            {doneRows.length === 0 ? <div className="text-sm text-slate-500">暂无已处理物资单</div> : null}
+            {doneRows.length === 0 ? <EmptyState title="暂无已处理物资单" /> : null}
           </div>
         ) : null}
       </section>
 
       {canProcess ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <section className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-twin-level-1">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-base font-semibold">申请单回收站（7天后自动清空）</h3>
+            <h3 className="text-base font-semibold text-[var(--twin-ink)]">申请单回收站（7天后自动清空）</h3>
             <div className="flex gap-2">
               <button
                 type="button"
-                className="rounded border border-rose-300 px-3 py-1 text-xs text-rose-700"
-                onClick={async () => {
+                className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 disabled:opacity-50"
+                disabled={purgeByIdsMut.isPending}
+                onClick={() => {
                   if (!selectedRecycleIds.length) return toast.error("请先勾选回收站申请单");
                   if (!window.confirm(`确认彻底删除 ${selectedRecycleIds.length} 条回收站申请单吗？`)) return;
-                  await purgeAdminClaimRecycleByIds(selectedRecycleIds);
-                  setSelectedRecycleIds([]);
-                  toast.success("已彻底删除");
-                  await loadData();
+                  purgeByIdsMut.mutate(selectedRecycleIds, {
+                    onSuccess: () => setSelectedRecycleIds([]),
+                  });
                 }}
               >
                 选择性彻底删除
               </button>
               <button
                 type="button"
-                className="rounded bg-rose-600 px-3 py-1 text-xs text-white"
-                onClick={async () => {
+                className="rounded-full bg-red-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+                disabled={purgeAllMut.isPending}
+                onClick={() => {
                   if (!window.confirm("确认一键清空回收站吗？")) return;
-                  await purgeAllAdminClaimRecycle();
-                  setSelectedRecycleIds([]);
-                  toast.success("回收站已清空");
-                  await loadData();
+                  purgeAllMut.mutate(undefined, {
+                    onSuccess: () => setSelectedRecycleIds([]),
+                  });
                 }}
               >
                 一键清空
               </button>
             </div>
           </div>
+          {recycleLoading ? <DataSkeleton variant="table" rows={3} /> : null}
+          {!recycleLoading && recycleRows.length === 0 ? <EmptyState title="回收站为空" /> : null}
           <div className="space-y-2">
             {recycleRows.map((row) => (
-              <div key={row.id} className="flex items-center justify-between rounded border border-slate-200 px-3 py-2 text-sm">
-                <span>{row.id}（{applicantLabel(row)} / {claimStatusText(row.status)}）</span>
+              <div key={row.id} className="flex items-center justify-between rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
+                <span className="text-[var(--twin-body)]">{row.id}（{applicantLabel(row)} / {claimStatusText(row.status)}）</span>
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
@@ -294,62 +265,45 @@ export default function AdminSuppliesProcessPage() {
                   />
                   <button
                     type="button"
-                    className="rounded border border-emerald-300 px-2 py-0.5 text-emerald-700"
-                    onClick={async () => {
-                      await restoreAdminClaimRecycle(row.id);
-                      setSelectedRecycleIds((prev) => prev.filter((id) => id !== row.id));
-                      toast.success("已恢复");
-                      await loadData();
+                    className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 disabled:opacity-50"
+                    disabled={restoreMut.isPending}
+                    onClick={() => {
+                      restoreMut.mutate(row.id, {
+                        onSuccess: () => setSelectedRecycleIds((prev) => prev.filter((id) => id !== row.id)),
+                      });
                     }}
                   >
                     恢复
                   </button>
-                  <button
-                    type="button"
-                    className="rounded border border-rose-300 px-2 py-0.5 text-rose-700"
-                    onClick={async () => {
-                      if (!window.confirm("确认彻底删除该申请单？")) return;
-                      await purgeAdminClaimRecycle(row.id);
-                      setSelectedRecycleIds((prev) => prev.filter((id) => id !== row.id));
-                      toast.success("已彻底删除");
-                      await loadData();
-                    }}
-                  >
-                    彻底删除
-                  </button>
                 </div>
               </div>
             ))}
-            {recycleRows.length === 0 ? <div className="text-sm text-slate-500">回收站为空</div> : null}
           </div>
         </section>
       ) : null}
 
       {detail ? (
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-xl rounded-xl bg-white p-4 shadow-xl">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => { setDetail(null); setGrantMap({}); }}>
+          <div className="w-full max-w-xl rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-4" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-base font-semibold">物资处理详情</h3>
+              <h3 className="text-base font-semibold text-[var(--twin-ink)]">物资处理详情</h3>
               <button
                 type="button"
-                className="text-sm text-slate-500"
-                onClick={() => {
-                  setDetail(null);
-                  setPdfLinkRows([]);
-                }}
+                className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)]"
+                onClick={() => { setDetail(null); setGrantMap({}); }}
               >
                 关闭
               </button>
             </div>
-            <div className="mb-2 text-sm text-slate-600">
+            <div className="mb-2 text-sm text-[var(--twin-body)]">
               申请人：{applicantLabel(detail)} | 状态：{claimStatusText(detail.status)} | 申请：{toTextTime(detail.createdAt)}
             </div>
             <div className="space-y-2">
               {(detail.lines || []).map((line) => (
-                <div key={line.id} className="flex items-center justify-between rounded border border-slate-200 px-3 py-2 text-sm">
-                  <span>{line.snapshotName}（申 {line.qty} / 发 {line.fulfilledQty ?? 0}）</span>
+                <div key={line.id} className="flex items-center justify-between rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
+                  <span className="text-[var(--twin-ink)]">{line.snapshotName}（申 {line.qty} / 发 {line.fulfilledQty ?? 0}）</span>
                   {canProcess && detail.status === "PENDING" ? (
-                    <label className="inline-flex items-center gap-2 text-xs text-slate-600">
+                    <label className="inline-flex items-center gap-2 text-xs text-[var(--twin-body)]">
                       <input
                         type="checkbox"
                         checked={!!grantMap[line.id]}
@@ -363,22 +317,20 @@ export default function AdminSuppliesProcessPage() {
             </div>
             {canProcess && detail.status === "PENDING" ? (
               <div className="mt-3 flex justify-end gap-2">
-                <button type="button" className="rounded border border-slate-300 px-3 py-1 text-sm" onClick={() => setDetail(null)}>取消</button>
+                <button type="button" className="rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-sm text-[var(--twin-body)]" onClick={() => { setDetail(null); setGrantMap({}); }}>取消</button>
                 <button
                   type="button"
-                  className="rounded bg-emerald-600 px-3 py-1 text-sm text-white"
-                  onClick={submitFulfill}
-                  disabled={fulfilling}
+                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+                  onClick={() => void submitFulfill()}
+                  disabled={fulfillMut.isPending}
                 >
-                  {fulfilling ? "提交中..." : "确认出库"}
+                  {fulfillMut.isPending ? "提交中..." : "确认出库"}
                 </button>
               </div>
             ) : null}
           </div>
         </div>
       ) : null}
-
     </div>
   );
 }
-

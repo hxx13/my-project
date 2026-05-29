@@ -1,0 +1,128 @@
+<h2>学生门户设计基调 —— 四选一对比</h2>
+<p class="subtitle">目标用户：中国高校学生（18-25岁）· 场景：实验室门禁/环控/个人中心 · 需与教职工后台完全视觉隔离</p>
+
+<div class="section">
+  <h3>候选设计系统的核心差异</h3>
+</div>
+
+<div class="cards">
+  <div class="card" data-choice="notion" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding:16px;background:#ffffff;border-radius:8px;">
+        <div style="width:40px;height:40px;border-radius:8px;background:#5645d4;" title="Primary"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#0a1530;" title="Brand Navy"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#f6f5f4;" title="Surface"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#ffe8d4;" title="Peach tint"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#dcecfa;" title="Sky tint"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#d9f3e1;" title="Mint tint"></div>
+      </div>
+      <div style="padding:8px 16px;font-family:Inter,sans-serif;font-size:20px;font-weight:600;color:#1a1a1a;">Notion Sans</div>
+      <div style="padding:4px 16px;display:flex;gap:12px;">
+        <div style="padding:8px 16px;background:#5645d4;color:#fff;border-radius:8px;font-size:14px;">Primary CTA</div>
+        <div style="padding:8px 16px;background:#f6f5f4;color:#1a1a1a;border-radius:8px;font-size:14px;border:1px solid #e5e3df;">Secondary</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>🎨 Notion 风格</h3>
+      <p><strong>紫色主调 + 海军蓝 Hero + 粉彩卡片</strong> — 像一本温暖的笔记本。丰富的 pastel 色卡（桃/玫瑰/薄荷/薰衣草/天空/奶油），插图驱动，信息密度高。学生对 Notion 天然熟悉。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>适合学生的点</h4><ul><li>年轻人熟悉的 Notion 美学</li><li>丰富的 pastel 色彩系统</li><li>高信息密度卡片布局</li></ul></div>
+        <div class="cons"><h4>风险</h4><ul><li>色彩过于丰富，数据展示易混乱</li><li>与现有代码风格差异大</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="vercel" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding:16px;background:#fafafa;border-radius:8px;">
+        <div style="width:40px;height:40px;border-radius:100px;background:#171717;" title="Primary"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#ffffff;border:1px solid #ebebeb;" title="Canvas"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#fafafa;border:1px solid #ebebeb;" title="Canvas Soft"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#0070f3;" title="Link Blue"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#50e3c2;" title="Cyan"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#7928ca;" title="Violet"></div>
+      </div>
+      <div style="padding:8px 16px;font-family:Inter,sans-serif;font-size:20px;font-weight:600;color:#171717;letter-spacing:-1px;">Geist Sans</div>
+      <div style="padding:4px 16px;display:flex;gap:12px;">
+        <div style="padding:8px 20px;background:#171717;color:#fff;border-radius:100px;font-size:14px;">Start Deploying</div>
+        <div style="padding:8px 20px;background:#fff;color:#171717;border-radius:100px;font-size:14px;border:1px solid #ebebeb;">Learn More</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>⚫ Vercel 风格</h3>
+      <p><strong>黑白精确 + Mesh 渐变装饰 + Geist 字体</strong> — 极简工程美学。100px 胶囊按钮、堆叠阴影卡片、代码编辑器式暗色面板。与项目现有的 twin 设计令牌高度重叠。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>适合学生的点</h4><ul><li>极致清晰，数据展示最佳</li><li>与现有 CSS 变量体系高度兼容</li><li>响应式断点体系完善</li></ul></div>
+        <div class="cons"><h4>风险</h4><ul><li>过于"开发者工具"感</li><li>缺少温度，可能显得冰冷</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="airbnb" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding:16px;background:#ffffff;border-radius:8px;">
+        <div style="width:40px;height:40px;border-radius:100px;background:#ff385c;" title="Rausch Primary"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#222222;" title="Ink"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#f7f7f7;border:1px solid #dddddd;" title="Surface Soft"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#460479;" title="Luxe Purple"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#92174d;" title="Plus"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#c13515;" title="Error"></div>
+      </div>
+      <div style="padding:8px 16px;font-family:system-ui,sans-serif;font-size:20px;font-weight:500;color:#222;">Cereal VF</div>
+      <div style="padding:4px 16px;display:flex;gap:12px;">
+        <div style="padding:10px 20px;background:#ff385c;color:#fff;border-radius:8px;font-size:14px;font-weight:500;">Get started</div>
+        <div style="padding:10px 20px;background:#fff;color:#222;border-radius:8px;font-size:14px;border:1px solid #ddd;">Learn more</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>❤️ Airbnb 风格</h3>
+      <p><strong>温暖红色 Rausch + 柔和圆角 + Cereal 字体</strong> — 消费者级友好体验。28px 轻量 display、全圆角搜索栏、摄影优先、零硬角设计。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>适合学生的点</h4><ul><li>最温暖友好的视觉感受</li><li>全圆角设计亲和力强</li><li>消费者级 UI 标准</li></ul></div>
+        <div class="cons"><h4>风险</h4><ul><li>管理后台场景偏"软"</li><li>摄影依赖（实验室场景图片少）</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" data-choice="linear" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding:16px;background:#010102;border-radius:8px;">
+        <div style="width:40px;height:40px;border-radius:8px;background:#5e6ad2;" title="Lavender Primary"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#0f1011;border:1px solid #23252a;" title="Surface 1"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#141516;border:1px solid #23252a;" title="Surface 2"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#f7f8f8;" title="Ink (text)"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#27a644;" title="Success"></div>
+        <div style="width:40px;height:40px;border-radius:8px;background:#d0d6e0;" title="Muted"></div>
+      </div>
+      <div style="padding:8px 16px;font-family:Inter,sans-serif;font-size:20px;font-weight:600;color:#f7f8f8;background:#010102;">Linear Display</div>
+      <div style="padding:4px 16px;display:flex;gap:12px;background:#010102;">
+        <div style="padding:8px 14px;background:#5e6ad2;color:#fff;border-radius:8px;font-size:14px;">Get started</div>
+        <div style="padding:8px 14px;background:#0f1011;color:#f7f8f8;border-radius:8px;font-size:14px;border:1px solid #23252a;">Sign in</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>🌙 Linear 风格</h3>
+      <p><strong>深色画布 + 薰衣草蓝唯一强调色 + 极度克制</strong> — 软件工艺感。不使用渐变、不使用第二种彩色、产品截图主导页面。最深的暗色系统。</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>适合学生的点</h4><ul><li>极致的克制和高级感</li><li>暗色模式天然护眼</li><li>单一强调色避免视觉噪音</li></ul></div>
+        <div class="cons"><h4>风险</h4><ul><li>纯暗色对学生日常使用偏暗</li><li>缺少明亮/活力感</li><li>与教职工后台 Sci-Fi 主题混淆</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>推荐策略</h3>
+  <div class="mockup">
+    <div class="mockup-header">我的推荐：以 Vercel 为主骨架 + Notion 的色彩温度 + Airbnb 的圆角友好度 = 混合体系</div>
+    <div class="mockup-body">
+      <p><strong>理由：</strong></p>
+      <ul style="padding-left:20px;line-height:2;">
+        <li><strong>Vercel 作为骨架</strong> — 其黑白精确体系与项目现有的 <code>--twin-*</code> CSS 令牌高度兼容，响应式断点完整，数据表格/表单/卡片组件规范齐全</li>
+        <li><strong>Notion 的温度注入</strong> — 引入 3-4 个 pastel 强调色（薄荷绿、天空蓝、薰衣草紫）作为功能模块的视觉区分，使仪表盘更活泼</li>
+        <li><strong>Airbnb 的友好度</strong> — 借用其圆角尺度（<code>rounded.lg</code> 14px 卡片 + <code>rounded.full</code> 搜索框），降低工具感，提升亲和力</li>
+        <li><strong>与教职工后台的隔离</strong> — 教职工用 Sci-Fi 暗色 + 深色侧边栏；学生用亮白画布 + 柔和 pastel + 浅色侧边栏。两套视觉体系零交叉。</li>
+      </ul>
+    </div>
+  </div>
+</div>

@@ -1,5 +1,6 @@
 package com.example.demo.modules.twin.support;
 
+import com.example.demo.modules.twin.scan.support.ScanPopupEntryWindowEvaluator;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalTime;

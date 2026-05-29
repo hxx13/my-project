@@ -1,12 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { router } from "@/router";
-import { io } from "socket.io-client";
+import { io, Socket } from "socket.io-client";
 import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 Store
 import { Toaster } from "react-hot-toast";
 import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
 import { SOCKET_CLIENT_FORCE_RELOAD } from "@/config/socketEvents";
+import { authStorage } from "@/features/auth/authStorage";
 import type { AnimalRoomTelemetryPageDto, TelemetryTagItem } from "@/api/telemetryApi";
 import {
   ANIMAL_ROOM_TELEMETRY_PAGE_QUERY_KEY,
@@ -31,10 +32,17 @@ function GlobalSocketListener() {
     const setConnected = useEventStore((state) => state.setConnected);
     const setPieStats = useEventStore((state) => state.setPieStats);
     const queryClient = useQueryClient();
+    const socketRef = useRef<Socket | null>(null);
 
     useEffect(() => {
+        const token = authStorage.getToken();
+        if (!token) return; // 未登录不建立连接，避免服务端拒绝
         const socketUrl = resolveSocketUrl();
-        const socket = io(socketUrl, SOCKET_IO_CLIENT_OPTIONS);
+        const socket = io(socketUrl, {
+            ...SOCKET_IO_CLIENT_OPTIONS,
+            query: { token },
+        });
+        socketRef.current = socket;
 
         socket.on("connect", () => {
             console.log("🟢 [数字孪生基站] WebSocket 链路已接通！");
@@ -89,7 +97,15 @@ function GlobalSocketListener() {
         };
         socket.on(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
 
+        /** 强制登出时立即断开 WebSocket，停止重连 */
+        const handleForceLogout = () => {
+            console.log("[数字孪生基站] 收到强制登出信号，断开 WebSocket");
+            socket.disconnect();
+        };
+        window.addEventListener("AUTH_FORCE_LOGOUT", handleForceLogout);
+
         return () => {
+            window.removeEventListener("AUTH_FORCE_LOGOUT", handleForceLogout);
             socket.off(SOCKET_TELEMETRY_ANIMAL_ROOM_TAG_DELTA, onTelemetryTagDelta);
             socket.off(SOCKET_TELEMETRY_ANIMAL_ROOM_SNAPSHOT_FULL, onTelemetrySnapshotFull);
             socket.off(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);

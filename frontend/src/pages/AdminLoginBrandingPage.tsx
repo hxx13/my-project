@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { useQuery } from "@tanstack/react-query";
 import {
   fetchAdminLoginBranding,
   putAdminLoginBranding,
@@ -10,29 +11,22 @@ export default function AdminLoginBrandingPage() {
   const [urlsText, setUrlsText] = useState("");
   const [intervalSec, setIntervalSec] = useState(8);
   const [heroCarouselEnabled, setHeroCarouselEnabled] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const b = await fetchAdminLoginBranding();
-        if (!alive) return;
-        setUrlsText((b.heroImageUrls || []).join("\n"));
-        setIntervalSec(b.intervalSec || 8);
-        setHeroCarouselEnabled(b.heroCarouselEnabled !== false);
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "加载失败");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const { isLoading, data: branding } = useQuery({
+    queryKey: ["adminLoginBranding"] as const,
+    queryFn: fetchAdminLoginBranding,
+  });
+
+  // Sync fetched data to local form state once loaded
+  const [synced, setSynced] = useState(false);
+  if (!synced && branding) {
+    setUrlsText((branding.heroImageUrls || []).join("\n"));
+    setIntervalSec(branding.intervalSec || 8);
+    setHeroCarouselEnabled(branding.heroCarouselEnabled !== false);
+    setSynced(true);
+  }
 
   const save = async () => {
     const urls = urlsText
@@ -77,39 +71,39 @@ export default function AdminLoginBrandingPage() {
     }
   };
 
-  if (loading) {
-    return <div className="p-6 text-sm text-slate-500">加载中…</div>;
+  if (isLoading) {
+    return <div className="p-6 text-sm text-[var(--twin-mute)]">加载中…</div>;
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <h1 className="text-xl font-semibold text-slate-900">登录页轮播图</h1>
-      <p className="text-sm text-slate-600">
-        公开接口 <code className="rounded bg-slate-100 px-1">GET /api/public/login-branding</code> 供登录页读取；静态图通过{" "}
-        <code className="rounded bg-slate-100 px-1">GET /api/public/login-branding/files/文件名</code> 提供。目标库须已执行{" "}
-        <code className="rounded bg-slate-100 px-1">scripts/login_branding_invite_chat.ddl.sql</code>
-        。文件落盘目录由 <code className="rounded bg-slate-100 px-1">application.properties</code> 中{" "}
-        <code className="rounded bg-slate-100 px-1">app.login-branding.upload-dir</code> 配置（默认用户目录下，与 JAR 分离）。
+      <h1 className="text-xl font-semibold text-[var(--twin-ink)]">登录页轮播图</h1>
+      <p className="text-sm text-[var(--twin-body)]">
+        公开接口 <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">GET /api/public/login-branding</code> 供登录页读取；静态图通过{" "}
+        <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">GET /api/public/login-branding/files/文件名</code> 提供。目标库须已执行{" "}
+        <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">scripts/login_branding_invite_chat.ddl.sql</code>
+        。文件落盘目录由 <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">application.properties</code> 中{" "}
+        <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">app.login-branding.upload-dir</code> 配置（默认用户目录下，与 JAR 分离）。
       </p>
-      <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-slate-800">背景轮播</p>
-          <p className="text-xs text-slate-500">关闭后登录页不再切换背景图（仍保留底部装饰与主题文案）。</p>
+          <p className="text-sm font-medium text-[var(--twin-ink)]">背景轮播</p>
+          <p className="text-xs text-[var(--twin-mute)]">关闭后登录页不再切换背景图（仍保留底部装饰与主题文案）。</p>
         </div>
         <label className="inline-flex cursor-pointer items-center gap-2 self-start sm:self-auto">
           <input
             type="checkbox"
-            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            className="h-4 w-4 rounded-twin-sm border-[var(--twin-hairline)]"
             checked={heroCarouselEnabled}
             onChange={(e) => setHeroCarouselEnabled(e.target.checked)}
           />
-          <span className="text-sm text-slate-700">启用背景轮播</span>
+          <span className="text-sm text-[var(--twin-body)]">启用背景轮播</span>
         </label>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-sm font-medium text-slate-800">上传图片</p>
-        <p className="mt-1 text-xs text-slate-500">
+      <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1">
+        <p className="text-sm font-medium text-[var(--twin-ink)]">上传图片</p>
+        <p className="mt-1 text-xs text-[var(--twin-mute)]">
           支持 jpg / png / webp / gif，单张不超过 12MB；上传成功后 URL 会追加到下方文本框，需再点「保存」。
         </p>
         <input
@@ -124,33 +118,33 @@ export default function AdminLoginBrandingPage() {
           type="button"
           disabled={uploading}
           onClick={() => fileInputRef.current?.click()}
-          className="mt-3 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50"
+          className="mt-3 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-4 py-2 text-sm font-medium text-[var(--twin-ink)] shadow-twin-level-1 hover:bg-[var(--twin-canvas-soft)] disabled:opacity-50"
         >
           {uploading ? "上传中…" : "选择文件上传"}
         </button>
       </div>
 
-      <label className="block text-sm font-medium text-slate-700">
+      <label className="block text-sm font-medium text-[var(--twin-body)]">
         图片 URL（一行一个；可与上传混用，亦支持外链 https://…）
         <textarea
           value={urlsText}
           onChange={(e) => setUrlsText(e.target.value)}
           rows={10}
           placeholder="/api/public/login-branding/files/xxxxxxxx.jpg"
-          className="mt-1 w-full rounded border border-slate-300 p-2 font-mono text-xs"
+          className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 font-mono text-xs text-[var(--twin-ink)]"
         />
       </label>
-      <label className="block text-sm font-medium text-slate-700">
+      <label className="block text-sm font-medium text-[var(--twin-body)]">
         轮播间隔（秒，最少 3）
         <input
           type="number"
           min={3}
           value={intervalSec}
           onChange={(e) => setIntervalSec(Number(e.target.value) || 8)}
-          className="mt-1 w-40 rounded border border-slate-300 px-2 py-1 text-sm"
+          className="mt-1 w-40 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-sm text-[var(--twin-ink)]"
         />
       </label>
-      <button type="button" onClick={() => void save()} className="rounded bg-blue-600 px-4 py-2 text-sm text-white">
+      <button type="button" onClick={() => void save()} className="rounded-twin-sm bg-[var(--twin-primary)] px-4 py-2 text-sm font-medium text-[var(--twin-on-primary)]">
         保存
       </button>
     </div>

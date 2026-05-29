@@ -2,9 +2,9 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.modules.twin.mapper.TwinAutomationDisplayMapMapper">
+<mapper namespace="com.example.demo.modules.twin.audit.mapper.TwinAutomationDisplayMapMapper">
 
-    <select id="selectAll" resultType="com.example.demo.modules.twin.entity.TwinAutomationDisplayMap">
+    <select id="selectAll" resultType="com.example.demo.modules.twin.audit.entity.TwinAutomationDisplayMap">
         SELECT id,
                code_type AS codeType,
                code_value AS codeValue,
@@ -15,12 +15,12 @@
         ORDER BY code_type, code_value
     </select>
 
-    <insert id="insert" parameterType="com.example.demo.modules.twin.entity.TwinAutomationDisplayMap" useGeneratedKeys="true" keyProperty="id">
+    <insert id="insert" parameterType="com.example.demo.modules.twin.audit.entity.TwinAutomationDisplayMap" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO twin_automation_display_map (code_type, code_value, label_zh, remark, update_time)
         VALUES (#{codeType}, #{codeValue}, #{labelZh}, #{remark}, NOW())
     </insert>
 
-    <update id="updateById" parameterType="com.example.demo.modules.twin.entity.TwinAutomationDisplayMap">
+    <update id="updateById" parameterType="com.example.demo.modules.twin.audit.entity.TwinAutomationDisplayMap">
         UPDATE twin_automation_display_map
         SET code_type = #{codeType},
             code_value = #{codeValue},

@@ -3,32 +3,24 @@ package com.example.demo.modules.admin.controller;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
+import com.example.demo.common.config.DebugToggleService;
+import com.example.demo.common.support.LogRingBuffer;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin/logging")
 public class LoggingAdminController {
 
-    /**
-     * 可在管理端调节的 logger 分类及其默认级别。
-     * key = 管理端显示名，value = logger 名称前缀。
-     */
-    private static final LinkedHashMap<String, String> CATEGORIES = new LinkedHashMap<>();
-    static {
-        CATEGORIES.put("twin", "com.example.demo.modules.twin");
-        CATEGORIES.put("telemetry", "com.example.demo.modules.telemetry");
-        CATEGORIES.put("dahua", "com.example.demo.modules.dahua");
-        CATEGORIES.put("aro", "com.example.demo.modules.aro");
-        CATEGORIES.put("accessfusion", "com.example.demo.modules.accessfusion");
-        CATEGORIES.put("sql", "com.example.demo.modules");
-        CATEGORIES.put("request", "org.springframework.web");
-    }
-
     private static final List<String> LEVEL_OPTIONS = List.of("OFF", "ERROR", "WARN", "INFO", "DEBUG");
+
+    private final DebugToggleService debugToggleService;
+
+    public LoggingAdminController(DebugToggleService debugToggleService) {
+        this.debugToggleService = debugToggleService;
+    }
 
     @GetMapping("/levels")
     public Map<String, Object> getLevels() {
@@ -37,7 +29,7 @@ public class LoggingAdminController {
         result.put("levelOptions", LEVEL_OPTIONS);
 
         List<Map<String, String>> categories = new ArrayList<>();
-        for (var entry : CATEGORIES.entrySet()) {
+        for (var entry : DebugToggleService.LOG_CATEGORIES.entrySet()) {
             Map<String, String> item = new LinkedHashMap<>();
             item.put("key", entry.getKey());
             item.put("loggerName", entry.getValue());
@@ -74,18 +66,61 @@ public class LoggingAdminController {
     @PostMapping("/reset")
     public Map<String, Object> reset() {
         LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
-        // 重置 ROOT 为 INFO
         ctx.getLogger(Logger.ROOT_LOGGER_NAME).setLevel(Level.INFO);
-        // 重置各分类为 null（继承 ROOT）
-        for (String name : CATEGORIES.values()) {
+        for (String name : DebugToggleService.LOG_CATEGORIES.values()) {
             ctx.getLogger(name).setLevel(null);
         }
         return Map.of("ok", true, "message", "已恢复默认级别: ROOT=INFO，所有分类继承 ROOT");
     }
 
+    /** 从 DB 同步日志级别与 debug 开关（等同于重启后的状态） */
+    @PostMapping("/sync-from-db")
+    public Map<String, Object> syncFromDb() {
+        debugToggleService.refreshAll();
+        return Map.of("ok", true, "message", "已从 sys_system_config 同步所有日志级别与 debug 开关");
+    }
+
+    /** 返回 integration debug 开关当前状态 */
+    @GetMapping("/toggles")
+    public Map<String, Object> getToggles() {
+        Map<String, Object> toggles = new LinkedHashMap<>();
+        toggles.put("scanTimingConsoleEnabled", debugToggleService.isScanTimingConsoleEnabled());
+        toggles.put("scanTimingConsoleMinMs", debugToggleService.getScanTimingConsoleMinMs());
+        toggles.put("accessRuleDahuaDebugEnabled", debugToggleService.isAccessRuleDahuaDebugEnabled());
+        toggles.put("telemetryArchiveEnabled", debugToggleService.isTelemetryArchiveEnabled());
+        toggles.put("rootLevel", debugToggleService.getRootLevel());
+
+        List<Map<String, Object>> cats = new ArrayList<>();
+        for (var entry : DebugToggleService.LOG_CATEGORIES.entrySet()) {
+            cats.add(Map.of("key", entry.getKey(), "enabled", debugToggleService.isCategoryEnabled(entry.getKey())));
+        }
+        toggles.put("categories", cats);
+        return toggles;
+    }
+
     private String getRootLevel() {
         LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
         return ctx.getLogger(Logger.ROOT_LOGGER_NAME).getEffectiveLevel().toString();
+    }
+
+    /** 从环形缓冲区拉取最近日志 */
+    @GetMapping("/recent")
+    public Map<String, Object> getRecent(
+            @RequestParam(defaultValue = "200") int count,
+            @RequestParam(defaultValue = "") String minLevel) {
+        LogRingBuffer buffer = LogRingBuffer.getInstance();
+        List<Map<String, Object>> entries = buffer.recent(count, minLevel);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("entries", entries);
+        result.put("total", buffer.size());
+        return result;
+    }
+
+    /** 清空环形缓冲区 */
+    @PostMapping("/clear-buffer")
+    public Map<String, Object> clearBuffer() {
+        LogRingBuffer.getInstance().clear();
+        return Map.of("ok", true, "message", "日志缓冲区已清空");
     }
 
     private String getLoggerLevel(String loggerName) {

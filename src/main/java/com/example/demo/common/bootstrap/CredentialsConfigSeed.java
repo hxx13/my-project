@@ -105,6 +105,9 @@ public class CredentialsConfigSeed implements ApplicationRunner {
         def("integration", "scan.analyze_timing_console", "扫码分析耗时打印",
                 "排查慢接口时开启，稳定后可关", "BOOLEAN", boolOpts,
                 "true", 0, 0, 0);
+        def("integration", "scan.analyze_timing_console_min_ms", "耗时打印最低毫秒",
+                "非 ARO 步骤低于此毫秒不打印分段/汇总行（默认 300）", "NUMBER", null,
+                "300", 0, 0, 0);
 
         // ---- 头像代理 ----
         def("integration", "personnel_avatar_proxy.insecure_tls", "头像代理跳过 TLS 校验",

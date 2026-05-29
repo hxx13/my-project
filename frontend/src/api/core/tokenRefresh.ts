@@ -3,6 +3,24 @@ import { authStorage } from "@/features/auth/authStorage";
 
 let refreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
+let logoutDispatched = false;
+
+/** 强制登出：清除存储 → 通知其他模块(WebSocket等) → 跳转登录页 */
+function forceLogout() {
+    authStorage.clear();
+    if (!logoutDispatched) {
+        logoutDispatched = true;
+        try {
+            window.dispatchEvent(new Event("AUTH_FORCE_LOGOUT"));
+        } catch {
+            /* ignore */
+        }
+    }
+    // 避免多次并发 401 导致反复跳转
+    if (window.location.pathname !== "/login") {
+        window.location.href = "/login";
+    }
+}
 
 async function doRefresh(): Promise<string | null> {
     const oldToken = authStorage.getToken();
@@ -37,7 +55,7 @@ export function attachTokenRefreshInterceptor(
             if (!config || config._retried) return Promise.reject(error);
 
             if (config.url?.includes("/api/auth/token/refresh")) {
-                authStorage.clear();
+                forceLogout();
                 return Promise.reject(error);
             }
 
@@ -53,7 +71,7 @@ export function attachTokenRefreshInterceptor(
                     config.headers.Authorization = `Bearer ${newToken}`;
                     return instance(config);
                 }
-                authStorage.clear();
+                forceLogout();
                 return Promise.reject(error);
             } finally {
                 refreshing = false;

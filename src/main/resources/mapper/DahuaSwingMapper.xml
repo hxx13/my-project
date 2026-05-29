@@ -2,9 +2,9 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.modules.twin.mapper.DahuaSwingMapper">
+<mapper namespace="com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper">
 
-    <select id="listTasks" resultType="com.example.demo.modules.twin.entity.DahuaSwingPullTask">
+    <select id="listTasks" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask">
         SELECT id,
                name,
                enabled,
@@ -21,7 +21,7 @@
         ORDER BY updated_at DESC
     </select>
 
-    <select id="listEnabledTasks" resultType="com.example.demo.modules.twin.entity.DahuaSwingPullTask">
+    <select id="listEnabledTasks" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask">
         SELECT id,
                name,
                enabled,
@@ -39,7 +39,7 @@
         ORDER BY id ASC
     </select>
 
-    <select id="findTaskById" resultType="com.example.demo.modules.twin.entity.DahuaSwingPullTask">
+    <select id="findTaskById" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask">
         SELECT id,
                name,
                enabled,
@@ -56,12 +56,12 @@
         WHERE id = #{id}
     </select>
 
-    <insert id="insertTask" parameterType="com.example.demo.modules.twin.entity.DahuaSwingPullTask" useGeneratedKeys="true" keyProperty="id">
+    <insert id="insertTask" parameterType="com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO twin_dahua_pull_task (name, enabled, poll_interval_seconds, query_json, activation_rules_json)
         VALUES (#{name}, #{enabled}, #{pollIntervalSeconds}, #{queryJson}, #{activationRulesJson})
     </insert>
 
-    <update id="updateTask" parameterType="com.example.demo.modules.twin.entity.DahuaSwingPullTask">
+    <update id="updateTask" parameterType="com.example.demo.modules.twin.dahua.entity.DahuaSwingPullTask">
         UPDATE twin_dahua_pull_task
         SET name = #{name},
             enabled = #{enabled},
@@ -90,7 +90,7 @@
         DELETE FROM twin_dahua_pull_task WHERE id = #{id}
     </delete>
 
-    <insert id="upsertRecord" parameterType="com.example.demo.modules.twin.entity.DahuaSwingRecord">
+    <insert id="upsertRecord" parameterType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
         INSERT INTO twin_dahua_swing_record (
             task_id, pull_task_type, record_id, card_number, card_status, channel_code, channel_name, open_type,
             person_code, person_id, person_name, department_id, department_name, audience_type,
@@ -128,7 +128,7 @@
             ingested_at = NOW()
     </insert>
 
-    <select id="findRecordByTaskIdAndRecordId" resultType="com.example.demo.modules.twin.entity.DahuaSwingRecord">
+    <select id="findRecordByTaskIdAndRecordId" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
         SELECT id,
                task_id AS taskId,
                pull_task_type AS pullTaskType,
@@ -182,7 +182,7 @@
         AND (enter_or_exit IS NULL OR enter_or_exit = 0)
     </select>
 
-    <select id="listRecords" resultType="com.example.demo.modules.twin.entity.DahuaSwingRecord">
+    <select id="listRecords" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
         SELECT id,
                task_id AS taskId,
                pull_task_type AS pullTaskType,
@@ -226,7 +226,7 @@
         LIMIT #{limit} OFFSET #{offset}
     </select>
 
-    <select id="listRecordsForChannelTasks" resultType="com.example.demo.modules.twin.entity.DahuaSwingRecord">
+    <select id="listRecordsForChannelTasks" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
         SELECT id,
                task_id AS taskId,
                record_id AS recordId,
@@ -280,7 +280,7 @@
         <if test="enterOrExit != null">AND enter_or_exit = #{enterOrExit}</if>
     </select>
 
-    <select id="listRecordsForRawBackfill" resultType="com.example.demo.modules.twin.entity.DahuaSwingRecord">
+    <select id="listRecordsForRawBackfill" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
         SELECT id,
                task_id AS taskId,
                record_id AS recordId,
@@ -346,7 +346,7 @@
         <if test="f.endTime != null and f.endTime != ''">AND swing_time &lt;= #{f.endTime}</if>
     </sql>
 
-    <select id="listRecordsByFilter" resultType="com.example.demo.modules.twin.entity.DahuaSwingRecord">
+    <select id="listRecordsByFilter" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
         SELECT id,
                task_id AS taskId,
                pull_task_type AS pullTaskType,
@@ -398,7 +398,7 @@
         <if test="endTime != null and endTime != ''">AND swing_time &lt;= #{endTime}</if>
     </select>
 
-    <select id="findActivationState" resultType="com.example.demo.modules.twin.entity.DahuaActivationState">
+    <select id="findActivationState" resultType="com.example.demo.modules.twin.dahua.entity.DahuaActivationState">
         SELECT id,
                task_id AS taskId,
                user_id AS userId,
@@ -418,7 +418,7 @@
         LIMIT 1
     </select>
 
-    <insert id="upsertActivationState" parameterType="com.example.demo.modules.twin.entity.DahuaActivationState">
+    <insert id="upsertActivationState" parameterType="com.example.demo.modules.twin.dahua.entity.DahuaActivationState">
         INSERT INTO twin_dahua_activation_state (
             task_id, user_id, channel_code, state, counter, activated_at, last_swipe_at,
             scheduled_exit_at, debounce_until, last_record_id
@@ -437,7 +437,7 @@
             updated_at = NOW()
     </insert>
 
-    <select id="listDueActivationStates" resultType="com.example.demo.modules.twin.entity.DahuaActivationState">
+    <select id="listDueActivationStates" resultType="com.example.demo.modules.twin.dahua.entity.DahuaActivationState">
         SELECT id,
                task_id AS taskId,
                user_id AS userId,

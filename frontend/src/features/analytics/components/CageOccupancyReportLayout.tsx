@@ -178,8 +178,8 @@ function RoomTable({ rows }: { rows: CageRoomRow[] }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={`${r.location ?? ""}-${r.roomName}`}>
+            {rows.map((r, i) => (
+              <tr key={`${r.location ?? ""}-${r.roomName}-${i}`}>
                 <td className="font-medium">{r.roomName}</td>
                 <td className="max-w-[16rem] truncate text-neutral-600" title={r.location}>
                   {r.location ?? "—"}

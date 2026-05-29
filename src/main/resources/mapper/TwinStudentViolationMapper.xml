@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.modules.twin.mapper.TwinStudentViolationMapper">
+<mapper namespace="com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper">
 
-    <resultMap id="TwinStudentViolationMap" type="com.example.demo.modules.twin.entity.TwinStudentViolation">
+    <resultMap id="TwinStudentViolationMap" type="com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation">
         <id column="id" property="id"/>
         <result column="target_user_id" property="targetUserId"/>
         <result column="violation_text" property="violationText"/>

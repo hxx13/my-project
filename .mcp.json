@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "excel": {
+      "url": "http://localhost:8017/sse"
+    },
+    "firecrawl": {
+      "command": "npx",
+      "args": ["-y", "firecrawl-mcp"],
+      "env": {
+        "FIRECRAWL_API_KEY": "fc-65ea187392d8410aac31910313cab047"
+      }
+    }
+  }
+}

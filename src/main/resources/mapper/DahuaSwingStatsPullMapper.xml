@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.modules.twin.mapper.DahuaSwingStatsPullMapper">
+<mapper namespace="com.example.demo.modules.twin.dahua.mapper.DahuaSwingStatsPullMapper">
 
     <sql id="taskColumns">
         id, name, enabled, period_mode AS periodMode, period_days AS periodDays, query_json AS queryJson,
@@ -14,15 +14,15 @@
         DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updatedAt
     </sql>
 
-    <select id="listTasks" resultType="com.example.demo.modules.twin.entity.DahuaSwingStatsPullTask">
+    <select id="listTasks" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingStatsPullTask">
         SELECT <include refid="taskColumns"/> FROM twin_dahua_stats_pull_task ORDER BY id DESC
     </select>
 
-    <select id="listEnabledTasks" resultType="com.example.demo.modules.twin.entity.DahuaSwingStatsPullTask">
+    <select id="listEnabledTasks" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingStatsPullTask">
         SELECT <include refid="taskColumns"/> FROM twin_dahua_stats_pull_task WHERE enabled = 1 ORDER BY id ASC
     </select>
 
-    <select id="findById" resultType="com.example.demo.modules.twin.entity.DahuaSwingStatsPullTask">
+    <select id="findById" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingStatsPullTask">
         SELECT <include refid="taskColumns"/> FROM twin_dahua_stats_pull_task WHERE id = #{id}
     </select>
 

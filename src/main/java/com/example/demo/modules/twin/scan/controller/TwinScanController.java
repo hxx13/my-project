@@ -98,11 +98,11 @@ public class TwinScanController {
     @Autowired
     private AuthContextService authContextService;
 
+    @Autowired
+    private com.example.demo.common.config.DebugToggleService debugToggleService;
+
     private static final long STUDENT_DAHUA_BIND_DEPT_ID = 26L;
     private static final java.util.List<Long> STUDENT_DAHUA_BIND_DOOR_GROUP_IDS = java.util.List.of(58L, 59L);
-
-    @Value("${app.access-rule-dahua-debug:false}")
-    private boolean accessRuleDahuaDebug;
 
     @Value("${app.business-timezone:Asia/Shanghai}")
     private String businessTimeZone;
@@ -616,7 +616,7 @@ public class TwinScanController {
                 // no-op
             }
         }
-        if (accessRuleDahuaDebug) {
+        if (debugToggleService.isAccessRuleDahuaDebugEnabled()) {
             result.setAccessRuleDebug(detail);
         }
     }

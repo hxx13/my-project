@@ -2,7 +2,7 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.modules.twin.mapper.TwinDashboardMapper">
+<mapper namespace="com.example.demo.modules.twin.common.mapper.TwinDashboardMapper">
 
     <select id="getTodayAllRecords" resultType="map">
         SELECT area_name AS areaName, create_time AS createTime
@@ -367,12 +367,21 @@
                END AS is_own_card,
                COALESCE(m.freeze_exempt_flag, 0) AS freeze_exempt_flag
         FROM aro_access_log log
-        LEFT JOIN twin_card_mapping m
-               ON m.aro_user_id = log.user_id
-        LEFT JOIN aro_behavior_prediction ai
-               ON log.user_id = ai.user_id
-              AND log.room_id = ai.room_id
-              AND ai.day_type = 'ALL_DAYS'
+        LEFT JOIN (
+                   SELECT m_inner.aro_user_id,
+                          MAX(COALESCE(m_inner.freeze_exempt_flag, 0)) AS freeze_exempt_flag
+                   FROM twin_card_mapping m_inner
+                   GROUP BY m_inner.aro_user_id
+               ) m ON m.aro_user_id = log.user_id
+        LEFT JOIN (
+                   SELECT ai_inner.user_id,
+                          ai_inner.room_id,
+                          MAX(ai_inner.median_duration_mins) AS median_duration_mins,
+                          MAX(ai_inner.overtime_prob) AS overtime_prob
+                   FROM aro_behavior_prediction ai_inner
+                   WHERE ai_inner.day_type = 'ALL_DAYS'
+                   GROUP BY ai_inner.user_id, ai_inner.room_id
+               ) ai ON ai.user_id = log.user_id AND ai.room_id = log.room_id
         WHERE log.accessType = 1
           AND CAST(log.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
           AND CAST(log.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)

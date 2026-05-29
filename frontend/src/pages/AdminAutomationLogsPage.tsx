@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { FileText } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchAutomationLogs, type AutomationLogRow } from "@/api/twinApi";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
@@ -42,55 +43,51 @@ const compactInputClass =
 const compactSelectClass = "h-8 min-w-0 w-full px-2 text-xs";
 
 export default function AdminAutomationLogsPage() {
-  const [rows, setRows] = useState<AutomationLogRow[]>([]);
-  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const pageSize = PAGE_SIZE;
-  const [total, setTotal] = useState(0);
   const [automationType, setAutomationType] = useState("");
   const [triggerType, setTriggerType] = useState("");
   const [keyword, setKeyword] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  /** 关闭时隐藏 ARO 穿甲轮询（ARO_PENETRATION_POLL）定时任务日志，便于只看门禁联动 */
   const [showPenetrationLogs, setShowPenetrationLogs] = useState(false);
 
-  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [pageSize, total]);
-
-  const load = async (targetPage = page, penetrationVisible?: boolean) => {
-    setLoading(true);
-    const showPen = penetrationVisible !== undefined ? penetrationVisible : showPenetrationLogs;
-    try {
-      const data = await fetchAutomationLogs({
-        page: targetPage,
-        pageSize,
+  const { data, isLoading } = useQuery({
+    queryKey: ["automationLogs", page, automationType, triggerType, keyword, startDate, endDate, showPenetrationLogs] as const,
+    queryFn: () =>
+      fetchAutomationLogs({
+        page,
+        pageSize: PAGE_SIZE,
         automationType: automationType || undefined,
         triggerType: triggerType || undefined,
         keyword: keyword.trim() || undefined,
         startTime: startDate ? toApiTime(startDate, "00:00:00") : undefined,
         endTime: endDate ? toApiTime(endDate, "23:59:59") : undefined,
-        excludePenetrationPoll: !showPen,
-      });
-      setRows(data.list || []);
-      setTotal(data.total || 0);
-      setPage(data.page || targetPage);
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "自动化日志加载失败");
-    } finally {
-      setLoading(false);
-    }
-  };
+        excludePenetrationPoll: !showPenetrationLogs,
+      }),
+    placeholderData: (prev) => prev,
+  });
 
-  useEffect(() => {
-    void load(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const rows: AutomationLogRow[] = data?.list ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
+
+  const applyFilter = () => setPage(1);
+
+  const resetFilter = () => {
+    setAutomationType("");
+    setTriggerType("");
+    setKeyword("");
+    setStartDate("");
+    setEndDate("");
+    setShowPenetrationLogs(false);
+    setPage(1);
+  };
 
   return (
     <AdminPageShell
       title={
         <span className="inline-flex items-center gap-2">
-          <FileText className="h-6 w-6 shrink-0 text-[#0070f3]" aria-hidden />
+          <FileText className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
           自动化日志
         </span>
       }
@@ -155,24 +152,10 @@ export default function AdminAutomationLogsPage() {
               />
             </label>
             <div className="flex shrink-0 items-center gap-1.5 self-end pb-0.5">
-              <AdminButton type="button" tone="primary" size="sm" className="h-8 px-3 text-xs" onClick={() => void load(1)}>
+              <AdminButton type="button" tone="primary" size="sm" className="h-8 px-3 text-xs" onClick={applyFilter}>
                 筛选
               </AdminButton>
-              <AdminButton
-                type="button"
-                tone="secondary"
-                size="sm"
-                className="h-8 px-3 text-xs"
-                onClick={() => {
-                  setAutomationType("");
-                  setTriggerType("");
-                  setKeyword("");
-                  setStartDate("");
-                  setEndDate("");
-                  setShowPenetrationLogs(false);
-                  void load(1, false);
-                }}
-              >
+              <AdminButton type="button" tone="secondary" size="sm" className="h-8 px-3 text-xs" onClick={resetFilter}>
                 重置
               </AdminButton>
             </div>
@@ -182,9 +165,8 @@ export default function AdminAutomationLogsPage() {
                 className="h-3.5 w-3.5 rounded border-neutral-300"
                 checked={showPenetrationLogs}
                 onChange={(e) => {
-                  const v = e.target.checked;
-                  setShowPenetrationLogs(v);
-                  void load(1, v);
+                  setShowPenetrationLogs(e.target.checked);
+                  setPage(1);
                 }}
               />
               穿甲轮询日志
@@ -193,15 +175,15 @@ export default function AdminAutomationLogsPage() {
         </AdminFormCard>
 
         <AdminTableShell
-          loading={loading}
-          empty={!loading && rows.length === 0}
+          loading={isLoading}
+          empty={!isLoading && rows.length === 0}
           emptyMessage="暂无日志"
           scrollable
           className="[&_.admin-table-shell-inner]:max-h-[min(82vh,920px)]"
         >
           <table className="min-w-full text-xs">
             <thead>
-              <tr className="border-b bg-slate-50 text-left text-slate-600">
+              <tr className="border-b bg-[var(--twin-canvas-soft)] text-left text-[var(--twin-body)]">
                 <th className="px-2 py-1.5">时间</th>
                 <th className="px-2 py-1.5">类型</th>
                 <th className="px-2 py-1.5">触发方式</th>
@@ -215,19 +197,19 @@ export default function AdminAutomationLogsPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b align-top hover:bg-slate-50">
+                <tr key={r.id} className="border-b align-top hover:bg-[var(--twin-canvas-soft)]">
                   <td className="px-2 py-1.5 whitespace-nowrap">{toTime(r.eventTime)}</td>
                   <td className="px-2 py-1.5">
                     <div>{r.automationTypeLabel || r.automationType || "-"}</div>
-                    {r.automationTypeLabel && <div className="font-mono text-[10px] text-slate-400">{r.automationType}</div>}
+                    {r.automationTypeLabel && <div className="font-mono text-[10px] text-[var(--twin-mute)]">{r.automationType}</div>}
                   </td>
                   <td className="px-2 py-1.5">
                     <div>{r.triggerTypeLabel || r.triggerType || "-"}</div>
-                    {r.triggerTypeLabel && <div className="font-mono text-[10px] text-slate-400">{r.triggerType}</div>}
+                    {r.triggerTypeLabel && <div className="font-mono text-[10px] text-[var(--twin-mute)]">{r.triggerType}</div>}
                   </td>
                   <td className="px-2 py-1.5">
                     <div>{r.eventKeyLabel || r.eventKey || "-"}</div>
-                    {r.eventKeyLabel && <div className="font-mono text-[10px] text-slate-400">{r.eventKey}</div>}
+                    {r.eventKeyLabel && <div className="font-mono text-[10px] text-[var(--twin-mute)]">{r.eventKey}</div>}
                   </td>
                   <td className="px-2 py-1.5 font-mono text-xs">{r.userId || "-"}</td>
                   <td className="px-2 py-1.5">{r.userName || "-"}</td>
@@ -236,9 +218,9 @@ export default function AdminAutomationLogsPage() {
                   </td>
                   <td className="px-2 py-1.5">
                     <div>{r.triggerReasonLabel || r.triggerReason || "-"}</div>
-                    {r.triggerReasonLabel && <div className="font-mono text-[10px] text-slate-400">{r.triggerReason}</div>}
+                    {r.triggerReasonLabel && <div className="font-mono text-[10px] text-[var(--twin-mute)]">{r.triggerReason}</div>}
                   </td>
-                  <td className="max-w-[32rem] px-2 py-1.5 text-slate-700">
+                  <td className="max-w-[32rem] px-2 py-1.5 text-[var(--twin-body)]">
                     <div className="space-y-1 break-words">
                       {detailTextToLines(String(r.detailDisplayZh || r.detail || "-")).map((line, i) => (
                         <div key={`dz-${i}`} className="leading-snug">
@@ -254,17 +236,17 @@ export default function AdminAutomationLogsPage() {
         </AdminTableShell>
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="text-neutral-500">
-            共 {total} 条 · 每页 {pageSize} 条 · 按时间倒序
+          <span className="text-[var(--twin-mute)]">
+            共 {total} 条 · 每页 {PAGE_SIZE} 条 · 按时间倒序
           </span>
           <div className="flex items-center gap-2">
-          <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || loading} onClick={() => void load(page - 1)}>
+          <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || isLoading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
             上一页
           </AdminButton>
-          <span className="text-neutral-600">
+          <span className="text-[var(--twin-body)]">
             {page} / {totalPages}
           </span>
-          <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || loading} onClick={() => void load(page + 1)}>
+          <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || isLoading} onClick={() => setPage((p) => p + 1)}>
             下一页
           </AdminButton>
           </div>

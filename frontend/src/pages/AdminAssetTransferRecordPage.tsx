@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import { ClipboardList, Download } from "lucide-react";
 import {
@@ -78,7 +79,6 @@ function normalizeColumnLabel(label: string) {
   return text;
 }
 
-/** 与小程序资产页一致：优先匹配「存放地点」系列表头对应的动态列 */
 function pickCurrentLocationColumn(columns: AssetColumnDef[]) {
   const list = Array.isArray(columns) ? columns : [];
   for (const col of list) {
@@ -159,9 +159,6 @@ export default function AdminAssetTransferRecordPage() {
   const [appliedKeyword, setAppliedKeyword] = useState("");
   const [page, setPage] = useState(1);
   const [size] = useState(20);
-  const [rows, setRows] = useState<AssetTransferRecord[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
   const [continueRow, setContinueRow] = useState<AssetTransferRecord | null>(null);
   const [appendUrlsText, setAppendUrlsText] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
@@ -178,78 +175,84 @@ export default function AdminAssetTransferRecordPage() {
   const [detailRows, setDetailRows] = useState<{ key: string; label: string; value: string }[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deletingAfterPhoto, setDeletingAfterPhoto] = useState(false);
+
+  const qc = useQueryClient();
   const role = authStorage.getRole() || "STUDENT";
   const canDeleteTransfer = hasMinRole(role, "ADMIN");
 
+  const transferQueryKey = useMemo(
+    () => ["transferRecords", { page, size, keyword: appliedKeyword || undefined }] as const,
+    [page, size, appliedKeyword],
+  );
+
+  const { data: transferData, isLoading } = useQuery({
+    queryKey: transferQueryKey,
+    queryFn: () => fetchTransferRecords({ page, size, keyword: appliedKeyword || undefined }),
+    placeholderData: (prev) => prev,
+  });
+
+  const rows = useMemo(() => (transferData?.rows || []).map(normalizeTransferRecord), [transferData]);
+  const total = transferData?.total || 0;
   const pages = Math.max(1, Math.ceil(total / size));
 
-  const hydrateSummaries = async (list: AssetTransferRecord[]) => {
-    setSummaryHydrating(true);
-    try {
-      const updates: Record<string, AssetSummary> = {};
-      const seen = new Set<string>();
-      for (const row of list) {
-        if (!row.assetId || seen.has(row.assetId)) continue;
-        seen.add(row.assetId);
-        try {
-          const data = await fetchAssetRecords({
-            page: 1,
-            size: 1,
-            assetId: row.assetId,
-          });
-          const cols = data.columns || [];
-          const assets = data.rows || [];
-          const target =
-            assets.find((x) => x.id === row.assetId) ||
-            assets.find((x) => x.assetCode === row.assetCode) ||
-            null;
-          if (!target) {
-            updates[row.assetId] = { summaryLocation: "-", summaryUser: "-", summaryModel: "-" };
-            continue;
-          }
-          const locationCol = pickCurrentLocationColumn(cols);
-          const userCol = pickUserColumn(cols);
-          const modelCol = pickSpecModelColumn(cols);
-          const dv = target.dynamicValues || {};
-          updates[row.assetId] = {
-            summaryLocation: (locationCol && dv[locationCol.columnKey]) || target.location || "-",
-            summaryUser: (userCol && dv[userCol.columnKey]) || "-",
-            summaryModel: (modelCol && dv[modelCol.columnKey]) || "-",
-          };
-        } catch {
-          updates[row.assetId] = { summaryLocation: "-", summaryUser: "-", summaryModel: "-" };
-        }
-      }
-      if (Object.keys(updates).length) {
-        setSummaryByAssetId((prev) => ({ ...prev, ...updates }));
-      }
-    } finally {
-      setSummaryHydrating(false);
-    }
-  };
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchTransferRecords({ page, size, keyword: appliedKeyword || undefined });
-      const list = (data.rows || []).map(normalizeTransferRecord);
-      setRows(list);
-      setTotal(data.total || 0);
-      if (continueRow) {
-        const next = list.find((x) => x.id === continueRow.id);
-        if (next) setContinueRow(next);
-      }
-      void hydrateSummaries(list);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Hydrate asset summaries for all unseen asset IDs on the current page
   useEffect(() => {
-    void load();
-  }, [page, size, appliedKeyword]);
+    if (rows.length === 0) return;
+    let cancelled = false;
+    const run = async () => {
+      setSummaryHydrating(true);
+      try {
+        const updates: Record<string, AssetSummary> = {};
+        const seen = new Set<string>();
+        for (const row of rows) {
+          if (!row.assetId || seen.has(row.assetId)) continue;
+          seen.add(row.assetId);
+          try {
+            const data = await fetchAssetRecords({ page: 1, size: 1, assetId: row.assetId });
+            const cols = data.columns || [];
+            const assets = data.rows || [];
+            const target =
+              assets.find((x) => x.id === row.assetId) ||
+              assets.find((x) => x.assetCode === row.assetCode) ||
+              null;
+            if (!target) {
+              updates[row.assetId] = { summaryLocation: "-", summaryUser: "-", summaryModel: "-" };
+              continue;
+            }
+            const locationCol = pickCurrentLocationColumn(cols);
+            const userCol = pickUserColumn(cols);
+            const modelCol = pickSpecModelColumn(cols);
+            const dv = target.dynamicValues || {};
+            updates[row.assetId] = {
+              summaryLocation: (locationCol && dv[locationCol.columnKey]) || target.location || "-",
+              summaryUser: (userCol && dv[userCol.columnKey]) || "-",
+              summaryModel: (modelCol && dv[modelCol.columnKey]) || "-",
+            };
+          } catch {
+            updates[row.assetId] = { summaryLocation: "-", summaryUser: "-", summaryModel: "-" };
+          }
+        }
+        if (!cancelled && Object.keys(updates).length) {
+          setSummaryByAssetId((prev) => ({ ...prev, ...updates }));
+        }
+      } finally {
+        if (!cancelled) setSummaryHydrating(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [rows]);
+
+  // Sync continueRow when rows change (e.g. after setQueryData updates)
+  useEffect(() => {
+    if (continueRow) {
+      const next = rows.find((x) => x.id === continueRow.id);
+      if (next) setContinueRow(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
 
   const onExport = async () => {
     try {
@@ -272,10 +275,20 @@ export default function AdminAssetTransferRecordPage() {
     }
     setActionLoading(true);
     try {
-      await appendTransferAfterPhotos(continueRow.id, urls);
+      const updated = await appendTransferAfterPhotos(continueRow.id, urls);
       toast.success("已追加转移后照片");
       setAppendUrlsText("");
-      await load();
+      qc.setQueryData(transferQueryKey, (prev: typeof transferData | undefined) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          rows: prev.rows.map((r) =>
+            r.id === continueRow.id
+              ? { ...r, photoUrlsAfter: JSON.stringify(updated.photoUrlsAfter) }
+              : r,
+          ),
+        };
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "追加失败");
     } finally {
@@ -297,7 +310,15 @@ export default function AdminAssetTransferRecordPage() {
       toast.success("已确认转移完毕");
       setContinueRow(null);
       setAppendUrlsText("");
-      await load();
+      qc.setQueryData(transferQueryKey, (prev: typeof transferData | undefined) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          rows: prev.rows.map((r) =>
+            r.id === continueRow.id ? { ...r, status: "COMPLETED" } : r,
+          ),
+        };
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
     } finally {
@@ -315,7 +336,13 @@ export default function AdminAssetTransferRecordPage() {
         setContinueRow(null);
         setAppendUrlsText("");
       }
-      await load();
+      qc.setQueryData(transferQueryKey, (prev: typeof transferData | undefined) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          rows: prev.rows.map((x) => (x.id === r.id ? { ...x, status: "WITHDRAWN" } : x)),
+        };
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "撤回失败");
     } finally {
@@ -337,7 +364,14 @@ export default function AdminAssetTransferRecordPage() {
         setContinueRow(null);
         setAppendUrlsText("");
       }
-      await load();
+      qc.setQueryData(transferQueryKey, (prev: typeof transferData | undefined) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          total: prev.total - 1,
+          rows: prev.rows.filter((x) => x.id !== r.id),
+        };
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "删除失败");
     } finally {
@@ -383,17 +417,19 @@ export default function AdminAssetTransferRecordPage() {
     if (!window.confirm("确认删除这张转移后照片？")) return;
     setDeletingAfterPhoto(true);
     try {
-      await removeTransferAfterPhoto(requestId, photoUrl);
+      const updated = await removeTransferAfterPhoto(requestId, photoUrl);
       toast.success("已删除");
-      const data = await fetchTransferRecords({ page, size, keyword: appliedKeyword || undefined });
-      const list = (data.rows || []).map(normalizeTransferRecord);
-      setRows(list);
-      setTotal(data.total || 0);
-      const nextContinue = list.find((x) => x.id === requestId);
-      if (continueRow?.id === requestId && nextContinue) {
-        setContinueRow(nextContinue);
-      }
-      void hydrateSummaries(list);
+      qc.setQueryData(transferQueryKey, (prev: typeof transferData | undefined) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          rows: prev.rows.map((r) =>
+            r.id === requestId
+              ? { ...r, photoUrlsAfter: updated.photoUrlsAfter ? JSON.stringify(updated.photoUrlsAfter) : r.photoUrlsAfter }
+              : r,
+          ),
+        };
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "删除失败");
     } finally {
@@ -436,6 +472,9 @@ export default function AdminAssetTransferRecordPage() {
   };
 
   const displayLink = (item: TransferPdfLinkItem) => item.downloadUrl || item.downloadPath;
+
+  const sumCell = (assetId: string, field: keyof AssetSummary) =>
+    summaryHydrating && !summaryByAssetId[assetId] ? "加载中…" : (summaryByAssetId[assetId]?.[field] ?? "—");
 
   return (
     <AdminPageShell
@@ -486,7 +525,7 @@ export default function AdminAssetTransferRecordPage() {
 
       <AdminDataTableWrap scrollable>
         <table className="min-w-full border-collapse text-sm">
-          <thead className="bg-slate-50">
+          <thead className="bg-[var(--twin-canvas-soft)]">
             <tr>
               <th className="border-b px-2 py-2 text-left text-xs">资产编码</th>
               <th className="border-b px-2 py-2 text-left text-xs">资产名称</th>
@@ -505,11 +544,8 @@ export default function AdminAssetTransferRecordPage() {
           <tbody>
             {rows.map((r) => {
               const latestLink = latestLinkByRequest[r.id];
-              const sum = summaryByAssetId[r.assetId];
-              const sumCell = (field: keyof AssetSummary) =>
-                summaryHydrating && !sum ? "加载中…" : (sum?.[field] ?? "—");
               return (
-                <tr key={r.id} className="hover:bg-slate-50">
+                <tr key={r.id} className="hover:bg-[var(--twin-canvas-soft)]">
                   <td className="border-b px-2 py-2 text-xs">{r.assetCode}</td>
                   <td className="border-b px-2 py-2 text-xs">{r.assetName}</td>
                   <td className="border-b px-2 py-2 text-xs">{r.applicantName || r.applicantId}</td>
@@ -521,28 +557,28 @@ export default function AdminAssetTransferRecordPage() {
                     {r.remark || "—"}
                   </td>
                   <td className="border-b px-2 py-2 whitespace-nowrap text-xs">{formatDateTime(r.createTime)}</td>
-                  <td className="border-b px-2 py-2 max-w-[6rem] truncate text-xs text-slate-600" title={sumCell("summaryLocation")}>
-                    {sumCell("summaryLocation")}
+                  <td className="border-b px-2 py-2 max-w-[6rem] truncate text-xs text-[var(--twin-body)]" title={sumCell(r.assetId, "summaryLocation")}>
+                    {sumCell(r.assetId, "summaryLocation")}
                   </td>
-                  <td className="border-b px-2 py-2 max-w-[5rem] truncate text-xs text-slate-600" title={sumCell("summaryUser")}>
-                    {sumCell("summaryUser")}
+                  <td className="border-b px-2 py-2 max-w-[5rem] truncate text-xs text-[var(--twin-body)]" title={sumCell(r.assetId, "summaryUser")}>
+                    {sumCell(r.assetId, "summaryUser")}
                   </td>
-                  <td className="border-b px-2 py-2 max-w-[5rem] truncate text-xs text-slate-600" title={sumCell("summaryModel")}>
-                    {sumCell("summaryModel")}
+                  <td className="border-b px-2 py-2 max-w-[5rem] truncate text-xs text-[var(--twin-body)]" title={sumCell(r.assetId, "summaryModel")}>
+                    {sumCell(r.assetId, "summaryModel")}
                   </td>
                   <td className="border-b px-2 py-2 text-xs">{statusLabel(r.status)}</td>
                   <td className="border-b px-2 py-2 align-top">
                     <div className="flex max-w-[11rem] flex-wrap gap-1">
                       <button
                         type="button"
-                        className="rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-800"
+                        className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-1.5 py-0.5 text-[11px] text-[var(--twin-ink)]"
                         onClick={() => void openDetail(r)}
                       >
                         详情
                       </button>
                       <button
                         type="button"
-                        className="rounded border border-sky-300 bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-800"
+                        className="rounded-twin-sm border border-sky-300 bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-800"
                         onClick={() => void openLinkModal(r)}
                       >
                         下载链接
@@ -552,7 +588,7 @@ export default function AdminAssetTransferRecordPage() {
                           <button
                             type="button"
                             disabled={actionLoading}
-                            className="rounded border border-indigo-300 bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-800 disabled:opacity-50"
+                            className="rounded-twin-sm border border-indigo-300 bg-indigo-50 px-1.5 py-0.5 text-[11px] text-indigo-800 disabled:opacity-50"
                             onClick={() => {
                               setContinueRow(r);
                               setAppendUrlsText("");
@@ -563,7 +599,7 @@ export default function AdminAssetTransferRecordPage() {
                           <button
                             type="button"
                             disabled={actionLoading}
-                            className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-900 disabled:opacity-50"
+                            className="rounded-twin-sm border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-900 disabled:opacity-50"
                             onClick={() => void doWithdrawRow(r)}
                           >
                             撤回
@@ -574,7 +610,7 @@ export default function AdminAssetTransferRecordPage() {
                         <button
                           type="button"
                           disabled={actionLoading}
-                          className="rounded border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[11px] text-rose-800 disabled:opacity-50"
+                          className="rounded-twin-sm border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[11px] text-rose-800 disabled:opacity-50"
                           onClick={() => void doDeleteRow(r)}
                         >
                           删除记录
@@ -582,7 +618,7 @@ export default function AdminAssetTransferRecordPage() {
                       )}
                     </div>
                     {latestLink && (
-                      <div className="mt-1 max-w-[11rem] text-[10px] leading-tight text-slate-500">
+                      <div className="mt-1 max-w-[11rem] text-[10px] leading-tight text-[var(--twin-mute)]">
                         最近链接：
                         <a
                           href={displayLink(latestLink)}
@@ -600,8 +636,8 @@ export default function AdminAssetTransferRecordPage() {
             })}
             {!rows.length && (
               <tr>
-                <td className="px-3 py-10 text-center text-slate-500" colSpan={12}>
-                  {loading ? "加载中..." : "暂无记录"}
+                <td className="px-3 py-10 text-center text-[var(--twin-mute)]" colSpan={12}>
+                  {isLoading ? "加载中..." : "暂无记录"}
                 </td>
               </tr>
             )}
@@ -609,7 +645,7 @@ export default function AdminAssetTransferRecordPage() {
         </table>
       </AdminDataTableWrap>
 
-      <div className="flex items-center justify-end gap-3 text-sm text-slate-600">
+      <div className="flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
         <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
           上一页
         </AdminButton>
@@ -623,12 +659,12 @@ export default function AdminAssetTransferRecordPage() {
 
       {continueRow && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900">补充转移后照片</h3>
+              <h3 className="text-base font-semibold text-[var(--twin-ink)]">补充转移后照片</h3>
               <button
                 type="button"
-                className="rounded border border-slate-200 px-3 py-1 text-sm text-slate-600"
+                className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 text-sm text-[var(--twin-body)]"
                 onClick={() => {
                   setContinueRow(null);
                   setAppendUrlsText("");
@@ -638,58 +674,58 @@ export default function AdminAssetTransferRecordPage() {
               </button>
             </div>
 
-            <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/80 p-3 text-sm">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">申请信息</p>
+            <div className="mb-4 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3 text-sm">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--twin-mute)]">申请信息</p>
               <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
                 <div className="flex gap-1">
-                  <dt className="shrink-0 text-slate-500">状态</dt>
-                  <dd className="text-slate-800">{statusLabel(continueRow.status)}</dd>
+                  <dt className="shrink-0 text-[var(--twin-mute)]">状态</dt>
+                  <dd className="text-[var(--twin-ink)]">{statusLabel(continueRow.status)}</dd>
                 </div>
                 <div className="flex gap-1 sm:col-span-2">
-                  <dt className="shrink-0 text-slate-500">资产</dt>
-                  <dd className="text-slate-800">
+                  <dt className="shrink-0 text-[var(--twin-mute)]">资产</dt>
+                  <dd className="text-[var(--twin-ink)]">
                     {continueRow.assetName}（{continueRow.assetCode}）
                   </dd>
                 </div>
                 <div className="flex gap-1">
-                  <dt className="shrink-0 text-slate-500">申请人</dt>
-                  <dd className="text-slate-800">{continueRow.applicantName || continueRow.applicantId}</dd>
+                  <dt className="shrink-0 text-[var(--twin-mute)]">申请人</dt>
+                  <dd className="text-[var(--twin-ink)]">{continueRow.applicantName || continueRow.applicantId}</dd>
                 </div>
                 <div className="flex gap-1">
-                  <dt className="shrink-0 text-slate-500">转移时间</dt>
-                  <dd className="text-slate-800">{formatDateTime(continueRow.transferTime)}</dd>
+                  <dt className="shrink-0 text-[var(--twin-mute)]">转移时间</dt>
+                  <dd className="text-[var(--twin-ink)]">{formatDateTime(continueRow.transferTime)}</dd>
                 </div>
                 <div className="flex gap-1 sm:col-span-2">
-                  <dt className="shrink-0 text-slate-500">转移地点</dt>
-                  <dd className="break-words text-slate-800">{continueRow.transferLocation || "—"}</dd>
+                  <dt className="shrink-0 text-[var(--twin-mute)]">转移地点</dt>
+                  <dd className="break-words text-[var(--twin-ink)]">{continueRow.transferLocation || "—"}</dd>
                 </div>
                 <div className="flex gap-1 sm:col-span-2">
-                  <dt className="shrink-0 text-slate-500">备注</dt>
-                  <dd className="break-words text-slate-800">{continueRow.remark || "—"}</dd>
+                  <dt className="shrink-0 text-[var(--twin-mute)]">备注</dt>
+                  <dd className="break-words text-[var(--twin-ink)]">{continueRow.remark || "—"}</dd>
                 </div>
                 <div className="flex gap-1">
-                  <dt className="shrink-0 text-slate-500">创建时间</dt>
-                  <dd className="text-slate-800">{formatDateTime(continueRow.createTime)}</dd>
+                  <dt className="shrink-0 text-[var(--twin-mute)]">创建时间</dt>
+                  <dd className="text-[var(--twin-ink)]">{formatDateTime(continueRow.createTime)}</dd>
                 </div>
               </dl>
             </div>
 
-            <div className="mb-4 rounded-lg border border-slate-200 p-3 text-xs">
-              <p className="mb-2 font-semibold text-slate-600">资产摘要（与小程序列表一致）</p>
-              <p className="text-slate-700">
-                <span className="text-slate-500">当前存放：</span>
+            <div className="mb-4 rounded-twin-lg border border-[var(--twin-hairline)] p-3 text-xs">
+              <p className="mb-2 font-semibold text-[var(--twin-body)]">资产摘要（与小程序列表一致）</p>
+              <p className="text-[var(--twin-body)]">
+                <span className="text-[var(--twin-mute)]">当前存放：</span>
                 {summaryHydrating && !summaryByAssetId[continueRow.assetId]
                   ? "加载中…"
                   : (summaryByAssetId[continueRow.assetId]?.summaryLocation ?? "—")}
               </p>
-              <p className="text-slate-700">
-                <span className="text-slate-500">使用人：</span>
+              <p className="text-[var(--twin-body)]">
+                <span className="text-[var(--twin-mute)]">使用人：</span>
                 {summaryHydrating && !summaryByAssetId[continueRow.assetId]
                   ? "加载中…"
                   : (summaryByAssetId[continueRow.assetId]?.summaryUser ?? "—")}
               </p>
-              <p className="text-slate-700">
-                <span className="text-slate-500">型号：</span>
+              <p className="text-[var(--twin-body)]">
+                <span className="text-[var(--twin-mute)]">型号：</span>
                 {summaryHydrating && !summaryByAssetId[continueRow.assetId]
                   ? "加载中…"
                   : (summaryByAssetId[continueRow.assetId]?.summaryModel ?? "—")}
@@ -698,13 +734,13 @@ export default function AdminAssetTransferRecordPage() {
 
             {beforePhotosForRecord(continueRow).length > 0 && (
               <div className="mb-4">
-                <p className="mb-2 text-xs font-semibold text-slate-600">转移前照片</p>
+                <p className="mb-2 text-xs font-semibold text-[var(--twin-body)]">转移前照片</p>
                 <div className="flex flex-wrap gap-1">
                   {beforePhotosForRecord(continueRow).map((u) => (
                     <button
                       key={u}
                       type="button"
-                      className="h-16 w-16 overflow-hidden rounded border border-slate-200 p-0"
+                      className="h-16 w-16 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] p-0"
                       onClick={() => setPreviewUrl(u)}
                     >
                       <img src={u} alt="" className="h-full w-full object-cover" />
@@ -715,14 +751,14 @@ export default function AdminAssetTransferRecordPage() {
             )}
 
             <div className="mb-4">
-              <p className="mb-2 text-xs font-semibold text-slate-600">已有转移后照片（可删除单张）</p>
+              <p className="mb-2 text-xs font-semibold text-[var(--twin-body)]">已有转移后照片（可删除单张）</p>
               {parsePhotoUrlJson(continueRow.photoUrlsAfter).length === 0 ? (
-                <p className="text-xs text-slate-400">暂无</p>
+                <p className="text-xs text-[var(--twin-mute)]">暂无</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {parsePhotoUrlJson(continueRow.photoUrlsAfter).map((u) => (
                     <div key={u} className="relative inline-block">
-                      <button type="button" className="block h-16 w-16 overflow-hidden rounded border border-slate-200 p-0" onClick={() => setPreviewUrl(u)}>
+                      <button type="button" className="block h-16 w-16 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] p-0" onClick={() => setPreviewUrl(u)}>
                         <img src={u} alt="" className="h-full w-full object-cover" />
                       </button>
                       <button
@@ -740,13 +776,13 @@ export default function AdminAssetTransferRecordPage() {
               )}
             </div>
 
-            <label className="mb-3 flex flex-col gap-1 text-xs text-slate-600">
+            <label className="mb-3 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
               追加照片 URL（每行一个；与小程序一致可填可访问的图片地址）
               <textarea
                 value={appendUrlsText}
                 onChange={(e) => setAppendUrlsText(e.target.value)}
                 rows={4}
-                className="rounded border border-slate-300 px-3 py-2 font-mono text-xs"
+                className="rounded-twin-sm border border-[var(--twin-hairline-strong)] px-3 py-2 font-mono text-xs"
                 placeholder="https://... 或业务系统返回的媒体地址"
               />
             </label>
@@ -755,7 +791,7 @@ export default function AdminAssetTransferRecordPage() {
                 type="button"
                 disabled={actionLoading}
                 onClick={() => void doAppendUrls()}
-                className="rounded bg-slate-700 px-3 py-2 text-sm text-white disabled:opacity-50"
+                className="rounded-twin-sm bg-[var(--twin-ink)] px-3 py-2 text-sm text-white disabled:opacity-50"
               >
                 追加到记录
               </button>
@@ -763,7 +799,7 @@ export default function AdminAssetTransferRecordPage() {
                 type="button"
                 disabled={actionLoading}
                 onClick={() => void doComplete()}
-                className="rounded bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
+                className="rounded-twin-sm bg-emerald-600 px-3 py-2 text-sm text-white disabled:opacity-50"
               >
                 确认转移完毕
               </button>
@@ -775,53 +811,53 @@ export default function AdminAssetTransferRecordPage() {
       {detailTransfer && (
         <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/40 p-4" onClick={closeDetail}>
           <div
-            className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-5 shadow-xl"
+            className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900">物品详情</h3>
-              <button type="button" className="rounded border border-slate-200 px-3 py-1 text-sm text-slate-600" onClick={closeDetail}>
+              <h3 className="text-base font-semibold text-[var(--twin-ink)]">物品详情</h3>
+              <button type="button" className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={closeDetail}>
                 关闭
               </button>
             </div>
-            <div className="mb-3 space-y-1 border-b border-slate-100 pb-3 text-xs">
+            <div className="mb-3 space-y-1 border-b border-[var(--twin-hairline)] pb-3 text-xs">
               <p>
-                <span className="text-slate-500">资产：</span>
+                <span className="text-[var(--twin-mute)]">资产：</span>
                 {detailTransfer.assetName}（{detailTransfer.assetCode}）
               </p>
               <p>
-                <span className="text-slate-500">转移状态：</span>
+                <span className="text-[var(--twin-mute)]">转移状态：</span>
                 {statusLabel(detailTransfer.status)}
               </p>
             </div>
-            {detailLoading && <p className="text-sm text-slate-500">加载详情中…</p>}
+            {detailLoading && <p className="text-sm text-[var(--twin-mute)]">加载详情中…</p>}
             {!detailLoading && detailAsset && (
               <div className="space-y-2 text-sm">
                 <p>
-                  <span className="text-xs text-slate-500">当前位置</span>
+                  <span className="text-xs text-[var(--twin-mute)]">当前位置</span>
                   <br />
-                  <span className="text-slate-900">{displayStoredLocation(detailAsset, detailColumns)}</span>
+                  <span className="text-[var(--twin-ink)]">{displayStoredLocation(detailAsset, detailColumns)}</span>
                 </p>
                 <p>
-                  <span className="text-xs text-slate-500">锁定状态</span>
+                  <span className="text-xs text-[var(--twin-mute)]">锁定状态</span>
                   <br />
-                  <span className="text-slate-900">{detailAsset.locked === 1 ? "已锁定" : "未锁定"}</span>
+                  <span className="text-[var(--twin-ink)]">{detailAsset.locked === 1 ? "已锁定" : "未锁定"}</span>
                 </p>
                 {detailAsset.note ? (
                   <p>
-                    <span className="text-xs text-slate-500">备注</span>
+                    <span className="text-xs text-[var(--twin-mute)]">备注</span>
                     <br />
-                    <span className="text-slate-900">{detailAsset.note}</span>
+                    <span className="text-[var(--twin-ink)]">{detailAsset.note}</span>
                   </p>
                 ) : null}
                 {detailRows.length > 0 && (
                   <div>
-                    <p className="mb-2 text-xs font-semibold text-slate-500">资产字段</p>
-                    <ul className="space-y-2 rounded border border-slate-100 bg-slate-50/50 p-2">
+                    <p className="mb-2 text-xs font-semibold text-[var(--twin-mute)]">资产字段</p>
+                    <ul className="space-y-2 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
                       {detailRows.map((row) => (
                         <li key={row.key} className="text-xs">
-                          <span className="text-slate-500">{row.label}</span>
-                          <div className="break-all text-slate-900">{row.value}</div>
+                          <span className="text-[var(--twin-mute)]">{row.label}</span>
+                          <div className="break-all text-[var(--twin-ink)]">{row.value}</div>
                         </li>
                       ))}
                     </ul>
@@ -829,7 +865,7 @@ export default function AdminAssetTransferRecordPage() {
                 )}
               </div>
             )}
-            {!detailLoading && !detailAsset && <p className="text-sm text-slate-500">未获取到该资产详情</p>}
+            {!detailLoading && !detailAsset && <p className="text-sm text-[var(--twin-mute)]">未获取到该资产详情</p>}
           </div>
         </div>
       )}
@@ -847,33 +883,33 @@ export default function AdminAssetTransferRecordPage() {
 
       {linkModalRow && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
+          <div className="w-full max-w-2xl rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-semibold text-slate-900">PDF 下载链接</h3>
-                <p className="text-xs text-slate-500">{linkModalRow.assetName}（{linkModalRow.assetCode}）</p>
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">PDF 下载链接</h3>
+                <p className="text-xs text-[var(--twin-mute)]">{linkModalRow.assetName}（{linkModalRow.assetCode}）</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   disabled={linkLoading}
                   onClick={() => void doGenerateLink(linkModalRow)}
-                  className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs text-emerald-800 disabled:opacity-50"
+                  className="rounded-twin-sm border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs text-emerald-800 disabled:opacity-50"
                 >
                   获取下载链接
                 </button>
                 <button
                   type="button"
-                  className="rounded border border-slate-200 px-3 py-1 text-xs text-slate-700"
+                  className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 text-xs text-[var(--twin-body)]"
                   onClick={() => setLinkModalRow(null)}
                 >
                   关闭
                 </button>
               </div>
             </div>
-            <div className="max-h-[55vh] overflow-auto rounded border border-slate-200">
+            <div className="max-h-[55vh] overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
               <table className="min-w-full border-collapse text-xs">
-                <thead className="bg-slate-50">
+                <thead className="bg-[var(--twin-canvas-soft)]">
                   <tr>
                     <th className="border-b px-2 py-2 text-left">文件名</th>
                     <th className="border-b px-2 py-2 text-left">状态</th>
@@ -891,7 +927,7 @@ export default function AdminAssetTransferRecordPage() {
                         <div className="flex flex-wrap gap-1">
                           <button
                             type="button"
-                            className="rounded border border-slate-300 px-2 py-1"
+                            className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1"
                             onClick={async () => {
                               const text = displayLink(item);
                               await copyTextToClipboard(text);
@@ -904,7 +940,7 @@ export default function AdminAssetTransferRecordPage() {
                             href={displayLink(item)}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-indigo-800"
+                            className="rounded-twin-sm border border-indigo-300 bg-indigo-50 px-2 py-1 text-indigo-800"
                           >
                             打开
                           </a>
@@ -914,8 +950,8 @@ export default function AdminAssetTransferRecordPage() {
                   ))}
                   {!linkRows.length && (
                     <tr>
-                      <td className="px-2 py-8 text-center text-slate-500" colSpan={4}>
-                        {linkLoading ? "加载中..." : "暂无链接，点击“获取下载链接”生成"}
+                      <td className="px-2 py-8 text-center text-[var(--twin-mute)]" colSpan={4}>
+                        {linkLoading ? "加载中..." : '暂无链接，点击“获取下载链接”生成'}
                       </td>
                     </tr>
                   )}

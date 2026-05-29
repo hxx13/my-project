@@ -1,14 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
+import { authStorage } from "@/features/auth/authStorage";
 
 export const useSocket = () => {
-    const [socket, setSocket] = useState<Socket | null>(null);
+    const socketRef = useRef<Socket | null>(null);
 
     useEffect(() => {
-        const socketInstance = io(resolveSocketUrl(), SOCKET_IO_CLIENT_OPTIONS);
+        const token = authStorage.getToken();
+        if (!token) return; // 未登录不建立连接，避免服务端拒绝
+        const socketInstance = io(resolveSocketUrl(), {
+            ...SOCKET_IO_CLIENT_OPTIONS,
+            query: { token },
+        });
+        socketRef.current = socketInstance;
 
-        // 2. 状态监听雷达
         socketInstance.on('connect', () => {
             console.log('🟢 [WebSocket] 成功接入孪生事件总线! ID:', socketInstance.id);
         });
@@ -21,13 +27,17 @@ export const useSocket = () => {
             console.error('❌ [WebSocket] 连接失败:', err.message);
         });
 
-        setSocket(socketInstance);
+        const handleForceLogout = () => {
+            console.log("[WebSocket] 收到强制登出信号，断开连接");
+            socketInstance.disconnect();
+        };
+        window.addEventListener("AUTH_FORCE_LOGOUT", handleForceLogout);
 
-        // 3. 卸载销毁：防止 React 严格模式导致的多重连接内存泄漏
         return () => {
+            window.removeEventListener("AUTH_FORCE_LOGOUT", handleForceLogout);
             socketInstance.disconnect();
         };
     }, []);
 
-    return socket;
+    return socketRef.current;
 };

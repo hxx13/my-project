@@ -233,7 +233,7 @@ public class TelemetrySnapshotService {
      */
     public void refreshFromWinCc() {
         if (!properties.isEnabled()) {
-            log.debug("[WinCC遥测] refreshFromWinCc 跳过：未启用 app.wincc.enabled");
+            log.info("[WinCC遥测] refreshFromWinCc 跳过：未启用 app.wincc.enabled");
             return;
         }
         synchronized (winCcRefreshLock) {
@@ -244,17 +244,13 @@ public class TelemetrySnapshotService {
             LocalDateTime runAt = LocalDateTime.now();
             jobScheduleConfigMapper.markRunning(JobExecutionRegistry.JOB_TELEMETRY_WINCC_UI, runAt, SCHED_TRACE);
             if (names.isEmpty()) {
-                if (log.isDebugEnabled()) {
-                    log.debug("[WinCC测量] 无待拉取测量变量，跳过");
-                }
+                log.warn("[WinCC测量] 无待拉取测量变量，跳过（请检查库表 telemetry_watchlist_tag：启用 + 分区 include_in_wincc_poll + 指标类型为测量）");
                 jobScheduleConfigMapper.markSuccess(JobExecutionRegistry.JOB_TELEMETRY_WINCC_UI, LocalDateTime.now(), SCHED_TRACE);
                 return;
             }
             int chunk = Math.max(1, properties.getValuesChunkSize());
             int batches = (names.size() + chunk - 1) / chunk;
-            if (log.isDebugEnabled()) {
-                log.debug("[WinCC测量] 开始拉取 {} 点，每批 {}，共 {} 批", names.size(), chunk, batches);
-            }
+            log.info("[WinCC测量] 开始拉取 {} 点，每批 {}，共 {} 批", names.size(), chunk, batches);
             try {
                 List<Map<String, Object>> raw = readWinCcInOrderedChunks(names, "测量");
                 List<TelemetryTagItemDto> readings = mapRows(raw);
@@ -310,9 +306,7 @@ public class TelemetrySnapshotService {
                 lastSuccessAt.set(Instant.now());
                 lastError.set(null);
                 lastReachable.set(true);
-                if (log.isDebugEnabled()) {
-                    log.debug("[WinCC测量] 拉取完毕，解析 {} 行", mapped.size());
-                }
+                log.info("[WinCC测量] 拉取完毕，解析 {} 行", mapped.size());
                 // 与 GET /animal-room（pollIntervalMs 周期拉）同源：通知 Web 重新读内存快照组装页
                 snapshotBroadcastService.broadcastFullSnapshotRefreshed();
                 jobScheduleConfigMapper.markSuccess(JobExecutionRegistry.JOB_TELEMETRY_WINCC_UI, LocalDateTime.now(), SCHED_TRACE);
@@ -450,8 +444,11 @@ public class TelemetrySnapshotService {
     @EventListener(ApplicationReadyEvent.class)
     public void warmUpAfterReady() {
         if (properties.isEnabled()) {
-            if (log.isDebugEnabled()) {
-                log.debug("[WinCC遥测] 应用就绪，异步执行首次 WinCC 拉取");
+            boolean pwdOk = StringUtils.hasText(properties.getPassword());
+            log.info("[WinCC遥测] 应用就绪，baseUrl={} user={} passwordConfigured={}，异步执行首次 WinCC 拉取",
+                    properties.getBaseUrl(), properties.getUsername(), pwdOk);
+            if (!pwdOk) {
+                log.warn("[WinCC遥测] app.wincc.password 为空，拉取将认证失败；请设置 WINCC_PASSWORD 或 application-local.properties");
             }
             CompletableFuture.runAsync(this::refreshFromWinCc);
         } else {

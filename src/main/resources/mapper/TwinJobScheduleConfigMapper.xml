@@ -2,9 +2,9 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.example.demo.modules.twin.mapper.TwinJobScheduleConfigMapper">
+<mapper namespace="com.example.demo.modules.twin.common.mapper.TwinJobScheduleConfigMapper">
 
-    <resultMap id="BaseMap" type="com.example.demo.modules.twin.entity.TwinJobScheduleConfig">
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.common.entity.TwinJobScheduleConfig">
         <id property="jobKey" column="job_key"/>
         <result property="jobName" column="job_name"/>
         <result property="enabled" column="enabled"/>
@@ -31,7 +31,7 @@
         SELECT * FROM twin_job_schedule_config WHERE job_key = #{jobKey}
     </select>
 
-    <insert id="upsertBase" parameterType="com.example.demo.modules.twin.entity.TwinJobScheduleConfig">
+    <insert id="upsertBase" parameterType="com.example.demo.modules.twin.common.entity.TwinJobScheduleConfig">
         INSERT INTO twin_job_schedule_config
         (job_key, job_name, enabled, schedule_type, schedule_time, schedule_start_time, schedule_end_time, week_days, poll_interval_seconds, revoke_auto_signout_enabled, updated_by)
         VALUES
@@ -41,7 +41,7 @@
             updated_by = VALUES(updated_by)
     </insert>
 
-    <update id="updateSchedule" parameterType="com.example.demo.modules.twin.entity.TwinJobScheduleConfig">
+    <update id="updateSchedule" parameterType="com.example.demo.modules.twin.common.entity.TwinJobScheduleConfig">
         UPDATE twin_job_schedule_config
         SET enabled = #{enabled},
             schedule_type = #{scheduleType},

@@ -66,7 +66,7 @@ public final class ScanPopupEntryWindowEvaluator {
         return null;
     }
 
-    static boolean withinBand(LocalTime now, LocalTime start, LocalTime end) {
+    public static boolean withinBand(LocalTime now, LocalTime start, LocalTime end) {
         if (!start.isAfter(end)) {
             return !now.isBefore(start) && !now.isAfter(end);
         }

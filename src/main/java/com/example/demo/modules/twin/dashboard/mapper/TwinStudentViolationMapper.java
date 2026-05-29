@@ -1,10 +1,12 @@
 package com.example.demo.modules.twin.dashboard.mapper;
 
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
+import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
+@Mapper
 public interface TwinStudentViolationMapper {
 
     int expireActivePastDue();

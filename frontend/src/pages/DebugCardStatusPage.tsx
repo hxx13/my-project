@@ -123,7 +123,7 @@ function RoomStatusCard({ config, activeStatus, activeTab }: { config: any, acti
     // 🚨 问题 2 修复：绕过旧的 twinApi，直接 Axios 强行打入我们新写的 SQLite 更新接口！
     const saveCapacityMutation = useMutation({
         mutationFn: async () => {
-            const res = await authHttp.put(`/api/v1/twin/config/rooms/${config.id}/capacity?capacity=${localCapacity}`);
+            const res = await authHttp.put(`/v1/twin/config/rooms/${config.id}/capacity?capacity=${localCapacity}`);
             return res.data;
         },
         onSuccess: () => {
@@ -336,7 +336,7 @@ export default function DebugCardStatusPage() {
     const { data: twinRoomInventory = [], isLoading: isStatusLoading, refetch } = useQuery<RoomInventory[]>({
         queryKey: ['twinRoomInventory'],
         queryFn: async () => {
-            const res = await authHttp.get('/api/v1/twin/cards/status');
+            const res = await authHttp.get('/v1/twin/cards/status');
             return res.data;
         },
         // 🚨 已删除 refetchInterval: 5000
@@ -399,7 +399,7 @@ export default function DebugCardStatusPage() {
         if (isSyncing) return;
         setIsSyncing(true);
         try {
-            const response = await authHttp.post('/api/v1/twin/cards/manual-sync');
+            const response = await authHttp.post('/v1/twin/cards/manual-sync');
             if (response.data.success) await refetch();
         } finally {
             setTimeout(() => setIsSyncing(false), 800);

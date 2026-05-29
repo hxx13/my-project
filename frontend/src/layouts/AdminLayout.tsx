@@ -77,6 +77,7 @@ import {
   ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY,
   readAdminSidebarOpenGroupsSession,
 } from "@/features/admin/adminTelemetryNav";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -773,7 +774,7 @@ export default function AdminLayout() {
   };
 
   return (
-    <div className="flex min-h-screen min-w-0 items-start bg-neutral-100 text-neutral-800">
+    <div className="flex min-h-screen min-w-0 items-start bg-[var(--twin-canvas-soft)] text-[var(--twin-ink)]">
       <AdminCommandPalette
         open={commandOpen}
         onOpenChange={setCommandOpen}
@@ -810,12 +811,12 @@ export default function AdminLayout() {
       </Dialog>
 
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-neutral-200/90 bg-white/95 px-4 py-2 shadow-[0_1px_0_0_rgba(0,0,0,0.03)] backdrop-blur-md sm:px-6 md:h-16 md:flex-nowrap md:py-0">
+        <header className="sticky top-0 z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)]/95 px-4 py-2 shadow-twin-level-2 backdrop-blur-md sm:px-6 md:h-16 md:flex-nowrap md:py-0">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:flex-1 md:flex-nowrap">
             <button
               type="button"
               onClick={() => setMobileNavOpen(true)}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 md:hidden"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] md:hidden"
               aria-label="打开导航菜单"
               aria-expanded={mobileNavOpen}
               aria-controls="admin-mobile-nav-sheet"
@@ -825,7 +826,7 @@ export default function AdminLayout() {
             <button
               type="button"
               onClick={() => setCollapsedPersist(!sidebarCollapsed)}
-              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50 md:inline-flex"
+              className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] md:inline-flex"
               title={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
               aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
             >
@@ -839,7 +840,7 @@ export default function AdminLayout() {
                 onClick={() => {
                   navigate(resolveAdminShellBackTo(pathname, location.state));
                 }}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-800 hover:bg-neutral-50"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)]"
               >
                 <ArrowLeft className="h-4 w-4" aria-hidden />
               </button>
@@ -847,20 +848,20 @@ export default function AdminLayout() {
             <button
               type="button"
               onClick={() => setCommandOpen(true)}
-              className="flex min-w-0 max-w-full flex-1 items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-left text-sm text-neutral-600 hover:bg-neutral-100/90 sm:max-w-md"
+              className="flex min-w-0 max-w-full flex-1 items-center gap-2 rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-left text-sm text-[var(--twin-mute)] hover:bg-[var(--twin-canvas-soft-2)] sm:max-w-md"
             >
               <Search className="h-4 w-4 shrink-0 opacity-60" />
               <span className="min-w-0 flex-1 truncate">搜索后台页面…</span>
-              <kbd className="hidden shrink-0 rounded border border-neutral-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-neutral-500 sm:inline">Ctrl K</kbd>
+              <kbd className="hidden shrink-0 rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--twin-mute)] sm:inline">Ctrl K</kbd>
             </button>
             <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:max-w-none">
-              <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-neutral-900 sm:max-w-[12rem] md:max-w-none">
+              <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-[var(--twin-ink)] sm:max-w-[12rem] md:max-w-none">
                 {adminHeaderTitle}
               </h1>
               <button
                 type="button"
                 onClick={() => setPageHelpOpen(true)}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
                 title="本页帮助与留言"
                 aria-label="本页帮助与留言"
               >
@@ -874,29 +875,29 @@ export default function AdminLayout() {
                 <button
                   type="button"
                   data-admin-chrome-ctx-surface
-                  className="flex max-w-full min-w-0 items-center gap-2 rounded-lg py-1.5 pl-0.5 pr-1 text-left hover:bg-neutral-100/90 sm:pr-2"
+                  className="flex max-w-full min-w-0 items-center gap-2 rounded-lg py-1.5 pl-0.5 pr-1 text-left hover:bg-[var(--twin-canvas-soft)] sm:pr-2"
                 >
                   <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-sm font-semibold text-white"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--twin-primary)] text-sm font-semibold text-[var(--twin-on-primary)]"
                     aria-hidden
                   >
                     {avatarLetter}
                   </span>
                   <span className="hidden min-w-0 flex-col text-left sm:flex">
-                    <span className="truncate text-sm font-medium text-neutral-900">{headerPrimaryLabel}</span>
+                    <span className="truncate text-sm font-medium text-[var(--twin-ink)]">{headerPrimaryLabel}</span>
                     {headerUsername ? (
-                      <span className="truncate text-[11px] text-neutral-500">@{headerUsername}</span>
+                      <span className="truncate text-[11px] text-[var(--twin-mute)]">@{headerUsername}</span>
                     ) : null}
                   </span>
-                  <ChevronDown className="hidden h-4 w-4 shrink-0 text-neutral-400 sm:block" aria-hidden />
+                  <ChevronDown className="hidden h-4 w-4 shrink-0 text-[var(--twin-mute)] sm:block" aria-hidden />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56" data-admin-chrome-ctx-surface>
                 <div className="px-2 py-1.5 sm:hidden">
-                  <div className="truncate text-sm font-medium text-neutral-900">{headerPrimaryLabel}</div>
-                  {headerUsername ? <div className="truncate text-[11px] text-neutral-500">@{headerUsername}</div> : null}
+                  <div className="truncate text-sm font-medium text-[var(--twin-ink)]">{headerPrimaryLabel}</div>
+                  {headerUsername ? <div className="truncate text-[11px] text-[var(--twin-mute)]">@{headerUsername}</div> : null}
                 </div>
-                <div className="hidden px-2 py-1 text-[10px] text-neutral-500 sm:block">当前角色 · {role}</div>
+                <div className="px-2 py-1 text-[10px] text-[var(--twin-mute)] sm:block">当前角色 · {role}</div>
                 <DropdownMenuSeparator />
                 {hasMinRole(role, "STAFF") ? (
                   <DropdownMenuItem
@@ -925,7 +926,7 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(0,112,243,0.07),transparent_55%),#fafafa]">
+        <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[var(--twin-canvas-soft)]">
           <BackfillAutoGlobalBanner />
           <div className="mx-auto w-full max-w-[1600px] flex-1 p-6 sm:p-8">
             <Outlet />
@@ -962,16 +963,16 @@ export default function AdminLayout() {
             <DialogDescription>确定要退出当前账号吗？</DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
-            <button
-              type="button"
-              className="rounded-lg border border-neutral-200 px-4 py-2 text-sm text-neutral-800 hover:bg-neutral-50"
+            <Button
+              variant="outline"
+              size="default"
               onClick={() => setLogoutDialogOpen(false)}
             >
               取消
-            </button>
-            <button
-              type="button"
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-500"
+            </Button>
+            <Button
+              variant="destructive"
+              size="default"
               onClick={() => {
                 authStorage.clear();
                 toast.success("已退出登录");
@@ -980,7 +981,7 @@ export default function AdminLayout() {
               }}
             >
               退出登录
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

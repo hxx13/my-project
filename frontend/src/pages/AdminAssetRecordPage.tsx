@@ -1,26 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Archive, Download, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import {
   clearAssetTable,
-  createAssetRecord,
   createAssetColumn,
-  deleteAssetRecord,
   exportAssetExcel,
-  fetchAssetRecycle,
   fetchAssetFacets,
-  fetchAssetRecords,
-  importAssetExcel,
   patchAssetRecord,
-  purgeRecycleAsset,
-  restoreRecycleAsset,
   searchAssets,
   type AssetRecycleRow,
   type AssetColumnDef,
   type AssetFacets,
-  type AssetPagedData,
   type AssetRow,
 } from "@/api/domains/asset.api";
+import {
+  useAssetList,
+  useCreateAsset,
+  useDeleteAsset,
+  useImportAssetExcel,
+  useAssetRecycle,
+  useRestoreAssetRecycle,
+  usePurgeAssetRecycle,
+} from "@/api/hooks/useAsset";
+import { queryKeys } from "@/api/hooks/queryKeys";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
@@ -85,8 +88,6 @@ function transferStatusLabel(s: string | undefined) {
 
 export default function AdminAssetRecordPage() {
   type DeleteCandidate = Pick<AssetRow, "id" | "assetCode" | "assetName" | "location" | "status" | "locked">;
-  const [data, setData] = useState<AssetPagedData | null>(null);
-  const [facets, setFacets] = useState<AssetFacets>({ assetNames: [], campuses: [], users: [], models: [] });
   const [page, setPage] = useState(1);
   const [size] = useState(200);
   const [keyword, setKeyword] = useState("");
@@ -97,7 +98,6 @@ export default function AdminAssetRecordPage() {
   const [appliedAssetName, setAppliedAssetName] = useState("");
   const [appliedUser, setAppliedUser] = useState("");
   const [appliedModel, setAppliedModel] = useState("");
-  const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState("updateTime");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [modalOpen, setModalOpen] = useState(false);
@@ -113,9 +113,7 @@ export default function AdminAssetRecordPage() {
   const [selectedDeleteId, setSelectedDeleteId] = useState("");
   const [recycleOpen, setRecycleOpen] = useState(false);
   const [recycleKeyword, setRecycleKeyword] = useState("");
-  const [recycleRows, setRecycleRows] = useState<AssetRecycleRow[]>([]);
   const [recyclePage, setRecyclePage] = useState(1);
-  const [recycleTotal, setRecycleTotal] = useState(0);
   const [widthProfile, setWidthProfile] = useState<{
     assetCode: string;
     assetName: string;
@@ -125,7 +123,55 @@ export default function AdminAssetRecordPage() {
   const [tableEditMode, setTableEditMode] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  const columns = data?.columns ?? [];
+  const normalizeAll = (value: string) => (value === "__ALL__" ? "" : value);
+
+  const queryParams = useMemo(() => ({
+    page,
+    size,
+    keyword: appliedKeyword || undefined,
+    assetName: appliedAssetName || undefined,
+    user: appliedUser || undefined,
+    model: appliedModel || undefined,
+    sortBy,
+    sortDirection,
+  }), [page, size, appliedKeyword, appliedAssetName, appliedUser, appliedModel, sortBy, sortDirection]);
+
+  const { data: assetData, isLoading } = useAssetList(queryParams);
+  const rows = assetData?.rows ?? [];
+  const total = assetData?.total ?? 0;
+  const columns = assetData?.columns ?? [];
+
+  const { data: facetsData } = useQuery({
+    queryKey: [...queryKeys.asset.all, "facets", keyword.trim(), assetName, user, model] as const,
+    queryFn: () => fetchAssetFacets({
+      keyword: keyword.trim() || undefined,
+      assetName: normalizeAll(assetName) || undefined,
+      user: normalizeAll(user) || undefined,
+      model: normalizeAll(model) || undefined,
+    }),
+    placeholderData: (prev) => prev,
+  });
+  const facets: AssetFacets = facetsData ?? { assetNames: [], campuses: [], users: [], models: [] };
+
+  const { data: recycleData } = useAssetRecycle({ page: recyclePage, size: 20, keyword: recycleKeyword.trim() || undefined });
+  const recycleRows: AssetRecycleRow[] = recycleData?.rows ?? [];
+  const recycleTotal = recycleData?.total ?? 0;
+
+  const createAssetMut = useCreateAsset();
+  const deleteAssetMut = useDeleteAsset();
+  const importAssetMut = useImportAssetExcel();
+  const restoreRecycleMut = useRestoreAssetRecycle();
+  const purgeRecycleMut = usePurgeAssetRecycle();
+
+  useEffect(() => {
+    const names = facets.assetNames || [];
+    const users = facets.users || [];
+    const models = facets.models || [];
+    if (assetName !== "__ALL__" && !names.includes(assetName)) setAssetName("__ALL__");
+    if (user !== "__ALL__" && !users.includes(user)) setUser("__ALL__");
+    if (model !== "__ALL__" && !models.includes(model)) setModel("__ALL__");
+  }, [facets]);
+
   const editableColumns = useMemo(
     () =>
       columns.filter((c) => {
@@ -136,59 +182,8 @@ export default function AdminAssetRecordPage() {
       }),
     [columns]
   );
-  const rows = data?.rows ?? [];
-  const total = data?.total ?? 0;
+
   const pages = Math.max(1, Math.ceil(total / size));
-  const normalizeAll = (value: string) => (value === "__ALL__" ? "" : value);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await fetchAssetRecords({
-        page,
-        size,
-        keyword: appliedKeyword || undefined,
-        assetName: appliedAssetName || undefined,
-        user: appliedUser || undefined,
-        model: appliedModel || undefined,
-        sortBy,
-        sortDirection,
-      });
-      setData(res);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, [page, size, appliedKeyword, appliedAssetName, appliedUser, appliedModel, sortBy, sortDirection]);
-
-  const refreshFacets = async (nextKeyword: string, nextAssetName: string, nextUser: string, nextModel: string) => {
-    try {
-      const data = await fetchAssetFacets({
-        keyword: nextKeyword || undefined,
-        assetName: normalizeAll(nextAssetName) || undefined,
-        user: normalizeAll(nextUser) || undefined,
-        model: normalizeAll(nextModel) || undefined,
-      });
-      setFacets(data);
-      const names = data.assetNames || [];
-      const users = data.users || [];
-      const models = data.models || [];
-      if (nextAssetName !== "__ALL__" && !names.includes(nextAssetName)) setAssetName("__ALL__");
-      if (nextUser !== "__ALL__" && !users.includes(nextUser)) setUser("__ALL__");
-      if (nextModel !== "__ALL__" && !models.includes(nextModel)) setModel("__ALL__");
-    } catch (e) {
-      // ignore facets failure, main list still works
-    }
-  };
-
-  useEffect(() => {
-    void refreshFacets(keyword.trim(), assetName, user, model);
-  }, [keyword, assetName, user, model]);
 
   const detailAfterPhotoUrls = useMemo(
     () => (detailAsset ? parseTransferPhotoUrls(detailAsset.latestTransferPhotoUrlsAfter) : []),
@@ -265,11 +260,9 @@ export default function AdminAssetRecordPage() {
   const onImport = async (file?: File) => {
     if (!file) return;
     try {
-      const stat = await importAssetExcel(file);
-      toast.success(`导入成功：新增 ${stat.created}，更新 ${stat.updated}，跳过 ${stat.skipped}`);
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "导入失败");
+      await importAssetMut.mutateAsync(file);
+    } catch {
+      // error handled by mutation
     }
   };
 
@@ -293,7 +286,6 @@ export default function AdminAssetRecordPage() {
     try {
       await createAssetColumn(label.trim());
       toast.success("新增表头成功");
-      await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "新增失败");
     }
@@ -320,13 +312,10 @@ export default function AdminAssetRecordPage() {
       dynamicValues[c.columnKey] = (addForm[c.columnKey] || "").trim();
     }
     try {
-      await createAssetRecord({ assetCode, assetName: newAssetName, dynamicValues });
-      toast.success("新增资产成功");
+      await createAssetMut.mutateAsync({ assetCode, assetName: newAssetName, dynamicValues });
       setAddOpen(false);
-      await load();
-      void refreshFacets(keyword.trim(), assetName, user, model);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "新增资产失败");
+    } catch {
+      // error handled by mutation
     }
   };
 
@@ -339,13 +328,6 @@ export default function AdminAssetRecordPage() {
         `已清空：资产${result.assetRows}条，动态列${result.dynamicColumns}条，申请${result.transferRequests}条`
       );
       setPage(1);
-      await load();
-      try {
-        const facetData = await fetchAssetFacets();
-        setFacets(facetData);
-      } catch {
-        // ignore
-      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "清空失败");
     }
@@ -374,43 +356,26 @@ export default function AdminAssetRecordPage() {
     const ok = window.confirm(`确认删除资产【${row?.assetCode || ""} ${row?.assetName || ""}】？删除后将进入回收站。`);
     if (!ok) return;
     try {
-      await deleteAssetRecord(selectedDeleteId);
-      toast.success("资产已移入回收站");
+      await deleteAssetMut.mutateAsync(selectedDeleteId);
       setDeleteOpen(false);
       setDeleteKeyword("");
       setDeleteCandidates([]);
       setSelectedDeleteId("");
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "删除资产失败");
+    } catch {
+      // error handled by mutation
     }
   };
 
-  const loadRecycle = async (targetPage = recyclePage, kw = recycleKeyword) => {
-    try {
-      const res = await fetchAssetRecycle({ page: targetPage, size: 20, keyword: kw.trim() || undefined });
-      setRecycleRows(res.rows || []);
-      setRecycleTotal(res.total || 0);
-      setRecyclePage(res.page || targetPage);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "加载回收站失败");
-    }
-  };
-
-  const openRecycleModal = async () => {
+  const openRecycleModal = () => {
     setRecycleOpen(true);
     setRecyclePage(1);
-    await loadRecycle(1, recycleKeyword);
   };
 
   const doRestore = async (id: string) => {
     try {
-      await restoreRecycleAsset(id);
-      toast.success("恢复成功");
-      await loadRecycle(recyclePage, recycleKeyword);
-      await load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "恢复失败");
+      await restoreRecycleMut.mutateAsync(id);
+    } catch {
+      // error handled by mutation
     }
   };
 
@@ -418,11 +383,9 @@ export default function AdminAssetRecordPage() {
     const ok = window.confirm("确认彻底删除该资产？彻底删除后不可恢复。");
     if (!ok) return;
     try {
-      await purgeRecycleAsset(id);
-      toast.success("已彻底删除");
-      await loadRecycle(recyclePage, recycleKeyword);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "彻底删除失败");
+      await purgeRecycleMut.mutateAsync(id);
+    } catch {
+      // error handled by mutation
     }
   };
 
@@ -437,14 +400,6 @@ export default function AdminAssetRecordPage() {
     try {
       await patchAssetRecord(row.id, { dynamicValues });
       toast.success("保存成功");
-      // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc（接口仅回 id，用请求体推导行数据）
-      setData((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          rows: prev.rows.map((r) => (r.id === row.id ? { ...r, dynamicValues: { ...dynamicValues } } : r)),
-        };
-      });
       setEditing((prev) => {
         const next = { ...prev };
         for (const c of editableColumns) {
@@ -461,7 +416,7 @@ export default function AdminAssetRecordPage() {
     <AdminPageShell
       title={
         <span className="inline-flex items-center gap-2">
-          <Archive className="h-6 w-6 shrink-0 text-blue-600" aria-hidden />
+          <Archive className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
           资产记录
         </span>
       }
@@ -505,12 +460,12 @@ export default function AdminAssetRecordPage() {
             {tableEditMode ? "完成编辑" : "编辑表格"}
           </AdminButton>
           <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)] disabled:pointer-events-none disabled:opacity-50">
+            <DropdownMenuTrigger className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 text-sm font-medium text-[var(--twin-ink)] outline-none transition-colors hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)] disabled:pointer-events-none disabled:opacity-50">
               <MoreHorizontal className="h-4 w-4 shrink-0" />
               更多操作
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[12rem]">
-              <DropdownMenuLabel className="text-xs font-normal text-slate-500">数据与维护</DropdownMenuLabel>
+              <DropdownMenuLabel className="text-xs font-normal text-[var(--twin-mute)]">数据与维护</DropdownMenuLabel>
               <DropdownMenuItem
                 onSelect={(e) => {
                   e.preventDefault();
@@ -545,7 +500,7 @@ export default function AdminAssetRecordPage() {
                 <Trash2 className="mr-2 inline h-4 w-4" />
                 删除资产
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void openRecycleModal()}>回收站</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openRecycleModal()}>回收站</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -604,8 +559,8 @@ export default function AdminAssetRecordPage() {
         </AdminFormCard>
 
         <AdminTableShell
-          loading={loading}
-          empty={!loading && rows.length === 0}
+          loading={isLoading}
+          empty={!isLoading && rows.length === 0}
           emptyMessage="暂无资产数据，请先导入 CSV/Excel。"
           scrollable
           className="w-full min-w-0 overscroll-x-contain"
@@ -625,7 +580,7 @@ export default function AdminAssetRecordPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-50">
+                <tr key={r.id} className="hover:bg-[var(--twin-canvas-soft)]">
                   <td className="border-b px-2 py-1.5 font-mono text-xs">{r.assetCode}</td>
                   <td className="border-b px-2 py-1.5">{r.assetName}</td>
                   {editableColumns.map((c) => {
@@ -637,11 +592,11 @@ export default function AdminAssetRecordPage() {
                           <input
                             value={display}
                             onChange={(e) => setEditing((prev) => ({ ...prev, [key]: e.target.value }))}
-                            className="w-full min-w-0 rounded border border-slate-300 px-2 py-1 text-xs"
+                            className="w-full min-w-0 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
                           />
                         ) : (
-                          <span className="block min-w-0 max-w-[48ch] truncate text-slate-800" title={String(display)}>
-                            {display === "" ? <span className="text-slate-400">—</span> : display}
+                          <span className="block min-w-0 max-w-[48ch] truncate text-[var(--twin-ink)]" title={String(display)}>
+                            {display === "" ? <span className="text-[var(--twin-mute)]">—</span> : display}
                           </span>
                         )}
                       </td>
@@ -671,7 +626,7 @@ export default function AdminAssetRecordPage() {
           </table>
         </AdminTableShell>
 
-        <div className="flex items-center justify-end gap-3 text-sm text-slate-600">
+        <div className="flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
           <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
             上一页
           </AdminButton>
@@ -688,53 +643,53 @@ export default function AdminAssetRecordPage() {
           onClose={() => setModalOpen(false)}
           initialAsset={selectedAsset}
           onSuccess={async () => {
-            await load();
+            // query invalidation is handled by useCreateAssetTransfer hook internally
           }}
         />
         {addOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-h-[85vh] max-w-3xl overflow-auto rounded-xl bg-white p-5 shadow-xl">
+            <div className="w-full max-h-[85vh] max-w-3xl overflow-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-slate-900">新增资产</h3>
-                <button className="rounded border border-slate-200 px-3 py-1 text-sm text-slate-600" onClick={() => setAddOpen(false)}>
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">新增资产</h3>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setAddOpen(false)}>
                   关闭
                 </button>
               </div>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <label className="flex flex-col gap-1 text-xs text-slate-600">
+                <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
                   资产编号
                   <input
                     value={addForm.assetCode || ""}
                     onChange={(e) => setAddForm((prev) => ({ ...prev, assetCode: e.target.value }))}
-                    className="rounded border border-slate-300 px-3 py-2 text-sm"
+                    className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
                     placeholder="请输入资产编号"
                   />
                 </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-600">
+                <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
                   资产名称
                   <input
                     value={addForm.assetName || ""}
                     onChange={(e) => setAddForm((prev) => ({ ...prev, assetName: e.target.value }))}
-                    className="rounded border border-slate-300 px-3 py-2 text-sm"
+                    className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
                     placeholder="请输入资产名称"
                   />
                 </label>
                 {editableColumns.map((c) => (
-                  <label key={`create-${c.columnKey}`} className="flex flex-col gap-1 text-xs text-slate-600">
+                  <label key={`create-${c.columnKey}`} className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
                     {normalizeColumnLabel(c.columnLabel)}
                     <input
                       value={addForm[c.columnKey] || ""}
                       onChange={(e) => setAddForm((prev) => ({ ...prev, [c.columnKey]: e.target.value }))}
-                      className="rounded border border-slate-300 px-3 py-2 text-sm"
+                      className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
                     />
                   </label>
                 ))}
               </div>
               <div className="mt-4 flex justify-end gap-2">
-                <button className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700" onClick={() => setAddOpen(false)}>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setAddOpen(false)}>
                   取消
                 </button>
-                <button className="rounded bg-blue-600 px-3 py-2 text-sm text-white" onClick={() => void submitAddAsset()}>
+                <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" onClick={() => void submitAddAsset()}>
                   确认新增
                 </button>
               </div>
@@ -743,10 +698,10 @@ export default function AdminAssetRecordPage() {
         )}
         {deleteOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
+            <div className="w-full max-w-2xl rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-slate-900">删除资产（移入回收站）</h3>
-                <button className="rounded border border-slate-200 px-3 py-1 text-sm text-slate-600" onClick={() => setDeleteOpen(false)}>
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">删除资产（移入回收站）</h3>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setDeleteOpen(false)}>
                   关闭
                 </button>
               </div>
@@ -755,31 +710,31 @@ export default function AdminAssetRecordPage() {
                   value={deleteKeyword}
                   onChange={(e) => setDeleteKeyword(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && void searchDeleteAssets()}
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                  className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
                   placeholder="输入资产编码/名称检索"
                 />
-                <button onClick={() => void searchDeleteAssets()} className="rounded bg-blue-600 px-3 py-2 text-sm text-white">检索</button>
+                <button onClick={() => void searchDeleteAssets()} className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">检索</button>
               </div>
-              <div className="mt-3 max-h-64 overflow-auto rounded border border-slate-200">
+              <div className="mt-3 max-h-64 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
                 {deleteCandidates.map((row) => (
-                  <label key={row.id} className="flex cursor-pointer items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0">
+                  <label key={row.id} className="flex cursor-pointer items-center gap-2 border-b border-[var(--twin-hairline)] px-3 py-2 text-sm last:border-b-0">
                     <input
                       type="radio"
                       checked={selectedDeleteId === row.id}
                       onChange={() => setSelectedDeleteId(row.id)}
                     />
-                    <span className="font-mono text-xs text-slate-600">{row.assetCode}</span>
-                    <span>{row.assetName}</span>
-                    <span className="text-slate-500">{row.location || "-"}</span>
+                    <span className="font-mono text-xs text-[var(--twin-body)]">{row.assetCode}</span>
+                    <span className="text-[var(--twin-ink)]">{row.assetName}</span>
+                    <span className="text-[var(--twin-mute)]">{row.location || "-"}</span>
                   </label>
                 ))}
-                {!deleteCandidates.length && <div className="px-3 py-6 text-center text-sm text-slate-500">暂无结果</div>}
+                {!deleteCandidates.length && <div className="px-3 py-6 text-center text-sm text-[var(--twin-mute)]">暂无结果</div>}
               </div>
               <div className="mt-4 flex justify-end gap-2">
-                <button className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700" onClick={() => setDeleteOpen(false)}>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setDeleteOpen(false)}>
                   取消
                 </button>
-                <button className="rounded bg-rose-600 px-3 py-2 text-sm text-white" onClick={() => void confirmDeleteAsset()}>
+                <button className="rounded-twin-sm bg-red-600 px-3 py-2 text-sm font-medium text-white" onClick={() => void confirmDeleteAsset()}>
                   确认删除
                 </button>
               </div>
@@ -788,10 +743,10 @@ export default function AdminAssetRecordPage() {
         )}
         {recycleOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-h-[85vh] max-w-3xl overflow-auto rounded-xl bg-white p-5 shadow-xl">
+            <div className="w-full max-h-[85vh] max-w-3xl overflow-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-slate-900">回收站</h3>
-                <button className="rounded border border-slate-200 px-3 py-1 text-sm text-slate-600" onClick={() => setRecycleOpen(false)}>
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">回收站</h3>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setRecycleOpen(false)}>
                   关闭
                 </button>
               </div>
@@ -799,15 +754,15 @@ export default function AdminAssetRecordPage() {
                 <input
                   value={recycleKeyword}
                   onChange={(e) => setRecycleKeyword(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && void loadRecycle(1, recycleKeyword)}
-                  className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                  onKeyDown={(e) => e.key === "Enter" && setRecyclePage(1)}
+                  className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
                   placeholder="检索回收站资产"
                 />
-                <button onClick={() => void loadRecycle(1, recycleKeyword)} className="rounded bg-blue-600 px-3 py-2 text-sm text-white">查询</button>
+                <button onClick={() => setRecyclePage(1)} className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">查询</button>
               </div>
-              <div className="overflow-hidden rounded border border-slate-200">
+              <div className="overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)]">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50">
+                  <thead className="bg-[var(--twin-canvas-soft)]">
                     <tr>
                       <th className="px-3 py-2 text-left">资产编码</th>
                       <th className="px-3 py-2 text-left">资产名称</th>
@@ -817,16 +772,16 @@ export default function AdminAssetRecordPage() {
                   </thead>
                   <tbody>
                     {recycleRows.map((row) => (
-                      <tr key={row.id} className="border-t">
+                      <tr key={row.id} className="border-t border-[var(--twin-hairline)]">
                         <td className="px-3 py-2 font-mono text-xs">{row.assetCode}</td>
                         <td className="px-3 py-2">{row.assetName}</td>
-                        <td className="px-3 py-2">{row.deletedTime ? String(row.deletedTime).replace("T", " ").slice(0, 19) : "-"}</td>
+                        <td className="px-3 py-2 text-[var(--twin-body)]">{row.deletedTime ? String(row.deletedTime).replace("T", " ").slice(0, 19) : "-"}</td>
                         <td className="px-3 py-2">
                           <div className="flex gap-2">
-                            <button className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs text-emerald-700" onClick={() => void doRestore(row.id)}>
+                            <button className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700" onClick={() => void doRestore(row.id)}>
                               恢复
                             </button>
-                            <button className="rounded border border-rose-300 bg-rose-50 px-2 py-1 text-xs text-rose-700" onClick={() => void doPurge(row.id)}>
+                            <button className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700" onClick={() => void doPurge(row.id)}>
                               彻底删除
                             </button>
                           </div>
@@ -835,25 +790,25 @@ export default function AdminAssetRecordPage() {
                     ))}
                     {!recycleRows.length && (
                       <tr>
-                        <td className="px-3 py-8 text-center text-slate-500" colSpan={4}>回收站为空</td>
+                        <td className="px-3 py-8 text-center text-[var(--twin-mute)]" colSpan={4}>回收站为空</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
               </div>
-              <div className="mt-3 flex items-center justify-end gap-3 text-sm text-slate-600">
+              <div className="mt-3 flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
                 <button
                   disabled={recyclePage <= 1}
-                  onClick={() => void loadRecycle(Math.max(1, recyclePage - 1), recycleKeyword)}
-                  className="rounded border px-3 py-1 disabled:opacity-40"
+                  onClick={() => setRecyclePage((p) => Math.max(1, p - 1))}
+                  className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40"
                 >
                   上一页
                 </button>
                 <span>第 {recyclePage} 页，共 {recycleTotal} 条</span>
                 <button
                   disabled={recyclePage * 20 >= recycleTotal}
-                  onClick={() => void loadRecycle(recyclePage + 1, recycleKeyword)}
-                  className="rounded border px-3 py-1 disabled:opacity-40"
+                  onClick={() => setRecyclePage((p) => p + 1)}
+                  className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40"
                 >
                   下一页
                 </button>
@@ -863,12 +818,12 @@ export default function AdminAssetRecordPage() {
         )}
         {detailAsset && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+            <div className="w-full max-w-lg rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-slate-900">资产详情</h3>
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">资产详情</h3>
                 <button
                   type="button"
-                  className="rounded border border-slate-200 px-3 py-1 text-sm text-slate-600"
+                  className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]"
                   onClick={() => {
                     setDetailImagePreview(null);
                     setDetailAsset(null);
@@ -877,23 +832,23 @@ export default function AdminAssetRecordPage() {
                   关闭
                 </button>
               </div>
-              <div className="space-y-2 text-sm text-slate-700">
-                <div><span className="text-slate-500">资产编码：</span>{detailAsset.assetCode || "-"}</div>
-                <div><span className="text-slate-500">资产名称：</span>{detailAsset.assetName || "-"}</div>
-                <div><span className="text-slate-500">申请单号：</span>{detailAsset.latestTransferRequestId || "-"}</div>
-                <div><span className="text-slate-500">转移状态：</span>{transferStatusLabel(detailAsset.latestTransferStatus)}</div>
-                <div><span className="text-slate-500">转移时间：</span>{detailAsset.latestTransferTime ? String(detailAsset.latestTransferTime).replace("T", " ").slice(0, 19) : "-"}</div>
-                <div><span className="text-slate-500">转移备注：</span>{detailAsset.latestTransferRemark || "-"}</div>
-                <div><span className="text-slate-500">转移地点：</span>{detailAsset.latestTransferLocation || "-"}</div>
+              <div className="space-y-2 text-sm text-[var(--twin-body)]">
+                <div><span className="text-[var(--twin-mute)]">资产编码：</span>{detailAsset.assetCode || "-"}</div>
+                <div><span className="text-[var(--twin-mute)]">资产名称：</span>{detailAsset.assetName || "-"}</div>
+                <div><span className="text-[var(--twin-mute)]">申请单号：</span>{detailAsset.latestTransferRequestId || "-"}</div>
+                <div><span className="text-[var(--twin-mute)]">转移状态：</span>{transferStatusLabel(detailAsset.latestTransferStatus)}</div>
+                <div><span className="text-[var(--twin-mute)]">转移时间：</span>{detailAsset.latestTransferTime ? String(detailAsset.latestTransferTime).replace("T", " ").slice(0, 19) : "-"}</div>
+                <div><span className="text-[var(--twin-mute)]">转移备注：</span>{detailAsset.latestTransferRemark || "-"}</div>
+                <div><span className="text-[var(--twin-mute)]">转移地点：</span>{detailAsset.latestTransferLocation || "-"}</div>
                 {detailAfterPhotoUrls.length > 0 && (
                   <div className="pt-2">
-                    <div className="text-slate-500">转移后照片</div>
+                    <div className="text-[var(--twin-mute)]">转移后照片</div>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {detailAfterPhotoUrls.map((u) => (
                         <button
                           key={u}
                           type="button"
-                          className="h-20 w-20 overflow-hidden rounded border border-slate-200 bg-slate-50 p-0"
+                          className="h-20 w-20 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0"
                           onClick={() => setDetailImagePreview(u)}
                         >
                           <img src={u} alt="" className="h-full w-full object-cover" />
@@ -920,4 +875,3 @@ export default function AdminAssetRecordPage() {
     </AdminPageShell>
   );
 }
-

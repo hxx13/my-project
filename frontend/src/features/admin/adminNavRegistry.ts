@@ -36,6 +36,7 @@ import {
   ShoppingCart,
   SlidersHorizontal,
   Table2,
+  Terminal,
   Thermometer,
   Ticket,
   Users,
@@ -199,6 +200,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-slate-600 to-slate-500",
         fallbackMinRole: "SUPER_ADMIN",
         sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/settings", "SUPER_ADMIN"),
+      },
+      {
+        id: "logging-console",
+        path: "/admin/logging-console",
+        label: "日志控制台",
+        icon: Terminal,
+        homeTone: "from-emerald-700 to-teal-600",
+        fallbackMinRole: "SUPER_ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/logging-console", "SUPER_ADMIN"),
       },
       {
         id: "external-comm",
