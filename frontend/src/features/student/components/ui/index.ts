@@ -32,3 +32,10 @@ export { Table } from "./table";
 export type { Column, TableProps } from "./table";
 export { showToast } from "./toast";
 export { ThemePicker, THEMES } from "./theme-picker";
+
+export { RoomCard } from "./room-card";
+export type { RoomCardProps } from "./room-card";
+export { ViewToggle } from "./view-toggle";
+export type { ViewToggleProps } from "./view-toggle";
+export { BarChart } from "./bar-chart";
+export type { BarChartProps, BarChartDataItem } from "./bar-chart";
