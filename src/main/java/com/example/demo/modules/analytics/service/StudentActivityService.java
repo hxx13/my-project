@@ -44,6 +44,17 @@ public class StudentActivityService {
             String groupName, String startTime, String endTime,
             String sortBy, String order, int page, int size) {
 
+        if (groupName == null || groupName.isBlank()) {
+            Map<String, Object> empty = new HashMap<>();
+            empty.put("summary", summaryMap(0, 0, 0, 0, 0));
+            empty.put("members", List.of());
+            empty.put("total", 0);
+            return empty;
+        }
+
+        if (page < 1) page = 1;
+        if (size < 1) size = 20;
+
         // 1. 拉取该课题组所有 userId
         List<String> userIds = dashboardMapper.listUserIdsByProjectGroup(groupName.trim(), MAX_USER_IDS);
         if (userIds.isEmpty()) {
@@ -113,8 +124,7 @@ public class StudentActivityService {
         String userName = userId;
 
         for (Map<String, Object> log : userLogs) {
-            Object at = log.get("accessType");
-            int accessType = at instanceof Number ? ((Number) at).intValue() : Integer.parseInt(String.valueOf(at));
+            int accessType = parseAccessType(log);
             String ts = String.valueOf(log.getOrDefault("create_time", ""));
             LocalDateTime dt = parseTime(ts);
             if (dt == null) continue;
@@ -138,7 +148,7 @@ public class StudentActivityService {
             if (exitIdx < exits.size()) {
                 LocalDateTime exit = exits.get(exitIdx);
                 long diffMin = ChronoUnit.MINUTES.between(entry, exit);
-                if (diffMin >= 0 && diffMin <= 24 * 60) {
+                if (diffMin <= 24 * 60) {
                     pairCount++;
                     totalDurationMinutes += diffMin;
                     activeDates.add(entry.toLocalDate().toString());
@@ -148,7 +158,7 @@ public class StudentActivityService {
             }
         }
 
-        if (pairCount == 0 && activeDates.isEmpty()) return null;
+        if (pairCount == 0) return null;
 
         int activeDays = activeDates.size();
         double dailyAvgFreq = activeDays > 0 ? (double) pairCount / activeDays : 0;
@@ -170,6 +180,10 @@ public class StudentActivityService {
 
     /** 时段热力图 */
     public List<Map<String, Object>> heatmap(String groupName, String startTime, String endTime) {
+        if (groupName == null || groupName.isBlank()) {
+            return List.of();
+        }
+
         List<String> userIds = dashboardMapper.listUserIdsByProjectGroup(groupName.trim(), MAX_USER_IDS);
         if (userIds.isEmpty()) return List.of();
 
@@ -202,6 +216,10 @@ public class StudentActivityService {
 
     /** 日趋势 */
     public List<Map<String, Object>> dailyTrend(String groupName, String startTime, String endTime) {
+        if (groupName == null || groupName.isBlank()) {
+            return List.of();
+        }
+
         List<String> userIds = dashboardMapper.listUserIdsByProjectGroup(groupName.trim(), MAX_USER_IDS);
         if (userIds.isEmpty()) return List.of();
 
@@ -214,8 +232,7 @@ public class StudentActivityService {
             if (dt == null) continue;
             String date = dt.toLocalDate().toString();
             int[] counts = daily.computeIfAbsent(date, k -> new int[2]);
-            Object at = log.get("accessType");
-            int accessType = at instanceof Number ? ((Number) at).intValue() : Integer.parseInt(String.valueOf(at));
+            int accessType = parseAccessType(log);
             if (accessType == 1) counts[0]++;
             else if (accessType == 2) counts[1]++;
         }
@@ -229,6 +246,15 @@ public class StudentActivityService {
                     m.put("exitCount", e.getValue()[1]);
                     return m;
                 }).collect(Collectors.toList());
+    }
+
+    private int parseAccessType(Map<String, Object> log) {
+        Object at = log.get("accessType");
+        if (at instanceof Number n) return n.intValue();
+        if (at != null) {
+            try { return Integer.parseInt(at.toString()); } catch (NumberFormatException e) { return 0; }
+        }
+        return 0;
     }
 
     private LocalDateTime parseTime(String ts) {
