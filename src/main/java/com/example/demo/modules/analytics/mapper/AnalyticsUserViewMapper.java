@@ -13,6 +13,8 @@ public interface AnalyticsUserViewMapper {
 
     AnalyticsUserView selectByIdAndUser(@Param("id") long id, @Param("userId") String userId);
 
+    AnalyticsUserView selectById(@Param("id") long id);
+
     int insert(AnalyticsUserView row);
 
     int update(AnalyticsUserView row);

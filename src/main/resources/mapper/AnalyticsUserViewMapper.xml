@@ -32,6 +32,13 @@
         LIMIT 1
     </select>
 
+    <select id="selectById" resultMap="AnalyticsUserViewMap">
+        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, is_public, sort_order, created_at, updated_at
+        FROM analytics_user_view
+        WHERE id = #{id}
+        LIMIT 1
+    </select>
+
     <select id="selectAllSubscribed" resultMap="AnalyticsUserViewMap">
         SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, is_public, sort_order, created_at, updated_at
         FROM analytics_user_view

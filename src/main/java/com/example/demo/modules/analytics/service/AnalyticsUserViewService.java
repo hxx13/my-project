@@ -51,7 +51,11 @@ public class AnalyticsUserViewService {
     public AnalyticsUserViewDto getForUser(String userId, long viewId) {
         AnalyticsUserView row = mapper.selectByIdAndUser(viewId, userId);
         if (row == null) {
-            throw new IllegalArgumentException("配置不存在");
+            // Try public view (not owned by this user)
+            row = mapper.selectById(viewId);
+            if (row == null || !(row.getIsPublic() != null && row.getIsPublic() == 1)) {
+                throw new IllegalArgumentException("配置不存在");
+            }
         }
         return toDto(row);
     }

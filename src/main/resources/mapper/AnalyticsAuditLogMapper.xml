@@ -62,7 +62,8 @@
     <select id="selectAllByView" resultMap="AnalyticsAuditLogMap">
         SELECT *
         FROM analytics_audit_log
-        WHERE user_id = #{userId}
+        WHERE (user_id = #{userId}
+           OR view_id IN (SELECT id FROM analytics_user_view WHERE is_public = 1 AND id = #{viewId}))
           AND view_id = #{viewId}
         ORDER BY period_type ASC, period_label ASC, created_at ASC
         LIMIT #{limit}
@@ -71,7 +72,8 @@
     <select id="selectByUserAndReport" resultMap="AnalyticsAuditLogMap">
         SELECT *
         FROM analytics_audit_log
-        WHERE user_id = #{userId}
+        WHERE (user_id = #{userId}
+           OR view_id IN (SELECT id FROM analytics_user_view WHERE is_public = 1 AND report_key = #{reportKey}))
           AND report_key = #{reportKey}
         <if test="viewId != null">
             AND view_id = #{viewId}
@@ -105,7 +107,8 @@
         SELECT a.*
         FROM analytics_audit_log a
         LEFT JOIN analytics_llm_insight i ON i.audit_log_id = a.id
-        WHERE a.user_id = #{userId}
+        WHERE (a.user_id = #{userId}
+           OR a.view_id IN (SELECT id FROM analytics_user_view WHERE is_public = 1 AND report_key = #{reportKey}))
           AND a.report_key = #{reportKey}
           AND a.view_id = #{viewId}
           AND i.id IS NULL
