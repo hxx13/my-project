@@ -133,6 +133,18 @@ export function CageOccupancyReportPanel() {
     setSelectedLog(null);
   }, [activeViewId]);
 
+  // Keep selectedLog reference fresh when grouped data updates via polling
+  useEffect(() => {
+    if (selectedLogId == null) return;
+    for (const list of grouped.values()) {
+      const hit = list.find((l) => l.id === selectedLogId);
+      if (hit) {
+        setSelectedLog(hit);
+        return;
+      }
+    }
+  }, [grouped, selectedLogId]);
+
   useEffect(() => {
     if (selectedLogId == null && latestByCycle.size > 0) {
       const first = [...latestByCycle.values()][0];
@@ -152,6 +164,9 @@ export function CageOccupancyReportPanel() {
   const handleSaveConfig = async (opts: SaveConfigOptions) => {
     try {
       const filter = cageScopeFilterOnly({ ...draft, compareCycles: opts.compareCycles });
+      if (opts.isPublic) {
+        (filter as any).isPublic = true;
+      }
       const created = await saveAnalyticsView({ reportKey: REPORT_KEY, name: opts.name, filter });
       let saved = created;
       if (opts.subscribe) {

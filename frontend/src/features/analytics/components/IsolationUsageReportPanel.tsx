@@ -132,6 +132,18 @@ export function IsolationUsageReportPanel() {
     setSelectedLog(null);
   }, [activeViewId]);
 
+  // Keep selectedLog reference fresh when grouped data updates via polling
+  useEffect(() => {
+    if (selectedLogId == null) return;
+    for (const list of grouped.values()) {
+      const hit = list.find((l) => l.id === selectedLogId);
+      if (hit) {
+        setSelectedLog(hit);
+        return;
+      }
+    }
+  }, [grouped, selectedLogId]);
+
   useEffect(() => {
     if (selectedLogId == null && latestByCycle.size > 0) {
       const first = [...latestByCycle.values()][0];
@@ -175,6 +187,9 @@ export function IsolationUsageReportPanel() {
     setApplyingConfig(true);
     try {
       const filter = scopeFilterOnly(draft);
+      if (draft.isPublic) {
+        (filter as any).isPublic = true;
+      }
       const updated = await updateAnalyticsView(activeView.id, {
         name: activeView.name,
         filter,

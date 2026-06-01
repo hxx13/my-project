@@ -137,6 +137,7 @@ export function migrateAnalyticsFilter(raw: Record<string, unknown>): AnalyticsD
     allEnabledChannels:
       channelCodes.length === 0 ? raw.allEnabledChannels !== false : false,
     compareCycles: uniqueCycles.length ? uniqueCycles : base.compareCycles,
+    isPublic: raw.isPublic === true,
   };
 }
 
