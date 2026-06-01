@@ -47,7 +47,7 @@ export default function AdminAnalyticsPage() {
       }
     >
       <div className="flex flex-col gap-6 lg:flex-row">
-        <nav className="flex shrink-0 flex-row gap-2 overflow-x-auto lg:w-56 lg:flex-col lg:overflow-visible">
+        <nav className="flex shrink-0 flex-row gap-2 overflow-x-auto lg:w-40 lg:flex-col lg:overflow-visible">
           <p className="hidden px-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400 lg:block">
             报表目录
           </p>
