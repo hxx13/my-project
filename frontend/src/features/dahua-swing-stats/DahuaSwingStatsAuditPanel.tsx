@@ -177,8 +177,8 @@ export function DahuaSwingStatsAuditPanel() {
             <p className="text-sm font-semibold text-red-800">
               ⚠️ {health.failed} 个任务执行失败 · {health.ok} 个正常 · {health.neverRun} 个未运行
             </p>
-            {health.recentFailures?.slice(0, 2).map(f => (
-              <p key={f.id} className="text-xs text-red-600 mt-1">{f.name}: {f.lastError}</p>
+            {health.recentFailures?.slice(0, 2).map(({ id, name, lastError }) => (
+              <p key={id} className="text-xs text-red-600 mt-1">{name}: {lastError}</p>
             ))}
           </div>
           <button

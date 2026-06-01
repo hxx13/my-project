@@ -97,15 +97,18 @@ export async function executeAllDahuaSwingStatsInPlan() {
 }
 
 export async function retryStatsTask(id: number) {
-  return unwrap(adminHttp.post<ApiResponse<Record<string, unknown>>>(`/twin/dahua/stats-tasks/${id}/retry`));
+  return unwrap(await adminHttp.post<ApiResponse<Record<string, unknown>>>(`/twin/dahua/stats-tasks/${id}/retry`));
 }
 
 export async function retryAllFailedStatsTasks() {
-  return unwrap(adminHttp.post<ApiResponse<Record<string, unknown>>>(`/twin/dahua/stats-tasks/retry-all-failed`));
+  return unwrap(await adminHttp.post<ApiResponse<Record<string, unknown>>>(`/twin/dahua/stats-tasks/retry-all-failed`));
 }
 
-export async function fetchStatsTasksHealth() {
-  return unwrap(adminHttp.get<ApiResponse<{
+export async function fetchStatsTasksHealth(): Promise<{
+  total: number; ok: number; failed: number; neverRun: number; running: number;
+  recentFailures: Array<{ id: number; name: string; lastError: string; lastRunAt: string }>;
+}> {
+  return unwrap(await adminHttp.get<ApiResponse<{
     total: number; ok: number; failed: number; neverRun: number; running: number;
     recentFailures: Array<{ id: number; name: string; lastError: string; lastRunAt: string }>;
   }>>(`/twin/dahua/stats-tasks/health`));

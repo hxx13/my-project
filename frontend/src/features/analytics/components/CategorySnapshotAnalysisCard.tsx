@@ -129,7 +129,7 @@ export function CategorySnapshotAnalysisCard({
 
   const filteredGroups = useMemo(() => {
     if (minGroupThreshold <= 0) return groups;
-    return groups.filter((g) => (g.personTimes ?? g.occupiedSlots ?? 0) >= minGroupThreshold);
+    return groups.filter((g) => (g.personTimes ?? 0) >= minGroupThreshold);
   }, [groups, minGroupThreshold]);
 
   const pis: CagePiRow[] = detail?.byPi ?? [];

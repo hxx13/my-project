@@ -239,6 +239,7 @@ export function CageOccupancyReportPanel() {
 
   const handleDeleteView = async (id: number) => {
     const view = views.find((v) => v.id === id);
+    if (!view) return;
     if (view?.isPublic) {
       const confirmed = window.confirm(
         `删除「${view.name}」将同时删除所有用户通过分享码导入的副本。\n\n此操作不可撤销，是否继续？`
