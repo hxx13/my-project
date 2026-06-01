@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Minus, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Tooltip, XAxis, YAxis } from "recharts";
 import type { AnalyticsAuditLog, CagePiRow, CageRoomRow, IsolationUsageQueryResult } from "@/api/domains/analytics.api";
@@ -8,6 +9,7 @@ import { PeriodTrendBarChart } from "@/features/analytics/components/PeriodTrend
 import type { AnalyticsCompareCycle } from "@/features/analytics/analyticsPipelineFilter";
 import { buildPeriodTrendChart } from "@/features/analytics/periodTrendChartData";
 import { cn } from "@/lib/utils";
+import { fetchAdminPersonnel } from "@/api/domains/admin.api";
 
 const CYCLE_TITLE: Record<AnalyticsCompareCycle, string> = {
   day: "每日清算",
@@ -68,7 +70,55 @@ export function CategorySnapshotAnalysisCard({
     [cycle, safeHistory, highlightPeriodKey]
   );
 
-  const groups = detail?.byProjectGroup ?? [];
+  // Extract user-level data from detail
+  const userLevel = detail?.userLevel ?? [];
+
+  // Match user names to personnel database to get actual research groups
+  const { data: personnelGroupMap } = useQuery({
+    queryKey: ["admin", "personnel-group-lookup", userLevel.map(u => u.userName).join("|")],
+    queryFn: async (): Promise<Map<string, string>> => {
+      const results = new Map<string, string>(); // userName → projectGroupName
+      const seen = new Set<string>();
+      for (const u of userLevel) {
+        if (seen.has(u.userName)) continue;
+        seen.add(u.userName);
+        try {
+          const page = await fetchAdminPersonnel(1, 5, u.userName);
+          const match = page.data.find(
+            (p) => p.name === u.userName
+          );
+          if (match?.projectGroupName) {
+            results.set(u.userName, match.projectGroupName);
+          }
+        } catch {
+          // skip failed lookups silently
+        }
+      }
+      return results;
+    },
+    enabled: userLevel.length > 0,
+    staleTime: 300_000,
+    retry: 2,
+  });
+
+  // Build matched groups by aggregating personTimes by projectGroupName
+  const matchedGroups = useMemo(() => {
+    if (!personnelGroupMap || personnelGroupMap.size === 0) return null;
+    const agg = new Map<string, number>();
+    for (const u of userLevel) {
+      const group = personnelGroupMap.get(u.userName);
+      if (group) {
+        agg.set(group, (agg.get(group) ?? 0) + (u.personTimes || 0));
+      }
+    }
+    if (agg.size === 0) return null;
+    return [...agg.entries()]
+      .map(([groupName, personTimes]) => ({ groupName, personTimes }))
+      .sort((a, b) => b.personTimes - a.personTimes);
+  }, [personnelGroupMap, userLevel]);
+
+  // Use matched groups if available, otherwise fall back to ARO byProjectGroup
+  const groups = matchedGroups ?? (detail?.byProjectGroup ?? []);
   const pis: CagePiRow[] = detail?.byPi ?? [];
   const rooms: CageRoomRow[] = detail?.byRoom ?? [];
 
@@ -182,7 +232,7 @@ export function CategorySnapshotAnalysisCard({
               ) : (
                 <ChevronRight className="h-3.5 w-3.5" />
               )}
-              {`课题组${isAccessPackage ? "（ARO 流水）" : metricUnit}（本期，全部 ${allGroupsChart.length} 个）`}
+              {`课题组${isAccessPackage ? (matchedGroups ? "（人员库匹配）" : "（ARO 流水）") : metricUnit}（本期，全部 ${allGroupsChart.length} 个）`}
               {!topGroupsExpanded ? (
                 <span className="font-normal text-neutral-400">（点击展开）</span>
               ) : null}

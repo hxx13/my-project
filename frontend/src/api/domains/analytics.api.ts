@@ -94,6 +94,7 @@ export type IsolationUsageQueryResult = {
   byPi?: CagePiRow[];
   byRoom?: CageRoomRow[];
   auxiliaryFlow?: FlowAuxiliarySnapshot;
+  userLevel?: { userId: string; userName: string; personTimes: number }[];
   fromSnapshot?: boolean;
   periodKey?: string;
   periodLabel?: string;
