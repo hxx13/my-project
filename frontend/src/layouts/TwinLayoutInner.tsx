@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { PageTransition } from "@/components/animation/PageTransition";
 import DebugNav from "@/features/dev-tools/DebugNav";
 import { TwinChromeContextMenu, type TwinChromeContextMenuPayload } from "@/features/twin-chrome/TwinChromeContextMenu";
 import { twinChromeGlobalPointerShouldBypass } from "@/features/twin-chrome/twinChromeGlobalPointerBypass";
@@ -112,7 +113,9 @@ export default function TwinLayoutInner() {
                     )}
                     data-twin-chrome-theme={themeId}
                 >
-                    <Outlet />
+                    <PageTransition key={pathname} variant="fadeIn" duration={0.25}>
+                      <Outlet />
+                    </PageTransition>
                 </div>
             </div>
 

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { PageTransition } from "@/components/animation/PageTransition";
 import { BackfillAutoGlobalBanner } from "@/features/dahua-swing-stats/BackfillAutoGlobalBanner";
 import { toast } from "react-hot-toast";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
@@ -1003,7 +1004,9 @@ export default function AdminLayout() {
         <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[var(--twin-canvas-soft)]">
           <BackfillAutoGlobalBanner />
           <div className="mx-auto w-full max-w-[1600px] flex-1 p-6 sm:p-8">
-            <Outlet />
+            <PageTransition key={location.pathname} variant="fadeUp" duration={0.3}>
+              <Outlet />
+            </PageTransition>
           </div>
         </main>
       </section>

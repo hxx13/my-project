@@ -1,5 +1,8 @@
+import { useRef } from "react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 
 type AdminPageShellProps = {
   title: ReactNode;
@@ -50,16 +53,25 @@ export function AdminTableShell({
   className,
   scrollable,
 }: AdminTableShellProps) {
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  // Staggered row entrance when data loads
+  useGSAP(() => {
+    if (!tableRef.current || !children || loading) return;
+    // Delay to let DOM render, then stagger table rows
+    const timer = setTimeout(() => {
+      const rows = tableRef.current?.querySelectorAll("tbody tr");
+      if (rows && rows.length > 0) {
+        gsap.fromTo(rows, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.35, stagger: 0.03, ease: "power2.out", clearProps: "transform,opacity" });
+      }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [children, loading]);
+
   if (loading) {
     return (
-      <div
-        role="status"
-        aria-busy="true"
-        aria-live="polite"
-        className={cn(
-          "flex min-h-[200px] items-center justify-center rounded-xl border border-neutral-200/90 bg-white text-sm text-neutral-500 ring-1 ring-black/[0.02]",
-          className
-        )}
+      <div role="status" aria-busy="true" aria-live="polite"
+        className={cn("flex min-h-[200px] items-center justify-center rounded-xl border border-neutral-200/90 bg-white text-sm text-neutral-500 ring-1 ring-black/[0.02]", className)}
       >
         加载中…
       </div>
@@ -67,17 +79,10 @@ export function AdminTableShell({
   }
   if (error) {
     return (
-      <div
-        className={cn(
-          "flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-rose-200/90 bg-rose-50/50 p-6 text-center text-sm text-rose-800 ring-1 ring-rose-100/80",
-          className
-        )}
-      >
+      <div className={cn("flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-rose-200/90 bg-rose-50/50 p-6 text-center text-sm text-rose-800 ring-1 ring-rose-100/80", className)}>
         <p>{error}</p>
         {onRetry ? (
-          <button type="button" onClick={onRetry} className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-50">
-            重试
-          </button>
+          <button type="button" onClick={onRetry} className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-50">重试</button>
         ) : null}
       </div>
     );
@@ -96,6 +101,7 @@ export function AdminTableShell({
   }
   return (
     <div
+      ref={tableRef}
       className={cn(
         "overflow-x-auto rounded-xl border border-neutral-200/90 bg-white shadow-sm ring-1 ring-black/[0.02]",
         className
