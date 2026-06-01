@@ -299,9 +299,7 @@ export default function DashboardPreviewPage() {
       <div style={{ textAlign: "center", padding: "32px 0", borderTop: "1px solid var(--twin-hairline)", fontSize: 11, color: "var(--twin-mute)" }}>
         Dashboard Preview · Standalone page · Scroll or carousel with GSAP reveals
       </div>
-    </div>
-    </TwinChromeThemeProvider>
-      <style>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         .tool-btn {
           display: inline-flex; align-items: center; gap: 6px;
           padding: 6px 14px; border-radius: 999px;
@@ -311,7 +309,9 @@ export default function DashboardPreviewPage() {
           box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }
         .tool-btn:hover { background: var(--twin-canvas-soft, #fafafa); }
-      `}</style>
+      ` }} />
+    </div>
+    </TwinChromeThemeProvider>
     </div>
     </TwinChromeThemeProvider>
   );
