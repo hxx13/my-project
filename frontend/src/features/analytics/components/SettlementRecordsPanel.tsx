@@ -25,7 +25,7 @@ type Props = {
   selectedLog: AnalyticsAuditLog | null;
   latestByCycle: Map<AnalyticsCompareCycle, AnalyticsAuditLog>;
   latestIdsByCycle: Set<number>;
-  onSelectLog: (id: number) => void;
+  onSelectLog: (log: AnalyticsAuditLog) => void;
 };
 
 export function SettlementRecordsPanel({
@@ -126,7 +126,7 @@ function RecordSection({
   selectedLog: AnalyticsAuditLog | null;
   latestByCycle: Map<AnalyticsCompareCycle, AnalyticsAuditLog>;
   onToggleShowAll: () => void;
-  onSelectLog: (id: number) => void;
+  onSelectLog: (log: AnalyticsAuditLog) => void;
 }) {
   const displayedLogId =
     selectedLog != null && selectedLog.periodType === cycle
@@ -154,7 +154,7 @@ function RecordSection({
             isLatest={latestByCycle.get(cycle)?.id === log.id}
             displayedOnRight={displayedLogId === log.id}
             active={selectedLogId === log.id}
-            onClick={() => onSelectLog(log.id)}
+            onClick={() => onSelectLog(log)}
           />
         ))}
       </ul>
@@ -168,7 +168,7 @@ function RecordSection({
               isLatest={latestByCycle.get(cycle)?.id === log.id}
               displayedOnRight={displayedLogId === log.id}
               active={selectedLogId === log.id}
-              onClick={() => onSelectLog(log.id)}
+              onClick={() => onSelectLog(log)}
             />
           ))}
         </ul>

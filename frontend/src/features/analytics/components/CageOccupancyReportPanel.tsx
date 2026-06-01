@@ -11,6 +11,7 @@ import {
   saveAnalyticsView,
   setAnalyticsViewSubscription,
   updateAnalyticsView,
+  type AnalyticsAuditLog,
   type AnalyticsUserView,
 } from "@/api/domains/analytics.api";
 import { CageAuditProgressBanner } from "@/features/analytics/components/CageAuditProgressBanner";
@@ -45,6 +46,7 @@ export function CageOccupancyReportPanel() {
   const [draft, setDraft] = useState<CageAnalyticsDraftFilter>(() => defaultCageAnalyticsDraftFilter());
   const [activeViewId, setActiveViewId] = useState<number | null>(null);
   const [selectedLogId, setSelectedLogId] = useState<number | null>(null);
+  const [selectedLog, setSelectedLog] = useState<AnalyticsAuditLog | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [editView, setEditView] = useState<AnalyticsUserView | null>(null);
   const [batchGenerating, setBatchGenerating] = useState(false);
@@ -106,15 +108,6 @@ export function CageOccupancyReportPanel() {
     [latestByCycle]
   );
 
-  const selectedLog = useMemo(() => {
-    if (selectedLogId == null) return null;
-    for (const list of grouped.values()) {
-      const hit = list.find((l) => l.id === selectedLogId);
-      if (hit) return hit;
-    }
-    return null;
-  }, [grouped, selectedLogId]);
-
   const openInsightDialog = (
     auditLogId: number,
     periodLabel: string,
@@ -137,12 +130,16 @@ export function CageOccupancyReportPanel() {
 
   useEffect(() => {
     setSelectedLogId(null);
+    setSelectedLog(null);
   }, [activeViewId]);
 
   useEffect(() => {
     if (selectedLogId == null && latestByCycle.size > 0) {
       const first = [...latestByCycle.values()][0];
-      if (first) setSelectedLogId(first.id);
+      if (first) {
+        setSelectedLogId(first.id);
+        setSelectedLog(first);
+      }
     }
   }, [latestByCycle, activeViewId, selectedLogId]);
 
@@ -362,7 +359,11 @@ export function CageOccupancyReportPanel() {
             selectedLog={selectedLog}
             latestByCycle={latestByCycle}
             latestIdsByCycle={latestIdsByCycle}
-            onSelectLog={setSelectedLogId}
+            onSelectLog={(log) => {
+              setSelectedLogId(log.id);
+              setSelectedLog(log);
+              void qc.invalidateQueries({ queryKey: ["analytics", "audit-detail", log.id] });
+            }}
           />
           {activeView ? (
             <button
