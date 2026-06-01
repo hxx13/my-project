@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   FileText,
   AlertTriangle,
@@ -14,6 +14,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { useStudentDashboard } from "../hooks/use-student-dashboard";
 import { useStudentAiProfile } from "../hooks/use-student-ai-profile";
 import type { AiPredictionRecord } from "../api/student.api";
@@ -31,12 +33,28 @@ import {
 /*  Sub-components                                                     */
 /* ------------------------------------------------------------------ */
 
-/** A single stat card in the summary row */
+/** Animated stat card — number scrolls from 0 to value on mount */
 function StatCard({ label, value }: { label: string; value: number }) {
+  const numRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    const el = numRef.current;
+    if (!el) return;
+    const obj = { n: 0 };
+    gsap.to(obj, {
+      n: value,
+      duration: 1.2,
+      ease: "power2.out",
+      onUpdate: () => {
+        el.textContent = String(Math.round(obj.n));
+      },
+    });
+  }, [value]);
+
   return (
-    <div className="flex-1 rounded-[var(--student-radius-md)] bg-white p-4 shadow-[var(--student-card-shadow)]">
+    <div className="stat-card flex-1 rounded-[var(--student-radius-md)] bg-white p-4 shadow-[var(--student-card-shadow)]">
       <div className="text-2xl font-bold text-[var(--student-ink)]">
-        {value}
+        <span ref={numRef}>0</span>
       </div>
       <div className="mt-1 text-xs text-[var(--student-mute-foreground)]">
         {label}
@@ -193,6 +211,48 @@ export default function StudentHomePage() {
   const { data, isLoading, isError, error, refetch } = useStudentDashboard();
   const { data: aiData } = useStudentAiProfile();
   const [showAiModal, setShowAiModal] = useState(false);
+  const pageRef = useRef<HTMLDivElement>(null);
+
+  /* ---- GSAP staggered entrance ---- */
+  useGSAP(
+    () => {
+      if (!pageRef.current) return;
+      // Stat cards stagger
+      gsap.from(".stat-card", {
+        opacity: 0,
+        y: 24,
+        duration: 0.5,
+        stagger: 0.1,
+        ease: "power3.out",
+      });
+      // Room cards stagger
+      gsap.from(".pinned-room-item", {
+        opacity: 0,
+        scale: 0.92,
+        duration: 0.4,
+        stagger: 0.06,
+        ease: "back.out(1.4)",
+      });
+      // Left sidebar panels
+      gsap.from(".left-panel", {
+        opacity: 0,
+        x: -24,
+        duration: 0.45,
+        stagger: 0.12,
+        ease: "power2.out",
+      });
+      // Right main cards
+      gsap.from(".right-card", {
+        opacity: 0,
+        y: 20,
+        duration: 0.45,
+        stagger: 0.1,
+        delay: 0.2,
+        ease: "power2.out",
+      });
+    },
+    { scope: pageRef, dependencies: [data] },
+  );
 
   /* ---- loading ---- */
   if (isLoading) return <DashboardSkeleton />;
@@ -218,13 +278,13 @@ export default function StudentHomePage() {
 
   /* ---- normal ---- */
   return (
-    <div className="flex gap-5 p-6 bg-[var(--student-canvas-soft)] min-h-full">
+    <div ref={pageRef} className="flex gap-5 p-6 bg-[var(--student-canvas-soft)] min-h-full">
       {/* ============================================================ */}
       {/* LEFT COLUMN — 260px fixed width                              */}
       {/* ============================================================ */}
       <aside className="w-[260px] shrink-0 flex flex-col gap-3">
         {/* 1. Personal Identity Card */}
-        <StudentCard padding="lg">
+        <StudentCard padding="lg" className="left-panel">
           <div className="flex flex-col items-center text-center">
             {/* Avatar circle */}
             <div className="flex items-center justify-center size-16 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-white text-xl font-bold mb-3">
@@ -254,7 +314,7 @@ export default function StudentHomePage() {
         </StudentCard>
 
         {/* 2. Quick Actions */}
-        <StudentCard>
+        <StudentCard className="left-panel">
           <h3 className="text-[13px] font-semibold text-[var(--student-foreground)] mb-2">
             快捷操作
           </h3>
@@ -288,7 +348,7 @@ export default function StudentHomePage() {
       {/* ============================================================ */}
       <main className="flex-1 flex flex-col gap-3 min-w-0">
         {/* 3. Stats Summary Row */}
-        <div className="flex gap-2.5">
+        <div className="flex gap-2.5 right-card">
           <StatCard label="今日进出次数" value={stats.todayAccessCount} />
           <StatCard label="违规记录" value={stats.violationCount} />
           <StatCard label="未读通知" value={stats.unreadNoticeCount} />
@@ -296,7 +356,7 @@ export default function StudentHomePage() {
         </div>
 
         {/* 4. Pinned Rooms Section */}
-        <StudentCard>
+        <StudentCard className="right-card">
           {/* Header row */}
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-[13px] font-semibold text-[var(--student-foreground)]">
@@ -317,7 +377,7 @@ export default function StudentHomePage() {
               {pinnedRooms.map((room) => (
                 <RoomCard
                   key={room.roomId}
-                  className="w-[200px]"
+                  className="w-[200px] pinned-room-item"
                   roomName={room.roomName}
                   floor={room.floor}
                   zone={room.zone}
@@ -357,7 +417,7 @@ export default function StudentHomePage() {
         <div className="flex gap-2.5">
           {/* Recent Access Records */}
           <div className="flex-1">
-            <StudentCard>
+            <StudentCard className="right-card">
               <h3 className="text-[13px] font-semibold text-[var(--student-foreground)] mb-3">
                 📋 最近出入记录
               </h3>
@@ -399,7 +459,7 @@ export default function StudentHomePage() {
 
           {/* Notifications */}
           <div className="flex-1">
-            <StudentCard>
+            <StudentCard className="right-card">
               <h3 className="text-[13px] font-semibold text-[var(--student-foreground)] mb-3">
                 📢 通知公告
               </h3>

@@ -1,8 +1,10 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Star, Building2, X, Clock, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { useStudentRooms } from "../hooks/use-student-rooms";
 import { toggleRoomPin, fetchRoomStatusList } from "../api/student.api";
 import type { RoomData, FetchRoomsParams, RoomStatusData } from "../api/student.api";
@@ -207,6 +209,23 @@ export default function StudentRoomsPage() {
   }, [allRooms, activeTab]);
 
   const pinnedCount = activeTab === "pinned" ? allRooms.length : "...";
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  /* ---- GSAP staggered card entrance ---- */
+  useGSAP(
+    () => {
+      if (!gridRef.current) return;
+      gsap.from(".room-card-item", {
+        opacity: 0,
+        scale: 0.88,
+        y: 16,
+        duration: 0.45,
+        stagger: 0.04,
+        ease: "back.out(1.5)",
+      });
+    },
+    { scope: gridRef, dependencies: [roomsForDisplay] },
+  );
 
   /* ---- Table columns (list view) ---- */
   const columns = useMemo<Column<RoomData>[]>(
@@ -360,10 +379,11 @@ export default function StudentRoomsPage() {
         />
       ) : viewMode === "card" ? (
         /* ---- Card Grid — flat, naturally sorted (matches mini-program) ---- */
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        <div ref={gridRef} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {roomsForDisplay.map((room) => (
             <RoomCard
               key={room.roomId}
+              className="room-card-item"
               roomName={room.roomName}
               floor={room.floor}
               zone={room.zone}
