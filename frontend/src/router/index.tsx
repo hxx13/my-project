@@ -89,6 +89,8 @@ export const router = createHashRouter([
         path: "/register",
         element: <RegisterStaffPage/>,
     },
+    // 仪表盘预览（独立页面，不套 TwinLayout，可自由滚动）
+    { path: "/dashboard-preview", element: <AuthGuard><DashboardPreviewPage /></AuthGuard> },
     // 学生端公开路由
     { path: "/student/register", element: <StudentRegisterPage /> },
     // 学生端受保护路由
@@ -177,7 +179,6 @@ export const router = createHashRouter([
                     },
                         ],
                     },
-                    {path: "dashboard-preview", element: <DashboardPreviewPage />},
                     {path: "animal-room-telemetry", element: <AnimalRoomTelemetryPage/>},
                     {path: "animal-room-cockpit", element: <AnimalRoomCockpitPage/>},
                     {path: "digital-twin-screen", element: <DigitalTwinScreenPage/>},
