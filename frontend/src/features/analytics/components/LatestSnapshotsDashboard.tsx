@@ -54,7 +54,7 @@ export function LatestSnapshotsDashboard({
     queries: entries.map(({ log }) => ({
       queryKey: ["analytics", "audit-detail", log.id],
       queryFn: () => fetchAuditLogDetail(log.id),
-      staleTime: 0,
+      staleTime: 5 * 60 * 1000, // 5 min cache — explicit invalidateQueries on click handles freshness
     })),
   });
 
