@@ -55,6 +55,7 @@ export function CategorySnapshotAnalysisCard({
   const [topGroupsExpanded, setTopGroupsExpanded] = useState(false);
   const [topPiExpanded, setTopPiExpanded] = useState(false);
   const [topRoomsExpanded, setTopRoomsExpanded] = useState(false);
+  const [minGroupThreshold, setMinGroupThreshold] = useState(0);
 
   const isCageMetric = metricUnit === "笼位";
   const isAccessPackage = detail?.summary?.dataSource === "access_package";
@@ -119,13 +120,19 @@ export function CategorySnapshotAnalysisCard({
 
   // Use matched groups if available, otherwise fall back to ARO byProjectGroup
   const groups = matchedGroups ?? (detail?.byProjectGroup ?? []);
+
+  const filteredGroups = useMemo(() => {
+    if (minGroupThreshold <= 0) return groups;
+    return groups.filter((g) => (g.personTimes ?? g.occupiedSlots ?? 0) >= minGroupThreshold);
+  }, [groups, minGroupThreshold]);
+
   const pis: CagePiRow[] = detail?.byPi ?? [];
   const rooms: CageRoomRow[] = detail?.byRoom ?? [];
 
   const slotMetric = (row: { personTimes?: number; occupiedSlots?: number }) =>
     row.occupiedSlots ?? row.personTimes ?? 0;
 
-  const allGroupsChart = groups.map((g) => ({
+  const allGroupsChart = filteredGroups.map((g) => ({
     name: g.groupName.length > 10 ? `${g.groupName.slice(0, 10)}…` : g.groupName,
     fullName: g.groupName,
     personTimes: slotMetric(g),
@@ -151,6 +158,7 @@ export function CategorySnapshotAnalysisCard({
     scopeGroups != null &&
     distributionGroupCount !== scopeGroups;
   const allGroupsChartHeight = Math.min(480, Math.max(140, allGroupsChart.length * 36));
+  const allGroupsChartMinWidth = allGroupsChart.length * 48;
   const topPiChartHeight = Math.min(200, Math.max(80, topPis.length * 28));
 
   return (
@@ -222,6 +230,27 @@ export function CategorySnapshotAnalysisCard({
 
         {detail && allGroupsChart.length > 0 ? (
           <div className="rounded-lg border border-neutral-200/90 bg-neutral-50/50">
+            {/* Threshold filter — only shown when groups.length > 3 */}
+            {groups.length > 3 ? (
+              <div className="flex items-center gap-2 px-3 pt-2">
+                <label className="text-[10px] text-neutral-500 whitespace-nowrap">
+                  隐藏低于
+                  <input
+                    type="number"
+                    min={0}
+                    value={minGroupThreshold}
+                    onChange={(e) => setMinGroupThreshold(Math.max(0, Number(e.target.value) || 0))}
+                    className="mx-1 w-14 rounded border border-neutral-300 px-1.5 py-0.5 text-[10px]"
+                  />
+                  条
+                </label>
+                {minGroupThreshold > 0 ? (
+                  <span className="text-[10px] text-violet-600">
+                    (显示 {filteredGroups.length}/{groups.length})
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={() => setTopGroupsExpanded((v) => !v)}
@@ -232,14 +261,14 @@ export function CategorySnapshotAnalysisCard({
               ) : (
                 <ChevronRight className="h-3.5 w-3.5" />
               )}
-              {`课题组${isAccessPackage ? (matchedGroups ? "（人员库匹配）" : "（ARO 流水）") : metricUnit}（本期，全部 ${allGroupsChart.length} 个）`}
+              {`课题组${isAccessPackage ? (matchedGroups ? "（人员库匹配）" : "（ARO 流水）") : metricUnit}（本期，全部 ${groups.length} 个）`}
               {!topGroupsExpanded ? (
                 <span className="font-normal text-neutral-400">（点击展开）</span>
               ) : null}
             </button>
             {topGroupsExpanded ? (
-              <div className="border-t border-neutral-200/80 px-3 pb-3 pt-2">
-                <MeasuredChartBox height={allGroupsChartHeight}>
+              <div className="border-t border-neutral-200/80 px-3 pb-3 pt-2 overflow-x-auto">
+                <MeasuredChartBox height={allGroupsChartHeight} minWidth={allGroupsChartMinWidth}>
                   <BarChart
                     data={allGroupsChart}
                     margin={{ top: 20, right: 8, left: 4, bottom: allGroupsChart.length > 6 ? 56 : 24 }}

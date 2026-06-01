@@ -1,4 +1,5 @@
 ﻿import { useEffect, useState } from "react";
+import ReactDOM from "react-dom";
 import { X } from "lucide-react";
 import { AnalyticsPipelineFilterBar } from "@/features/analytics/AnalyticsPipelineFilterBar";
 import { AccessChannelMultiSelect } from "@/features/analytics/AccessChannelMultiSelect";
@@ -82,7 +83,7 @@ export function EditAnalyticsViewModal(props: Props) {
 
   if (!open || !view) return null;
 
-  return (
+  return ReactDOM.createPortal(
     <div
       data-modal-layer="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
@@ -232,6 +233,7 @@ export function EditAnalyticsViewModal(props: Props) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

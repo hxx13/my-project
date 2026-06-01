@@ -1,4 +1,5 @@
 ﻿import { useEffect, useState } from "react";
+import ReactDOM from "react-dom";
 import { X } from "lucide-react";
 import { CompareCyclesField } from "@/features/analytics/components/CompareCyclesField";
 import {
@@ -82,7 +83,7 @@ export function SaveAnalyticsConfigModal({
     }
   };
 
-  return (
+  return ReactDOM.createPortal(
     <div
       data-modal-layer="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
@@ -161,6 +162,7 @@ export function SaveAnalyticsConfigModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

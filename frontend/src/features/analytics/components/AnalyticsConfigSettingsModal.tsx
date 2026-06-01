@@ -1,3 +1,4 @@
+import ReactDOM from "react-dom";
 import { BookmarkPlus, Settings2 } from "lucide-react";
 import {
   Dialog,
@@ -47,7 +48,7 @@ export function AnalyticsConfigSettingsModal(props: Props) {
   const { open, onClose, onSaveClick } = props;
   const isCage = props.reportKey === "cage_occupancy";
 
-  return (
+  return ReactDOM.createPortal(
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <DialogHeader className="shrink-0 border-b border-neutral-100 px-5 py-4 text-left">
@@ -205,6 +206,7 @@ export function AnalyticsConfigSettingsModal(props: Props) {
           ) : null}
         </div>
       </DialogContent>
-    </Dialog>
+    </Dialog>,
+    document.body
   );
 }

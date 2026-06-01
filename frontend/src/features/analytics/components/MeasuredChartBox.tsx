@@ -6,12 +6,13 @@ type Props = {
   height: number;
   className?: string;
   children: ReactNode;
+  minWidth?: number;
 };
 
 /**
  * 仅在容器测得正宽/高时挂载 Recharts，避免折叠、fixed 布局或首帧 flex 导致的 width(-1)/height(-1) 警告。
  */
-export function MeasuredChartBox({ height, className, children }: Props) {
+export function MeasuredChartBox({ height, className, children, minWidth }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
 
@@ -40,7 +41,7 @@ export function MeasuredChartBox({ height, className, children }: Props) {
     <div
       ref={ref}
       className={cn("w-full min-w-0", className)}
-      style={{ height, minHeight: height }}
+      style={{ height, minHeight: height, minWidth }}
     >
       {dims ? (
         <ResponsiveContainer width={dims.w} height={dims.h} debounce={50}>

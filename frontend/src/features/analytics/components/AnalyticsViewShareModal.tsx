@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import ReactDOM from "react-dom";
 import { Copy, RefreshCw, X } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
@@ -156,7 +157,7 @@ export function AnalyticsViewShareModal({
     else toast.error("复制失败，请手动选中上方分享码复制");
   };
 
-  return (
+  return ReactDOM.createPortal(
     <div
       data-modal-layer="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
@@ -330,7 +331,8 @@ export function AnalyticsViewShareModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

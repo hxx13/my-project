@@ -295,6 +295,16 @@ export function IsolationUsageReportPanel() {
   };
 
   const handleDeleteView = async (id: number) => {
+    const view = views.find((v) => v.id === id);
+    if (view?.isPublic) {
+      const confirmed = window.confirm(
+        `删除「${view.name}」将同时删除所有用户通过分享码导入的副本。\n\n此操作不可撤销，是否继续？`
+      );
+      if (!confirmed) return;
+    } else {
+      const confirmed = window.confirm(`确认删除「${view.name}」？`);
+      if (!confirmed) return;
+    }
     try {
       await deleteAnalyticsView(id);
       qc.setQueryData<AnalyticsUserView[]>(["analytics", "views", REPORT_KEY], (prev) =>
