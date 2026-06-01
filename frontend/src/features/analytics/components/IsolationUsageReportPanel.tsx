@@ -41,6 +41,7 @@ import {
 } from "@/features/analytics/analyticsChannelScopeHint";
 import { useGroupedAuditLogs } from "@/features/analytics/hooks/useGroupedAuditLogs";
 import { cn } from "@/lib/utils";
+import { fetchStatsTasksHealth } from "@/api/domains/dahuaSwingStats.api";
 
 const REPORT_KEY = "isolation_usage";
 
@@ -71,6 +72,13 @@ export function IsolationUsageReportPanel() {
   const { data: views = [] } = useQuery({
     queryKey: ["analytics", "views", REPORT_KEY],
     queryFn: () => fetchAnalyticsViews(REPORT_KEY),
+  });
+
+  const { data: pullHealth } = useQuery({
+    queryKey: ["dahua-stats-tasks", "health"],
+    queryFn: fetchStatsTasksHealth,
+    refetchInterval: 120_000,
+    staleTime: 60_000,
   });
 
   const activeView = useMemo(
@@ -403,6 +411,15 @@ export function IsolationUsageReportPanel() {
             </a>{" "}
             完成拉取并清洗入库；总库按通道合并，与「门禁统计清洗」按任务查看维度不同。
           </p>
+        </div>
+      ) : null}
+
+      {pullHealth && pullHealth.failed > 0 ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          ⚠️ 门禁拉取任务：{pullHealth.failed} 个失败 — 可能导致统计缺数据。
+          <a href="#/admin/dahua-swing-tasks?tab=audit" className="ml-2 underline font-medium">
+            前往修复 →
+          </a>
         </div>
       ) : null}
 

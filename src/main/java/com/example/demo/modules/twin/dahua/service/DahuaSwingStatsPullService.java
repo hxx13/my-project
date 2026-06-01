@@ -23,10 +23,13 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 统计/审计用门禁批量拉取：数据时间策略（periodMode）+ 大华筛选，不走 twin 即时联动。
@@ -869,5 +872,109 @@ public class DahuaSwingStatsPullService {
             }
         }
         return out;
+    }
+
+    /**
+     * Retry the most recent failed execution for a task.
+     * Reuses the same lastPulledStart/lastPulledEnd window from the failed run.
+     */
+    public Map<String, Object> retryLastFailed(Long id) {
+        DahuaSwingStatsPullTask task = statsPullMapper.findById(id);
+        if (task == null) {
+            throw new IllegalArgumentException("任务不存在");
+        }
+        if (!"FAILED".equals(task.getLastStatus())) {
+            throw new IllegalArgumentException("任务当前状态不是 FAILED，无需重试");
+        }
+        String start = task.getLastPulledStart();
+        String end = task.getLastPulledEnd();
+        try {
+            Map<String, Object> result = pullOnce(task, start, end);
+            result.put("retried", true);
+            result.put("taskId", task.getId());
+            result.put("taskName", task.getName());
+            return result;
+        } catch (Exception e) {
+            throw new RuntimeException("重试失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Batch retry all tasks currently in FAILED status.
+     * Returns summary: total attempted, succeeded, failed, and per-task details.
+     */
+    public Map<String, Object> retryAllFailed() {
+        List<DahuaSwingStatsPullTask> all = statsPullMapper.listTasks();
+        List<DahuaSwingStatsPullTask> failed = all.stream()
+                .filter(t -> "FAILED".equals(t.getLastStatus()))
+                .collect(Collectors.toList());
+
+        if (failed.isEmpty()) {
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("message", "没有处于 FAILED 状态的任务");
+            empty.put("total", 0);
+            empty.put("succeeded", 0);
+            empty.put("failed", 0);
+            empty.put("details", Collections.emptyList());
+            return empty;
+        }
+
+        int succeeded = 0;
+        int failCount = 0;
+        List<Map<String, Object>> details = new ArrayList<>();
+        for (DahuaSwingStatsPullTask t : failed) {
+            try {
+                Map<String, Object> r = retryLastFailed(t.getId());
+                details.add(r);
+                succeeded++;
+            } catch (Exception e) {
+                Map<String, Object> err = new LinkedHashMap<>();
+                err.put("taskId", t.getId());
+                err.put("taskName", t.getName());
+                err.put("error", e.getMessage());
+                details.add(err);
+                failCount++;
+            }
+        }
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("total", failed.size());
+        summary.put("succeeded", succeeded);
+        summary.put("failed", failCount);
+        summary.put("details", details);
+        return summary;
+    }
+
+    /**
+     * Aggregated health summary for all pull tasks.
+     */
+    public Map<String, Object> getHealthSummary() {
+        List<DahuaSwingStatsPullTask> all = statsPullMapper.listTasks();
+        long ok = all.stream().filter(t -> "SUCCESS".equals(t.getLastStatus())).count();
+        long failed = all.stream().filter(t -> "FAILED".equals(t.getLastStatus())).count();
+        long neverRun = all.stream().filter(t -> t.getLastStatus() == null || t.getLastStatus().isEmpty()).count();
+        long running = all.stream().filter(t -> "RUNNING".equals(t.getLastStatus())).count();
+
+        List<Map<String, Object>> recentFailures = all.stream()
+                .filter(t -> "FAILED".equals(t.getLastStatus()))
+                .sorted(Comparator.comparing(DahuaSwingStatsPullTask::getLastRunAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                .limit(5)
+                .map(t -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", t.getId());
+                    m.put("name", t.getName());
+                    m.put("lastError", t.getLastError());
+                    m.put("lastRunAt", t.getLastRunAt());
+                    return m;
+                })
+                .collect(Collectors.toList());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", all.size());
+        result.put("ok", ok);
+        result.put("failed", failed);
+        result.put("neverRun", neverRun);
+        result.put("running", running);
+        result.put("recentFailures", recentFailures);
+        return result;
     }
 }

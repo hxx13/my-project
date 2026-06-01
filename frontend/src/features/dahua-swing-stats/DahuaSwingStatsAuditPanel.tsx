@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Database, Plus, Play, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
 import {
@@ -21,6 +22,8 @@ import {
 } from "@/features/dahua-swing-stats/StatsTaskAutoCleanSettings";
 import { useDahuaSwingStatsTasks } from "@/features/dahua-swing-stats/useDahuaSwingStatsTasks";
 import { useSearchParams } from "react-router-dom";
+import { fetchStatsTasksHealth, retryAllFailedStatsTasks, retryStatsTask } from "@/api/domains/dahuaSwingStats.api";
+import { cn } from "@/lib/utils";
 
 type Segment = "all" | "daily" | "backfill";
 
@@ -33,6 +36,24 @@ export function DahuaSwingStatsAuditPanel() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<"daily" | "backfill">("daily");
   const [cleaningId, setCleaningId] = useState<number | null>(null);
+
+  const qc = useQueryClient();
+
+  const { data: health } = useQuery({
+    queryKey: ["dahua-stats-tasks", "health"],
+    queryFn: fetchStatsTasksHealth,
+    refetchInterval: 60_000,
+  });
+
+  const retryAllMutation = useMutation({
+    mutationFn: () => retryAllFailedStatsTasks(),
+    onSuccess: (data) => {
+      toast.success(`批量重试完成：${(data as any).succeeded}/${(data as any).total} 成功`);
+      void qc.invalidateQueries({ queryKey: ["dahua-stats-tasks"] });
+      void qc.invalidateQueries({ queryKey: ["dahua-stats-tasks", "health"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "批量重试失败"),
+  });
 
   const dailyEd = useDahuaSwingStatsTasks("daily", defaultDailyForm);
   const backfillEd = useDahuaSwingStatsTasks("backfill", defaultBackfillForm);
@@ -92,6 +113,22 @@ export function DahuaSwingStatsAuditPanel() {
     }
   };
 
+  const [retryingId, setRetryingId] = useState<number | null>(null);
+
+  const runRetry = async (id: number) => {
+    setRetryingId(id);
+    try {
+      const result = await retryStatsTask(id);
+      toast.success(`重试完成，入库 ${(result as any).saved ?? 0} 条`);
+      void qc.invalidateQueries({ queryKey: ["dahua-stats-tasks"] });
+      void qc.invalidateQueries({ queryKey: ["dahua-stats-tasks", "health"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "重试失败");
+    } finally {
+      setRetryingId(null);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <p className="text-sm text-slate-500">
@@ -134,6 +171,27 @@ export function DahuaSwingStatsAuditPanel() {
         </AdminButton>
       </div>
 
+      {health && health.failed > 0 ? (
+        <div className="mb-3 flex items-center justify-between rounded-lg border border-red-300 bg-red-50 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-red-800">
+              ⚠️ {health.failed} 个任务执行失败 · {health.ok} 个正常 · {health.neverRun} 个未运行
+            </p>
+            {health.recentFailures?.slice(0, 2).map(f => (
+              <p key={f.id} className="text-xs text-red-600 mt-1">{f.name}: {f.lastError}</p>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="shrink-0 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+            onClick={() => retryAllMutation.mutate()}
+            disabled={retryAllMutation.isPending}
+          >
+            {retryAllMutation.isPending ? "重试中…" : "一键重试全部"}
+          </button>
+        </div>
+      ) : null}
+
       <AdminDataTableWrap scrollable>
         <table className="w-full min-w-[720px] text-xs">
           <thead className="bg-slate-50 text-slate-600">
@@ -164,7 +222,7 @@ export function DahuaSwingStatsAuditPanel() {
               </tr>
             ) : (
               displayRows.map((r) => (
-                <tr key={r.id} className="border-t cursor-pointer hover:bg-slate-50" onClick={() => openRow(r)}>
+                <tr key={r.id} className={cn("border-t cursor-pointer hover:bg-slate-50", r.lastStatus === 'FAILED' && "bg-red-50/50 border-l-2 border-l-red-400")} onClick={() => openRow(r)}>
                   <td className="px-3 py-2">
                     {r.name}
                     {r.enabled === 0 ? <span className="ml-1 text-rose-500">(停)</span> : null}
@@ -211,6 +269,17 @@ export function DahuaSwingStatsAuditPanel() {
                   <td className="px-3 py-2">{r.lastStatus || "-"}</td>
                   <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                     <div className="flex flex-wrap gap-1">
+                      {r.lastStatus === 'FAILED' ? (
+                        <button
+                          type="button"
+                          title="重试最近一次失败"
+                          className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100"
+                          disabled={retryingId === r.id}
+                          onClick={() => r.id && void runRetry(r.id)}
+                        >
+                          {retryingId === r.id ? "重试中…" : "重试"}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className="rounded border px-2 py-1 inline-flex items-center gap-1"

@@ -111,6 +111,48 @@ public class AdminDahuaSwingStatsPullController {
         }
     }
 
+    @PostMapping("/{id}/retry")
+    @Operation(summary = "重试最近一次失败的拉取（使用相同参数窗口）")
+    public Result<?> retry(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            return Result.success(statsPullService.retryLastFailed(id));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/retry-all-failed")
+    @Operation(summary = "批量重试所有 FAILED 状态的统计拉取任务")
+    public Result<?> retryAllFailed(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            return Result.success(statsPullService.retryAllFailed());
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @GetMapping("/health")
+    @Operation(summary = "拉取任务健康摘要（各类状态计数 + 最近失败明细）")
+    public Result<?> health(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        return Result.success(statsPullService.getHealthSummary());
+    }
+
     private Result<?> requireAdmin(String authorization) {
         User user = authContextService.resolveUserFromBearer(authorization);
         if (user == null) {
