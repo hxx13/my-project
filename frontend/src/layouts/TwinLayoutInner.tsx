@@ -40,7 +40,6 @@ export default function TwinLayoutInner() {
     const debugShell = isDebugShellPath(pathname);
     /** 驾驶舱页固定科幻壳；动物房页仍随 Twin 主题 dashboardSciFi 切换 */
     const pNorm = pathname.replace(/\/+$/, "") || "/";
-    const isPreview = pNorm === "/dashboard-preview";
     const cockpitSciFi = pNorm === "/animal-room-cockpit";
     const animalSciFiShell =
         cockpitSciFi || (isAnimalRoomTelemetryPath(pathname) && themeId === "dashboardSciFi");
@@ -82,7 +81,7 @@ export default function TwinLayoutInner() {
     }, [animalSciFiShell]);
 
     return (
-        <div className={cn("fixed inset-0 w-screen m-0 p-0", isPreview ? "min-h-screen overflow-y-auto" : "h-screen overflow-hidden")} style={{ backgroundColor: "#f8f9fa" }}>
+        <div className="fixed inset-0 w-screen h-screen overflow-hidden m-0 p-0" style={{ backgroundColor: "#f8f9fa" }}>
             <style>{`
                 .nebula-bg::before {
                     content: "";
@@ -105,10 +104,10 @@ export default function TwinLayoutInner() {
 
             <div className="nebula-bg absolute inset-0 z-0 pointer-events-none" />
 
-            <div className={cn("relative z-10 w-full", isPreview ? "min-h-full overflow-y-auto" : "h-full min-h-0")}>
+            <div className="relative z-10 h-full min-h-0 w-full">
                 <div
                     className={cn(
-                        isPreview ? "min-h-full w-full" : "h-full min-h-0 w-full",
+                        "h-full min-h-0 w-full",
                         debugShell && themeId === "dashboardSciFi" && "twin-chrome-debug-root",
                         animalSciFiShell && "twin-chrome-animal-telemetry-scifi"
                     )}
