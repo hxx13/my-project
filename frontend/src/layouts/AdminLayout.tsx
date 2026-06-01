@@ -1148,7 +1148,7 @@ export default function AdminLayout() {
             <DialogTitle>解除ARO绑定</DialogTitle>
             <DialogDescription>
               确定要解除当前账号的ARO绑定吗？
-              {aroBinding && aroBinding !== false && (
+              {aroBinding && (
                 <span className="mt-1 block">当前绑定: {aroBinding.name} ({aroBinding.aroUserId})</span>
               )}
             </DialogDescription>
