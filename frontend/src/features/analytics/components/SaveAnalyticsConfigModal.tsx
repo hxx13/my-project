@@ -1,8 +1,13 @@
 ﻿import { useEffect, useState } from "react";
 import ReactDOM from "react-dom";
 import { X } from "lucide-react";
+import { AccessChannelMultiSelect } from "@/features/analytics/AccessChannelMultiSelect";
 import { CompareCyclesField } from "@/features/analytics/components/CompareCyclesField";
-import type { AnalyticsCompareCycle } from "@/features/analytics/analyticsPipelineFilter";
+import {
+  withChannelSelection,
+  type AnalyticsCompareCycle,
+  type AnalyticsDraftFilter,
+} from "@/features/analytics/analyticsPipelineFilter";
 
 export type SaveConfigOptions = {
   name: string;
@@ -18,6 +23,9 @@ type Props = {
   /** 隔离服可回溯历史；笼架占用仅落库当前周期快照 */
   enableHistoryBackfill?: boolean;
   subscribeHint?: string;
+  /** 通道选择草稿（仅隔离服使用，enableHistoryBackfill 为 true 时生效） */
+  draft?: AnalyticsDraftFilter;
+  onDraftChange?: (next: AnalyticsDraftFilter) => void;
   onClose: () => void;
   onConfirm: (opts: SaveConfigOptions) => Promise<void>;
 };
@@ -27,6 +35,8 @@ export function SaveAnalyticsConfigModal({
   initialCompareCycles,
   enableHistoryBackfill = true,
   subscribeHint,
+  draft,
+  onDraftChange,
   onClose,
   onConfirm,
 }: Props) {
@@ -97,6 +107,21 @@ export function SaveAnalyticsConfigModal({
               onChange={(e) => setName(e.target.value)}
             />
           </div>
+          {enableHistoryBackfill && draft && onDraftChange ? (
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-neutral-600">通道选择</label>
+              <div className="rounded-lg border border-violet-200/80 bg-white px-2 py-2">
+                <AccessChannelMultiSelect
+                  variant="inline"
+                  selected={draft.channelCodes}
+                  onChange={(channelCodes) => onDraftChange(withChannelSelection(draft, channelCodes))}
+                />
+              </div>
+              <p className="mt-1 text-[10px] text-violet-800/90">
+                选「全部」将保存为全部已启用通道。后续可在编辑中修改。
+              </p>
+            </div>
+          ) : null}
           <CompareCyclesField value={compareCycles} onChange={setCompareCycles} />
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/50 px-3 py-2">
             <input

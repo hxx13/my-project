@@ -561,6 +561,8 @@ export function IsolationUsageReportPanel() {
         initialCompareCycles={draft.compareCycles}
         onClose={() => setShowSaveModal(false)}
         onConfirm={handleSaveConfig}
+        draft={draft}
+        onDraftChange={setDraft}
       />
 
       <EditAnalyticsViewModal

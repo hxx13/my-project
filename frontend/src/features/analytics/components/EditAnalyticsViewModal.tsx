@@ -5,10 +5,6 @@ import { AccessChannelMultiSelect } from "@/features/analytics/AccessChannelMult
 import { CageAnalyticsScopeFilterBar } from "@/features/analytics/CageAnalyticsScopeFilterBar";
 import { CompareCyclesField } from "@/features/analytics/components/CompareCyclesField";
 import {
-  defaultBackfillUntilDate,
-  HistoryBackfillField,
-} from "@/features/analytics/components/HistoryBackfillField";
-import {
   defaultAnalyticsDraftFilter,
   draftFromSavedFilter,
   scopeFilterOnly,
@@ -56,8 +52,6 @@ export function EditAnalyticsViewModal(props: Props) {
   const [isoFilters, setIsoFilters] = useState<AnalyticsDraftFilter>(() => defaultAnalyticsDraftFilter());
   const [cageFilters, setCageFilters] = useState<CageAnalyticsDraftFilter>(() => defaultCageAnalyticsDraftFilter());
   const [subscribed, setSubscribed] = useState(false);
-  const [backfillHistory, setBackfillHistory] = useState(false);
-  const [backfillUntil, setBackfillUntil] = useState(defaultBackfillUntilDate);
   const [isPublic, setIsPublic] = useState(false);
 
   useEffect(() => {
@@ -71,14 +65,8 @@ export function EditAnalyticsViewModal(props: Props) {
       }
       setSubscribed(view.subscribed);
       setIsPublic((view.filter as Record<string, any>)?.isPublic === true);
-      setBackfillHistory(false);
-      setBackfillUntil(defaultBackfillUntilDate());
     }
   }, [view, open, isCage, view?.filter]);
-
-  useEffect(() => {
-    if (!subscribed) setBackfillHistory(false);
-  }, [subscribed]);
 
   if (!open || !view) return null;
 
@@ -143,13 +131,9 @@ export function EditAnalyticsViewModal(props: Props) {
             </span>
           </label>
           {!isCage ? (
-            <HistoryBackfillField
-              enabled={backfillHistory}
-              onEnabledChange={setBackfillHistory}
-              untilDate={backfillUntil}
-              onUntilDateChange={setBackfillUntil}
-              disabled={!subscribed}
-            />
+            <p className="text-[11px] leading-relaxed text-neutral-500 rounded-md bg-neutral-50 px-2 py-1.5">
+              历史回溯仅在首次创建配置时可用。如需重新回溯，请使用统计页面的「强制重算全部快照」按钮。
+            </p>
           ) : (
             <p className="text-[11px] leading-relaxed text-neutral-500">
               笼架占用按日/周/月自动抓取 ARO 快照并环比；不支持历史回溯，订阅后将立即生成当前周期快照。
@@ -192,8 +176,8 @@ export function EditAnalyticsViewModal(props: Props) {
                   name.trim(),
                   filter,
                   subscribed,
-                  backfillHistory,
-                  backfillUntil
+                  false,  // edit never triggers backfill
+                  ""      // no backfill date
                 );
               }
             }}
