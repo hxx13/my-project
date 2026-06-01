@@ -28,7 +28,10 @@
       "Bash(sed -i 's/package com\\\\.example\\\\.demo\\\\.modules\\\\.twin\\\\.controller;/package com.example.demo.modules.twin.common.controller;/' common/controller/__TRACKED_VAR__)",
       "Bash(rm controller/__TRACKED_VAR__)",
       "Bash(cp bootstrap/__TRACKED_VAR__ common/bootstrap/__TRACKED_VAR__)",
-      "Bash(sed -i 's/package com\\\\.example\\\\.demo\\\\.modules\\\\.twin\\\\.bootstrap;/package com.example.demo.modules.twin.common.bootstrap;/' common/bootstrap/__TRACKED_VAR__)"
+      "Bash(sed -i 's/package com\\\\.example\\\\.demo\\\\.modules\\\\.twin\\\\.bootstrap;/package com.example.demo.modules.twin.common.bootstrap;/' common/bootstrap/__TRACKED_VAR__)",
+      "WebSearch",
+      "Bash(mkdir -p ~/.claude/skills)",
+      "Bash(git clone *)"
     ]
   }
 }

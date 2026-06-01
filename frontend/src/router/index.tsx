@@ -1,6 +1,7 @@
 import { createHashRouter, Navigate } from "react-router-dom";
 import TwinLayout from "@/layouts/TwinLayout";
 import DashboardPage from "@/pages/DashboardPage";
+import DashboardPreviewPage from "@/pages/DashboardPreviewPage";
 import DebugTablePage from "@/pages/DebugTablePage.tsx";
 import DebugPersonnelPage from "@/pages/DebugPersonnelPage.tsx";
 import DebugPredictionPage from "@/pages/DebugPredictionPage.tsx";
@@ -176,6 +177,7 @@ export const router = createHashRouter([
                     },
                         ],
                     },
+                    {path: "dashboard-preview", element: <DashboardPreviewPage />},
                     {path: "animal-room-telemetry", element: <AnimalRoomTelemetryPage/>},
                     {path: "animal-room-cockpit", element: <AnimalRoomCockpitPage/>},
                     {path: "digital-twin-screen", element: <DigitalTwinScreenPage/>},

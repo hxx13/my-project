@@ -9,6 +9,10 @@
       "env": {
         "FIRECRAWL_API_KEY": "fc-65ea187392d8410aac31910313cab047"
       }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
     }
   }
 }
