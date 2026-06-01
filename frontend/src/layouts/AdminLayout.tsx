@@ -929,7 +929,7 @@ export default function AdminLayout() {
                     绑定ARO账号
                   </DropdownMenuItem>
                 )}
-                {hasMinRole(role, "SUPER_ADMIN") && aroBinding && aroBinding !== false && (
+                {hasMinRole(role, "SUPER_ADMIN") && aroBinding && (
                   <>
                     <DropdownMenuItem disabled className="text-[var(--twin-mute)] opacity-70">
                       <UserRound className="mr-2 h-4 w-4" />
