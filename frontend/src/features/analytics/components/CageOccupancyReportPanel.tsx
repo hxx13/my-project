@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, BellOff, Pencil, Settings2, Share2, Sparkles, Trash2, Upload } from "lucide-react";
+import { Bell, BellOff, Pencil, Plus, Settings2, Share2, Sparkles, Trash2, Upload } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
   deleteAnalyticsView,
@@ -16,7 +16,7 @@ import {
 } from "@/api/domains/analytics.api";
 import { CageAuditProgressBanner } from "@/features/analytics/components/CageAuditProgressBanner";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
-import { AnalyticsConfigSettingsModal } from "@/features/analytics/components/AnalyticsConfigSettingsModal";
+
 import { EditAnalyticsViewModal } from "@/features/analytics/components/EditAnalyticsViewModal";
 import { CageOccupancyReportLayout } from "@/features/analytics/components/CageOccupancyReportLayout";
 import {
@@ -53,7 +53,6 @@ export function CageOccupancyReportPanel() {
   const [insightDialog, setInsightDialog] = useState<InsightDialogTarget | null>(null);
   const [shareModal, setShareModal] = useState<"create" | "import" | null>(null);
   const [awaitingCageAudit, setAwaitingCageAudit] = useState(false);
-  const [configOpen, setConfigOpen] = useState(false);
 
   const { data: views = [] } = useQuery({
     queryKey: ["analytics", "views", REPORT_KEY],
@@ -290,24 +289,13 @@ export function CageOccupancyReportPanel() {
     <div className="space-y-3">
       <button
         type="button"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50"
-        onClick={() => setConfigOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-800 shadow-sm hover:bg-violet-100"
+        onClick={() => setShowSaveModal(true)}
       >
-        <Settings2 className="h-4 w-4 text-violet-600" />
-        设置
+        <Plus className="h-4 w-4" />
+        新增配置
       </button>
 
-      <AnalyticsConfigSettingsModal
-        open={configOpen}
-        onClose={() => setConfigOpen(false)}
-        reportKey={REPORT_KEY}
-        draft={draft}
-        onDraftChange={setDraft}
-        onSaveClick={() => {
-          setConfigOpen(false);
-          setShowSaveModal(true);
-        }}
-      />
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
         <aside className="w-full shrink-0 space-y-3 xl:w-72 xl:sticky xl:top-20 xl:z-10 xl:self-start">

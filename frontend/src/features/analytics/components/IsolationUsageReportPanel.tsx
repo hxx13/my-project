@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, BellOff, Pencil, Settings2, Share2, Sparkles, Trash2, Upload } from "lucide-react";
+import { Bell, BellOff, Pencil, Plus, Settings2, Share2, Sparkles, Trash2, Upload } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
   deleteAnalyticsView,
@@ -17,7 +17,7 @@ import {
   type IsolationUsageQueryResult,
 } from "@/api/domains/analytics.api";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
-import { AnalyticsConfigSettingsModal } from "@/features/analytics/components/AnalyticsConfigSettingsModal";
+
 import { EditAnalyticsViewModal } from "@/features/analytics/components/EditAnalyticsViewModal";
 import {
   AnalyticsLlmInsightDialog,
@@ -67,7 +67,6 @@ export function IsolationUsageReportPanel() {
   const [previewing, setPreviewing] = useState(false);
   const [previewResult, setPreviewResult] = useState<IsolationUsageQueryResult | null>(null);
   const [applyingConfig, setApplyingConfig] = useState(false);
-  const [configOpen, setConfigOpen] = useState(false);
 
   const { data: views = [] } = useQuery({
     queryKey: ["analytics", "views", REPORT_KEY],
@@ -168,14 +167,6 @@ export function IsolationUsageReportPanel() {
     setSelectedLogId(null);
   };
 
-  const openConfigSettings = () => {
-    if (!activeView) {
-      toast.error("请先在左侧选择一条统计配置");
-      return;
-    }
-    setDraft(draftFromSavedFilter(activeView.filter as Record<string, unknown>));
-    setConfigOpen(true);
-  };
 
   const openEditView = (v: AnalyticsUserView) => {
     setActiveViewId(v.id);
@@ -398,10 +389,10 @@ export function IsolationUsageReportPanel() {
             {configDirty ? (
               <>
                 {" "}
-                · 当前草稿与已保存不一致，请点击「设置」修改后使用<strong>「更新当前配置并重算」</strong>，否则快照仍按旧通道口径。
+                · 当前草稿与已保存不一致，请使用铅笔编辑按钮修改后点击<strong>「强制重算全部快照」</strong>，否则快照仍按旧通道口径。
               </>
             ) : (
-              " · 修改通道或周期后请「更新当前配置并重算」。"
+              " · 修改通道或周期后请点击铅笔编辑按钮修改，然后使用「强制重算全部快照」。"
             )}
           </p>
           <p className="mt-1 text-[10px] text-neutral-600">
@@ -426,11 +417,11 @@ export function IsolationUsageReportPanel() {
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50"
-          onClick={openConfigSettings}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-800 shadow-sm hover:bg-violet-100"
+          onClick={() => setShowSaveModal(true)}
         >
-          <Settings2 className="h-4 w-4 text-violet-600" />
-          设置
+          <Plus className="h-4 w-4" />
+          新增配置
         </button>
         {activeView?.subscribed ? (
           <button
@@ -457,20 +448,6 @@ export function IsolationUsageReportPanel() {
         ) : null}
       </div>
 
-      <AnalyticsConfigSettingsModal
-        open={configOpen}
-        onClose={() => setConfigOpen(false)}
-        draft={draft}
-        onDraftChange={setDraft}
-        onSaveClick={() => {
-          setConfigOpen(false);
-          setShowSaveModal(true);
-        }}
-        onApplyActive={activeView ? () => void applyToActiveView() : undefined}
-        activeViewName={activeView?.name}
-        activeViewSubscribed={activeView?.subscribed}
-        applying={applyingConfig}
-      />
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
         <aside className="w-full shrink-0 space-y-3 xl:w-72 xl:sticky xl:top-20 xl:z-10 xl:self-start">
