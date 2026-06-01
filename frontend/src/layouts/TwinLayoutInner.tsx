@@ -82,7 +82,7 @@ export default function TwinLayoutInner() {
     }, [animalSciFiShell]);
 
     return (
-        <div className="fixed inset-0 w-screen h-screen overflow-hidden m-0 p-0" style={{ backgroundColor: "#f8f9fa" }}>
+        <div className={cn("fixed inset-0 w-screen m-0 p-0", isPreview ? "min-h-screen overflow-y-auto" : "h-screen overflow-hidden")} style={{ backgroundColor: "#f8f9fa" }}>
             <style>{`
                 .nebula-bg::before {
                     content: "";

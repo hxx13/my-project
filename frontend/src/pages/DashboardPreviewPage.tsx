@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -14,35 +14,49 @@ import { useEventStore } from "@/store/useEventStore";
 import { useQuery } from "@tanstack/react-query";
 import { fetchLineChartData } from "@/api/twinApi";
 import type { LineStats } from "@/api/twinApi";
-import { ArrowLeft, Columns, ScrollText } from "lucide-react";
 import { DashboardSciFiVisualProvider } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
 import { SciFiDashboardChrome } from "@/features/dashboard-scifi-theme/SciFiDashboardChrome";
 import { useTwinChromeTheme } from "@/features/twin-chrome/TwinChromeThemeContext";
+import { ArrowLeft, Columns, ScrollText } from "lucide-react";
 
 /* ================================================================== */
 
-function ScrollReveal({ children }: { children: React.ReactNode }) {
+function ScrollReveal({ children, className }: { children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
-  useGSAP(() => {
+  useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const obs = new IntersectionObserver(
       ([e]) => {
         if (e.isIntersecting) {
-          gsap.fromTo(el, { opacity: 0, y: 32 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", clearProps: "transform,opacity" });
+          gsap.fromTo(el, { opacity: 0, y: 48, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, ease: "power3.out", clearProps: "all" });
           obs.unobserve(el);
         }
       },
-      { threshold: 0.08 },
+      { threshold: 0.06, rootMargin: "0px 0px -40px 0px" },
     );
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
-  return <div ref={ref}>{children}</div>;
+  return <div ref={ref} className={className}>{children}</div>;
 }
 
-const sectionBadge = (n: string) => (
-  <span className="inline-block text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--twin-mute)] mb-2">{n}</span>
+/* ================================================================== */
+
+const SURFACE = "linear-gradient(180deg, #06061a 0%, #0f0c2e 30%, #1a1040 70%, #06061a 100%)";
+
+const DataCapsule = ({ accent, h, children }: { accent: string; h: number; children: React.ReactNode }) => (
+  <div style={{ height: h, position: "relative" }}>
+    {/* glow ring */}
+    <div style={{
+      position: "absolute", inset: -2, borderRadius: 20,
+      background: `linear-gradient(135deg, ${accent}40, transparent 40%, ${accent}20)`,
+      filter: "blur(8px)", zIndex: 0, pointerEvents: "none",
+    }} />
+    <div style={{ height: "100%", position: "relative", zIndex: 1 }}>
+      <GlassCard blobColor={accent.replace(")", ",0.25)")}>{children}</GlassCard>
+    </div>
+  </div>
 );
 
 /* ================================================================== */
@@ -65,74 +79,93 @@ export default function DashboardPreviewPage() {
 
   useGSAP(() => {
     if (!heroRef.current) return;
-    gsap.fromTo(heroRef.current.querySelectorAll(".hero-item"),
-      { opacity: 0, y: 36 }, { opacity: 1, y: 0, duration: 0.7, stagger: 0.1, ease: "power3.out" });
+    const tl = gsap.timeline();
+    tl.fromTo(heroRef.current.querySelectorAll(".hero-word"), { opacity: 0, y: 60 }, { opacity: 1, y: 0, duration: 1, stagger: 0.15, ease: "power4.out" })
+      .fromTo(heroRef.current.querySelectorAll(".hero-stat"), { opacity: 0, scale: 0.7 }, { opacity: 1, scale: 1, duration: 0.6, stagger: 0.1, ease: "back.out(1.7)" }, "-=0.3");
   }, { scope: heroRef });
 
   useGSAP(() => {
     if (!carouselRef.current || mode !== "carousel") return;
-    gsap.fromTo(carouselRef.current, { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" });
+    gsap.fromTo(carouselRef.current, { opacity: 0, x: 24 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" });
   }, { dependencies: [slide, mode], scope: carouselRef });
 
-  /* ---- cards ---- */
+  const W = ({ blob, h, c }: { blob: string; h: number; c: React.ReactNode }) => (
+    <DataCapsule accent={blob} h={h}>{c}</DataCapsule>
+  );
 
-  const Card = ({ blob, h, children }: { blob: string; h: number; children: React.ReactNode }) => (
-    <div style={{ height: h }}>
-      <GlassCard blobColor={blob}>{children}</GlassCard>
+  const timeline = <W blob="rgba(52,199,89,0.4)" h={520} c={<TimelineWaterfall />} />;
+  const radar    = <W blob="rgba(0,240,255,0.4)"  h={520} c={<RetentionRadarStream activeTab={tab} setActiveTab={setTab} />} />;
+  const chart    = <W blob="rgba(168,85,247,0.4)" h={420} c={
+    lineLoading ? <Centered>加载中…</Centered> : lineChartData ? <HubPeakLineChart data={lineChartData as LineStats} /> : <Centered>暂无高峰数据</Centered>
+  } />;
+  const pie      = <W blob="rgba(59,130,246,0.4)" h={380} c={<NestedPieChart />} />;
+  const codex    = <W blob="rgba(255,0,110,0.4)"  h={380} c={<RuleCodexCard />} />;
+  const rank     = <W blob="rgba(0,240,255,0.4)"  h={380} c={<MonthlyRankCarousel />} />;
+  const order    = <W blob="rgba(255,0,110,0.4)"  h={440} c={<AnimalOrderRankingCard />} />;
+  const future   = (
+    <div style={{ height: 440, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 18,
+      border: "1px dashed rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.02)" }}>
+      <p style={{ color: "rgba(255,255,255,0.25)", fontSize: 15 }}>扩展数据看板 — 即将接入</p>
     </div>
   );
 
-  const timelineCard  = <Card blob="rgba(52,199,89,0.2)"  h={500}><TimelineWaterfall /></Card>;
-  const radarCard     = <Card blob="rgba(255,59,48,0.15)" h={500}><RetentionRadarStream activeTab={tab} setActiveTab={setTab} /></Card>;
-  const chartCard     = <Card blob="rgba(66,165,245,0.15)" h={380}>
-    {lineLoading ? <Centered>加载中…</Centered> : lineChartData ? <HubPeakLineChart data={lineChartData as LineStats} /> : <Centered>暂无高峰数据</Centered>}
-  </Card>;
-  const pieCard       = <Card blob="rgba(45,92,247,0.15)" h={340}><NestedPieChart /></Card>;
-  const codexCard     = <Card blob="rgba(244,63,94,0.15)" h={340}><RuleCodexCard /></Card>;
-  const rankCard      = <Card blob="rgba(191,90,242,0.15)" h={340}><MonthlyRankCarousel /></Card>;
-  const orderCard     = <Card blob="rgba(255,59,48,0.1)"  h={400}><AnimalOrderRankingCard /></Card>;
-  const placeholder   = (
-    <Card blob="rgba(100,116,139,0.06)" h={400}>
-      <div className="flex items-center justify-center h-full"><span className="text-sm text-[var(--twin-mute)]">预留扩展区域</span></div>
-    </Card>
+  const Sec = ({ n, title, children }: { n: string; title: string; children: React.ReactNode }) => (
+    <div style={{ marginBottom: 100 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--twin-primary, #fff)", boxShadow: "0 0 10px rgba(0,240,255,0.6)" }} />
+        <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.16em", color: "rgba(255,255,255,0.45)" }}>{n}</span>
+        <span style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.06)" }} />
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "#fff", margin: 0 }}>{title}</h2>
+      </div>
+      {children}
+    </div>
   );
-
-  /* ---- render ---- */
 
   return (
     <DashboardSciFiVisualProvider value={sciFi.enabled}>
     <SciFiDashboardChrome enabled={sciFi.enabled}>
-    <div className="min-h-full font-sans text-[var(--twin-ink)]" style={{ background: "linear-gradient(180deg, #fff 0%, #eef2ff 50%, var(--twin-canvas-soft, #f5f5f5) 100%)" }}>
+    <div style={{ minHeight: "100vh", background: SURFACE, color: "#e0e0e0", fontFamily: "system-ui, -apple-system, sans-serif" }}>
 
       {/* ---- Toolbar ---- */}
-      <div className="fixed top-4 right-4 z-50 flex gap-2">
-        <button onClick={() => navigate("/")} className="flex items-center gap-1.5 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-xs text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)] transition-colors">
-          <ArrowLeft size={14} /> 返回
-        </button>
-        <button onClick={() => setMode(m => m === "scroll" ? "carousel" : "scroll")} className="flex items-center gap-1.5 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-xs text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)] transition-colors">
+      <div style={{ position: "fixed", top: 16, right: 16, zIndex: 100, display: "flex", gap: 8 }}>
+        <ToolBtn onClick={() => navigate("/")}><ArrowLeft size={14} /> 返回</ToolBtn>
+        <ToolBtn onClick={() => setMode(m => m === "scroll" ? "carousel" : "scroll")}>
           {mode === "scroll" ? <Columns size={14} /> : <ScrollText size={14} />}
           {mode === "scroll" ? "轮播" : "滚动"}
-        </button>
+        </ToolBtn>
       </div>
 
       {/* ---- 头部 ---- */}
-      <section ref={heroRef} className="pt-16 pb-10 text-center relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-blue-100/30 blur-[100px] -translate-y-1/3 translate-x-1/4 pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-violet-100/25 blur-[90px] translate-y-1/3 -translate-x-1/4 pointer-events-none" />
-        <div className="relative z-10 max-w-[1400px] mx-auto px-6">
-          <div className="hero-item"><span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--twin-mute)]">数字孪生 · 仪表盘预览</span></div>
-          <h1 className="hero-item text-3xl sm:text-4xl font-bold mt-3">实验动物科学部</h1>
-          <p className="hero-item text-sm text-[var(--twin-mute)] mt-2">全新多段布局预览 —— 滚动模式 / 轮播模式</p>
-          <div className="hero-item mt-8 flex flex-wrap justify-center gap-3">
+      <section ref={heroRef} style={{ padding: "100px 24px 72px", textAlign: "center", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 30%, rgba(168,85,247,0.12) 0%, transparent 60%), radial-gradient(ellipse at 80% 70%, rgba(0,240,255,0.08) 0%, transparent 50%)", pointerEvents: "none" }} />
+        <div style={{ position: "relative", zIndex: 1, maxWidth: 1200, margin: "0 auto" }}>
+          <p className="hero-word" style={{ fontSize: 13, fontWeight: 500, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", margin: "0 0 16px" }}>
+            数字孪生实时监控中心
+          </p>
+          <h1 className="hero-word" style={{ fontSize: "clamp(36px, 5vw, 56px)", fontWeight: 800, color: "#fff", margin: "0 0 8px", letterSpacing: "-0.02em" }}>
+            实验动物科学部
+          </h1>
+          <p className="hero-word" style={{ fontSize: 16, color: "rgba(255,255,255,0.45)", margin: "0 0 40px" }}>
+            多段滚动布局 · Aurora Maximalism 设计预览
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 16 }}>
             {[
-              { v: "128", l: "当前在室", c: "#2563eb" },
-              { v: "1,247", l: "今日进出", c: "#16a34a" },
-              { v: "42", l: "活跃房间", c: "#7c3aed" },
-              { v: "98.5%", l: "系统在线率", c: "#ea580c" },
+              { v: "128", l: "当前在室", c: "#00F0FF" },
+              { v: "1,247", l: "今日进出", c: "#4ade80" },
+              { v: "42", l: "活跃房间", c: "#A855F7" },
+              { v: "98.5%", l: "系统在线率", c: "#FF006E" },
             ].map(m => (
-              <div key={m.l} className="px-6 py-4 rounded-2xl bg-[var(--twin-canvas)]/70 backdrop-blur border border-[var(--twin-hairline)] shadow-sm text-center">
-                <div className="text-3xl font-bold tracking-tight" style={{ color: m.c }}>{m.v}</div>
-                <div className="mt-1 text-xs text-[var(--twin-mute)]">{m.l}</div>
+              <div
+                key={m.l}
+                className="hero-stat"
+                style={{
+                  padding: "20px 28px", borderRadius: 18, textAlign: "center",
+                  background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                  backdropFilter: "blur(16px)", minWidth: 140,
+                }}
+              >
+                <div style={{ fontSize: "clamp(24px, 3vw, 34px)", fontWeight: 800, color: m.c, textShadow: `0 0 24px ${m.c}60` }}>{m.v}</div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>{m.l}</div>
               </div>
             ))}
           </div>
@@ -141,96 +174,53 @@ export default function DashboardPreviewPage() {
 
       {/* ---- 滚动模式 ---- */}
       {mode === "scroll" && (
-        <div className="max-w-[1440px] mx-auto px-6 sm:px-10 pb-20">
-          <div className="flex flex-col gap-20">
-
-            <ScrollReveal>
-              {sectionBadge("01 · 实时动态")}
-              <h2 className="text-xl font-bold mb-1">实时动态</h2>
-              <p className="text-sm text-[var(--twin-mute)] mb-5">门禁活动瀑布流与人员留存态势即时监控</p>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {timelineCard}
-                {radarCard}
+        <div style={{ maxWidth: 1400, margin: "0 auto", padding: "0 28px 120px" }}>
+          <ScrollReveal>
+            <Sec n="01 · 实时动态" title="实时动态">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(480px, 1fr))", gap: 28 }}>
+                {timeline}{radar}
               </div>
-            </ScrollReveal>
+            </Sec>
+          </ScrollReveal>
 
-            <ScrollReveal>
-              {sectionBadge("02 · 数据洞察")}
-              <h2 className="text-xl font-bold mb-1">数据洞察</h2>
-              <p className="text-sm text-[var(--twin-mute)] mb-5">进出高峰趋势、组织架构分析与智能规则法典</p>
-              {chartCard}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-                {pieCard}
-                {codexCard}
-                {rankCard}
+          <ScrollReveal>
+            <Sec n="02 · 数据洞察" title="数据洞察">
+              {chart}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 28, marginTop: 28 }}>
+                {pie}{codex}{rank}
               </div>
-            </ScrollReveal>
+            </Sec>
+          </ScrollReveal>
 
-            <ScrollReveal>
-              {sectionBadge("03 · 排行榜")}
-              <h2 className="text-xl font-bold mb-1">排行榜与订单</h2>
-              <p className="text-sm text-[var(--twin-mute)] mb-5">月度排名轮播与动物订购综合看板</p>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {orderCard}
-                {placeholder}
+          <ScrollReveal>
+            <Sec n="03 · 排行榜" title="排行榜与订单">
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 28 }}>
+                {order}{future}
               </div>
-            </ScrollReveal>
-
-          </div>
+            </Sec>
+          </ScrollReveal>
         </div>
       )}
 
       {/* ---- 轮播模式 ---- */}
       {mode === "carousel" && (
-        <div className="max-w-[1440px] mx-auto px-6 sm:px-10 pb-12">
-          <div className="flex justify-center gap-2 py-2 mb-4">
-            {[0, 1, 2].map(i => (
-              <button key={i} onClick={() => setSlide(i)}
-                className={`rounded-full transition-all duration-300 ${i === slide ? "w-6 h-2 bg-[var(--twin-ink)]" : "w-2 h-2 bg-[var(--twin-hairline)]"}`}
-              />
-            ))}
-          </div>
+        <div style={{ maxWidth: 1400, margin: "0 auto", padding: "0 28px 80px" }}>
+          <Dots total={3} active={slide} onDot={setSlide} />
           <div ref={carouselRef}>
-            {slide === 0 && (
-              <div>
-                {sectionBadge("01 / 03 · 实时动态")}
-                <h2 className="text-xl font-bold mb-5">实时动态</h2>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{timelineCard}{radarCard}</div>
-              </div>
-            )}
-            {slide === 1 && (
-              <div>
-                {sectionBadge("02 / 03 · 数据洞察")}
-                <h2 className="text-xl font-bold mb-5">数据洞察</h2>
-                {chartCard}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">{pieCard}{codexCard}{rankCard}</div>
-              </div>
-            )}
-            {slide === 2 && (
-              <div>
-                {sectionBadge("03 / 03 · 排行榜")}
-                <h2 className="text-xl font-bold mb-5">排行榜与订单</h2>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{orderCard}{placeholder}</div>
-              </div>
-            )}
+            {slide === 0 && <Sec n="01 / 03" title="实时动态"><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(480px, 1fr))", gap: 28 }}>{timeline}{radar}</div></Sec>}
+            {slide === 1 && <Sec n="02 / 03" title="数据洞察">{chart}<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 28, marginTop: 28 }}>{pie}{codex}{rank}</div></Sec>}
+            {slide === 2 && <Sec n="03 / 03" title="排行榜与订单"><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 28 }}>{order}{future}</div></Sec>}
           </div>
-          <div className="flex justify-between mt-6">
-            <button onClick={() => setSlide(s => Math.max(0, s - 1))} disabled={slide === 0}
-              className="px-4 py-2 text-sm rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] disabled:opacity-30 hover:bg-[var(--twin-canvas-soft)] transition-colors">
-              ← 上一页
-            </button>
-            <span className="text-xs text-[var(--twin-mute)] leading-9">{slide + 1} / 3</span>
-            <button onClick={() => setSlide(s => Math.min(2, s + 1))} disabled={slide === 2}
-              className="px-4 py-2 text-sm rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] disabled:opacity-30 hover:bg-[var(--twin-canvas-soft)] transition-colors">
-              下一页 →
-            </button>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 32 }}>
+            <ToolBtn onClick={() => setSlide(s => Math.max(0, s - 1))} style={{ opacity: slide === 0 ? 0.25 : 1 }}>← 上一页</ToolBtn>
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", lineHeight: "36px" }}>{slide + 1} / 3</span>
+            <ToolBtn onClick={() => setSlide(s => Math.min(2, s + 1))} style={{ opacity: slide === 2 ? 0.25 : 1 }}>下一页 →</ToolBtn>
           </div>
         </div>
       )}
 
-      {/* ---- 底部 ---- */}
-      <div className="text-center py-8 border-t border-[var(--twin-hairline)] text-xs text-[var(--twin-mute)]">
-        仪表盘预览 · 滚动 / 轮播双模式 · 右上角切换
+      <div style={{ textAlign: "center", padding: "32px 0", borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 12, color: "rgba(255,255,255,0.25)" }}>
+        Aurora Maximalism · 数字孪生 · 仪表盘预览
       </div>
     </div>
     </SciFiDashboardChrome>
@@ -238,6 +228,35 @@ export default function DashboardPreviewPage() {
   );
 }
 
+/* ---- helpers ---- */
+
 function Centered({ children }: { children: React.ReactNode }) {
-  return <div className="flex items-center justify-center h-full text-sm text-[var(--twin-mute)]">{children}</div>;
+  return <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "rgba(255,255,255,0.35)" }}>{children}</div>;
+}
+
+function ToolBtn({ onClick, style, children }: { onClick: () => void; style?: React.CSSProperties; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} style={{
+      display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 16px", borderRadius: 999,
+      border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)",
+      color: "rgba(255,255,255,0.7)", fontSize: 12, cursor: "pointer",
+      backdropFilter: "blur(12px)", ...style,
+    }}>
+      {children}
+    </button>
+  );
+}
+
+function Dots({ total, active, onDot }: { total: number; active: number; onDot: (i: number) => void }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: "8px 0 24px" }}>
+      {Array.from({ length: total }).map((_, i) => (
+        <button key={i} onClick={() => onDot(i)} style={{
+          width: i === active ? 24 : 8, height: 8, borderRadius: 999,
+          background: i === active ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.15)",
+          border: "none", cursor: "pointer", transition: "all 0.3s",
+        }} />
+      ))}
+    </div>
+  );
 }
