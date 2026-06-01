@@ -1,8 +1,7 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import { GlassCard } from "@/components/ui/GlassCard";
 import { TimelineWaterfall } from "@/features/realtime-stream/TimelineWaterfall";
 import { NestedPieChart } from "@/features/dashboard/NestedPieChart";
 import { MonthlyRankCarousel } from "@/features/dashboard/MonthlyRankCarousel";
@@ -10,78 +9,116 @@ import { AnimalOrderRankingCard } from "@/features/dashboard/AnimalOrderRankingC
 import { RetentionRadarStream } from "@/features/realtime-stream/RetentionRadarStream";
 import { HubPeakLineChart } from "@/features/dashboard/HubPeakLineChart";
 import { RuleCodexCard } from "@/features/dashboard/RuleCodexCard";
+import { useEventStore } from "@/store/useEventStore";
 import { useQuery } from "@tanstack/react-query";
 import { fetchLineChartData } from "@/api/twinApi";
 import type { LineStats } from "@/api/twinApi";
-import { useTwinChromeTheme } from "@/features/twin-chrome/TwinChromeThemeContext";
-import { SciFiDashboardChrome } from "@/features/dashboard-scifi-theme/SciFiDashboardChrome";
 import { DashboardSciFiVisualProvider } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { SciFiDashboardChrome } from "@/features/dashboard-scifi-theme/SciFiDashboardChrome";
+import { useTwinChromeTheme } from "@/features/twin-chrome/TwinChromeThemeContext";
 import { ArrowLeft, Columns, ScrollText } from "lucide-react";
 
 /* ================================================================== */
-/*  ScrollReveal                                                      */
+/*  Retro-Futuristic design tokens                                     */
 /* ================================================================== */
 
+const TOKENS = {
+  bg:      "#0A0014",
+  surface: "rgba(0,255,65,0.03)",
+  border:  "rgba(0,255,65,0.15)",
+  borderH: "rgba(0,255,65,0.3)",
+  text:    "rgba(0,255,65,0.85)",
+  mute:    "rgba(0,255,65,0.35)",
+  accent:  "#00FF41",
+  accent2: "#FFB000",
+  glow:    "0 0 12px rgba(0,255,65,0.25)",
+} as const;
+
+const s = TOKENS;
+
+/* ---- CRT scanline overlay (global) ---- */
+const SCANLINES = `repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px)`;
+
+/* ================================================================== */
+/*  Components                                                         */
+/* ================================================================== */
+
+/** Section divider with phosphor dot + label */
+function SectionBar({ n, title }: { n: string; title: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.accent, boxShadow: s.glow }} />
+      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.18em", color: s.mute, textTransform: "uppercase" }}>{n}</span>
+      <span style={{ flex: 1, height: 1, background: s.border }} />
+      <span style={{ fontSize: 16, fontWeight: 700, color: s.text }}>{title}</span>
+    </div>
+  );
+}
+
+/** Phosphor-bordered container for a widget */
+function Pod({ h, children }: { h: number; children: React.ReactNode }) {
+  return (
+    <div style={{
+      height: h, borderRadius: 2, border: `1px solid ${s.border}`, background: s.surface,
+      overflow: "hidden", position: "relative",
+    }}>
+      {children}
+    </div>
+  );
+}
+
+/** Hero stat number with glow */
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <div style={{ textAlign: "center", padding: "16px 24px", borderRadius: 2, border: `1px solid ${s.border}`, background: s.surface }}>
+      <div style={{ fontFamily: "monospace", fontSize: "clamp(20px,2.5vw,28px)", fontWeight: 700, color: s.accent, textShadow: s.glow }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 11, color: s.mute, marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}
+
+/** Toolbar button */
+function Tb({ onClick, children, style }: { onClick: () => void; children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <button onClick={onClick} style={{
+      display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 2,
+      border: `1px solid ${s.border}`, background: s.surface, color: s.text, fontSize: 11,
+      cursor: "pointer", fontFamily: "monospace", ...style,
+    }}>
+      {children}
+    </button>
+  );
+}
+
+/** Scroll-triggered reveal */
 function ScrollReveal({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
-  useGSAP(() => {
-    if (!ref.current) return;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
     const obs = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          gsap.fromTo(entry.target, { opacity: 0, y: 36 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", clearProps: "transform,opacity" });
-          obs.unobserve(entry.target);
-        }
+      ([e]) => {
+        if (e.isIntersecting) { gsap.fromTo(el, { opacity: 0, y: 32 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out", clearProps: "transform,opacity" }); obs.unobserve(el); }
       },
-      { threshold: 0.12 },
+      { threshold: 0.05, rootMargin: "0px 0px -20px 0px" },
     );
-    obs.observe(ref.current);
+    obs.observe(el);
     return () => obs.disconnect();
   }, []);
   return <div ref={ref}>{children}</div>;
 }
 
-/* ================================================================== */
-/*  Section Header                                                    */
-/* ================================================================== */
-
-function SectionHeader({ badge, title, subtitle }: { badge: string; title: string; subtitle?: string }) {
-  return (
-    <div className="mb-5">
-      <span className="inline-block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500/70 mb-1.5">{badge}</span>
-      <h2 className="text-xl font-bold text-slate-900">{title}</h2>
-      {subtitle && <p className="mt-1 text-sm text-slate-500 max-w-xl">{subtitle}</p>}
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  Hero Metric                                                       */
-/* ================================================================== */
-
-function HeroMetric({ value, label, accent }: { value: string; label: string; accent?: string }) {
-  return (
-    <div className="text-center px-6 py-4 rounded-2xl bg-white/60 backdrop-blur border border-white/50 shadow-sm">
-      <div className="text-3xl font-bold tracking-tight" style={{ color: accent ?? "#0f172a" }}>{value}</div>
-      <div className="mt-1 text-xs text-slate-500">{label}</div>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  Carousel Dots                                                     */
-/* ================================================================== */
-
 function CarouselDots({ total, active, onDot }: { total: number; active: number; onDot: (i: number) => void }) {
   return (
-    <div className="flex items-center justify-center gap-2 py-3">
+    <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: "8px 0 24px" }}>
       {Array.from({ length: total }).map((_, i) => (
-        <button
-          key={i}
-          onClick={() => onDot(i)}
-          className={`rounded-full transition-all duration-300 ${i === active ? "w-6 h-2 bg-indigo-500" : "w-2 h-2 bg-slate-300 hover:bg-slate-400"}`}
-          aria-label={`Slide ${i + 1}`}
-        />
+        <button key={i} onClick={() => onDot(i)} style={{
+          width: i === active ? 24 : 8, height: 8, borderRadius: 999,
+          background: i === active ? s.accent : s.borderH, border: "none", cursor: "pointer", transition: "all 0.3s",
+          boxShadow: i === active ? s.glow : "none",
+        }} />
       ))}
     </div>
   );
@@ -92,188 +129,148 @@ function CarouselDots({ total, active, onDot }: { total: number; active: number;
 /* ================================================================== */
 
 export default function DashboardPreviewPage() {
+  useEventStore((s) => s.setInitialFeed);
+  const sciFi = useTwinChromeTheme();
   const navigate = useNavigate();
-  const sciFiTheme = useTwinChromeTheme();
   const [mode, setMode] = useState<"scroll" | "carousel">("scroll");
-  const [carouselIdx, setCarouselIdx] = useState(0);
-  const [activeTab, setActiveTab] = useState<"浦东" | "浦西">("浦东");
+  const [slide, setSlide] = useState(0);
+  const [tab, setTab] = useState<"浦东" | "浦西">("浦东");
   const heroRef = useRef<HTMLDivElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
 
-  const { data: lineChartData, isLoading: isLineChartLoading } = useQuery({
-    queryKey: ["hubLineChart"],
-    queryFn: fetchLineChartData,
-    refetchInterval: 1000 * 60 * 5,
+  const { data: lineChartData, isLoading: lineLoading } = useQuery({
+    queryKey: ["hubLineChart"], queryFn: fetchLineChartData, refetchInterval: 1000 * 60 * 5,
   });
 
+  /* Hero entrance */
   useGSAP(() => {
     if (!heroRef.current) return;
-    gsap.fromTo(heroRef.current.querySelectorAll(".hero-item"),
-      { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.7, stagger: 0.1, ease: "power3.out" });
+    const tl = gsap.timeline();
+    tl.fromTo(heroRef.current.querySelectorAll(".h-word"), { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.8, stagger: 0.12, ease: "power3.out" })
+      .fromTo(heroRef.current.querySelectorAll(".h-stat"), { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.5, stagger: 0.08, ease: "back.out(1.6)" }, "-=0.2");
   }, { scope: heroRef });
 
-  // Carousel slide animation
+  /* Carousel slide */
   useGSAP(() => {
     if (!carouselRef.current || mode !== "carousel") return;
-    gsap.fromTo(carouselRef.current, { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" });
-  }, { dependencies: [carouselIdx, mode], scope: carouselRef });
+    gsap.fromTo(carouselRef.current, { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" });
+  }, { dependencies: [slide, mode], scope: carouselRef });
 
-  const totalSlides = 3;
-  const sciFiOn = sciFiTheme.enabled;
+  /* ---- Widget cards ---- */
 
-  const renderSlide = (idx: number) => {
-    switch (idx) {
-      case 0: return <SlideRealtime activeTab={activeTab} setActiveTab={setActiveTab} />;
-      case 1: return <SlideAnalytics lineChartData={lineChartData} isLineChartLoading={isLineChartLoading} />;
-      case 2: return <SlideRankings />;
-      default: return null;
-    }
-  };
+  const timeline = <Pod h={460}><TimelineWaterfall /></Pod>;
+  const radar    = <Pod h={460}><RetentionRadarStream activeTab={tab} setActiveTab={setTab} /></Pod>;
+  const chart    = <Pod h={400}>{lineLoading ? <C>加载中…</C> : lineChartData ? <HubPeakLineChart data={lineChartData as LineStats} /> : <C>暂无高峰数据</C>}</Pod>;
+  const pie      = <Pod h={340}><NestedPieChart /></Pod>;
+  const codex    = <Pod h={340}><RuleCodexCard /></Pod>;
+  const rank     = <Pod h={340}><MonthlyRankCarousel /></Pod>;
+  const order    = <Pod h={400}><AnimalOrderRankingCard /></Pod>;
+  const future   = <Pod h={400}><C>扩展数据看板 · 即将接入</C></Pod>;
+
+  /* ---- Layout sections ---- */
+
+  const Sec1 = (
+    <div>
+      <SectionBar n="01 · 实时监控" title="实时动态" />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(440px, 1fr))", gap: 20 }}>{timeline}{radar}</div>
+    </div>
+  );
+
+  const Sec2 = (
+    <div>
+      <SectionBar n="02 · 数据洞察" title="数据洞察" />
+      {chart}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, marginTop: 20 }}>{pie}{codex}{rank}</div>
+    </div>
+  );
+
+  const Sec3 = (
+    <div>
+      <SectionBar n="03 · 综合看板" title="综合看板" />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 20 }}>{order}{future}</div>
+    </div>
+  );
+
+  /* ================================================================ */
 
   return (
-    <DashboardSciFiVisualProvider value={sciFiOn}>
-    <div className="min-h-screen bg-[#f8f9fa] text-slate-800 font-sans">
-      <SciFiDashboardChrome enabled={sciFiOn}>
+    <DashboardSciFiVisualProvider value={sciFi.enabled}>
+    <SciFiDashboardChrome enabled={sciFi.enabled}>
+    <div style={{
+      minHeight: "100vh", background: s.bg, color: s.text, fontFamily: "system-ui, sans-serif",
+      position: "relative", overflowX: "hidden",
+    }}>
+      {/* Scanline texture */}
+      <div style={{ position: "fixed", inset: 0, background: SCANLINES, pointerEvents: "none", zIndex: 9999, opacity: 0.6 }} />
 
-        {/* ---- Floating toolbar ---- */}
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
-          <button onClick={() => navigate("/")}
-            className="flex items-center gap-1.5 rounded-full bg-white/80 backdrop-blur border border-slate-200 px-3 py-1.5 text-xs text-slate-600 shadow-sm hover:bg-white transition-colors">
-            <ArrowLeft className="size-3" /> 返回
-          </button>
-          <button onClick={() => setMode(mode === "scroll" ? "carousel" : "scroll")}
-            className="flex items-center gap-1.5 rounded-full bg-white/80 backdrop-blur border border-slate-200 px-3 py-1.5 text-xs text-slate-600 shadow-sm hover:bg-white transition-colors"
-            title={mode === "scroll" ? "切换到轮播" : "切换到滚动"}>
-            {mode === "scroll" ? <Columns className="size-3" /> : <ScrollText className="size-3" />}
-            {mode === "scroll" ? "轮播" : "滚动"}
-          </button>
+      {/* Toolbar */}
+      <div style={{ position: "fixed", top: 16, right: 16, zIndex: 100, display: "flex", gap: 8 }}>
+        <Tb onClick={() => navigate("/")}><ArrowLeft size={14} /> 返回</Tb>
+        <Tb onClick={() => setMode(m => m === "scroll" ? "carousel" : "scroll")}>
+          {mode === "scroll" ? <Columns size={14} /> : <ScrollText size={14} />}
+          {mode === "scroll" ? "轮播" : "滚动"}
+        </Tb>
+      </div>
+
+      {/* Hero */}
+      <section ref={heroRef} style={{ padding: "80px 24px 56px", textAlign: "center", position: "relative" }}>
+        <p className="h-word" style={{ fontSize: 12, letterSpacing: "0.22em", color: s.mute, margin: "0 0 12px", textTransform: "uppercase" }}>
+          数字孪生 · 实时监控中心
+        </p>
+        <h1 className="h-word" style={{
+          fontSize: "clamp(32px,4.5vw,48px)", fontWeight: 800, color: s.accent, margin: "0 0 8px",
+          textShadow: `2px 0 ${s.accent2}, -2px 0 ${s.accent}`, lineHeight: 1.15,
+        }}>
+          实验动物科学部
+        </h1>
+        <p className="h-word" style={{ fontSize: 14, color: s.mute, margin: "0 0 36px" }}>
+          Retro-Futuristic 终端 · 仪表盘预览
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 12 }}>
+          <div className="h-stat"><Stat value="128" label="当前在室" /></div>
+          <div className="h-stat"><Stat value="1,247" label="今日进出" /></div>
+          <div className="h-stat"><Stat value="42" label="活跃房间" /></div>
+          <div className="h-stat"><Stat value="98.5%" label="系统在线率" /></div>
         </div>
+      </section>
 
-        {/* ---- HERO ---- */}
-        <section ref={heroRef} className="pt-16 pb-10 text-center relative overflow-hidden" style={{ background: "linear-gradient(180deg, #fff 0%, #eef2ff 60%, #f8f9fa 100%)" }}>
-          <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-blue-100/40 blur-[120px] -translate-y-1/3 translate-x-1/4 pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-violet-100/30 blur-[100px] translate-y-1/3 -translate-x-1/4 pointer-events-none" />
-          <div className="relative z-10 max-w-[1200px] mx-auto px-6">
-            <div className="hero-item">
-              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-500/70">Digital Twin · Preview</span>
-            </div>
-            <h1 className="hero-item text-3xl sm:text-4xl font-bold text-slate-900 mt-3">实验动物科学部</h1>
-            <p className="hero-item text-base text-slate-500 mt-2">数字孪生监控中心 · 全新布局预览</p>
-            <div className="hero-item mt-8 flex flex-wrap items-center justify-center gap-3">
-              <HeroMetric value="128" label="当前在室" accent="#2563eb" />
-              <HeroMetric value="1,247" label="今日进出" accent="#16a34a" />
-              <HeroMetric value="42" label="活跃房间" accent="#7c3aed" />
-              <HeroMetric value="98.5%" label="在线率" accent="#ea580c" />
-            </div>
+      {/* Scroll mode */}
+      {mode === "scroll" && (
+        <div style={{ maxWidth: 1400, margin: "0 auto", padding: "0 24px 100px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 72 }}>
+            <ScrollReveal>{Sec1}</ScrollReveal>
+            <ScrollReveal>{Sec2}</ScrollReveal>
+            <ScrollReveal>{Sec3}</ScrollReveal>
           </div>
-        </section>
-
-        {/* ---- CONTENT ---- */}
-        {mode === "scroll" ? (
-          /* ===== SCROLL MODE ===== */
-          <div className="max-w-[1400px] mx-auto px-6 sm:px-10 pb-16 space-y-16">
-            <ScrollReveal>
-              <SectionHeader badge="Real-time" title="实时动态" subtitle="即时的门禁活动与人员留存态势" />
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <GlassCard blobColor="rgba(52,199,89,0.2)" className="min-h-[420px]"><TimelineWaterfall /></GlassCard>
-                <GlassCard blobColor="rgba(255,59,48,0.15)" className="min-h-[420px]"><RetentionRadarStream activeTab={activeTab} setActiveTab={setActiveTab} /></GlassCard>
-              </div>
-            </ScrollReveal>
-
-            <ScrollReveal>
-              <SectionHeader badge="Analytics" title="数据洞察" subtitle="进出高峰趋势与多维分析" />
-              <GlassCard blobColor="rgba(66,165,245,0.15)" className="min-h-[360px] mb-6">
-                {isLineChartLoading ? <div className="h-full flex items-center justify-center text-blue-500 animate-pulse">🌐 加载中...</div>
-                 : lineChartData ? <HubPeakLineChart data={lineChartData as LineStats} />
-                 : <div className="h-full flex items-center justify-center text-slate-400">暂无数据</div>}
-              </GlassCard>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <GlassCard blobColor="rgba(45,92,247,0.15)" className="min-h-[320px]"><NestedPieChart /></GlassCard>
-                <GlassCard blobColor="rgba(244,63,94,0.15)" className="min-h-[320px]"><RuleCodexCard /></GlassCard>
-                <GlassCard blobColor="rgba(191,90,242,0.15)" className="min-h-[320px]"><MonthlyRankCarousel /></GlassCard>
-              </div>
-            </ScrollReveal>
-
-            <ScrollReveal>
-              <SectionHeader badge="Rankings" title="排行榜 & 订单" />
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <GlassCard blobColor="rgba(255,59,48,0.1)" className="min-h-[380px]"><AnimalOrderRankingCard /></GlassCard>
-                <GlassCard blobColor="rgba(100,116,139,0.1)" className="min-h-[380px] flex items-center justify-center">
-                  <div className="text-center text-slate-400"><div className="text-3xl mb-2">📊</div><p className="text-sm">扩展数据看板</p></div>
-                </GlassCard>
-              </div>
-            </ScrollReveal>
-          </div>
-        ) : (
-          /* ===== CAROUSEL MODE ===== */
-          <div className="max-w-[1400px] mx-auto px-6 sm:px-10 pb-4">
-            <CarouselDots total={totalSlides} active={carouselIdx} onDot={setCarouselIdx} />
-            <div ref={carouselRef} className="min-h-[60vh]">
-              {renderSlide(carouselIdx)}
-            </div>
-            <div className="flex items-center justify-between mt-4">
-              <button onClick={() => setCarouselIdx(i => Math.max(0, i - 1))} disabled={carouselIdx === 0}
-                className="px-4 py-2 text-sm rounded-lg border border-slate-200 bg-white disabled:opacity-30 hover:bg-slate-50 transition-colors">← 上一页</button>
-              <span className="text-xs text-slate-400">{carouselIdx + 1} / {totalSlides}</span>
-              <button onClick={() => setCarouselIdx(i => Math.min(totalSlides - 1, i + 1))} disabled={carouselIdx === totalSlides - 1}
-                className="px-4 py-2 text-sm rounded-lg border border-slate-200 bg-white disabled:opacity-30 hover:bg-slate-50 transition-colors">下一页 →</button>
-            </div>
-          </div>
-        )}
-
-        <div className="text-center pb-10 text-xs text-slate-400 border-t border-slate-200 pt-8 mt-8">
-          Dashboard Preview · 按右下角「滚动/轮播」切换视图
         </div>
-      </SciFiDashboardChrome>
+      )}
+
+      {/* Carousel mode */}
+      {mode === "carousel" && (
+        <div style={{ maxWidth: 1400, margin: "0 auto", padding: "0 24px 80px" }}>
+          <CarouselDots total={3} active={slide} onDot={setSlide} />
+          <div ref={carouselRef}>
+            {slide === 0 && Sec1}
+            {slide === 1 && Sec2}
+            {slide === 2 && Sec3}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 28 }}>
+            <Tb onClick={() => setSlide(s => Math.max(0, s - 1))} style={{ opacity: slide === 0 ? 0.2 : 1 }}>← 上一页</Tb>
+            <span style={{ fontSize: 11, color: s.mute, lineHeight: "32px", fontFamily: "monospace" }}>{slide + 1}/3</span>
+            <Tb onClick={() => setSlide(s => Math.min(2, s + 1))} style={{ opacity: slide === 2 ? 0.2 : 1 }}>下一页 →</Tb>
+          </div>
+        </div>
+      )}
+
+      <div style={{ textAlign: "center", padding: "28px 0", borderTop: `1px solid ${s.border}`, fontSize: 11, color: s.mute, fontFamily: "monospace" }}>
+        RETRO-FUTURISTIC · DIGITAL TWIN · DASHBOARD PREVIEW
+      </div>
     </div>
+    </SciFiDashboardChrome>
     </DashboardSciFiVisualProvider>
   );
 }
 
-/* ================================================================== */
-/*  Carousel Slides                                                    */
-/* ================================================================== */
-
-function SlideRealtime({ activeTab, setActiveTab }: { activeTab: "浦东" | "浦西"; setActiveTab: (t: "浦东" | "浦西") => void }) {
-  return (
-    <div>
-      <SectionHeader badge="1/3 · Real-time" title="实时动态" subtitle="即时的门禁活动与人员留存态势" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <GlassCard blobColor="rgba(52,199,89,0.2)" className="min-h-[480px]"><TimelineWaterfall /></GlassCard>
-        <GlassCard blobColor="rgba(255,59,48,0.15)" className="min-h-[480px]"><RetentionRadarStream activeTab={activeTab} setActiveTab={setActiveTab} /></GlassCard>
-      </div>
-    </div>
-  );
-}
-
-function SlideAnalytics({ lineChartData, isLineChartLoading }: { lineChartData: unknown; isLineChartLoading: boolean }) {
-  return (
-    <div>
-      <SectionHeader badge="2/3 · Analytics" title="数据洞察" subtitle="进出高峰趋势与多维行为分析" />
-      <GlassCard blobColor="rgba(66,165,245,0.15)" className="min-h-[380px] mb-6">
-        {isLineChartLoading ? <div className="h-full flex items-center justify-center text-blue-500 animate-pulse">🌐 加载中...</div>
-         : lineChartData ? <HubPeakLineChart data={lineChartData as LineStats} />
-         : <div className="h-full flex items-center justify-center text-slate-400">暂无数据</div>}
-      </GlassCard>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <GlassCard blobColor="rgba(45,92,247,0.15)" className="min-h-[300px]"><NestedPieChart /></GlassCard>
-        <GlassCard blobColor="rgba(244,63,94,0.15)" className="min-h-[300px]"><RuleCodexCard /></GlassCard>
-        <GlassCard blobColor="rgba(191,90,242,0.15)" className="min-h-[300px]"><MonthlyRankCarousel /></GlassCard>
-      </div>
-    </div>
-  );
-}
-
-function SlideRankings() {
-  return (
-    <div>
-      <SectionHeader badge="3/3 · Rankings" title="排行榜 & 动物订单" subtitle="月度排名与动物订购综合看板" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <GlassCard blobColor="rgba(255,59,48,0.1)" className="min-h-[460px]"><AnimalOrderRankingCard /></GlassCard>
-        <GlassCard blobColor="rgba(100,116,139,0.1)" className="min-h-[460px] flex items-center justify-center">
-          <div className="text-center text-slate-400"><div className="text-3xl mb-2">📊</div><p>预留扩展</p></div>
-        </GlassCard>
-      </div>
-    </div>
-  );
+function C({ children }: { children: React.ReactNode }) {
+  return <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: TOKENS.mute }}>{children}</div>;
 }
