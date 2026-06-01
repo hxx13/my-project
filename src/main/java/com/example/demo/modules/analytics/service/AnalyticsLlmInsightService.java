@@ -139,9 +139,10 @@ public class AnalyticsLlmInsightService {
 
     public Map<String, Object> generateInsight(String userId, long auditLogId, boolean forceRefresh, String userPromptOverride) {
         AnalyticsAuditLog auditRow = auditLogMapper.selectById(auditLogId);
-        if (auditRow == null || !userId.equals(auditRow.getUserId())) {
+        if (auditRow == null) {
             throw new IllegalArgumentException("记录不存在");
         }
+        // Authorization: auditService.getDetailForUser below validates access (owner or public view)
         String reportKey =
                 auditRow.getReportKey() != null ? auditRow.getReportKey().trim() : LlmInsightModules.ISOLATION_USAGE;
         auditService.getDetailForUser(userId, auditLogId);

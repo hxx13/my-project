@@ -68,8 +68,15 @@ public class AnalyticsAuditService {
 
     public Map<String, Object> getDetailForUser(String userId, long id) {
         AnalyticsAuditLog row = auditLogMapper.selectById(id);
-        if (row == null || !userId.equals(row.getUserId())) {
+        if (row == null) {
             throw new IllegalArgumentException("记录不存在");
+        }
+        // Allow access if user owns the log OR the log's view is public
+        if (!userId.equals(row.getUserId())) {
+            AnalyticsUserView view = userViewMapper.selectById(row.getViewId());
+            if (view == null || view.getIsPublic() == null || view.getIsPublic() != 1) {
+                throw new IllegalArgumentException("记录不存在");
+            }
         }
         Map<String, Object> snap = readSnapshot(row.getTopGroupsJson());
         Map<String, Object> out = new LinkedHashMap<>();
