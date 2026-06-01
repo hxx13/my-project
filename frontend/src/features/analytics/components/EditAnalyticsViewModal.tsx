@@ -1,7 +1,6 @@
 ﻿import { useEffect, useState } from "react";
 import ReactDOM from "react-dom";
 import { X } from "lucide-react";
-import { AnalyticsPipelineFilterBar } from "@/features/analytics/AnalyticsPipelineFilterBar";
 import { AccessChannelMultiSelect } from "@/features/analytics/AccessChannelMultiSelect";
 import { CageAnalyticsScopeFilterBar } from "@/features/analytics/CageAnalyticsScopeFilterBar";
 import { CompareCyclesField } from "@/features/analytics/components/CompareCyclesField";
@@ -116,42 +115,12 @@ export function EditAnalyticsViewModal(props: Props) {
           ) : (
             <>
               <p className="text-[11px] text-neutral-500">
-                主口径：清洗总库（仅通道，不按进出筛门禁）；进出方向在下方 ARO 流水区，仅辅助参考。
+                主口径：清洗总库（仅通道，不按进出筛门禁）。
               </p>
               <AccessChannelMultiSelect
                 selected={isoFilters.channelCodes}
                 onChange={(channelCodes) => setIsoFilters(withChannelSelection(isoFilters, channelCodes))}
               />
-              <details className="rounded-lg border border-neutral-200 bg-neutral-50/80" open>
-                <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-neutral-700">
-                  ARO 流水（校区 / 楼层 / 房间 / 进出方向）
-                </summary>
-                <div className="border-t border-neutral-200 px-2 pb-2 pt-2 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-neutral-800">进出方向（流水）</span>
-                    <select
-                      value={isoFilters.actionType}
-                      onChange={(e) =>
-                        setIsoFilters({
-                          ...isoFilters,
-                          actionType: e.target.value as AnalyticsDraftFilter["actionType"],
-                        })
-                      }
-                      className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[11px] font-bold text-neutral-900 outline-none"
-                    >
-                      <option value="">全部进出</option>
-                      <option value="1">仅进入</option>
-                      <option value="2">仅离开</option>
-                    </select>
-                  </div>
-                  <AnalyticsPipelineFilterBar
-                    filters={isoFilters}
-                    onChange={setIsoFilters}
-                    onClear={() => setIsoFilters(defaultAnalyticsDraftFilter())}
-                    hideActionType
-                  />
-                </div>
-              </details>
             </>
           )}
           <CompareCyclesField

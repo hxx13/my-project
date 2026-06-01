@@ -220,7 +220,7 @@ export function IsolationUsageReportPanel() {
 
   const handleSaveConfig = async (opts: SaveConfigOptions) => {
     try {
-      const filter = scopeFilterOnly({ ...draft, compareCycles: opts.compareCycles });
+      const filter = scopeFilterOnly({ ...draft, compareCycles: opts.compareCycles, startDate: opts.backfillUntil || draft.startDate });
       if (opts.isPublic) {
         (filter as any).isPublic = true;
       }
@@ -228,7 +228,7 @@ export function IsolationUsageReportPanel() {
       let saved = created;
       if (opts.subscribe) {
         saved = await setAnalyticsViewSubscription(created.id, true, {
-          backfillHistory: opts.backfillHistory,
+          backfillHistory: true,
           backfillUntil: opts.backfillUntil,
         });
       }
@@ -415,6 +415,16 @@ export function IsolationUsageReportPanel() {
           <Settings2 className="h-4 w-4 text-violet-600" />
           设置
         </button>
+        {activeView?.subscribed ? (
+          <button
+            type="button"
+            disabled={applyingConfig}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 shadow-sm hover:bg-amber-100 disabled:opacity-50"
+            onClick={() => void applyToActiveView()}
+          >
+            {applyingConfig ? "重算中…" : "强制重算全部快照"}
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={previewing}

@@ -2,18 +2,13 @@
 import ReactDOM from "react-dom";
 import { X } from "lucide-react";
 import { CompareCyclesField } from "@/features/analytics/components/CompareCyclesField";
-import {
-  defaultBackfillUntilDate,
-  HistoryBackfillField,
-} from "@/features/analytics/components/HistoryBackfillField";
 import type { AnalyticsCompareCycle } from "@/features/analytics/analyticsPipelineFilter";
 
 export type SaveConfigOptions = {
   name: string;
   compareCycles: AnalyticsCompareCycle[];
   subscribe: boolean;
-  backfillHistory: boolean;
-  backfillUntil: string;
+  backfillUntil: string; // always effective when subscribe is true
   isPublic?: boolean;
 };
 
@@ -35,47 +30,39 @@ export function SaveAnalyticsConfigModal({
   onClose,
   onConfirm,
 }: Props) {
+  const defaultBackfillDate = (() => { const d = new Date(); d.setDate(d.getDate() - 90); return d.toISOString().slice(0, 10); })();
   const [name, setName] = useState("");
   const [compareCycles, setCompareCycles] = useState<AnalyticsCompareCycle[]>(initialCompareCycles);
   const [subscribe, setSubscribe] = useState(false);
-  const [backfillHistory, setBackfillHistory] = useState(false);
-  const [backfillUntil, setBackfillUntil] = useState(defaultBackfillUntilDate);
+  const [backfillUntil, setBackfillUntil] = useState(defaultBackfillDate);
   const [isPublic, setIsPublic] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
       setCompareCycles(initialCompareCycles.length ? initialCompareCycles : ["day"]);
-      setBackfillUntil(defaultBackfillUntilDate());
+      setBackfillUntil(defaultBackfillDate);
       setIsPublic(false);
     }
   }, [open, initialCompareCycles]);
-
-  useEffect(() => {
-    if (!subscribe) {
-      setBackfillHistory(false);
-    }
-  }, [subscribe]);
 
   if (!open) return null;
 
   const handleSubmit = async () => {
     const trimmed = name.trim();
     if (!trimmed || !compareCycles.length) return;
-    if (backfillHistory && !backfillUntil) return;
+    if (subscribe && !backfillUntil) return;
     setSaving(true);
     try {
       await onConfirm({
         name: trimmed,
         compareCycles,
         subscribe,
-        backfillHistory: subscribe && backfillHistory,
         backfillUntil,
         isPublic,
       });
       setName("");
       setSubscribe(false);
-      setBackfillHistory(false);
       setIsPublic(false);
       onClose();
     } finally {
@@ -123,13 +110,23 @@ export function SaveAnalyticsConfigModal({
             </span>
           </label>
           {enableHistoryBackfill ? (
-            <HistoryBackfillField
-              enabled={backfillHistory}
-              onEnabledChange={setBackfillHistory}
-              untilDate={backfillUntil}
-              onUntilDateChange={setBackfillUntil}
-              disabled={!subscribe}
-            />
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50/80 p-3">
+              <p className="text-xs font-semibold text-neutral-700 mb-2">
+                历史数据回溯
+              </p>
+              <p className="text-[11px] text-neutral-500 mb-2">
+                新配置将从起始日期回溯拉取历史门禁记录，生成全部历史快照。不会删除已有快照。
+              </p>
+              <label className="block text-xs text-neutral-600">
+                回溯截止日期（留空使用配置中的起始日期 + 当前日期）
+                <input
+                  type="date"
+                  value={backfillUntil}
+                  onChange={(e) => setBackfillUntil(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-xs"
+                />
+              </label>
+            </div>
           ) : null}
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2">
             <input
@@ -153,7 +150,7 @@ export function SaveAnalyticsConfigModal({
               saving ||
               !name.trim() ||
               !compareCycles.length ||
-              (enableHistoryBackfill && backfillHistory && subscribe && !backfillUntil)
+              (enableHistoryBackfill && subscribe && !backfillUntil)
             }
             className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
             onClick={() => void handleSubmit()}

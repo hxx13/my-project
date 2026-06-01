@@ -74,12 +74,26 @@ export function SettlementRecordsPanel({
 
   const hasAny = grouped.size > 0;
 
+  // Check staleness of latest snapshot
+  const latestLog = [...grouped.values()].flat().sort((a, b) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )[0];
+  const isStale = latestLog ?
+    (Date.now() - new Date(latestLog.createdAt).getTime()) > 2 * 24 * 60 * 60 * 1000
+    : false;
+
   return (
     <AdminFormCard title="清算记录">
       {!hasAny ? (
         <p className="text-xs text-neutral-400">暂无记录；订阅后每日凌晨自动清算</p>
       ) : (
         <div className="space-y-4">
+          {isStale ? (
+            <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+              ⚠️ 最新快照生成于 {new Date(latestLog!.createdAt).toLocaleDateString('zh-CN')}（{Math.floor((Date.now() - new Date(latestLog!.createdAt).getTime()) / (24 * 60 * 60 * 1000))} 天前），定时清算可能已中断。
+              请前往「设置」→「更新当前配置并重算」手动触发清算。
+            </div>
+          ) : null}
           {COMPARE_CYCLE_OPTIONS.filter((o) => compareCycles.includes(o.value)).map((opt) => {
             const items = grouped.get(opt.value) ?? [];
             if (!items.length) return null;

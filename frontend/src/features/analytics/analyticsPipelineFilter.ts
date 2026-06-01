@@ -17,6 +17,8 @@ export type AnalyticsScopeFilter = {
   allEnabledChannels?: boolean;
   /** 启用的清算对比：日、周、月（至少一项） */
   compareCycles: AnalyticsCompareCycle[];
+  /** 数据起始日期 (YYYY-MM-DD)，从此日期开始拉取历史数据 */
+  startDate?: string;
   /** 是否对所有人可见（STAFF+ 均可查看和使用） */
   isPublic?: boolean;
 };
@@ -58,6 +60,7 @@ export const defaultAnalyticsDraftFilter = (): AnalyticsDraftFilter => ({
   excludeBlacklist: true,
   channelCodes: [],
   compareCycles: ["day"],
+  startDate: "", // empty = no explicit start, backend decides
   isPublic: false,
 });
 

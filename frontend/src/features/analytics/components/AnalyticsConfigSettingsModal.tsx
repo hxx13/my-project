@@ -7,7 +7,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AnalyticsPipelineFilterBar } from "@/features/analytics/AnalyticsPipelineFilterBar";
 import { CageAnalyticsScopeFilterBar } from "@/features/analytics/CageAnalyticsScopeFilterBar";
 import { AccessChannelMultiSelect } from "@/features/analytics/AccessChannelMultiSelect";
 import { CompareCyclesField } from "@/features/analytics/components/CompareCyclesField";
@@ -59,7 +58,7 @@ export function AnalyticsConfigSettingsModal(props: Props) {
           <DialogDescription className="text-xs text-neutral-500">
             {isCage
               ? "笼位统计筛选与对比周期；保存后写入订阅配置。"
-              : "门禁清洗主口径（通道）与 ARO 流水；保存后将强制重算全部已有快照。"}
+              : "门禁清洗主口径（通道）；保存后将强制重算全部已有快照。"}
           </DialogDescription>
         </DialogHeader>
 
@@ -84,9 +83,7 @@ export function AnalyticsConfigSettingsModal(props: Props) {
           ) : (
             <>
               <p className="text-[11px] leading-relaxed text-neutral-500 rounded-md bg-neutral-50 px-2 py-1.5">
-                <strong className="text-violet-800">主口径</strong>：门禁统计清洗总库（通道与「门禁统计清洗」页已启用通道一致；每条纳入记录计 1
-                次）。
-                <strong className="text-neutral-700"> 辅助口径</strong>：ARO 流水（校区/楼层/房间，仅参考）。
+                <strong className="text-violet-800">主口径</strong>：门禁统计清洗总库（通道与「门禁统计清洗」页已启用通道一致；每条纳入记录计 1 次）。
               </p>
               <div className="rounded-lg border border-violet-200/80 bg-white px-2 py-2">
                 <AccessChannelMultiSelect
@@ -103,37 +100,37 @@ export function AnalyticsConfigSettingsModal(props: Props) {
                   allEnabledChannels，后端解析为全部已启用通道（与各任务通道漏斗并集一致）。
                 </p>
               </div>
-              <details className="rounded-lg border border-neutral-200 bg-neutral-50/80" open>
-                <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-neutral-700">
-                  ARO 流水（校区 / 楼层 / 房间 / 进出方向）— 仅辅助参考，不影响主条数
-                </summary>
-                <div className="border-t border-neutral-200 px-2 pb-2 pt-2 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-neutral-800">进出方向（流水）</span>
-                    <select
-                      value={(props as IsolationProps).draft.actionType}
-                      onChange={(e) =>
-                        (props as IsolationProps).onDraftChange({
-                          ...(props as IsolationProps).draft,
-                          actionType: e.target.value as AnalyticsDraftFilter["actionType"],
-                        })
-                      }
-                      className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-[11px] font-bold text-neutral-900 outline-none"
-                    >
-                      <option value="">全部进出</option>
-                      <option value="1">仅进入</option>
-                      <option value="2">仅离开</option>
-                    </select>
-                  </div>
-                  <AnalyticsPipelineFilterBar
-                    reportKey={(props as IsolationProps).reportKey}
-                    filters={(props as IsolationProps).draft}
-                    onChange={(props as IsolationProps).onDraftChange}
-                    onClear={() => (props as IsolationProps).onDraftChange(defaultAnalyticsDraftFilter())}
-                    hideActionType
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50/80 px-3 py-2">
+                <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                  数据起始日期（从此日期开始拉取门禁记录）
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={(props as IsolationProps).draft.startDate ?? ""}
+                    onChange={(e) => {
+                      const iso = props as IsolationProps;
+                      iso.onDraftChange({ ...iso.draft, startDate: e.target.value });
+                    }}
+                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-xs"
                   />
+                  {(props as IsolationProps).draft.startDate ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const iso = props as IsolationProps;
+                        iso.onDraftChange({ ...iso.draft, startDate: "" });
+                      }}
+                      className="shrink-0 text-[10px] text-neutral-400 hover:text-neutral-600"
+                    >
+                      清除
+                    </button>
+                  ) : null}
                 </div>
-              </details>
+                <p className="mt-1 text-[10px] text-neutral-500">
+                  留空则由系统自动判断起始日期；修改后需「更新当前配置并重算」生效
+                </p>
+              </div>
               <CompareCyclesField
                 value={(props as IsolationProps).draft.compareCycles}
                 onChange={(compareCycles) =>
