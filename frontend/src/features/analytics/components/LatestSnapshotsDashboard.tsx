@@ -1,4 +1,4 @@
-﻿import { useMemo } from "react";
+﻿import { memo, useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
 import {
   fetchAnalyticsLlmInsight,
@@ -11,6 +11,9 @@ import {
   COMPARE_CYCLE_OPTIONS,
   type AnalyticsCompareCycle,
 } from "@/features/analytics/analyticsPipelineFilter";
+
+/** Memoized card: only re-renders when its own props actually change — prevents all-chart cascade on parent re-render */
+const MemoizedSnapshotCard = memo(CategorySnapshotAnalysisCard);
 
 type Props = {
   compareCycles: AnalyticsCompareCycle[];
@@ -74,6 +77,13 @@ export function LatestSnapshotsDashboard({
     })),
   });
 
+  // Stable per-card onOpenInsight callbacks — prevents React.memo bust on every render
+  const openInsightCallbacks = useMemo(
+    () => entries.map(({ log }) => (e: React.MouseEvent<HTMLButtonElement>) => onOpenInsight(log.id, log.periodLabel, e)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entries.map(e => e.log.id).join(","), onOpenInsight]
+  );
+
   if (entries.length === 0) {
     return (
       <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-neutral-200 bg-neutral-50/50 p-8">
@@ -99,7 +109,7 @@ export function LatestSnapshotsDashboard({
           const insightQ = insightQueries[idx];
           const hasCachedInsight = Boolean(insightQ.data?.exists);
           return (
-            <CategorySnapshotAnalysisCard
+            <MemoizedSnapshotCard
               key={`${cycle}-${log.id}`}
               cycle={cycle}
               hint={hint}
@@ -112,7 +122,7 @@ export function LatestSnapshotsDashboard({
               error={q.error as Error | null}
               hasCachedInsight={hasCachedInsight}
               metricUnit={metricUnit}
-              onOpenInsight={(e) => onOpenInsight(log.id, log.periodLabel, e)}
+              onOpenInsight={openInsightCallbacks[idx]}
             />
           );
         })}
