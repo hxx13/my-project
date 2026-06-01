@@ -2,6 +2,7 @@ import {
     Clipboard,
     ClipboardPaste,
     ExternalLink,
+    LayoutDashboard,
     Link2,
     MousePointerClick,
     Palette,
@@ -10,6 +11,7 @@ import {
     TextSelect,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
     adminChromeCopyPageUrl,
@@ -68,6 +70,7 @@ export function TwinChromeContextMenu({
     const [rootPos, setRootPos] = useState<{ left: number; top: number } | null>(null);
     const [subPos, setSubPos] = useState<{ left: number; top: number } | null>(null);
     const { themeId, setThemeId } = useTwinChromeTheme();
+    const navigate = useNavigate();
 
     /* 菜单定位：layout 阶段读取 getBoundingClientRect 后写锚点，与 AdminChromeContextMenu 同模式 */
     /* eslint-disable react-hooks/set-state-in-effect -- DOM 测距与视口贴合必须在此阶段 setState */
@@ -228,6 +231,16 @@ export function TwinChromeContextMenu({
                         label="刷新页面"
                         onClick={() => {
                             if (window.confirm("确认刷新当前页？")) window.location.reload();
+                        }}
+                    />
+
+                    <SectionLabel>开发</SectionLabel>
+                    <MenuRow
+                        icon={LayoutDashboard}
+                        label="仪表盘预览"
+                        onClick={() => {
+                            navigate("/dashboard-preview");
+                            onClose();
                         }}
                     />
 

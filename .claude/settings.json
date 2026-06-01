@@ -7,5 +7,8 @@
       "WebFetch"
     ]
   },
-  "enableAllProjectMcpServers": true
+  "enableAllProjectMcpServers": true,
+  "skillOverrides": {
+    "humanizer": "on"
+  }
 }
