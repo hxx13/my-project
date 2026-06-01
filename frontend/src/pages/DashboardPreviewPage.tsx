@@ -10,10 +10,14 @@ import { AnimalOrderRankingCard } from "@/features/dashboard/AnimalOrderRankingC
 import { RetentionRadarStream } from "@/features/realtime-stream/RetentionRadarStream";
 import { HubPeakLineChart } from "@/features/dashboard/HubPeakLineChart";
 import { RuleCodexCard } from "@/features/dashboard/RuleCodexCard";
+import { useEventStore } from "@/store/useEventStore";
 import { useQuery } from "@tanstack/react-query";
 import { fetchLineChartData } from "@/api/twinApi";
 import type { LineStats } from "@/api/twinApi";
 import { ArrowLeft, Columns, ScrollText } from "lucide-react";
+import { DashboardSciFiVisualProvider } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { SciFiDashboardChrome } from "@/features/dashboard-scifi-theme/SciFiDashboardChrome";
+import { useTwinChromeTheme } from "@/features/twin-chrome/TwinChromeThemeContext";
 
 /* ================================================================== */
 
@@ -44,6 +48,8 @@ const sectionBadge = (n: string) => (
 /* ================================================================== */
 
 export default function DashboardPreviewPage() {
+  useEventStore((s) => s.setInitialFeed);
+  const sciFi = useTwinChromeTheme();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"scroll" | "carousel">("scroll");
   const [slide, setSlide] = useState(0);
@@ -71,9 +77,9 @@ export default function DashboardPreviewPage() {
   /* ---- cards ---- */
 
   const Card = ({ blob, h, children }: { blob: string; h: number; children: React.ReactNode }) => (
-    <GlassCard blobColor={blob}>
-      <div style={{ height: h, minHeight: h }}>{children}</div>
-    </GlassCard>
+    <div style={{ height: h }}>
+      <GlassCard blobColor={blob}>{children}</GlassCard>
+    </div>
   );
 
   const timelineCard  = <Card blob="rgba(52,199,89,0.2)"  h={500}><TimelineWaterfall /></Card>;
@@ -94,6 +100,8 @@ export default function DashboardPreviewPage() {
   /* ---- render ---- */
 
   return (
+    <DashboardSciFiVisualProvider value={sciFi.enabled}>
+    <SciFiDashboardChrome enabled={sciFi.enabled}>
     <div className="min-h-full font-sans text-[var(--twin-ink)]" style={{ background: "linear-gradient(180deg, #fff 0%, #eef2ff 50%, var(--twin-canvas-soft, #f5f5f5) 100%)" }}>
 
       {/* ---- Toolbar ---- */}
@@ -225,6 +233,8 @@ export default function DashboardPreviewPage() {
         仪表盘预览 · 滚动 / 轮播双模式 · 右上角切换
       </div>
     </div>
+    </SciFiDashboardChrome>
+    </DashboardSciFiVisualProvider>
   );
 }
 
