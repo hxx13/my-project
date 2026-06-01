@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Minus, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Tooltip, XAxis, YAxis } from "recharts";
 import type { AnalyticsAuditLog, CagePiRow, CageRoomRow, IsolationUsageQueryResult } from "@/api/domains/analytics.api";
 import { MeasuredChartBox } from "@/features/analytics/components/MeasuredChartBox";
 import { SnapshotProvenanceInfoButton } from "@/features/analytics/components/SnapshotProvenanceInfoButton";
@@ -14,6 +14,11 @@ const CYCLE_TITLE: Record<AnalyticsCompareCycle, string> = {
   week: "每周清算",
   month: "每月清算",
 };
+
+const GROUP_BAR_COLORS = [
+  "#6366f1", "#8b5cf6", "#06b6d4", "#f59e0b", "#10b981", "#ec4899",
+  "#f97316", "#14b8a6", "#ef4444", "#3b82f6", "#a855f7", "#22c55e",
+] as const;
 
 type Props = {
   cycle: AnalyticsCompareCycle;
@@ -187,7 +192,7 @@ export function CategorySnapshotAnalysisCard({
                 <MeasuredChartBox height={allGroupsChartHeight}>
                   <BarChart
                     data={allGroupsChart}
-                    margin={{ top: 8, right: 8, left: 4, bottom: allGroupsChart.length > 6 ? 56 : 24 }}
+                    margin={{ top: 20, right: 8, left: 4, bottom: allGroupsChart.length > 6 ? 56 : 24 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis
@@ -203,7 +208,12 @@ export function CategorySnapshotAnalysisCard({
                       formatter={(v) => [Number(v ?? 0), isAccessPackage ? "条" : metricUnit]}
                       labelFormatter={(_, p) => (p?.[0]?.payload as { fullName?: string })?.fullName ?? ""}
                     />
-                    <Bar dataKey="personTimes" fill="#7c6cf0" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                    <Bar dataKey="personTimes" radius={[4, 4, 0, 0]} maxBarSize={32}>
+                      {allGroupsChart.map((entry, idx) => (
+                        <Cell key={entry.fullName} fill={GROUP_BAR_COLORS[idx % GROUP_BAR_COLORS.length]} />
+                      ))}
+                      <LabelList dataKey="personTimes" position="top" fontSize={9} fontWeight={600} fill="#374151" />
+                    </Bar>
                   </BarChart>
                 </MeasuredChartBox>
               </div>
@@ -239,7 +249,12 @@ export function CategorySnapshotAnalysisCard({
                       formatter={(v) => [Number(v ?? 0), metricUnit]}
                       labelFormatter={(_, p) => (p?.[0]?.payload as { fullName?: string })?.fullName ?? ""}
                     />
-                    <Bar dataKey="personTimes" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={16} />
+                    <Bar dataKey="personTimes" radius={[0, 4, 4, 0]} barSize={16}>
+                      {topPis.map((entry, idx) => (
+                        <Cell key={entry.fullName} fill={GROUP_BAR_COLORS[idx % GROUP_BAR_COLORS.length]} />
+                      ))}
+                      <LabelList dataKey="personTimes" position="right" fontSize={9} fontWeight={600} fill="#374151" />
+                    </Bar>
                   </BarChart>
                 </MeasuredChartBox>
               </div>
