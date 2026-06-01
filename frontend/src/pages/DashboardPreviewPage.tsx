@@ -14,25 +14,22 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchLineChartData } from "@/api/twinApi";
 import type { LineStats } from "@/api/twinApi";
 import { ArrowLeft, Columns, ScrollText } from "lucide-react";
-import { TwinChromeThemeProvider } from "@/features/twin-chrome/TwinChromeThemeContext";
 
-/* ================================================================== */
-/*  ScrollReveal — IO + GSAP spring                                    */
 /* ================================================================== */
 
 function ScrollReveal({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useGSAP(() => {
-    if (!ref.current) return;
     const el = ref.current;
+    if (!el) return;
     const obs = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          gsap.fromTo(el, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.65, ease: "power3.out", clearProps: "transform,opacity" });
+      ([e]) => {
+        if (e.isIntersecting) {
+          gsap.fromTo(el, { opacity: 0, y: 32 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", clearProps: "transform,opacity" });
           obs.unobserve(el);
         }
       },
-      { threshold: 0.06, rootMargin: "0px 0px -30px 0px" },
+      { threshold: 0.08 },
     );
     obs.observe(el);
     return () => obs.disconnect();
@@ -40,35 +37,10 @@ function ScrollReveal({ children }: { children: React.ReactNode }) {
   return <div ref={ref}>{children}</div>;
 }
 
-/* ================================================================== */
-/*  SectionLabel                                                       */
-/* ================================================================== */
+const sectionBadge = (n: string) => (
+  <span className="inline-block text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--twin-mute)] mb-2">{n}</span>
+);
 
-function SectionLabel({ badge, title, detail }: { badge: string; title: string; detail?: string }) {
-  return (
-    <div className="mb-5">
-      <span className="inline-block font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--twin-mute)] mb-1.5">{badge}</span>
-      <h2 className="text-xl font-semibold text-[var(--twin-ink)]">{title}</h2>
-      {detail && <p className="mt-1 text-sm text-[var(--twin-mute)] max-w-xl">{detail}</p>}
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  HeroMetric                                                         */
-/* ================================================================== */
-
-function HeroMetric({ value, label, color }: { value: string; label: string; color: string }) {
-  return (
-    <div className="text-center px-6 py-4 rounded-2xl bg-[var(--twin-canvas)]/70 backdrop-blur border border-[var(--twin-hairline)] shadow-sm">
-      <div className="font-mono text-3xl font-bold tracking-tight" style={{ color }}>{value}</div>
-      <div className="mt-1 text-xs text-[var(--twin-mute)]">{label}</div>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  DashboardPreviewPage                                               */
 /* ================================================================== */
 
 export default function DashboardPreviewPage() {
@@ -85,242 +57,177 @@ export default function DashboardPreviewPage() {
     refetchInterval: 1000 * 60 * 5,
   });
 
-  /* Hero entrance */
   useGSAP(() => {
     if (!heroRef.current) return;
     gsap.fromTo(heroRef.current.querySelectorAll(".hero-item"),
-      { opacity: 0, y: 44 }, { opacity: 1, y: 0, duration: 0.75, stagger: 0.1, ease: "power3.out" });
+      { opacity: 0, y: 36 }, { opacity: 1, y: 0, duration: 0.7, stagger: 0.1, ease: "power3.out" });
   }, { scope: heroRef });
 
-  /* Carousel slide transition */
   useGSAP(() => {
     if (!carouselRef.current || mode !== "carousel") return;
-    gsap.fromTo(carouselRef.current, { opacity: 0, x: 28 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" });
+    gsap.fromTo(carouselRef.current, { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" });
   }, { dependencies: [slide, mode], scope: carouselRef });
 
-  /* ================================================================ */
-  /* CARDS                                                             */
-  /* ================================================================ */
+  /* ---- cards ---- */
 
-  const cardChart = (
-    <GlassCard blobColor="rgba(66,165,245,0.15)">
-      <div style={{ height: 400 }}>
-        {lineLoading ? <Centered>Loading…</Centered>
-          : lineChartData ? <HubPeakLineChart data={lineChartData as LineStats} />
-          : <Centered>No peak data available</Centered>}
-      </div>
+  const Card = ({ blob, h, children }: { blob: string; h: number; children: React.ReactNode }) => (
+    <GlassCard blobColor={blob}>
+      <div style={{ height: h, minHeight: h }}>{children}</div>
     </GlassCard>
   );
 
-  const cardTimeline = (
-    <GlassCard blobColor="rgba(52,199,89,0.2)">
-      <div style={{ height: 520 }}><TimelineWaterfall /></div>
-    </GlassCard>
+  const timelineCard  = <Card blob="rgba(52,199,89,0.2)"  h={500}><TimelineWaterfall /></Card>;
+  const radarCard     = <Card blob="rgba(255,59,48,0.15)" h={500}><RetentionRadarStream activeTab={tab} setActiveTab={setTab} /></Card>;
+  const chartCard     = <Card blob="rgba(66,165,245,0.15)" h={380}>
+    {lineLoading ? <Centered>加载中…</Centered> : lineChartData ? <HubPeakLineChart data={lineChartData as LineStats} /> : <Centered>暂无高峰数据</Centered>}
+  </Card>;
+  const pieCard       = <Card blob="rgba(45,92,247,0.15)" h={340}><NestedPieChart /></Card>;
+  const codexCard     = <Card blob="rgba(244,63,94,0.15)" h={340}><RuleCodexCard /></Card>;
+  const rankCard      = <Card blob="rgba(191,90,242,0.15)" h={340}><MonthlyRankCarousel /></Card>;
+  const orderCard     = <Card blob="rgba(255,59,48,0.1)"  h={400}><AnimalOrderRankingCard /></Card>;
+  const placeholder   = (
+    <Card blob="rgba(100,116,139,0.06)" h={400}>
+      <div className="flex items-center justify-center h-full"><span className="text-sm text-[var(--twin-mute)]">预留扩展区域</span></div>
+    </Card>
   );
 
-  const cardRadar = (
-    <GlassCard blobColor="rgba(255,59,48,0.15)">
-      <div style={{ height: 520 }}><RetentionRadarStream activeTab={tab} setActiveTab={setTab} /></div>
-    </GlassCard>
-  );
-
-  const cardPie = (
-    <GlassCard blobColor="rgba(45,92,247,0.15)">
-      <div style={{ height: 360 }}><NestedPieChart /></div>
-    </GlassCard>
-  );
-
-  const cardCodex = (
-    <GlassCard blobColor="rgba(244,63,94,0.15)">
-      <div style={{ height: 360 }}><RuleCodexCard /></div>
-    </GlassCard>
-  );
-
-  const cardRank = (
-    <GlassCard blobColor="rgba(191,90,242,0.15)">
-      <div style={{ height: 360 }}><MonthlyRankCarousel /></div>
-    </GlassCard>
-  );
-
-  const cardOrder = (
-    <GlassCard blobColor="rgba(255,59,48,0.1)">
-      <div style={{ height: 420 }}><AnimalOrderRankingCard /></div>
-    </GlassCard>
-  );
-
-  /* ================================================================ */
-  /* RENDER                                                            */
-  /* ================================================================ */
+  /* ---- render ---- */
 
   return (
-    <TwinChromeThemeProvider>
-    <div
-      style={{
-        background: "var(--twin-canvas-soft, #f5f5f5)",
-        minHeight: "100vh",
-        fontFamily: "system-ui, -apple-system, sans-serif",
-        color: "var(--twin-ink, #171717)",
-      }}
-    >
-      {/* ---- Floating toolbar ---- */}
-      <div style={{ position: "fixed", top: 16, right: 16, zIndex: 100, display: "flex", gap: 8 }}>
-        <button onClick={() => navigate("/")} className="tool-btn">
-          <ArrowLeft size={14} /> Back
+    <div className="min-h-full font-sans text-[var(--twin-ink)]" style={{ background: "linear-gradient(180deg, #fff 0%, #eef2ff 50%, var(--twin-canvas-soft, #f5f5f5) 100%)" }}>
+
+      {/* ---- Toolbar ---- */}
+      <div className="fixed top-4 right-4 z-50 flex gap-2">
+        <button onClick={() => navigate("/")} className="flex items-center gap-1.5 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-xs text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)] transition-colors">
+          <ArrowLeft size={14} /> 返回
         </button>
-        <button onClick={() => setMode(m => m === "scroll" ? "carousel" : "scroll")} className="tool-btn">
+        <button onClick={() => setMode(m => m === "scroll" ? "carousel" : "scroll")} className="flex items-center gap-1.5 rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-xs text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)] transition-colors">
           {mode === "scroll" ? <Columns size={14} /> : <ScrollText size={14} />}
-          {mode === "scroll" ? "Carousel" : "Scroll"}
+          {mode === "scroll" ? "轮播" : "滚动"}
         </button>
       </div>
 
-      {/* ---- Hero ---- */}
-      <section ref={heroRef} style={{
-        padding: "64px 24px 48px", textAlign: "center", position: "relative", overflow: "hidden",
-        background: "linear-gradient(180deg, var(--twin-canvas, #fff) 0%, #eef2ff 55%, var(--twin-canvas-soft, #f5f5f5) 100%)",
-      }}>
-        <div style={{ position: "absolute", top: 0, right: 0, width: 500, height: 500, borderRadius: "50%", background: "rgba(59,130,246,0.15)", filter: "blur(120px)", transform: "translate(25%, -33%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: 0, left: 0, width: 400, height: 400, borderRadius: "50%", background: "rgba(139,92,246,0.1)", filter: "blur(100px)", transform: "translate(-25%, 33%)", pointerEvents: "none" }} />
-        <div style={{ position: "relative", zIndex: 1, maxWidth: 1400, margin: "0 auto", padding: "0 24px" }}>
-          <div className="hero-item">
-            <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.18em", color: "var(--twin-mute)" }}>
-              Digital Twin · Monitoring Center
-            </span>
-          </div>
-          <h1 className="hero-item" style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 700, color: "var(--twin-ink)", marginTop: 12 }}>
-            Laboratory Animal Science
-          </h1>
-          <p className="hero-item" style={{ fontSize: 15, color: "var(--twin-mute)", marginTop: 6 }}>
-            Real-time facility monitoring — scroll or carousel layout preview
-          </p>
-          <div className="hero-item" style={{ marginTop: 32, display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 12 }}>
-            <HeroMetric value="128" label="Present" color="#2563eb" />
-            <HeroMetric value="1,247" label="Today" color="#16a34a" />
-            <HeroMetric value="42" label="Active Rooms" color="#7c3aed" />
-            <HeroMetric value="98.5%" label="Uptime" color="#ea580c" />
+      {/* ---- 头部 ---- */}
+      <section ref={heroRef} className="pt-16 pb-10 text-center relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-blue-100/30 blur-[100px] -translate-y-1/3 translate-x-1/4 pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-violet-100/25 blur-[90px] translate-y-1/3 -translate-x-1/4 pointer-events-none" />
+        <div className="relative z-10 max-w-[1400px] mx-auto px-6">
+          <div className="hero-item"><span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--twin-mute)]">数字孪生 · 仪表盘预览</span></div>
+          <h1 className="hero-item text-3xl sm:text-4xl font-bold mt-3">实验动物科学部</h1>
+          <p className="hero-item text-sm text-[var(--twin-mute)] mt-2">全新多段布局预览 —— 滚动模式 / 轮播模式</p>
+          <div className="hero-item mt-8 flex flex-wrap justify-center gap-3">
+            {[
+              { v: "128", l: "当前在室", c: "#2563eb" },
+              { v: "1,247", l: "今日进出", c: "#16a34a" },
+              { v: "42", l: "活跃房间", c: "#7c3aed" },
+              { v: "98.5%", l: "系统在线率", c: "#ea580c" },
+            ].map(m => (
+              <div key={m.l} className="px-6 py-4 rounded-2xl bg-[var(--twin-canvas)]/70 backdrop-blur border border-[var(--twin-hairline)] shadow-sm text-center">
+                <div className="text-3xl font-bold tracking-tight" style={{ color: m.c }}>{m.v}</div>
+                <div className="mt-1 text-xs text-[var(--twin-mute)]">{m.l}</div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ---- Scroll mode ---- */}
+      {/* ---- 滚动模式 ---- */}
       {mode === "scroll" && (
-        <div style={{ maxWidth: 1440, margin: "0 auto", padding: "0 28px 80px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 80 }}>
+        <div className="max-w-[1440px] mx-auto px-6 sm:px-10 pb-20">
+          <div className="flex flex-col gap-20">
+
             <ScrollReveal>
-              <SectionLabel badge="01 · Real-time" title="Live Feed" detail="Door access waterfall and retention radar stream" />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(480px, 1fr))", gap: 24 }}>
-                {cardTimeline}
-                {cardRadar}
+              {sectionBadge("01 · 实时动态")}
+              <h2 className="text-xl font-bold mb-1">实时动态</h2>
+              <p className="text-sm text-[var(--twin-mute)] mb-5">门禁活动瀑布流与人员留存态势即时监控</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {timelineCard}
+                {radarCard}
               </div>
             </ScrollReveal>
 
             <ScrollReveal>
-              <SectionLabel badge="02 · Analytics" title="Data Insights" detail="Peak entry/exit curves, organizational breakdown, rule codex" />
-              {cardChart}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24, marginTop: 24 }}>
-                {cardPie}
-                {cardCodex}
-                {cardRank}
+              {sectionBadge("02 · 数据洞察")}
+              <h2 className="text-xl font-bold mb-1">数据洞察</h2>
+              <p className="text-sm text-[var(--twin-mute)] mb-5">进出高峰趋势、组织架构分析与智能规则法典</p>
+              {chartCard}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                {pieCard}
+                {codexCard}
+                {rankCard}
               </div>
             </ScrollReveal>
 
             <ScrollReveal>
-              <SectionLabel badge="03 · Rankings" title="Rankings &amp; Orders" detail="Monthly leaderboard and animal ordering dashboard" />
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 24 }}>
-                {cardOrder}
-                <GlassCard blobColor="rgba(100,116,139,0.08)">
-                  <div style={{ height: 420, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <span style={{ color: "var(--twin-mute)", fontSize: 14 }}>Extension slot — future data panel</span>
-                  </div>
-                </GlassCard>
+              {sectionBadge("03 · 排行榜")}
+              <h2 className="text-xl font-bold mb-1">排行榜与订单</h2>
+              <p className="text-sm text-[var(--twin-mute)] mb-5">月度排名轮播与动物订购综合看板</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {orderCard}
+                {placeholder}
               </div>
             </ScrollReveal>
+
           </div>
         </div>
       )}
 
-      {/* ---- Carousel mode ---- */}
+      {/* ---- 轮播模式 ---- */}
       {mode === "carousel" && (
-        <div style={{ maxWidth: 1440, margin: "0 auto", padding: "0 28px 40px" }}>
-          <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: "8px 0 16px" }}>
+        <div className="max-w-[1440px] mx-auto px-6 sm:px-10 pb-12">
+          <div className="flex justify-center gap-2 py-2 mb-4">
             {[0, 1, 2].map(i => (
-              <button key={i} onClick={() => setSlide(i)} style={{
-                width: i === slide ? 24 : 8, height: 8, borderRadius: 999,
-                background: i === slide ? "var(--twin-ink)" : "var(--twin-hairline)",
-                border: "none", cursor: "pointer", transition: "all 0.25s",
-              }} />
+              <button key={i} onClick={() => setSlide(i)}
+                className={`rounded-full transition-all duration-300 ${i === slide ? "w-6 h-2 bg-[var(--twin-ink)]" : "w-2 h-2 bg-[var(--twin-hairline)]"}`}
+              />
             ))}
           </div>
           <div ref={carouselRef}>
             {slide === 0 && (
               <div>
-                <SectionLabel badge="01 / 03 · Real-time" title="Live Feed" />
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(480px, 1fr))", gap: 24 }}>
-                  {cardTimeline}
-                  {cardRadar}
-                </div>
+                {sectionBadge("01 / 03 · 实时动态")}
+                <h2 className="text-xl font-bold mb-5">实时动态</h2>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{timelineCard}{radarCard}</div>
               </div>
             )}
             {slide === 1 && (
               <div>
-                <SectionLabel badge="02 / 03 · Analytics" title="Data Insights" />
-                {cardChart}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24, marginTop: 24 }}>
-                  {cardPie}
-                  {cardCodex}
-                  {cardRank}
-                </div>
+                {sectionBadge("02 / 03 · 数据洞察")}
+                <h2 className="text-xl font-bold mb-5">数据洞察</h2>
+                {chartCard}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">{pieCard}{codexCard}{rankCard}</div>
               </div>
             )}
             {slide === 2 && (
               <div>
-                <SectionLabel badge="03 / 03 · Rankings" title="Rankings &amp; Orders" />
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 24 }}>
-                  {cardOrder}
-                  <GlassCard blobColor="rgba(100,116,139,0.08)">
-                    <div style={{ height: 420, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <span style={{ color: "var(--twin-mute)", fontSize: 14 }}>Extension slot</span>
-                    </div>
-                  </GlassCard>
-                </div>
+                {sectionBadge("03 / 03 · 排行榜")}
+                <h2 className="text-xl font-bold mb-5">排行榜与订单</h2>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">{orderCard}{placeholder}</div>
               </div>
             )}
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+          <div className="flex justify-between mt-6">
             <button onClick={() => setSlide(s => Math.max(0, s - 1))} disabled={slide === 0}
-              className="tool-btn" style={{ opacity: slide === 0 ? 0.3 : 1 }}>&larr; Previous</button>
-            <span style={{ fontSize: 12, color: "var(--twin-mute)", lineHeight: "32px" }}>{slide + 1} of 3</span>
+              className="px-4 py-2 text-sm rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] disabled:opacity-30 hover:bg-[var(--twin-canvas-soft)] transition-colors">
+              ← 上一页
+            </button>
+            <span className="text-xs text-[var(--twin-mute)] leading-9">{slide + 1} / 3</span>
             <button onClick={() => setSlide(s => Math.min(2, s + 1))} disabled={slide === 2}
-              className="tool-btn" style={{ opacity: slide === 2 ? 0.3 : 1 }}>Next &rarr;</button>
+              className="px-4 py-2 text-sm rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] disabled:opacity-30 hover:bg-[var(--twin-canvas-soft)] transition-colors">
+              下一页 →
+            </button>
           </div>
         </div>
       )}
 
-      {/* ---- Footer ---- */}
-      <div style={{ textAlign: "center", padding: "32px 0", borderTop: "1px solid var(--twin-hairline)", fontSize: 11, color: "var(--twin-mute)" }}>
-        Dashboard Preview · Standalone page · Scroll or carousel with GSAP reveals
+      {/* ---- 底部 ---- */}
+      <div className="text-center py-8 border-t border-[var(--twin-hairline)] text-xs text-[var(--twin-mute)]">
+        仪表盘预览 · 滚动 / 轮播双模式 · 右上角切换
       </div>
-      <style dangerouslySetInnerHTML={{ __html: `
-        .tool-btn {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 6px 14px; border-radius: 999px;
-          border: 1px solid var(--twin-hairline, #e5e7eb);
-          background: var(--twin-canvas, #fff); color: var(--twin-body, #4d4d4d);
-          font-size: 12px; cursor: pointer; transition: background 0.15s;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-        }
-        .tool-btn:hover { background: var(--twin-canvas-soft, #fafafa); }
-      ` }} />
     </div>
-    </TwinChromeThemeProvider>
-    </div>
-    </TwinChromeThemeProvider>
   );
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "var(--twin-mute)" }}>
-      {children}
-    </div>
-  );
+  return <div className="flex items-center justify-center h-full text-sm text-[var(--twin-mute)]">{children}</div>;
 }
