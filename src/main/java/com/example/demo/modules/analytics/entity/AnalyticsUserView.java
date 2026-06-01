@@ -11,6 +11,7 @@ public class AnalyticsUserView {
     private Integer isDefault;
     private Integer isSubscribed;
     private Integer sortOrder;
+    private Integer isPublic;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -76,6 +77,14 @@ public class AnalyticsUserView {
 
     public void setSortOrder(Integer sortOrder) {
         this.sortOrder = sortOrder;
+    }
+
+    public Integer getIsPublic() {
+        return isPublic;
+    }
+
+    public void setIsPublic(Integer isPublic) {
+        this.isPublic = isPublic;
     }
 
     public LocalDateTime getCreatedAt() {

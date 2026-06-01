@@ -25,5 +25,7 @@ public interface AnalyticsUserViewMapper {
 
     List<AnalyticsUserView> selectAllSubscribed(@Param("reportKey") String reportKey);
 
+    List<AnalyticsUserView> selectPublicForReport(@Param("userId") String userId, @Param("reportKey") String reportKey);
+
     int setSubscribed(@Param("id") long id, @Param("userId") String userId, @Param("subscribed") int subscribed);
 }

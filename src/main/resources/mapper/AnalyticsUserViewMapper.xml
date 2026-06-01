@@ -11,13 +11,14 @@
         <result property="filterJson" column="filter_json"/>
         <result property="isDefault" column="is_default"/>
         <result property="isSubscribed" column="is_subscribed"/>
+        <result property="isPublic" column="is_public"/>
         <result property="sortOrder" column="sort_order"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <select id="selectByUserAndReport" resultMap="AnalyticsUserViewMap">
-        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, sort_order, created_at, updated_at
+        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, is_public, sort_order, created_at, updated_at
         FROM analytics_user_view
         WHERE user_id = #{userId}
           AND report_key = #{reportKey}
@@ -25,22 +26,31 @@
     </select>
 
     <select id="selectByIdAndUser" resultMap="AnalyticsUserViewMap">
-        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, sort_order, created_at, updated_at
+        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, is_public, sort_order, created_at, updated_at
         FROM analytics_user_view
         WHERE id = #{id} AND user_id = #{userId}
         LIMIT 1
     </select>
 
     <select id="selectAllSubscribed" resultMap="AnalyticsUserViewMap">
-        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, sort_order, created_at, updated_at
+        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, is_public, sort_order, created_at, updated_at
         FROM analytics_user_view
         WHERE report_key = #{reportKey}
           AND is_subscribed = 1
     </select>
 
+    <select id="selectPublicForReport" resultMap="AnalyticsUserViewMap">
+        SELECT id, user_id, report_key, name, filter_json, is_default, is_subscribed, is_public, sort_order, created_at, updated_at
+        FROM analytics_user_view
+        WHERE report_key = #{reportKey}
+          AND is_public = 1
+          AND user_id != #{userId}
+        ORDER BY sort_order ASC, updated_at DESC
+    </select>
+
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO analytics_user_view (user_id, report_key, name, filter_json, is_default, is_subscribed, sort_order)
-        VALUES (#{userId}, #{reportKey}, #{name}, #{filterJson}, #{isDefault}, #{isSubscribed}, #{sortOrder})
+        INSERT INTO analytics_user_view (user_id, report_key, name, filter_json, is_default, is_subscribed, is_public, sort_order)
+        VALUES (#{userId}, #{reportKey}, #{name}, #{filterJson}, #{isDefault}, #{isSubscribed}, #{isPublic}, #{sortOrder})
     </insert>
 
     <update id="update">
@@ -49,6 +59,7 @@
             filter_json = #{filterJson},
             is_default = #{isDefault},
             is_subscribed = #{isSubscribed},
+            is_public = #{isPublic},
             sort_order = #{sortOrder}
         WHERE id = #{id} AND user_id = #{userId}
     </update>

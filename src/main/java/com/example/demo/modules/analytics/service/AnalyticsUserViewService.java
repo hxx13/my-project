@@ -40,7 +40,10 @@ public class AnalyticsUserViewService {
 
     public List<AnalyticsUserViewDto> listForUser(String userId, String reportKey) {
         String rk = normalizeReportKey(reportKey);
-        return mapper.selectByUserAndReport(userId, rk).stream()
+        List<AnalyticsUserView> own = mapper.selectByUserAndReport(userId, rk);
+        List<AnalyticsUserView> publicViews = mapper.selectPublicForReport(userId, rk);
+        own.addAll(publicViews);
+        return own.stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
@@ -66,6 +69,12 @@ public class AnalyticsUserViewService {
         row.setIsDefault(asDefault ? 1 : 0);
         row.setIsSubscribed(subscribed ? 1 : 0);
         row.setSortOrder(body.getSortOrder() != null ? body.getSortOrder() : 0);
+        // Extract isPublic from filter JSON
+        boolean isPublic = false;
+        if (body.getFilter() != null && body.getFilter().containsKey("isPublic")) {
+            isPublic = Boolean.TRUE.equals(body.getFilter().get("isPublic"));
+        }
+        row.setIsPublic(isPublic ? 1 : 0);
         if (asDefault) {
             mapper.clearDefaultForReport(userId, row.getReportKey());
         }
@@ -87,6 +96,11 @@ public class AnalyticsUserViewService {
         }
         if (body.getFilter() != null) {
             existing.setFilterJson(writeFilter(body.getFilter()));
+            boolean isPublic = false;
+            if (body.getFilter().containsKey("isPublic")) {
+                isPublic = Boolean.TRUE.equals(body.getFilter().get("isPublic"));
+            }
+            existing.setIsPublic(isPublic ? 1 : 0);
         }
         if (body.getSortOrder() != null) {
             existing.setSortOrder(body.getSortOrder());
@@ -213,6 +227,7 @@ public class AnalyticsUserViewService {
         dto.setDefaultView(row.getIsDefault() != null && row.getIsDefault() == 1);
         dto.setSubscribed(row.getIsSubscribed() != null && row.getIsSubscribed() == 1);
         dto.setSortOrder(row.getSortOrder() != null ? row.getSortOrder() : 0);
+        dto.setPublic(row.getIsPublic() != null && row.getIsPublic() == 1);
         dto.setCreatedAt(row.getCreatedAt());
         dto.setUpdatedAt(row.getUpdatedAt());
         return dto;

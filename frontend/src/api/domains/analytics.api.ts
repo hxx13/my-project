@@ -534,7 +534,7 @@ function mapViewDto(raw: Record<string, unknown>): AnalyticsUserView {
     defaultView: Boolean(raw.defaultView),
     subscribed: Boolean(raw.subscribed),
     sortOrder: Number(raw.sortOrder ?? 0),
-    isPublic: (filter as Record<string, unknown>)?.isPublic === true,
+    isPublic: raw.isPublic === true || raw.is_public === true,
     createdAt: raw.createdAt != null ? String(raw.createdAt) : undefined,
     updatedAt: raw.updatedAt != null ? String(raw.updatedAt) : undefined,
   };

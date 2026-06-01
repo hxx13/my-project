@@ -10,6 +10,7 @@ public class AnalyticsUserViewDto {
     private Map<String, Object> filter;
     private boolean defaultView;
     private boolean subscribed;
+    private boolean isPublic;
     private int sortOrder;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -60,6 +61,14 @@ public class AnalyticsUserViewDto {
 
     public void setSubscribed(boolean subscribed) {
         this.subscribed = subscribed;
+    }
+
+    public boolean isPublic() {
+        return isPublic;
+    }
+
+    public void setPublic(boolean isPublic) {
+        this.isPublic = isPublic;
     }
 
     public int getSortOrder() {

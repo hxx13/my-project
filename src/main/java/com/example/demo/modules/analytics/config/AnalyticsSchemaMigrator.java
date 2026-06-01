@@ -66,6 +66,8 @@ public class AnalyticsSchemaMigrator implements ApplicationRunner {
 
                         is_subscribed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=参与自动审计对比',
 
+                        is_public TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=对所有人可见',
+
                         sort_order INT NOT NULL DEFAULT 0,
 
                         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -83,6 +85,10 @@ public class AnalyticsSchemaMigrator implements ApplicationRunner {
             ensureColumn("analytics_user_view", "is_subscribed",
 
                     "ALTER TABLE analytics_user_view ADD COLUMN is_subscribed TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=参与自动审计对比' AFTER is_default");
+
+            ensureColumn("analytics_user_view", "is_public",
+
+                    "ALTER TABLE analytics_user_view ADD COLUMN is_public TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=对所有人可见' AFTER is_subscribed");
 
             jdbcTemplate.execute("""
 
