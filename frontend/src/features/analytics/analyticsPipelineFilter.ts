@@ -17,6 +17,8 @@ export type AnalyticsScopeFilter = {
   allEnabledChannels?: boolean;
   /** 启用的清算对比：日、周、月（至少一项） */
   compareCycles: AnalyticsCompareCycle[];
+  /** 是否对所有人可见（STAFF+ 均可查看和使用） */
+  isPublic?: boolean;
 };
 
 /** 编辑区临时状态 = 范围筛选 + 对比周期（保存时写入配置） */
@@ -56,6 +58,7 @@ export const defaultAnalyticsDraftFilter = (): AnalyticsDraftFilter => ({
   excludeBlacklist: true,
   channelCodes: [],
   compareCycles: ["day"],
+  isPublic: false,
 });
 
 /** 勾选通道后写入草稿：非空则仅统计所选通道，空列表表示全部已启用通道 */

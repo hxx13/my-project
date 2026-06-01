@@ -13,6 +13,7 @@ export type SaveConfigOptions = {
   subscribe: boolean;
   backfillHistory: boolean;
   backfillUntil: string;
+  isPublic?: boolean;
 };
 
 type Props = {
@@ -38,12 +39,14 @@ export function SaveAnalyticsConfigModal({
   const [subscribe, setSubscribe] = useState(false);
   const [backfillHistory, setBackfillHistory] = useState(false);
   const [backfillUntil, setBackfillUntil] = useState(defaultBackfillUntilDate);
+  const [isPublic, setIsPublic] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
       setCompareCycles(initialCompareCycles.length ? initialCompareCycles : ["day"]);
       setBackfillUntil(defaultBackfillUntilDate());
+      setIsPublic(false);
     }
   }, [open, initialCompareCycles]);
 
@@ -67,10 +70,12 @@ export function SaveAnalyticsConfigModal({
         subscribe,
         backfillHistory: subscribe && backfillHistory,
         backfillUntil,
+        isPublic,
       });
       setName("");
       setSubscribe(false);
       setBackfillHistory(false);
+      setIsPublic(false);
       onClose();
     } finally {
       setSaving(false);
@@ -125,6 +130,17 @@ export function SaveAnalyticsConfigModal({
               disabled={!subscribe}
             />
           ) : null}
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-amber-300 text-amber-600"
+              checked={isPublic}
+              onChange={(e) => setIsPublic(e.target.checked)}
+            />
+            <span className="text-sm text-amber-900">
+              对所有人可见（STAFF+ 角色用户均可查看和使用此配置）
+            </span>
+          </label>
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <button type="button" className="rounded-lg border px-4 py-2 text-sm" onClick={onClose}>

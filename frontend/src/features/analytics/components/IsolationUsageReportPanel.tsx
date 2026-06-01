@@ -209,6 +209,9 @@ export function IsolationUsageReportPanel() {
   const handleSaveConfig = async (opts: SaveConfigOptions) => {
     try {
       const filter = scopeFilterOnly({ ...draft, compareCycles: opts.compareCycles });
+      if (opts.isPublic) {
+        (filter as any).isPublic = true;
+      }
       const created = await saveAnalyticsView({ reportKey: REPORT_KEY, name: opts.name, filter });
       let saved = created;
       if (opts.subscribe) {

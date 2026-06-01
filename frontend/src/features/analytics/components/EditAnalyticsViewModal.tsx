@@ -58,6 +58,7 @@ export function EditAnalyticsViewModal(props: Props) {
   const [subscribed, setSubscribed] = useState(false);
   const [backfillHistory, setBackfillHistory] = useState(false);
   const [backfillUntil, setBackfillUntil] = useState(defaultBackfillUntilDate);
+  const [isPublic, setIsPublic] = useState(false);
 
   useEffect(() => {
     if (view && open) {
@@ -69,6 +70,7 @@ export function EditAnalyticsViewModal(props: Props) {
         setIsoFilters(draftFromSavedFilter(raw));
       }
       setSubscribed(view.subscribed);
+      setIsPublic((view.filter as Record<string, any>)?.isPublic === true);
       setBackfillHistory(false);
       setBackfillUntil(defaultBackfillUntilDate());
     }
@@ -183,6 +185,19 @@ export function EditAnalyticsViewModal(props: Props) {
               笼架占用按日/周/月自动抓取 ARO 快照并环比；不支持历史回溯，订阅后将立即生成当前周期快照。
             </p>
           )}
+          {!isCage ? (
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-amber-300 text-amber-600"
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+              />
+              <span className="text-sm text-amber-900">
+                对所有人可见（STAFF+ 角色用户均可查看和使用此配置）
+              </span>
+            </label>
+          ) : null}
         </div>
         <div className="flex justify-end gap-2 border-t px-4 py-3">
           <button type="button" className="rounded-lg border px-4 py-2 text-sm" onClick={onClose}>
@@ -200,10 +215,12 @@ export function EditAnalyticsViewModal(props: Props) {
                   subscribed
                 );
               } else {
+                const filter = scopeFilterOnly(isoFilters);
+                if (isPublic) (filter as any).isPublic = true;
                 void (props as IsolationProps).onSave(
                   view.id,
                   name.trim(),
-                  scopeFilterOnly(isoFilters),
+                  filter,
                   subscribed,
                   backfillHistory,
                   backfillUntil

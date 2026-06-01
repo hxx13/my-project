@@ -139,6 +139,30 @@ export function AnalyticsConfigSettingsModal(props: Props) {
                   (props as IsolationProps).onDraftChange({ ...(props as IsolationProps).draft, compareCycles })
                 }
               />
+              <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-amber-900">对所有人可见</p>
+                  <p className="text-xs text-amber-700">所有可进入后台的用户（STAFF+）均可查看和使用此配置</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={(props as IsolationProps).draft.isPublic === true}
+                  onClick={() => {
+                    const iso = props as IsolationProps;
+                    iso.onDraftChange({ ...iso.draft, isPublic: !iso.draft.isPublic });
+                  }}
+                  className={`ml-3 shrink-0 inline-flex h-5 w-9 items-center rounded-full border-2 border-transparent transition-colors ${
+                    (props as IsolationProps).draft.isPublic ? "bg-amber-500" : "bg-neutral-300"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                      (props as IsolationProps).draft.isPublic ? "translate-x-4" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
             </>
           )}
         </div>
