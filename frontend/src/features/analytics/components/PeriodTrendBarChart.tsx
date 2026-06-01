@@ -67,9 +67,11 @@ export function PeriodTrendBarChart({ cycle, meta }: Props) {
             <Tooltip content={<TrendTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar dataKey="studentCount" name="学生" stackId="sets" fill="#4f46e5" radius={[0, 0, 0, 0]} maxBarSize={cycle === "day" ? 14 : 36}>
-              <LabelList dataKey="personTimes" position="top" fontSize={8} fontWeight={700} fill="#4338ca" />
+              <LabelList dataKey="studentCount" position="insideTop" fontSize={7} fontWeight={600} fill="#ffffff" />
             </Bar>
-            <Bar dataKey="staffCount" name="工作人员" stackId="sets" fill="#f97316" radius={[4, 4, 0, 0]} maxBarSize={cycle === "day" ? 14 : 36} />
+            <Bar dataKey="staffCount" name="工作人员" stackId="sets" fill="#94a3b8" radius={[4, 4, 0, 0]} maxBarSize={cycle === "day" ? 14 : 36}>
+              <LabelList dataKey="staffCount" position="insideTop" fontSize={7} fontWeight={600} fill="#ffffff" />
+            </Bar>
           </BarChart>
         </MeasuredChartBox>
       )}
@@ -111,7 +113,7 @@ function TrendLegend() {
         学生
       </span>
       <span className="inline-flex items-center gap-1">
-        <span className="h-2.5 w-2.5 rounded-sm bg-orange-500" />
+        <span className="h-2.5 w-2.5 rounded-sm bg-slate-400" />
         工作人员
       </span>
     </div>

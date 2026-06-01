@@ -17,10 +17,16 @@ const CYCLE_TITLE: Record<AnalyticsCompareCycle, string> = {
   month: "每月清算",
 };
 
-const GROUP_BAR_COLORS = [
-  "#6366f1", "#8b5cf6", "#06b6d4", "#f59e0b", "#10b981", "#ec4899",
-  "#f97316", "#14b8a6", "#ef4444", "#3b82f6", "#a855f7", "#22c55e",
-] as const;
+/** Generate a gradient color from indigo (high count) to light gray (low count) */
+function barGradientColor(value: number, maxValue: number): string {
+  if (maxValue <= 0) return "rgba(99,102,241,0.5)";
+  const ratio = Math.max(0, Math.min(1, value / maxValue));
+  // High values: deep indigo (#4f46e5). Low values: light slate (#cbd5e1).
+  const r = Math.round(79 + (203 - 79) * (1 - ratio));
+  const g = Math.round(70 + (213 - 70) * (1 - ratio));
+  const b = Math.round(229 + (225 - 229) * (1 - ratio));
+  return `rgb(${r},${g},${b})`;
+}
 
 type Props = {
   cycle: AnalyticsCompareCycle;
@@ -158,7 +164,7 @@ export function CategorySnapshotAnalysisCard({
     scopeGroups != null &&
     distributionGroupCount !== scopeGroups;
   const allGroupsChartHeight = Math.min(480, Math.max(140, allGroupsChart.length * 36));
-  const allGroupsChartMinWidth = allGroupsChart.length * 48;
+  const allGroupsChartMinWidth = Math.max(allGroupsChart.length * 24, 200);
   const topPiChartHeight = Math.min(200, Math.max(80, topPis.length * 28));
 
   return (
@@ -287,10 +293,11 @@ export function CategorySnapshotAnalysisCard({
                       formatter={(v) => [Number(v ?? 0), isAccessPackage ? "条" : metricUnit]}
                       labelFormatter={(_, p) => (p?.[0]?.payload as { fullName?: string })?.fullName ?? ""}
                     />
-                    <Bar dataKey="personTimes" radius={[4, 4, 0, 0]} maxBarSize={32}>
-                      {allGroupsChart.map((entry, idx) => (
-                        <Cell key={entry.fullName} fill={GROUP_BAR_COLORS[idx % GROUP_BAR_COLORS.length]} />
-                      ))}
+                    <Bar dataKey="personTimes" radius={[4, 4, 0, 0]} maxBarSize={16}>
+                      {allGroupsChart.map((entry) => {
+                        const maxVal = Math.max(...allGroupsChart.map(e => e.personTimes), 1);
+                        return <Cell key={entry.fullName} fill={barGradientColor(entry.personTimes, maxVal)} />;
+                      })}
                       <LabelList dataKey="personTimes" position="top" fontSize={9} fontWeight={600} fill="#374151" />
                     </Bar>
                   </BarChart>
@@ -328,10 +335,11 @@ export function CategorySnapshotAnalysisCard({
                       formatter={(v) => [Number(v ?? 0), metricUnit]}
                       labelFormatter={(_, p) => (p?.[0]?.payload as { fullName?: string })?.fullName ?? ""}
                     />
-                    <Bar dataKey="personTimes" radius={[0, 4, 4, 0]} barSize={16}>
-                      {topPis.map((entry, idx) => (
-                        <Cell key={entry.fullName} fill={GROUP_BAR_COLORS[idx % GROUP_BAR_COLORS.length]} />
-                      ))}
+                    <Bar dataKey="personTimes" radius={[0, 4, 4, 0]} barSize={12}>
+                      {topPis.map((entry) => {
+                        const maxVal = Math.max(...topPis.map(e => e.personTimes), 1);
+                        return <Cell key={entry.fullName} fill={barGradientColor(entry.personTimes, maxVal)} />;
+                      })}
                       <LabelList dataKey="personTimes" position="right" fontSize={9} fontWeight={600} fill="#374151" />
                     </Bar>
                   </BarChart>

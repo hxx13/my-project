@@ -83,55 +83,52 @@ function parseDayPeriodKey(periodKey: string): { y: number; m: number; d: number
   return { y: Number(m[1]), m: Number(m[2]) - 1, d: Number(m[3]) };
 }
 
-/**
- * 日趋势：横轴范围由当前查看的快照日决定。
- * - 选中 5 号 → 仅 1—5 日；选中上月 30 号 → 上月 1—30 日。
- * - 未选具体日（无合法 periodKey）→ 当前月 1 日至昨日。
- */
 function buildDayTrend(logs: AnalyticsAuditLog[], highlightPeriodKey?: string): TrendChartMeta {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const yesterday = addDays(today, -1);
-  const dayBefore = addDays(today, -2);
   const byLabel = dedupeByPeriodLabel(logs);
-
-  const selected = highlightPeriodKey ? parseDayPeriodKey(highlightPeriodKey) : null;
-  const y = selected?.y ?? yesterday.getFullYear();
-  const m = selected?.m ?? yesterday.getMonth();
-  const endDay = selected?.d ?? yesterday.getDate();
-  const monthPrefix = `${y}-${String(m + 1).padStart(2, "0")}`;
-  const viewingCurrentMonth =
-    y === yesterday.getFullYear() && m === yesterday.getMonth();
-
+  const yesterday = addDays(today, -1);
   const yesterdayKey = isoDate(yesterday);
-  const dayBeforeKey = isoDate(dayBefore);
+
+  // Determine window end: if viewing a historical day, end at that day; otherwise end at yesterday
+  const selected = highlightPeriodKey ? parseDayPeriodKey(highlightPeriodKey) : null;
+  const windowEnd = selected
+    ? new Date(selected.y, selected.m, selected.d)
+    : yesterday;
+
+  // Start is 30 days before end (31 days total: windowEnd - 30 .. windowEnd)
+  const windowStart = addDays(windowEnd, -30);
 
   const points: TrendChartPoint[] = [];
-  for (let d = 1; d <= endDay; d++) {
-    const periodKey = `${monthPrefix}-${String(d).padStart(2, "0")}`;
-    if (!selected) {
-      const dayDate = new Date(y, m, d);
-      if (dayDate > yesterday) continue;
-    }
+  const cursor = new Date(windowStart);
 
+  for (let i = 0; i < 31; i++) {
+    const periodKey = isoDate(cursor);
     const log = byLabel.get(periodKey);
+    const d = cursor.getDate();
+    const m = cursor.getMonth() + 1;
+    const isCurrentMonth = cursor.getFullYear() === today.getFullYear() && cursor.getMonth() === today.getMonth();
+
     let highlight: TrendHighlight = "none";
     if (highlightPeriodKey && periodKey === highlightPeriodKey) {
       highlight = "latest";
-    } else if (viewingCurrentMonth) {
-      if (periodKey === yesterdayKey) highlight = "yesterday";
-      else if (periodKey === dayBeforeKey) highlight = "dayBefore";
+    } else if (periodKey === yesterdayKey) {
+      highlight = "yesterday";
+    } else if (periodKey === isoDate(addDays(today, -2))) {
+      highlight = "dayBefore";
     }
 
     const p = pointFromLog(log, highlight);
-    p.axisLabel = `${d}日`;
+    p.axisLabel = isCurrentMonth ? `${d}日` : `${m}/${d}`;
     p.periodKey = periodKey;
     points.push(p);
+
+    cursor.setDate(cursor.getDate() + 1);
   }
 
   const title = selected
-    ? `${y}年${m + 1}月每日条数（1—${endDay}日）`
-    : "本月每日条数趋势";
+    ? `${selected.y}年${selected.m + 1}月${selected.d}日 — 前30天`
+    : `${windowStart.getFullYear()}/${windowStart.getMonth() + 1}/${windowStart.getDate()} — ${windowEnd.getFullYear()}/${windowEnd.getMonth() + 1}/${windowEnd.getDate()} 趋势`;
 
   return {
     title,
