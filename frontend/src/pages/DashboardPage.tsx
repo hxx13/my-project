@@ -1,5 +1,4 @@
 import { useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import gsap from "gsap";
@@ -21,7 +20,6 @@ import { useTwinChromeTheme } from '@/features/twin-chrome/TwinChromeThemeContex
 
 export default function DashboardPage() {
     useEventStore((state) => state.setInitialFeed);
-    const navigate = useNavigate();
     const sciFiTheme = useTwinChromeTheme();
     const [activeTab, setActiveTab] = useState<'浦东' | '浦西'>('浦东');
     const dashRef = useRef<HTMLDivElement>(null);
@@ -120,15 +118,6 @@ export default function DashboardPage() {
                 </div>
 
             </div>
-            {/* Floating preview entry */}
-            <button
-              onClick={() => navigate("/dashboard-preview")}
-              title="仪表盘预览"
-              className="fixed bottom-4 right-4 z-50 flex items-center gap-1.5 rounded-full bg-white/70 backdrop-blur border border-slate-200 px-3 py-1.5 text-[11px] text-slate-500 shadow-sm hover:bg-white hover:text-indigo-600 hover:border-indigo-300 transition-all opacity-40 hover:opacity-100"
-            >
-              <span className="text-base leading-none">🎨</span>
-              预览
-            </button>
             </SciFiDashboardChrome>
         </div>
         </DashboardSciFiVisualProvider>
