@@ -104,10 +104,10 @@ export default function TwinLayoutInner() {
 
             <div className="nebula-bg absolute inset-0 z-0 pointer-events-none" />
 
-            <div className="relative z-10 h-full min-h-0 w-full">
+            <div className="relative z-10 min-h-full w-full overflow-y-auto">
                 <div
                     className={cn(
-                        "h-full min-h-0 w-full",
+                        "min-h-full w-full",
                         debugShell && themeId === "dashboardSciFi" && "twin-chrome-debug-root",
                         animalSciFiShell && "twin-chrome-animal-telemetry-scifi"
                     )}
