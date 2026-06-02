@@ -48,14 +48,7 @@ export function StudentActivityReportPanel() {
   const groupList = groupsQuery.data?.groups ?? [];
   const groupTotal = groupsQuery.data?.total ?? 0;
 
-  // Auto-select first group
-  useEffect(() => {
-    if (!groupName && groupList.length > 0) {
-      setGroupName(groupList[0].name);
-    }
-  }, [groupList, groupName]);
-
-  // When groupPage changes, auto-select the first group from new page
+  // Auto-select first group on initial load or when groupPage changes
   useEffect(() => {
     if (groupList.length > 0 && groupList[0].name !== groupName) {
       setGroupName(groupList[0].name);
