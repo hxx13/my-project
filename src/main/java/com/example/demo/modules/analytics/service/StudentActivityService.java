@@ -1,11 +1,14 @@
 package com.example.demo.modules.analytics.service;
 
+import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
@@ -21,9 +24,11 @@ public class StudentActivityService {
     private static final int MAX_GROUP_SUGGESTIONS = 20;
 
     private final TwinDashboardMapper dashboardMapper;
+    private final AroPersonnelMapper aroPersonnelMapper;
 
-    public StudentActivityService(TwinDashboardMapper dashboardMapper) {
+    public StudentActivityService(TwinDashboardMapper dashboardMapper, AroPersonnelMapper aroPersonnelMapper) {
         this.dashboardMapper = dashboardMapper;
+        this.aroPersonnelMapper = aroPersonnelMapper;
     }
 
     /** 课题组搜索建议 */
@@ -180,7 +185,7 @@ public class StudentActivityService {
 
         if (groupName == null || groupName.isBlank()) {
             Map<String, Object> empty = new HashMap<>();
-            empty.put("summary", summaryMap(0, 0, 0, 0, 0));
+            empty.put("summary", summaryMap(0, 0, 0, 0, 0, "未知校区", ""));
             empty.put("members", List.of());
             empty.put("total", 0);
             return empty;
@@ -193,7 +198,7 @@ public class StudentActivityService {
         List<String> userIds = dashboardMapper.listUserIdsByProjectGroup(groupName.trim(), MAX_USER_IDS);
         if (userIds.isEmpty()) {
             Map<String, Object> empty = new HashMap<>();
-            empty.put("summary", summaryMap(0, 0, 0, 0, 0));
+            empty.put("summary", summaryMap(0, 0, 0, 0, 0, "未知校区", ""));
             empty.put("members", List.of());
             empty.put("total", 0);
             return empty;
@@ -214,7 +219,7 @@ public class StudentActivityService {
         List<MemberActivityRow> rows = new ArrayList<>();
         for (String uid : userIds) {
             List<Map<String, Object>> userLogs = logsByUser.getOrDefault(uid, List.of());
-            MemberActivityRow row = computeMemberRow(uid, userLogs);
+            MemberActivityRow row = computeMemberRow(uid, userLogs, startTime, endTime);
             if (row != null) rows.add(row);
         }
 
@@ -235,23 +240,33 @@ public class StudentActivityService {
         int total = rows.size();
         int totalEntries = rows.stream().mapToInt(MemberActivityRow::getEntryCount).sum();
         long totalDuration = rows.stream().mapToLong(MemberActivityRow::getTotalDurationMinutes).sum();
-        double avgDaily = rows.stream().mapToDouble(MemberActivityRow::getDailyAvgFreq).average().orElse(0);
-        long recent7d = rows.stream().filter(r -> r.getDaysSinceLastActive() <= 7).count();
-        int activeRate = total > 0 ? (int) Math.round(100.0 * recent7d / total) : 0;
+        double avgWeekly = rows.stream().mapToDouble(MemberActivityRow::getWeeklyAvgFreq).average().orElse(0);
+
+        // Get activeSharePct and campus from computeGroupRow (added in Task 1)
+        double activeSharePct = 0;
+        String campus = "未知校区";
+        GroupActivityRow groupRow = computeGroupRow(groupName, startTime, endTime);
+        if (groupRow != null) {
+            activeSharePct = groupRow.getActiveSharePct();
+            campus = groupRow.getCampus();
+        }
+
+        String timeLabel = deriveTimeLabel(startTime, endTime);
 
         // 7. 分页
         int offset = (page - 1) * size;
         List<MemberActivityRow> paged = rows.stream().skip(offset).limit(size).toList();
 
         Map<String, Object> result = new HashMap<>();
-        result.put("summary", summaryMap(total, totalEntries, totalDuration, avgDaily, activeRate));
+        result.put("summary", summaryMap(total, totalEntries, totalDuration, avgWeekly, activeSharePct, campus, timeLabel));
         result.put("members", paged.stream().map(this::rowToMap).toList());
         result.put("total", total);
         return result;
     }
 
     /** 进出配对 + 指标计算 */
-    private MemberActivityRow computeMemberRow(String userId, List<Map<String, Object>> userLogs) {
+    private MemberActivityRow computeMemberRow(String userId, List<Map<String, Object>> userLogs,
+                                                String startTime, String endTime) {
         // 分离 entry(1) 和 exit(2)
         List<LocalDateTime> entries = new ArrayList<>();
         List<LocalDateTime> exits = new ArrayList<>();
@@ -301,15 +316,38 @@ public class StudentActivityService {
                 ? ChronoUnit.DAYS.between(lastEntry.toLocalDate(), LocalDateTime.now().toLocalDate())
                 : 999;
 
+        // Calculate weekly frequency (replaces daily)
+        long days = Math.max(1, ChronoUnit.DAYS.between(
+                LocalDateTime.parse(startTime.replace(" ", "T"), FMT).toLocalDate(),
+                LocalDateTime.parse(endTime.replace(" ", "T"), FMT).toLocalDate()) + 1);
+        double weeks = Math.max(1.0, Math.ceil(days / 7.0));
+        double weeklyAvgFreq = weeks > 0 ? (double) pairCount / weeks : 0;
+
+        // Get experience level from personnel database
+        String experienceLevel = resolveExperienceLevel(userId);
+
         MemberActivityRow row = new MemberActivityRow();
         row.setUserId(userId);
         row.setUserName(userName);
         row.setEntryCount(pairCount);
         row.setTotalDurationMinutes(totalDurationMinutes);
         row.setDailyAvgFreq(Math.round(dailyAvgFreq * 10.0) / 10.0);
+        row.setWeeklyAvgFreq(Math.round(weeklyAvgFreq * 10.0) / 10.0);
+        row.setExperienceLevel(experienceLevel != null ? experienceLevel : "-");
         row.setLastActiveDate(lastActiveDate);
         row.setDaysSinceLastActive(daysSinceLastActive);
         return row;
+    }
+
+    private String resolveExperienceLevel(String userId) {
+        try {
+            AroPersonnel p = aroPersonnelMapper.findByUserId(userId);
+            if (p != null && p.getTotalExp() != null) {
+                int level = (int) Math.floor(Math.sqrt(p.getTotalExp() / 50.0)) + 1;
+                return "Lv." + level;
+            }
+        } catch (Exception e) { /* ignore */ }
+        return "-";
     }
 
     /** 时段热力图 */
@@ -402,14 +440,28 @@ public class StudentActivityService {
         }
     }
 
-    private Map<String, Object> summaryMap(int total, int entries, long duration, double avgDaily, int activeRate) {
+    private Map<String, Object> summaryMap(int total, int entries, long duration,
+                                            double avgWeekly, double activeSharePct,
+                                            String campus, String timeLabel) {
         Map<String, Object> m = new HashMap<>();
         m.put("memberCount", total);
         m.put("totalEntries", entries);
         m.put("totalDurationMinutes", duration);
-        m.put("avgDailyFreq", Math.round(avgDaily * 10.0) / 10.0);
-        m.put("activeRate", activeRate);
+        m.put("perCapitaWeeklyFreq", Math.round(avgWeekly * 10.0) / 10.0);
+        m.put("activeSharePct", activeSharePct);
+        m.put("campus", campus);
+        m.put("timeLabel", timeLabel);
         return m;
+    }
+
+    private String deriveTimeLabel(String start, String end) {
+        LocalDate s = LocalDate.parse(start.substring(0, 10));
+        LocalDate e = LocalDate.parse(end.substring(0, 10));
+        LocalDate today = LocalDate.now();
+        if (s.equals(today) && e.equals(today)) return "今日";
+        if (s.equals(today.minusDays(6)) && e.equals(today)) return "本周";
+        if (s.equals(today.minusMonths(1)) && e.equals(today)) return "本月";
+        return s.toString().substring(5) + "-" + e.toString().substring(5);
     }
 
     private Map<String, Object> rowToMap(MemberActivityRow row) {
@@ -419,6 +471,8 @@ public class StudentActivityService {
         m.put("entryCount", row.getEntryCount());
         m.put("totalDurationMinutes", row.getTotalDurationMinutes());
         m.put("dailyAvgFreq", row.getDailyAvgFreq());
+        m.put("weeklyAvgFreq", row.getWeeklyAvgFreq());
+        m.put("experienceLevel", row.getExperienceLevel());
         m.put("lastActiveDate", row.getLastActiveDate());
         m.put("daysSinceLastActive", row.getDaysSinceLastActive());
         return m;
@@ -462,6 +516,8 @@ public class StudentActivityService {
         private int entryCount;
         private long totalDurationMinutes;
         private double dailyAvgFreq;
+        private double weeklyAvgFreq;
+        private String experienceLevel;
         private String lastActiveDate;
         private long daysSinceLastActive;
 
@@ -475,6 +531,10 @@ public class StudentActivityService {
         public void setTotalDurationMinutes(long v) { this.totalDurationMinutes = v; }
         public double getDailyAvgFreq() { return dailyAvgFreq; }
         public void setDailyAvgFreq(double v) { this.dailyAvgFreq = v; }
+        public double getWeeklyAvgFreq() { return weeklyAvgFreq; }
+        public void setWeeklyAvgFreq(double v) { this.weeklyAvgFreq = v; }
+        public String getExperienceLevel() { return experienceLevel; }
+        public void setExperienceLevel(String v) { this.experienceLevel = v; }
         public String getLastActiveDate() { return lastActiveDate; }
         public void setLastActiveDate(String v) { this.lastActiveDate = v; }
         public long getDaysSinceLastActive() { return daysSinceLastActive; }
