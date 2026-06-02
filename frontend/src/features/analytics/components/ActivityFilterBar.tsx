@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import { fetchStudentActivityGroups } from "@/api/domains/analytics.api";
 import { cn } from "@/lib/utils";
+import { GroupPaginator } from "./GroupPaginator";
 
 type TimePreset = "today" | "week" | "month" | "custom";
 
@@ -24,10 +26,14 @@ function presetToRange(preset: TimePreset): { start: string; end: string } {
 
 type Props = {
   groupName: string;
+  groupPage: number;
+  groupTotal: number;
   onGroupChange: (name: string) => void;
+  onGroupPageChange: (page: number) => void;
   startTime: string;
   endTime: string;
   onTimeChange: (start: string, end: string) => void;
+  onExportCSV: () => void;
   disabled?: boolean;
 };
 
@@ -37,7 +43,7 @@ const PRESETS: { key: TimePreset; label: string }[] = [
   { key: "month", label: "本月" },
 ];
 
-export function ActivityFilterBar({ groupName, onGroupChange, startTime, endTime, onTimeChange, disabled }: Props) {
+export function ActivityFilterBar({ groupName, groupPage, groupTotal, onGroupChange, onGroupPageChange, startTime, endTime, onTimeChange, onExportCSV, disabled }: Props) {
   const [keyword, setKeyword] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [preset, setPreset] = useState<TimePreset>("month");
@@ -81,7 +87,7 @@ export function ActivityFilterBar({ groupName, onGroupChange, startTime, endTime
         <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-400">课题组</label>
         <input
           type="text"
-          value={groupName || keyword}
+          value={keyword}
           onChange={(e) => {
             const v = e.target.value;
             setKeyword(v);
@@ -182,6 +188,25 @@ export function ActivityFilterBar({ groupName, onGroupChange, startTime, endTime
           </button>
         </div>
       ) : null}
+
+      {/* Export button — right side */}
+      <div style={{ flex: 1 }} />
+      <button
+        type="button"
+        onClick={onExportCSV}
+        disabled={disabled}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+      >
+        <Download className="h-3.5 w-3.5" />
+        导出 CSV
+      </button>
     </div>
+
+    <GroupPaginator
+      groupName={groupName}
+      page={groupPage}
+      total={groupTotal}
+      onPageChange={onGroupPageChange}
+    />
   );
 }
