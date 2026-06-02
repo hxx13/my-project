@@ -529,6 +529,9 @@ public class StudentActivityService {
     }
 
     private String deriveTimeLabel(String start, String end) {
+        if (start == null || start.length() < 10 || end == null || end.length() < 10) {
+            return "";
+        }
         LocalDate s = LocalDate.parse(start.substring(0, 10));
         LocalDate e = LocalDate.parse(end.substring(0, 10));
         LocalDate today = LocalDate.now();

@@ -287,8 +287,17 @@ public class TwinApiController {
             if (total == 0) {
                 List<Map<String, Object>> remote = aroService.searchPersonnelLite(keyword, limit);
                 Map<String, Object> result = new HashMap<>();
-                result.put("data", remote != null ? remote : List.of());
-                result.put("total", remote != null ? remote.size() : 0);
+                if (remote == null || remote.isEmpty()) {
+                    result.put("data", List.of());
+                    result.put("total", 0);
+                } else {
+                    int remoteTotal = remote.size();
+                    int fromIndex = Math.min(offset, remoteTotal);
+                    int toIndex = Math.min(offset + size, remoteTotal);
+                    List<Map<String, Object>> pagedRemote = remote.subList(fromIndex, toIndex);
+                    result.put("data", pagedRemote);
+                    result.put("total", remoteTotal);
+                }
                 result.put("page", page);
                 result.put("size", size);
                 return Result.success(result);
