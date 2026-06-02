@@ -39,6 +39,140 @@ public class StudentActivityService {
         }).collect(Collectors.toList());
     }
 
+    /** 课题组分页列表：按同校区人均周频次占比降序 */
+    public Map<String, Object> listGroupsPaged(String keyword, String startTime, String endTime, int page, int size) {
+        if (page < 1) page = 1;
+        if (size < 1) size = 1;
+
+        // 1. 拉取所有课题组名（含 keyword 过滤）
+        List<String> allGroups = PersonnelProjectGroupUtil.distinctGroupsMatchingKeyword(
+                dashboardMapper.searchPersonnelProjectGroupFields(
+                        keyword != null ? keyword.trim() : "", 500),
+                keyword, 500);
+
+        // 2. 计算每个组的指标
+        List<GroupActivityRow> rows = new ArrayList<>();
+        for (String groupName : allGroups) {
+            GroupActivityRow row = computeGroupRow(groupName, startTime, endTime);
+            if (row != null) rows.add(row);
+        }
+
+        // 2.5 填充同校区活跃度占比
+        fillActiveSharePct(rows);
+
+        // 3. 按 activeSharePct 降序
+        rows.sort(Comparator.comparingDouble(GroupActivityRow::getActiveSharePct).reversed());
+
+        // 4. 分页
+        int total = rows.size();
+        int offset = (page - 1) * size;
+        List<GroupActivityRow> paged = rows.stream().skip(offset).limit(size).toList();
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("groups", paged.stream().map(this::groupRowToMap).toList());
+        result.put("total", total);
+        result.put("page", page);
+        result.put("size", size);
+        return result;
+    }
+
+    private GroupActivityRow computeGroupRow(String groupName, String startTime, String endTime) {
+        List<String> userIds = dashboardMapper.listUserIdsByProjectGroup(groupName.trim(), MAX_USER_IDS);
+        if (userIds.isEmpty()) return null;
+
+        List<Map<String, Object>> rawLogs = dashboardMapper.listAccessLogsByUserIds(userIds, startTime, endTime);
+
+        int totalEntries = 0;
+        Map<String, String> userCampus = new LinkedHashMap<>();
+        for (String uid : userIds) {
+            List<Map<String, Object>> userLogs = rawLogs.stream()
+                    .filter(l -> uid.equals(String.valueOf(l.getOrDefault("user_id", ""))))
+                    .toList();
+            int userPairs = countPairedEntries(userLogs);
+            totalEntries += userPairs;
+            if (!userCampus.containsKey(uid)) {
+                String campus = resolveCampusForUser(uid, userLogs);
+                userCampus.put(uid, campus != null ? campus : "未知校区");
+            }
+        }
+
+        int memberCount = userIds.size();
+        long days = Math.max(1, ChronoUnit.DAYS.between(
+                LocalDateTime.parse(startTime.replace(" ", "T"), DateTimeFormatter.ISO_LOCAL_DATE_TIME).toLocalDate(),
+                LocalDateTime.parse(endTime.replace(" ", "T"), DateTimeFormatter.ISO_LOCAL_DATE_TIME).toLocalDate()) + 1);
+        double weeks = Math.max(1.0, Math.ceil(days / 7.0));
+        double perCapitaWeeklyFreq = memberCount > 0 ? (double) totalEntries / memberCount / weeks : 0;
+
+        String majorityCampus = userCampus.values().stream()
+                .collect(Collectors.groupingBy(c -> c, Collectors.counting()))
+                .entrySet().stream().max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey).orElse("未知校区");
+
+        GroupActivityRow row = new GroupActivityRow();
+        row.setName(groupName);
+        row.setCampus(majorityCampus);
+        row.setMemberCount(memberCount);
+        row.setTotalEntries(totalEntries);
+        row.setPerCapitaWeeklyFreq(Math.round(perCapitaWeeklyFreq * 10.0) / 10.0);
+        row.setActiveSharePct(0);
+        return row;
+    }
+
+    /** Fill activeSharePct for all rows (same-campus sum division) */
+    private void fillActiveSharePct(List<GroupActivityRow> allRows) {
+        Map<String, Double> campusSums = new HashMap<>();
+        for (GroupActivityRow r : allRows) {
+            campusSums.merge(r.getCampus(), r.getPerCapitaWeeklyFreq(), Double::sum);
+        }
+        for (GroupActivityRow r : allRows) {
+            double campusSum = campusSums.getOrDefault(r.getCampus(), 1.0);
+            if (campusSum > 0) {
+                r.setActiveSharePct(Math.round(r.getPerCapitaWeeklyFreq() / campusSum * 1000.0) / 10.0);
+            }
+        }
+    }
+
+    /** Determine campus from user's access logs (area_name contains 浦东/浦西) */
+    private String resolveCampusForUser(String userId, List<Map<String, Object>> userLogs) {
+        long pudong = userLogs.stream()
+                .filter(l -> {
+                    String a = String.valueOf(l.getOrDefault("area_name", ""));
+                    return a.contains("浦东");
+                }).count();
+        long puxi = userLogs.stream()
+                .filter(l -> {
+                    String a = String.valueOf(l.getOrDefault("area_name", ""));
+                    return a.contains("浦西");
+                }).count();
+        if (pudong > puxi) return "浦东";
+        if (puxi > pudong) return "浦西";
+        return "未知校区";
+    }
+
+    /** Count entry-exit pairs from user's access logs */
+    private int countPairedEntries(List<Map<String, Object>> userLogs) {
+        List<LocalDateTime> entries = new ArrayList<>();
+        List<LocalDateTime> exits = new ArrayList<>();
+        for (Map<String, Object> log : userLogs) {
+            int accessType = parseAccessType(log);
+            String ts = String.valueOf(log.getOrDefault("create_time", ""));
+            LocalDateTime dt = parseTime(ts);
+            if (dt == null) continue;
+            if (accessType == 1) entries.add(dt);
+            else if (accessType == 2) exits.add(dt);
+        }
+        int pairCount = 0;
+        int exitIdx = 0;
+        for (LocalDateTime entry : entries) {
+            while (exitIdx < exits.size() && !exits.get(exitIdx).isAfter(entry)) exitIdx++;
+            if (exitIdx < exits.size()) {
+                long diffMin = ChronoUnit.MINUTES.between(entry, exits.get(exitIdx));
+                if (diffMin <= 24 * 60) { pairCount++; exitIdx++; }
+            }
+        }
+        return pairCount;
+    }
+
     /** 成员活跃度查询 */
     public Map<String, Object> queryMemberActivity(
             String groupName, String startTime, String endTime,
@@ -288,6 +422,38 @@ public class StudentActivityService {
         m.put("lastActiveDate", row.getLastActiveDate());
         m.put("daysSinceLastActive", row.getDaysSinceLastActive());
         return m;
+    }
+
+    private Map<String, Object> groupRowToMap(GroupActivityRow row) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("name", row.getName());
+        m.put("campus", row.getCampus());
+        m.put("memberCount", row.getMemberCount());
+        m.put("totalEntries", row.getTotalEntries());
+        m.put("perCapitaWeeklyFreq", row.getPerCapitaWeeklyFreq());
+        m.put("activeSharePct", row.getActiveSharePct());
+        return m;
+    }
+
+    public static class GroupActivityRow {
+        private String name;
+        private String campus;
+        private int memberCount;
+        private int totalEntries;
+        private double perCapitaWeeklyFreq;
+        private double activeSharePct;
+        public String getName() { return name; }
+        public void setName(String v) { this.name = v; }
+        public String getCampus() { return campus; }
+        public void setCampus(String v) { this.campus = v; }
+        public int getMemberCount() { return memberCount; }
+        public void setMemberCount(int v) { this.memberCount = v; }
+        public int getTotalEntries() { return totalEntries; }
+        public void setTotalEntries(int v) { this.totalEntries = v; }
+        public double getPerCapitaWeeklyFreq() { return perCapitaWeeklyFreq; }
+        public void setPerCapitaWeeklyFreq(double v) { this.perCapitaWeeklyFreq = v; }
+        public double getActiveSharePct() { return activeSharePct; }
+        public void setActiveSharePct(double v) { this.activeSharePct = v; }
     }
 
     public static class MemberActivityRow {

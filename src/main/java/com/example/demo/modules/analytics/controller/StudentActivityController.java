@@ -26,16 +26,17 @@ public class StudentActivityController {
     }
 
     @GetMapping("/groups")
-    @Operation(summary = "课题组搜索建议")
+    @Operation(summary = "课题组分页列表（按活跃度占比降序）")
     public Result<Map<String, Object>> listGroups(
             @RequestHeader(value = "Authorization", required = false) String auth,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(required = false) String keyword,
+            @RequestParam String startTime,
+            @RequestParam String endTime,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "1") int size) {
         Result<?> denied = requireStaff(auth);
         if (denied != null) return Result.error(denied.getMessage());
-        List<Map<String, Object>> groups = studentActivityService.listGroups(keyword);
-        Map<String, Object> data = new HashMap<>();
-        data.put("groups", groups);
-        return Result.success(data);
+        return Result.success(studentActivityService.listGroupsPaged(keyword, startTime, endTime, page, size));
     }
 
     @GetMapping("/members")
