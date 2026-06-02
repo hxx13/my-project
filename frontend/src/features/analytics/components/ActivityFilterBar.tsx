@@ -82,6 +82,7 @@ export function ActivityFilterBar({ groupName, groupPage, groupTotal, onGroupCha
   }, []); // initial load only
 
   return (
+    <>
     <div className="flex flex-wrap items-end gap-3 rounded-xl border border-violet-200/60 bg-gradient-to-r from-violet-50/40 to-white p-4">
       {/* Research group search */}
       <div className="relative min-w-[200px]">
@@ -209,5 +210,6 @@ export function ActivityFilterBar({ groupName, groupPage, groupTotal, onGroupCha
       total={groupTotal}
       onPageChange={onGroupPageChange}
     />
+  </>
   );
 }
