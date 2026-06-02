@@ -49,16 +49,53 @@ public class StudentActivityService {
         }).collect(Collectors.toList());
     }
 
-    /** 课题组分页列表 — 从快照表聚合，毫秒级返回 */
+    /** 课题组分页列表 — 从快照表读取，排序按总进出次数，活跃度指标固定用本月窗口 */
     public Map<String, Object> listGroupsPaged(String keyword, String startTime, String endTime, int page, int size) {
         if (page < 1) page = 1;
         if (size < 1) size = 1;
 
-        LocalDate s = LocalDate.parse(startTime.substring(0, 10));
-        LocalDate e = LocalDate.parse(endTime.substring(0, 10));
+        LocalDate rangeStart = LocalDate.parse(startTime.substring(0, 10));
+        LocalDate rangeEnd = LocalDate.parse(endTime.substring(0, 10));
 
-        List<Map<String, Object>> rows = snapshotMapper.aggregateByDateRange(s, e, keyword);
-        if (rows.isEmpty()) {
+        // Month window for perCapitaWeeklyFreq and activeSharePct (fixed: 1st→yesterday)
+        LocalDate today = LocalDate.now();
+        LocalDate monthStart = today.withDayOfMonth(1);
+        LocalDate monthEnd = today.minusDays(1);
+        long monthDays = Math.max(1, ChronoUnit.DAYS.between(monthStart, monthEnd) + 1);
+        double monthWeeks = Math.max(1.0, Math.ceil(monthDays / 7.0));
+
+        // 1. Get groups active in selected time range (for listing + sorting)
+        List<Map<String, Object>> rangeRows = snapshotMapper.aggregateByDateRange(rangeStart, rangeEnd, keyword);
+
+        // 2. Get month-window data for perCapitaWeeklyFreq and activeSharePct
+        List<Map<String, Object>> monthRows = snapshotMapper.aggregateByDateRange(monthStart, monthEnd,
+                keyword != null && !keyword.isEmpty() ? keyword : null);
+        Map<String, double[]> monthMetrics = new HashMap<>(); // groupName -> {perCapitaWeeklyFreq, activeSharePct}
+
+        // Build campus sums for month window (per-capita weighted)
+        Map<String, Double> campusMonthSums = new HashMap<>();
+        Map<String, Double> groupMonthPerCapita = new LinkedHashMap<>();
+        Map<String, String> groupCampus = new HashMap<>();
+        for (Map<String, Object> row : monthRows) {
+            String name = String.valueOf(row.get("groupName"));
+            String campus = String.valueOf(row.getOrDefault("campus", "unknown"));
+            int mc = ((Number) row.getOrDefault("memberCount", 0)).intValue();
+            int te = ((Number) row.getOrDefault("totalEntries", 0)).intValue();
+            double pf = mc > 0 ? (double) te / mc / monthWeeks : 0;
+            groupMonthPerCapita.put(name, pf);
+            campusMonthSums.merge(campus, pf, Double::sum);
+            groupCampus.put(name, campus);
+        }
+        // Fill activeSharePct
+        for (String name : groupMonthPerCapita.keySet()) {
+            double pf = groupMonthPerCapita.get(name);
+            String campus = groupCampus.getOrDefault(name, "unknown");
+            double campusSum = campusMonthSums.getOrDefault(campus, 1.0);
+            double share = campusSum > 0 ? Math.round(pf / campusSum * 1000.0) / 10.0 : 0;
+            monthMetrics.put(name, new double[]{Math.round(pf * 10.0) / 10.0, share});
+        }
+
+        if (rangeRows.isEmpty()) {
             Map<String, Object> empty = new HashMap<>();
             empty.put("groups", List.of());
             empty.put("total", 0);
@@ -67,31 +104,35 @@ public class StudentActivityService {
             return empty;
         }
 
-        // 计算每人周频次 + 同校区占比
-        long days = Math.max(1, ChronoUnit.DAYS.between(s, e) + 1);
-        double weeks = Math.max(1.0, Math.ceil(days / 7.0));
+        // Build group rows with range data + month metrics
+        long rangeDays = Math.max(1, ChronoUnit.DAYS.between(rangeStart, rangeEnd) + 1);
+        double rangeWeeks = Math.max(1.0, Math.ceil(rangeDays / 7.0));
 
         List<GroupActivityRow> groupRows = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
+        for (Map<String, Object> row : rangeRows) {
             String name = String.valueOf(row.get("groupName"));
-            String campus = String.valueOf(row.getOrDefault("campus", "未知校区"));
+            String campus = String.valueOf(row.getOrDefault("campus", "unknown"));
             int memberCount = ((Number) row.getOrDefault("memberCount", 0)).intValue();
             int totalEntries = ((Number) row.getOrDefault("totalEntries", 0)).intValue();
 
-            double perCapitaWeeklyFreq = memberCount > 0 ? (double) totalEntries / memberCount / weeks : 0;
+            // Month metrics (or fallback to range if no month data)
+            double[] mm = monthMetrics.getOrDefault(name, new double[]{0, 0});
+            double perCapitaWeeklyFreq = mm[0] > 0 ? mm[0]
+                    : (memberCount > 0 ? Math.round((double) totalEntries / memberCount / rangeWeeks * 10.0) / 10.0 : 0);
+            double activeSharePct = mm[1];
 
             GroupActivityRow gr = new GroupActivityRow();
             gr.setName(name);
             gr.setCampus(campus);
             gr.setMemberCount(memberCount);
             gr.setTotalEntries(totalEntries);
-            gr.setPerCapitaWeeklyFreq(Math.round(perCapitaWeeklyFreq * 10.0) / 10.0);
-            gr.setActiveSharePct(0);
+            gr.setPerCapitaWeeklyFreq(perCapitaWeeklyFreq);
+            gr.setActiveSharePct(activeSharePct);
             groupRows.add(gr);
         }
 
-        fillActiveSharePct(groupRows);
-        groupRows.sort(Comparator.comparingDouble(GroupActivityRow::getActiveSharePct).reversed());
+        // Sort by totalEntries descending
+        groupRows.sort(Comparator.comparingInt(GroupActivityRow::getTotalEntries).reversed());
 
         int total = groupRows.size();
         int offset = (page - 1) * size;
@@ -103,20 +144,6 @@ public class StudentActivityService {
         result.put("page", page);
         result.put("size", size);
         return result;
-    }
-
-    /** Fill activeSharePct for all rows (same-campus sum division) */
-    private void fillActiveSharePct(List<GroupActivityRow> allRows) {
-        Map<String, Double> campusSums = new HashMap<>();
-        for (GroupActivityRow r : allRows) {
-            campusSums.merge(r.getCampus(), r.getPerCapitaWeeklyFreq(), Double::sum);
-        }
-        for (GroupActivityRow r : allRows) {
-            double campusSum = campusSums.getOrDefault(r.getCampus(), 1.0);
-            if (campusSum > 0) {
-                r.setActiveSharePct(Math.round(r.getPerCapitaWeeklyFreq() / campusSum * 1000.0) / 10.0);
-            }
-        }
     }
 
     /** 成员活跃度查询 */
@@ -384,7 +411,7 @@ public class StudentActivityService {
                 .collect(Collectors.toList());
     }
 
-    /** 单个课题组 KPI 汇总 — 从快照表聚合同校区占比 */
+    /** 单个课题组 KPI 汇总 — perCapitaWeeklyFreq/activeSharePct 固定用本月窗口 */
     public Map<String, Object> summary(String groupName, String startTime, String endTime) {
         if (groupName == null || groupName.isBlank()) {
             Map<String, Object> empty = new HashMap<>();
@@ -397,54 +424,54 @@ public class StudentActivityService {
             return empty;
         }
 
-        LocalDate s = LocalDate.parse(startTime.substring(0, 10));
-        LocalDate e = LocalDate.parse(endTime.substring(0, 10));
-        long days = Math.max(1, ChronoUnit.DAYS.between(s, e) + 1);
-        double weeks = Math.max(1.0, Math.ceil(days / 7.0));
+        LocalDate rangeStart = LocalDate.parse(startTime.substring(0, 10));
+        LocalDate rangeEnd = LocalDate.parse(endTime.substring(0, 10));
 
-        List<Map<String, Object>> allRows = snapshotMapper.aggregateByDateRange(s, e, null);
+        // Month window (fixed: 1st→yesterday) for perCapitaWeeklyFreq and activeSharePct
+        LocalDate today = LocalDate.now();
+        LocalDate monthStart = today.withDayOfMonth(1);
+        LocalDate monthEnd = today.minusDays(1);
+        long monthDays = Math.max(1, ChronoUnit.DAYS.between(monthStart, monthEnd) + 1);
+        double monthWeeks = Math.max(1.0, Math.ceil(monthDays / 7.0));
 
-        GroupActivityRow target = null;
-        List<GroupActivityRow> all = new ArrayList<>();
-        for (Map<String, Object> row : allRows) {
-            String name = String.valueOf(row.get("groupName"));
-            String campus = String.valueOf(row.getOrDefault("campus", "未知校区"));
-            int mc = ((Number) row.getOrDefault("memberCount", 0)).intValue();
-            int te = ((Number) row.getOrDefault("totalEntries", 0)).intValue();
-            double pf = mc > 0 ? (double) te / mc / weeks : 0;
-
-            GroupActivityRow gr = new GroupActivityRow();
-            gr.setName(name);
-            gr.setCampus(campus);
-            gr.setMemberCount(mc);
-            gr.setTotalEntries(te);
-            gr.setPerCapitaWeeklyFreq(Math.round(pf * 10.0) / 10.0);
-            gr.setActiveSharePct(0);
-            all.add(gr);
-            if (name.equalsIgnoreCase(groupName)) target = gr;
+        // Get range data for memberCount + totalEntries
+        List<Map<String, Object>> rangeRows = snapshotMapper.aggregateByDateRange(rangeStart, rangeEnd, groupName);
+        int memberCount = 0, totalEntries = 0;
+        String campus = "unknown";
+        for (Map<String, Object> r : rangeRows) {
+            if (groupName.equalsIgnoreCase(String.valueOf(r.get("groupName")))) {
+                memberCount = ((Number) r.getOrDefault("memberCount", 0)).intValue();
+                totalEntries = ((Number) r.getOrDefault("totalEntries", 0)).intValue();
+                campus = String.valueOf(r.getOrDefault("campus", "unknown"));
+            }
         }
 
-        if (target == null) {
-            Map<String, Object> empty = new HashMap<>();
-            empty.put("memberCount", 0);
-            empty.put("totalEntries", 0);
-            empty.put("perCapitaWeeklyFreq", 0);
-            empty.put("activeSharePct", 0);
-            empty.put("campus", "-");
-            empty.put("timeLabel", deriveTimeLabel(startTime, endTime));
-            return empty;
+        // Get month data for perCapitaWeeklyFreq + activeSharePct
+        List<Map<String, Object>> monthRows = snapshotMapper.aggregateByDateRange(monthStart, monthEnd, null);
+        Map<String, Double> campusMonthSums = new HashMap<>();
+        double targetPF = 0;
+        for (Map<String, Object> r : monthRows) {
+            String nm = String.valueOf(r.get("groupName"));
+            String cm = String.valueOf(r.getOrDefault("campus", "unknown"));
+            int mc = ((Number) r.getOrDefault("memberCount", 0)).intValue();
+            int te = ((Number) r.getOrDefault("totalEntries", 0)).intValue();
+            double pf = mc > 0 ? (double) te / mc / monthWeeks : 0;
+            campusMonthSums.merge(cm, pf, Double::sum);
+            if (groupName.equalsIgnoreCase(nm)) {
+                targetPF = pf;
+                if (!"unknown".equals(cm)) campus = cm;
+            }
         }
-
-        fillActiveSharePct(all);
-        GroupActivityRow updated = all.stream()
-                .filter(r -> r.getName().equalsIgnoreCase(groupName)).findFirst().orElse(target);
+        double campusSum = campusMonthSums.getOrDefault(campus, 1.0);
+        double activeSharePct = campusSum > 0 ? Math.round(targetPF / campusSum * 1000.0) / 10.0 : 0;
+        double perCapitaWeeklyFreq = Math.round(targetPF * 10.0) / 10.0;
 
         Map<String, Object> m = new HashMap<>();
-        m.put("memberCount", updated.getMemberCount());
-        m.put("totalEntries", updated.getTotalEntries());
-        m.put("perCapitaWeeklyFreq", updated.getPerCapitaWeeklyFreq());
-        m.put("activeSharePct", updated.getActiveSharePct());
-        m.put("campus", updated.getCampus());
+        m.put("memberCount", memberCount);
+        m.put("totalEntries", totalEntries);
+        m.put("perCapitaWeeklyFreq", perCapitaWeeklyFreq);
+        m.put("activeSharePct", activeSharePct);
+        m.put("campus", campus);
         m.put("timeLabel", deriveTimeLabel(startTime, endTime));
         return m;
     }
@@ -490,9 +517,18 @@ public class StudentActivityService {
         LocalDate s = LocalDate.parse(start.substring(0, 10));
         LocalDate e = LocalDate.parse(end.substring(0, 10));
         LocalDate today = LocalDate.now();
-        if (s.equals(today) && e.equals(today)) return "今日";
-        if (s.equals(today.minusDays(6)) && e.equals(today)) return "本周";
-        if (s.equals(today.minusMonths(1)) && e.equals(today)) return "本月";
+        LocalDate yesterday = today.minusDays(1);
+
+        if (s.equals(yesterday) && e.equals(yesterday)) return "昨日";
+
+        // 本周: Monday to yesterday
+        LocalDate monday = today.with(java.time.DayOfWeek.MONDAY);
+        if (s.equals(monday) && e.equals(yesterday)) return "本周";
+
+        // 本月: 1st to yesterday
+        LocalDate firstOfMonth = today.withDayOfMonth(1);
+        if (s.equals(firstOfMonth) && e.equals(yesterday)) return "本月";
+
         return s.toString().substring(5) + "-" + e.toString().substring(5);
     }
 

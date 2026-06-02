@@ -17,11 +17,12 @@ import { ActivityHeatmapChart } from "./ActivityHeatmapChart";
 import { ActivityRoomChart } from "./ActivityRoomChart";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
 
-function defaultLastMonth(): { start: string; end: string } {
+function defaultMonthRange(): { start: string; end: string } {
   const now = new Date();
-  const end = now.toISOString().slice(0, 10) + " 23:59:59";
-  const start = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate())
-    .toISOString().slice(0, 10) + " 00:00:00";
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const end = yesterday.toISOString().slice(0, 10) + " 23:59:59";
+  const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10) + " 00:00:00";
   return { start, end };
 }
 
@@ -29,18 +30,28 @@ function defaultLastMonth(): { start: string; end: string } {
 function deriveTimeLabel(start: string, end: string): string {
   const s = start.slice(0, 10);
   const e = end.slice(0, 10);
-  const today = new Date().toISOString().slice(0, 10);
-  if (s === today && e === today) return "今日";
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-  if (s === weekAgo && e === today) return "本周";
-  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  if (s === monthAgo && e === today) return "本月";
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (s === yesterday && e === yesterday) return "昨日";
+
+  // Check if it's this week (Monday to yesterday)
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const monday = new Date(now);
+  monday.setDate(monday.getDate() - daysFromMonday);
+  const mondayStr = monday.toISOString().slice(0, 10);
+  if (s === mondayStr && e === yesterday) return "本周";
+
+  // Check if it's this month
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  if (s === firstDay && e === yesterday) return "本月";
+
   return s.slice(5) + "-" + e.slice(5);
 }
 
 export function StudentActivityReportPanel() {
   const queryClient = useQueryClient();
-  const initialRange = defaultLastMonth();
+  const initialRange = defaultMonthRange();
   const [groupName, setGroupName] = useState("");
   const [groupPage, setGroupPage] = useState(1);
   const [startTime, setStartTime] = useState(initialRange.start);

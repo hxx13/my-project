@@ -5,21 +5,51 @@ import { fetchStudentActivityGroups } from "@/api/domains/analytics.api";
 import { cn } from "@/lib/utils";
 import { GroupPaginator } from "./GroupPaginator";
 
-type TimePreset = "today" | "week" | "month" | "custom";
+type TimePreset = "yesterday" | "week" | "month" | "last_week" | "last_month" | "custom";
 
 function presetToRange(preset: TimePreset): { start: string; end: string } {
   const now = new Date();
-  const end = now.toISOString().slice(0, 10) + " 23:59:59";
-  let start = now.toISOString().slice(0, 10) + " 00:00:00";
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
 
-  if (preset === "week") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 7);
-    start = d.toISOString().slice(0, 10) + " 00:00:00";
+  const end = yesterdayStr + " 23:59:59";
+  let start = yesterdayStr + " 00:00:00";
+
+  if (preset === "yesterday") {
+    // start = yesterday, end = yesterday
+  } else if (preset === "week") {
+    // 本周一 ~ 昨天
+    const monday = new Date(now);
+    const dayOfWeek = monday.getDay(); // 0=Sun
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    monday.setDate(monday.getDate() - daysFromMonday);
+    if (monday > yesterday) {
+      // Today is Monday → just show yesterday
+      start = yesterdayStr + " 00:00:00";
+    } else {
+      start = monday.toISOString().slice(0, 10) + " 00:00:00";
+    }
   } else if (preset === "month") {
+    // 本月1号 ~ 昨天
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    start = firstDay.toISOString().slice(0, 10) + " 00:00:00";
+  } else if (preset === "last_week") {
+    // 上周一 ~ 上周日
     const d = new Date(now);
-    d.setMonth(d.getMonth() - 1);
+    const dayOfWeek = d.getDay();
+    const daysSinceLastMonday = dayOfWeek === 0 ? 7 : dayOfWeek;
+    d.setDate(d.getDate() - daysSinceLastMonday - 6);
     start = d.toISOString().slice(0, 10) + " 00:00:00";
+    d.setDate(d.getDate() + 6);
+    const endDate = d.toISOString().slice(0, 10);
+    return { start, end: endDate + " 23:59:59" };
+  } else if (preset === "last_month") {
+    // 上月1号 ~ 上月最后一天
+    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+    start = firstDay.toISOString().slice(0, 10) + " 00:00:00";
+    return { start, end: lastDay.toISOString().slice(0, 10) + " 23:59:59" };
   }
   return { start, end };
 }
@@ -38,9 +68,11 @@ type Props = {
 };
 
 const PRESETS: { key: TimePreset; label: string }[] = [
-  { key: "today", label: "今日" },
+  { key: "yesterday", label: "昨日" },
   { key: "week", label: "本周" },
   { key: "month", label: "本月" },
+  { key: "last_week", label: "上周" },
+  { key: "last_month", label: "上月" },
 ];
 
 export function ActivityFilterBar({ groupName, groupPage, groupTotal, onGroupChange, onGroupPageChange, startTime, endTime, onTimeChange, onExportCSV, disabled }: Props) {
