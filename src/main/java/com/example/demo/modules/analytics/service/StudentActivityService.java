@@ -225,9 +225,9 @@ public class StudentActivityService {
 
         // 5. 排序
         Comparator<MemberActivityRow> cmp = switch (sortBy != null ? sortBy : "entries") {
-            case "duration" -> Comparator.comparingLong(MemberActivityRow::getTotalDurationMinutes);
-            case "dailyAvg" -> Comparator.comparingDouble(MemberActivityRow::getDailyAvgFreq);
-            case "lastActive" -> Comparator.comparing(r -> r.getLastActiveDate() != null ? r.getLastActiveDate() : "0000");
+            case "totalDurationMinutes" -> Comparator.comparingLong(MemberActivityRow::getTotalDurationMinutes);
+            case "weeklyAvgFreq" -> Comparator.comparingDouble(MemberActivityRow::getWeeklyAvgFreq);
+            case "lastActiveDate" -> Comparator.comparing(r -> r.getLastActiveDate() != null ? r.getLastActiveDate() : "0000");
             default -> Comparator.comparingInt(MemberActivityRow::getEntryCount);
         };
         if ("asc".equals(order)) {
