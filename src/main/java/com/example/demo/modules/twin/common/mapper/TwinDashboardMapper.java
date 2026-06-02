@@ -30,6 +30,9 @@ public interface TwinDashboardMapper {
 
     List<Map<String, Object>> searchPersonnel(@Param("keyword") String keyword, @Param("limit") int limit);
 
+    List<Map<String, Object>> searchPersonnelPaged(@Param("keyword") String keyword, @Param("limit") int limit, @Param("offset") int offset);
+    int countPersonnel(@Param("keyword") String keyword);
+
     /** 课题组名模糊检索（返回 project_group_name 原始字段，供 Java 拆分去重） */
     List<String> searchPersonnelProjectGroupFields(@Param("keyword") String keyword, @Param("limit") int limit);
 

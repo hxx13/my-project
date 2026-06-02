@@ -35,6 +35,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -134,7 +135,7 @@ public class TwinApiController {
     @GetMapping("/retention-warnings")
     public Result<ListMapDataResponseDTO> getRetentionWarnings(
             @RequestParam(defaultValue = "15") int limit,
-            @RequestParam(defaultValue = "浦东") String areaName) { // 🟢 1. 核心修改：增加 areaName 参数，默认值为“浦东”
+            @RequestParam(defaultValue = "浦东") String areaName) { // 🟢 1. 核心修改：增加 areaName 参数，默认值为"浦东"
         // 2. 🟢 核心修改：将 areaName 传给 Mapper 进行数据库过滤
         BusinessTimeWindow.Window day = businessTimeWindow.todayWindow();
         List<Map<String, Object>> rawWarnings = dashboardMapper.getActiveRetentionWarnings(
@@ -155,7 +156,7 @@ public class TwinApiController {
                 int medianMins = medianObj != null ? ((Number) medianObj).intValue() : 120;
                 double prob = probObj != null ? ((Number) probObj).doubleValue() : 0.0;
                 // C. 喂给引擎计算智能离开时间
-                // 引擎内部的“软天花板”逻辑对全校区通用
+                // 引擎内部的"软天花板"逻辑对全校区通用
                 boolean authorized = false;
                 Object permObj = warning.get("hasOfficialRoomPermission");
                 if (permObj == null) permObj = warning.get("has_official_room_permission");
@@ -270,18 +271,35 @@ public class TwinApiController {
         }
     }
 
-    // 💥 人员专用：人员档案专属搜索 API (这里完美保留了原来的名字 searchPersonnel，并加入了动态限流！)
+    // 💥 人员专用：人员档案专属搜索 API (支持分页)
     @GetMapping("/personnel/search")
-    public Result<ListMapDataResponseDTO> searchPersonnel(@RequestParam String keyword,
-                                                          @RequestParam(defaultValue = "20") int limit) {
+    public Result<Map<String, Object>> searchPersonnel(
+            @RequestParam String keyword,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
         try {
-            // 先查本地 aro_personnel（快）；若为空则回源 ARO 官方兜底，避免“预检框空列表”。
-            List<Map<String, Object>> local = dashboardMapper.searchPersonnel(keyword, limit);
-            if (local != null && !local.isEmpty()) {
-                return Result.success(new ListMapDataResponseDTO(local));
+            int offset = (page - 1) * size;
+            List<Map<String, Object>> local = dashboardMapper.searchPersonnelPaged(keyword, size, offset);
+            int total = dashboardMapper.countPersonnel(keyword);
+
+            // 先查本地 aro_personnel（快）；若为空则回源 ARO 官方兜底
+            if (total == 0) {
+                List<Map<String, Object>> remote = aroService.searchPersonnelLite(keyword, limit);
+                Map<String, Object> result = new HashMap<>();
+                result.put("data", remote != null ? remote : List.of());
+                result.put("total", remote != null ? remote.size() : 0);
+                result.put("page", page);
+                result.put("size", size);
+                return Result.success(result);
             }
-            List<Map<String, Object>> remote = aroService.searchPersonnelLite(keyword, limit);
-            return Result.success(new ListMapDataResponseDTO(remote));
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("data", local);
+            result.put("total", total);
+            result.put("page", page);
+            result.put("size", size);
+            return Result.success(result);
         } catch (Exception e) {
             return Result.error("人员搜索失败: " + e.getMessage());
         }

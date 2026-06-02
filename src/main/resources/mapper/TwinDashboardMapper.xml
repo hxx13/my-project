@@ -102,6 +102,30 @@
         LIMIT #{limit}
     </select>
 
+    <select id="searchPersonnelPaged" resultType="map">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT *
+        FROM aro_personnel
+        WHERE name LIKE #{pattern}
+           OR user_id LIKE #{pattern}
+           OR project_group_name LIKE #{pattern}
+           OR department_name LIKE #{pattern}
+        ORDER BY has_official_room_permission DESC,
+                 total_exp DESC,
+                 name ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countPersonnel" resultType="int">
+        <bind name="pattern" value="'%' + keyword + '%'" />
+        SELECT COUNT(*)
+        FROM aro_personnel
+        WHERE name LIKE #{pattern}
+           OR user_id LIKE #{pattern}
+           OR project_group_name LIKE #{pattern}
+           OR department_name LIKE #{pattern}
+    </select>
+
     <select id="searchPersonnelProjectGroupFields" resultType="string">
         <bind name="pattern" value="'%' + keyword + '%'" />
         SELECT DISTINCT project_group_name
