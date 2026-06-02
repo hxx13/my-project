@@ -34,7 +34,7 @@ export function PersonnelSearchDropdown() {
         setIsSearching(true);
         setIsOpen(true);
         try {
-            const data = await searchPersonnel(val);
+            const { data } = await searchPersonnel(val);
             setResults(data || []);
         } catch (error) {
             console.error("人员搜索失败:", error);

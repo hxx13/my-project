@@ -182,7 +182,7 @@ export default function DebugCardMappingPage() {
             return;
         }
         try {
-            const res = await searchPersonnel(kw); // 直接查你底层的 aro_personnel
+            const { data: res } = await searchPersonnel(kw); // 直接查你底层的 aro_personnel
             setSearchUserResult(res || []);
         } catch (e) {
             console.error("查无此人");

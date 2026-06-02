@@ -4,13 +4,11 @@ import { Download, Users } from "lucide-react";
 import {
   fetchStudentActivityMembers,
   fetchStudentActivityHeatmap,
-  fetchStudentActivityDailyTrend,
 } from "@/api/domains/analytics.api";
 import { ActivityFilterBar } from "./ActivityFilterBar";
 import { ActivityMemberTable } from "./ActivityMemberTable";
 import type { SortKey } from "./ActivityMemberTable";
 import { ActivityHeatmapChart } from "./ActivityHeatmapChart";
-import { ActivityTrendChart } from "./ActivityTrendChart";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
 
 function defaultLastMonth(): { start: string; end: string } {
@@ -50,12 +48,6 @@ export function StudentActivityReportPanel() {
   const heatmapQuery = useQuery({
     queryKey: ["studentActivityHeatmap", groupName, startTime, endTime],
     queryFn: () => fetchStudentActivityHeatmap({ groupName, startTime, endTime }),
-    enabled: groupName.length > 0,
-  });
-
-  const trendQuery = useQuery({
-    queryKey: ["studentActivityDailyTrend", groupName, startTime, endTime],
-    queryFn: () => fetchStudentActivityDailyTrend({ groupName, startTime, endTime }),
     enabled: groupName.length > 0,
   });
 
@@ -99,11 +91,11 @@ export function StudentActivityReportPanel() {
             <AdminFormCard title="总进出次数">
               <p className="text-2xl font-extrabold text-emerald-600">{summary?.totalEntries ?? "-"}</p>
             </AdminFormCard>
-            <AdminFormCard title="人均日频次">
-              <p className="text-2xl font-extrabold text-blue-600">{summary?.avgDailyFreq ?? "-"}</p>
+            <AdminFormCard title="人均周频次">
+              <p className="text-2xl font-extrabold text-blue-600">{summary?.perCapitaWeeklyFreq ?? "-"}</p>
             </AdminFormCard>
             <AdminFormCard title="近期活跃率">
-              <p className="text-2xl font-extrabold text-amber-600">{summary?.activeRate != null ? `${summary.activeRate}%` : "-"}</p>
+              <p className="text-2xl font-extrabold text-amber-600">{summary?.activeSharePct != null ? `${summary.activeSharePct}%` : "-"}</p>
             </AdminFormCard>
           </div>
 
@@ -134,13 +126,10 @@ export function StudentActivityReportPanel() {
             onSizeChange={setSize}
           />
 
-          {/* Dual charts */}
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          {/* Heatmap chart */}
+          <div className="grid grid-cols-1 gap-4">
             <AdminFormCard title="进出时段热力图">
               <ActivityHeatmapChart data={heatmapQuery.data ?? []} loading={heatmapQuery.isLoading} />
-            </AdminFormCard>
-            <AdminFormCard title="每日进出趋势">
-              <ActivityTrendChart data={trendQuery.data ?? []} loading={trendQuery.isLoading} />
             </AdminFormCard>
           </div>
         </>

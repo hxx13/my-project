@@ -246,7 +246,7 @@ export default function AdminStudentViolationsPage() {
       return;
     }
     try {
-      const list = await searchPersonnel(q);
+      const { data: list } = await searchPersonnel(q);
       setSearchUserResult(Array.isArray(list) ? list : []);
     } catch {
       setSearchUserResult([]);

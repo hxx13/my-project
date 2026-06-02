@@ -74,7 +74,7 @@ export default function DebugPersonnelPage() {
     }
     setIsSearching(true);
     try {
-      const res = await searchPersonnel(keyword.trim());
+      const { data: res } = await searchPersonnel(keyword.trim());
       setSearchResults(
         (res || []).map((row) => toPersonRow(row as Record<string, unknown>)),
       );

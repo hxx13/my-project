@@ -55,7 +55,7 @@ export function BlacklistManageModal({ open, onClose, onChanged }: Props) {
     }
     setSearching(true);
     try {
-      const rows = await searchPersonnel(kw);
+      const { data: rows } = await searchPersonnel(kw);
       const list = (Array.isArray(rows) ? rows : [])
         .map((r) => normalizePersonnelRecord(r as Record<string, unknown>))
         .filter((p): p is PersonnelRecordView => p != null && Boolean(p.userId));

@@ -1,5 +1,10 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import type { DailyTrendPoint } from "@/api/domains/analytics.api";
+
+type DailyTrendPoint = {
+  date: string;
+  entryCount: number;
+  exitCount: number;
+};
 
 type Props = { data: DailyTrendPoint[]; loading?: boolean };
 

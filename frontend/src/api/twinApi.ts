@@ -228,9 +228,15 @@ export const searchRealtimeFeed = async (keyword: string, limit: number = 9999) 
 };
 
 // 💥 增加：人员档案库专属搜索 API
-export const searchPersonnel = async (keyword: string) => {
-    const response = await authHttp.get(`/v1/twin/dashboard/personnel/search?keyword=${encodeURIComponent(keyword)}`);
-    return asArrayData(response.data?.data);
+export const searchPersonnel = async (keyword: string, page: number = 1, size: number = 20) => {
+    const response = await authHttp.get(
+      `/v1/twin/dashboard/personnel/search?keyword=${encodeURIComponent(keyword)}&page=${page}&size=${size}`
+    );
+    const d = response.data?.data;
+    return {
+      data: Array.isArray(d?.data) ? d.data : (Array.isArray(d) ? d : []),
+      total: d?.total ?? 0,
+    };
 };
 
 // 💥 触发全量经验值重算

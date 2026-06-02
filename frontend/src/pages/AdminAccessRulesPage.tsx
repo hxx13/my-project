@@ -297,7 +297,7 @@ export default function AdminAccessRulesPage() {
         return;
       }
       try {
-        const res = await searchPersonnel(kw);
+        const { data: res } = await searchPersonnel(kw);
         setPersonHits(Array.isArray(res) ? res : []);
       } catch {
         setPersonHits([]);

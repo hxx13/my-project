@@ -50,12 +50,13 @@ export function ActivityFilterBar({ groupName, groupPage, groupTotal, onGroupCha
   const [customStart, setCustomStart] = useState(startTime.slice(0, 10));
   const [customEnd, setCustomEnd] = useState(endTime.slice(0, 10));
 
-  const { data: groups = [] } = useQuery({
-    queryKey: ["studentActivityGroups", keyword],
-    queryFn: () => fetchStudentActivityGroups(keyword || undefined),
+  const { data: groupsResult } = useQuery({
+    queryKey: ["studentActivityGroups", keyword, startTime, endTime],
+    queryFn: () => fetchStudentActivityGroups({ keyword: keyword || undefined, startTime, endTime }),
     enabled: showDropdown,
     staleTime: 60_000,
   });
+  const groups = groupsResult?.groups ?? [];
 
   const applyPreset = useCallback((p: TimePreset) => {
     setPreset(p);

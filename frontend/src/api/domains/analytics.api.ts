@@ -445,24 +445,37 @@ export type AnalyticsViewSharePreview = {
 
 export type StudentActivityGroup = {
   name: string;
+  campus: string;
+  memberCount: number;
+  totalEntries: number;
+  perCapitaWeeklyFreq: number;
+  activeSharePct: number;
 };
 
 export type StudentActivitySummary = {
   memberCount: number;
   totalEntries: number;
-  totalDurationMinutes: number;
-  avgDailyFreq: number;
-  activeRate: number;
+  perCapitaWeeklyFreq: number;
+  activeSharePct: number;
+  campus: string;
+  timeLabel: string;
 };
 
 export type StudentActivityMember = {
   userId: string;
   userName: string;
+  experienceLevel: string;
   entryCount: number;
   totalDurationMinutes: number;
-  dailyAvgFreq: number;
+  weeklyAvgFreq: number;
+  dailyAvgFreq: number;  // keep for backward compat
   lastActiveDate: string | null;
   daysSinceLastActive: number;
+};
+
+export type RoomUsageItem = {
+  roomName: string;
+  entryCount: number;
 };
 
 export type StudentActivityResult = {
@@ -475,12 +488,6 @@ export type HeatmapCell = {
   dayOfWeek: number;
   hour: number;
   count: number;
-};
-
-export type DailyTrendPoint = {
-  date: string;
-  entryCount: number;
-  exitCount: number;
 };
 
 export type AnalyticsViewShareImportResult = {
@@ -611,13 +618,38 @@ export async function revokeAnalyticsViewShare(shareId: number): Promise<void> {
   await unwrap(authHttp.post<Result<null>>(`/v1/analytics/share/${shareId}/revoke`));
 }
 
-export async function fetchStudentActivityGroups(keyword?: string): Promise<StudentActivityGroup[]> {
-  const data = await unwrap(
-    authHttp.get<Result<{ groups: StudentActivityGroup[] }>>("/v1/analytics/student-activity/groups", {
-      params: keyword ? { keyword } : {},
-    })
+export async function fetchStudentActivityGroups(params: {
+  keyword?: string;
+  startTime: string;
+  endTime: string;
+  page?: number;
+  size?: number;
+}): Promise<{ groups: StudentActivityGroup[]; total: number; page: number; size: number }> {
+  return unwrap(
+    authHttp.get<Result<{ groups: StudentActivityGroup[]; total: number; page: number; size: number }>>(
+      "/v1/analytics/student-activity/groups", { params }
+    )
   );
-  return data.groups ?? [];
+}
+
+export async function fetchStudentActivityRoomUsage(params: {
+  groupName: string;
+  startTime: string;
+  endTime: string;
+}): Promise<RoomUsageItem[]> {
+  return unwrap(
+    authHttp.get<Result<RoomUsageItem[]>>("/v1/analytics/student-activity/room-usage", { params })
+  );
+}
+
+export async function fetchStudentActivitySummary(params: {
+  groupName: string;
+  startTime: string;
+  endTime: string;
+}): Promise<StudentActivitySummary> {
+  return unwrap(
+    authHttp.get<Result<StudentActivitySummary>>("/v1/analytics/student-activity/summary", { params })
+  );
 }
 
 export async function fetchStudentActivityMembers(params: {
@@ -641,15 +673,5 @@ export async function fetchStudentActivityHeatmap(params: {
 }): Promise<HeatmapCell[]> {
   return unwrap(
     authHttp.get<Result<HeatmapCell[]>>("/v1/analytics/student-activity/heatmap", { params })
-  );
-}
-
-export async function fetchStudentActivityDailyTrend(params: {
-  groupName: string;
-  startTime: string;
-  endTime: string;
-}): Promise<DailyTrendPoint[]> {
-  return unwrap(
-    authHttp.get<Result<DailyTrendPoint[]>>("/v1/analytics/student-activity/daily-trend", { params })
   );
 }
