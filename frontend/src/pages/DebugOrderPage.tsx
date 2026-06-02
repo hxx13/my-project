@@ -110,7 +110,7 @@ export default function DebugOrderPage() {
         );
 
     return (
-        <div data-twin-debug-orders className="relative box-border flex h-full flex-col bg-slate-50 p-8">
+        <div data-twin-debug-orders className="relative box-border flex h-full flex-col overflow-y-auto bg-slate-50 p-8">
 
             <AdminToolbar className="mb-6 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1 sm:gap-4">
                 <div className="min-w-0 max-w-[min(40vw,22rem)] shrink">

@@ -135,7 +135,7 @@ export default function DebugTablePage() {
     return (
         <div
             data-twin-debug-pipeline
-            className="box-border flex h-full flex-col overflow-hidden bg-slate-50/50 p-8"
+            className="box-border flex h-full flex-col overflow-y-auto bg-slate-50/50 p-8"
         >
 
             <AdminToolbar className="mb-4 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto border-b border-slate-200 pb-4">

@@ -53,7 +53,7 @@ export default function DebugPredictionPage() {
     }
 
     return (
-        <div data-twin-debug-prediction className="box-border flex h-full flex-col bg-slate-50/50 p-6 md:p-8">
+        <div data-twin-debug-prediction className="box-border flex h-full flex-col overflow-y-auto bg-slate-50/50 p-6 md:p-8">
             <AdminToolbar className="mb-4 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
                 <div className="min-w-0 max-w-[min(40vw,22rem)] shrink">
                     <h1 className="flex items-center gap-2 truncate text-xl font-black text-slate-800 sm:text-2xl">
