@@ -476,13 +476,13 @@ public class StudentActivityService {
         List<GroupActivityRow> allRows = new ArrayList<>();
         allRows.add(row);
         for (String g : allGroups) {
-            if (g.equals(groupName)) continue;
+            if (g.equalsIgnoreCase(groupName)) continue;
             GroupActivityRow gr = computeGroupRow(g, startTime, endTime);
             if (gr != null) allRows.add(gr);
         }
         fillActiveSharePct(allRows);
         GroupActivityRow updated = allRows.stream()
-                .filter(r -> r.getName().equals(groupName)).findFirst().orElse(row);
+                .filter(r -> r.getName().equalsIgnoreCase(groupName)).findFirst().orElse(row);
 
         Map<String, Object> m = new HashMap<>();
         m.put("memberCount", updated.getMemberCount());
