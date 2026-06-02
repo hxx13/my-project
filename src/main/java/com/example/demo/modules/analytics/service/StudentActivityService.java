@@ -318,8 +318,8 @@ public class StudentActivityService {
 
         // Calculate weekly frequency (replaces daily)
         long days = Math.max(1, ChronoUnit.DAYS.between(
-                LocalDateTime.parse(startTime.replace(" ", "T"), FMT).toLocalDate(),
-                LocalDateTime.parse(endTime.replace(" ", "T"), FMT).toLocalDate()) + 1);
+                LocalDateTime.parse(startTime.replace(" ", "T"), DateTimeFormatter.ISO_LOCAL_DATE_TIME).toLocalDate(),
+                LocalDateTime.parse(endTime.replace(" ", "T"), DateTimeFormatter.ISO_LOCAL_DATE_TIME).toLocalDate()) + 1);
         double weeks = Math.max(1.0, Math.ceil(days / 7.0));
         double weeklyAvgFreq = weeks > 0 ? (double) pairCount / weeks : 0;
 
