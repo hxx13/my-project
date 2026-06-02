@@ -38,10 +38,11 @@ public class StudentActivityController {
             @RequestParam String startTime,
             @RequestParam String endTime,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "1") int size) {
+            @RequestParam(defaultValue = "1") int size,
+            @RequestParam(defaultValue = "all") String campus) {
         Result<?> denied = requireStaff(auth);
         if (denied != null) return Result.error(denied.getMessage());
-        return Result.success(studentActivityService.listGroupsPaged(keyword, startTime, endTime, page, size));
+        return Result.success(studentActivityService.listGroupsPaged(keyword, startTime, endTime, page, size, campus));
     }
 
     @GetMapping("/members")
@@ -104,10 +105,11 @@ public class StudentActivityController {
             @RequestHeader(value = "Authorization", required = false) String auth,
             @RequestParam String groupName,
             @RequestParam String startTime,
-            @RequestParam String endTime) {
+            @RequestParam String endTime,
+            @RequestParam(defaultValue = "all") String campus) {
         Result<?> denied = requireStaff(auth);
         if (denied != null) return Result.error(denied.getMessage());
-        return Result.success(studentActivityService.summary(groupName, startTime, endTime));
+        return Result.success(studentActivityService.summary(groupName, startTime, endTime, campus));
     }
 
     @PostMapping("/recalculate")

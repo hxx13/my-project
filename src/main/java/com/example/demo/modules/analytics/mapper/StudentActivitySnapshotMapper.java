@@ -23,7 +23,8 @@ public interface StudentActivitySnapshotMapper {
     /** 按时间范围汇总：GROUP BY group_name, campus, SUM */
     List<Map<String, Object>> aggregateByDateRange(@Param("startDate") LocalDate startDate,
                                                     @Param("endDate") LocalDate endDate,
-                                                    @Param("keyword") String keyword);
+                                                    @Param("keyword") String keyword,
+                                                    @Param("campus") String campus);
 
     /** 获取所有不同的课题组名（用于 summary 的 campus 聚合） */
     List<String> distinctGroupNamesInRange(@Param("startDate") LocalDate startDate,

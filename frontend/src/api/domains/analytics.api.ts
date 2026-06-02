@@ -459,6 +459,7 @@ export type StudentActivitySummary = {
   activeSharePct: number;
   campus: string;
   timeLabel: string;
+  rateLabel: string;
 };
 
 export type StudentActivityMember = {
@@ -624,6 +625,7 @@ export async function fetchStudentActivityGroups(params: {
   endTime: string;
   page?: number;
   size?: number;
+  campus?: string;
 }): Promise<{ groups: StudentActivityGroup[]; total: number; page: number; size: number }> {
   return unwrap(
     authHttp.get<Result<{ groups: StudentActivityGroup[]; total: number; page: number; size: number }>>(
@@ -646,6 +648,7 @@ export async function fetchStudentActivitySummary(params: {
   groupName: string;
   startTime: string;
   endTime: string;
+  campus?: string;
 }): Promise<StudentActivitySummary> {
   return unwrap(
     authHttp.get<Result<StudentActivitySummary>>("/v1/analytics/student-activity/summary", { params })

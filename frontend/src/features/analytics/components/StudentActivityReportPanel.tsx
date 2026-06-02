@@ -60,6 +60,7 @@ export function StudentActivityReportPanel() {
   const [order, setOrder] = useState<"desc" | "asc">("desc");
   const [memberPage, setMemberPage] = useState(1);
   const [memberSize, setMemberSize] = useState(20);
+  const [campus, setCampus] = useState("all");
   const [recalculating, setRecalculating] = useState(false);
 
   const handleSort = useCallback((key: SortKey) => {
@@ -70,8 +71,8 @@ export function StudentActivityReportPanel() {
 
   // Groups list (paginated, 1 per page) — always fetch on mount
   const groupsQuery = useQuery({
-    queryKey: ["studentActivityGroups", groupPage, startTime, endTime],
-    queryFn: () => fetchStudentActivityGroups({ startTime, endTime, page: groupPage, size: 1 }),
+    queryKey: ["studentActivityGroups", groupPage, startTime, endTime, campus],
+    queryFn: () => fetchStudentActivityGroups({ startTime, endTime, page: groupPage, size: 1, campus }),
     staleTime: 30_000,
   });
   const groupList = groupsQuery.data?.groups ?? [];
@@ -90,8 +91,8 @@ export function StudentActivityReportPanel() {
 
   // Summary (server timeLabel used as override when available)
   const summaryQuery = useQuery({
-    queryKey: ["studentActivitySummary", groupName, startTime, endTime],
-    queryFn: () => fetchStudentActivitySummary({ groupName, startTime, endTime }),
+    queryKey: ["studentActivitySummary", groupName, startTime, endTime, campus],
+    queryFn: () => fetchStudentActivitySummary({ groupName, startTime, endTime, campus }),
     enabled: groupName.length > 0,
   });
   const summary = summaryQuery.data;
@@ -166,6 +167,8 @@ export function StudentActivityReportPanel() {
             endTime={endTime}
             onTimeChange={(s, e) => { setStartTime(s); setEndTime(e); setGroupPage(1); setMemberPage(1); }}
             onExportCSV={exportCSV}
+            campus={campus}
+            onCampusChange={(c) => setCampus(c)}
           />
         </div>
         <button
@@ -194,10 +197,10 @@ export function StudentActivityReportPanel() {
             <AdminFormCard title={`总进出次数（${displayTimeLabel}）`}>
               <p className="text-2xl font-extrabold text-emerald-600">{summary?.totalEntries ?? "-"}</p>
             </AdminFormCard>
-            <AdminFormCard title={`人均周频次（${displayTimeLabel}）`}>
+            <AdminFormCard title={`人均周频次（${summary?.rateLabel || "本月"}）`}>
               <p className="text-2xl font-extrabold text-blue-600">{summary?.perCapitaWeeklyFreq ?? "-"}</p>
             </AdminFormCard>
-            <AdminFormCard title={`近期活跃度占比（${displayTimeLabel}）`}>
+            <AdminFormCard title={`近期活跃度占比（${summary?.rateLabel || "本月"}）`}>
               <p className="text-2xl font-extrabold text-amber-600">{summary?.activeSharePct != null ? `${summary.activeSharePct}%` : "-"}</p>
             </AdminFormCard>
           </div>

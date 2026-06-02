@@ -27,6 +27,9 @@
         <if test="keyword != null and keyword != ''">
             AND group_name LIKE CONCAT('%', #{keyword}, '%')
         </if>
+        <if test="campus != null and campus != '' and campus != 'all'">
+            AND campus = #{campus}
+        </if>
         GROUP BY group_name
     </select>
 

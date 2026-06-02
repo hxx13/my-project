@@ -64,6 +64,8 @@ type Props = {
   endTime: string;
   onTimeChange: (start: string, end: string) => void;
   onExportCSV: () => void;
+  campus: string;
+  onCampusChange: (campus: string) => void;
   disabled?: boolean;
 };
 
@@ -75,7 +77,7 @@ const PRESETS: { key: TimePreset; label: string }[] = [
   { key: "last_month", label: "上月" },
 ];
 
-export function ActivityFilterBar({ groupName, groupPage, groupTotal, onGroupChange, onGroupPageChange, startTime, endTime, onTimeChange, onExportCSV, disabled }: Props) {
+export function ActivityFilterBar({ groupName, groupPage, groupTotal, onGroupChange, onGroupPageChange, startTime, endTime, onTimeChange, onExportCSV, campus, onCampusChange, disabled }: Props) {
   const [keyword, setKeyword] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [preset, setPreset] = useState<TimePreset>("month");
@@ -156,6 +158,21 @@ export function ActivityFilterBar({ groupName, groupPage, groupTotal, onGroupCha
             ))}
           </ul>
         ) : null}
+      </div>
+
+      {/* Campus filter */}
+      <div>
+        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-400">校区</label>
+        <select
+          value={campus}
+          onChange={(e) => onCampusChange(e.target.value)}
+          disabled={disabled}
+          className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-700"
+        >
+          <option value="all">全部校区</option>
+          <option value="浦东">浦东</option>
+          <option value="浦西">浦西</option>
+        </select>
       </div>
 
       {/* Time presets */}
