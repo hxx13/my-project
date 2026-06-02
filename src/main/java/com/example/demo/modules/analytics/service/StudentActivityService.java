@@ -449,6 +449,16 @@ public class StudentActivityService {
 
     /** 单个课题组 KPI 汇总（正确计算同校区活跃度占比） */
     public Map<String, Object> summary(String groupName, String startTime, String endTime) {
+        if (groupName == null || groupName.isBlank()) {
+            Map<String, Object> empty = new HashMap<>();
+            empty.put("memberCount", 0);
+            empty.put("totalEntries", 0);
+            empty.put("perCapitaWeeklyFreq", 0);
+            empty.put("activeSharePct", 0);
+            empty.put("campus", "-");
+            empty.put("timeLabel", deriveTimeLabel(startTime, endTime));
+            return empty;
+        }
         GroupActivityRow row = computeGroupRow(groupName, startTime, endTime);
         if (row == null) {
             Map<String, Object> empty = new HashMap<>();
