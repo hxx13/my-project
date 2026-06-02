@@ -675,3 +675,12 @@ export async function fetchStudentActivityHeatmap(params: {
     authHttp.get<Result<HeatmapCell[]>>("/v1/analytics/student-activity/heatmap", { params })
   );
 }
+
+/** 强制全量重算学生活跃度快照（默认最近 30 天） */
+export async function recalculateStudentActivitySnapshots(daysBack?: number): Promise<{ message: string; from: string; to: string }> {
+  return unwrap(
+    authHttp.post<Result<{ message: string; from: string; to: string }>>(
+      "/v1/analytics/student-activity/recalculate", null, { params: { daysBack: daysBack ?? 30 } }
+    )
+  );
+}

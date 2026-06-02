@@ -191,7 +191,7 @@ export function ActivityFilterBar({ groupName, groupPage, groupTotal, onGroupCha
         </div>
       ) : null}
 
-      {/* Export button — right side */}
+      {/* Right side buttons */}
       <div style={{ flex: 1 }} />
       <button
         type="button"

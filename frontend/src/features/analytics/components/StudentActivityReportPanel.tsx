@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Loader2, Users } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, RefreshCw, Users } from "lucide-react";
 import {
   fetchStudentActivityGroups,
   fetchStudentActivityMembers,
   fetchStudentActivityHeatmap,
   fetchStudentActivityRoomUsage,
   fetchStudentActivitySummary,
+  recalculateStudentActivitySnapshots,
 } from "@/api/domains/analytics.api";
+import toast from "react-hot-toast";
 import { ActivityFilterBar } from "./ActivityFilterBar";
 import { ActivityMemberTable } from "./ActivityMemberTable";
 import type { SortKey } from "./ActivityMemberTable";
@@ -37,6 +39,7 @@ function deriveTimeLabel(start: string, end: string): string {
 }
 
 export function StudentActivityReportPanel() {
+  const queryClient = useQueryClient();
   const initialRange = defaultLastMonth();
   const [groupName, setGroupName] = useState("");
   const [groupPage, setGroupPage] = useState(1);
@@ -46,6 +49,7 @@ export function StudentActivityReportPanel() {
   const [order, setOrder] = useState<"desc" | "asc">("desc");
   const [memberPage, setMemberPage] = useState(1);
   const [memberSize, setMemberSize] = useState(20);
+  const [recalculating, setRecalculating] = useState(false);
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortBy === key) { setOrder((o) => (o === "desc" ? "asc" : "desc")); }
@@ -121,19 +125,48 @@ export function StudentActivityReportPanel() {
     URL.revokeObjectURL(url);
   }, [members, groupName, startTime, endTime]);
 
+  const handleRecalculate = useCallback(async () => {
+    if (recalculating) return;
+    setRecalculating(true);
+    try {
+      const res = await recalculateStudentActivitySnapshots(30);
+      toast.success(`快照重算完成：${res.from} ~ ${res.to}`);
+      // 刷新所有相关查询
+      queryClient.invalidateQueries({ queryKey: ["studentActivityGroups"] });
+      queryClient.invalidateQueries({ queryKey: ["studentActivitySummary"] });
+    } catch (e: any) {
+      toast.error(e?.message || "重算失败");
+    } finally {
+      setRecalculating(false);
+    }
+  }, [recalculating, queryClient]);
+
   return (
     <div className="space-y-4">
-      <ActivityFilterBar
-        groupName={groupName}
-        groupPage={groupPage}
-        groupTotal={groupTotal}
-        onGroupChange={(name) => { setGroupName(name); }}
-        onGroupPageChange={(p) => { setGroupPage(p); setMemberPage(1); }}
-        startTime={startTime}
-        endTime={endTime}
-        onTimeChange={(s, e) => { setStartTime(s); setEndTime(e); setGroupPage(1); setMemberPage(1); }}
-        onExportCSV={exportCSV}
-      />
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <ActivityFilterBar
+            groupName={groupName}
+            groupPage={groupPage}
+            groupTotal={groupTotal}
+            onGroupChange={(name) => { setGroupName(name); }}
+            onGroupPageChange={(p) => { setGroupPage(p); setMemberPage(1); }}
+            startTime={startTime}
+            endTime={endTime}
+            onTimeChange={(s, e) => { setStartTime(s); setEndTime(e); setGroupPage(1); setMemberPage(1); }}
+            onExportCSV={exportCSV}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={handleRecalculate}
+          disabled={recalculating}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-40 shrink-0"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${recalculating ? "animate-spin" : ""}`} />
+          强制重算
+        </button>
+      </div>
 
       {isGroupsLoading ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-neutral-300 bg-white py-16 text-center">
