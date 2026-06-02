@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Users } from "lucide-react";
+import { Loader2, Users } from "lucide-react";
 import {
   fetchStudentActivityGroups,
   fetchStudentActivityMembers,
@@ -23,6 +23,19 @@ function defaultLastMonth(): { start: string; end: string } {
   return { start, end };
 }
 
+/** 客户端推导 timeLabel，无需等后端返回 */
+function deriveTimeLabel(start: string, end: string): string {
+  const s = start.slice(0, 10);
+  const e = end.slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  if (s === today && e === today) return "今日";
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  if (s === weekAgo && e === today) return "本周";
+  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  if (s === monthAgo && e === today) return "本月";
+  return s.slice(5) + "-" + e.slice(5);
+}
+
 export function StudentActivityReportPanel() {
   const initialRange = defaultLastMonth();
   const [groupName, setGroupName] = useState("");
@@ -40,13 +53,15 @@ export function StudentActivityReportPanel() {
     setMemberPage(1);
   }, [sortBy]);
 
-  // Groups list (paginated, 1 per page)
+  // Groups list (paginated, 1 per page) — always fetch on mount
   const groupsQuery = useQuery({
     queryKey: ["studentActivityGroups", groupPage, startTime, endTime],
     queryFn: () => fetchStudentActivityGroups({ startTime, endTime, page: groupPage, size: 1 }),
+    staleTime: 30_000,
   });
   const groupList = groupsQuery.data?.groups ?? [];
   const groupTotal = groupsQuery.data?.total ?? 0;
+  const isGroupsLoading = groupsQuery.isLoading;
 
   // Auto-select first group on initial load or when groupPage changes
   useEffect(() => {
@@ -55,14 +70,17 @@ export function StudentActivityReportPanel() {
     }
   }, [groupList]);
 
-  // Summary
+  // Client-side timeLabel fallback (always in sync with selected time range)
+  const timeLabel = useMemo(() => deriveTimeLabel(startTime, endTime), [startTime, endTime]);
+
+  // Summary (server timeLabel used as override when available)
   const summaryQuery = useQuery({
     queryKey: ["studentActivitySummary", groupName, startTime, endTime],
     queryFn: () => fetchStudentActivitySummary({ groupName, startTime, endTime }),
     enabled: groupName.length > 0,
   });
   const summary = summaryQuery.data;
-  const timeLabel = summary?.timeLabel ?? "";
+  const displayTimeLabel = summary?.timeLabel || timeLabel;
 
   // Members
   const membersQuery = useQuery({
@@ -117,20 +135,25 @@ export function StudentActivityReportPanel() {
         onExportCSV={exportCSV}
       />
 
-      {groupName ? (
+      {isGroupsLoading ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-neutral-300 bg-white py-16 text-center">
+          <Loader2 className="h-10 w-10 animate-spin text-violet-400" />
+          <p className="text-sm text-neutral-500">正在加载课题组数据…</p>
+        </div>
+      ) : groupName ? (
         <>
           {/* KPI Cards with time range labels */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <AdminFormCard title={`课题组人数（${timeLabel}）`}>
+            <AdminFormCard title={`课题组人数（${displayTimeLabel}）`}>
               <p className="text-2xl font-extrabold text-violet-600">{summary?.memberCount ?? "-"}</p>
             </AdminFormCard>
-            <AdminFormCard title={`总进出次数（${timeLabel}）`}>
+            <AdminFormCard title={`总进出次数（${displayTimeLabel}）`}>
               <p className="text-2xl font-extrabold text-emerald-600">{summary?.totalEntries ?? "-"}</p>
             </AdminFormCard>
-            <AdminFormCard title={`人均周频次（${timeLabel}）`}>
+            <AdminFormCard title={`人均周频次（${displayTimeLabel}）`}>
               <p className="text-2xl font-extrabold text-blue-600">{summary?.perCapitaWeeklyFreq ?? "-"}</p>
             </AdminFormCard>
-            <AdminFormCard title={`近期活跃度占比（${timeLabel}）`}>
+            <AdminFormCard title={`近期活跃度占比（${displayTimeLabel}）`}>
               <p className="text-2xl font-extrabold text-amber-600">{summary?.activeSharePct != null ? `${summary.activeSharePct}%` : "-"}</p>
             </AdminFormCard>
           </div>
@@ -159,12 +182,12 @@ export function StudentActivityReportPanel() {
             </AdminFormCard>
           </div>
         </>
-      ) : (
+      ) : groupTotal === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-neutral-300 bg-white py-16 text-center">
           <Users className="h-10 w-10 text-neutral-300" />
-          <p className="text-sm text-neutral-500">请在上方搜索并选择一个课题组以查看活跃度数据</p>
+          <p className="text-sm text-neutral-500">当前时间范围内无课题组活跃数据</p>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
