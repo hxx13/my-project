@@ -1,14 +1,18 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Users } from "lucide-react";
+import { Users } from "lucide-react";
 import {
+  fetchStudentActivityGroups,
   fetchStudentActivityMembers,
   fetchStudentActivityHeatmap,
+  fetchStudentActivityRoomUsage,
+  fetchStudentActivitySummary,
 } from "@/api/domains/analytics.api";
 import { ActivityFilterBar } from "./ActivityFilterBar";
 import { ActivityMemberTable } from "./ActivityMemberTable";
 import type { SortKey } from "./ActivityMemberTable";
 import { ActivityHeatmapChart } from "./ActivityHeatmapChart";
+import { ActivityRoomChart } from "./ActivityRoomChart";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
 
 function defaultLastMonth(): { start: string; end: string } {
@@ -22,44 +26,79 @@ function defaultLastMonth(): { start: string; end: string } {
 export function StudentActivityReportPanel() {
   const initialRange = defaultLastMonth();
   const [groupName, setGroupName] = useState("");
+  const [groupPage, setGroupPage] = useState(1);
   const [startTime, setStartTime] = useState(initialRange.start);
   const [endTime, setEndTime] = useState(initialRange.end);
   const [sortBy, setSortBy] = useState<SortKey>("entries");
   const [order, setOrder] = useState<"desc" | "asc">("desc");
-  const [page, setPage] = useState(1);
-  const [size, setSize] = useState(20);
+  const [memberPage, setMemberPage] = useState(1);
+  const [memberSize, setMemberSize] = useState(20);
 
   const handleSort = useCallback((key: SortKey) => {
-    if (sortBy === key) {
-      setOrder((o) => (o === "desc" ? "asc" : "desc"));
-    } else {
-      setSortBy(key);
-      setOrder("desc");
-    }
-    setPage(1);
+    if (sortBy === key) { setOrder((o) => (o === "desc" ? "asc" : "desc")); }
+    else { setSortBy(key); setOrder("desc"); }
+    setMemberPage(1);
   }, [sortBy]);
 
-  const membersQuery = useQuery({
-    queryKey: ["studentActivityMembers", groupName, startTime, endTime, sortBy, order, page, size],
-    queryFn: () => fetchStudentActivityMembers({ groupName, startTime, endTime, sortBy, order, page, size }),
+  // Groups list (paginated, 1 per page)
+  const groupsQuery = useQuery({
+    queryKey: ["studentActivityGroups", groupPage, startTime, endTime],
+    queryFn: () => fetchStudentActivityGroups({ startTime, endTime, page: groupPage, size: 1 }),
+  });
+  const groupList = groupsQuery.data?.groups ?? [];
+  const groupTotal = groupsQuery.data?.total ?? 0;
+
+  // Auto-select first group
+  useEffect(() => {
+    if (!groupName && groupList.length > 0) {
+      setGroupName(groupList[0].name);
+    }
+  }, [groupList, groupName]);
+
+  // When groupPage changes, auto-select the first group from new page
+  useEffect(() => {
+    if (groupList.length > 0 && groupList[0].name !== groupName) {
+      setGroupName(groupList[0].name);
+    }
+  }, [groupList]);
+
+  // Summary
+  const summaryQuery = useQuery({
+    queryKey: ["studentActivitySummary", groupName, startTime, endTime],
+    queryFn: () => fetchStudentActivitySummary({ groupName, startTime, endTime }),
     enabled: groupName.length > 0,
   });
+  const summary = summaryQuery.data;
+  const timeLabel = summary?.timeLabel ?? "";
 
+  // Members
+  const membersQuery = useQuery({
+    queryKey: ["studentActivityMembers", groupName, startTime, endTime, sortBy, order, memberPage, memberSize],
+    queryFn: () => fetchStudentActivityMembers({ groupName, startTime, endTime, sortBy, order, page: memberPage, size: memberSize }),
+    enabled: groupName.length > 0,
+  });
+  const members = membersQuery.data?.members ?? [];
+  const memberTotal = membersQuery.data?.total ?? 0;
+
+  // Heatmap
   const heatmapQuery = useQuery({
     queryKey: ["studentActivityHeatmap", groupName, startTime, endTime],
     queryFn: () => fetchStudentActivityHeatmap({ groupName, startTime, endTime }),
     enabled: groupName.length > 0,
   });
 
-  const summary = membersQuery.data?.summary;
-  const members = membersQuery.data?.members ?? [];
-  const total = membersQuery.data?.total ?? 0;
+  // Room usage (replaces daily trend)
+  const roomQuery = useQuery({
+    queryKey: ["studentActivityRoomUsage", groupName, startTime, endTime],
+    queryFn: () => fetchStudentActivityRoomUsage({ groupName, startTime, endTime }),
+    enabled: groupName.length > 0,
+  });
 
   const exportCSV = useCallback(() => {
     if (members.length === 0) return;
-    const header = "userId,userName,entryCount,totalDurationMinutes,dailyAvgFreq,lastActiveDate";
+    const header = "userId,userName,experienceLevel,entryCount,totalDurationMinutes,weeklyAvgFreq,lastActiveDate";
     const rows = members.map((m) =>
-      [m.userId, m.userName, m.entryCount, m.totalDurationMinutes, m.dailyAvgFreq, m.lastActiveDate ?? ""].join(",")
+      [m.userId, m.userName, m.experienceLevel, m.entryCount, m.totalDurationMinutes, m.weeklyAvgFreq, m.lastActiveDate ?? ""].join(",")
     );
     const csv = "﻿" + [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -75,61 +114,55 @@ export function StudentActivityReportPanel() {
     <div className="space-y-4">
       <ActivityFilterBar
         groupName={groupName}
-        onGroupChange={(name) => { setGroupName(name); setPage(1); }}
+        groupPage={groupPage}
+        groupTotal={groupTotal}
+        onGroupChange={(name) => { setGroupName(name); }}
+        onGroupPageChange={(p) => { setGroupPage(p); setMemberPage(1); }}
         startTime={startTime}
         endTime={endTime}
-        onTimeChange={(start, end) => { setStartTime(start); setEndTime(end); setPage(1); }}
+        onTimeChange={(s, e) => { setStartTime(s); setEndTime(e); setGroupPage(1); setMemberPage(1); }}
+        onExportCSV={exportCSV}
       />
 
       {groupName ? (
         <>
-          {/* KPI Cards */}
+          {/* KPI Cards with time range labels */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <AdminFormCard title="课题组人数">
+            <AdminFormCard title={`课题组人数（${timeLabel}）`}>
               <p className="text-2xl font-extrabold text-violet-600">{summary?.memberCount ?? "-"}</p>
             </AdminFormCard>
-            <AdminFormCard title="总进出次数">
+            <AdminFormCard title={`总进出次数（${timeLabel}）`}>
               <p className="text-2xl font-extrabold text-emerald-600">{summary?.totalEntries ?? "-"}</p>
             </AdminFormCard>
-            <AdminFormCard title="人均周频次">
+            <AdminFormCard title={`人均周频次（${timeLabel}）`}>
               <p className="text-2xl font-extrabold text-blue-600">{summary?.perCapitaWeeklyFreq ?? "-"}</p>
             </AdminFormCard>
-            <AdminFormCard title="近期活跃率">
+            <AdminFormCard title={`近期活跃度占比（${timeLabel}）`}>
               <p className="text-2xl font-extrabold text-amber-600">{summary?.activeSharePct != null ? `${summary.activeSharePct}%` : "-"}</p>
             </AdminFormCard>
           </div>
 
-          {/* Export button */}
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={exportCSV}
-              disabled={members.length === 0}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
-            >
-              <Download className="h-3.5 w-3.5" />
-              导出 CSV
-            </button>
-          </div>
-
-          {/* Member ranking table */}
+          {/* Member table */}
           <ActivityMemberTable
             members={members}
             sortBy={sortBy}
             order={order}
             onSort={handleSort}
             loading={membersQuery.isLoading}
-            page={page}
-            total={total}
-            size={size}
-            onPageChange={setPage}
-            onSizeChange={setSize}
+            page={memberPage}
+            total={memberTotal}
+            size={memberSize}
+            onPageChange={setMemberPage}
+            onSizeChange={setMemberSize}
           />
 
-          {/* Heatmap chart */}
-          <div className="grid grid-cols-1 gap-4">
+          {/* Charts: heatmap + room preference */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <AdminFormCard title="进出时段热力图">
               <ActivityHeatmapChart data={heatmapQuery.data ?? []} loading={heatmapQuery.isLoading} />
+            </AdminFormCard>
+            <AdminFormCard title="该课题组喜好进出房间">
+              <ActivityRoomChart data={roomQuery.data ?? []} loading={roomQuery.isLoading} />
             </AdminFormCard>
           </div>
         </>
