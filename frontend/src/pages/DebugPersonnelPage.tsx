@@ -35,6 +35,9 @@ export default function DebugPersonnelPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Record<string, unknown>[]>([]);
   const [searchDraft, setSearchDraft] = useState("");
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchTotal, setSearchTotal] = useState(0);
+  const SEARCH_PAGE_SIZE = 24;
 
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -65,21 +68,40 @@ export default function DebugPersonnelPage() {
   const bookmarkSet = useMemo(() => new Set((bookmarkedIds || []).map(String)), [bookmarkedIds]);
 
   const totalPages = data?.total ? Math.ceil(data.total / pageSize) : 0;
+  const searchTotalPages = searchTotal > 0 ? Math.ceil(searchTotal / SEARCH_PAGE_SIZE) : 0;
 
   const handleSearch = async (keyword: string) => {
     if (!keyword.trim()) {
       setIsSearching(false);
       setSearchResults([]);
+      setSearchTotal(0);
+      setSearchPage(1);
       return;
     }
     setIsSearching(true);
+    setSearchPage(1);
     try {
-      const { data: res } = await searchPersonnel(keyword.trim());
+      const res = await searchPersonnel(keyword.trim(), 1, SEARCH_PAGE_SIZE);
       setSearchResults(
-        (res || []).map((row) => toPersonRow(row as Record<string, unknown>)),
+        (res.data || []).map((row) => toPersonRow(row as Record<string, unknown>)),
       );
+      setSearchTotal(res.total ?? 0);
     } catch (error) {
       console.error("人员搜索失败", error);
+    }
+  };
+
+  const handleSearchPageChange = async (newPage: number) => {
+    if (!searchDraft.trim()) return;
+    setSearchPage(newPage);
+    try {
+      const res = await searchPersonnel(searchDraft.trim(), newPage, SEARCH_PAGE_SIZE);
+      setSearchResults(
+        (res.data || []).map((row) => toPersonRow(row as Record<string, unknown>)),
+      );
+      setSearchTotal(res.total ?? 0);
+    } catch (error) {
+      console.error("搜索翻页失败", error);
     }
   };
 
@@ -217,25 +239,51 @@ export default function DebugPersonnelPage() {
             disabled={isLoading}
           />
           <div className="flex shrink-0 flex-nowrap items-center gap-1 rounded-xl border border-slate-200 bg-white px-2 py-1 shadow-sm sm:gap-2 sm:px-3">
-            <button
-              type="button"
-              disabled={page === 1 || isSearching}
-              onClick={() => setPage((p) => p - 1)}
-              className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2"
-            >
-              ◀
-            </button>
-            <span className="shrink-0 whitespace-nowrap text-xs font-bold text-slate-700 sm:text-sm">
-              {isSearching ? "— / —" : `第 ${page} / ${totalPages || 1} 页`}
-            </span>
-            <button
-              type="button"
-              disabled={page === totalPages || totalPages === 0 || isSearching}
-              onClick={() => setPage((p) => p + 1)}
-              className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2"
-            >
-              ▶
-            </button>
+            {isSearching ? (
+              <>
+                <button
+                  type="button"
+                  disabled={searchPage <= 1}
+                  onClick={() => handleSearchPageChange(searchPage - 1)}
+                  className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2"
+                >
+                  ◀
+                </button>
+                <span className="shrink-0 whitespace-nowrap text-xs font-bold text-slate-700 sm:text-sm">
+                  第 {searchPage} / {searchTotalPages || 1} 页
+                </span>
+                <button
+                  type="button"
+                  disabled={searchPage >= searchTotalPages || searchTotalPages === 0}
+                  onClick={() => handleSearchPageChange(searchPage + 1)}
+                  className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2"
+                >
+                  ▶
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={page === 1}
+                  onClick={() => setPage((p) => p - 1)}
+                  className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2"
+                >
+                  ◀
+                </button>
+                <span className="shrink-0 whitespace-nowrap text-xs font-bold text-slate-700 sm:text-sm">
+                  第 {page} / {totalPages || 1} 页
+                </span>
+                <button
+                  type="button"
+                  disabled={page === totalPages || totalPages === 0}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2"
+                >
+                  ▶
+                </button>
+              </>
+            )}
           </div>
         </div>
       </AdminToolbar>
