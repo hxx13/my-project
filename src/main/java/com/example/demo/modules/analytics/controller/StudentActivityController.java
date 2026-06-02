@@ -81,6 +81,30 @@ public class StudentActivityController {
         return Result.success(studentActivityService.dailyTrend(groupName, startTime, endTime));
     }
 
+    @GetMapping("/room-usage")
+    @Operation(summary = "课题组房间进出频次排行")
+    public Result<List<Map<String, Object>>> roomUsage(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestParam String groupName,
+            @RequestParam String startTime,
+            @RequestParam String endTime) {
+        Result<?> denied = requireStaff(auth);
+        if (denied != null) return Result.error(denied.getMessage());
+        return Result.success(studentActivityService.roomUsage(groupName, startTime, endTime));
+    }
+
+    @GetMapping("/summary")
+    @Operation(summary = "课题组活跃度 KPI 汇总")
+    public Result<Map<String, Object>> summary(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestParam String groupName,
+            @RequestParam String startTime,
+            @RequestParam String endTime) {
+        Result<?> denied = requireStaff(auth);
+        if (denied != null) return Result.error(denied.getMessage());
+        return Result.success(studentActivityService.summary(groupName, startTime, endTime));
+    }
+
     private Result<?> requireStaff(String authorization) {
         User user = authContextService.resolveUserFromBearer(authorization);
         if (user == null) {

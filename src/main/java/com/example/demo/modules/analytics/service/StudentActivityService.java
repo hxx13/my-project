@@ -420,6 +420,70 @@ public class StudentActivityService {
                 }).collect(Collectors.toList());
     }
 
+    /** 课题组房间进出频次排行 */
+    public List<Map<String, Object>> roomUsage(String groupName, String startTime, String endTime) {
+        if (groupName == null || groupName.isBlank()) return List.of();
+
+        List<String> userIds = dashboardMapper.listUserIdsByProjectGroup(groupName.trim(), MAX_USER_IDS);
+        if (userIds.isEmpty()) return List.of();
+
+        List<Map<String, Object>> rawLogs = dashboardMapper.listAccessLogsByUserIds(userIds, startTime, endTime);
+
+        Map<String, Integer> roomCounts = new LinkedHashMap<>();
+        for (Map<String, Object> log : rawLogs) {
+            String room = String.valueOf(log.getOrDefault("room_name", ""));
+            if (room.isEmpty() || "null".equals(room)) continue;
+            roomCounts.merge(room, 1, Integer::sum);
+        }
+
+        return roomCounts.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .map(e -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("roomName", e.getKey());
+                    m.put("entryCount", e.getValue());
+                    return m;
+                })
+                .collect(Collectors.toList());
+    }
+
+    /** 单个课题组 KPI 汇总（正确计算同校区活跃度占比） */
+    public Map<String, Object> summary(String groupName, String startTime, String endTime) {
+        GroupActivityRow row = computeGroupRow(groupName, startTime, endTime);
+        if (row == null) {
+            Map<String, Object> empty = new HashMap<>();
+            empty.put("memberCount", 0);
+            empty.put("totalEntries", 0);
+            empty.put("perCapitaWeeklyFreq", 0);
+            empty.put("activeSharePct", 0);
+            empty.put("campus", "-");
+            empty.put("timeLabel", deriveTimeLabel(startTime, endTime));
+            return empty;
+        }
+        // Load all groups to compute proper activeSharePct (same-campus normalization)
+        List<String> allGroups = PersonnelProjectGroupUtil.distinctGroupsMatchingKeyword(
+                dashboardMapper.searchPersonnelProjectGroupFields("", 500), "", 500);
+        List<GroupActivityRow> allRows = new ArrayList<>();
+        allRows.add(row);
+        for (String g : allGroups) {
+            if (g.equals(groupName)) continue;
+            GroupActivityRow gr = computeGroupRow(g, startTime, endTime);
+            if (gr != null) allRows.add(gr);
+        }
+        fillActiveSharePct(allRows);
+        GroupActivityRow updated = allRows.stream()
+                .filter(r -> r.getName().equals(groupName)).findFirst().orElse(row);
+
+        Map<String, Object> m = new HashMap<>();
+        m.put("memberCount", updated.getMemberCount());
+        m.put("totalEntries", updated.getTotalEntries());
+        m.put("perCapitaWeeklyFreq", updated.getPerCapitaWeeklyFreq());
+        m.put("activeSharePct", updated.getActiveSharePct());
+        m.put("campus", updated.getCampus());
+        m.put("timeLabel", deriveTimeLabel(startTime, endTime));
+        return m;
+    }
+
     private int parseAccessType(Map<String, Object> log) {
         Object at = log.get("accessType");
         if (at instanceof Number n) return n.intValue();
