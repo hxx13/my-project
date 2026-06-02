@@ -4,11 +4,13 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.analytics.service.StudentActivityService;
+import com.example.demo.modules.analytics.service.StudentActivitySnapshotService;
 import com.example.demo.modules.auth.entity.User;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.*;
 
 @RestController
@@ -18,11 +20,14 @@ public class StudentActivityController {
 
     private final AuthContextService authContextService;
     private final StudentActivityService studentActivityService;
+    private final StudentActivitySnapshotService snapshotService;
 
     public StudentActivityController(AuthContextService authContextService,
-                                     StudentActivityService studentActivityService) {
+                                     StudentActivityService studentActivityService,
+                                     StudentActivitySnapshotService snapshotService) {
         this.authContextService = authContextService;
         this.studentActivityService = studentActivityService;
+        this.snapshotService = snapshotService;
     }
 
     @GetMapping("/groups")
@@ -103,6 +108,27 @@ public class StudentActivityController {
         Result<?> denied = requireStaff(auth);
         if (denied != null) return Result.error(denied.getMessage());
         return Result.success(studentActivityService.summary(groupName, startTime, endTime));
+    }
+
+    @PostMapping("/recalculate")
+    @Operation(summary = "强制全量重算学生活跃度快照")
+    public Result<Map<String, Object>> recalculate(
+            @RequestHeader(value = "Authorization", required = false) String auth,
+            @RequestParam(defaultValue = "30") int daysBack) {
+        Result<?> denied = requireStaff(auth);
+        if (denied != null) return Result.error(denied.getMessage());
+        try {
+            LocalDate to = LocalDate.now().minusDays(1);
+            LocalDate from = to.minusDays(daysBack - 1);
+            snapshotService.recomputeRange(from, to);
+            Map<String, Object> msg = new HashMap<>();
+            msg.put("message", "全量重算已触发");
+            msg.put("from", from.toString());
+            msg.put("to", to.toString());
+            return Result.success(msg);
+        } catch (Exception e) {
+            return Result.error("重算失败: " + e.getMessage());
+        }
     }
 
     private Result<?> requireStaff(String authorization) {

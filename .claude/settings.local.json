@@ -33,7 +33,8 @@
       "Bash(mkdir -p ~/.claude/skills)",
       "Bash(git clone *)",
       "Skill(update-config)",
-      "Skill(update-config:*)"
+      "Skill(update-config:*)",
+      "mcp__playwright__browser_navigate"
     ]
   }
 }

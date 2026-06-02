@@ -1,5 +1,6 @@
 package com.example.demo.modules.analytics.service;
 
+import com.example.demo.modules.analytics.mapper.StudentActivitySnapshotMapper;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
@@ -25,10 +26,14 @@ public class StudentActivityService {
 
     private final TwinDashboardMapper dashboardMapper;
     private final AroPersonnelMapper aroPersonnelMapper;
+    private final StudentActivitySnapshotMapper snapshotMapper;
 
-    public StudentActivityService(TwinDashboardMapper dashboardMapper, AroPersonnelMapper aroPersonnelMapper) {
+    public StudentActivityService(TwinDashboardMapper dashboardMapper,
+                                   AroPersonnelMapper aroPersonnelMapper,
+                                   StudentActivitySnapshotMapper snapshotMapper) {
         this.dashboardMapper = dashboardMapper;
         this.aroPersonnelMapper = aroPersonnelMapper;
+        this.snapshotMapper = snapshotMapper;
     }
 
     /** 课题组搜索建议 */
@@ -44,34 +49,53 @@ public class StudentActivityService {
         }).collect(Collectors.toList());
     }
 
-    /** 课题组分页列表：按同校区人均周频次占比降序 */
+    /** 课题组分页列表 — 从快照表聚合，毫秒级返回 */
     public Map<String, Object> listGroupsPaged(String keyword, String startTime, String endTime, int page, int size) {
         if (page < 1) page = 1;
         if (size < 1) size = 1;
 
-        // 1. 拉取所有课题组名（含 keyword 过滤）
-        List<String> allGroups = PersonnelProjectGroupUtil.distinctGroupsMatchingKeyword(
-                dashboardMapper.searchPersonnelProjectGroupFields(
-                        keyword != null ? keyword.trim() : "", 500),
-                keyword, 500);
+        LocalDate s = LocalDate.parse(startTime.substring(0, 10));
+        LocalDate e = LocalDate.parse(endTime.substring(0, 10));
 
-        // 2. 计算每个组的指标
-        List<GroupActivityRow> rows = new ArrayList<>();
-        for (String groupName : allGroups) {
-            GroupActivityRow row = computeGroupRow(groupName, startTime, endTime);
-            if (row != null) rows.add(row);
+        List<Map<String, Object>> rows = snapshotMapper.aggregateByDateRange(s, e, keyword);
+        if (rows.isEmpty()) {
+            Map<String, Object> empty = new HashMap<>();
+            empty.put("groups", List.of());
+            empty.put("total", 0);
+            empty.put("page", page);
+            empty.put("size", size);
+            return empty;
         }
 
-        // 2.5 填充同校区活跃度占比
-        fillActiveSharePct(rows);
+        // 计算每人周频次 + 同校区占比
+        long days = Math.max(1, ChronoUnit.DAYS.between(s, e) + 1);
+        double weeks = Math.max(1.0, Math.ceil(days / 7.0));
 
-        // 3. 按 activeSharePct 降序
-        rows.sort(Comparator.comparingDouble(GroupActivityRow::getActiveSharePct).reversed());
+        List<GroupActivityRow> groupRows = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String name = String.valueOf(row.get("groupName"));
+            String campus = String.valueOf(row.getOrDefault("campus", "未知校区"));
+            int memberCount = ((Number) row.getOrDefault("memberCount", 0)).intValue();
+            int totalEntries = ((Number) row.getOrDefault("totalEntries", 0)).intValue();
 
-        // 4. 分页
-        int total = rows.size();
+            double perCapitaWeeklyFreq = memberCount > 0 ? (double) totalEntries / memberCount / weeks : 0;
+
+            GroupActivityRow gr = new GroupActivityRow();
+            gr.setName(name);
+            gr.setCampus(campus);
+            gr.setMemberCount(memberCount);
+            gr.setTotalEntries(totalEntries);
+            gr.setPerCapitaWeeklyFreq(Math.round(perCapitaWeeklyFreq * 10.0) / 10.0);
+            gr.setActiveSharePct(0);
+            groupRows.add(gr);
+        }
+
+        fillActiveSharePct(groupRows);
+        groupRows.sort(Comparator.comparingDouble(GroupActivityRow::getActiveSharePct).reversed());
+
+        int total = groupRows.size();
         int offset = (page - 1) * size;
-        List<GroupActivityRow> paged = rows.stream().skip(offset).limit(size).toList();
+        List<GroupActivityRow> paged = groupRows.stream().skip(offset).limit(size).toList();
 
         Map<String, Object> result = new HashMap<>();
         result.put("groups", paged.stream().map(this::groupRowToMap).toList());
@@ -79,48 +103,6 @@ public class StudentActivityService {
         result.put("page", page);
         result.put("size", size);
         return result;
-    }
-
-    private GroupActivityRow computeGroupRow(String groupName, String startTime, String endTime) {
-        List<String> userIds = dashboardMapper.listUserIdsByProjectGroup(groupName.trim(), MAX_USER_IDS);
-        if (userIds.isEmpty()) return null;
-
-        List<Map<String, Object>> rawLogs = dashboardMapper.listAccessLogsByUserIds(userIds, startTime, endTime);
-
-        int totalEntries = 0;
-        Map<String, String> userCampus = new LinkedHashMap<>();
-        for (String uid : userIds) {
-            List<Map<String, Object>> userLogs = rawLogs.stream()
-                    .filter(l -> uid.equals(String.valueOf(l.getOrDefault("user_id", ""))))
-                    .toList();
-            int userPairs = countPairedEntries(userLogs);
-            totalEntries += userPairs;
-            if (!userCampus.containsKey(uid)) {
-                String campus = resolveCampusForUser(uid, userLogs);
-                userCampus.put(uid, campus != null ? campus : "未知校区");
-            }
-        }
-
-        int memberCount = userIds.size();
-        long days = Math.max(1, ChronoUnit.DAYS.between(
-                LocalDateTime.parse(startTime.replace(" ", "T"), DateTimeFormatter.ISO_LOCAL_DATE_TIME).toLocalDate(),
-                LocalDateTime.parse(endTime.replace(" ", "T"), DateTimeFormatter.ISO_LOCAL_DATE_TIME).toLocalDate()) + 1);
-        double weeks = Math.max(1.0, Math.ceil(days / 7.0));
-        double perCapitaWeeklyFreq = memberCount > 0 ? (double) totalEntries / memberCount / weeks : 0;
-
-        String majorityCampus = userCampus.values().stream()
-                .collect(Collectors.groupingBy(c -> c, Collectors.counting()))
-                .entrySet().stream().max(Map.Entry.comparingByValue())
-                .map(Map.Entry::getKey).orElse("未知校区");
-
-        GroupActivityRow row = new GroupActivityRow();
-        row.setName(groupName);
-        row.setCampus(majorityCampus);
-        row.setMemberCount(memberCount);
-        row.setTotalEntries(totalEntries);
-        row.setPerCapitaWeeklyFreq(Math.round(perCapitaWeeklyFreq * 10.0) / 10.0);
-        row.setActiveSharePct(0);
-        return row;
     }
 
     /** Fill activeSharePct for all rows (same-campus sum division) */
@@ -135,47 +117,6 @@ public class StudentActivityService {
                 r.setActiveSharePct(Math.round(r.getPerCapitaWeeklyFreq() / campusSum * 1000.0) / 10.0);
             }
         }
-    }
-
-    /** Determine campus from user's access logs (area_name contains 浦东/浦西) */
-    private String resolveCampusForUser(String userId, List<Map<String, Object>> userLogs) {
-        long pudong = userLogs.stream()
-                .filter(l -> {
-                    String a = String.valueOf(l.getOrDefault("area_name", ""));
-                    return a.contains("浦东");
-                }).count();
-        long puxi = userLogs.stream()
-                .filter(l -> {
-                    String a = String.valueOf(l.getOrDefault("area_name", ""));
-                    return a.contains("浦西");
-                }).count();
-        if (pudong > puxi) return "浦东";
-        if (puxi > pudong) return "浦西";
-        return "未知校区";
-    }
-
-    /** Count entry-exit pairs from user's access logs */
-    private int countPairedEntries(List<Map<String, Object>> userLogs) {
-        List<LocalDateTime> entries = new ArrayList<>();
-        List<LocalDateTime> exits = new ArrayList<>();
-        for (Map<String, Object> log : userLogs) {
-            int accessType = parseAccessType(log);
-            String ts = String.valueOf(log.getOrDefault("create_time", ""));
-            LocalDateTime dt = parseTime(ts);
-            if (dt == null) continue;
-            if (accessType == 1) entries.add(dt);
-            else if (accessType == 2) exits.add(dt);
-        }
-        int pairCount = 0;
-        int exitIdx = 0;
-        for (LocalDateTime entry : entries) {
-            while (exitIdx < exits.size() && !exits.get(exitIdx).isAfter(entry)) exitIdx++;
-            if (exitIdx < exits.size()) {
-                long diffMin = ChronoUnit.MINUTES.between(entry, exits.get(exitIdx));
-                if (diffMin <= 24 * 60) { pairCount++; exitIdx++; }
-            }
-        }
-        return pairCount;
     }
 
     /** 成员活跃度查询 */
@@ -242,14 +183,10 @@ public class StudentActivityService {
         long totalDuration = rows.stream().mapToLong(MemberActivityRow::getTotalDurationMinutes).sum();
         double avgWeekly = rows.stream().mapToDouble(MemberActivityRow::getWeeklyAvgFreq).average().orElse(0);
 
-        // Get activeSharePct and campus from computeGroupRow (added in Task 1)
-        double activeSharePct = 0;
-        String campus = "未知校区";
-        GroupActivityRow groupRow = computeGroupRow(groupName, startTime, endTime);
-        if (groupRow != null) {
-            activeSharePct = groupRow.getActiveSharePct();
-            campus = groupRow.getCampus();
-        }
+        // Get activeSharePct and campus from summary (snapshot-based)
+        Map<String, Object> summaryData = summary(groupName, startTime, endTime);
+        double activeSharePct = ((Number) summaryData.getOrDefault("activeSharePct", 0)).doubleValue();
+        String campus = String.valueOf(summaryData.getOrDefault("campus", "未知校区"));
 
         String timeLabel = deriveTimeLabel(startTime, endTime);
 
@@ -447,7 +384,7 @@ public class StudentActivityService {
                 .collect(Collectors.toList());
     }
 
-    /** 单个课题组 KPI 汇总（正确计算同校区活跃度占比） */
+    /** 单个课题组 KPI 汇总 — 从快照表聚合同校区占比 */
     public Map<String, Object> summary(String groupName, String startTime, String endTime) {
         if (groupName == null || groupName.isBlank()) {
             Map<String, Object> empty = new HashMap<>();
@@ -459,8 +396,35 @@ public class StudentActivityService {
             empty.put("timeLabel", deriveTimeLabel(startTime, endTime));
             return empty;
         }
-        GroupActivityRow row = computeGroupRow(groupName, startTime, endTime);
-        if (row == null) {
+
+        LocalDate s = LocalDate.parse(startTime.substring(0, 10));
+        LocalDate e = LocalDate.parse(endTime.substring(0, 10));
+        long days = Math.max(1, ChronoUnit.DAYS.between(s, e) + 1);
+        double weeks = Math.max(1.0, Math.ceil(days / 7.0));
+
+        List<Map<String, Object>> allRows = snapshotMapper.aggregateByDateRange(s, e, null);
+
+        GroupActivityRow target = null;
+        List<GroupActivityRow> all = new ArrayList<>();
+        for (Map<String, Object> row : allRows) {
+            String name = String.valueOf(row.get("groupName"));
+            String campus = String.valueOf(row.getOrDefault("campus", "未知校区"));
+            int mc = ((Number) row.getOrDefault("memberCount", 0)).intValue();
+            int te = ((Number) row.getOrDefault("totalEntries", 0)).intValue();
+            double pf = mc > 0 ? (double) te / mc / weeks : 0;
+
+            GroupActivityRow gr = new GroupActivityRow();
+            gr.setName(name);
+            gr.setCampus(campus);
+            gr.setMemberCount(mc);
+            gr.setTotalEntries(te);
+            gr.setPerCapitaWeeklyFreq(Math.round(pf * 10.0) / 10.0);
+            gr.setActiveSharePct(0);
+            all.add(gr);
+            if (name.equalsIgnoreCase(groupName)) target = gr;
+        }
+
+        if (target == null) {
             Map<String, Object> empty = new HashMap<>();
             empty.put("memberCount", 0);
             empty.put("totalEntries", 0);
@@ -470,19 +434,10 @@ public class StudentActivityService {
             empty.put("timeLabel", deriveTimeLabel(startTime, endTime));
             return empty;
         }
-        // Load all groups to compute proper activeSharePct (same-campus normalization)
-        List<String> allGroups = PersonnelProjectGroupUtil.distinctGroupsMatchingKeyword(
-                dashboardMapper.searchPersonnelProjectGroupFields("", 500), "", 500);
-        List<GroupActivityRow> allRows = new ArrayList<>();
-        allRows.add(row);
-        for (String g : allGroups) {
-            if (g.equalsIgnoreCase(groupName)) continue;
-            GroupActivityRow gr = computeGroupRow(g, startTime, endTime);
-            if (gr != null) allRows.add(gr);
-        }
-        fillActiveSharePct(allRows);
-        GroupActivityRow updated = allRows.stream()
-                .filter(r -> r.getName().equalsIgnoreCase(groupName)).findFirst().orElse(row);
+
+        fillActiveSharePct(all);
+        GroupActivityRow updated = all.stream()
+                .filter(r -> r.getName().equalsIgnoreCase(groupName)).findFirst().orElse(target);
 
         Map<String, Object> m = new HashMap<>();
         m.put("memberCount", updated.getMemberCount());

@@ -1,0 +1,64 @@
+<h2>近期活跃度占比 — 计算公式确认</h2>
+<p class="subtitle">基于你的描述，我理解的计算逻辑如下，请确认每个环节是否正确</p>
+
+<div class="section">
+  <h3>A. 计算流程</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="padding:20px;font-family:monospace;font-size:13px;line-height:1.8">
+      <strong>Step 1</strong>: 在选定的时间范围内，获取所有课题组的进出次数<br>
+      <strong>Step 2</strong>: 按校区 (campus) 分组<br>
+      <span style="color:#888;">└ 校区A: 组1(500次) + 组2(300次) + 组3(200次) = 总计1000次</span><br>
+      <span style="color:#888;">└ 校区B: 组4(400次) + 组5(100次) = 总计500次</span><br>
+      <strong>Step 3</strong>: 当前课题组的活跃度占比 = <span style="color:#7c3aed;">该组进出次数 ÷ 同校区所有组进出次数总计 × 100%</span><br>
+      <span style="color:#7c3aed;">└ 例：校区A的组1 = 500 ÷ 1000 = <strong>50%</strong></span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>B. 关键参数待确认</h3>
+  <div class="options">
+    <div class="option" data-choice="same-campus" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>同校区内占比</h3>
+        <p>当前课题组进出次数 ÷ <strong>同校区</strong>所有课题组进出次数之和</p>
+      </div>
+    </div>
+    <div class="option" data-choice="all-campus" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>全校区占比</h3>
+        <p>当前课题组进出次数 ÷ <strong>全部校区</strong>所有课题组进出次数之和</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>C. 你说的"可能还有其他的一些参数"</h3>
+  <p>除了进出次数比之外，是否还需要考虑以下加权因素？</p>
+  <div class="options" data-multiselect>
+    <div class="option" data-choice="member-weight" onclick="toggleSelect(this)">
+      <div class="letter">1</div>
+      <div class="content">
+        <h3>人数加权</h3>
+        <p>根据课题组人数做加权调整</p>
+      </div>
+    </div>
+    <div class="option" data-choice="duration-weight" onclick="toggleSelect(this)">
+      <div class="letter">2</div>
+      <div class="content">
+        <h3>时长加权</h3>
+        <p>根据总进出时长做加权调整</p>
+      </div>
+    </div>
+    <div class="option" data-choice="no-extra" onclick="toggleSelect(this)">
+      <div class="letter">3</div>
+      <div class="content">
+        <h3>纯次数比即可</h3>
+        <p>仅用进出次数比例计算，不需要额外加权</p>
+      </div>
+    </div>
+  </div>
+</div>

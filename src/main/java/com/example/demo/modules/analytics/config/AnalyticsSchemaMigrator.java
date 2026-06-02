@@ -229,6 +229,20 @@ public class AnalyticsSchemaMigrator implements ApplicationRunner {
                         CONSTRAINT fk_acm_session FOREIGN KEY (session_id) REFERENCES analytics_chat_session(id) ON DELETE CASCADE
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统计页-AI对话消息'
                     """);
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS student_activity_snapshot (
+                        id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                        snapshot_date DATE NOT NULL COMMENT '快照日期',
+                        group_name VARCHAR(255) NOT NULL COMMENT '课题组名',
+                        campus VARCHAR(64) NOT NULL DEFAULT '未知校区' COMMENT '校区（浦东/浦西）',
+                        member_count INT NOT NULL DEFAULT 0 COMMENT '当日活跃成员数',
+                        total_entries INT NOT NULL DEFAULT 0 COMMENT '当日进出配对次数',
+                        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE KEY uk_sas_date_group (snapshot_date, group_name),
+                        KEY idx_sas_date (snapshot_date),
+                        KEY idx_sas_group (group_name)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生活跃度-每日快照'
+                    """);
             log.info("[analytics-schema] analytics 表结构已就绪");
 
         } catch (Exception e) {

@@ -1,0 +1,87 @@
+<h2>最终设计确认 — 全后端方案</h2>
+<p class="subtitle">全部决策汇总，确认后写入设计文档</p>
+
+<div class="section">
+  <h3>📐 架构决策</h3>
+  <div class="mockup"><div class="mockup-body" style="padding:16px;font-size:13px;">
+    <p><strong>策略</strong>：新建独立 StudentActivityController（Kotlin），所有数据查询在服务端完成</p>
+    <p><strong>前端角色</strong>：纯展示层，调用新接口获取已计算好的数据</p>
+    <p><strong>数据流</strong>：ARO 门禁流水 + 人员资料库 → 后端聚合 → REST API → 前端渲染</p>
+  </div></div>
+</div>
+
+<div class="section">
+  <h3>🔧 后端新增接口清单</h3>
+  <table style="width:100%;font-size:12px;border-collapse:collapse;">
+    <tr style="background:#f5f3ff;font-weight:600;">
+      <td style="padding:8px;">接口</td><td style="padding:8px;">方法</td><td style="padding:8px;">关键返回字段</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;">/v1/analytics/student-activity/groups</td>
+      <td style="padding:8px;">GET</td>
+      <td style="padding:8px;font-size:11px;">name, campus, memberCount, totalEntries, perCapitaWeeklyFreq, activeSharePct — 按 activeSharePct 降序，支持 keyword/page/size</td>
+    </tr>
+    <tr style="background:#fafafa;">
+      <td style="padding:8px;">/v1/analytics/student-activity/members</td>
+      <td style="padding:8px;">GET</td>
+      <td style="padding:8px;font-size:11px;">userId, userName, experienceLevel, entryCount, totalDurationMinutes, weeklyAvgFreq, lastActiveDate — 支持 sort/order/page/size</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;">/v1/analytics/student-activity/room-usage</td>
+      <td style="padding:8px;">GET</td>
+      <td style="padding:8px;font-size:11px;">roomName: string, entryCount: number — 该课题组进出各房间的次数，降序</td>
+    </tr>
+    <tr style="background:#fafafa;">
+      <td style="padding:8px;">/v1/analytics/student-activity/heatmap</td>
+      <td style="padding:8px;">GET</td>
+      <td style="padding:8px;font-size:11px;">dayOfWeek, hour, count — 保留现有逻辑</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;">/v1/analytics/student-activity/summary</td>
+      <td style="padding:8px;">GET</td>
+      <td style="padding:8px;font-size:11px;">memberCount, totalEntries, perCapitaWeeklyFreq, activeSharePct（含 campus、时间标签）</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>🧮 核心计算公式</h3>
+  <div class="mockup"><div class="mockup-body" style="padding:16px;font-size:13px;">
+    <p><strong>人均周频次</strong> = 该成员总进出次数 ÷ 时间范围周数（向上取整，最小1周）</p>
+    <p><strong>课题组人均周频次</strong> = 该组所有成员周频次之和 ÷ 该组人数</p>
+    <p><strong>近期活跃度占比</strong> = 该组人均周频次 ÷ 同校区所有组人均周频次之和 × 100%</p>
+    <p style="color:#888;">（按校区分别计算，各校区内部排名）</p>
+  </div></div>
+</div>
+
+<div class="section">
+  <h3>🐛 Battle-tested 修复</h3>
+  <table style="width:100%;font-size:12px;border-collapse:collapse;">
+    <tr style="background:#fef2f2;">
+      <td style="padding:8px;font-weight:600;">Bug 1</td>
+      <td style="padding:8px;">课题组搜索框输入后无法删除</td>
+      <td style="padding:8px;font-size:11px;">根因：value={groupName || keyword}，选中后 keyword 被忽略</td>
+    </tr>
+    <tr>
+      <td style="padding:8px;font-weight:600;">Bug 2</td>
+      <td style="padding:8px;">预选内容缺斤少两（下拉列表数据不全）</td>
+      <td style="padding:8px;font-size:11px;">改为分页机制后自然解决</td>
+    </tr>
+    <tr style="background:#fef2f2;">
+      <td style="padding:8px;font-weight:600;">Bug 3</td>
+      <td style="padding:8px;">人员数据库搜索后无法翻页</td>
+      <td style="padding:8px;font-size:11px;">本 PR 同步修复，确保搜索不影响分页</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>📁 涉及文件一览</h3>
+  <table style="width:100%;font-size:12px;border-collapse:collapse;">
+    <tr style="background:#f5f3ff;"><td style="padding:8px;font-weight:600;">后端</td><td style="padding:8px;">StudentActivityController.kt（新）、StudentActivityService.kt（新）</td></tr>
+    <tr><td style="padding:8px;font-weight:600;">前端 API</td><td style="padding:8px;">analytics.api.ts（新增类型 + 接口函数）</td></tr>
+    <tr style="background:#f5f3ff;"><td style="padding:8px;font-weight:600;">前端组件</td><td style="padding:8px;">ActivityFilterBar.tsx、StudentActivityReportPanel.tsx、ActivityMemberTable.tsx</td></tr>
+    <tr><td style="padding:8px;font-weight:600;">新组件</td><td style="padding:8px;">ActivityRoomChart.tsx（替代 ActivityTrendChart）、GroupPaginator.tsx</td></tr>
+    <tr style="background:#f5f3ff;"><td style="padding:8px;font-weight:600;">Bug修复</td><td style="padding:8px;">PersonnelSearchDropdown.tsx（人员库搜索分页修复）</td></tr>
+  </table>
+</div>
