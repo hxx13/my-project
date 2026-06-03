@@ -21,14 +21,15 @@ export default function AdminNavManager() {
   const loadTree = useCallback(async () => {
     const data = await fetchAdminNavConfig();
     setTree(data);
-    if (!selectedId && data.length > 0) {
-      setSelectedId(data[0].id);
-    }
-  }, [selectedId]);
+    setSelectedId((prev) => {
+      if (prev && findNodeById(data, prev)) return prev;
+      return data.length > 0 ? data[0].id : null;
+    });
+  }, []);
 
   useEffect(() => {
     loadTree();
-  }, []);
+  }, [loadTree]);
 
   const selectedNode = selectedId ? findNodeById(tree, selectedId) : undefined;
 

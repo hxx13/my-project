@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   updateNavGroup,
   deleteNavGroup,
@@ -13,6 +14,26 @@ interface Props {
   node: AdminNavConfigNode | null;
   allNodes: AdminNavConfigNode[];
   onRefresh: () => void;
+}
+
+/** Human-readable type label */
+function typeLabel(node: AdminNavConfigNode): string {
+  switch (node.type) {
+    case "GROUP": return "顶级分组";
+    case "SUBGROUP": return "子分组";
+    case "ITEM": return "侧边栏入口";
+    default: return node.type;
+  }
+}
+
+/** Color accent per type */
+function typeAccent(node: AdminNavConfigNode): string {
+  switch (node.type) {
+    case "GROUP": return "border-l-indigo-500 bg-indigo-50/50";
+    case "SUBGROUP": return "border-l-teal-500 bg-teal-50/50";
+    case "ITEM": return "border-l-gray-400 bg-gray-50";
+    default: return "";
+  }
 }
 
 export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
@@ -31,7 +52,10 @@ export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
     );
   }
 
-  const isGroup = node.type === "GROUP" || node.type === "SUBGROUP";
+  const isGroup = node.type === "GROUP";
+  const isSubgroup = node.type === "SUBGROUP";
+  const isFolder = isGroup || isSubgroup;
+  const isItem = node.type === "ITEM";
 
   const handleSaveTitle = async () => {
     if (!title.trim() || title === node.title) return;
@@ -42,7 +66,7 @@ export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
   };
 
   const handleDelete = async () => {
-    const msg = isGroup
+    const msg = isFolder
       ? `确定要删除「${node.title}」及其所有子内容？`
       : `确定要从侧边栏移除「${node.title}」？`;
     if (!confirm(msg)) return;
@@ -72,15 +96,18 @@ export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
     .filter((n) => n.id !== node.id);
 
   const childItems = node.children?.filter((c) => c.type === "ITEM") ?? [];
+  const childFolders = node.children?.filter((c) => c.type === "SUBGROUP") ?? [];
 
   return (
     <div className="p-6 space-y-5">
-      <div>
+      {/* Header with type accent */}
+      <div className={cn("border-l-4 rounded-l-md pl-4 py-2", typeAccent(node))}>
         <h3 className="text-lg font-semibold text-gray-800">编辑：{node.title}</h3>
         <p className="text-sm text-gray-400">
-          {node.type === "GROUP" ? "顶级分组" : node.type === "SUBGROUP" ? "子分组" : "入口"}
-          {isGroup && ` · 包含 ${childItems.length} 个入口`}
-          {!isGroup && node.itemPath && <span className="ml-2">· {node.itemPath}</span>}
+          <span className="font-medium text-gray-500">{typeLabel(node)}</span>
+          {isFolder && childItems.length > 0 && ` · 包含 ${childItems.length} 个入口`}
+          {isFolder && childFolders.length > 0 && ` · ${childFolders.length} 个子分组`}
+          {isItem && node.itemPath && <span className="ml-2">· {node.itemPath}</span>}
         </p>
       </div>
 
@@ -100,8 +127,8 @@ export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
         </div>
       </div>
 
-      {/* Sort — groups only */}
-      {isGroup && (
+      {/* Sort — folders only */}
+      {isFolder && (
         <div>
           <label className="block text-sm font-medium text-gray-600 mb-1">排序位置</label>
           <div className="flex gap-2 items-center">
@@ -118,22 +145,45 @@ export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
         </div>
       )}
 
+      {/* Item specific: path + icon info */}
+      {isItem && (
+        <div className="bg-gray-50 rounded-md p-4 space-y-2">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-0.5">路由路径</label>
+            <code className="text-sm text-gray-700 bg-gray-100 px-2 py-0.5 rounded">{node.itemPath || "—"}</code>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-0.5">图标</label>
+            <span className="text-sm text-gray-700">{node.itemIcon || "—"}</span>
+          </div>
+          {node.itemBadgeKey && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-0.5">气泡字段</label>
+              <span className="text-sm text-gray-700">{node.itemBadgeKey}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       <hr className="border-gray-200" />
 
-      {/* Child items — groups only */}
-      {isGroup && (
+      {/* Child items list — folders only */}
+      {isFolder && (
         <div>
           <label className="block text-sm font-medium text-gray-600 mb-2">
             包含的入口
-            {childItems.length === 0 && <span className="text-amber-500 ml-2">（暂无入口，请从其他文件夹拖拽或新建）</span>}
+            {childItems.length === 0 && (
+              <span className="text-amber-500 ml-2">（暂无入口，请从其他文件夹拖拽或新建）</span>
+            )}
           </label>
           {childItems.length > 0 && (
             <div className="border border-gray-200 rounded-md p-1 max-h-64 overflow-y-auto space-y-0.5">
               {childItems.map((item) => (
                 <div key={item.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded text-sm group">
                   <GripVertical className="h-3.5 w-3.5 text-gray-300 shrink-0" />
-                  <span>📄 {item.title}</span>
-                  <span className="flex-1 text-xs text-gray-400 truncate">{item.itemPath}</span>
+                  <span className="text-xs text-gray-500 w-16 shrink-0 truncate">{item.itemIcon || "📄"}</span>
+                  <span className="flex-1 truncate">{item.title}</span>
+                  <span className="text-xs text-gray-400 truncate max-w-[140px]">{item.itemPath}</span>
                   {targetFolders.length > 0 && (
                     <select
                       className="text-xs border border-gray-200 rounded px-1 py-0.5 opacity-0 group-hover:opacity-100"
@@ -164,7 +214,7 @@ export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
       <hr className="border-gray-200" />
       <div className="flex gap-2">
         <Button variant="destructive" size="sm" onClick={handleDelete}>
-          删除此{isGroup ? "文件夹" : "入口"}
+          删除此{isFolder ? "文件夹" : "入口"}
         </Button>
         <Button variant="outline" size="sm" onClick={handleReset}
           className="border-amber-300 text-amber-700 hover:bg-amber-50">
@@ -174,3 +224,4 @@ export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
     </div>
   );
 }
+

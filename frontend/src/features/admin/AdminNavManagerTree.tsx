@@ -50,14 +50,18 @@ function TreeNode({ node, depth, selectedId, onSelect, onAddClick }: {
 }) {
   const [expanded, setExpanded] = useState(depth === 0);
   const hasChildren = node.children && node.children.length > 0;
-  const isGroup = node.type === "GROUP" || node.type === "SUBGROUP";
+  const nodeType = node.type;
+  const isGroup = nodeType === "GROUP";
+  const isSubgroup = nodeType === "SUBGROUP";
+  const isItem = nodeType === "ITEM";
+  const isFolder = isGroup || isSubgroup;
   const isSelected = node.id === selectedId;
 
   return (
     <div>
       <div
         onClick={() => {
-          if (isGroup) setExpanded(!expanded);
+          if (isFolder) setExpanded(!expanded);
           onSelect(node.id);
         }}
         className={cn(
@@ -65,25 +69,59 @@ function TreeNode({ node, depth, selectedId, onSelect, onAddClick }: {
           isSelected
             ? "bg-blue-100 text-blue-800 border-l-[3px] border-blue-600"
             : "hover:bg-gray-100 text-gray-700 border-l-[3px] border-transparent",
-          depth > 0 && "ml-3"
+          depth > 0 && (isSubgroup ? "ml-4" : "ml-5")
         )}
       >
-        {isGroup && (
+        {/* Expand/collapse chevron for folders */}
+        {isFolder && (
           expanded ? <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0" />
             : <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />
         )}
-        {!isGroup && <GripVertical className="h-3.5 w-3.5 text-gray-300 shrink-0" />}
-        <span className="flex-1 truncate">
-          {isGroup
-            ? (expanded ? <FolderOpen className="h-3.5 w-3.5 inline mr-1.5 text-amber-500" /> : <Folder className="h-3.5 w-3.5 inline mr-1.5 text-amber-500" />)
-            : <span className="inline-block w-5 text-center mr-1.5">📄</span>
-          }
-          {node.title}
+        {/* Drag handle for items */}
+        {isItem && <GripVertical className="h-3.5 w-3.5 text-gray-300 shrink-0" />}
+
+        {/* Icon: GROUP = indigo folder, SUBGROUP = teal folder, ITEM = document */}
+        <span className="shrink-0">
+          {isGroup && (
+            expanded
+              ? <FolderOpen className="h-4 w-4 text-indigo-500" />
+              : <Folder className="h-4 w-4 text-indigo-500" />
+          )}
+          {isSubgroup && (
+            expanded
+              ? <FolderOpen className="h-4 w-4 text-teal-500" />
+              : <Folder className="h-4 w-4 text-teal-500" />
+          )}
+          {isItem && <span className="text-xs">📄</span>}
         </span>
+
+        {/* Title + type badge */}
+        <span className="flex-1 truncate">{node.title}</span>
+
+        {/* Type badge */}
         {isGroup && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-600 font-medium shrink-0">
+            分组
+          </span>
+        )}
+        {isSubgroup && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-100 text-teal-600 font-medium shrink-0">
+            子分组
+          </span>
+        )}
+        {isItem && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-medium shrink-0">
+            入口
+          </span>
+        )}
+
+        {/* Child count for folders */}
+        {isFolder && (
           <span className="text-xs text-gray-400">{node.children?.length ?? 0}项</span>
         )}
-        {isGroup && (
+
+        {/* Add button for folders */}
+        {isFolder && (
           <button
             onClick={(e) => { e.stopPropagation(); onAddClick(node.id, node.title); }}
             className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-gray-200 transition-all"
@@ -93,7 +131,9 @@ function TreeNode({ node, depth, selectedId, onSelect, onAddClick }: {
           </button>
         )}
       </div>
-      {isGroup && expanded && hasChildren && (
+
+      {/* Children */}
+      {isFolder && expanded && hasChildren && (
         <div>
           {node.children.map((child) => (
             <TreeNode
