@@ -278,9 +278,14 @@ function resolveIconByName(name: string | null | undefined): LucideIcon {
 
 function nodeToSidebarItem(
   node: AdminNavConfigNode,
-  pendingBadges: PendingBadges | null
+  pendingBadges: PendingBadges | null,
+  ctx: AdminNavContext,
 ): AdminSidebarNavItem | null {
   if (node.type !== "ITEM" || !node.itemPath) return null;
+  const effectiveMinRole = resolveEntryMinRole(ctx.permNodes, node.itemPath, "STAFF");
+  const roleOk = hasMinRole(ctx.role, effectiveMinRole);
+  const permOk = canShowWebEntry(ctx.permNodes, node.itemPath, "sidebar", ctx.role, effectiveMinRole);
+  if (!roleOk || !permOk) return null;
   return {
     key: node.id,
     to: node.itemPath,
@@ -293,7 +298,8 @@ function nodeToSidebarItem(
 
 function convertServerConfigToModel(
   nodes: AdminNavConfigNode[],
-  pendingBadges: PendingBadges | null
+  pendingBadges: PendingBadges | null,
+  ctx: AdminNavContext,
 ): {
   sidebarGroups: AdminSidebarNavGroup[];
   homeSections: AdminHomeSection[];
@@ -310,13 +316,13 @@ function convertServerConfigToModel(
 
     for (const child of node.children ?? []) {
       if (child.type === "ITEM" && child.visible) {
-        const si = nodeToSidebarItem(child, pendingBadges);
+        const si = nodeToSidebarItem(child, pendingBadges, ctx);
         if (si) items.push(si);
       } else if (child.type === "SUBGROUP" && child.visible) {
         const sgItems: AdminSidebarNavItem[] = [];
         for (const sgChild of child.children ?? []) {
           if (sgChild.type === "ITEM" && sgChild.visible) {
-            const si = nodeToSidebarItem(sgChild, pendingBadges);
+            const si = nodeToSidebarItem(sgChild, pendingBadges, ctx);
             if (si) sgItems.push(si);
           }
         }
@@ -339,13 +345,17 @@ function convertServerConfigToModel(
     const entries: AdminHomeEntry[] = [];
     for (const child of node.children ?? []) {
       if (child.type !== "ITEM" || !child.visible) continue;
+      const path = child.itemPath || "";
+      const effectiveMinRole = resolveEntryMinRole(ctx.permNodes, path, "STAFF");
+      const roleOk = hasMinRole(ctx.role, effectiveMinRole);
+      const permOk = canShowWebEntry(ctx.permNodes, path, "sidebar", ctx.role, effectiveMinRole);
       entries.push({
         title: child.title,
-        path: child.itemPath || "",
-        minRole: "STAFF" as MinRole,
+        path,
+        minRole: effectiveMinRole,
         icon: resolveIconByName(child.itemIcon),
         tone: "from-sky-500 to-blue-600",
-        enabled: true,
+        enabled: roleOk && permOk,
       });
     }
     if (entries.length) {
@@ -364,7 +374,7 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
   let homeSections: AdminHomeSection[];
 
   if (serverConfig.length > 0) {
-    const model = convertServerConfigToModel(serverConfig, pendingBadges);
+    const model = convertServerConfigToModel(serverConfig, pendingBadges, ctx);
     sidebarGroups = model.sidebarGroups;
     homeSections = model.homeSections;
   } else {

@@ -855,7 +855,7 @@ export default function AdminLayout() {
           ) : null}
 
           {/* 文件夹管理 — 仅超级管理员可见 */}
-          {!sidebarCollapsed && hasMinRole(role, "SUPER_ADMIN") ? (
+          {hasMinRole(role, "SUPER_ADMIN") ? (
             <button
               type="button"
               onClick={() => {
@@ -863,10 +863,13 @@ export default function AdminLayout() {
                 navigate("/admin/nav-manager");
               }}
               title="管理侧边栏文件夹"
-              className="flex w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2 text-left text-xs text-neutral-400 transition-colors hover:border-white/15 hover:bg-white/[0.08] hover:text-neutral-200"
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-left text-xs text-neutral-400 transition-colors hover:border-white/15 hover:bg-white/[0.08] hover:text-neutral-200",
+                sidebarCollapsed ? "justify-center px-2 py-2" : "px-4 py-2"
+              )}
             >
               <Settings className="h-4 w-4 shrink-0" />
-              <span>管理文件夹</span>
+              {!sidebarCollapsed && <span>管理文件夹</span>}
             </button>
           ) : null}
           </nav>
