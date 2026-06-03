@@ -7,6 +7,8 @@ import {
   CircleHelp,
   History,
   Home,
+  Lock,
+  LockOpen,
   LogIn,
   LogOut,
   Menu,
@@ -15,7 +17,7 @@ import {
   Star,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PageTransition } from "@/components/animation/PageTransition";
 import { BackfillAutoGlobalBanner } from "@/features/dahua-swing-stats/BackfillAutoGlobalBanner";
@@ -54,14 +56,19 @@ import {
 import {
   ADMIN_NAV_PERSONALIZATION_EVENT,
   appendAdminNavRecent,
+  isAdminNavLocked,
+  isAdminNavStarred,
   isFriendsSidebarGroupId,
   isPersonalSidebarGroupId,
   prependPersonalNavSidebarGroups,
+  readAdminNavLock,
   readAdminNavRecent,
   readAdminNavStars,
   RECENT_GROUP_ID,
   splitPersonalizedPaletteItems,
   STARS_GROUP_ID,
+  toggleAdminNavLock,
+  toggleAdminNavStar,
 } from "@/features/admin/adminNavPersonalization";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -140,6 +147,7 @@ export default function AdminLayout() {
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [personalBump, setPersonalBump] = useState(0);
+  const lockRedirectFiredRef = useRef(false);
   /** 教职工及以上：整页自定义右键；菜单内改权等仍按角色收紧 */
   const [chromeCtx, setChromeCtx] = useState<AdminChromeContextMenuPayload | null>(null);
   const [sessionUser, setSessionUser] = useState(() => authStorage.getUserInfo());
@@ -394,6 +402,35 @@ export default function AdminLayout() {
     if (pathname.startsWith("/admin")) appendAdminNavRecent(pathname);
   }, [pathname]);
 
+  // 锁定页面自动跳转：首次进入后台时，若存在锁定路径且当前不在该页面，自动跳转
+  useEffect(() => {
+    if (lockRedirectFiredRef.current) return;
+    const lockPath = readAdminNavLock();
+    if (!lockPath) return;
+    if (pathname === lockPath) {
+      lockRedirectFiredRef.current = true;
+      return;
+    }
+    // 仅在后台路径下触发，避免从非后台页面被错误重定向
+    if (!pathname.startsWith("/admin")) return;
+    // 验证锁定路径对应的页面在当前权限下仍可见
+    const allVisiblePaths = new Set<string>();
+    for (const g of sidebarGroups) {
+      for (const it of g.items) allVisiblePaths.add(it.to);
+      for (const sg of g.subgroups ?? []) {
+        for (const it of sg.items) allVisiblePaths.add(it.to);
+      }
+    }
+    if (!allVisiblePaths.has(lockPath)) {
+      // 页面已不可见，清除锁定
+      try { localStorage.removeItem("aro-admin-nav-lock"); } catch { /* ignore */ }
+      lockRedirectFiredRef.current = true;
+      return;
+    }
+    lockRedirectFiredRef.current = true;
+    navigate(lockPath, { replace: true });
+  }, [pathname, sidebarGroups, navigate]);
+
   useEffect(() => {
     setOpenGroups((prev) => {
       const next = { ...prev };
@@ -474,6 +511,35 @@ export default function AdminLayout() {
 
   const renderNavItem = (it: AdminSidebarNavItem, inGroup: boolean, collapsed: boolean, onAfterNav?: () => void) => {
     const badge = (it.badgeText || "").trim();
+    const itemLocked = !collapsed && isAdminNavLocked(it.to);
+    const itemStarred = !collapsed && isAdminNavStarred(it.to);
+
+    const actionButtons = !collapsed ? (
+      <>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); toggleAdminNavLock(it.to); }}
+          title={itemLocked ? "取消锁定" : "锁定此页面（进入后台时优先显示）"}
+          className={cn(
+            "shrink-0 p-0.5 rounded transition-colors",
+            itemLocked ? "text-amber-400 hover:text-amber-300" : "text-neutral-500 hover:text-neutral-200"
+          )}
+        >
+          {itemLocked ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+        </button>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); toggleAdminNavStar(it.to); }}
+          title={itemStarred ? "取消收藏" : "收藏此页面"}
+          className={cn(
+            "shrink-0 p-0.5 rounded transition-colors",
+            itemStarred ? "text-amber-400 hover:text-amber-300" : "text-neutral-500 hover:text-neutral-200"
+          )}
+        >
+          <Star className={cn("h-3.5 w-3.5", itemStarred && "fill-amber-400")} />
+        </button>
+      </>
+    ) : null;
 
     if (it.telemetry) {
       const TIcon = it.icon;
@@ -492,7 +558,7 @@ export default function AdminLayout() {
             }
             onAfterNav?.();
           }}
-          className={({ isActive }) => cn(navLinkClass(isActive, { inGroup, collapsed }), "relative")}
+          className={({ isActive }) => cn(navLinkClass(isActive, { inGroup, collapsed }), "relative", !collapsed && "flex-1 min-w-0")}
         >
           <span className={cn("relative inline-flex shrink-0 rounded-md p-1 ring-1 ring-inset ring-white/10", it.iconWrapClass)}>
             <TIcon className="h-3.5 w-3.5" />
@@ -509,8 +575,9 @@ export default function AdminLayout() {
         </NavLink>
       );
       return (
-        <div key={it.key} className="flex w-full min-w-0">
+        <div key={it.key} className={cn("flex w-full min-w-0 items-center", itemLocked && "border-l-2 border-amber-400")}>
           {link}
+          {actionButtons}
         </div>
       );
     }
@@ -526,7 +593,7 @@ export default function AdminLayout() {
         title={collapsed ? it.label : undefined}
         onClick={() => onAfterNav?.()}
         className={({ isActive }) =>
-          cn(navLinkClass(isActive, { inGroup, collapsed }), justifyBetween && "justify-between")
+          cn(navLinkClass(isActive, { inGroup, collapsed }), !collapsed && "flex-1 min-w-0", justifyBetween && "justify-between")
         }
       >
         <span className={cn("inline-flex min-w-0 items-center gap-2", justifyBetween && "flex-1")}>
@@ -542,8 +609,9 @@ export default function AdminLayout() {
       </NavLink>
     );
     return (
-      <div key={it.key} className="flex w-full min-w-0">
+      <div key={it.key} className={cn("flex w-full min-w-0 items-center", itemLocked && "border-l-2 border-amber-400")}>
         {link}
+        {actionButtons}
       </div>
     );
   };
@@ -813,7 +881,7 @@ export default function AdminLayout() {
         className={cn(
           "sticky top-0 z-30 hidden h-[100dvh] max-h-[100dvh] shrink-0 self-start overflow-hidden border-r border-white/[0.06] bg-gradient-to-b from-neutral-950 via-neutral-900 to-neutral-950 text-neutral-100 transition-[width,padding] duration-200 ease-out md:flex md:flex-col",
           "pb-[env(safe-area-inset-bottom,0px)]",
-          sidebarCollapsed ? "w-14 px-2 py-4" : "w-64 p-5"
+          sidebarCollapsed ? "w-14 px-2 py-4" : "w-72 p-5"
         )}
         aria-label="后台主导航"
       >
@@ -957,7 +1025,9 @@ export default function AdminLayout() {
                           if (!res.ok) throw new Error("Impersonation failed");
                           const wrapper = await res.json() as { code: number; data: { token: string; aroUserId: string } };
                           const { token, aroUserId } = wrapper.data;
-                          authStorage.setAuth(token, "STUDENT", null);
+                          // 保存 ARO 姓名用于学生端头像显示
+                          const aroName = aroBinding?.name || aroUserId;
+                          authStorage.setAuth(token, "STUDENT", { displayName: aroName, username: aroUserId } as any);
                           toast.success("已切换至学生视图");
                           navigate("/student/home");
                         } catch {
