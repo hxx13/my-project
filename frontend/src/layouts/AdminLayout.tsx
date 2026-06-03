@@ -854,24 +854,6 @@ export default function AdminLayout() {
             </button>
           ) : null}
 
-          {/* 文件夹管理 — 仅超级管理员可见 */}
-          {hasMinRole(role, "SUPER_ADMIN") ? (
-            <button
-              type="button"
-              onClick={() => {
-                onAfterNav?.();
-                navigate("/admin/nav-manager");
-              }}
-              title="管理侧边栏文件夹"
-              className={cn(
-                "flex w-full items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-left text-xs text-neutral-400 transition-colors hover:border-white/15 hover:bg-white/[0.08] hover:text-neutral-200",
-                sidebarCollapsed ? "justify-center px-2 py-2" : "px-4 py-2"
-              )}
-            >
-              <Settings className="h-4 w-4 shrink-0" />
-              {!sidebarCollapsed && <span>管理文件夹</span>}
-            </button>
-          ) : null}
           </nav>
         </div>
 
@@ -987,6 +969,17 @@ export default function AdminLayout() {
               >
                 <CircleHelp className="h-4 w-4" />
               </button>
+              {hasMinRole(role, "SUPER_ADMIN") ? (
+                <button
+                  type="button"
+                  onClick={() => navigate("/admin/nav-manager")}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+                  title="管理侧边栏文件夹"
+                  aria-label="管理侧边栏文件夹"
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
+              ) : null}
             </div>
           </div>
           <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap sm:gap-3">

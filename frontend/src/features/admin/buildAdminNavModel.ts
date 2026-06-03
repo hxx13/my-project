@@ -1,6 +1,13 @@
+import {
+  Activity, AlertTriangle, Archive, ArrowLeftRight, BarChart3, Bell, BookOpen,
+  CalendarClock, CircleCheck, ClipboardCheck, ClipboardList, Clock, CreditCard,
+  Database, DoorOpen, Download, FileText, Filter, GitBranch, GitMerge, Images,
+  KeyRound, Layers, LayoutGrid, Link2, LockKeyhole, MapPin, Megaphone,
+  MessagesSquare, Monitor, Package, PieChart, Server, Settings, ShieldAlert,
+  ShoppingCart, SlidersHorizontal, Table2, TableProperties, Terminal,
+  Thermometer, Ticket, Users, Wrench,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import * as LucideIcons from "lucide-react";
-import { FileText, Layers, MessagesSquare } from "lucide-react";
 import { fetchAdminNavConfig, type AdminNavConfigNode } from "@/api/domains/adminNavConfig.api";
 import type { PendingBadges } from "@/api/domains/me.api";
 import type { MinRole, PublicPagePermissionNode } from "@/api/domains/pagePermission.api";
@@ -268,12 +275,19 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
   };
 }
 
-// 动态图标解析：服务端返回的字符串 -> LucideIcon
+const ICON_MAP: Record<string, LucideIcon> = {
+  Activity, AlertTriangle, Archive, ArrowLeftRight, BarChart3, Bell, BookOpen,
+  CalendarClock, CircleCheck, ClipboardCheck, ClipboardList, Clock, CreditCard,
+  Database, DoorOpen, Download, FileText, Filter, GitBranch, GitMerge, Images,
+  KeyRound, Layers, LayoutGrid, Link2, LockKeyhole, MapPin, Megaphone,
+  MessagesSquare, Monitor, Package, PieChart, Server, Settings, ShieldAlert,
+  ShoppingCart, SlidersHorizontal, Table2, TableProperties, Terminal,
+  Thermometer, Ticket, Users, Wrench,
+};
+
 function resolveIconByName(name: string | null | undefined): LucideIcon {
   if (!name) return FileText;
-  // lucide-react exports are PascalCase; server stores PascalCase names
-  const icon = (LucideIcons as Record<string, unknown>)[name];
-  return typeof icon === "function" ? (icon as LucideIcon) : FileText;
+  return ICON_MAP[name] ?? FileText;
 }
 
 function nodeToSidebarItem(

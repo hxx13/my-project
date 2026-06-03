@@ -50,6 +50,9 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
     }
 
     private void seedIfEmpty() {
+        // Always clean up known non-existent paths
+        jdbcTemplate.update("DELETE FROM admin_nav_config WHERE item_path = '/admin/student-activity'");
+
         Integer cnt = jdbcTemplate.queryForObject(
                 "SELECT COUNT(1) FROM admin_nav_config", Integer.class);
         if (cnt != null && cnt > 0) {
