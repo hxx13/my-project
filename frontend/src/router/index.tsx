@@ -58,6 +58,9 @@ import AdminAccessAuditSourcePage from "@/pages/AdminAccessAuditSourcePage";
 import AdminStudentViolationsPage from "@/pages/AdminStudentViolationsPage";
 import AdminDoorControlPage from "@/pages/AdminDoorControlPage";
 import AdminCageShelfPage from "@/pages/AdminCageShelfPage";
+import AdminSpecialStatusOverviewPage from "@/pages/AdminSpecialStatusOverviewPage";
+import AdminCageShelfIndexPage from "@/pages/AdminCageShelfIndexPage";
+import AdminCageEventLogPage from "@/pages/AdminCageEventLogPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
 import AnimalRoomTelemetryPage from "@/pages/AnimalRoomTelemetryPage";
 import AnimalRoomCockpitPage from "@/pages/AnimalRoomCockpitPage";
@@ -69,6 +72,7 @@ import AdminLoginBrandingPage from "@/pages/AdminLoginBrandingPage";
 import AdminInviteCodesPage from "@/pages/AdminInviteCodesPage";
 import AdminContentHubPage from "@/pages/AdminContentHubPage";
 import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
+import AdminNavManager from "@/features/admin/AdminNavManager";
 import StudentRegisterPage from "@/features/student/pages/student-register";
 import StudentLayout from "@/features/student/components/layout/student-layout";
 import StudentHomePage from "@/features/student/pages/student-home";
@@ -205,6 +209,9 @@ export const router = createHashRouter([
                             { path: "asset-records", element: <AdminAssetRecordPage/>},
                             { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage/>},
                             { path: "cage-shelves", element: <AdminCageShelfPage/>},
+                            { path: "cage-shelves/special-status", element: <AdminSpecialStatusOverviewPage/>},
+                            { path: "cage-shelves/event-log", element: <AdminCageEventLogPage/>},
+                            { path: "cage-shelf-indexes", element: <AdminCageShelfIndexPage/>},
                             { path: "automation-logs", element: <AdminAutomationLogsPage/>},
                                     { path: "telemetry-watchlists", element: <AdminTelemetryWatchlistsPage/>},
                                     { path: "telemetry-archive", element: <AdminTelemetryArchivePage/>},
@@ -250,6 +257,7 @@ export const router = createHashRouter([
                                     { path: "purchase-process", element: <PurchaseProcessPage/>},
                                     { path: "supplies/manage", element: <AdminSuppliesManagePage/>},
                                     { path: "supplies/process", element: <AdminSuppliesProcessPage/>},
+                                    { path: "nav-manager", element: <AdminNavManager />},
                                 ]
                             },
                         ]
