@@ -1,0 +1,71 @@
+package com.example.demo.modules.admin.controller;
+
+import com.example.demo.modules.admin.model.AdminNavConfigNode;
+import com.example.demo.modules.admin.service.AdminNavConfigService;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/admin-nav")
+public class AdminNavConfigController {
+
+    private final AdminNavConfigService service;
+
+    public AdminNavConfigController(AdminNavConfigService service) {
+        this.service = service;
+    }
+
+    @GetMapping("/config")
+    public Map<String, Object> getConfig() {
+        List<AdminNavConfigNode> tree = service.getFullTree();
+        return Map.of("success", true, "data", tree);
+    }
+
+    @PostMapping("/groups")
+    public Map<String, Object> createGroup(@RequestBody Map<String, Object> body) {
+        String parentId = (String) body.get("parentId");
+        String type = (String) body.getOrDefault("type", "GROUP");
+        String title = (String) body.get("title");
+        int sortOrder = body.get("sortOrder") instanceof Number n ? n.intValue() : 0;
+        AdminNavConfigNode node = service.createGroup(parentId, type, title, sortOrder);
+        return Map.of("success", true, "data", node);
+    }
+
+    @PutMapping("/groups/{id}")
+    public Map<String, Object> updateGroup(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        String title = (String) body.get("title");
+        Integer sortOrder = body.get("sortOrder") instanceof Number n ? n.intValue() : null;
+        Boolean visible = body.get("visible") instanceof Boolean b ? b : null;
+        AdminNavConfigNode node = service.updateGroup(id, title, sortOrder, visible);
+        return Map.of("success", true, "data", node);
+    }
+
+    @DeleteMapping("/groups/{id}")
+    public Map<String, Object> deleteGroup(@PathVariable String id) {
+        service.deleteGroup(id);
+        return Map.of("success", true);
+    }
+
+    @PutMapping("/items/{id}/move")
+    public Map<String, Object> moveItem(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        String newParentId = (String) body.get("newParentId");
+        service.moveItem(id, newParentId);
+        return Map.of("success", true);
+    }
+
+    @PutMapping("/items/reorder")
+    public Map<String, Object> reorderItems(@RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> orders = (List<Map<String, Object>>) body.get("orders");
+        service.reorderItems(orders);
+        return Map.of("success", true);
+    }
+
+    @PostMapping("/reset")
+    public Map<String, Object> reset() {
+        service.resetToDefault();
+        return Map.of("success", true, "message", "配置已清空，重启应用后将自动播种默认值");
+    }
+}
