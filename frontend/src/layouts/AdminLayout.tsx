@@ -370,10 +370,18 @@ export default function AdminLayout() {
   const headerUsername = (sessionUser?.username || "").trim();
   const avatarLetter = (headerPrimaryLabel !== "—" ? headerPrimaryLabel : sessionUser?.username || "?").slice(0, 1).toUpperCase();
 
-  const { sidebarGroups: baseSidebarGroups, flatNavigableItems } = useMemo(
-    () => buildAdminNavModel(navCtx, pendingBadges),
-    [navCtx, pendingBadges]
-  );
+  const [navModel, setNavModel] = useState<Awaited<ReturnType<typeof buildAdminNavModel>> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    buildAdminNavModel(navCtx, pendingBadges).then((model) => {
+      if (!cancelled) setNavModel(model);
+    });
+    return () => { cancelled = true; };
+  }, [navCtx, pendingBadges]);
+
+  const baseSidebarGroups = navModel?.sidebarGroups ?? [];
+  const flatNavigableItems = navModel?.flatNavigableItems ?? [];
 
   const sidebarGroups = useMemo(
     () =>

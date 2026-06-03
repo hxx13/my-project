@@ -62,8 +62,18 @@ export default function AdminHomePage() {
 
   const navCtx = useMemo(() => createAdminNavContext(role, permNodes), [role, permNodes]);
 
+  const [navModel, setNavModel] = useState<Awaited<ReturnType<typeof buildAdminNavModel>> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    buildAdminNavModel(navCtx, null).then((model) => {
+      if (!cancelled) setNavModel(model);
+    });
+    return () => { cancelled = true; };
+  }, [navCtx]);
+
   const cards = useMemo(() => {
-    const { homeSections } = buildAdminNavModel(navCtx, null);
+    const homeSections = navModel?.homeSections ?? [];
     return homeSections.map((g) => ({
       ...g,
       entries: g.entries.map((e) => {
@@ -76,7 +86,7 @@ export default function AdminHomePage() {
         };
       }),
     }));
-  }, [navCtx, permNodes, role]);
+  }, [navModel, permNodes, role]);
 
   const flatEntries = useMemo(() => cards.flatMap((g) => g.entries), [cards]);
 

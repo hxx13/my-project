@@ -1,5 +1,7 @@
 import type { LucideIcon } from "lucide-react";
-import { Layers, MessagesSquare } from "lucide-react";
+import * as LucideIcons from "lucide-react";
+import { FileText, Layers, MessagesSquare } from "lucide-react";
+import { fetchAdminNavConfig, type AdminNavConfigNode } from "@/api/domains/adminNavConfig.api";
 import type { PendingBadges } from "@/api/domains/me.api";
 import type { MinRole, PublicPagePermissionNode } from "@/api/domains/pagePermission.api";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -152,7 +154,7 @@ function registryItemToSidebar(it: AdminNavRegistryItem, pendingBadges: PendingB
   };
 }
 
-export function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBadges | null) {
+function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBadges | null) {
   const sidebarGroups: AdminSidebarNavGroup[] = [];
   for (const g of ADMIN_NAV_REGISTRY) {
     const items: AdminSidebarNavItem[] = [];
@@ -264,4 +266,185 @@ export function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingB
     homeSections: mergedHome,
     flatNavigableItems,
   };
+}
+
+// 动态图标解析：服务端返回的字符串 -> LucideIcon
+function resolveIconByName(name: string | null | undefined): LucideIcon {
+  if (!name) return FileText;
+  // lucide-react exports are PascalCase; server stores PascalCase names
+  const icon = (LucideIcons as Record<string, unknown>)[name];
+  return typeof icon === "function" ? (icon as LucideIcon) : FileText;
+}
+
+function nodeToSidebarItem(
+  node: AdminNavConfigNode,
+  pendingBadges: PendingBadges | null
+): AdminSidebarNavItem | null {
+  if (node.type !== "ITEM" || !node.itemPath) return null;
+  return {
+    key: node.id,
+    to: node.itemPath,
+    label: node.title,
+    icon: resolveIconByName(node.itemIcon),
+    badgeText: badgeTextFromKey(pendingBadges, node.itemBadgeKey as keyof PendingBadges | undefined),
+    iconWrapClass: sidebarIconWrapForNavId(node.id),
+  };
+}
+
+function convertServerConfigToModel(
+  nodes: AdminNavConfigNode[],
+  pendingBadges: PendingBadges | null
+): {
+  sidebarGroups: AdminSidebarNavGroup[];
+  homeSections: AdminHomeSection[];
+} {
+  const sidebarGroups: AdminSidebarNavGroup[] = [];
+  const homeSections: AdminHomeSection[] = [];
+
+  for (const node of nodes) {
+    if (node.type !== "GROUP" || !node.visible) continue;
+
+    // Build sidebar group
+    const items: AdminSidebarNavItem[] = [];
+    const subgroups: AdminSidebarNavSubgroup[] = [];
+
+    for (const child of node.children ?? []) {
+      if (child.type === "ITEM" && child.visible) {
+        const si = nodeToSidebarItem(child, pendingBadges);
+        if (si) items.push(si);
+      } else if (child.type === "SUBGROUP" && child.visible) {
+        const sgItems: AdminSidebarNavItem[] = [];
+        for (const sgChild of child.children ?? []) {
+          if (sgChild.type === "ITEM" && sgChild.visible) {
+            const si = nodeToSidebarItem(sgChild, pendingBadges);
+            if (si) sgItems.push(si);
+          }
+        }
+        if (sgItems.length) {
+          subgroups.push({ id: child.id, title: child.title, items: sgItems });
+        }
+      }
+    }
+
+    if (items.length || subgroups.length) {
+      sidebarGroups.push({
+        id: node.id,
+        title: node.title,
+        items,
+        subgroups: subgroups.length ? subgroups : undefined,
+      });
+    }
+
+    // Build home section
+    const entries: AdminHomeEntry[] = [];
+    for (const child of node.children ?? []) {
+      if (child.type !== "ITEM" || !child.visible) continue;
+      entries.push({
+        title: child.title,
+        path: child.itemPath || "",
+        minRole: "STAFF" as MinRole,
+        icon: resolveIconByName(child.itemIcon),
+        tone: "from-sky-500 to-blue-600",
+        enabled: true,
+      });
+    }
+    if (entries.length) {
+      homeSections.push({ title: node.title, entries });
+    }
+  }
+
+  return { sidebarGroups, homeSections };
+}
+
+export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBadges | null) {
+  // 1. Try server config
+  const serverConfig = await fetchAdminNavConfig();
+
+  let sidebarGroups: AdminSidebarNavGroup[];
+  let homeSections: AdminHomeSection[];
+
+  if (serverConfig.length > 0) {
+    const model = convertServerConfigToModel(serverConfig, pendingBadges);
+    sidebarGroups = model.sidebarGroups;
+    homeSections = model.homeSections;
+  } else {
+    // Fallback to hardcoded registry
+    const legacy = buildLegacyAdminNavModel(ctx, pendingBadges);
+    sidebarGroups = legacy.sidebarGroups;
+    homeSections = legacy.homeSections;
+  }
+
+  // Build flat navigable items (same logic as before, works with either source)
+  const knownPaths = new Set<string>();
+  for (const g of sidebarGroups) {
+    for (const it of g.items) knownPaths.add(normalizeAdminPath(it.to));
+    for (const sg of g.subgroups ?? []) {
+      for (const it of sg.items) knownPaths.add(normalizeAdminPath(it.to));
+    }
+  }
+
+  const flatNavigableItems: AdminCommandPaletteItem[] = sidebarGroups.flatMap((g) => {
+    const top = g.items.map((it) => ({
+      id: it.key,
+      path: it.to,
+      label: it.label,
+      groupTitle: g.title,
+      telemetry: it.telemetry,
+      telemetryReturnStorageKey: it.telemetryReturnStorageKey,
+    }));
+    const nested = (g.subgroups ?? []).flatMap((sg) =>
+      sg.items.map((it) => ({
+        id: it.key,
+        path: it.to,
+        label: it.label,
+        groupTitle: `${g.title} · ${sg.title}`,
+        telemetry: it.telemetry,
+        telemetryReturnStorageKey: it.telemetryReturnStorageKey,
+      }))
+    );
+    return [...top, ...nested];
+  });
+
+  // Auto-discovered entries from page permissions (keep existing logic for unknown paths)
+  const seenAutoPath = new Set<string>();
+  const autoEntries: Array<AdminHomeEntry & { groupTitle: string }> = [];
+  for (const n of ctx.permNodes) {
+    if (!n || n.platform !== "WEB" || n.nodeType !== "ENTRY" || n.entrySource !== "sidebar") continue;
+    const p = normalizeAdminPath(n.pathOrRoute);
+    if (!p || knownPaths.has(p) || seenAutoPath.has(p)) continue;
+    seenAutoPath.add(p);
+    const minRole = (n.minRole as MinRole) || "STUDENT";
+    const roleOk = hasMinRole(ctx.role, minRole);
+    const permOk = canShowWebEntry(ctx.permNodes, n.pathOrRoute, "sidebar", ctx.role, minRole);
+    autoEntries.push({
+      title: titleForUnknownAdminPath(n.pathOrRoute),
+      path: n.pathOrRoute,
+      minRole,
+      icon: Layers,
+      tone: "from-cyan-500 to-blue-600",
+      enabled: roleOk && permOk,
+      groupTitle: inferHomeSectionTitleForUnknownPath(p),
+    });
+  }
+
+  let mergedHome = homeSections.map((s) => ({ ...s, entries: [...s.entries] }));
+  const unknown: AdminHomeEntry[] = [];
+  for (const entry of autoEntries) {
+    if (entry.groupTitle === "自动发现") {
+      unknown.push(entry);
+      continue;
+    }
+    const target = mergedHome.find((s) => s.title === entry.groupTitle);
+    if (target) {
+      const { groupTitle: _g, ...rest } = entry;
+      target.entries.push(rest);
+    } else {
+      unknown.push(entry);
+    }
+  }
+  if (unknown.length > 0) {
+    mergedHome = [...mergedHome, { title: "自动发现", entries: unknown }];
+  }
+
+  return { sidebarGroups, homeSections: mergedHome, flatNavigableItems };
 }
