@@ -59,8 +59,9 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         // 组织与通知
         seedGroup(null, 0, "org-notify", "组织与通知");
         seedItem("org-notify", 0, "item-personnel", "/admin/personnel", "人员授权", "Users", null);
-        seedItem("org-notify", 1, "item-content-hub", "/admin/content-hub", "小程序内容中心", "Megaphone", null);
+        seedItem("org-notify", 1, "item-notifications", "/admin/notifications", "消息通知", "Bell", null);
         seedItem("org-notify", 2, "item-student-warnings", "/admin/student-violations", "警告与弹窗公告", "AlertTriangle", null);
+        seedItem("org-notify", 3, "item-content-hub", "/admin/content-hub", "小程序内容中心", "Megaphone", null);
 
         // 系统与安全
         seedGroup(null, 1, "system-security", "系统与安全");
@@ -72,6 +73,7 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         seedItem("system-security", 5, "item-page-perms", "/admin/page-permissions", "页面权限设置", "KeyRound", null);
         seedItem("system-security", 6, "item-login-branding", "/admin/login-branding", "登录页轮播图", "Images", null);
         seedItem("system-security", 7, "item-registration-invites", "/admin/registration-invites", "注册推荐码", "Ticket", null);
+        seedItem("system-security", 8, "item-file-templates", "/admin/file-templates", "文件模板库", "Download", null);
 
         // 门禁、元数据与环境
         seedGroup(null, 2, "access-meta-env", "门禁、元数据与环境");
@@ -100,16 +102,19 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
 
         // 资产与运维
         seedGroup(null, 4, "asset-ops", "资产与运维");
-        seedItem("asset-ops", 0, "item-asset-records", "/admin/asset-records", "资产入库记录", "ClipboardCheck", null);
+        seedItem("asset-ops", 0, "item-asset-records", "/admin/asset-records", "资产入库记录", "Archive", null);
         seedItem("asset-ops", 1, "item-asset-transfer-records", "/admin/asset-transfer-records", "资产转移记录", "ArrowLeftRight", null);
         seedItem("asset-ops", 2, "item-cage-shelves", "/admin/cage-shelves", "笼架管理", "LayoutGrid", null);
-        seedItem("asset-ops", 3, "item-facility-maintenance", "/admin/facility-maintenance", "设施维护", "Wrench", null);
+        seedItem("asset-ops", 3, "item-cage-shelf-indexes", "/admin/cage-shelf-indexes", "笼架落库索引", "TableProperties", null);
+        seedItem("asset-ops", 4, "item-cage-special-status", "/admin/cage-shelves/special-status", "笼架特殊状态", "AlertTriangle", null);
+        seedItem("asset-ops", 5, "item-cage-event-log", "/admin/cage-shelves/event-log", "笼位事件日志", "Clock", null);
+        seedItem("asset-ops", 6, "item-facility-maintenance", "/admin/facility-maintenance", "设施维护", "Activity", null);
 
         // 报修与物资领用 (with subgroups)
         seedGroup(null, 5, "repair-supplies", "报修与物资领用");
         seedSubgroup("repair-supplies", 0, "sg-repair", "报修管理");
-        seedItem("sg-repair", 0, "item-repair-request", "/admin/repair-request", "报修申请", "Ticket", "repairText");
-        seedItem("sg-repair", 1, "item-repair-process", "/admin/repair-process", "报修处理", "CircleCheck", "processRepairText");
+        seedItem("sg-repair", 0, "item-repair-request", "/admin/repair-request", "报修申请", "Wrench", "repairText");
+        seedItem("sg-repair", 1, "item-repair-process", "/admin/repair-process", "报修处理", "ClipboardCheck", "processRepairText");
         seedSubgroup("repair-supplies", 1, "sg-purchase", "采购管理");
         seedItem("sg-purchase", 0, "item-purchase-request", "/admin/purchase-request", "采购申请", "ShoppingCart", "purchaseText");
         seedItem("sg-purchase", 1, "item-purchase-process", "/admin/purchase-process", "采购处理", "CircleCheck", "processPurchaseText");
@@ -117,11 +122,13 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         seedItem("sg-supplies", 0, "item-supplies", "/admin/supplies", "物资商城", "Package", "suppliesText");
         seedItem("sg-supplies", 1, "item-supplies-manage", "/admin/supplies/manage", "物资管理", "TableProperties", "processSuppliesText");
         seedItem("sg-supplies", 2, "item-supplies-process", "/admin/supplies/process", "领用处理", "CircleCheck", "processSuppliesText");
+        seedItem("sg-supplies", 3, "item-supplies-mine", "/admin/supplies/mine", "我的领用记录", "ClipboardList", null);
+        seedItem("sg-supplies", 4, "item-supplies-claim-export", "/admin/supplies/claim-export", "领用单导出", "Download", null);
+        seedItem("sg-supplies", 5, "item-supplies-audit-export", "/admin/supplies/audit-export", "领用导出", "Table2", null);
 
         // 数据分析
         seedGroup(null, 6, "analytics", "数据分析");
         seedItem("analytics", 0, "item-analytics", "/admin/analytics", "数据看板", "PieChart", null);
-        seedItem("analytics", 1, "item-student-activity", "/admin/student-activity", "学生活动分析", "Activity", null);
 
         log.info("[admin-nav-config] 种子数据已写入");
     }
