@@ -1,0 +1,176 @@
+import { useState, useEffect } from "react";
+import { GripVertical, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  updateNavGroup,
+  deleteNavGroup,
+  moveNavItem,
+  resetNavConfig,
+  type AdminNavConfigNode,
+} from "@/api/domains/adminNavConfig.api";
+
+interface Props {
+  node: AdminNavConfigNode | null;
+  allNodes: AdminNavConfigNode[];
+  onRefresh: () => void;
+}
+
+export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
+  const [title, setTitle] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (node) setTitle(node.title);
+  }, [node?.id]);
+
+  if (!node) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-400">
+        <p>选择一个文件夹或入口进行编辑</p>
+      </div>
+    );
+  }
+
+  const isGroup = node.type === "GROUP" || node.type === "SUBGROUP";
+
+  const handleSaveTitle = async () => {
+    if (!title.trim() || title === node.title) return;
+    setSaving(true);
+    await updateNavGroup(node.id, { title: title.trim() });
+    setSaving(false);
+    onRefresh();
+  };
+
+  const handleDelete = async () => {
+    const msg = isGroup
+      ? `确定要删除「${node.title}」及其所有子内容？`
+      : `确定要从侧边栏移除「${node.title}」？`;
+    if (!confirm(msg)) return;
+    await deleteNavGroup(node.id);
+    onRefresh();
+  };
+
+  const handleMoveItem = async (itemId: string, newParentId: string) => {
+    if (newParentId === node.id) return;
+    await moveNavItem(itemId, newParentId);
+    onRefresh();
+  };
+
+  const handleRemoveItem = async (itemId: string) => {
+    await moveNavItem(itemId, "__unassigned__");
+    onRefresh();
+  };
+
+  const handleReset = async () => {
+    if (!confirm("确定要重置为默认配置？这将清空所有自定义修改，需要重启应用后生效。")) return;
+    await resetNavConfig();
+    onRefresh();
+  };
+
+  const targetFolders = allNodes
+    .filter((n) => n.type === "GROUP" || n.type === "SUBGROUP")
+    .filter((n) => n.id !== node.id);
+
+  const childItems = node.children?.filter((c) => c.type === "ITEM") ?? [];
+
+  return (
+    <div className="p-6 space-y-5">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-800">编辑：{node.title}</h3>
+        <p className="text-sm text-gray-400">
+          {node.type === "GROUP" ? "顶级分组" : node.type === "SUBGROUP" ? "子分组" : "入口"}
+          {isGroup && ` · 包含 ${childItems.length} 个入口`}
+          {!isGroup && node.itemPath && <span className="ml-2">· {node.itemPath}</span>}
+        </p>
+      </div>
+
+      {/* Name editor */}
+      <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">名称</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+          <Button onClick={handleSaveTitle} disabled={saving || title === node.title} size="sm">
+            保存
+          </Button>
+        </div>
+      </div>
+
+      {/* Sort — groups only */}
+      {isGroup && (
+        <div>
+          <label className="block text-sm font-medium text-gray-600 mb-1">排序位置</label>
+          <div className="flex gap-2 items-center">
+            <Button variant="outline" size="sm" disabled={node.sortOrder <= 0}
+              onClick={async () => { await updateNavGroup(node.id, { sortOrder: node.sortOrder - 1 }); onRefresh(); }}>
+              ↑ 上移
+            </Button>
+            <Button variant="outline" size="sm"
+              onClick={async () => { await updateNavGroup(node.id, { sortOrder: node.sortOrder + 1 }); onRefresh(); }}>
+              ↓ 下移
+            </Button>
+            <span className="text-xs text-gray-400">当前第 {node.sortOrder + 1} 位</span>
+          </div>
+        </div>
+      )}
+
+      <hr className="border-gray-200" />
+
+      {/* Child items — groups only */}
+      {isGroup && (
+        <div>
+          <label className="block text-sm font-medium text-gray-600 mb-2">
+            包含的入口
+            {childItems.length === 0 && <span className="text-amber-500 ml-2">（暂无入口，请从其他文件夹拖拽或新建）</span>}
+          </label>
+          {childItems.length > 0 && (
+            <div className="border border-gray-200 rounded-md p-1 max-h-64 overflow-y-auto space-y-0.5">
+              {childItems.map((item) => (
+                <div key={item.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded text-sm group">
+                  <GripVertical className="h-3.5 w-3.5 text-gray-300 shrink-0" />
+                  <span>📄 {item.title}</span>
+                  <span className="flex-1 text-xs text-gray-400 truncate">{item.itemPath}</span>
+                  {targetFolders.length > 0 && (
+                    <select
+                      className="text-xs border border-gray-200 rounded px-1 py-0.5 opacity-0 group-hover:opacity-100"
+                      value={node.id}
+                      onChange={(e) => handleMoveItem(item.id, e.target.value)}
+                    >
+                      <option value={node.id}>移动到...</option>
+                      {targetFolders.map((f) => (
+                        <option key={f.id} value={f.id}>{f.title}</option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    onClick={() => handleRemoveItem(item.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-600"
+                    title="移除此入口"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Danger zone */}
+      <hr className="border-gray-200" />
+      <div className="flex gap-2">
+        <Button variant="destructive" size="sm" onClick={handleDelete}>
+          删除此{isGroup ? "文件夹" : "入口"}
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleReset}
+          className="border-amber-300 text-amber-700 hover:bg-amber-50">
+          重置为默认
+        </Button>
+      </div>
+    </div>
+  );
+}
