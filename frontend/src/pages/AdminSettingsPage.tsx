@@ -28,19 +28,25 @@ import { moduleDescription, moduleLabel } from "@/features/admin/settings/settin
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 
-const CONFIG_MODULES = new Set([
-  "dashboard_codex",
-  "telemetry_facility",
-  "supplies",
-  "mini_program",
-  "frontend_runtime",
-  "network",
-  "system",
-  "scanner",
-]);
+// ── 模块类型分类（单一数据源，loadData 和 JSX 渲染共用） ──
 
-function isConfigModule(key: string) {
-  return CONFIG_MODULES.has(key) || (!["notification", "template", "capability"].includes(key) && key.length > 0);
+type ModuleKind = "notification" | "capability" | "template" | "llm" | "credentials" | "config";
+
+/** 特殊模块：不走通用 SystemConfigsPanel */
+const SPECIAL_MODULES: Record<string, ModuleKind> = {
+  notification: "notification",
+  capability: "capability",
+  template: "template",
+  llm: "llm",
+  credentials: "credentials",
+  integration: "credentials",
+};
+
+function classifyModule(key: string): ModuleKind {
+  const s = SPECIAL_MODULES[key];
+  if (s) return s;
+  // 其余全部按通用 config 模块处理（包括 dashboard_codex, telemetry_facility, supplies 等）
+  return "config";
 }
 
 export default function AdminSettingsPage() {
@@ -50,6 +56,7 @@ export default function AdminSettingsPage() {
   const [activeModule, setActiveModule] = useState("notification");
   const [loading, setLoading] = useState(false);
 
+  // 所有数据状态
   const [rules, setRules] = useState<NotifyRuleRecord[]>([]);
   const [templates, setTemplates] = useState<NotifyTemplateRecord[]>([]);
   const [templateCatalog, setTemplateCatalog] = useState<NotifyTemplateRecord[]>([]);
@@ -59,82 +66,144 @@ export default function AdminSettingsPage() {
   const [supplyPushDefs, setSupplyPushDefs] = useState<SettingDefinitionRecord[]>([]);
   const [capabilityPolicies, setCapabilityPolicies] = useState<CapabilityPolicyRecord[]>([]);
 
+  /** 清空所有数据到初始状态 */
+  const resetAll = useCallback(() => {
+    setRules([]);
+    setTemplates([]);
+    setTemplateCatalog([]);
+    setConfigs([]);
+    setConfigDefs([]);
+    setSupplyPushConfigs([]);
+    setSupplyPushDefs([]);
+    setCapabilityPolicies([]);
+  }, []);
+
+  // ── 按模块类型加载对应数据 ──
+
   const loadData = useCallback(async () => {
+    const kind = classifyModule(activeModule);
+    console.log(
+      `%c[系统设置] %c切换到模块 %c"${activeModule}"%c · 类型: %c${kind}`,
+      "color:#0070f3;font-weight:bold",
+      "color:inherit",
+      "color:#0070f3;font-weight:600",
+      "color:inherit",
+      "color:#10b981;font-weight:600",
+    );
+
     setLoading(true);
     try {
-      if (activeModule === "notification") {
-        const [r, tpl] = await Promise.all([fetchNotificationRules(), fetchNotificationTemplates()]);
-        setRules(r);
-        setTemplateCatalog(tpl);
-        setTemplates([]);
-        setConfigs([]);
-        setConfigDefs([]);
-        setSupplyPushConfigs([]);
-        setSupplyPushDefs([]);
-        setCapabilityPolicies([]);
-      } else if (activeModule === "capability") {
-        const cp = await fetchCapabilityPolicies();
-        setCapabilityPolicies(cp);
-        setRules([]);
-        setTemplates([]);
-        setTemplateCatalog([]);
-        setConfigs([]);
-        setConfigDefs([]);
-        setSupplyPushConfigs([]);
-        setSupplyPushDefs([]);
-      } else if (activeModule === "template") {
-        const [t, sc, sd] = await Promise.all([
-          fetchNotificationTemplates(),
-          fetchSystemConfigs("supplies"),
-          fetchConfigDefinitions("supplies"),
-        ]);
-        setTemplates(t);
-        setTemplateCatalog(t);
-        setSupplyPushConfigs(sc);
-        setSupplyPushDefs(sd);
-        setRules([]);
-        setConfigs([]);
-        setConfigDefs([]);
-        setCapabilityPolicies([]);
-      } else if (activeModule === "llm" || isConfigModule(activeModule)) {
-        const [c, d] = await Promise.all([fetchSystemConfigs(activeModule), fetchConfigDefinitions(activeModule)]);
-        setConfigs(c);
-        setConfigDefs(d);
-        setRules([]);
-        setTemplates([]);
-        setTemplateCatalog([]);
-        setSupplyPushConfigs([]);
-        setSupplyPushDefs([]);
-        setCapabilityPolicies([]);
+      resetAll();
+
+      switch (kind) {
+        case "notification": {
+          console.log("[系统设置] → 加载通知规则 + 模板目录");
+          const [r, tpl] = await Promise.all([fetchNotificationRules(), fetchNotificationTemplates()]);
+          setRules(r);
+          setTemplateCatalog(tpl);
+          console.log(`[系统设置] ✓ 通知规则 ${r.length} 条, 模板目录 ${tpl.length} 个`);
+          break;
+        }
+
+        case "capability": {
+          console.log("[系统设置] → 加载能力策略");
+          const cp = await fetchCapabilityPolicies();
+          setCapabilityPolicies(cp);
+          console.log(`[系统设置] ✓ 能力策略 ${cp.length} 条`);
+          break;
+        }
+
+        case "template": {
+          console.log("[系统设置] → 加载通知模板 + 物资推送配置");
+          const [t, sc, sd] = await Promise.all([
+            fetchNotificationTemplates(),
+            fetchSystemConfigs("supplies"),
+            fetchConfigDefinitions("supplies"),
+          ]);
+          setTemplates(t);
+          setTemplateCatalog(t);
+          setSupplyPushConfigs(sc);
+          setSupplyPushDefs(sd);
+          console.log(`[系统设置] ✓ 模板 ${t.length} 个, 物资配置 ${sc.length} 条, 物资定义 ${sd.length} 条`);
+          break;
+        }
+
+        case "llm": {
+          console.log("[系统设置] → 加载 LLM 配置");
+          const [c, d] = await Promise.all([fetchSystemConfigs("llm"), fetchConfigDefinitions("llm")]);
+          setConfigs(c);
+          setConfigDefs(d);
+          console.log(`[系统设置] ✓ LLM 配置 ${c.length} 条, 定义 ${d.length} 条`);
+          break;
+        }
+
+        case "credentials": {
+          console.log(`[系统设置] → 加载 ${activeModule} 配置`);
+          const [c, d] = await Promise.all([
+            fetchSystemConfigs(activeModule),
+            fetchConfigDefinitions(activeModule),
+          ]);
+          setConfigs(c);
+          setConfigDefs(d);
+          console.log(`[系统设置] ✓ ${activeModule} 配置 ${c.length} 条, 定义 ${d.length} 条`);
+          break;
+        }
+
+        case "config": {
+          console.log(`[系统设置] → 加载通用配置模块 "${activeModule}"`);
+          const [c, d] = await Promise.all([
+            fetchSystemConfigs(activeModule),
+            fetchConfigDefinitions(activeModule),
+          ]);
+          setConfigs(c);
+          setConfigDefs(d);
+          console.log(`[系统设置] ✓ 配置 ${c.length} 条, 定义 ${d.length} 条`);
+          break;
+        }
       }
     } catch (error) {
+      console.error(`[系统设置] ✗ 加载模块 "${activeModule}" 失败:`, error);
       toast.error(error instanceof Error ? error.message : "加载设置失败");
     } finally {
       setLoading(false);
     }
-  }, [activeModule]);
+  }, [activeModule, resetAll]);
+
+  // ── 初始化模块列表 ──
 
   useEffect(() => {
     void (async () => {
       try {
         const list = await fetchSettingsModules();
+        console.log(`[系统设置] 模块列表已加载: ${list.length} 个模块`, list.map((m) => m.key));
         setModules(list);
       } catch (error) {
+        console.error("[系统设置] 加载模块列表失败:", error);
         toast.error(error instanceof Error ? error.message : "加载模块列表失败");
       }
     })();
   }, []);
 
+  // ── 模块切换时重新加载 ──
+
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
+  // ── URL 参数同步模块 ──
+
   useEffect(() => {
     const m = (searchParams.get("module") || "").trim();
     if (!m || modules.length === 0) return;
-    if (modules.some((x) => x.key === m)) setActiveModule(m);
+    if (modules.some((x) => x.key === m)) {
+      console.log(`[系统设置] URL 参数切换模块 → "${m}"`);
+      setActiveModule(m);
+    }
   }, [searchParams, modules]);
 
+  // ── 渲染 ──
+
+  const kind = classifyModule(activeModule);
   const activeTitle = moduleLabel(modules, activeModule);
 
   return (
@@ -161,42 +230,39 @@ export default function AdminSettingsPage() {
             <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-neutral-200 bg-white text-sm text-neutral-500">
               加载中…
             </div>
-          ) : null}
-
-          {!loading && activeModule === "notification" ? (
-            <NotificationRulesPanel rules={rules} templates={templateCatalog} onRulesChange={setRules} />
-          ) : null}
-
-          {!loading && activeModule === "capability" ? (
-            <CapabilityPoliciesPanel policies={capabilityPolicies} onPoliciesChange={setCapabilityPolicies} />
-          ) : null}
-
-          {!loading && activeModule === "template" ? (
-            <NotificationTemplatesPanel
-              templates={templates}
-              supplyPushConfigs={supplyPushConfigs}
-              supplyPushDefs={supplyPushDefs}
-              onTemplatesChange={setTemplates}
-              onSupplyConfigsChange={setSupplyPushConfigs}
-            />
-          ) : null}
-
-          {!loading && activeModule === "llm" ? (
-            <LlmSettingsPanel configs={configs} configDefs={configDefs} onConfigsChange={setConfigs} />
-          ) : null}
-
-          {!loading && (activeModule === "credentials" || activeModule === "integration") ? (
-            <CredentialsTestPanel moduleKey={activeModule} configs={configs} configDefs={configDefs} onConfigsChange={setConfigs} />
-          ) : null}
-
-          {!loading && isConfigModule(activeModule) && activeModule !== "llm" && activeModule !== "credentials" && activeModule !== "integration" ? (
-            <SystemConfigsPanel
-              moduleKey={activeModule}
-              configs={configs}
-              configDefs={configDefs}
-              onConfigsChange={setConfigs}
-            />
-          ) : null}
+          ) : (
+            <>
+              {kind === "notification" && (
+                <NotificationRulesPanel rules={rules} templates={templateCatalog} onRulesChange={setRules} />
+              )}
+              {kind === "capability" && (
+                <CapabilityPoliciesPanel policies={capabilityPolicies} onPoliciesChange={setCapabilityPolicies} />
+              )}
+              {kind === "template" && (
+                <NotificationTemplatesPanel
+                  templates={templates}
+                  supplyPushConfigs={supplyPushConfigs}
+                  supplyPushDefs={supplyPushDefs}
+                  onTemplatesChange={setTemplates}
+                  onSupplyConfigsChange={setSupplyPushConfigs}
+                />
+              )}
+              {kind === "llm" && (
+                <LlmSettingsPanel configs={configs} configDefs={configDefs} onConfigsChange={setConfigs} />
+              )}
+              {kind === "credentials" && (
+                <CredentialsTestPanel moduleKey={activeModule} configs={configs} configDefs={configDefs} onConfigsChange={setConfigs} />
+              )}
+              {kind === "config" && (
+                <SystemConfigsPanel
+                  moduleKey={activeModule}
+                  configs={configs}
+                  configDefs={configDefs}
+                  onConfigsChange={setConfigs}
+                />
+              )}
+            </>
+          )}
         </div>
       </div>
     </AdminPageShell>
