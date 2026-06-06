@@ -10,7 +10,21 @@ export function SwipeFailureBanner() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const role = authStorage.getRole();
 
-  // Only render for ADMIN+ (level >= 4)
+  // Auto-dismiss timer — must be called before any conditional return (Rules of Hooks)
+  useEffect(() => {
+    if (!activeAlert) return;
+    setLeaving(false);
+    if (activeAlert.bannerDurationSec > 0) {
+      timerRef.current = setTimeout(() => {
+        dismissAlert();
+      }, activeAlert.bannerDurationSec * 1000);
+    }
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [activeAlert?.alertId]);
+
+  // Gate: only render for ADMIN+ and when an alert is active
   if (!activeAlert || !hasMinRoleLevel(role, 4)) {
     return null;
   }
@@ -31,20 +45,6 @@ export function SwipeFailureBanner() {
   const handleGoToRecords = () => {
     window.location.hash = "#/admin/dahua-swing-tasks?tab=records";
   };
-
-  // Auto-dismiss timer
-  useEffect(() => {
-    if (!activeAlert) return;
-    setLeaving(false);
-    if (activeAlert.bannerDurationSec > 0) {
-      timerRef.current = setTimeout(() => {
-        dismissAlert();
-      }, activeAlert.bannerDurationSec * 1000);
-    }
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [activeAlert?.alertId]);
 
   const dur = activeAlert.bannerDurationSec || 10;
 
