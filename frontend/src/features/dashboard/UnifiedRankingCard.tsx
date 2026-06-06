@@ -439,7 +439,7 @@ export function UnifiedRankingCard() {
                     </span>
                     <span
                       style={{
-                        flex: "0.22",
+                        flex: "0.32",
                         fontSize: 14,
                         color: "#334155",
                         textAlign: "right",
@@ -455,7 +455,7 @@ export function UnifiedRankingCard() {
                     </span>
                     <div
                       style={{
-                        flex: "0.45",
+                        flex: "0.35",
                         height: 10,
                         background: "#f1f5f9",
                         borderRadius: 5,

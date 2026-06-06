@@ -66,9 +66,9 @@ export default function DashboardPage() {
     }, []);
 
     const { data: heatmapData, isLoading: isHeatmapLoading } = useQuery({
-        queryKey: ["dashboard", "heatmap", thisWeekRange.startTime, thisWeekRange.endTime],
+        queryKey: ["dashboard", "heatmap", activeGroup, thisWeekRange.startTime, thisWeekRange.endTime],
         queryFn: () => fetchStudentActivityHeatmap({
-            groupName: "",
+            groupName: activeGroup,
             startTime: thisWeekRange.startTime,
             endTime: thisWeekRange.endTime,
         }),
@@ -76,9 +76,9 @@ export default function DashboardPage() {
     });
 
     const { data: roomUsageData, isLoading: isRoomLoading } = useQuery({
-        queryKey: ["dashboard", "roomUsage", thisWeekRange.startTime, thisWeekRange.endTime],
+        queryKey: ["dashboard", "roomUsage", activeGroup, thisWeekRange.startTime, thisWeekRange.endTime],
         queryFn: () => fetchStudentActivityRoomUsage({
-            groupName: "",
+            groupName: activeGroup,
             startTime: thisWeekRange.startTime,
             endTime: thisWeekRange.endTime,
         }),
@@ -106,6 +106,11 @@ export default function DashboardPage() {
         return ts >= thisMonday;
       });
     }, [realtimeEvents, thisMonday]);
+
+    // 最新进入的人的课题组
+    const activeGroup = useMemo(() => {
+      return liveEntries[0]?.person?.group ?? "";
+    }, [liveEntries]);
 
     // 合并：API 热力图数据 + 实时增量
     const mergedHeatmap = useMemo<HeatmapCell[]>(() => {
