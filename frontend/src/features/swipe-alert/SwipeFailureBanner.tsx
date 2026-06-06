@@ -27,9 +27,9 @@ export function SwipeFailureBanner() {
     setTimeout(() => dismissAlert(), 300);
   };
 
-  // Go to records page
+  // Go to records page (use hash router, not full page navigation)
   const handleGoToRecords = () => {
-    window.open("/admin/dahua-swing-tasks?tab=records", "_self");
+    window.location.hash = "#/admin/dahua-swing-tasks?tab=records";
   };
 
   // Auto-dismiss timer
