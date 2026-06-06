@@ -663,14 +663,20 @@ export default function AdminStudentViolationsPage() {
   const saveStrandedConfig = async () => {
     setStrandedConfigSaving(true);
     try {
+      // Save stranded violation config (keys must be snake_case for backend Map.get())
       await adminHttp.put("/twin/student-violations/stranded-config", {
         enabled: strandedEnabled,
-        autoSignoutEnabled: strandedAutoSignout,
-        violationTextTpl: strandedViolationTpl,
-        forbidEnter: strandedForbidEnter,
-        expireAfterDays: Number(strandedExpireDays) || 1,
-        whitelistDepts: JSON.stringify(strandedWhitelistDepts),
+        auto_signout_enabled: strandedAutoSignout,
+        violation_text_tpl: strandedViolationTpl,
+        forbid_enter: strandedForbidEnter,
+        expire_after_days: Number(strandedExpireDays) || 1,
+        whitelist_depts: JSON.stringify(strandedWhitelistDepts),
       });
+      // Sync timer job enabled state
+      try {
+        const { updateScheduleJob } = await import("@/api/domains/schedule.api");
+        await updateScheduleJob("STRANDED_VIOLATION_CHECK", { enabled: strandedEnabled ? 1 : 0 });
+      } catch { /* timer sync is best-effort */ }
       toast.success("自动滞留配置已保存");
       loadStrandedConfig();
     } catch (e) {
@@ -687,7 +693,7 @@ export default function AdminStudentViolationsPage() {
         autoSignout: testSignout,
       });
       const data = (res as any)?.data?.data ?? (res as any)?.data ?? res;
-      toast.success(data?.message || "测试执行成功");
+      toast.success(data?.summary || data?.message || "测试执行成功");
       loadStrandedConfig(); // refresh last result
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "测试失败");

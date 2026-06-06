@@ -197,7 +197,7 @@ public class StrandedViolationService {
      *
      * @return 描述执行结果的摘要
      */
-    public String testSingleUser(String userId) {
+    public String testSingleUser(String userId, boolean autoSignout) {
         if (userId == null || userId.isBlank()) {
             return "缺少 userId";
         }
@@ -206,11 +206,8 @@ public class StrandedViolationService {
         if (config == null || config.isEmpty()) {
             return "配置不存在";
         }
-        if (!Boolean.TRUE.equals(toBool(config.get("enabled")))) {
-            return "功能未启用（enabled=false）";
-        }
-
-        boolean autoSignout = Boolean.TRUE.equals(toBool(config.get("auto_signout_enabled")));
+        // NOTE: for testing, we allow execution even if master enabled=false
+        // (so admins can verify config before enabling globally)
         String tpl = Objects.toString(config.get("violation_text_tpl"), DEFAULT_VIOLATION_TPL);
         int forbidEnter = Boolean.TRUE.equals(toBool(config.get("forbid_enter"))) ? 1 : 0;
         int expireDays = toInt(config.get("expire_after_days"), 1);

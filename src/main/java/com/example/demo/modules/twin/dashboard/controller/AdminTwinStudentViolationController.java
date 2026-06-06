@@ -345,6 +345,14 @@ public class AdminTwinStudentViolationController {
         return null;
     }
 
+    private static Boolean toBool(Object v) {
+        if (v == null) return false;
+        if (v instanceof Boolean b) return b;
+        if (v instanceof Number n) return n.intValue() != 0;
+        String s = String.valueOf(v);
+        return "1".equals(s) || "true".equalsIgnoreCase(s);
+    }
+
     private String readableError(Throwable throwable) {
         Throwable cur = throwable;
         while (cur.getCause() != null) {
@@ -437,7 +445,8 @@ public class AdminTwinStudentViolationController {
         if (userId.isBlank()) {
             return Result.error("缺少 userId");
         }
-        String summary = strandedViolationService.testSingleUser(userId);
+        boolean autoSignout = body != null && Boolean.TRUE.equals(toBool(body.get("autoSignout")));
+        String summary = strandedViolationService.testSingleUser(userId, autoSignout);
         return Result.success(Map.of("userId", userId, "summary", summary));
     }
 }
