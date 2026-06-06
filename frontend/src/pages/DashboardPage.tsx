@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useMemo } from "react";
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import gsap from "gsap";
@@ -10,8 +10,10 @@ import type { LineStats } from '@/api/twinApi';
 import { HubPeakLineChart } from '@/features/dashboard/HubPeakLineChart';
 import { TimelineWaterfall } from '@/features/realtime-stream/TimelineWaterfall';
 import { NestedPieChart } from '@/features/dashboard/NestedPieChart';
-import { MonthlyRankCarousel } from '@/features/dashboard/MonthlyRankCarousel';
-import {AnimalOrderRankingCard} from "@/features/dashboard/AnimalOrderRankingCard.tsx";
+import { UnifiedRankingCard } from '@/features/dashboard/UnifiedRankingCard';
+import { DashboardHeatmapChart } from '@/features/dashboard/DashboardHeatmapChart';
+import { RoomPreferenceChart } from '@/features/dashboard/RoomPreferenceChart';
+import { fetchStudentActivityHeatmap, fetchStudentActivityRoomUsage } from '@/api/domains/analytics.api';
 import { RetentionRadarStream } from '@/features/realtime-stream/RetentionRadarStream';
 import { RuleCodexCard } from '@/features/dashboard/RuleCodexCard'; // 确认路径和你刚才建的一致
 import { SciFiDashboardChrome } from '@/features/dashboard-scifi-theme/SciFiDashboardChrome';
@@ -39,7 +41,76 @@ export default function DashboardPage() {
         refetchInterval: 1000 * 60 * 5 // 每 5 分钟自动静默刷新一次
     });
 
+    // 本周起止时间
+    const thisWeekRange = useMemo(() => {
+      const now = new Date();
+      const day = now.getDay();
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+      monday.setHours(0, 0, 0, 0);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+      sunday.setHours(23, 59, 59, 999);
+      const fmt = (d: Date) => {
+        const y = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, "0");
+        const da = String(d.getDate()).padStart(2, "0");
+        const h = String(d.getHours()).padStart(2, "0");
+        const mi = String(d.getMinutes()).padStart(2, "0");
+        const s = String(d.getSeconds()).padStart(2, "0");
+        return `${y}-${mo}-${da} ${h}:${mi}:${s}`;
+      };
+      return { startTime: fmt(monday), endTime: fmt(sunday) };
+    }, []);
+
+    const { data: heatmapData, isLoading: isHeatmapLoading } = useQuery({
+        queryKey: ["dashboard", "heatmap", thisWeekRange.startTime, thisWeekRange.endTime],
+        queryFn: () => fetchStudentActivityHeatmap({
+            groupName: "",
+            startTime: thisWeekRange.startTime,
+            endTime: thisWeekRange.endTime,
+        }),
+        refetchInterval: 300_000,
+    });
+
+    const { data: roomUsageData, isLoading: isRoomLoading } = useQuery({
+        queryKey: ["dashboard", "roomUsage", thisWeekRange.startTime, thisWeekRange.endTime],
+        queryFn: () => fetchStudentActivityRoomUsage({
+            groupName: "",
+            startTime: thisWeekRange.startTime,
+            endTime: thisWeekRange.endTime,
+        }),
+        refetchInterval: 300_000,
+    });
+
     return (
+        <>
+        <style>{`
+          @keyframes shimmer-bg {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+          }
+          @keyframes arrowBounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-2px); }
+          }
+          @keyframes glowPulse {
+            0%, 100% { box-shadow: 0 0 8px rgba(251,191,36,0.3), 0 0 20px rgba(251,191,36,0.1); }
+            50% { box-shadow: 0 0 16px rgba(251,191,36,0.5), 0 0 36px rgba(251,191,36,0.2); }
+          }
+          @keyframes silverPulse {
+            0%, 100% { box-shadow: 0 0 6px rgba(148,163,184,0.25); }
+            50% { box-shadow: 0 0 12px rgba(148,163,184,0.4); }
+          }
+          @keyframes bronzePulse {
+            0%, 100% { box-shadow: 0 0 5px rgba(249,115,22,0.2); }
+            50% { box-shadow: 0 0 10px rgba(249,115,22,0.35); }
+          }
+          @keyframes cellBreathe {
+            0%, 100% { filter: brightness(1); }
+            50% { filter: brightness(1.15); }
+          }
+        `}</style>
         <DashboardSciFiVisualProvider value={sciFiTheme.enabled}>
         <div
             className={`w-full h-screen bg-transparent text-slate-800 flex flex-col font-sans overflow-hidden box-border ${
@@ -107,12 +178,23 @@ export default function DashboardPage() {
                 <div className="flex min-h-0 flex-col gap-[15px]">
                     <div className="flex min-h-0 flex-[5] dash-card">
                         <GlassCard blobColor="rgba(191,90,242,0.3)">
-                            <MonthlyRankCarousel />
+                            <UnifiedRankingCard />
                         </GlassCard>
                     </div>
-                    <div className="flex min-h-0 flex-[5] dash-card">
-                        <GlassCard blobColor="rgba(255,59,48,0.3)">
-                            <AnimalOrderRankingCard />
+                    <div className="flex min-h-0 flex-[2.5] dash-card">
+                        <GlassCard blobColor="rgba(124,58,237,0.15)">
+                            <DashboardHeatmapChart
+                                data={heatmapData ?? []}
+                                loading={isHeatmapLoading}
+                            />
+                        </GlassCard>
+                    </div>
+                    <div className="flex min-h-0 flex-[2.5] dash-card">
+                        <GlassCard blobColor="rgba(236,72,153,0.12)">
+                            <RoomPreferenceChart
+                                data={roomUsageData ?? []}
+                                loading={isRoomLoading}
+                            />
                         </GlassCard>
                     </div>
                 </div>
@@ -121,5 +203,6 @@ export default function DashboardPage() {
             </SciFiDashboardChrome>
         </div>
         </DashboardSciFiVisualProvider>
+        </>
     );
 }
