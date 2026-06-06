@@ -5,12 +5,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Ban,
+  Beaker,
   Bell,
   Check,
   CheckCircle2,
   CreditCard,
   Pencil,
   RefreshCw,
+  Save,
   ShieldAlert,
   Trash2,
   User,
@@ -35,6 +37,7 @@ import {
   type UnboundApplyRoleCode,
 } from "@/api/domains/studentViolation.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
+import { adminHttp } from "@/api/core/adminHttp";
 import { searchPersonnel } from "@/api/twinApi";
 import { AdminButton, adminPickableRowClass } from "@/components/admin/AdminButton";
 import { AdminFilePickButton } from "@/components/admin/AdminFilePickButton";
@@ -47,6 +50,7 @@ import { ScanPopupAnnouncementSection } from "@/features/admin/ScanPopupAnnounce
 import type { SwipeAlertRuleRow } from "@/api/domains/swipeAlert.api";
 import { SwipeAlertRuleList } from "@/features/swipe-alert/SwipeAlertRuleList";
 import { SwipeAlertRuleForm } from "@/features/swipe-alert/SwipeAlertRuleForm";
+import { DepartmentMultiSelect } from "@/features/swipe-alert/DepartmentMultiSelect";
 import {
   SCAN_OPERATOR_ROLE_HINT_UNBOUND,
   SCAN_OPERATOR_ROLE_LABEL,
@@ -115,6 +119,14 @@ function parsePageTab(raw: string | null): PageTabId {
   return "unbound";
 }
 
+function parseJsonArrayStr(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
 export default function AdminStudentViolationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const qc = useQueryClient();
@@ -172,6 +184,23 @@ export default function AdminStudentViolationsPage() {
   const [unboundSaving, setUnboundSaving] = useState(false);
   const [swipeAlertRefreshKey, setSwipeAlertRefreshKey] = useState(0);
   const [editingSwipeRule, setEditingSwipeRule] = useState<SwipeAlertRuleRow | null>(null);
+
+  // Stranded violation config state
+  const [strandedEnabled, setStrandedEnabled] = useState(false);
+  const [strandedAutoSignout, setStrandedAutoSignout] = useState(true);
+  const [strandedViolationTpl, setStrandedViolationTpl] = useState("");
+  const [strandedForbidEnter, setStrandedForbidEnter] = useState(false);
+  const [strandedExpireDays, setStrandedExpireDays] = useState("1");
+  const [strandedWhitelistDepts, setStrandedWhitelistDepts] = useState<string[]>([]);
+  const [strandedLastResult, setStrandedLastResult] = useState("");
+  const [strandedConfigLoading, setStrandedConfigLoading] = useState(false);
+  const [strandedConfigSaving, setStrandedConfigSaving] = useState(false);
+  // Test state
+  const [testPersonKeyword, setTestPersonKeyword] = useState("");
+  const [testPickedUser, setTestPickedUser] = useState<{userId: string; name: string} | null>(null);
+  const [testSearchResult, setTestSearchResult] = useState<Array<Record<string, unknown>>>([]);
+  const [testSignout, setTestSignout] = useState(true);
+  const [testRunning, setTestRunning] = useState(false);
 
   const violationsQueryKey = useMemo(
     () => ["studentViolations", picked?.userId || "all"] as const,
@@ -614,6 +643,75 @@ export default function AdminStudentViolationsPage() {
     }
   };
 
+  // ---- Stranded config ----
+  const loadStrandedConfig = async () => {
+    setStrandedConfigLoading(true);
+    try {
+      const res = await adminHttp.get("/twin/student-violations/stranded-config");
+      const cfg = (res as any)?.data?.data ?? (res as any)?.data ?? {};
+      setStrandedEnabled(Boolean(cfg.enabled));
+      setStrandedAutoSignout(cfg.auto_signout_enabled !== 0);
+      setStrandedViolationTpl(cfg.violation_text_tpl || "");
+      setStrandedForbidEnter(Boolean(cfg.forbid_enter));
+      setStrandedExpireDays(String(cfg.expire_after_days ?? 1));
+      setStrandedWhitelistDepts(parseJsonArrayStr(cfg.whitelist_depts));
+      setStrandedLastResult(cfg.last_execution_result || "");
+    } catch { /* ignore */ }
+    finally { setStrandedConfigLoading(false); }
+  };
+
+  const saveStrandedConfig = async () => {
+    setStrandedConfigSaving(true);
+    try {
+      await adminHttp.put("/twin/student-violations/stranded-config", {
+        enabled: strandedEnabled,
+        autoSignoutEnabled: strandedAutoSignout,
+        violationTextTpl: strandedViolationTpl,
+        forbidEnter: strandedForbidEnter,
+        expireAfterDays: Number(strandedExpireDays) || 1,
+        whitelistDepts: JSON.stringify(strandedWhitelistDepts),
+      });
+      toast.success("自动滞留配置已保存");
+      loadStrandedConfig();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally { setStrandedConfigSaving(false); }
+  };
+
+  const runTestOnUser = async () => {
+    if (!testPickedUser) { toast.error("请先选择人员"); return; }
+    setTestRunning(true);
+    try {
+      const res = await adminHttp.post("/twin/student-violations/stranded-config/test", {
+        userId: testPickedUser.userId,
+        autoSignout: testSignout,
+      });
+      const data = (res as any)?.data?.data ?? (res as any)?.data ?? res;
+      toast.success(data?.message || "测试执行成功");
+      loadStrandedConfig(); // refresh last result
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "测试失败");
+    } finally { setTestRunning(false); }
+  };
+
+  const handleTestSearchPersonnel = useCallback(async (keyword: string) => {
+    const q = keyword.trim();
+    if (!q) {
+      setTestSearchResult([]);
+      return;
+    }
+    try {
+      const { data: list } = await searchPersonnel(q);
+      setTestSearchResult(Array.isArray(list) ? list : []);
+    } catch {
+      setTestSearchResult([]);
+    }
+  }, []);
+
+  const testSearchTimer = useRef<number | null>(null);
+
+  useEffect(() => { loadStrandedConfig(); }, []);
+
   return (
     <AdminPageShell
       title="警告与弹窗公告"
@@ -790,7 +888,7 @@ export default function AdminStudentViolationsPage() {
           activeTab={activeTab}
         >
         <AdminFormCard
-          title="新建违规"
+          title="✋ 手动新建"
           description="单人锁定或按课题组批量勾选成员；提交后扫码侧按每人最新 ACTIVE 展示。"
         >
           <div className="mb-4">
@@ -1125,6 +1223,185 @@ export default function AdminStudentViolationsPage() {
             </AdminButton>
           </div>
         </AdminFormCard>
+
+        {/* ---- Auto-stranded config ---- */}
+        <AdminFormCard
+          title="🤖 每日自动滞留检测"
+          description="每日定时检测未豁免且仍在楼内的滞留人员，自动创建违规记录并通过扫码公告通知。执行时间请在「定时管理」页面配置。"
+        >
+          {strandedConfigLoading ? (
+            <p className="text-sm text-[var(--twin-mute)]">加载配置中…</p>
+          ) : (
+            <div className="space-y-4">
+              {/* Enabled */}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" className="h-4 w-4" checked={strandedEnabled}
+                  onChange={(e) => setStrandedEnabled(e.target.checked)} />
+                启用每日自动滞留检测
+              </label>
+
+              {/* Auto signout */}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" className="h-4 w-4" checked={strandedAutoSignout}
+                  onChange={(e) => setStrandedAutoSignout(e.target.checked)}
+                  disabled={!strandedEnabled} />
+                同时执行签退操作（帮助滞留人员离开）
+              </label>
+
+              {/* Violation text template */}
+              <div>
+                <label className="text-xs font-medium text-[var(--twin-body)]">
+                  违规文案模板
+                </label>
+                <textarea
+                  className={cn(inputBase, "mt-1.5 min-h-[60px] resize-y")}
+                  value={strandedViolationTpl}
+                  onChange={(e) => setStrandedViolationTpl(e.target.value)}
+                  disabled={!strandedEnabled}
+                  placeholder={"${name}(${dept})滞留未签退，系统自动登记"}
+                />
+                <p className="mt-0.5 text-[10px] text-neutral-400">
+                  可用变量：{'${name}'} {'${dept}'} {'${date}'}
+                </p>
+              </div>
+
+              {/* Forbid enter + expire */}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" className="h-4 w-4" checked={strandedForbidEnter}
+                    onChange={(e) => setStrandedForbidEnter(e.target.checked)}
+                    disabled={!strandedEnabled} />
+                  禁止扫码进入
+                </label>
+                <div>
+                  <label className="text-xs font-medium text-[var(--twin-body)]">
+                    自动过期天数
+                  </label>
+                  <input className={cn(inputBase, "mt-1")} type="number" min="1"
+                    value={strandedExpireDays} onChange={(e) => setStrandedExpireDays(e.target.value)}
+                    disabled={!strandedEnabled} />
+                </div>
+              </div>
+
+              {/* Whitelist departments */}
+              <div>
+                <label className="text-xs font-medium text-[var(--twin-body)]">
+                  白名单部门（不触发自动违规）
+                </label>
+                <div className="mt-1.5">
+                  <DepartmentMultiSelect
+                    selected={strandedWhitelistDepts}
+                    onChange={setStrandedWhitelistDepts}
+                  />
+                </div>
+              </div>
+
+              {/* Last execution result */}
+              {strandedLastResult && (
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700">
+                  📋 上次执行：{strandedLastResult}
+                </div>
+              )}
+
+              {/* Save button */}
+              <AdminButton type="button" tone="primary" loading={strandedConfigSaving}
+                className="gap-1.5" onClick={() => { saveStrandedConfig(); }}>
+                <Save className="h-4 w-4" />保存配置
+              </AdminButton>
+            </div>
+          )}
+        </AdminFormCard>
+
+        {/* ---- Test section ---- */}
+        <AdminFormCard
+          title="🧪 手动测试"
+          description="对指定人员单独执行滞留检测，验证配置是否正确。"
+        >
+          <div className="space-y-3">
+            {testPickedUser ? (
+              <div className="flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                <Check className="h-4 w-4 text-indigo-600" />
+                <div className="flex-1">
+                  <span className="text-sm font-semibold">{testPickedUser.name}</span>
+                  <span className="ml-2 font-mono text-xs text-indigo-500">({testPickedUser.userId})</span>
+                </div>
+                <AdminButton type="button" tone="secondary" size="sm"
+                  onClick={() => setTestPickedUser(null)}>更换</AdminButton>
+              </div>
+            ) : (
+              <div className="relative space-y-2">
+                <input
+                  type="text"
+                  className={cn(inputBase)}
+                  placeholder="输入姓名或工号检索人员…"
+                  value={testPersonKeyword}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void handleTestSearchPersonnel(testPersonKeyword);
+                    }
+                  }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTestPersonKeyword(val);
+                    if (testSearchTimer.current) {
+                      window.clearTimeout(testSearchTimer.current);
+                    }
+                    testSearchTimer.current = window.setTimeout(() => {
+                      void handleTestSearchPersonnel(val);
+                    }, 250);
+                  }}
+                />
+                {testSearchResult.length > 0 && !testPickedUser ? (
+                  <div
+                    className="absolute left-0 right-0 top-[2.8rem] z-20 max-h-[220px] overflow-y-auto overscroll-y-contain rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 shadow-twin-level-3 ring-1 ring-black/[0.04]"
+                    role="listbox"
+                    aria-label="测试人员预检结果"
+                  >
+                    {testSearchResult.map((rawPerson) => {
+                      const rp = rawPerson as Record<string, unknown>;
+                      const safeId = String(rp.user_id ?? rp.userid ?? rp.userId ?? rp.id ?? "").trim();
+                      const safeName = String(rp.name ?? rp.username ?? "未知").trim() || safeId;
+                      return (
+                      <button
+                        key={safeId || safeName}
+                        type="button"
+                        className={adminPickableRowClass}
+                        onClick={() => {
+                          setTestPickedUser({ userId: safeId, name: safeName });
+                          setTestPersonKeyword(`${safeName} (${safeId})`);
+                          setTestSearchResult([]);
+                        }}
+                      >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
+                            <User className="h-4 w-4 text-[var(--twin-mute)]" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate text-sm font-semibold text-[var(--twin-ink)]">{safeName}</span>
+                              <span className="shrink-0 font-mono text-[10px] text-[var(--twin-mute)]">{safeId}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="h-4 w-4" checked={testSignout}
+                onChange={(e) => setTestSignout(e.target.checked)} />
+              同时执行签退
+            </label>
+
+            <AdminButton type="button" tone="primary" loading={testRunning}
+              disabled={!testPickedUser}
+              className="gap-1.5" onClick={() => { runTestOnUser(); }}>
+              <Beaker className="h-4 w-4" />对该人员执行检测
+            </AdminButton>
+          </div>
+        </AdminFormCard>
         </AdminTabPanel>
 
         <AdminTabPanel
@@ -1151,6 +1428,7 @@ export default function AdminStudentViolationsPage() {
                   <th className="whitespace-nowrap px-3 py-2">ID</th>
                   <th className="px-3 py-2">人员</th>
                   <th className="whitespace-nowrap px-3 py-2">状态</th>
+                  <th className="whitespace-nowrap px-3 py-2">来源</th>
                   <th className="whitespace-nowrap px-3 py-2">禁入</th>
                   <th className="whitespace-nowrap px-3 py-2">进入计数</th>
                   <th className="whitespace-nowrap px-3 py-2">到期</th>
@@ -1179,6 +1457,17 @@ export default function AdminStudentViolationsPage() {
                         <span className={st.className} title={st.hint}>
                           {st.text}
                         </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {r.source === "AUTO_STRANDED" ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                            🤖 自动·滞留检测
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-600">
+                            ✋ 手动
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-xs">{r.forbidEnter ? "是" : "否"}</td>
                       <td className="px-3 py-2 text-xs">

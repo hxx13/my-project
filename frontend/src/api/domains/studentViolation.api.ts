@@ -17,6 +17,7 @@ export interface StudentViolationRow {
   showNoticeEveryScan?: number;
   expireAt?: string | null;
   status?: StudentViolationStatus;
+  source?: string;  // MANUAL | AUTO_STRANDED
   createdByUserId?: string;
   createdAt?: string;
   updatedAt?: string;
