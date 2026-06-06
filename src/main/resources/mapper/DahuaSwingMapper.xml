@@ -503,4 +503,11 @@
     <select id="releaseLock" resultType="int">
         SELECT RELEASE_LOCK(#{lockName})
     </select>
+
+    <select id="listActivatedUsers" resultType="map">
+        SELECT DISTINCT das.user_id, ap.name, ap.department_name
+        FROM dahua_activation_state das
+        LEFT JOIN aro_personnel ap ON ap.user_id = das.user_id
+        WHERE das.state = 'ACTIVATED'
+    </select>
 </mapper>

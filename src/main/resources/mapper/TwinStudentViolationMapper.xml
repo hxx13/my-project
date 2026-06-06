@@ -18,6 +18,7 @@
         <result column="updated_at" property="updatedAt"/>
         <result column="cleared_at" property="clearedAt"/>
         <result column="cleared_by_user_id" property="clearedByUserId"/>
+        <result column="source" property="source"/>
     </resultMap>
 
     <update id="expireActivePastDue">
@@ -52,11 +53,11 @@
         INSERT INTO twin_student_violation (
             target_user_id, violation_text, image_urls,
             forbid_enter, max_enter_success, enter_success_count, show_notice_every_scan,
-            expire_at, status, created_by_user_id
+            expire_at, status, created_by_user_id, source
         ) VALUES (
             #{targetUserId}, #{violationText}, #{imageUrls},
             #{forbidEnter}, #{maxEnterSuccess}, #{enterSuccessCount}, #{showNoticeEveryScan},
-            #{expireAt}, #{status}, #{createdByUserId}
+            #{expireAt}, #{status}, #{createdByUserId}, #{source}
         )
     </insert>
 
@@ -135,4 +136,13 @@
     <delete id="deleteById">
         DELETE FROM twin_student_violation WHERE id = #{id}
     </delete>
+
+    <select id="countActiveAutoStrandedByUserId" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_student_violation
+        WHERE target_user_id = #{targetUserId}
+          AND source = 'AUTO_STRANDED'
+          AND status = 'ACTIVE'
+          AND (expire_at IS NULL OR expire_at &gt; NOW())
+    </select>
 </mapper>

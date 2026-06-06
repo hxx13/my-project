@@ -37,4 +37,7 @@ public interface TwinStudentViolationMapper {
     int updateEditableById(TwinStudentViolation row);
 
     int deleteById(@Param("id") long id);
+
+    /** 检查用户是否已有 ACTIVE 的自动滞留违规（用于去重） */
+    int countActiveAutoStrandedByUserId(@Param("targetUserId") String targetUserId);
 }

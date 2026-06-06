@@ -161,4 +161,7 @@ public interface DahuaSwingMapper {
 
     /** 释放 MySQL 命名锁 */
     int releaseLock(@Param("lockName") String lockName);
+
+    /** 列出所有当前处于 ACTIVATED 状态的用户（滞留检测用） */
+    List<Map<String, Object>> listActivatedUsers();
 }

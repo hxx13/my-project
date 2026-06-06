@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS twin_student_violation (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     cleared_at DATETIME NULL,
     cleared_by_user_id VARCHAR(64) NULL,
+    source VARCHAR(30) NOT NULL DEFAULT 'MANUAL' COMMENT '来源：MANUAL=手动新建, AUTO_STRANDED=自动滞留检测',
     KEY idx_tsv_target_status (target_user_id, status),
     KEY idx_tsv_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生违规记录（扫码弹窗通告与进房限制）';

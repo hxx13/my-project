@@ -8,6 +8,7 @@ import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.twin.dashboard.dto.UnboundCardNoticeSettingsDTO;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.common.service.TwinPersonnelArchiveQueryService;
+import com.example.demo.modules.twin.dashboard.service.StrandedViolationService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationNoticeConfigService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -20,6 +21,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -33,19 +35,22 @@ public class AdminTwinStudentViolationController {
     private final TwinPersonnelArchiveQueryService personnelArchiveQueryService;
     private final AuthContextService authContextService;
     private final UserDisplayNameService userDisplayNameService;
+    private final StrandedViolationService strandedViolationService;
 
     public AdminTwinStudentViolationController(
             TwinStudentViolationService violationService,
             TwinStudentViolationNoticeConfigService unboundNoticeConfigService,
             TwinPersonnelArchiveQueryService personnelArchiveQueryService,
             AuthContextService authContextService,
-            UserDisplayNameService userDisplayNameService
+            UserDisplayNameService userDisplayNameService,
+            StrandedViolationService strandedViolationService
     ) {
         this.violationService = violationService;
         this.unboundNoticeConfigService = unboundNoticeConfigService;
         this.personnelArchiveQueryService = personnelArchiveQueryService;
         this.authContextService = authContextService;
         this.userDisplayNameService = userDisplayNameService;
+        this.strandedViolationService = strandedViolationService;
     }
 
     @GetMapping("/unbound-notice-settings")
@@ -388,5 +393,51 @@ public class AdminTwinStudentViolationController {
         private String expireMode;
         /** RELATIVE 时：从当前时刻起算的天数 */
         private Integer expireAfterDays;
+    }
+
+    // ---- 滞留自动违规配置 ----
+
+    @GetMapping("/stranded-config")
+    @Operation(summary = "获取滞留自动违规配置")
+    public Result<?> getStrandedConfig(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        return Result.success(strandedViolationService.getConfig());
+    }
+
+    @PutMapping("/stranded-config")
+    @Operation(summary = "保存滞留自动违规配置")
+    public Result<?> saveStrandedConfig(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, Object> body
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        strandedViolationService.saveConfig(body);
+        return Result.success(strandedViolationService.getConfig());
+    }
+
+    @PostMapping("/stranded-config/test")
+    @Operation(summary = "对单个用户测试滞留检测（不写回 config execution result）")
+    public Result<?> testStrandedSingle(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, Object> body
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        String userId = body != null ? Objects.toString(body.get("userId"), "") : "";
+        if (userId.isBlank()) {
+            return Result.error("缺少 userId");
+        }
+        String summary = strandedViolationService.testSingleUser(userId);
+        return Result.success(Map.of("userId", userId, "summary", summary));
     }
 }

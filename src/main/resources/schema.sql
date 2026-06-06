@@ -859,9 +859,26 @@ CREATE TABLE IF NOT EXISTS twin_student_violation (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     cleared_at DATETIME NULL,
     cleared_by_user_id VARCHAR(64) NULL,
+    source VARCHAR(30) NOT NULL DEFAULT 'MANUAL' COMMENT '来源：MANUAL=手动新建, AUTO_STRANDED=自动滞留检测',
     KEY idx_tsv_target_status (target_user_id, status),
     KEY idx_tsv_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生违规记录（扫码弹窗通告与进房限制）';
+
+CREATE TABLE IF NOT EXISTS stranded_violation_config (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    enabled TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用',
+    auto_signout_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否同时执行签退',
+    violation_text_tpl VARCHAR(500) DEFAULT '${name}(${dept})滞留未签退，系统自动登记' COMMENT '违规文案模板',
+    forbid_enter TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否禁止进入',
+    expire_after_days INT NOT NULL DEFAULT 1 COMMENT '自动过期天数',
+    whitelist_depts JSON DEFAULT NULL COMMENT '白名单部门JSON数组',
+    last_execution_at DATETIME DEFAULT NULL COMMENT '上次执行时间',
+    last_execution_result VARCHAR(255) DEFAULT NULL COMMENT '上次执行结果',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='每日滞留人员自动违规配置';
+
+INSERT INTO stranded_violation_config (id, enabled) VALUES (1, 0)
+ON DUPLICATE KEY UPDATE id=id;
 
 CREATE TABLE IF NOT EXISTS twin_scan_popup_announcement (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,

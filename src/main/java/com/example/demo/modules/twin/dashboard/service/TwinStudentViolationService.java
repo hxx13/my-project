@@ -226,6 +226,26 @@ public class TwinStudentViolationService {
         }
     }
 
+    /** 检查用户是否已有 ACTIVE 的自动滞留违规（用于去重，避免定时任务每次节拍重复创建） */
+    public boolean hasActiveAutoViolation(String targetUserId) {
+        if (!StringUtils.hasText(targetUserId)) {
+            return false;
+        }
+        if (violationTableAbsent.get()) {
+            return false;
+        }
+        try {
+            return violationMapper.countActiveAutoStrandedByUserId(targetUserId.trim()) > 0;
+        } catch (Exception e) {
+            if (isTwinStudentViolationTableMissing(e)) {
+                markTableAbsentOnce();
+                return false;
+            }
+            log.warn("[student-violation] hasActiveAutoViolation failed userId={} err={}", targetUserId, e.getMessage());
+            return false;
+        }
+    }
+
     @Transactional(rollbackFor = Exception.class)
     public TwinStudentViolation create(
             String targetUserId,
@@ -236,6 +256,22 @@ public class TwinStudentViolationService {
             boolean showNoticeEveryScan,
             Integer expireAfterDays,
             String createdByUserId
+    ) {
+        return create(targetUserId, violationText, imageUrls, forbidEnter, maxEnterSuccess,
+                showNoticeEveryScan, expireAfterDays, createdByUserId, "MANUAL");
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public TwinStudentViolation create(
+            String targetUserId,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String source
     ) {
         if (!StringUtils.hasText(targetUserId)) {
             throw new IllegalArgumentException("缺少 targetUserId");
@@ -273,6 +309,7 @@ public class TwinStudentViolationService {
         }
         row.setStatus(STATUS_ACTIVE);
         row.setCreatedByUserId(createdByUserId);
+        row.setSource(source != null && !source.isBlank() ? source.trim() : "MANUAL");
         try {
             violationMapper.insert(row);
         } catch (Exception e) {

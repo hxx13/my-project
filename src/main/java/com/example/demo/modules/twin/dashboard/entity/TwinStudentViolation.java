@@ -24,4 +24,5 @@ public class TwinStudentViolation {
     private LocalDateTime updatedAt;
     private LocalDateTime clearedAt;
     private String clearedByUserId;
+    private String source;
 }
