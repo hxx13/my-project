@@ -65,6 +65,24 @@ export default function DashboardPage() {
       return { startTime: fmt(monday), endTime: fmt(sunday) };
     }, []);
 
+    // ---- 实时 WebSocket 事件 ----
+    const realtimeEvents = useEventStore((s) => s.realtimeEvents);
+
+    // 最新进入的人的课题组（直接计算，放在查询之前避免 TDZ）
+    const activeGroup = useMemo(() => {
+      const now = new Date();
+      const d = now.getDay();
+      const monday = new Date(now);
+      monday.setDate(now.getDate() - (d === 0 ? 6 : d - 1));
+      monday.setHours(0, 0, 0, 0);
+
+      const latestEnter = realtimeEvents.find((evt) => {
+        if (evt.action !== "ENTER") return false;
+        return new Date(evt.timestamp) >= monday;
+      });
+      return latestEnter?.person?.group ?? "";
+    }, [realtimeEvents]);
+
     const { data: heatmapData, isLoading: isHeatmapLoading } = useQuery({
         queryKey: ["dashboard", "heatmap", activeGroup, thisWeekRange.startTime, thisWeekRange.endTime],
         queryFn: () => fetchStudentActivityHeatmap({
@@ -85,9 +103,6 @@ export default function DashboardPage() {
         refetchInterval: 300_000,
     });
 
-    // ---- 实时 WebSocket 事件 → 增量热力图 + 房间偏好 ----
-    const realtimeEvents = useEventStore((s) => s.realtimeEvents);
-
     // 本周一的 Date 对象（用于过滤本周事件）
     const thisMonday = useMemo(() => {
       const now = new Date();
@@ -107,10 +122,7 @@ export default function DashboardPage() {
       });
     }, [realtimeEvents, thisMonday]);
 
-    // 最新进入的人的课题组
-    const activeGroup = useMemo(() => {
-      return liveEntries[0]?.person?.group ?? "";
-    }, [liveEntries]);
+    // activeGroup 已在上方定义，此处不再重复
 
     // 合并：API 热力图数据 + 实时增量
     const mergedHeatmap = useMemo<HeatmapCell[]>(() => {
