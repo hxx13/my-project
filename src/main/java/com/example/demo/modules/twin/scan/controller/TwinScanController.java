@@ -218,14 +218,12 @@ public class TwinScanController {
             // 避免 twin_dahua_activation_state 残留导致定时器重复探测/重复签退。
             if (accessType == 2) {
                 dahuaSwingRuleEngineService.clearActivationStatesForUser(userId);
-                dahuaSwingRuleEngineService.clearPopupSession(userId);
             }
 
             // ENTER：取消尚未执行的「离开延迟冻结」+ 清理刷卡联动计时器，避免换房进入后被旧计时器再次签退
             if (accessType == 1) {
                 webScanExitDahuaLinkageService.cancelPendingDeferredExitForUser(userId);
                 dahuaSwingRuleEngineService.clearActivationStatesForUser(userId);
-                dahuaSwingRuleEngineService.clearPopupSession(userId);
             }
 
             // ENTER：按全局开关解冻；关闭时仍执行 ARO/待激活，但若开启下放则大华可能因「冻结人员不能授权」失败

@@ -1,11 +1,8 @@
 /**
- * 扫码弹窗会话守卫：抑制同一人短时间重复刷卡/扫码导致的误触发（尤其进入后连扫触发自动离开）。
+ * 扫码弹窗会话守卫：抑制同一人弹窗打开期间重复刷卡/扫码导致的误触发（尤其进入状态连扫触发自动离开）。
  */
 
 export type ScanAccessAction = "ENTER" | "EXIT";
-
-/** 弹窗已打开时，同一识别键（工号/卡号）最短间隔 */
-const POPUP_OPEN_RESCAN_MS = 5_000;
 
 /** 手动/流程「进入」成功后，禁止同一人再次走识别通道的时长 */
 const POST_ENTER_RESCAN_MS = 15_000;
@@ -97,17 +94,18 @@ export function tryBeginScanChannel(
     };
   }
 
-  if (popupScanKey && popupScanKey === key && now - popupOpenedAt < POPUP_OPEN_RESCAN_MS) {
+  // 弹窗打开期间（不限时长）：同一 scanKey 或同一人员再刷卡 → 拦截至弹窗关闭
+  if (popupScanKey && popupScanKey === key) {
     return {
       allow: false,
-      message: "该人员弹窗已打开，请勿连续重复刷卡（约 5 秒内忽略重复扫）",
+      message: "请抬起您的卡片，防止多次刷卡误操作",
     };
   }
 
-  if (uid && popupUserId && popupUserId === uid && now - popupOpenedAt < POPUP_OPEN_RESCAN_MS) {
+  if (uid && popupUserId && popupUserId === uid) {
     return {
       allow: false,
-      message: "该人员弹窗已打开，请勿连续重复扫码",
+      message: "请抬起您的卡片，防止多次刷卡误操作",
     };
   }
 

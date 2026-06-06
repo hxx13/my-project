@@ -83,8 +83,8 @@ const WeeklyRoutineMatrixChart = ({ predictions, themeColor }: { predictions: an
     );
 };
 
-export function UiverseProfilePopup(props: PopupProps) {
-    const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind } = props;
+export function UiverseProfilePopup(props: PopupProps & { swipeWarning?: string | null; swipeWarningKey?: number }) {
+    const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind, swipeWarning, swipeWarningKey } = props;
     const { state, actions } = useProfilePopup(props);
     const canOperateRiskState = hasMinRole(authStorage.getRole(), "STAFF");
     const themeColor = String(state.user?.gender) === "2" ? "#fbb9b6" : "#2d5cf7";
@@ -145,7 +145,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                 ) : null}
                 <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-hidden p-10 pb-20">
                     <div className="flex w-full max-w-[min(96vw,1120px)] shrink-0 justify-center px-1 pt-1">
-                        <ScanPopupNoticeCoordinator result={result} />
+                        <ScanPopupNoticeCoordinator result={result} swipeWarning={swipeWarning} swipeWarningKey={swipeWarningKey} />
                     </div>
                     <div className="grid min-h-0 w-full max-w-[1920px] flex-1 min-h-0 grid-cols-[25fr_50fr_25fr] gap-8 overflow-hidden">
                     <div className="flex flex-col h-full min-h-0 pt-6 pb-6 gap-4">

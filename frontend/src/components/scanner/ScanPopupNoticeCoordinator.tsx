@@ -2,15 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AnalyzeResponse } from "@/api/types/scanner";
 import { ViolationNoticeBanner } from "./ViolationNoticeBanner";
 import { ScanAnnouncementBanner } from "./ScanAnnouncementBanner";
-import { RepeatedSwipeWarningModal } from "./RepeatedSwipeWarningModal";
+import { RepeatedSwipeWarningBanner } from "./RepeatedSwipeWarningBanner";
 
 export type ScanNoticeDialogId = "violation" | "unbound" | "announcement";
 
 type Props = {
   result: AnalyzeResponse;
+  swipeWarning?: string | null;
+  swipeWarningKey?: number;
 };
 
-export function ScanPopupNoticeCoordinator({ result }: Props) {
+export function ScanPopupNoticeCoordinator({ result, swipeWarning, swipeWarningKey = 0 }: Props) {
   const [dialogId, setDialogId] = useState<ScanNoticeDialogId | null>(null);
   const chainRef = useRef<ScanNoticeDialogId[]>([]);
   const chainConsumedRef = useRef(false);
@@ -97,7 +99,7 @@ export function ScanPopupNoticeCoordinator({ result }: Props) {
           suppressAutoOpen
         />
       ) : null}
-      <RepeatedSwipeWarningModal message={result.repeatedSwipeWarning} />
+      <RepeatedSwipeWarningBanner message={swipeWarning} triggerKey={swipeWarningKey} />
     </div>
   );
 }

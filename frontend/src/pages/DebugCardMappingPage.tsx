@@ -98,6 +98,7 @@ export default function DebugCardMappingPage() {
     const cardInputRef = useRef<HTMLInputElement | null>(null);
     const cardScanBufferRef = useRef("");
     const cardScanResetTimer = useRef<number | null>(null);
+    const cardComposingRef = useRef(false);
     const [expandedDeptIds, setExpandedDeptIds] = useState<Set<number>>(new Set());
     const [issuingPhase, setIssuingPhase] = useState(0);
     const [freezeLoading, setFreezeLoading] = useState(false);
@@ -1246,7 +1247,16 @@ export default function DebugCardMappingPage() {
                                 updateCardNoWithBuffer(pasted);
                             }}
                             onChange={(e) => {
+                                if (cardComposingRef.current) return;
                                 const clean = sanitizeCardNo(e.target.value);
+                                updateCardNoWithBuffer(clean);
+                            }}
+                            onCompositionStart={() => {
+                                cardComposingRef.current = true;
+                            }}
+                            onCompositionEnd={(e) => {
+                                cardComposingRef.current = false;
+                                const clean = sanitizeCardNo((e.target as HTMLInputElement).value);
                                 updateCardNoWithBuffer(clean);
                             }}
                             className={cn(adminInputClass, "mb-4 font-mono font-semibold text-[#0070f3]")}

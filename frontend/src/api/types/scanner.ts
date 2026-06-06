@@ -60,8 +60,6 @@ export interface AnalyzeResponse {
     unboundCardNotice?: StudentViolationNotice;
     /** 扫码弹窗公告（多条翻页） */
     scanPopupAnnouncements?: ScanPopupAnnouncementBundle;
-    /** 重复刷卡警告：弹窗活跃期间再次刷卡时返回提示文案；未触发时 undefined */
-    repeatedSwipeWarning?: string;
 }
 
 export interface ScanPopupAnnouncementItem {

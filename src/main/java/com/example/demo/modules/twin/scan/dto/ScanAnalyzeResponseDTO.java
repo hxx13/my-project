@@ -30,6 +30,4 @@ public class ScanAnalyzeResponseDTO {
     private ScanStudentViolationNoticeDTO unboundCardNotice;
     /** 扫码弹窗公告（多条翻页）；无则 null */
     private ScanPopupAnnouncementBundleDTO scanPopupAnnouncements;
-    /** 重复刷卡警告：弹窗活跃期间再次刷卡时返回提示文案；无则 null */
-    private String repeatedSwipeWarning;
 }

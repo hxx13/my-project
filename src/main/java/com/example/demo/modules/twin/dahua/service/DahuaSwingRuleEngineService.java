@@ -20,7 +20,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 大华刷卡联动：签退延时、激活卡片、激活后再次刷门签退、扫码后「待激活」超时签退。
@@ -353,37 +352,6 @@ public class DahuaSwingRuleEngineService {
      * 仅 autoSignout 成功时清空联动行，ARO 失败时保留 scheduled 行供下一 tick 重试。
      */
     private static final String LOCK_DUE_STATES = "dahua_process_due_states";
-
-    // ============================================================
-    // 弹窗会话管理：kiosk 弹出 INSIDE 状态窗口后至执行离开/进入前，屏蔽本人刷卡防误触
-    // ============================================================
-    /** userId → 弹窗会话过期时间戳(ms)，超时自动清除防死锁（默认 120s） */
-    private final ConcurrentHashMap<String, Long> popupSessionUntil = new ConcurrentHashMap<>();
-    private static final long POPUP_SESSION_TTL_MS = 120_000L;
-
-    /** 标记人员弹窗会话活跃（kiosk 返回 INSIDE 时调用） */
-    public void markPopupActive(String userId) {
-        if (userId == null || userId.isBlank()) return;
-        popupSessionUntil.put(userId.trim(), System.currentTimeMillis() + POPUP_SESSION_TTL_MS);
-    }
-
-    /** 清除人员弹窗会话（execute 成功时调用） */
-    public void clearPopupSession(String userId) {
-        if (userId == null || userId.isBlank()) return;
-        popupSessionUntil.remove(userId.trim());
-    }
-
-    /** 人员弹窗会话是否活跃（analyzeScan 入口检查） */
-    public boolean isPopupActive(String userId) {
-        if (userId == null || userId.isBlank()) return false;
-        Long until = popupSessionUntil.get(userId.trim());
-        if (until == null) return false;
-        if (System.currentTimeMillis() > until) {
-            popupSessionUntil.remove(userId.trim());
-            return false;
-        }
-        return true;
-    }
 
     public synchronized void processDueStates() {
         int locked = dahuaSwingMapper.tryAcquireLock(LOCK_DUE_STATES, 0);

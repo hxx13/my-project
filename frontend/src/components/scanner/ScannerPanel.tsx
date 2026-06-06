@@ -24,6 +24,8 @@ export default function ScannerPanel() {
     const [inputValue, setInputValue] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
     const [executeErrorMessage, setExecuteErrorMessage] = useState('');
+    const [swipeWarning, setSwipeWarning] = useState<string | null>(null);
+    const [swipeWarningKey, setSwipeWarningKey] = useState(0);
     const [lastScannedId, setLastScannedId] = useState('');
     const lastScannedIdRef = useRef('');
 
@@ -92,7 +94,8 @@ export default function ScannerPanel() {
     const triggerStandardScan = (hardwareId: string) => {
         const guard = tryBeginScanChannel(hardwareId, activeResult?.userInfo?.userId);
         if (!guard.allow) {
-            setErrorMsg(guard.message);
+            setSwipeWarning(guard.message);
+            setSwipeWarningKey((k) => k + 1);
             return;
         }
         lastScannedIdRef.current = hardwareId;
@@ -236,6 +239,8 @@ export default function ScannerPanel() {
                 {activeResult && (
                     <UiverseProfilePopup
                         result={activeResult}
+                        swipeWarning={swipeWarning}
+                        swipeWarningKey={swipeWarningKey}
                         onClose={() => {
                             setStudentBindOpen(false);
                             setActiveResult(null);
