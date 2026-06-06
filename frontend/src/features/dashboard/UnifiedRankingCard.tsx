@@ -439,10 +439,10 @@ export function UnifiedRankingCard() {
                     </span>
                     <span
                       style={{
-                        flex: "0.32",
+                        flex: "0.18",
                         fontSize: 14,
                         color: "#334155",
-                        textAlign: "right",
+                        textAlign: "left",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
@@ -451,11 +451,11 @@ export function UnifiedRankingCard() {
                       }}
                       title={item.name}
                     >
-                      {item.name}
+                      {item.name.length > 7 ? item.name.slice(0, 7) + "…" : item.name}
                     </span>
                     <div
                       style={{
-                        flex: "0.35",
+                        flex: "0.49",
                         height: 10,
                         background: "#f1f5f9",
                         borderRadius: 5,
