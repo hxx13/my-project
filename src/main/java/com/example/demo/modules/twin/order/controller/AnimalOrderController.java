@@ -102,7 +102,8 @@ public class AnimalOrderController {
     // ==========================================
     @GetMapping("/ranking")
     @Operation(summary = "获取订单排行榜")
-    public Result<ListMapDataResponseDTO> getOrderRanking(@RequestParam(defaultValue = "TOTAL") String region) {
+    public Result<ListMapDataResponseDTO> getOrderRanking(@RequestParam(defaultValue = "TOTAL") String region,
+                                                          @RequestParam(defaultValue = "20") int limit) {
         // 💥 黑名单配置中心 💥
         // 你不想让谁上大屏的排行榜，就把他的 课题组名字 或者 PI名字 写进这里！
         java.util.List<String> blacklist = java.util.Arrays.asList(
@@ -110,6 +111,6 @@ public class AnimalOrderController {
         );
 
         // 调用带黑名单的 Mapper 查出当前榜单数据
-        return Result.success(new ListMapDataResponseDTO(dashboardMapper.getMonthlyOrderRanking(region, blacklist)));
+        return Result.success(new ListMapDataResponseDTO(dashboardMapper.getMonthlyOrderRanking(region, blacklist, limit)));
     }
 }

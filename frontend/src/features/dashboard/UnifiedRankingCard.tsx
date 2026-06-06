@@ -154,14 +154,28 @@ export function UnifiedRankingCard() {
     if (!isAutoPlaying) return;
     autoTabTimerRef.current = setInterval(() => {
       setActiveTab((prev) => (prev === "activity" ? "animal" : "activity"));
+      setRegion("TOTAL"); // reset region when tab switches
     }, 8000);
     return () => {
       if (autoTabTimerRef.current) clearInterval(autoTabTimerRef.current);
     };
   }, [isAutoPlaying]);
 
+  // ---- Region auto-rotate (TOTAL → PUDONG → PUXI) ----
+  useEffect(() => {
+    if (!isAutoPlaying) return;
+    const timer = setInterval(() => {
+      setRegion((prev) => {
+        const idx = REGIONS.indexOf(prev);
+        return REGIONS[(idx + 1) % REGIONS.length];
+      });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [isAutoPlaying, activeTab]);
+
   const handleTabClick = useCallback((tab: TabKey) => {
     setActiveTab(tab);
+    setRegion("TOTAL"); // reset region on manual tab switch
     setIsAutoPlaying(false);
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
     resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 8000);
@@ -169,6 +183,9 @@ export function UnifiedRankingCard() {
 
   const handleRegionClick = useCallback((reg: Region) => {
     setRegion(reg);
+    setIsAutoPlaying(false);
+    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 8000);
   }, []);
 
   const isLoading = activeTab === "activity" ? activityLoading : animalLoading;

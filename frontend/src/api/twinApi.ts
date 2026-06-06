@@ -339,8 +339,8 @@ export const fetchPredictionRoomsByUser = async (userId: string): Promise<Predic
 // =========================================================
 
 // 🏆 课题组动物订购月度排行榜
-export const fetchAnimalOrderRanking = async (region: 'TOTAL' | 'PUDONG' | 'PUXI') => {
-    const response = await authHttp.get(`/v1/twin/order/ranking?region=${region}`);
+export const fetchAnimalOrderRanking = async (region: 'TOTAL' | 'PUDONG' | 'PUXI', limit = 20) => {
+    const response = await authHttp.get(`/v1/twin/order/ranking?region=${region}&limit=${limit}`);
     return asArrayData(response.data?.data);
 };
 

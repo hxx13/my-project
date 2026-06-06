@@ -60,10 +60,11 @@ export function DashboardHeatmapChart({ data, loading }: Props) {
   };
 
   return (
-    <div className="h-full w-full overflow-hidden rounded-md border border-purple-100">
+    <div className="h-full w-full flex items-center justify-center overflow-hidden rounded-md border border-purple-100">
+      <div style={{ width: "100%", maxWidth: "100%", aspectRatio: "14/8", maxHeight: "100%" }}>
       <table
         className="border-collapse text-[8px]"
-        style={{ width: "100%", tableLayout: "fixed" }}
+        style={{ width: "100%", height: "100%", tableLayout: "fixed" }}
       >
         <colgroup>
           <col style={{ width: "10%" }} />
@@ -134,6 +135,7 @@ export function DashboardHeatmapChart({ data, loading }: Props) {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

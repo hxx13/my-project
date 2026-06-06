@@ -289,7 +289,7 @@
         </if>
         GROUP BY project_name
         ORDER BY totalQuantity DESC
-        LIMIT 10
+        LIMIT #{limit}
     </select>
 
     <insert id="saveOrUpdateOrderDetail">

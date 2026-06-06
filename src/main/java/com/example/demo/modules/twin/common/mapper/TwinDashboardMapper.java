@@ -67,7 +67,7 @@ public interface TwinDashboardMapper {
             @Param("orderState") int orderState, @Param("createTime") String createTime, @Param("arrivalDate") String arrivalDate
     );
 
-    List<Map<String, Object>> getMonthlyOrderRanking(@Param("region") String region, @Param("blacklist") java.util.List<String> blacklist);
+    List<Map<String, Object>> getMonthlyOrderRanking(@Param("region") String region, @Param("blacklist") java.util.List<String> blacklist, @Param("limit") int limit);
 
 
     void saveOrUpdateOrderDetail(
