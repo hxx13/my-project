@@ -10,9 +10,9 @@ const BAR_COLORS: [string, string][] = [
   ["#22c55e", "#4ade80"], // green — 5th
 ];
 
-type Props = { data: RoomUsageItem[]; loading?: boolean };
+type Props = { data: RoomUsageItem[]; loading?: boolean; groupName?: string };
 
-export function RoomPreferenceChart({ data, loading }: Props) {
+export function RoomPreferenceChart({ data, loading, groupName }: Props) {
   const sorted = useMemo(
     () =>
       [...data].sort((a, b) => b.entryCount - a.entryCount).slice(0, 5),
@@ -99,10 +99,19 @@ export function RoomPreferenceChart({ data, loading }: Props) {
   }
 
   return (
-    <ReactECharts
-      option={option}
-      style={{ width: "100%", height: "100%" }}
-      opts={{ renderer: "canvas" }}
-    />
+    <div className="h-full w-full flex flex-col overflow-hidden rounded-md border border-pink-100">
+      {groupName && (
+        <div className="shrink-0 px-2 py-0.5 text-[8px] font-semibold text-pink-600 bg-pink-50 border-b border-pink-100 text-center">
+          📌 {groupName}
+        </div>
+      )}
+      <div className="flex-1">
+        <ReactECharts
+          option={option}
+          style={{ width: "100%", height: "100%" }}
+          opts={{ renderer: "canvas" }}
+        />
+      </div>
+    </div>
   );
 }

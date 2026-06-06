@@ -6,9 +6,9 @@ const HOUR_START = 7;
 const HOUR_END = 20;
 const HOURS = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i);
 
-type Props = { data: HeatmapCell[]; loading?: boolean };
+type Props = { data: HeatmapCell[]; loading?: boolean; groupName?: string };
 
-export function DashboardHeatmapChart({ data, loading }: Props) {
+export function DashboardHeatmapChart({ data, loading, groupName }: Props) {
   // 仅保留 7:00–20:00
   const filtered = useMemo(
     () => data.filter((d) => d.hour >= HOUR_START && d.hour <= HOUR_END),
@@ -60,7 +60,13 @@ export function DashboardHeatmapChart({ data, loading }: Props) {
   };
 
   return (
-    <div className="h-full w-full flex items-center justify-center overflow-hidden rounded-md border border-purple-100">
+    <div className="h-full w-full flex flex-col overflow-hidden rounded-md border border-purple-100">
+      {groupName && (
+        <div className="shrink-0 px-2 py-0.5 text-[8px] font-semibold text-purple-600 bg-purple-50 border-b border-purple-100 text-center">
+          📌 {groupName}
+        </div>
+      )}
+      <div className="flex-1 flex items-center justify-center">
       <div style={{ width: "100%", maxWidth: "100%", aspectRatio: "14/8", maxHeight: "100%" }}>
       <table
         className="border-collapse text-[8px]"
@@ -135,6 +141,7 @@ export function DashboardHeatmapChart({ data, loading }: Props) {
           ))}
         </tbody>
       </table>
+      </div>
       </div>
     </div>
   );

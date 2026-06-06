@@ -284,6 +284,7 @@ export default function DashboardPage() {
                             <DashboardHeatmapChart
                                 data={mergedHeatmap}
                                 loading={isHeatmapLoading}
+                                groupName={activeGroup || undefined}
                             />
                         </GlassCard>
                     </div>
@@ -292,6 +293,7 @@ export default function DashboardPage() {
                             <RoomPreferenceChart
                                 data={mergedRoomUsage}
                                 loading={isRoomLoading}
+                                groupName={activeGroup || undefined}
                             />
                         </GlassCard>
                     </div>

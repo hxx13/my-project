@@ -124,16 +124,18 @@ export function UnifiedRankingCard() {
     if (!isAutoPlaying || rest.length <= 3) return;
     let active = true;
     let raf: number;
-    let cycleCount = 0;
+    let timeout: ReturnType<typeof setTimeout>;
 
     const scrollOneCycle = () => {
       if (!active || !scrollBoxRef.current) return;
       const el = scrollBoxRef.current;
+      // reset to top first
+      el.scrollTop = 0;
       const maxScroll = el.scrollHeight - el.clientHeight;
       if (maxScroll <= 0) return;
 
       const start = performance.now();
-      const duration = maxScroll * 20; // faster: 20ms per px
+      const duration = maxScroll * 60; // slow: 60ms per px for easy reading
 
       const animate = (now: number) => {
         if (!active) return;
@@ -143,19 +145,18 @@ export function UnifiedRankingCard() {
         if (progress < 1) {
           raf = requestAnimationFrame(animate);
         } else {
-          // scroll complete — pause then restart from top
-          cycleCount++;
-          if (cycleCount < 3) {
-            // reset to top for next cycle within this tab
+          // scroll complete — pause 3s then loop
+          timeout = setTimeout(() => {
             el.scrollTop = 0;
-          }
-          // don't loop more than 3 times within one tab rotation
+            scrollOneCycle();
+          }, 3000);
         }
       };
       raf = requestAnimationFrame(animate);
     };
 
-    const timeout = setTimeout(scrollOneCycle, 1500);
+    // initial delay before first scroll
+    timeout = setTimeout(scrollOneCycle, 2500);
     return () => {
       active = false;
       clearTimeout(timeout);
