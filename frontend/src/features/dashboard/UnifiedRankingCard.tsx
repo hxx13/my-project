@@ -433,10 +433,11 @@ export function UnifiedRankingCard() {
                 return (
                   <div
                     key={`rank-${activeTab}-${rank}`}
-                    className="flex items-center px-[1%] py-[1px] rounded-sm"
+                    className="flex items-center px-[1%] py-[3px] rounded-sm"
                     style={{
-                      gap: "2%",
+                      gap: 6,
                       background: i % 2 === 0 ? "#f8fafc" : "transparent",
+                      minHeight: 22,
                     }}
                   >
                     <span
