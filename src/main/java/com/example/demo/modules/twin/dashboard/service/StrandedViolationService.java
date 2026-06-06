@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -182,14 +183,27 @@ public class StrandedViolationService {
         return configMapper.selectConfig();
     }
 
+    @Transactional
     public void saveConfig(Map<String, Object> body) {
+        String tpl = Objects.toString(body.get("violation_text_tpl"), "");
+        if (tpl.isBlank()) tpl = DEFAULT_VIOLATION_TPL;
+
+        String depts = Objects.toString(body.get("whitelist_depts"), "");
+        if (depts.isBlank()) depts = "[]";
+
         configMapper.updateConfig(
                 toInt(body.get("enabled"), 0),
                 toInt(body.get("auto_signout_enabled"), 1),
-                Objects.toString(body.get("violation_text_tpl"), DEFAULT_VIOLATION_TPL),
+                tpl,
                 toInt(body.get("forbid_enter"), 0),
                 toInt(body.get("expire_after_days"), 1),
-                Objects.toString(body.get("whitelist_depts"), "[]"));
+                depts);
+        log.info("[stranded-violation] config saved: enabled={}, autoSignout={}, tpl={}, forbidEnter={}, expireDays={}",
+                toInt(body.get("enabled"), 0),
+                toInt(body.get("auto_signout_enabled"), 1),
+                tpl,
+                toInt(body.get("forbid_enter"), 0),
+                toInt(body.get("expire_after_days"), 1));
     }
 
     /**
