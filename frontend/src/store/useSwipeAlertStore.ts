@@ -17,8 +17,14 @@ export interface SwipeAlertRecordBrief {
   personCode: string;
   departmentName: string;
   channelName: string;
+  channelCode: string;
   openTypeLabel: string;
   swingTime: string;
+  enterOrExit: number | null;       // 1=进入, 2=离开 (hardware)
+  enterOrExitLabel: string;
+  mobilePhone: string;              // from aro_personnel lookup
+  aroUserId: string;                // ARO user_id
+  aroStatus: string;                // INSIDE | OUTSIDE | UNKNOWN
 }
 
 interface SwipeAlertState {

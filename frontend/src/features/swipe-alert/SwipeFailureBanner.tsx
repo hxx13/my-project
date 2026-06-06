@@ -45,6 +45,8 @@ export function SwipeFailureBanner() {
     window.location.hash = "#/admin/dahua-swing-tasks?tab=records";
   };
 
+  const rec = activeAlert.matchedRecords?.[0];
+
   return (
     <>
       {/* Keyframes */}
@@ -71,22 +73,22 @@ export function SwipeFailureBanner() {
           background: "#0f172a",
           color: "#fff",
           borderRadius: 28,
-          padding: "10px 16px",
+          padding: "12px 18px",
           display: "flex",
-          alignItems: "center",
+          alignItems: "flex-start",
           gap: 10,
           boxShadow:
             "0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.08) inset",
           backdropFilter: "blur(20px)",
-          minWidth: 340,
-          maxWidth: 520,
+          minWidth: 380,
+          maxWidth: 560,
           opacity: leaving ? 0 : 1,
           transition: "opacity .3s, transform .3s cubic-bezier(.16,1,.3,1)",
           animation: leaving ? "none" : "swipe-alert-in .5s cubic-bezier(.16,1,.3,1)",
         }}
       >
         {/* Icon + pulse ring */}
-        <div style={{ position: "relative", flexShrink: 0, width: 36, height: 36 }}>
+        <div style={{ position: "relative", flexShrink: 0, width: 36, height: 36, marginTop: 2 }}>
           <div
             style={{
               width: 36,
@@ -119,29 +121,93 @@ export function SwipeFailureBanner() {
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Title */}
           <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.2 }}>
             {activeAlert.title}
           </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: "#94a3b8",
-              marginTop: 2,
-              lineHeight: 1.3,
-            }}
-          >
+
+          {/* Body text */}
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2, lineHeight: 1.3 }}>
             {activeAlert.body}
           </div>
+
+          {/* Enriched record info — one row per matched person */}
+          {rec && (
+            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
+              {/* Person info row */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#cbd5e1" }}>
+                <span style={{ fontWeight: 600, color: "#e2e8f0" }}>{rec.personName}</span>
+                {rec.mobilePhone && (
+                  <span>📱 {rec.mobilePhone}</span>
+                )}
+              </div>
+
+              {/* Channel + Status row */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#94a3b8" }}>
+                <span>🚪 {rec.channelName || rec.channelCode}</span>
+                {rec.enterOrExitLabel && (
+                  <span style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 3,
+                    padding: "1px 6px",
+                    borderRadius: 999,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    background: rec.enterOrExit === 1 ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)",
+                    color: rec.enterOrExit === 1 ? "#4ade80" : "#f87171",
+                  }}>
+                    {rec.enterOrExit === 1 ? "⬆ 进入" : "⬇ 离开"}
+                  </span>
+                )}
+
+                {/* ARO current status indicator */}
+                <span style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  background:
+                    rec.aroStatus === "INSIDE" ? "rgba(34,197,94,0.15)" :
+                    rec.aroStatus === "OUTSIDE" ? "rgba(239,68,68,0.15)" :
+                    "rgba(148,163,184,0.15)",
+                  color:
+                    rec.aroStatus === "INSIDE" ? "#4ade80" :
+                    rec.aroStatus === "OUTSIDE" ? "#f87171" :
+                    "#94a3b8",
+                }}>
+                  <span style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background:
+                      rec.aroStatus === "INSIDE" ? "#4ade80" :
+                      rec.aroStatus === "OUTSIDE" ? "#f87171" :
+                      "#94a3b8",
+                    boxShadow:
+                      rec.aroStatus === "INSIDE" ? "0 0 4px #4ade80" :
+                      rec.aroStatus === "OUTSIDE" ? "0 0 4px #f87171" :
+                      "none",
+                  }} />
+                  {rec.aroStatus === "INSIDE" ? "当前在楼内" :
+                   rec.aroStatus === "OUTSIDE" ? "当前在楼外" : "状态未知"}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
-        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, marginTop: 2 }}>
           <button
             type="button"
             onClick={handleGoToRecords}
             style={{
-              padding: "6px 14px",
+              padding: "5px 12px",
               borderRadius: 999,
               border: "none",
               cursor: "pointer",
@@ -158,7 +224,7 @@ export function SwipeFailureBanner() {
             type="button"
             onClick={handleDismiss}
             style={{
-              padding: "6px 14px",
+              padding: "5px 12px",
               borderRadius: 999,
               border: "none",
               cursor: "pointer",

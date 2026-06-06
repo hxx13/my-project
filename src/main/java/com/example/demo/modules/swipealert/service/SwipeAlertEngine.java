@@ -47,6 +47,14 @@ public class SwipeAlertEngine {
     private final SocketIOServer socketServer;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /** Personnel lookup — injected optionally so engine compiles even if module not wired */
+    @Autowired(required = false)
+    private com.example.demo.modules.twin.common.mapper.TwinDashboardMapper personnelMapper;
+
+    /** ARO status lookup — optional, may timeout */
+    @Autowired(required = false)
+    private com.example.demo.modules.aro.service.AroService aroService;
+
     /** In-memory sliding windows: ruleId -> deque of event timestamps (epoch ms). */
     private final Map<Long, Deque<Long>> windowMap = new ConcurrentHashMap<>();
 
@@ -228,17 +236,86 @@ public class SwipeAlertEngine {
     // Alert construction
     // =========================================================================
 
+    /** Enrich a record snapshot with personnel data and ARO status */
+    private Map<String, Object> enrichRecordSnap(DahuaRecordDTO record) {
+        String person = Objects.toString(record.getPersonName(), "");
+        String channel = Objects.toString(record.getChannelName(), "");
+        String channelCode = Objects.toString(record.getChannelCode(), "");
+
+        Map<String, Object> snap = new LinkedHashMap<>();
+        snap.put("personName", person);
+        snap.put("channelName", channel);
+        snap.put("channelCode", channelCode);
+        snap.put("openTypeLabel",
+                record.getOpenType() != null && record.getOpenType() == 52
+                        ? "非法刷卡开门" : "刷卡失败");
+        snap.put("swingTime", Objects.toString(record.getSwingTime(), ""));
+        snap.put("enterOrExit", record.getEnterOrExit());  // 1=进入, 2=离开
+
+        // Hardware-level direction label
+        if (record.getEnterOrExit() != null) {
+            snap.put("enterOrExitLabel",
+                    record.getEnterOrExit() == 1 ? "进入" : "离开");
+        } else {
+            snap.put("enterOrExitLabel", "");
+        }
+
+        // Try local personnel lookup by name for phone/department/userId
+        String mobilePhone = "";
+        String departmentName = "";
+        String personCode = "";
+        String userId = "";
+        String aroStatus = "UNKNOWN";
+
+        if (personnelMapper != null && !person.isBlank()) {
+            try {
+                List<Map<String, Object>> hits = personnelMapper.searchPersonnel(person, 3);
+                if (hits != null && !hits.isEmpty()) {
+                    Map<String, Object> p = hits.get(0);
+                    mobilePhone = Objects.toString(p.get("mobile_phone"), "");
+                    departmentName = Objects.toString(p.get("department_name"), "");
+                    personCode = Objects.toString(p.get("job_number"), "");
+                    userId = Objects.toString(p.get("user_id"), "");
+
+                    // Query ARO current status
+                    if (aroService != null && !userId.isBlank()) {
+                        try {
+                            List<?> noLeaveRooms = aroService.getNoLeaveRoom(userId);
+                            if (noLeaveRooms != null && !noLeaveRooms.isEmpty()) {
+                                aroStatus = "INSIDE";
+                            } else {
+                                aroStatus = "OUTSIDE";
+                            }
+                        } catch (Exception e) {
+                            log.debug("[swipe-alert] ARO status lookup failed for userId={}: {}",
+                                    userId, e.getMessage());
+                            aroStatus = "UNKNOWN";
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("[swipe-alert] personnel lookup failed for '{}': {}",
+                        person, e.getMessage());
+            }
+        }
+
+        snap.put("mobilePhone", mobilePhone);
+        snap.put("departmentName", departmentName);
+        snap.put("personCode", personCode);
+        snap.put("aroUserId", userId);
+        snap.put("aroStatus", aroStatus);
+
+        return snap;
+    }
+
     private Map<String, Object> buildAlert(SwipeAlertRule rule, int count,
                                             DahuaRecordDTO record) {
-        // DTO fields that are always available
         String channel = Objects.toString(record.getChannelName(), "");
         String person  = Objects.toString(record.getPersonName(), "");
 
-        // DahuaRecordDTO lacks departmentName & personCode.
-        // These will be empty for webhook events; a future pull-path overload
-        // can populate them from the richer DahuaSwingRecord entity.
-        String dept  = "";  // TODO: populate from DahuaSwingRecord.departmentName in pull path
-        String pcode = "";  // TODO: populate from DahuaSwingRecord.personCode in pull path
+        // Enrich the record snapshot with personnel + ARO data
+        Map<String, Object> recordSnap = enrichRecordSnap(record);
+        String dept = Objects.toString(recordSnap.get("departmentName"), "");
 
         String winMin  = String.valueOf(rule.getThresholdWindowSec() != null
                 ? rule.getThresholdWindowSec() / 60 : 0);
@@ -274,19 +351,6 @@ public class SwipeAlertEngine {
         alert.put("count", count);
         alert.put("windowSec", rule.getThresholdWindowSec());
         alert.put("bannerDurationSec", rule.getBannerDurationSec());
-
-        // Single-record snapshot; a future enhancement would collect all
-        // matching records within the window and list them here.
-        Map<String, Object> recordSnap = new LinkedHashMap<>();
-        recordSnap.put("personName", person);
-        recordSnap.put("personCode", pcode);
-        recordSnap.put("departmentName", dept);
-        recordSnap.put("channelName", channel);
-        recordSnap.put("channelCode", Objects.toString(record.getChannelCode(), ""));
-        recordSnap.put("openTypeLabel",
-                record.getOpenType() != null && record.getOpenType() == 52
-                        ? "非法刷卡开门" : "刷卡失败");
-        recordSnap.put("swingTime", Objects.toString(record.getSwingTime(), ""));
         alert.put("matchedRecords", Collections.singletonList(recordSnap));
 
         return alert;
