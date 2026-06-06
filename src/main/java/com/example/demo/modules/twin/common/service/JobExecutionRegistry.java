@@ -68,6 +68,7 @@ public class JobExecutionRegistry {
     public static final String JOB_TELEMETRY_ARCHIVE_PURGE = "TELEMETRY_ARCHIVE_PURGE";
     /** 笼架·特殊状态全量扫描（每周一次，数万笼位级） */
     public static final String JOB_CAGE_SPECIAL_STATUS_SCAN = "CAGE_SPECIAL_STATUS_SCAN";
+    public static final String JOB_STRANDED_VIOLATION_CHECK = "STRANDED_VIOLATION_CHECK";
 
     private static final Set<String> DEPRECATED_JOB_KEYS =
             Set.of(
@@ -102,6 +103,7 @@ public class JobExecutionRegistry {
     private final com.example.demo.modules.accessfusion.service.AccessSwingCleanWorkspaceService accessSwingCleanWorkspaceService;
     private final AnalyticsPipelineHook analyticsPipelineHook;
     private final CageSpecialStatusScanService cageSpecialStatusScanService;
+    private final com.example.demo.modules.twin.dashboard.service.StrandedViolationService strandedViolationService;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
     public JobExecutionRegistry(
@@ -122,7 +124,8 @@ public class JobExecutionRegistry {
             DahuaSwingStatsPullService dahuaSwingStatsPullService,
             com.example.demo.modules.accessfusion.service.AccessSwingCleanWorkspaceService accessSwingCleanWorkspaceService,
             AnalyticsPipelineHook analyticsPipelineHook,
-            CageSpecialStatusScanService cageSpecialStatusScanService) {
+            CageSpecialStatusScanService cageSpecialStatusScanService,
+            com.example.demo.modules.twin.dashboard.service.StrandedViolationService strandedViolationService) {
         this.rpgEngineService = rpgEngineService;
         this.aroService = aroService;
         this.personnelDbService = personnelDbService;
@@ -141,6 +144,7 @@ public class JobExecutionRegistry {
         this.accessSwingCleanWorkspaceService = accessSwingCleanWorkspaceService;
         this.analyticsPipelineHook = analyticsPipelineHook;
         this.cageSpecialStatusScanService = cageSpecialStatusScanService;
+        this.strandedViolationService = strandedViolationService;
     }
 
     public Map<String, String> jobNameMap() {
@@ -159,6 +163,7 @@ public class JobExecutionRegistry {
         jobs.put(JOB_ROOM_MAPPING_REFRESH, "房间映射·ARO落库刷新");
         jobs.put(JOB_ARO_PENETRATION_POLL, "ARO·在馆流水增量同步");
         jobs.put(JOB_DAILY_EXEMPT_RESET, "冻结·每日豁免权回收");
+        jobs.put(JOB_STRANDED_VIOLATION_CHECK, "滞留·未豁免人员自动违规");
         jobs.put(JOB_TELEMETRY_WINCC_UI, "动物房·WinCC温湿度测量值（窗口内轮询）");
         jobs.put(JOB_TELEMETRY_WINCC_LIMITS_UI, "动物房·WinCC限值同步（窗口内轮询）");
         jobs.put(
@@ -259,6 +264,10 @@ public class JobExecutionRegistry {
                 case JOB_DAILY_EXEMPT_RESET -> {
                     aroSyncTask.dailyExemptResetTask();
                     yield JobRunOutcome.ok(jobKey, "每日豁免回收已完成");
+                }
+                case JOB_STRANDED_VIOLATION_CHECK -> {
+                    strandedViolationService.executeScheduledCheck();
+                    yield JobRunOutcome.ok(jobKey, "滞留检测完成");
                 }
                 case JOB_TELEMETRY_WINCC_UI -> {
                     telemetrySnapshotService.refreshFromWinCc();
