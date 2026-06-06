@@ -115,19 +115,25 @@ export function UnifiedRankingCard() {
     rankedList.length > 0 ? Math.max(rankedList[0].value, 1) : 1;
 
   // ---- Auto-scroll ----
+  // 重置滚动位置（region/tab 切换时）
   useEffect(() => {
-    if (!isAutoPlaying || rest.length <= 2) return;
+    if (scrollBoxRef.current) scrollBoxRef.current.scrollTop = 0;
+  }, [region, activeTab]);
+
+  useEffect(() => {
+    if (!isAutoPlaying || rest.length <= 3) return;
     let active = true;
     let raf: number;
+    let cycleCount = 0;
 
-    const scroll = () => {
+    const scrollOneCycle = () => {
       if (!active || !scrollBoxRef.current) return;
       const el = scrollBoxRef.current;
       const maxScroll = el.scrollHeight - el.clientHeight;
       if (maxScroll <= 0) return;
 
       const start = performance.now();
-      const duration = maxScroll * 40;
+      const duration = maxScroll * 20; // faster: 20ms per px
 
       const animate = (now: number) => {
         if (!active) return;
@@ -136,18 +142,26 @@ export function UnifiedRankingCard() {
         el.scrollTop = eased * maxScroll;
         if (progress < 1) {
           raf = requestAnimationFrame(animate);
+        } else {
+          // scroll complete — pause then restart from top
+          cycleCount++;
+          if (cycleCount < 3) {
+            // reset to top for next cycle within this tab
+            el.scrollTop = 0;
+          }
+          // don't loop more than 3 times within one tab rotation
         }
       };
       raf = requestAnimationFrame(animate);
     };
 
-    const timeout = setTimeout(scroll, 2000);
+    const timeout = setTimeout(scrollOneCycle, 1500);
     return () => {
       active = false;
       clearTimeout(timeout);
       cancelAnimationFrame(raf);
     };
-  }, [isAutoPlaying, rest.length]);
+  }, [isAutoPlaying, rest.length, region, activeTab]);
 
   // ---- Tab auto-rotate ----
   useEffect(() => {
@@ -155,7 +169,7 @@ export function UnifiedRankingCard() {
     autoTabTimerRef.current = setInterval(() => {
       setActiveTab((prev) => (prev === "activity" ? "animal" : "activity"));
       setRegion("TOTAL"); // reset region when tab switches
-    }, 8000);
+    }, 12000);
     return () => {
       if (autoTabTimerRef.current) clearInterval(autoTabTimerRef.current);
     };
@@ -169,7 +183,7 @@ export function UnifiedRankingCard() {
         const idx = REGIONS.indexOf(prev);
         return REGIONS[(idx + 1) % REGIONS.length];
       });
-    }, 4000);
+    }, 5000);
     return () => clearInterval(timer);
   }, [isAutoPlaying, activeTab]);
 
@@ -178,14 +192,14 @@ export function UnifiedRankingCard() {
     setRegion("TOTAL"); // reset region on manual tab switch
     setIsAutoPlaying(false);
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 8000);
+    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 12000);
   }, []);
 
   const handleRegionClick = useCallback((reg: Region) => {
     setRegion(reg);
     setIsAutoPlaying(false);
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 8000);
+    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 12000);
   }, []);
 
   const isLoading = activeTab === "activity" ? activityLoading : animalLoading;
@@ -448,7 +462,7 @@ export function UnifiedRankingCard() {
                         whiteSpace: "nowrap",
                         fontWeight: 800,
                         minWidth: 0,
-                        maxWidth: "7em",
+                        maxWidth: "10em",
                       }}
                       title={item.name}
                     >
