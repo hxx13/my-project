@@ -139,7 +139,7 @@ export function SwipeFailureBanner() {
               <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "#cbd5e1" }}>
                 <span style={{ fontWeight: 600, color: "#e2e8f0" }}>{rec.personName}</span>
                 {rec.mobilePhone && (
-                  <span>📱 {rec.mobilePhone}</span>
+                  <span style={{ fontWeight: 700, color: "#f1f5f9", letterSpacing: "0.02em" }}>📱 {rec.mobilePhone}</span>
                 )}
               </div>
 
