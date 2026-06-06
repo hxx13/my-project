@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   Ban,
   Bell,
   Check,
@@ -40,8 +41,12 @@ import { AdminFilePickButton } from "@/components/admin/AdminFilePickButton";
 import { AdminPageTabs, AdminTabPanel } from "@/components/admin/AdminPageTabs";
 import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
+import { Portal } from "@/components/Portal";
 import { cn } from "@/lib/utils";
 import { ScanPopupAnnouncementSection } from "@/features/admin/ScanPopupAnnouncementSection";
+import type { SwipeAlertRuleRow } from "@/api/domains/swipeAlert.api";
+import { SwipeAlertRuleList } from "@/features/swipe-alert/SwipeAlertRuleList";
+import { SwipeAlertRuleForm } from "@/features/swipe-alert/SwipeAlertRuleForm";
 import {
   SCAN_OPERATOR_ROLE_HINT_UNBOUND,
   SCAN_OPERATOR_ROLE_LABEL,
@@ -51,13 +56,14 @@ import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 
 type PickUser = { userId: string; name: string };
 type LockMode = "single" | "batch";
-type PageTabId = "unbound" | "announcement" | "create" | "records";
+type PageTabId = "unbound" | "announcement" | "create" | "records" | "swipe-alert";
 
 const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
   { id: "unbound", label: "未绑卡提示", icon: <CreditCard className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "announcement", label: "扫码弹窗公告", icon: <Bell className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "create", label: "新建违规", icon: <UserPlus className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "records", label: "违规记录", icon: <ShieldAlert className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
+  { id: "swipe-alert", label: "刷卡失败告警", icon: <AlertTriangle className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
 ];
 
 const LOCK_MODE_OPTIONS: { value: LockMode; label: string }[] = [
@@ -105,7 +111,7 @@ function violationStatusLabel(status: string | undefined): { text: string; hint?
 }
 
 function parsePageTab(raw: string | null): PageTabId {
-  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records") return raw;
+  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert") return raw;
   return "unbound";
 }
 
@@ -164,6 +170,8 @@ export default function AdminStudentViolationsPage() {
   const [unboundUrls, setUnboundUrls] = useState<string[]>([]);
   const [unboundUploading, setUnboundUploading] = useState(false);
   const [unboundSaving, setUnboundSaving] = useState(false);
+  const [swipeAlertRefreshKey, setSwipeAlertRefreshKey] = useState(0);
+  const [editingSwipeRule, setEditingSwipeRule] = useState<SwipeAlertRuleRow | null>(null);
 
   const violationsQueryKey = useMemo(
     () => ["studentViolations", picked?.userId || "all"] as const,
@@ -1220,9 +1228,30 @@ export default function AdminStudentViolationsPage() {
             </table>
           </AdminTableShell>
         </AdminTabPanel>
+
+        <AdminTabPanel
+          id="violation-page-panel-swipe-alert"
+          tabId="swipe-alert"
+          activeTab={activeTab}
+          className="space-y-4"
+        >
+          <SwipeAlertRuleList
+            onEdit={setEditingSwipeRule}
+            refreshKey={swipeAlertRefreshKey}
+          />
+          <SwipeAlertRuleForm
+            editing={editingSwipeRule}
+            onSaved={() => {
+              setEditingSwipeRule(null);
+              setSwipeAlertRefreshKey((k) => k + 1);
+            }}
+            onCancel={() => setEditingSwipeRule(null)}
+          />
+        </AdminTabPanel>
       </div>
 
       {editOpen && editId != null ? (
+        <Portal>
         <div
           className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4"
           role="presentation"
@@ -1352,6 +1381,7 @@ export default function AdminStudentViolationsPage() {
             </div>
           </div>
         </div>
+        </Portal>
       ) : null}
     </AdminPageShell>
   );
