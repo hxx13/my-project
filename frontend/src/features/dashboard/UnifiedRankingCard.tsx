@@ -324,7 +324,7 @@ export function UnifiedRankingCard() {
                 const numSize = podiumIdx === 0 ? 12 : podiumIdx === 1 ? 9 : 8;
                 return (
                   <div
-                    key={item.name}
+                    key={`podium-${activeTab}-${podiumIdx}`}
                     style={{
                       textAlign: "center",
                       width: podiumWidths[podiumIdx],
@@ -401,7 +401,7 @@ export function UnifiedRankingCard() {
 
                 return (
                   <div
-                    key={item.name}
+                    key={`rank-${activeTab}-${rank}`}
                     className="flex items-center px-[1%] py-[1px] rounded-sm"
                     style={{
                       gap: "2%",
