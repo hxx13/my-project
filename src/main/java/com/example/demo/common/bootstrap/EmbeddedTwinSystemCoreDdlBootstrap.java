@@ -47,6 +47,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
         if (runScript("db/bootstrap-twin-student-violation.sql", "twin_student_violation（学生违规管理）")) {
             twinStudentViolationService.markSchemaReady();
         }
+        runScript("db/bootstrap-twin-student-violation-add-source.sql", "twin_student_violation source列 + stranded_violation_config表");
         runScript("db/bootstrap-twin-scan-popup-announcement.sql", "twin_scan_popup_announcement（扫码弹窗公告）");
         runScript("db/cage-shelf-cell-snapshot.sql", "cage_shelf_cell_snapshot（笼位快照）");
         runScript("db/cage-shelf-bookmark.sql", "cage_shelf_bookmark（笼架收藏）");
