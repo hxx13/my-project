@@ -152,17 +152,21 @@ export function AdminDataTableWrap({ children, className, scrollable }: AdminDat
 type AdminFormCardProps = {
   title: string;
   description?: ReactNode;
+  actions?: ReactNode;
   children: ReactNode;
   className?: string;
 };
 
 /** 长表单分区卡片 */
-export function AdminFormCard({ title, description, children, className }: AdminFormCardProps) {
+export function AdminFormCard({ title, description, actions, children, className }: AdminFormCardProps) {
   return (
     <section className={cn("rounded-xl border border-neutral-200/90 bg-white p-5 shadow-sm ring-1 ring-black/[0.02]", className)}>
-      <div className="mb-3 border-b border-neutral-100 pb-2">
-        <h3 className="text-sm font-semibold text-neutral-800">{title}</h3>
-        {description ? <div className="mt-1 text-xs text-neutral-500">{description}</div> : null}
+      <div className="mb-3 flex items-start justify-between border-b border-neutral-100 pb-2">
+        <div>
+          <h3 className="text-sm font-semibold text-neutral-800">{title}</h3>
+          {description ? <div className="mt-1 text-xs text-neutral-500">{description}</div> : null}
+        </div>
+        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
       <div className="space-y-3">{children}</div>
     </section>
