@@ -34,6 +34,7 @@ public class DahuaSwingPullService {
     private final DahuaSwingRuleEngineService dahuaSwingRuleEngineService;
     private final com.example.demo.modules.accessfusion.service.AccessRawEventIngestService accessRawEventIngestService;
     private final DahuaSwingDepartmentSupport departmentSupport;
+    private final com.example.demo.modules.swipealert.service.SwipeAlertEngine swipeAlertEngine;
 
     public DahuaSwingPullService(
             DahuaSwingMapper dahuaSwingMapper,
@@ -41,13 +42,15 @@ public class DahuaSwingPullService {
             TwinCardMappingService twinCardMappingService,
             DahuaSwingRuleEngineService dahuaSwingRuleEngineService,
             com.example.demo.modules.accessfusion.service.AccessRawEventIngestService accessRawEventIngestService,
-            DahuaSwingDepartmentSupport departmentSupport) {
+            DahuaSwingDepartmentSupport departmentSupport,
+            com.example.demo.modules.swipealert.service.SwipeAlertEngine swipeAlertEngine) {
         this.dahuaSwingMapper = dahuaSwingMapper;
         this.dahuaOpenApiService = dahuaOpenApiService;
         this.twinCardMappingService = twinCardMappingService;
         this.dahuaSwingRuleEngineService = dahuaSwingRuleEngineService;
         this.accessRawEventIngestService = accessRawEventIngestService;
         this.departmentSupport = departmentSupport;
+        this.swipeAlertEngine = swipeAlertEngine;
     }
 
     public List<DahuaSwingPullTask> listTasks() {
@@ -203,6 +206,24 @@ public class DahuaSwingPullService {
                             existing != null && Integer.valueOf(1).equals(existing.getMappingHit());
                     dahuaSwingMapper.upsertRecord(record);
                     accessRawEventIngestService.ingestFromSwing(record, "DAHUA_PULL");
+                    // Feed failures to SwipeAlertEngine for Dynamic Island notifications
+                    if (swipeAlertEngine != null) {
+                        try {
+                            com.example.demo.modules.dahua.dto.DahuaRecordDTO dto =
+                                    new com.example.demo.modules.dahua.dto.DahuaRecordDTO();
+                            dto.setId(record.getRecordId());
+                            dto.setPersonName(record.getPersonName());
+                            dto.setChannelName(record.getChannelName());
+                            dto.setChannelCode(record.getChannelCode());
+                            dto.setOpenType(record.getOpenType());
+                            dto.setEnterOrExit(record.getEnterOrExit());
+                            dto.setOpenResult(record.getOpenResult());
+                            dto.setSwingTime(record.getSwingTime());
+                            swipeAlertEngine.onSwingRecord(dto);
+                        } catch (Exception e) {
+                            log.debug("[swipe-alert] engine hook failed: {}", e.getMessage());
+                        }
+                    }
                     totalSaved++;
                     if (alreadyLinkageEligible) {
                         continue;
