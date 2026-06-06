@@ -55,14 +55,14 @@ export function DashboardHeatmapChart({ data, loading }: Props) {
         ? `0 0 ${4 + intensity * 10}px rgba(124,58,237,${0.2 + intensity * 0.2})`
         : undefined,
       animation: isPeak ? "cellBreathe 2s ease-in-out infinite" : undefined,
-      fontSize: 6,
+      fontSize: 8,
     };
   };
 
   return (
     <div className="h-full w-full overflow-hidden rounded-md border border-purple-100">
       <table
-        className="border-collapse text-[6px]"
+        className="border-collapse text-[8px]"
         style={{ width: "100%", tableLayout: "fixed" }}
       >
         <colgroup>
@@ -78,7 +78,7 @@ export function DashboardHeatmapChart({ data, loading }: Props) {
                 padding: "2px 3px",
                 color: "#7c3aed",
                 fontWeight: 600,
-                fontSize: 6,
+                fontSize: 8,
               }}
             >
               📅
@@ -90,7 +90,7 @@ export function DashboardHeatmapChart({ data, loading }: Props) {
                   padding: "2px 1px",
                   color: "#a78bfa",
                   fontWeight: 400,
-                  fontSize: 6,
+                  fontSize: 8,
                 }}
               >
                 {h}
@@ -107,7 +107,7 @@ export function DashboardHeatmapChart({ data, loading }: Props) {
                   fontWeight: 600,
                   color: "#6d28d9",
                   background: "#faf5ff",
-                  fontSize: 6,
+                  fontSize: 8,
                 }}
               >
                 {DAY_LABELS[dow]}

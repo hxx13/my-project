@@ -257,7 +257,7 @@ export default function DashboardPage() {
                             <UnifiedRankingCard />
                         </GlassCard>
                     </div>
-                    <div className="flex min-h-0 flex-[2.5] dash-card">
+                    <div className="flex min-h-0 flex-[3] dash-card">
                         <GlassCard blobColor="rgba(124,58,237,0.15)">
                             <DashboardHeatmapChart
                                 data={mergedHeatmap}
@@ -265,7 +265,7 @@ export default function DashboardPage() {
                             />
                         </GlassCard>
                     </div>
-                    <div className="flex min-h-0 flex-[2.5] dash-card">
+                    <div className="flex min-h-0 flex-[2] dash-card">
                         <GlassCard blobColor="rgba(236,72,153,0.12)">
                             <RoomPreferenceChart
                                 data={mergedRoomUsage}

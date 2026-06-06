@@ -35,7 +35,9 @@
       "Skill(update-config)",
       "Skill(update-config:*)",
       "mcp__playwright__browser_navigate",
-      "mcp__playwright__browser_run_code_unsafe"
+      "mcp__playwright__browser_run_code_unsafe",
+      "mcp__firecrawl__firecrawl_search",
+      "mcp__firecrawl__firecrawl_scrape"
     ]
   }
 }

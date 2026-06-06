@@ -66,14 +66,22 @@ export function UnifiedRankingCard() {
     queryKey: ["dashboard", "animalRanking", region],
     queryFn: () => fetchAnimalOrderRanking(region),
     refetchInterval: 1_800_000,
-    enabled: activeTab === "animal",
   });
 
-  // ---- Ranking change calculation ----
+  // ---- Data normalization (animal API uses different field names) ----
+  const rawActivityList: { name?: string; value?: number; count?: number }[] =
+    Array.isArray(activityData) ? activityData : [];
+
+  const rawAnimalListNormalized: { name: string; value: number }[] = useMemo(() => {
+    const arr = Array.isArray(animalData) ? animalData : [];
+    return arr.map((item: { projectName?: string; totalQuantity?: number }) => ({
+      name: item.projectName ?? "",
+      value: item.totalQuantity ?? 0,
+    }));
+  }, [animalData]);
+
   const rawList: { name?: string; value?: number; count?: number }[] =
-    activeTab === "activity"
-      ? (Array.isArray(activityData) ? activityData : [])
-      : (Array.isArray(animalData) ? animalData : []);
+    activeTab === "activity" ? rawActivityList : rawAnimalListNormalized;
 
   const rankedList = useMemo<RankItem[]>(() => {
     const items: RankItem[] = rawList.slice(0, MAX_ITEMS).map((item, idx) => {
@@ -382,7 +390,7 @@ export function UnifiedRankingCard() {
           <div
             ref={scrollBoxRef}
             className="flex-1 flex flex-col gap-[1.5px] overflow-y-auto"
-            style={{ scrollbarWidth: "thin" }}
+            style={{ scrollbarWidth: "none" }}
           >
             {(activeTab === "activity" ? rest : rankedList).map(
               (item, i) => {
@@ -405,7 +413,7 @@ export function UnifiedRankingCard() {
                         flex: "0.06",
                         textAlign: "center",
                         fontWeight: 800,
-                        fontSize: 7,
+                        fontSize: 9,
                         color: "#cbd5e1",
                         minWidth: 0,
                       }}
@@ -415,13 +423,13 @@ export function UnifiedRankingCard() {
                     <span
                       style={{
                         flex: "0.22",
-                        fontSize: 7,
+                        fontSize: 9,
                         color: "#334155",
                         textAlign: "right",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
-                        fontWeight: 600,
+                        fontWeight: 700,
                         minWidth: 0,
                       }}
                       title={item.name}
@@ -431,9 +439,9 @@ export function UnifiedRankingCard() {
                     <div
                       style={{
                         flex: "0.45",
-                        height: 4,
+                        height: 6,
                         background: "#f1f5f9",
-                        borderRadius: 2,
+                        borderRadius: 3,
                         overflow: "hidden",
                         minWidth: 0,
                       }}
@@ -444,7 +452,7 @@ export function UnifiedRankingCard() {
                           height: "100%",
                           background:
                             "linear-gradient(90deg, #6366f1, #8b5cf6)",
-                          borderRadius: 2,
+                          borderRadius: 3,
                           position: "relative",
                           overflow: "hidden",
                         }}
@@ -463,8 +471,8 @@ export function UnifiedRankingCard() {
                     </div>
                     <span
                       style={{
-                        fontWeight: 700,
-                        fontSize: 7,
+                        fontWeight: 800,
+                        fontSize: 9,
                         color: "#475569",
                         flex: "0.12",
                         textAlign: "right",

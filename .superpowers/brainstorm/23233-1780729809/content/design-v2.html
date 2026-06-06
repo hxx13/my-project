@@ -1,0 +1,437 @@
+<h2>公示大屏设计方案 — 修订版（行政风）</h2>
+<p class="subtitle">三屏轮播 · 横屏 16:9 · 自动轮播 + 可交互</p>
+
+<div class="section" style="margin-bottom: 24px;">
+  <h3 style="display:flex; align-items:center; gap:10px;">
+    <span style="background:#1e3a5f; color:#7ab7ef; padding:3px 10px; border-radius:4px; font-size:12px; font-weight:600;">屏 1/3</span>
+    实时概览
+  </h3>
+  <p class="subtitle" style="margin-top:0;">园区进出动态 · 当前在室人数 · 房间占用情况</p>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">实时概览 · 15 秒轮播</div>
+  <div class="mockup-body" style="background:#0f1923; color:#d4dbe4; padding:20px; font-size:12px; aspect-ratio:16/9; display:flex; flex-direction:column; gap:12px; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;">
+
+    <!-- Header bar -->
+    <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.08);">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-weight:700; font-size:16px; color:#fff; letter-spacing:2px;">实验动物中心 · 运行数据公示</span>
+        <span style="background:rgba(34,197,94,0.15); color:#22c55e; font-size:10px; padding:2px 8px; border-radius:3px; font-weight:600;">● 运行中</span>
+      </div>
+      <span style="font-size:16px; font-weight:600; color:rgba(255,255,255,0.7); font-variant-numeric:tabular-nums; letter-spacing:1px;">2026-06-06 14:32:15</span>
+    </div>
+
+    <!-- Hero numbers -->
+    <div style="display:flex; gap:16px;">
+      <div style="flex:1; background:linear-gradient(180deg, rgba(6,182,212,0.08), rgba(6,182,212,0.02)); border-left:3px solid #06b6d4; border-radius:0 8px 8px 0; padding:14px 18px;">
+        <div style="font-size:11px; color:rgba(255,255,255,0.45); margin-bottom:4px;">今日进出总人次</div>
+        <div style="font-size:36px; font-weight:800; color:#fff;">235</div>
+        <div style="font-size:10px; color:rgba(255,255,255,0.3);">截至当前时刻</div>
+      </div>
+      <div style="flex:1; background:linear-gradient(180deg, rgba(251,191,36,0.08), rgba(251,191,36,0.02)); border-left:3px solid #fbbf24; border-radius:0 8px 8px 0; padding:14px 18px;">
+        <div style="font-size:11px; color:rgba(255,255,255,0.45); margin-bottom:4px;">当前在室人数</div>
+        <div style="font-size:36px; font-weight:800; color:#fff;">87</div>
+        <div style="font-size:10px; color:rgba(255,255,255,0.3);">分布于 12 个房间</div>
+      </div>
+      <div style="flex:1; background:linear-gradient(180deg, rgba(167,139,250,0.08), rgba(167,139,250,0.02)); border-left:3px solid #a78bfa; border-radius:0 8px 8px 0; padding:14px 18px;">
+        <div style="font-size:11px; color:rgba(255,255,255,0.45); margin-bottom:4px;">今日活跃课题组</div>
+        <div style="font-size:36px; font-weight:800; color:#fff;">12</div>
+        <div style="font-size:10px; color:rgba(255,255,255,0.3);">个课题组有进出记录</div>
+      </div>
+      <div style="flex:1; background:linear-gradient(180deg, rgba(34,197,94,0.08), rgba(34,197,94,0.02)); border-left:3px solid #22c55e; border-radius:0 8px 8px 0; padding:14px 18px;">
+        <div style="font-size:11px; color:rgba(255,255,255,0.45); margin-bottom:4px;">人均停留时长</div>
+        <div style="font-size:36px; font-weight:800; color:#fff;">4.2<span style="font-size:18px;"> h</span></div>
+        <div style="font-size:10px; color:rgba(255,255,255,0.3);">今日估算</div>
+      </div>
+    </div>
+
+    <!-- Main content: 3 columns -->
+    <div style="display:flex; gap:16px; flex:1;">
+      <!-- Left: Campus stats + Live feed -->
+      <div style="flex:1; display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; gap:8px;">
+          <div style="flex:1; background:rgba(6,182,212,0.06); border:1px solid rgba(6,182,212,0.12); border-radius:6px; padding:12px; text-align:center;">
+            <div style="font-size:10px; color:rgba(255,255,255,0.4); margin-bottom:2px;">浦东园区</div>
+            <div style="font-size:28px; font-weight:800; color:#06b6d4;">138</div>
+            <div style="font-size:9px; color:rgba(255,255,255,0.3);">人次</div>
+          </div>
+          <div style="flex:1; background:rgba(236,72,153,0.06); border:1px solid rgba(236,72,153,0.12); border-radius:6px; padding:12px; text-align:center;">
+            <div style="font-size:10px; color:rgba(255,255,255,0.4); margin-bottom:2px;">浦西园区</div>
+            <div style="font-size:28px; font-weight:800; color:#ec4899;">97</div>
+            <div style="font-size:9px; color:rgba(255,255,255,0.3);">人次</div>
+          </div>
+        </div>
+        <div style="flex:1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:10px; overflow:hidden;">
+          <div style="font-size:10px; font-weight:600; color:rgba(255,255,255,0.35); margin-bottom:6px; letter-spacing:1px;">实时进出记录</div>
+          <div style="display:flex; flex-direction:column; gap:4px; font-size:10px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="color:#22c55e; font-weight:600;">进入</span><span>张三</span><span style="color:rgba(255,255,255,0.3);">A101</span><span style="margin-left:auto; color:rgba(255,255,255,0.2); font-size:9px;">14:31</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="color:#ef4444; font-weight:600;">离开</span><span>李四</span><span style="color:rgba(255,255,255,0.3);">B203</span><span style="margin-left:auto; color:rgba(255,255,255,0.2); font-size:9px;">14:30</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="color:#22c55e; font-weight:600;">进入</span><span>王五</span><span style="color:rgba(255,255,255,0.3);">A102</span><span style="margin-left:auto; color:rgba(255,255,255,0.2); font-size:9px;">14:30</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="color:#ef4444; font-weight:600;">离开</span><span>赵六</span><span style="color:rgba(255,255,255,0.3);">A101</span><span style="margin-left:auto; color:rgba(255,255,255,0.2); font-size:9px;">14:29</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="color:#22c55e; font-weight:600;">进入</span><span>孙七</span><span style="color:rgba(255,255,255,0.3);">B201</span><span style="margin-left:auto; color:rgba(255,255,255,0.2); font-size:9px;">14:29</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: Peak flow chart -->
+      <div style="flex:1.8; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:10px; display:flex; flex-direction:column;">
+        <div style="font-size:10px; font-weight:600; color:rgba(255,255,255,0.35); margin-bottom:4px; letter-spacing:1px;">今日人流量趋势（07:00–20:00，30分钟间隔）</div>
+        <div style="flex:1; display:flex; align-items:flex-end; gap:2px; padding:0 8px;">
+          <div style="flex:1; background:linear-gradient(0deg, rgba(56,189,248,0.5) 0%, rgba(56,189,248,0.05) 100%); height:35%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(56,189,248,0.5) 0%, rgba(56,189,248,0.05) 100%); height:22%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(56,189,248,0.6) 0%, rgba(56,189,248,0.08) 100%); height:48%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(56,189,248,0.7) 0%, rgba(56,189,248,0.1) 100%); height:55%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(244,114,182,0.6) 0%, rgba(244,114,182,0.08) 100%); height:62%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(244,114,182,0.7) 0%, rgba(244,114,182,0.1) 100%); height:70%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(56,189,248,0.8) 0%, rgba(56,189,248,0.12) 100%); height:68%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(244,114,182,0.8) 0%, rgba(244,114,182,0.12) 100%); height:82%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(244,114,182,0.9) 0%, rgba(244,114,182,0.15) 100%); height:95%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(56,189,248,0.6) 0%, rgba(56,189,248,0.08) 100%); height:58%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(244,114,182,0.7) 0%, rgba(244,114,182,0.1) 100%); height:75%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(56,189,248,0.7) 0%, rgba(56,189,248,0.1) 100%); height:65%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(56,189,248,0.5) 0%, rgba(56,189,248,0.05) 100%); height:40%; border-radius:1px 1px 0 0;"></div>
+          <div style="flex:1; background:linear-gradient(0deg, rgba(244,114,182,0.5) 0%, rgba(244,114,182,0.05) 100%); height:28%; border-radius:1px 1px 0 0;"></div>
+        </div>
+        <div style="display:flex; gap:12px; font-size:9px; color:rgba(255,255,255,0.3); padding:4px 8px 0;">
+          <span><span style="display:inline-block; width:8px; height:8px; background:#38bdf8; border-radius:2px; margin-right:4px;"></span>浦东</span>
+          <span><span style="display:inline-block; width:8px; height:8px; background:#f472b6; border-radius:2px; margin-right:4px;"></span>浦西</span>
+        </div>
+      </div>
+
+      <!-- Right: Room occupancy -->
+      <div style="flex:0.9; display:flex; flex-direction:column; gap:10px;">
+        <div style="flex:1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:10px;">
+          <div style="font-size:10px; font-weight:600; color:rgba(255,255,255,0.35); margin-bottom:8px; letter-spacing:1px;">各房间占用情况</div>
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:3px;"><span>A101 浦东</span><span style="color:#ef4444;">18/20</span></div>
+              <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px;"><div style="width:90%; height:100%; background:#ef4444; border-radius:2px;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:3px;"><span>B203 浦西</span><span style="color:#f59e0b;">12/15</span></div>
+              <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px;"><div style="width:80%; height:100%; background:#f59e0b; border-radius:2px;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:3px;"><span>A102 浦东</span><span style="color:#f59e0b;">8/12</span></div>
+              <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px;"><div style="width:67%; height:100%; background:#f59e0b; border-radius:2px;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:3px;"><span>B201 浦西</span><span style="color:#22c55e;">5/10</span></div>
+              <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px;"><div style="width:50%; height:100%; background:#22c55e; border-radius:2px;"></div></div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:3px;"><span>C301 浦西</span><span style="color:#22c55e;">3/8</span></div>
+              <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px;"><div style="width:38%; height:100%; background:#22c55e; border-radius:2px;"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom ticker -->
+    <div style="background:rgba(255,255,255,0.03); border-radius:4px; padding:6px 12px; font-size:10px; color:rgba(255,255,255,0.3); overflow:hidden; white-space:nowrap; letter-spacing:0.5px;">
+      🔔 最新动态：张三 进入 浦东园区 A101 房间 (14:31) ｜ 李四 离开 浦西园区 B203 房间 (14:30) ｜ 王五 进入 浦东园区 A102 房间 (14:30) ｜ 当前系统运行正常，数据更新延迟 &lt; 3 秒
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 2 -->
+<!-- ============================================================ -->
+
+<div class="section" style="margin: 32px 0 16px;">
+  <h3 style="display:flex; align-items:center; gap:10px;">
+    <span style="background:#1e3a5f; color:#7ab7ef; padding:3px 10px; border-radius:4px; font-size:12px; font-weight:600;">屏 2/3</span>
+    月度排名
+  </h3>
+  <p class="subtitle" style="margin-top:0;">课题组月度排名 · 动物订购统计 · 园区切换轮播</p>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">月度排名 · 15 秒轮播（排名数据每 5 分钟刷新）</div>
+  <div class="mockup-body" style="background:#0f1923; color:#d4dbe4; padding:20px; font-size:12px; aspect-ratio:16/9; display:flex; flex-direction:column; gap:12px; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;">
+
+    <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.08);">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-weight:700; font-size:16px; color:#fff; letter-spacing:2px;">实验动物中心 · 运行数据公示</span>
+        <span style="background:rgba(34,197,94,0.15); color:#22c55e; font-size:10px; padding:2px 8px; border-radius:3px; font-weight:600;">● 运行中</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:11px; color:rgba(255,255,255,0.35);">排名范围：</span>
+        <span style="background:rgba(255,255,255,0.08); padding:4px 10px; border-radius:4px; font-size:11px; font-weight:600; color:#fbbf24;">浦东 + 浦西</span>
+      </div>
+      <span style="font-size:16px; font-weight:600; color:rgba(255,255,255,0.7); letter-spacing:1px;">2026-06-06 14:32:15</span>
+    </div>
+
+    <div style="display:flex; gap:20px; flex:1;">
+      <div style="flex:1.5; display:flex; flex-direction:column;">
+        <div style="font-size:11px; font-weight:600; color:rgba(255,255,255,0.4); margin-bottom:8px; letter-spacing:1px;">课题组月度进出排名</div>
+        <div style="display:flex; align-items:flex-end; justify-content:center; gap:12px; flex:1; padding-bottom:8px;">
+          <div style="text-align:center; width:100px;">
+            <div style="font-size:28px;">🥈</div>
+            <div style="font-weight:700; font-size:12px; color:#fff;">神经科学课题组</div>
+            <div style="background:linear-gradient(180deg, #94a3b8, #64748b); height:60px; border-radius:6px 6px 0 0; display:flex; align-items:center; justify-content:center; margin-top:6px;">
+              <div style="font-weight:900; font-size:24px; color:#fff;">2</div>
+            </div>
+            <div style="font-size:10px; color:rgba(255,255,255,0.35); margin-top:4px;">1,248 分</div>
+          </div>
+          <div style="text-align:center; width:110px;">
+            <div style="font-size:36px;">🥇</div>
+            <div style="font-weight:700; font-size:13px; color:#fbbf24;">肿瘤免疫课题组</div>
+            <div style="background:linear-gradient(180deg, #fbbf24, #f59e0b); height:80px; border-radius:6px 6px 0 0; display:flex; align-items:center; justify-content:center; margin-top:6px;">
+              <div style="font-weight:900; font-size:32px; color:#0f1923;">1</div>
+            </div>
+            <div style="font-size:10px; color:#fbbf24; font-weight:600; margin-top:4px;">1,872 分</div>
+          </div>
+          <div style="text-align:center; width:95px;">
+            <div style="font-size:24px;">🥉</div>
+            <div style="font-weight:700; font-size:11px; color:#fff;">心血管课题组</div>
+            <div style="background:linear-gradient(180deg, #d97706, #b45309); height:45px; border-radius:6px 6px 0 0; display:flex; align-items:center; justify-content:center; margin-top:6px;">
+              <div style="font-weight:900; font-size:20px; color:#fff;">3</div>
+            </div>
+            <div style="font-size:10px; color:rgba(255,255,255,0.35); margin-top:4px;">986 分</div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:4px; margin-top:8px;">
+          <div style="display:flex; align-items:center; gap:8px; font-size:10px;">
+            <span style="color:rgba(255,255,255,0.25); width:16px; text-align:right;">4</span>
+            <span style="width:80px; text-align:right; color:rgba(255,255,255,0.7);">代谢课题组</span>
+            <div style="flex:1; height:5px; background:rgba(255,255,255,0.04); border-radius:3px;"><div style="width:70%; height:100%; background:linear-gradient(90deg, #3b82f6, #6366f1); border-radius:3px;"></div></div>
+            <span style="color:rgba(255,255,255,0.35); width:36px; text-align:right;">823</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; font-size:10px;">
+            <span style="color:rgba(255,255,255,0.25); width:16px; text-align:right;">5</span>
+            <span style="width:80px; text-align:right; color:rgba(255,255,255,0.7);">干细胞课题组</span>
+            <div style="flex:1; height:5px; background:rgba(255,255,255,0.04); border-radius:3px;"><div style="width:56%; height:100%; background:linear-gradient(90deg, #3b82f6, #6366f1); border-radius:3px;"></div></div>
+            <span style="color:rgba(255,255,255,0.35); width:36px; text-align:right;">671</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; font-size:10px;">
+            <span style="color:rgba(255,255,255,0.25); width:16px; text-align:right;">6</span>
+            <span style="width:80px; text-align:right; color:rgba(255,255,255,0.7);">遗传课题组</span>
+            <div style="flex:1; height:5px; background:rgba(255,255,255,0.04); border-radius:3px;"><div style="width:44%; height:100%; background:linear-gradient(90deg, #3b82f6, #6366f1); border-radius:3px;"></div></div>
+            <span style="color:rgba(255,255,255,0.35); width:36px; text-align:right;">512</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; font-size:10px;">
+            <span style="color:rgba(255,255,255,0.25); width:16px; text-align:right;">7</span>
+            <span style="width:80px; text-align:right; color:rgba(255,255,255,0.7);">药理课题组</span>
+            <div style="flex:1; height:5px; background:rgba(255,255,255,0.04); border-radius:3px;"><div style="width:33%; height:100%; background:linear-gradient(90deg, #3b82f6, #6366f1); border-radius:3px;"></div></div>
+            <span style="color:rgba(255,255,255,0.35); width:36px; text-align:right;">398</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:0.9; display:flex; flex-direction:column;">
+        <div style="font-size:11px; font-weight:600; color:rgba(255,255,255,0.4); margin-bottom:8px; letter-spacing:1px;">本月动物订购统计</div>
+        <div style="flex:1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:16px; display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; background:rgba(251,191,36,0.06); border-radius:4px;">
+            <span style="font-weight:800; font-size:14px; color:#fbbf24;">1</span><span style="flex:1; font-weight:600;">肿瘤免疫课题组</span><span style="font-weight:700; color:#fbbf24;">156</span><span style="font-size:10px; color:rgba(255,255,255,0.3);">只</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; padding:8px 10px;">
+            <span style="font-weight:800; font-size:13px; color:#94a3b8;">2</span><span style="flex:1;">神经科学课题组</span><span style="font-weight:600;">128</span><span style="font-size:10px; color:rgba(255,255,255,0.3);">只</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; padding:8px 10px;">
+            <span style="font-weight:800; font-size:12px; color:#d97706;">3</span><span style="flex:1;">干细胞课题组</span><span style="font-weight:600;">103</span><span style="font-size:10px; color:rgba(255,255,255,0.3);">只</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; padding:6px 10px; color:rgba(255,255,255,0.4);"><span style="width:24px; text-align:center; font-size:10px;">4</span><span style="flex:1;">心血管课题组</span><span>87</span></div>
+          <div style="display:flex; align-items:center; gap:10px; padding:6px 10px; color:rgba(255,255,255,0.4);"><span style="width:24px; text-align:center; font-size:10px;">5</span><span style="flex:1;">代谢课题组</span><span>72</span></div>
+          <div style="display:flex; align-items:center; gap:10px; padding:6px 10px; color:rgba(255,255,255,0.4);"><span style="width:24px; text-align:center; font-size:10px;">6</span><span style="flex:1;">遗传课题组</span><span>58</span></div>
+          <div style="display:flex; align-items:center; gap:10px; padding:6px 10px; color:rgba(255,255,255,0.4);"><span style="width:24px; text-align:center; font-size:10px;">7</span><span style="flex:1;">药理课题组</span><span>41</span></div>
+        </div>
+        <div style="font-size:9px; color:rgba(255,255,255,0.2); margin-top:6px; text-align:right;">数据统计周期：2026-06-01 至 2026-06-06</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SCREEN 3 -->
+<!-- ============================================================ -->
+
+<div class="section" style="margin: 32px 0 16px;">
+  <h3 style="display:flex; align-items:center; gap:10px;">
+    <span style="background:#1e3a5f; color:#7ab7ef; padding:3px 10px; border-radius:4px; font-size:12px; font-weight:600;">屏 3/3</span>
+    安全公示
+  </h3>
+  <p class="subtitle" style="margin-top:0;">违规记录公示 · 滞留预警 · 通知公告</p>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">安全公示 · 15 秒轮播（违规数据每 2 分钟刷新）</div>
+  <div class="mockup-body" style="background:#0f1923; color:#d4dbe4; padding:20px; font-size:12px; aspect-ratio:16/9; display:flex; flex-direction:column; gap:12px; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;">
+
+    <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.08);">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-weight:700; font-size:16px; color:#fff; letter-spacing:2px;">实验动物中心 · 运行数据公示</span>
+        <span style="background:rgba(34,197,94,0.15); color:#22c55e; font-size:10px; padding:2px 8px; border-radius:3px; font-weight:600;">● 运行中</span>
+      </div>
+      <span style="font-size:16px; font-weight:600; color:rgba(255,255,255,0.7); letter-spacing:1px;">2026-06-06 14:32:15</span>
+    </div>
+
+    <div style="display:flex; gap:16px; flex:1;">
+      <div style="flex:1.2; display:flex; flex-direction:column;">
+        <div style="font-size:11px; font-weight:600; color:#f97316; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span style="display:inline-block; width:3px; height:14px; background:#f97316; border-radius:2px;"></span>违规记录公示
+        </div>
+        <div style="flex:1; background:rgba(239,68,68,0.03); border:1px solid rgba(239,68,68,0.1); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; gap:8px; padding:8px; background:rgba(239,68,68,0.06); border-radius:4px; border-left:3px solid #ef4444;">
+            <div style="width:48px; height:48px; background:rgba(255,255,255,0.04); border-radius:4px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:20px;">📷</div>
+            <div style="flex:1;">
+              <div style="font-weight:600; font-size:11px; color:#fff;">未按时归还门禁卡</div>
+              <div style="font-size:9px; color:rgba(255,255,255,0.35); margin-top:2px;">张某 · 神经科学课题组 · 浦东园区</div>
+              <div style="font-size:9px; color:rgba(255,255,255,0.2); margin-top:2px;">发生时间：2026-06-04 · 处理状态：已确认</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; padding:8px; background:rgba(239,68,68,0.04); border-radius:4px; border-left:3px solid #f97316;">
+            <div style="width:48px; height:48px; background:rgba(255,255,255,0.04); border-radius:4px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:20px;">📷</div>
+            <div style="flex:1;">
+              <div style="font-weight:600; font-size:11px; color:#fff;">未经授权进入限制区域</div>
+              <div style="font-size:9px; color:rgba(255,255,255,0.35); margin-top:2px;">王某 · 心血管课题组 · 浦西园区</div>
+              <div style="font-size:9px; color:rgba(255,255,255,0.2); margin-top:2px;">发生时间：2026-06-02 · 处理状态：已确认</div>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; padding:8px; background:rgba(239,68,68,0.02); border-radius:4px; border-left:3px solid rgba(239,68,68,0.3);">
+            <div style="width:48px; height:48px; background:rgba(255,255,255,0.04); border-radius:4px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:20px;">📷</div>
+            <div style="flex:1;">
+              <div style="font-weight:600; font-size:11px; color:#fff;">超时滞留（超过 8 小时未签出）</div>
+              <div style="font-size:9px; color:rgba(255,255,255,0.35); margin-top:2px;">李某 · 代谢课题组 · 浦东园区</div>
+              <div style="font-size:9px; color:rgba(255,255,255,0.2); margin-top:2px;">发生时间：2026-05-30 · 处理状态：已确认</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:1.2; display:flex; flex-direction:column;">
+        <div style="font-size:11px; font-weight:600; color:#f59e0b; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span style="display:inline-block; width:3px; height:14px; background:#f59e0b; border-radius:2px;"></span>当前滞留预警
+        </div>
+        <div style="flex:1; background:rgba(245,158,11,0.03); border:1px solid rgba(245,158,11,0.1); border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:8px;">
+          <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.15); border-radius:6px; padding:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div><div style="font-weight:700; font-size:12px; color:#fff;">刘同学</div><div style="font-size:9px; color:rgba(255,255,255,0.3);">肿瘤免疫课题组 · A101 · 浦东</div></div>
+              <div style="text-align:right;"><div style="font-weight:700; font-size:14px; color:#ef4444;">9h 32m</div><div style="font-size:9px; color:rgba(255,255,255,0.25);">已停留时长</div></div>
+            </div>
+            <div style="margin-top:6px; display:flex; align-items:center; gap:8px; font-size:9px;">
+              <span style="color:rgba(255,255,255,0.3);">AI 参考时长：6h</span>
+              <span style="background:rgba(239,68,68,0.2); color:#ef4444; padding:1px 6px; border-radius:3px; font-weight:600;">超时风险 87%</span>
+            </div>
+          </div>
+          <div style="background:rgba(245,158,11,0.06); border:1px solid rgba(245,158,11,0.12); border-radius:6px; padding:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div><div style="font-weight:700; font-size:12px; color:#fff;">黄同学</div><div style="font-size:9px; color:rgba(255,255,255,0.3);">干细胞课题组 · B203 · 浦西</div></div>
+              <div style="text-align:right;"><div style="font-weight:700; font-size:14px; color:#f59e0b;">6h 15m</div><div style="font-size:9px; color:rgba(255,255,255,0.25);">已停留时长</div></div>
+            </div>
+            <div style="margin-top:6px; display:flex; align-items:center; gap:8px; font-size:9px;">
+              <span style="color:rgba(255,255,255,0.3);">AI 参考时长：5h</span>
+              <span style="background:rgba(245,158,11,0.2); color:#f59e0b; padding:1px 6px; border-radius:3px; font-weight:600;">超时风险 62%</span>
+            </div>
+          </div>
+          <div style="background:rgba(34,197,94,0.04); border:1px solid rgba(34,197,94,0.1); border-radius:6px; padding:8px; opacity:0.6;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div><div style="font-weight:600; font-size:11px; color:#fff;">曹同学</div><div style="font-size:9px; color:rgba(255,255,255,0.3);">心血管课题组 · A102 · 浦东</div></div>
+              <div style="text-align:right;"><div style="font-weight:600; font-size:12px; color:#22c55e;">2h 10m</div><div style="font-size:9px; color:rgba(255,255,255,0.25);">正常</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:0.8; display:flex; flex-direction:column;">
+        <div style="font-size:11px; font-weight:600; color:#a78bfa; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+          <span style="display:inline-block; width:3px; height:14px; background:#a78bfa; border-radius:2px;"></span>通知公告
+        </div>
+        <div style="flex:1; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:12px; display:flex; flex-direction:column; gap:12px;">
+          <div style="padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.05);">
+            <div style="font-weight:600; font-size:11px; color:#fff;">6 月动物房消毒通知</div>
+            <div style="font-size:9px; color:rgba(255,255,255,0.3); margin-top:4px;">6 月 12 日（周四）浦东 A 区例行消毒，请提前收尾实验。</div>
+            <div style="font-size:9px; color:rgba(255,255,255,0.2); margin-top:3px;">发布日期：2026-06-05</div>
+          </div>
+          <div style="padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.05);">
+            <div style="font-weight:600; font-size:11px; color:#fff;">门禁卡年度审核提醒</div>
+            <div style="font-size:9px; color:rgba(255,255,255,0.3); margin-top:4px;">请在 6 月 30 日前完成门禁卡年度审核，逾期将暂停门禁权限。</div>
+            <div style="font-size:9px; color:rgba(255,255,255,0.2); margin-top:3px;">发布日期：2026-06-01</div>
+          </div>
+          <div>
+            <div style="font-weight:600; font-size:11px; color:#fff;">新入室人员培训安排</div>
+            <div style="font-size:9px; color:rgba(255,255,255,0.3); margin-top:4px;">每周五下午 14:00 在浦东园区会议室进行，请提前报名。</div>
+            <div style="font-size:9px; color:rgba(255,255,255,0.2); margin-top:3px;">发布日期：2026-05-28</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr style="margin: 32px 0; border-color: var(--border-color);" />
+
+<h2>三屏一览</h2>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-body">
+      <h3>屏 1 — 实时概览</h3>
+      <ul style="font-size:13px; color:var(--text-muted); padding-left:16px;">
+        <li>4 个 Hero 数字（今日总人次 / 在室人数 / 活跃课题组 / 人均停留）</li>
+        <li>浦东/浦西 园区统计卡片</li>
+        <li>实时进出记录流（WebSocket）</li>
+        <li>今日人流量趋势图（双色折线）</li>
+        <li>各房间占用条</li>
+        <li>底部滚动消息条</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <h3>屏 2 — 月度排名</h3>
+      <ul style="font-size:13px; color:var(--text-muted); padding-left:16px;">
+        <li>课题组月度排名（冠亚季领奖台 + 4-7名条形）</li>
+        <li>本月动物订购统计（TOP7）</li>
+        <li>排名范围标签可切换（全部 / 浦东 / 浦西）</li>
+        <li>底部显示统计周期</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <h3>屏 3 — 安全公示</h3>
+      <ul style="font-size:13px; color:var(--text-muted); padding-left:16px;">
+        <li>违规记录公示（含封面图/姓名/课题组/状态）</li>
+        <li>当前滞留预警（AI 预测 vs 实际停留）</li>
+        <li>通知公告列表</li>
+        <li>违规记录自动翻页（超过 3 条时）</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>交互规则</h3>
+  <div style="display:flex; gap:16px; flex-wrap:wrap;">
+    <div style="flex:1; min-width:140px; background:var(--surface); border:1px solid var(--border-color); border-radius:8px; padding:14px;">
+      <div style="font-weight:700; font-size:13px; margin-bottom:4px;">自动轮播</div>
+      <div style="font-size:12px; color:var(--text-muted);">15 秒/屏自动切换，循环播放</div>
+    </div>
+    <div style="flex:1; min-width:140px; background:var(--surface); border:1px solid var(--border-color); border-radius:8px; padding:14px;">
+      <div style="font-weight:700; font-size:13px; margin-bottom:4px;">手动交互</div>
+      <div style="font-size:12px; color:var(--text-muted);">右侧导航点点击 / 触摸滑动</div>
+    </div>
+    <div style="flex:1; min-width:140px; background:var(--surface); border:1px solid var(--border-color); border-radius:8px; padding:14px;">
+      <div style="font-weight:700; font-size:13px; margin-bottom:4px;">恢复机制</div>
+      <div style="font-size:12px; color:var(--text-muted);">手动操作后暂停 8s，之后自动恢复</div>
+    </div>
+    <div style="flex:1; min-width:140px; background:var(--surface); border:1px solid var(--border-color); border-radius:8px; padding:14px;">
+      <div style="font-weight:700; font-size:13px; margin-bottom:4px;">数据刷新</div>
+      <div style="font-size:12px; color:var(--text-muted);">WebSocket 实时推 · 排名 5min · 违规 2min</div>
+    </div>
+  </div>
+</div>
