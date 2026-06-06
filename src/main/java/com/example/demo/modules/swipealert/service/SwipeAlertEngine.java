@@ -64,8 +64,14 @@ public class SwipeAlertEngine {
 
     @PostConstruct
     public void reloadRules() {
-        activeRules = mapper.findByEnabledTrue();
-        log.info("[swipe-alert] rules reloaded, count={}", activeRules.size());
+        try {
+            activeRules = mapper.findByEnabledTrue();
+            log.info("[swipe-alert] rules reloaded, count={}", activeRules.size());
+        } catch (Exception e) {
+            log.warn("[swipe-alert] unable to load rules (table may not exist yet): {}",
+                    e.getMessage());
+            activeRules = List.of();
+        }
     }
 
     /**
