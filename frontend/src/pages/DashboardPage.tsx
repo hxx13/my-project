@@ -124,22 +124,27 @@ export default function DashboardPage() {
 
     // activeGroup 已在上方定义，此处不再重复
 
-    // 合并：API 热力图数据 + 实时增量
+    // 滤出 activeGroup 的实时 ENTER 事件（只统计同一课题组）
+    const groupLiveEntries = useMemo<UniversalEvent[]>(() => {
+      if (!activeGroup) return [];
+      return liveEntries.filter((evt) => evt.person?.group === activeGroup);
+    }, [liveEntries, activeGroup]);
+
+    // 合并：API 热力图数据（已按 activeGroup 查） + activeGroup 实时增量
     const mergedHeatmap = useMemo<HeatmapCell[]>(() => {
       const base = heatmapData ?? [];
-      if (liveEntries.length === 0) return base;
+      if (groupLiveEntries.length === 0) return base;
 
-      // 复制 base 为可变 Map: key = "dow-hour"
       const map = new Map<string, HeatmapCell>();
       for (const cell of base) {
         map.set(`${cell.dayOfWeek}-${cell.hour}`, { ...cell });
       }
 
-      for (const evt of liveEntries) {
+      for (const evt of groupLiveEntries) {
         const ts = new Date(evt.timestamp);
-        const dayOfWeek = ts.getDay(); // 0=Sun
+        const dayOfWeek = ts.getDay();
         const hour = ts.getHours();
-        if (hour < 7 || hour > 20) continue; // 只统计 7-20
+        if (hour < 7 || hour > 20) continue;
         const key = `${dayOfWeek}-${hour}`;
         const existing = map.get(key);
         if (existing) {
@@ -150,19 +155,19 @@ export default function DashboardPage() {
       }
 
       return Array.from(map.values());
-    }, [heatmapData, liveEntries]);
+    }, [heatmapData, groupLiveEntries]);
 
-    // 合并：API 房间偏好数据 + 实时增量
+    // 合并：API 房间偏好数据（已按 activeGroup 查） + activeGroup 实时增量
     const mergedRoomUsage = useMemo<RoomUsageItem[]>(() => {
       const base = roomUsageData ?? [];
-      if (liveEntries.length === 0) return base;
+      if (groupLiveEntries.length === 0) return base;
 
       const map = new Map<string, RoomUsageItem>();
       for (const item of base) {
         map.set(item.roomName, { ...item });
       }
 
-      for (const evt of liveEntries) {
+      for (const evt of groupLiveEntries) {
         const room = evt.location?.room;
         if (!room) continue;
         const existing = map.get(room);
@@ -174,7 +179,7 @@ export default function DashboardPage() {
       }
 
       return Array.from(map.values());
-    }, [roomUsageData, liveEntries]);
+    }, [roomUsageData, groupLiveEntries]);
 
     return (
         <>
