@@ -61,6 +61,10 @@ public class SwipeAlertEngine {
     /** Cooldown: ruleId -> last fire timestamp (epoch ms). */
     private final Map<Long, Long> lastFireMap = new ConcurrentHashMap<>();
 
+    /** Dedup: recordId -> processTime. Prevents same record triggering alerts on re-pull. */
+    private final Map<String, Long> processedRecords = new ConcurrentHashMap<>();
+    private volatile long lastCleanupTime = System.currentTimeMillis();
+
     /** Cached active rules, reloaded via {@link #reloadRules()}. */
     private volatile List<SwipeAlertRule> activeRules = List.of();
 
@@ -132,7 +136,21 @@ public class SwipeAlertEngine {
 
         if (!isFailure && !isIllegal) return;
 
+        // Record-level dedup: skip if this exact record was already processed
+        String recordId = record.getId();
+        if (recordId != null && !recordId.isBlank()) {
+            Long lastSeen = processedRecords.putIfAbsent(recordId, System.currentTimeMillis());
+            if (lastSeen != null) {
+                return; // already processed
+            }
+        }
+
+        // Periodic cleanup: evict records older than 10 minutes (prevent memory leak)
         long now = System.currentTimeMillis();
+        if (now - lastCleanupTime > 300_000) { // every 5 minutes
+            processedRecords.values().removeIf(t -> now - t > 600_000);
+            lastCleanupTime = now;
+        }
 
         for (SwipeAlertRule rule : activeRules) {
             if (!Boolean.TRUE.equals(rule.getEnabled())) continue;
