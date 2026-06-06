@@ -1,0 +1,281 @@
+package com.example.demo.modules.swipealert.service;
+
+import com.example.demo.modules.swipealert.entity.SwipeAlertRule;
+import com.example.demo.modules.swipealert.mapper.SwipeAlertRuleMapper;
+import com.example.demo.modules.dahua.dto.DahuaRecordDTO;
+import com.corundumstudio.socketio.SocketIOServer;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Core rule engine for swipe failure alerts.
+ *
+ * <p>Responsibilities:</p>
+ * <ul>
+ *   <li>Watches swing records as they are persisted</li>
+ *   <li>Matches each failed record against active alert rules</li>
+ *   <li>Maintains sliding window counters in memory</li>
+ *   <li>Fires WebSocket (Socket.IO) alerts when thresholds are breached</li>
+ *   <li>Enforces cooldown between repeated alerts</li>
+ * </ul>
+ *
+ * <h3>Hook points</h3>
+ * <p>This engine must be called after each swing record is persisted:</p>
+ * <ol>
+ *   <li><b>Webhook path:</b> {@code DahuaService.processAndBroadcast()} — call
+ *       {@link #onSwingRecord(DahuaRecordDTO)} for each parsed record.</li>
+ *   <li><b>Scheduled pull path:</b> {@code DahuaSwingPullService.pullOnce()} — call
+ *       {@link #onSwingRecord(DahuaRecordDTO)} after upsert. (A future overload
+ *       accepting {@code DahuaSwingRecord} could carry richer data such as
+ *       departmentName and personCode.)</li>
+ * </ol>
+ */
+@Service
+public class SwipeAlertEngine {
+
+    private static final Logger log = LoggerFactory.getLogger(SwipeAlertEngine.class);
+
+    private final SwipeAlertRuleMapper mapper;
+    private final SocketIOServer socketServer;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** In-memory sliding windows: ruleId -> deque of event timestamps (epoch ms). */
+    private final Map<Long, Deque<Long>> windowMap = new ConcurrentHashMap<>();
+
+    /** Cooldown: ruleId -> last fire timestamp (epoch ms). */
+    private final Map<Long, Long> lastFireMap = new ConcurrentHashMap<>();
+
+    /** Cached active rules, reloaded via {@link #reloadRules()}. */
+    private volatile List<SwipeAlertRule> activeRules = List.of();
+
+    public SwipeAlertEngine(SwipeAlertRuleMapper mapper,
+                            @Autowired(required = false) SocketIOServer socketServer) {
+        this.mapper = mapper;
+        this.socketServer = socketServer;
+    }
+
+    @PostConstruct
+    public void reloadRules() {
+        activeRules = mapper.findByEnabledTrue();
+        log.info("[swipe-alert] rules reloaded, count={}", activeRules.size());
+    }
+
+    // =========================================================================
+    // Public API
+    // =========================================================================
+
+    /**
+     * Called after each swing record is persisted.
+     * Only processes failures ({@code openResult == 0}) and illegal opens
+     * ({@code openType == 52}).
+     */
+    public void onSwingRecord(DahuaRecordDTO record) {
+        if (record == null) return;
+
+        Integer openResult = record.getOpenResult();
+        Integer openType = record.getOpenType();
+
+        if (openResult == null && openType == null) return;
+
+        boolean isFailure = openResult != null && openResult == 0;
+        boolean isIllegal = openType != null && openType == 52;
+
+        if (!isFailure && !isIllegal) return;
+
+        long now = System.currentTimeMillis();
+
+        for (SwipeAlertRule rule : activeRules) {
+            if (!Boolean.TRUE.equals(rule.getEnabled())) continue;
+            if (!matchesRule(rule, record, isFailure, isIllegal)) continue;
+
+            Integer windowSec = rule.getThresholdWindowSec();
+            Integer thresholdCount = rule.getThresholdCount();
+            if (windowSec == null || thresholdCount == null || thresholdCount <= 0) {
+                log.warn("[swipe-alert] rule id={} has null/zero window or threshold, skipping", rule.getId());
+                continue;
+            }
+
+            // ---- sliding window ----
+            Deque<Long> timestamps = windowMap.computeIfAbsent(
+                    rule.getId(), k -> new ArrayDeque<>());
+            long windowStart = now - windowSec * 1000L;
+            while (!timestamps.isEmpty() && timestamps.peekFirst() < windowStart) {
+                timestamps.pollFirst();
+            }
+            timestamps.addLast(now);
+
+            // ---- threshold check ----
+            if (timestamps.size() < thresholdCount) continue;
+
+            // ---- cooldown check ----
+            Integer cooldownSec = rule.getCooldownSec();
+            if (cooldownSec != null && cooldownSec > 0) {
+                Long lastFire = lastFireMap.get(rule.getId());
+                if (lastFire != null && (now - lastFire) < cooldownSec * 1000L) {
+                    continue;
+                }
+            }
+            lastFireMap.put(rule.getId(), now);
+
+            // ---- build & fire alert ----
+            Map<String, Object> alert = buildAlert(rule, timestamps.size(), record);
+            fireAlert(alert);
+        }
+    }
+
+    // =========================================================================
+    // Rule matching
+    // =========================================================================
+
+    private boolean matchesRule(SwipeAlertRule rule, DahuaRecordDTO record,
+                                 boolean isFailure, boolean isIllegal) {
+        // --- openTypes filter ---
+        String openTypes = rule.getOpenTypes();
+        if (openTypes != null && !openTypes.isBlank()) {
+            Set<String> allowed = new HashSet<>(Arrays.asList(openTypes.split(",")));
+            boolean matched = false;
+            if (isIllegal && allowed.contains("52")) matched = true;
+            if (isFailure && allowed.contains("0")) matched = true;
+            if (!matched) return false;
+        }
+
+        // --- channels filter (JSON array of channel codes) ---
+        String channelsJson = rule.getChannels();
+        if (channelsJson != null && !channelsJson.isBlank() && !"null".equals(channelsJson)) {
+            try {
+                List<String> allowedChannels = objectMapper.readValue(
+                        channelsJson, new TypeReference<List<String>>() {});
+                if (allowedChannels != null && !allowedChannels.isEmpty()) {
+                    String recordChannel = record.getChannelCode();
+                    if (recordChannel == null || !allowedChannels.contains(recordChannel.trim())) {
+                        return false;
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("[swipe-alert] channels parse error for rule id={}, skipping channel filter",
+                        rule.getId(), e);
+            }
+        }
+
+        // --- departments filter (JSON array of department names) ---
+        // NOTE: DahuaRecordDTO (webhook DTO) does not carry departmentName.
+        // In the pull path DahuaSwingRecord does after enrichment.
+        // For now the departments filter is a no-op on the webhook DTO path;
+        // a future overload can accept DahuaSwingRecord for accurate matching.
+        String deptsJson = rule.getDepartments();
+        if (deptsJson != null && !deptsJson.isBlank() && !"null".equals(deptsJson)) {
+            try {
+                List<String> allowedDepts = objectMapper.readValue(
+                        deptsJson, new TypeReference<List<String>>() {});
+                if (allowedDepts != null && !allowedDepts.isEmpty()) {
+                    // DahuaRecordDTO has no departmentName — skip filter
+                    // (alert will still fire but departments cannot be narrowed here)
+                    log.debug("[swipe-alert] rule id={} has departments filter but DTO carries no dept; "
+                            + "skipping dept check", rule.getId());
+                }
+            } catch (Exception e) {
+                log.debug("[swipe-alert] departments parse error for rule id={}, skipping dept filter",
+                        rule.getId(), e);
+            }
+        }
+
+        return true;
+    }
+
+    // =========================================================================
+    // Alert construction
+    // =========================================================================
+
+    private Map<String, Object> buildAlert(SwipeAlertRule rule, int count,
+                                            DahuaRecordDTO record) {
+        // DTO fields that are always available
+        String channel = Objects.toString(record.getChannelName(), "");
+        String person  = Objects.toString(record.getPersonName(), "");
+
+        // DahuaRecordDTO lacks departmentName & personCode.
+        // These will be empty for webhook events; a future pull-path overload
+        // can populate them from the richer DahuaSwingRecord entity.
+        String dept  = "";  // TODO: populate from DahuaSwingRecord.departmentName in pull path
+        String pcode = "";  // TODO: populate from DahuaSwingRecord.personCode in pull path
+
+        String winMin  = String.valueOf(rule.getThresholdWindowSec() != null
+                ? rule.getThresholdWindowSec() / 60 : 0);
+        String winSec  = String.valueOf(rule.getThresholdWindowSec() != null
+                ? rule.getThresholdWindowSec() : 0);
+        String threshold = String.valueOf(rule.getThresholdCount() != null
+                ? rule.getThresholdCount() : 0);
+
+        String title = (rule.getTitleTemplate() != null ? rule.getTitleTemplate() : "")
+                .replace("${dept}", dept)
+                .replace("${channel}", channel)
+                .replace("${count}", String.valueOf(count))
+                .replace("${windowMin}", winMin)
+                .replace("${windowSec}", winSec)
+                .replace("${threshold}", threshold)
+                .replace("${persons}", person);
+
+        String body = (rule.getBodyTemplate() != null ? rule.getBodyTemplate() : "")
+                .replace("${dept}", dept)
+                .replace("${channel}", channel)
+                .replace("${count}", String.valueOf(count))
+                .replace("${windowMin}", winMin)
+                .replace("${windowSec}", winSec)
+                .replace("${threshold}", threshold)
+                .replace("${persons}", person);
+
+        Map<String, Object> alert = new LinkedHashMap<>();
+        alert.put("alertId", UUID.randomUUID().toString());
+        alert.put("ruleId", rule.getId());
+        alert.put("ruleName", rule.getName());
+        alert.put("title", title);
+        alert.put("body", body);
+        alert.put("count", count);
+        alert.put("windowSec", rule.getThresholdWindowSec());
+        alert.put("bannerDurationSec", rule.getBannerDurationSec());
+
+        // Single-record snapshot; a future enhancement would collect all
+        // matching records within the window and list them here.
+        Map<String, Object> recordSnap = new LinkedHashMap<>();
+        recordSnap.put("personName", person);
+        recordSnap.put("personCode", pcode);
+        recordSnap.put("departmentName", dept);
+        recordSnap.put("channelName", channel);
+        recordSnap.put("channelCode", Objects.toString(record.getChannelCode(), ""));
+        recordSnap.put("openTypeLabel",
+                record.getOpenType() != null && record.getOpenType() == 52
+                        ? "非法刷卡开门" : "刷卡失败");
+        recordSnap.put("swingTime", Objects.toString(record.getSwingTime(), ""));
+        alert.put("matchedRecords", Collections.singletonList(recordSnap));
+
+        return alert;
+    }
+
+    // =========================================================================
+    // Broadcast
+    // =========================================================================
+
+    private void fireAlert(Map<String, Object> alert) {
+        if (socketServer != null) {
+            try {
+                socketServer.getBroadcastOperations().sendEvent("SWIPE_FAILURE_ALERT", alert);
+                log.info("[swipe-alert] fired alertId={} ruleId={} ruleName={} count={}",
+                        alert.get("alertId"), alert.get("ruleId"),
+                        alert.get("ruleName"), alert.get("count"));
+            } catch (Exception e) {
+                log.error("[swipe-alert] broadcast failed alertId={} ruleId={}",
+                        alert.get("alertId"), alert.get("ruleId"), e);
+            }
+        } else {
+            log.warn("[swipe-alert] socketServer not wired — alert dropped alertId={} ruleId={}",
+                    alert.get("alertId"), alert.get("ruleId"));
+        }
+    }
+}
