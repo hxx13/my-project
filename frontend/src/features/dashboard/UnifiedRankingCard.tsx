@@ -25,26 +25,26 @@ const MAX_ITEMS = 50;
 const podiumColors = [
   {
     bg: "linear-gradient(180deg, #fef3c7, #fbbf24, #f59e0b)",
-    height: 44,
+    height: 62,
     medal: "🥇",
     anim: "glowPulse 2s ease-in-out infinite",
   },
   {
     bg: "linear-gradient(180deg, #e2e8f0, #94a3b8)",
-    height: 32,
+    height: 50,
     medal: "🥈",
     anim: "silverPulse 2.5s ease-in-out infinite",
   },
   {
     bg: "linear-gradient(180deg, #fed7aa, #f97316, #ea580c)",
-    height: 24,
+    height: 38,
     medal: "🥉",
     anim: "bronzePulse 3s ease-in-out infinite",
   },
 ];
 
 const podiumOrder = [1, 0, 2]; // 2nd, 1st, 3rd
-const podiumWidths = [56, 64, 50];
+const podiumWidths = [72, 82, 66];
 
 export function UnifiedRankingCard() {
   const [activeTab, setActiveTab] = useState<TabKey>("activity");
@@ -197,7 +197,7 @@ export function UnifiedRankingCard() {
         <span
           style={{
             color: "#22c55e",
-            fontSize: 12,
+            fontSize: 16,
             fontWeight: 900,
             // arrowBounce defined globally in DashboardPage <style>
           }}
@@ -212,7 +212,7 @@ export function UnifiedRankingCard() {
         <span
           style={{
             color: "#ef4444",
-            fontSize: 12,
+            fontSize: 16,
             fontWeight: 900,
           }}
           className="animate-arrow-bounce"
@@ -234,16 +234,16 @@ export function UnifiedRankingCard() {
       <div className="flex justify-between items-center pb-2 border-b border-amber-100 shrink-0">
         <div className="flex items-center gap-1.5">
           <div
-            className="w-[18px] h-[18px] rounded-md flex items-center justify-center"
+            className="w-[24px] h-[24px] rounded-md flex items-center justify-center"
             style={{
               background: "linear-gradient(135deg, #fbbf24, #f59e0b)",
-              boxShadow: "0 0 8px rgba(245,158,11,0.3)",
+              boxShadow: "0 0 12px rgba(245,158,11,0.4)",
             }}
           >
-            <Trophy className="w-3 h-3 text-white" />
+            <Trophy className="w-4 h-4 text-white" />
           </div>
           <span
-            className="text-[13px] font-black tracking-wider"
+            className="text-[16px] font-black tracking-wider"
             style={{
               background: "linear-gradient(90deg, #b45309, #d97706)",
               WebkitBackgroundClip: "text",
@@ -258,15 +258,15 @@ export function UnifiedRankingCard() {
             type="button"
             onClick={() => handleTabClick("activity")}
             style={{
-              padding: "2px 8px",
-              borderRadius: 4,
-              fontWeight: 700,
-              fontSize: 8,
+              padding: "3px 10px",
+              borderRadius: 5,
+              fontWeight: 800,
+              fontSize: 10,
               background: activeTab === "activity" ? "#fbbf24" : "transparent",
               color: activeTab === "activity" ? "#fff" : "#b45309",
               boxShadow:
                 activeTab === "activity"
-                  ? "0 1px 3px rgba(245,158,11,0.3)"
+                  ? "0 2px 6px rgba(245,158,11,0.35)"
                   : "none",
               transition: "all 0.2s",
             }}
@@ -277,10 +277,10 @@ export function UnifiedRankingCard() {
             type="button"
             onClick={() => handleTabClick("animal")}
             style={{
-              padding: "2px 8px",
-              borderRadius: 4,
-              fontWeight: 700,
-              fontSize: 8,
+              padding: "3px 10px",
+              borderRadius: 5,
+              fontWeight: 800,
+              fontSize: 10,
               background: activeTab === "animal" ? "#fbbf24" : "transparent",
               color: activeTab === "animal" ? "#fff" : "#b45309",
               boxShadow:
@@ -303,21 +303,21 @@ export function UnifiedRankingCard() {
             type="button"
             onClick={() => handleRegionClick(reg)}
             style={{
-              padding: "1px 8px",
-              borderRadius: 3,
-              fontWeight: 700,
-              fontSize: 7,
+              padding: "2px 10px",
+              borderRadius: 4,
+              fontWeight: 800,
+              fontSize: 10,
               background: region === reg ? "#3b82f6" : "transparent",
               color: region === reg ? "#fff" : "#94a3b8",
               boxShadow:
-                region === reg ? "0 1px 4px rgba(59,130,246,0.3)" : "none",
+                region === reg ? "0 2px 6px rgba(59,130,246,0.35)" : "none",
               transition: "all 0.15s",
             }}
           >
             {REGION_LABELS[reg]}
           </button>
         ))}
-        <span className="ml-auto text-[7px] text-slate-300">Top 20</span>
+        <span className="ml-auto text-[10px] text-slate-400 font-semibold">Top 50</span>
       </div>
 
       {/* Content */}
@@ -337,8 +337,8 @@ export function UnifiedRankingCard() {
                 const item = top3[podiumIdx];
                 if (!item) return null;
                 const colors = podiumColors[podiumIdx];
-                const fontSize = podiumIdx === 0 ? 10 : podiumIdx === 1 ? 9 : 8;
-                const numSize = podiumIdx === 0 ? 16 : podiumIdx === 1 ? 12 : 10;
+                const fontSize = podiumIdx === 0 ? 13 : podiumIdx === 1 ? 12 : 11;
+                const numSize = podiumIdx === 0 ? 22 : podiumIdx === 1 ? 18 : 14;
                 return (
                   <div
                     key={`podium-${activeTab}-${podiumIdx}`}
@@ -350,14 +350,14 @@ export function UnifiedRankingCard() {
                     <div
                       style={{
                         fontSize:
-                          podiumIdx === 0 ? 24 : podiumIdx === 1 ? 20 : 16,
+                          podiumIdx === 0 ? 32 : podiumIdx === 1 ? 28 : 24,
                       }}
                     >
                       {colors.medal}
                     </div>
                     <div
                       style={{
-                        fontWeight: 700,
+                        fontWeight: 800,
                         fontSize,
                         color: podiumIdx === 0 ? "#b45309" : "#475569",
                         lineHeight: 1.2,
@@ -369,16 +369,16 @@ export function UnifiedRankingCard() {
                       style={{
                         background: colors.bg,
                         height: colors.height,
-                        borderRadius: "2px 2px 0 0",
+                        borderRadius: "3px 3px 0 0",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        marginTop: 1,
+                        marginTop: 2,
                         animation: colors.anim,
                         position: "relative",
                         boxShadow:
                           podiumIdx === 0
-                            ? "0 0 12px rgba(251,191,36,0.3)"
+                            ? "0 0 18px rgba(251,191,36,0.4)"
                             : undefined,
                       }}
                     >
@@ -387,13 +387,13 @@ export function UnifiedRankingCard() {
                           fontWeight: 900,
                           fontSize: numSize,
                           color: "#fff",
-                          textShadow: "0 1px 2px rgba(0,0,0,0.15)",
+                          textShadow: "0 2px 4px rgba(0,0,0,0.2)",
                         }}
                       >
                         {podiumIdx + 1}
                       </span>
                     </div>
-                    <div style={{ marginTop: 1, fontSize: 6 }}>
+                    <div style={{ marginTop: 2, fontSize: 10, fontWeight: 700 }}>
                       {item.value}{" "}
                       {trendEl(item.trend, item.trendValue)}
                     </div>
@@ -430,7 +430,7 @@ export function UnifiedRankingCard() {
                         flex: "0.06",
                         textAlign: "center",
                         fontWeight: 900,
-                        fontSize: 11,
+                        fontSize: 14,
                         color: "#cbd5e1",
                         minWidth: 0,
                       }}
@@ -440,13 +440,13 @@ export function UnifiedRankingCard() {
                     <span
                       style={{
                         flex: "0.22",
-                        fontSize: 11,
+                        fontSize: 14,
                         color: "#334155",
                         textAlign: "right",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
-                        fontWeight: 700,
+                        fontWeight: 800,
                         minWidth: 0,
                       }}
                       title={item.name}
@@ -456,9 +456,9 @@ export function UnifiedRankingCard() {
                     <div
                       style={{
                         flex: "0.45",
-                        height: 8,
+                        height: 10,
                         background: "#f1f5f9",
-                        borderRadius: 4,
+                        borderRadius: 5,
                         overflow: "hidden",
                         minWidth: 0,
                       }}
@@ -469,7 +469,7 @@ export function UnifiedRankingCard() {
                           height: "100%",
                           background:
                             "linear-gradient(90deg, #6366f1, #8b5cf6)",
-                          borderRadius: 4,
+                          borderRadius: 5,
                           position: "relative",
                           overflow: "hidden",
                         }}
@@ -489,7 +489,7 @@ export function UnifiedRankingCard() {
                     <span
                       style={{
                         fontWeight: 800,
-                        fontSize: 11,
+                        fontSize: 14,
                         color: "#475569",
                         flex: "0.12",
                         textAlign: "right",
