@@ -252,12 +252,12 @@ export default function DashboardPage() {
 
                 {/* 右侧 25% */}
                 <div className="flex min-h-0 flex-col gap-[15px]">
-                    <div className="flex min-h-0 flex-[5] dash-card">
+                    <div className="flex min-h-0 flex-[6] dash-card">
                         <GlassCard blobColor="rgba(191,90,242,0.3)">
                             <UnifiedRankingCard />
                         </GlassCard>
                     </div>
-                    <div className="flex min-h-0 flex-[3] dash-card">
+                    <div className="flex min-h-0 flex-[2] dash-card">
                         <GlassCard blobColor="rgba(124,58,237,0.15)">
                             <DashboardHeatmapChart
                                 data={mergedHeatmap}

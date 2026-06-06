@@ -20,31 +20,31 @@ type RankItem = {
   trendValue: number;
 };
 
-const MAX_ITEMS = 20;
+const MAX_ITEMS = 50;
 
 const podiumColors = [
   {
     bg: "linear-gradient(180deg, #fef3c7, #fbbf24, #f59e0b)",
-    height: 28,
+    height: 44,
     medal: "🥇",
     anim: "glowPulse 2s ease-in-out infinite",
   },
   {
     bg: "linear-gradient(180deg, #e2e8f0, #94a3b8)",
-    height: 20,
+    height: 32,
     medal: "🥈",
     anim: "silverPulse 2.5s ease-in-out infinite",
   },
   {
     bg: "linear-gradient(180deg, #fed7aa, #f97316, #ea580c)",
-    height: 16,
+    height: 24,
     medal: "🥉",
     anim: "bronzePulse 3s ease-in-out infinite",
   },
 ];
 
 const podiumOrder = [1, 0, 2]; // 2nd, 1st, 3rd
-const podiumWidths = [44, 50, 40];
+const podiumWidths = [56, 64, 50];
 
 export function UnifiedRankingCard() {
   const [activeTab, setActiveTab] = useState<TabKey>("activity");
@@ -197,7 +197,7 @@ export function UnifiedRankingCard() {
         <span
           style={{
             color: "#22c55e",
-            fontSize: 9,
+            fontSize: 12,
             fontWeight: 900,
             // arrowBounce defined globally in DashboardPage <style>
           }}
@@ -212,7 +212,7 @@ export function UnifiedRankingCard() {
         <span
           style={{
             color: "#ef4444",
-            fontSize: 9,
+            fontSize: 12,
             fontWeight: 900,
           }}
           className="animate-arrow-bounce"
@@ -222,7 +222,7 @@ export function UnifiedRankingCard() {
       );
     }
     return (
-      <span style={{ color: "#94a3b8", fontSize: 9, fontWeight: 900 }}>
+      <span style={{ color: "#94a3b8", fontSize: 12, fontWeight: 900 }}>
         →
       </span>
     );
@@ -337,8 +337,8 @@ export function UnifiedRankingCard() {
                 const item = top3[podiumIdx];
                 if (!item) return null;
                 const colors = podiumColors[podiumIdx];
-                const fontSize = podiumIdx === 0 ? 7 : 6;
-                const numSize = podiumIdx === 0 ? 12 : podiumIdx === 1 ? 9 : 8;
+                const fontSize = podiumIdx === 0 ? 10 : podiumIdx === 1 ? 9 : 8;
+                const numSize = podiumIdx === 0 ? 16 : podiumIdx === 1 ? 12 : 10;
                 return (
                   <div
                     key={`podium-${activeTab}-${podiumIdx}`}
@@ -350,7 +350,7 @@ export function UnifiedRankingCard() {
                     <div
                       style={{
                         fontSize:
-                          podiumIdx === 0 ? 18 : podiumIdx === 1 ? 14 : 12,
+                          podiumIdx === 0 ? 24 : podiumIdx === 1 ? 20 : 16,
                       }}
                     >
                       {colors.medal}
@@ -429,8 +429,8 @@ export function UnifiedRankingCard() {
                       style={{
                         flex: "0.06",
                         textAlign: "center",
-                        fontWeight: 800,
-                        fontSize: 9,
+                        fontWeight: 900,
+                        fontSize: 11,
                         color: "#cbd5e1",
                         minWidth: 0,
                       }}
@@ -440,7 +440,7 @@ export function UnifiedRankingCard() {
                     <span
                       style={{
                         flex: "0.22",
-                        fontSize: 9,
+                        fontSize: 11,
                         color: "#334155",
                         textAlign: "right",
                         overflow: "hidden",
@@ -456,9 +456,9 @@ export function UnifiedRankingCard() {
                     <div
                       style={{
                         flex: "0.45",
-                        height: 6,
+                        height: 8,
                         background: "#f1f5f9",
-                        borderRadius: 3,
+                        borderRadius: 4,
                         overflow: "hidden",
                         minWidth: 0,
                       }}
@@ -469,7 +469,7 @@ export function UnifiedRankingCard() {
                           height: "100%",
                           background:
                             "linear-gradient(90deg, #6366f1, #8b5cf6)",
-                          borderRadius: 3,
+                          borderRadius: 4,
                           position: "relative",
                           overflow: "hidden",
                         }}
@@ -489,7 +489,7 @@ export function UnifiedRankingCard() {
                     <span
                       style={{
                         fontWeight: 800,
-                        fontSize: 9,
+                        fontSize: 11,
                         color: "#475569",
                         flex: "0.12",
                         textAlign: "right",
