@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/swipe-alert/rules")
+@RequestMapping("/api/admin/swipe-alert/rules")
 @Tag(name = "刷卡预警规则", description = "刷卡预警规则的增删改查与启禁用管理")
 public class SwipeAlertRuleController {
 
