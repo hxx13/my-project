@@ -68,6 +68,34 @@ public class SwipeAlertEngine {
         log.info("[swipe-alert] rules reloaded, count={}", activeRules.size());
     }
 
+    /**
+     * Registers a listener for {@code SWIPE_FAILURE_ALERT_ACK}.
+     * When an admin clicks "已读" on the Dynamic Island banner, the frontend
+     * emits this event with {@code { alertId, userId }}.  The listener
+     * broadcasts {@code SWIPE_FAILURE_ALERT_DISMISS} to every connected
+     * client so all admin banners disappear simultaneously.
+     */
+    @PostConstruct
+    public void registerAckListener() {
+        if (socketServer != null) {
+            socketServer.addEventListener("SWIPE_FAILURE_ALERT_ACK", Map.class,
+                    (client, data, ackRequest) -> {
+                        String alertId = (String) data.get("alertId");
+                        String userId = (String) data.get("userId");
+                        Map<String, Object> dismiss = new LinkedHashMap<>();
+                        dismiss.put("alertId", alertId);
+                        dismiss.put("dismissedBy", userId);
+                        socketServer.getBroadcastOperations().sendEvent(
+                                "SWIPE_FAILURE_ALERT_DISMISS", dismiss);
+                        log.info("[swipe-alert] ack received alertId={} userId={}, broadcast dismiss",
+                                alertId, userId);
+                    });
+            log.info("[swipe-alert] ACK listener registered for SWIPE_FAILURE_ALERT_ACK");
+        } else {
+            log.warn("[swipe-alert] socketServer not wired — cannot register ACK listener");
+        }
+    }
+
     // =========================================================================
     // Public API
     // =========================================================================
