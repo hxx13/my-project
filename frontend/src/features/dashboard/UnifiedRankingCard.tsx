@@ -192,14 +192,14 @@ export function UnifiedRankingCard() {
     setRegion("TOTAL"); // reset region on manual tab switch
     setIsAutoPlaying(false);
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 12000);
+    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 8000);
   }, []);
 
   const handleRegionClick = useCallback((reg: Region) => {
     setRegion(reg);
     setIsAutoPlaying(false);
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 12000);
+    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 8000);
   }, []);
 
   const isLoading = activeTab === "activity" ? activityLoading : animalLoading;
@@ -441,19 +441,19 @@ export function UnifiedRankingCard() {
                   >
                     <span
                       style={{
-                        flex: "0.06",
+                        width: 24,
                         textAlign: "center",
                         fontWeight: 900,
                         fontSize: 14,
                         color: "#cbd5e1",
-                        minWidth: 0,
+                        flexShrink: 0,
                       }}
                     >
                       {rank}
                     </span>
                     <span
                       style={{
-                        flex: "0.18",
+                        width: 130,
                         fontSize: 14,
                         color: "#334155",
                         textAlign: "left",
@@ -461,8 +461,7 @@ export function UnifiedRankingCard() {
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
                         fontWeight: 800,
-                        minWidth: 0,
-                        maxWidth: "10em",
+                        flexShrink: 0,
                       }}
                       title={item.name}
                     >
@@ -470,12 +469,12 @@ export function UnifiedRankingCard() {
                     </span>
                     <div
                       style={{
-                        flex: "0.49",
+                        flex: 1,
                         height: 10,
                         background: "#f1f5f9",
                         borderRadius: 5,
                         overflow: "hidden",
-                        minWidth: 0,
+                        minWidth: 10,
                       }}
                     >
                       <div
@@ -506,15 +505,15 @@ export function UnifiedRankingCard() {
                         fontWeight: 800,
                         fontSize: 14,
                         color: "#475569",
-                        flex: "0.12",
+                        width: 40,
                         textAlign: "right",
-                        minWidth: 0,
+                        flexShrink: 0,
                       }}
                     >
                       {item.value}
                     </span>
                     <span
-                      style={{ flex: "0.08", textAlign: "right", minWidth: 0 }}
+                      style={{ width: 36, textAlign: "right", flexShrink: 0 }}
                     >
                       {trendEl(item.trend, item.trendValue)}
                     </span>
