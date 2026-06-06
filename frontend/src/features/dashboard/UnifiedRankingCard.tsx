@@ -448,10 +448,11 @@ export function UnifiedRankingCard() {
                         whiteSpace: "nowrap",
                         fontWeight: 800,
                         minWidth: 0,
+                        maxWidth: "7em",
                       }}
                       title={item.name}
                     >
-                      {item.name.length > 7 ? item.name.slice(0, 7) + "…" : item.name}
+                      {item.name}
                     </span>
                     <div
                       style={{
