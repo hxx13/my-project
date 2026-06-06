@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Beaker, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import {
   listSwipeAlertRules,
   deleteSwipeAlertRule,
@@ -10,6 +10,7 @@ import {
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { ROLE_LEVEL_MAP } from "@/features/auth/roleAccess";
+import { useSwipeAlertStore } from "@/store/useSwipeAlertStore";
 
 interface Props {
   onEdit: (rule: SwipeAlertRuleRow) => void;
@@ -64,10 +65,59 @@ export function SwipeAlertRuleList({ onEdit, refreshKey }: Props) {
       title="告警规则列表"
       description="刷卡失败时匹配活跃规则，达到阈值后实时推送灵动岛通知"
       actions={
-        <AdminButton type="button" tone="secondary" loading={loading} className="gap-1.5" onClick={load}>
-          <RefreshCw className="h-4 w-4" />
-          刷新
-        </AdminButton>
+        <div className="flex gap-2">
+          <AdminButton
+            type="button"
+            tone="primary"
+            className="gap-1.5 border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+            onClick={() => {
+              useSwipeAlertStore.getState().showAlert({
+                alertId: `test-${Date.now()}`,
+                ruleId: 0,
+                ruleName: "（模拟测试告警）",
+                title: "🚨 刷卡失败告警 · 物理学院",
+                body: "过去 5 分钟内 3 次非法刷卡，涉及：赵强、孙伟、吴敏",
+                count: 3,
+                windowSec: 300,
+                bannerDurationSec: 15,
+                matchedRecords: [
+                  {
+                    personName: "赵强",
+                    personCode: "2023056",
+                    departmentName: "物理学院",
+                    channelName: "北门-3号通道",
+                    openTypeLabel: "非法刷卡开门",
+                    swingTime: "2026-06-06 14:32:03",
+                  },
+                  {
+                    personName: "孙伟",
+                    personCode: "2022189",
+                    departmentName: "物理学院",
+                    channelName: "南门-1号通道",
+                    openTypeLabel: "非法刷卡开门",
+                    swingTime: "2026-06-06 14:31:58",
+                  },
+                  {
+                    personName: "吴敏",
+                    personCode: "2021567",
+                    departmentName: "物理学院",
+                    channelName: "北门-3号通道",
+                    openTypeLabel: "非法刷卡开门",
+                    swingTime: "2026-06-06 14:31:45",
+                  },
+                ],
+              });
+              toast.success("模拟告警已触发，查看页面顶部的灵动岛通知");
+            }}
+          >
+            <Beaker className="h-4 w-4" />
+            模拟告警
+          </AdminButton>
+          <AdminButton type="button" tone="secondary" loading={loading} className="gap-1.5" onClick={load}>
+            <RefreshCw className="h-4 w-4" />
+            刷新
+          </AdminButton>
+        </div>
       }
     >
       <AdminTableShell loading={loading} empty={!loading && rows.length === 0} emptyMessage="暂无告警规则" scrollable>
