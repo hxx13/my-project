@@ -158,6 +158,22 @@ public class StudentRoomService {
         }
     }
 
+    /** 获取用户通过 ARO 权限匹配到的房间数量（与"我的房间"tab 同源） */
+    public int getMyRoomCount(User user) {
+        Set<String> aroRoomIds = resolveAllowedAroRoomIds(user.getId());
+        if (aroRoomIds.isEmpty()) return 0;
+        List<RoomDashboardRenderDTO> allRooms = aggregationService.getWechatMiniProgramData(null);
+        int count = 0;
+        for (RoomDashboardRenderDTO room : allRooms) {
+            Set<String> bindTokens = splitCapacityBindTokens(room.getCapacityBindRoomId());
+            if (bindTokens.isEmpty()) continue;
+            if (bindTokens.stream().anyMatch(aroRoomIds::contains)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     private Map<String, Object> buildRoomItemFromDashboard(RoomDashboardRenderDTO room, boolean isPinned) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("roomId", String.valueOf(room.getRoomId()));

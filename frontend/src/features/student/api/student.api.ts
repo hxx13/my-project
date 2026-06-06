@@ -1,4 +1,5 @@
 import { authHttp } from "@/api/core/authHttp";
+import type { SpecialStatusEntry } from "@/api/domains/cageShelf.api";
 
 interface Result<T> {
   code: number;
@@ -153,6 +154,16 @@ export interface DashboardData {
     projectGroupName: string;
     roleLabel: string;
     authStatus: string;
+    /** 头像 URL（来自 ARO 人员库） */
+    head?: string;
+    /** 性别：0=未知 1=男 2=女 */
+    gender?: number;
+    mobilePhone?: string;
+    email?: string;
+    /** 总经验值 */
+    totalExp?: number;
+    /** 官方可进房间列表（中文展示） */
+    allowedRoomsDisplayZh?: string;
   };
   stats: {
     todayAccessCount: number;
@@ -190,7 +201,9 @@ export interface NotificationData {
   id: string;
   title: string;
   summary: string;
-  type: 'ARO' | 'PLATFORM';
+  type: 'ARO' | 'PLATFORM' | 'WORK_ORDER';
+  bizType?: string;
+  bizId?: string;
   publishDate: string;
   isRead: boolean;
   sourceUrl?: string;
@@ -277,6 +290,38 @@ export async function toggleRoomPin(roomId: string): Promise<void> {
 }
 
 /**
+ * 切换笼架收藏状态（shelveId 全局唯一，server 端从索引表反向查 roomId）
+ * PUT /api/student/cage-shelves/:shelveId/pin
+ */
+export async function toggleCageShelfPin(shelveId: string): Promise<{ shelveId: string; isPinned: boolean }> {
+  const res = await authHttp.put<Result<{ shelveId: string; isPinned: boolean }>>(
+    `/student/cage-shelves/${shelveId}/pin`
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "操作失败");
+  }
+  return res.data.data!;
+}
+
+/** Pinned shelf detail returned by the server (includes roomId reverse-looked-up). */
+export interface PinnedCageShelfDetail extends CageShelfDetail {
+  isPinned?: boolean;
+  roomId?: string;
+}
+
+/**
+ * 获取已收藏的笼架详情列表（单次请求，含 roomId + grid 数据）
+ * GET /api/student/cage-shelves/pinned
+ */
+export async function fetchPinnedCageShelves(): Promise<PinnedCageShelfDetail[]> {
+  const res = await authHttp.get<Result<PinnedCageShelfDetail[]>>("/student/cage-shelves/pinned");
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取收藏笼架失败");
+  }
+  return res.data.data ?? [];
+}
+
+/**
  * 获取学生统计面板数据
  * GET /api/student/stats
  */
@@ -321,6 +366,17 @@ export async function markNotificationRead(id: string): Promise<void> {
   const res = await authHttp.put<Result<void>>(`/student/notifications/${id}/read`);
   if (!res.data?.success) {
     throw new Error(res.data?.message || "标记已读失败");
+  }
+}
+
+/**
+ * 标记全部通知已读
+ * PUT /api/student/notifications/read-all
+ */
+export async function markAllNotificationsRead(): Promise<void> {
+  const res = await authHttp.put<Result<void>>("/student/notifications/read-all");
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "全部已读失败");
   }
 }
 
@@ -435,6 +491,9 @@ export interface CageShelfCell {
   cageBoxQrCode?: string;
   aupNumber?: string;
   rawDataJson?: string | null; // ARO 原始数据 JSON
+  specialStatuses?: SpecialStatusEntry[];
+  cageBoxInfo?: Record<string, unknown>;
+  detail?: Record<string, unknown>;
 }
 
 /** 笼位标注 */
@@ -585,6 +644,42 @@ export async function fetchStudentAiProfile(): Promise<AiPredictionRecord[]> {
   return res.data.data ?? [];
 }
 
+// ======================== 课题组活跃度 API ========================
+
+export interface GroupActivitySummary {
+  memberCount: number;
+  totalEntries: number;
+  perCapitaWeeklyFreq: number;
+  activeSharePct: number;
+}
+
+export interface MyActivityData {
+  totalEntries: number;
+  weeklyAvgFreq: number;
+  totalDurationMinutes: number;
+  lastActiveDate: string;
+}
+
+export interface StudentActivityResponse {
+  groupName: string;
+  groupSummary: GroupActivitySummary;
+  myActivity: MyActivityData;
+}
+
+/**
+ * 获取学生所在课题组的活跃度概览 + 个人活跃度
+ * GET /api/student/activity
+ */
+export async function fetchStudentActivity(): Promise<StudentActivityResponse> {
+  const res = await authHttp.get<Result<StudentActivityResponse>>(
+    "/student/activity"
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "获取活跃度数据失败");
+  }
+  return res.data.data!;
+}
+
 // ======================== 笼位标注 API ========================
 
 /**
@@ -623,4 +718,11 @@ export async function saveCellAnnotation(
   if (!res.data?.success) {
     throw new Error(res.data?.message || "保存标注失败");
   }
+}
+
+/** 学生端特殊状态总览（仅本课题组可见的笼位） */
+export async function fetchStudentSpecialStatusOverview() {
+  const res = await authHttp.get<Result<any>>("/student/cage-shelves/special-status-overview");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载失败");
+  return res.data.data;
 }

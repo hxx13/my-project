@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AnalyzeResponse } from "@/api/types/scanner";
 import { ViolationNoticeBanner } from "./ViolationNoticeBanner";
 import { ScanAnnouncementBanner } from "./ScanAnnouncementBanner";
+import { RepeatedSwipeWarningModal } from "./RepeatedSwipeWarningModal";
 
 export type ScanNoticeDialogId = "violation" | "unbound" | "announcement";
 
@@ -96,6 +97,7 @@ export function ScanPopupNoticeCoordinator({ result }: Props) {
           suppressAutoOpen
         />
       ) : null}
+      <RepeatedSwipeWarningModal message={result.repeatedSwipeWarning} />
     </div>
   );
 }

@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>刷卡失败告警 - 通知样式预览</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #f1f5f9;
+    min-height: 100vh;
+  }
+
+  /* ====== 模拟管理后台 ====== */
+  .admin-mock {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  .mock-topbar {
+    height: 52px;
+    background: #1e293b;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    color: #fff;
+    font-size: 14px;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .mock-topbar .logo { font-weight: 700; color: #e2e8f0; }
+  .mock-topbar .sep { flex: 1; }
+  .mock-topbar .user { font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 6px; }
+  .mock-topbar .role-badge {
+    background: #7c3aed; color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 999px; font-weight: 600;
+  }
+
+  .mock-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .mock-sidebar {
+    width: 220px;
+    background: #0f172a;
+    color: #94a3b8;
+    padding: 16px 12px;
+    flex-shrink: 0;
+    font-size: 13px;
+  }
+  .mock-sidebar .nav-item {
+    padding: 8px 12px; border-radius: 8px; margin-bottom: 2px; cursor: default;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .mock-sidebar .nav-item.active { background: #1e293b; color: #e2e8f0; }
+
+  .mock-content {
+    flex: 1;
+    background: #f8fafc;
+    padding: 24px;
+    overflow-y: auto;
+  }
+
+  .mock-table {
+    width: 100%;
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    overflow: hidden;
+  }
+  .mock-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .mock-table th { background: #f8fafc; padding: 10px 14px; text-align: left; font-weight: 600; color: #475569; border-bottom: 1px solid #e2e8f0; }
+  .mock-table td { padding: 10px 14px; border-bottom: 1px solid #f1f5f9; }
+  .mock-table .fail-badge {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+    background: #fef2f2; color: #dc2626;
+  }
+  .mock-table .fail-count { color: #dc2626; font-weight: 700; }
+
+  /* ====== 通知样式选择面板 ====== */
+  .preview-overlay {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 20px;
+    width: 380px;
+    box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+  }
+  .preview-overlay h3 {
+    font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 4px;
+  }
+  .preview-overlay .sub { font-size: 11px; color: #94a3b8; margin-bottom: 12px; }
+
+  .style-options { display: flex; flex-direction: column; gap: 8px; }
+  .style-opt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 10px; border: 2px solid #e2e8f0;
+    cursor: pointer; transition: all .15s; background: #fff;
+  }
+  .style-opt:hover { border-color: #c4b5fd; background: #faf5ff; }
+  .style-opt.sel { border-color: #7c3aed; background: #f5f3ff; box-shadow: 0 0 0 3px rgba(124,58,237,.1); }
+  .style-opt .icon { font-size: 24px; width: 36px; text-align: center; flex-shrink: 0; }
+  .style-opt .info { flex:1; min-width: 0; }
+  .style-opt .info .name { font-size: 13px; font-weight: 600; color: #1e293b; }
+  .style-opt .info .desc { font-size: 11px; color: #64748b; margin-top: 1px; }
+
+  .preview-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .preview-actions button {
+    flex: 1; padding: 8px 0; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 12px; font-weight: 600; transition: all .15s;
+  }
+  .btn-trigger { background: #dc2626; color: #fff; }
+  .btn-trigger:hover { background: #b91c1c; }
+  .btn-dismiss { background: #f1f5f9; color: #475569; }
+  .btn-dismiss:hover { background: #e2e8f0; }
+
+  .config-row { margin-top: 12px; display: flex; align-items: center; gap: 8px; font-size: 11px; color: #475569; }
+  .config-row select, .config-row input {
+    border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 8px; font-size: 11px;
+  }
+  .config-row input { width: 52px; text-align: center; }
+
+  /* ====== 样式1：灵动岛（Dynamic Island） ====== */
+  .dyn-island {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 9998;
+    background: #0f172a;
+    color: #fff;
+    border-radius: 28px;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.08) inset;
+    backdrop-filter: blur(20px);
+    min-width: 340px;
+    max-width: 520px;
+    animation: islandIn .5s cubic-bezier(.16,1,.3,1);
+    transition: opacity .3s, transform .3s cubic-bezier(.16,1,.3,1);
+  }
+  .dyn-island.hiding { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.95); }
+
+  @keyframes islandIn {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(-24px) scale(0.85); }
+    100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  }
+
+  .dyn-island .di-icon {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: rgba(239,68,68,0.2);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 18px;
+  }
+  .dyn-island .di-pulse {
+    position: absolute; top: 50%; left: 50%;
+    width: 36px; height: 36px; border-radius: 50%; margin: -18px 0 0 -18px;
+    background: transparent;
+    border: 2px solid rgba(239,68,68,0.6);
+    animation: diPulse 2s ease-out infinite;
+  }
+  @keyframes diPulse {
+    0%   { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(2.2); opacity: 0; }
+  }
+
+  .dyn-island .di-body { flex: 1; min-width: 0; }
+  .dyn-island .di-title { font-size: 13px; font-weight: 700; line-height: 1.2; }
+  .dyn-island .di-detail { font-size: 11px; color: #94a3b8; margin-top: 2px; line-height: 1.3; }
+  .dyn-island .di-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .dyn-island .di-btn {
+    padding: 6px 14px; border-radius: 999px; border: none; cursor: pointer;
+    font-size: 11px; font-weight: 600; transition: all .15s;
+  }
+  .dyn-island .di-btn-read { background: #fff; color: #0f172a; }
+  .dyn-island .di-btn-read:hover { background: #e2e8f0; }
+  .dyn-island .di-btn-go { background: rgba(255,255,255,0.12); color: #fff; }
+  .dyn-island .di-btn-go:hover { background: rgba(255,255,255,0.2); }
+  .dyn-island .di-countdown {
+    position: absolute; bottom: 4px; left: 62px;
+    height: 2px; background: rgba(239,68,68,0.5); border-radius: 1px;
+    animation: diBar var(--dur, 10s) linear forwards;
+  }
+  @keyframes diBar {
+    0%   { width: calc(100% - 130px); }
+    100% { width: 0%; }
+  }
+
+  /* ====== 样式2：顶部粘性横幅（方案C原版） ====== */
+  .top-banner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+    color: #fff;
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 4px 20px rgba(220,38,38,0.3);
+    animation: bannerSlide .4s ease-out;
+    font-size: 13px;
+  }
+  @keyframes bannerSlide {
+    0%   { transform: translateY(-100%); }
+    100% { transform: translateY(0); }
+  }
+  .top-banner .tb-icon { font-size: 20px; flex-shrink: 0; }
+  .top-banner .tb-body { flex: 1; }
+  .top-banner .tb-title { font-weight: 700; }
+  .top-banner .tb-detail { font-size: 11px; opacity: 0.85; margin-top: 1px; }
+  .top-banner .tb-actions { display: flex; gap: 8px; }
+  .top-banner button {
+    padding: 5px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 600;
+  }
+  .top-banner .btn-dismiss-b { background: rgba(255,255,255,0.2); color: #fff; }
+  .top-banner .btn-dismiss-b:hover { background: rgba(255,255,255,0.35); }
+  .top-banner .btn-read-b { background: #fff; color: #dc2626; }
+  .top-banner .btn-read-b:hover { background: #fee2e2; }
+
+  /* ====== 样式3：紧凑 pill（灵动岛简化版） ====== */
+  .compact-pill {
+    position: fixed; top: 64px; right: 20px; z-index: 9998;
+    background: #fff;
+    border: 1px solid #fecaca;
+    border-radius: 16px;
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.12), 0 0 0 1px rgba(239,68,68,0.1);
+    min-width: 300px; max-width: 420px;
+    animation: pillIn .4s cubic-bezier(.16,1,.3,1);
+  }
+  @keyframes pillIn {
+    0% { opacity: 0; transform: translateX(40px) scale(0.9); }
+    100% { opacity: 1; transform: translateX(0) scale(1); }
+  }
+  .compact-pill .cp-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; flex-shrink: 0; animation: cpBlink 1s ease-in-out infinite alternate; }
+  @keyframes cpBlink { 0%{opacity:1} 100%{opacity:0.4} }
+  .compact-pill .cp-body { flex: 1; min-width: 0; }
+  .compact-pill .cp-title { font-size: 13px; font-weight: 700; color: #1e293b; }
+  .compact-pill .cp-detail { font-size: 11px; color: #64748b; margin-top: 1px; }
+  .compact-pill .cp-close {
+    width: 28px; height: 28px; border-radius: 50%; border: none; cursor: pointer;
+    background: #f1f5f9; color: #64748b; font-size: 14px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all .15s;
+  }
+  .compact-pill .cp-close:hover { background: #fee2e2; color: #dc2626; }
+
+  /* ====== 样式4：macOS 风格通知卡片 ====== */
+  .mac-card {
+    position: fixed; top: 64px; right: 20px; z-index: 9998;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(24px) saturate(1.8);
+    -webkit-backdrop-filter: blur(24px) saturate(1.8);
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 20px;
+    padding: 16px;
+    width: 360px;
+    box-shadow: 0 25px 60px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.04);
+    animation: macIn .5s cubic-bezier(.16,1,.3,1);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', sans-serif;
+  }
+  @keyframes macIn {
+    0% { opacity: 0; transform: translateY(-16px) scale(0.94); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .mac-card .mc-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .mac-card .mc-app-icon {
+    width: 28px; height: 28px; border-radius: 7px;
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 14px;
+  }
+  .mac-card .mc-app { font-size: 12px; font-weight: 700; color: #1d1d1f; letter-spacing: -0.01em; }
+  .mac-card .mc-time { font-size: 10px; color: #86868b; }
+  .mac-card .mc-title { font-size: 13px; font-weight: 600; color: #1d1d1f; margin-bottom: 2px; }
+  .mac-card .mc-detail { font-size: 12px; color: #6e6e73; line-height: 1.4; margin-bottom: 10px; }
+  .mac-card .mc-actions { display: flex; gap: 8px; }
+  .mac-card .mc-btn {
+    flex: 1; padding: 6px 0; border-radius: 8px; border: none; cursor: pointer;
+    font-size: 11px; font-weight: 600; transition: all .1s;
+  }
+  .mac-card .mc-btn-primary { background: #007aff; color: #fff; }
+  .mac-card .mc-btn-primary:hover { background: #0066d6; }
+  .mac-card .mc-btn-ghost { background: rgba(0,0,0,0.04); color: #1d1d1f; }
+  .mac-card .mc-btn-ghost:hover { background: rgba(0,0,0,0.08); }
+
+  /* ====== 样式5：底部浮层 Toast 升级版 ====== */
+  .bottom-toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9998;
+    background: #1e293b;
+    color: #fff;
+    border-radius: 16px;
+    padding: 14px 20px;
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+    min-width: 360px; max-width: 500px;
+    animation: toastUp .4s cubic-bezier(.16,1,.3,1);
+  }
+  @keyframes toastUp {
+    0% { opacity: 0; transform: translateX(-50%) translateY(30px); }
+    100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+  .bottom-toast .bt-bar {
+    width: 3px; height: 36px; border-radius: 2px; background: #ef4444; flex-shrink: 0;
+  }
+  .bottom-toast .bt-body { flex: 1; }
+  .bottom-toast .bt-title { font-size: 13px; font-weight: 700; }
+  .bottom-toast .bt-detail { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+  .bottom-toast .bt-actions { display: flex; gap: 6px; }
+  .bottom-toast .bt-btn {
+    padding: 5px 12px; border-radius: 8px; border: none; cursor: pointer; font-size: 11px; font-weight: 600;
+  }
+  .bottom-toast .bt-btn-read { background: #fff; color: #0f172a; }
+  .bottom-toast .bt-btn-read:hover { background: #e2e8f0; }
+
+  /* ====== 通知正在显示时的隐藏状态 ====== */
+  .hidden-notif { display: none; }
+  .visible-notif { display: flex; }
+</style>
+</head>
+<body>
+
+<div class="admin-mock">
+  <!-- 模拟顶栏 -->
+  <div class="mock-topbar">
+    <span class="logo">🏫 智慧校园管理平台</span>
+    <span class="sep"></span>
+    <span class="user">
+      👤 张管理
+      <span class="role-badge">管理员</span>
+    </span>
+  </div>
+
+  <div class="mock-body">
+    <!-- 模拟侧边栏 -->
+    <div class="mock-sidebar">
+      <div class="nav-item">📊 仪表盘</div>
+      <div class="nav-item">🚪 门禁管理</div>
+      <div class="nav-item active">⚠️ 警告与弹窗公告</div>
+      <div class="nav-item">📋 数据审计</div>
+      <div class="nav-item">⚙️ 系统设置</div>
+    </div>
+
+    <!-- 模拟内容区 - 门禁记录库 -->
+    <div class="mock-content">
+      <h2 style="font-size:18px;font-weight:700;color:#0f172a;margin-bottom:4px;">门禁记录库</h2>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:16px;">实时监控刷卡记录 · 最近 50 条</p>
+
+      <div class="mock-table">
+        <table>
+          <thead>
+            <tr><th>时间</th><th>通道</th><th>姓名</th><th>工号</th><th>部门</th><th>开门类型</th><th>结果</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>14:32:15</td><td>南门-1号通道</td><td>李明</td><td>2024001</td><td>计算机学院</td><td>合法刷卡开门</td><td><span style="color:#16a34a">✓ 成功</span></td></tr>
+            <tr><td>14:32:08</td><td>南门-2号通道</td><td>王芳</td><td>2024002</td><td>计算机学院</td><td>合法刷卡开门</td><td><span style="color:#16a34a">✓ 成功</span></td></tr>
+            <tr style="background:#fef2f2">
+              <td>14:32:03</td><td>北门-3号通道</td><td>赵强</td><td>2023056</td><td>物理学院</td><td><span class="fail-badge">非法刷卡开门</span></td><td><span style="color:#dc2626">✗ 失败</span></td></tr>
+            <tr style="background:#fef2f2">
+              <td>14:31:58</td><td>南门-1号通道</td><td>孙伟</td><td>2022189</td><td>物理学院</td><td><span class="fail-badge">非法刷卡开门</span></td><td><span style="color:#dc2626">✗ 失败</span></td></tr>
+            <tr style="background:#fef2f2">
+              <td>14:31:52</td><td>东门-1号通道</td><td>周杰</td><td>2023120</td><td>物理学院</td><td>合法刷卡开门</td><td><span style="color:#dc2626">✗ 失败</span></td></tr>
+            <tr style="background:#fffbeb">
+              <td>14:31:45</td><td>北门-3号通道</td><td>吴敏</td><td>2021567</td><td>物理学院</td><td><span class="fail-badge">非法刷卡开门</span></td><td><span style="color:#dc2626">✗ 失败</span></td></tr>
+            <tr><td>14:31:38</td><td>南门-2号通道</td><td>郑涛</td><td>2024003</td><td>数学学院</td><td>远程开门</td><td><span style="color:#16a34a">✓ 成功</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:12px;padding:10px 14px;background:#fef2f2;border-radius:8px;font-size:12px;color:#991b1b;">
+        ⚠️ 过去 5 分钟内 <strong>物理学院</strong> 发生 <span class="fail-count">3</span> 次非法刷卡失败
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 当前激活的通知组件（由 JS 动态渲染） -->
+<div id="notif-container"></div>
+
+<!-- ====== 样式选择面板 ====== -->
+<div class="preview-overlay" id="picker">
+  <h3>🔔 告警通知样式预览</h3>
+  <p class="sub">选择你喜欢的通知样式 — 点击下方触发演示</p>
+
+  <div class="style-options" id="styleList">
+    <div class="style-opt sel" data-style="dynamic-island">
+      <span class="icon">🏝️</span>
+      <div class="info">
+        <div class="name">灵动岛 · Dynamic Island</div>
+        <div class="desc">顶部居中胶囊，黑色磨砂，带脉冲+倒计时条</div>
+      </div>
+    </div>
+    <div class="style-opt" data-style="top-banner">
+      <span class="icon">📌</span>
+      <div class="info">
+        <div class="name">顶部粘性横幅</div>
+        <div class="desc">全宽红色条幅，冲击力强，适合严重告警</div>
+      </div>
+    </div>
+    <div class="style-opt" data-style="compact-pill">
+      <span class="icon">💊</span>
+      <div class="info">
+        <div class="name">紧凑悬浮胶囊</div>
+        <div class="desc">右上角浮层，白色卡片+红点呼吸灯</div>
+      </div>
+    </div>
+    <div class="style-opt" data-style="mac-card">
+      <span class="icon">🍎</span>
+      <div class="info">
+        <div class="name">macOS 通知卡片</div>
+        <div class="desc">毛玻璃质感，圆角卡片，柔和自然</div>
+      </div>
+    </div>
+    <div class="style-opt" data-style="bottom-toast">
+      <span class="icon">🔻</span>
+      <div class="info">
+        <div class="name">底部浮层 Toast</div>
+        <div class="desc">底部居中深色条，左侧红色竖线，现代简洁</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="config-row">
+    <span>自动消失：</span>
+    <select id="autoDismiss">
+      <option value="0">不自动消失</option>
+      <option value="5">5 秒</option>
+      <option value="10" selected>10 秒</option>
+      <option value="15">15 秒</option>
+      <option value="30">30 秒</option>
+    </select>
+  </div>
+
+  <div class="preview-actions">
+    <button class="btn-trigger" id="btnTrigger">🚨 模拟告警触发</button>
+    <button class="btn-dismiss" id="btnDismiss">✓ 标记已读</button>
+  </div>
+</div>
+
+<script>
+  (function() {
+    let currentStyle = 'dynamic-island';
+    let notifTimer = null;
+    let countdownAnim = null;
+
+    const container = document.getElementById('notif-container');
+    const picker = document.getElementById('picker');
+    const styleList = document.getElementById('styleList');
+    const autoDismiss = document.getElementById('autoDismiss');
+    const btnTrigger = document.getElementById('btnTrigger');
+    const btnDismiss = document.getElementById('btnDismiss');
+
+    const notifData = {
+      title: '⚠️ 刷卡失败告警',
+      detail: '物理学院 过去 5 分钟内发生 <b>3</b> 次非法刷卡失败（北门-3号通道、南门-1号通道），涉及人员：赵强、孙伟、吴敏',
+      channel: '北门-3号通道、南门-1号通道',
+      dept: '物理学院',
+      count: 3,
+    };
+
+    function getHTML(style) {
+      switch (style) {
+        case 'dynamic-island':
+          return `
+            <div class="dyn-island visible-notif" id="dynIsland">
+              <div class="di-icon">🚨<div class="di-pulse"></div></div>
+              <div class="di-body">
+                <div class="di-title">刷卡失败告警 · ${notifData.dept}</div>
+                <div class="di-detail">${notifData.detail}</div>
+              </div>
+              <div class="di-actions">
+                <button class="di-btn di-btn-go" onclick="alert('跳转到门禁记录库（功能开发中）')">查看详情 →</button>
+                <button class="di-btn di-btn-read" id="diReadBtn">已读 ✓</button>
+              </div>
+              <div class="di-countdown" id="diCountdown" style="--dur:${autoDismiss.value}s"></div>
+            </div>`;
+        case 'top-banner':
+          return `
+            <div class="top-banner visible-notif" id="topBanner">
+              <span class="tb-icon">🚨</span>
+              <div class="tb-body">
+                <div class="tb-title">刷卡失败告警 · ${notifData.dept}</div>
+                <div class="tb-detail">${notifData.detail}</div>
+              </div>
+              <div class="tb-actions">
+                <button class="btn-read-b" id="tbReadBtn">已读 ✓</button>
+                <button class="btn-dismiss-b" id="tbGoBtn">查看详情 →</button>
+              </div>
+            </div>`;
+        case 'compact-pill':
+          return `
+            <div class="compact-pill visible-notif" id="compactPill">
+              <div class="cp-dot"></div>
+              <div class="cp-body">
+                <div class="cp-title">刷卡失败告警 · ${notifData.dept}</div>
+                <div class="cp-detail">${notifData.count} 次非法刷卡 · ${notifData.channel}</div>
+              </div>
+              <button class="cp-close" id="cpClose">✕</button>
+            </div>`;
+        case 'mac-card':
+          return `
+            <div class="mac-card visible-notif" id="macCard">
+              <div class="mc-header">
+                <div class="mc-app-icon">🚨</div>
+                <div class="mc-app">门禁安全告警</div>
+                <span style="flex:1"></span>
+                <span class="mc-time">刚刚</span>
+              </div>
+              <div class="mc-title">${notifData.dept} · 刷卡失败告警</div>
+              <div class="mc-detail">${notifData.detail}</div>
+              <div class="mc-actions">
+                <button class="mc-btn mc-btn-primary" id="mcReadBtn">标记已读</button>
+                <button class="mc-btn mc-btn-ghost" id="mcGoBtn">查看详情</button>
+              </div>
+            </div>`;
+        case 'bottom-toast':
+          return `
+            <div class="bottom-toast visible-notif" id="bottomToast">
+              <div class="bt-bar"></div>
+              <div class="bt-body">
+                <div class="bt-title">刷卡失败告警 · ${notifData.dept}</div>
+                <div class="bt-detail">${notifData.count} 次非法刷卡 · ${notifData.channel}</div>
+              </div>
+              <div class="bt-actions">
+                <button class="bt-btn bt-btn-read" id="btReadBtn">已读 ✓</button>
+              </div>
+            </div>`;
+        default: return '';
+      }
+    }
+
+    function clearNotif() {
+      if (notifTimer) { clearTimeout(notifTimer); notifTimer = null; }
+      const el = container.firstElementChild;
+      if (el) {
+        el.classList.add('hiding');
+        setTimeout(() => { container.innerHTML = ''; }, 300);
+      }
+    }
+
+    function showNotif() {
+      clearNotif();
+      container.innerHTML = getHTML(currentStyle);
+
+      // Bind read button
+      const readBtns = {
+        'dynamic-island': 'diReadBtn',
+        'top-banner': 'tbReadBtn',
+        'compact-pill': 'cpClose',
+        'mac-card': 'mcReadBtn',
+        'bottom-toast': 'btReadBtn',
+      };
+      const readId = readBtns[currentStyle];
+      if (readId) {
+        const btn = document.getElementById(readId);
+        if (btn) btn.addEventListener('click', () => {
+          clearNotif();
+          flashFeedback('✅ 已标记为已读 · 所有客户端同步消失');
+        });
+      }
+
+      // Auto dismiss
+      const sec = parseInt(autoDismiss.value);
+      if (sec > 0) {
+        notifTimer = setTimeout(() => {
+          clearNotif();
+          flashFeedback('⏰ 通知已自动消失（' + sec + '秒）');
+        }, sec * 1000);
+      }
+    }
+
+    function flashFeedback(msg) {
+      const fb = document.createElement('div');
+      fb.textContent = msg;
+      fb.style.cssText = `
+        position:fixed; bottom:100px; left:50%; transform:translateX(-50%); z-index:99999;
+        background:#0f172a; color:#fff; padding:8px 20px; border-radius:999px;
+        font-size:12px; font-weight:600; pointer-events:none;
+        animation: pillIn .3s ease-out;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      `;
+      document.body.appendChild(fb);
+      setTimeout(() => { fb.remove(); }, 2000);
+    }
+
+    // Style selection
+    styleList.addEventListener('click', (e) => {
+      const opt = e.target.closest('.style-opt');
+      if (!opt) return;
+      currentStyle = opt.dataset.style;
+      document.querySelectorAll('.style-opt').forEach(o => o.classList.remove('sel'));
+      opt.classList.add('sel');
+      clearNotif();
+      showNotif();
+    });
+
+    btnTrigger.addEventListener('click', showNotif);
+    btnDismiss.addEventListener('click', () => {
+      clearNotif();
+      flashFeedback('✅ 已标记为已读 · 所有客户端同步消失');
+    });
+
+    // Init: show first style
+    showNotif();
+  })();
+</script>
+
+</body>
+</html>

@@ -197,7 +197,7 @@ export function StudentActivityReportPanel() {
             <AdminFormCard title={`总进出次数（${displayTimeLabel}）`}>
               <p className="text-2xl font-extrabold text-emerald-600">{summary?.totalEntries ?? "-"}</p>
             </AdminFormCard>
-            <AdminFormCard title={`人均周频次（${summary?.rateLabel || "本月"}）`}>
+            <AdminFormCard title={`人均频次（${summary?.rateLabel || "本月"}）`}>
               <p className="text-2xl font-extrabold text-blue-600">{summary?.perCapitaWeeklyFreq ?? "-"}</p>
             </AdminFormCard>
             <AdminFormCard title={`近期活跃度占比（${summary?.rateLabel || "本月"}）`}>

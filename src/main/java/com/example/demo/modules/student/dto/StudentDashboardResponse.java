@@ -23,6 +23,16 @@ public class StudentDashboardResponse {
         private String projectGroupName;
         private String roleLabel;
         private String authStatus;
+        /** 头像 URL（来自 ARO 人员库） */
+        private String head;
+        /** 性别：0=未知 1=男 2=女 */
+        private Integer gender;
+        private String mobilePhone;
+        private String email;
+        /** 总经验值 */
+        private Integer totalExp;
+        /** 官方可进房间列表（中文展示） */
+        private String allowedRoomsDisplayZh;
     }
 
     @Data
@@ -37,12 +47,15 @@ public class StudentDashboardResponse {
     @Data
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class PinnedRoom {
+        private String roomId;
         private String roomName;
         private String floor;
         private String zone;
         private int occupantCount;
         private int capacity;
+        private double occupancyRate;
         private String status;
+        private boolean isPinned;
     }
 
     @Data

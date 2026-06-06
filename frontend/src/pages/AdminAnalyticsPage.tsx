@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Bot, Layers } from "lucide-react";
+import { BarChart3, Bot, Layers, Star } from "lucide-react";
 import {
   fetchAnalyticsReports,
   fetchAnalyticsViews,
@@ -11,13 +11,26 @@ import { AnalyticsCopilotDialog } from "@/features/analytics/components/Analytic
 import { CageOccupancyReportPanel } from "@/features/analytics/components/CageOccupancyReportPanel";
 import { IsolationUsageReportPanel } from "@/features/analytics/components/IsolationUsageReportPanel";
 import { StudentActivityReportPanel } from "@/features/analytics/components/StudentActivityReportPanel";
+import CageSpecialStatusReportPanel from "@/features/analytics/components/CageSpecialStatusReportPanel";
 import { cn } from "@/lib/utils";
 
 const ISOLATION_REPORT_KEY = "isolation_usage";
 const CAGE_REPORT_KEY = "cage_occupancy";
 const STUDENT_ACTIVITY_KEY = "student_activity";
+const CAGE_SPECIAL_STATUS_KEY = "cage_special_status";
 
-const ANALYTICS_REPORT_KEYS = [ISOLATION_REPORT_KEY, CAGE_REPORT_KEY, STUDENT_ACTIVITY_KEY] as const;
+const ANALYTICS_REPORT_KEYS = [ISOLATION_REPORT_KEY, CAGE_REPORT_KEY, STUDENT_ACTIVITY_KEY, CAGE_SPECIAL_STATUS_KEY] as const;
+
+/* ---- analytics favorites (per-user, localStorage) ---- */
+
+const FAV_LS_KEY = "analyticsFavoriteReportKey";
+
+function loadFavoriteKey(): string | null {
+  try { return localStorage.getItem(FAV_LS_KEY); } catch { return null; }
+}
+function saveFavoriteKey(key: string | null) {
+  try { if (key) localStorage.setItem(FAV_LS_KEY, key); else localStorage.removeItem(FAV_LS_KEY); } catch { /* noop */ }
+}
 
 export default function AdminAnalyticsPage() {
   const { data: reports = [], isLoading } = useQuery({
@@ -25,9 +38,16 @@ export default function AdminAnalyticsPage() {
     queryFn: fetchAnalyticsReports,
   });
 
-  const [activeKey, setActiveKey] = useState<string>(ISOLATION_REPORT_KEY);
+  const savedFav = loadFavoriteKey();
+  const [activeKey, setActiveKey] = useState<string>(() => {
+    // If saved favorite exists and is in the current reports list, use it
+    if (savedFav) return savedFav;
+    return ISOLATION_REPORT_KEY;
+  });
+  const [favoriteKey, setFavoriteKey] = useState<string | null>(savedFav);
   const [copilotOpen, setCopilotOpen] = useState(false);
 
+  // If reports loaded and saved fav no longer exists, fall back
   const active = reports.find((r) => r.key === activeKey) ?? reports[0];
   const isAnalyticsReport = ANALYTICS_REPORT_KEYS.includes(activeKey as (typeof ANALYTICS_REPORT_KEYS)[number]);
 
@@ -36,6 +56,25 @@ export default function AdminAnalyticsPage() {
     queryFn: () => fetchAnalyticsViews(activeKey),
     enabled: isAnalyticsReport,
   });
+
+  // Split reports: favorited first, then rest
+  const orderedReports = useMemo(() => {
+    if (!favoriteKey) return reports;
+    const fav = reports.find((r) => r.key === favoriteKey);
+    const rest = reports.filter((r) => r.key !== favoriteKey);
+    return fav ? [fav, ...rest] : reports;
+  }, [reports, favoriteKey]);
+
+  const toggleFav = (key: string) => {
+    if (favoriteKey === key) {
+      setFavoriteKey(null);
+      saveFavoriteKey(null);
+    } else {
+      setFavoriteKey(key);
+      saveFavoriteKey(key);
+      setActiveKey(key);
+    }
+  };
 
   return (
     <AdminPageShell
@@ -54,8 +93,15 @@ export default function AdminAnalyticsPage() {
           {isLoading ? (
             <p className="text-sm text-neutral-500">加载中…</p>
           ) : (
-            reports.map((r) => (
-              <ReportNavCard key={r.key} report={r} active={activeKey === r.key} onSelect={() => setActiveKey(r.key)} />
+            orderedReports.map((r) => (
+              <ReportNavCard
+                key={r.key}
+                report={r}
+                active={activeKey === r.key}
+                isFavorite={favoriteKey === r.key}
+                onSelect={() => setActiveKey(r.key)}
+                onToggleFav={() => toggleFav(r.key)}
+              />
             ))
           )}
           {reports.length === 0 && !isLoading ? (
@@ -100,6 +146,7 @@ export default function AdminAnalyticsPage() {
           {activeKey === ISOLATION_REPORT_KEY ? <IsolationUsageReportPanel /> : null}
           {activeKey === CAGE_REPORT_KEY ? <CageOccupancyReportPanel /> : null}
           {activeKey === STUDENT_ACTIVITY_KEY ? <StudentActivityReportPanel /> : null}
+          {activeKey === CAGE_SPECIAL_STATUS_KEY ? <CageSpecialStatusReportPanel /> : null}
           {!isAnalyticsReport ? (
             <p className="text-sm text-neutral-500">该报表模块即将上线。</p>
           ) : null}
@@ -121,27 +168,44 @@ export default function AdminAnalyticsPage() {
 function ReportNavCard({
   report,
   active,
+  isFavorite,
   onSelect,
+  onToggleFav,
 }: {
   report: AnalyticsReportDescriptor;
   active: boolean;
+  isFavorite: boolean;
   onSelect: () => void;
+  onToggleFav: () => void;
 }) {
   return (
-    <button
-      type="button"
-      disabled={!report.available}
-      onClick={onSelect}
-      className={cn(
-        "shrink-0 rounded-xl border px-3 py-2.5 text-left text-sm transition lg:w-full",
-        active
-          ? "border-violet-400 bg-violet-600 text-white shadow-md"
-          : "border-neutral-200 bg-white text-neutral-800 hover:border-violet-200 hover:bg-violet-50/50",
-        !report.available && "cursor-not-allowed opacity-50"
-      )}
-    >
-      <span className="font-medium">{report.title}</span>
-      {!report.available ? <span className="ml-1 text-xs opacity-70">（筹备中）</span> : null}
-    </button>
+    <div className={cn("shrink-0 relative group", !report.available && "cursor-not-allowed opacity-50")}>
+      <button
+        type="button"
+        disabled={!report.available}
+        onClick={onSelect}
+        className={cn(
+          "w-full rounded-xl border px-3 py-2.5 text-left text-sm transition lg:w-full pr-8",
+          active
+            ? "border-violet-400 bg-violet-600 text-white shadow-md"
+            : "border-neutral-200 bg-white text-neutral-800 hover:border-violet-200 hover:bg-violet-50/50",
+        )}
+      >
+        <span className="font-medium">{report.title}</span>
+        {!report.available ? <span className="ml-1 text-xs opacity-70">（筹备中）</span> : null}
+        {isFavorite && <Star className="absolute right-2 top-2.5 h-3.5 w-3.5 fill-amber-400 text-amber-400" />}
+      </button>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onToggleFav(); }}
+        className={cn(
+          "absolute right-1.5 top-1.5 p-0.5 rounded transition",
+          isFavorite ? "text-amber-500 hover:text-amber-600" : "text-neutral-300 hover:text-amber-400 opacity-0 group-hover:opacity-100",
+        )}
+        title={isFavorite ? "取消收藏" : "收藏此报表"}
+      >
+        <Star className={cn("h-3.5 w-3.5", isFavorite ? "fill-amber-400" : "")} />
+      </button>
+    </div>
   );
 }

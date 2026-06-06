@@ -467,7 +467,7 @@ public class StudentActivityService {
         double activeSharePct = campusSum > 0 ? Math.round(targetPF / campusSum * 1000.0) / 10.0 : 0;
         double perCapitaWeeklyFreq = Math.round(targetPF * 10.0) / 10.0;
 
-        // rateLabel for KPI cards: 人均周频次/近期活跃度占比 always computed from month window
+        // rateLabel for KPI cards: 人均频次/近期活跃度占比 always computed from month window
         String rateLabel = "本月";
         if (rangeStart.getDayOfMonth() == 1) {
             if (rangeStart.getMonth() == today.getMonth() && rangeStart.getYear() == today.getYear()) {
@@ -566,6 +566,53 @@ public class StudentActivityService {
         m.put("totalEntries", row.getTotalEntries());
         m.put("perCapitaWeeklyFreq", row.getPerCapitaWeeklyFreq());
         m.put("activeSharePct", row.getActiveSharePct());
+        return m;
+    }
+
+    /** 学生端：获取单个学生在课题组内的活跃度数据 */
+    public Map<String, Object> getStudentOwnActivity(String userId, String groupName,
+                                                      String startTime, String endTime) {
+        Map<String, Object> result = new HashMap<>();
+
+        // 课题组汇总（复用现有 summary）
+        Map<String, Object> summary = summary(groupName, startTime, endTime, "all");
+        result.put("groupName", groupName);
+        result.put("groupSummary", summary);
+
+        // 个人活跃度：拉取该用户个人的进出流水并计算指标
+        if (userId == null || userId.isBlank() || groupName == null || groupName.isBlank()) {
+            result.put("myActivity", emptyMyActivity());
+            return result;
+        }
+
+        List<String> singleUser = List.of(userId);
+        List<Map<String, Object>> rawLogs = dashboardMapper.listAccessLogsByUserIds(
+                singleUser, startTime, endTime);
+
+        MemberActivityRow row = computeMemberRow(userId, rawLogs, startTime, endTime);
+
+        Map<String, Object> my = new LinkedHashMap<>();
+        if (row != null) {
+            my.put("totalEntries", row.getEntryCount());
+            my.put("weeklyAvgFreq", row.getWeeklyAvgFreq());
+            my.put("totalDurationMinutes", row.getTotalDurationMinutes());
+            my.put("lastActiveDate", row.getLastActiveDate() != null ? row.getLastActiveDate() : "-");
+        } else {
+            my.put("totalEntries", 0);
+            my.put("weeklyAvgFreq", 0);
+            my.put("totalDurationMinutes", 0);
+            my.put("lastActiveDate", "-");
+        }
+        result.put("myActivity", my);
+        return result;
+    }
+
+    private Map<String, Object> emptyMyActivity() {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("totalEntries", 0);
+        m.put("weeklyAvgFreq", 0);
+        m.put("totalDurationMinutes", 0);
+        m.put("lastActiveDate", "-");
         return m;
     }
 

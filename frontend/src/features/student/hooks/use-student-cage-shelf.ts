@@ -23,16 +23,19 @@ export function useStudentCageShelfFilterOptions(params: CageShelfFilterOptionsP
 /**
  * 单个笼架详情（含 8x10 网格）
  * shelveId 为 null 时不发起请求
- * staleTime: 5 分钟 — 快照数据不频繁变
- * placeholderData: keepPreviousData — 切换笼架时不闪骨架屏
+ * staleTime: 30 分钟 — 快照数据不频繁变
+ *
+ * 注意：不使用 keepPreviousData。
+ * 当 shelveId 变化时（切换笼架或收藏/筛选切换），上一个 shelveId 的网格数据
+ * 不应短暂显示在新笼架的位置，否则会造成"张冠李戴"的混淆。
+ * 骨架屏（GridSkeleton）已通过 isLoading 守卫提供平稳的加载过渡。
  */
 export function useStudentCageShelfDetail(shelveId: string | null) {
   return useQuery({
     queryKey: ["student", "cage-shelf", "detail", shelveId],
     queryFn: () => fetchStudentCageShelfDetail(shelveId!),
     enabled: !!shelveId,
-    staleTime: 5 * 60 * 1000,
-    placeholderData: keepPreviousData,
+    staleTime: 30 * 60 * 1000,
   });
 }
 

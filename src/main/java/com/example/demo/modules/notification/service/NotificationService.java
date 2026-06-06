@@ -13,8 +13,10 @@ import com.example.demo.modules.notification.dto.UnreadBizKeysRequest;
 import com.example.demo.modules.notification.entity.Notification;
 import com.example.demo.modules.notification.entity.NotifyRule;
 import com.example.demo.modules.notification.entity.NotifyTemplate;
+import com.example.demo.modules.notification.entity.StudentNotification;
 import com.example.demo.modules.notification.mapper.NotificationMapper;
 import com.example.demo.modules.notification.mapper.NotificationSettingsMapper;
+import com.example.demo.modules.notification.mapper.StudentNotificationMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -25,6 +27,7 @@ import java.util.*;
 public class NotificationService {
     private final NotificationMapper notificationMapper;
     private final NotificationSettingsMapper settingsMapper;
+    private final StudentNotificationMapper studentNotificationMapper;
     private final UserMapper userMapper;
     private final UserDisplayNameService userDisplayNameService;
     private final CapabilityPolicyService capabilityPolicyService;
@@ -33,6 +36,7 @@ public class NotificationService {
 
     public NotificationService(NotificationMapper notificationMapper,
                                NotificationSettingsMapper settingsMapper,
+                               StudentNotificationMapper studentNotificationMapper,
                                UserMapper userMapper,
                                UserDisplayNameService userDisplayNameService,
                                CapabilityPolicyService capabilityPolicyService,
@@ -40,6 +44,7 @@ public class NotificationService {
                                MiniProgramNotificationService miniProgramNotificationService) {
         this.notificationMapper = notificationMapper;
         this.settingsMapper = settingsMapper;
+        this.studentNotificationMapper = studentNotificationMapper;
         this.userMapper = userMapper;
         this.userDisplayNameService = userDisplayNameService;
         this.capabilityPolicyService = capabilityPolicyService;
@@ -96,26 +101,60 @@ public class NotificationService {
             return;
         }
 
-        Notification notification = new Notification();
-        notification.setId("NTF_" + UUID.randomUUID().toString().replace("-", ""));
-        notification.setEventType(event.getEventType().trim().toUpperCase());
-        notification.setTitle(title);
-        notification.setContent(content);
-        notification.setSenderId(event.getSenderId());
-        notification.setBizType(event.getBizType().trim().toUpperCase());
-        notification.setBizId(event.getBizId());
-        notification.setCreateTime(LocalDateTime.now());
-        notificationMapper.insertNotification(notification);
-        for (String recipient : recipients) {
-            notificationMapper.insertRecipient(notification.getId(), recipient);
+        // 按角色拆分：学生 → sys_student_notification（独立系统），教职工 → sys_notification
+        Set<String> staffRecipients = new LinkedHashSet<>();
+        Set<String> studentRecipients = new LinkedHashSet<>();
+        for (String uid : recipients) {
+            User u = userMapper.findById(uid);
+            if (u != null && u.getRole() == RoleEnum.STUDENT) {
+                studentRecipients.add(uid);
+            } else {
+                staffRecipients.add(uid);
+            }
         }
-        notificationPushService.pushToUsers(recipients, Map.of(
-                "id", notification.getId(),
-                "eventType", notification.getEventType(),
-                "bizType", notification.getBizType(),
-                "bizId", notification.getBizId()
-        ));
-        miniProgramNotificationService.dispatchAfterPersisted(notification.getId(), recipients, template, variables);
+
+        LocalDateTime now = LocalDateTime.now();
+
+        // 写入教职工通知表
+        if (!staffRecipients.isEmpty()) {
+            Notification notification = new Notification();
+            notification.setId("NTF_" + UUID.randomUUID().toString().replace("-", ""));
+            notification.setEventType(event.getEventType().trim().toUpperCase());
+            notification.setTitle(title);
+            notification.setContent(content);
+            notification.setSenderId(event.getSenderId());
+            notification.setBizType(event.getBizType().trim().toUpperCase());
+            notification.setBizId(event.getBizId());
+            notification.setCreateTime(now);
+            notificationMapper.insertNotification(notification);
+            for (String recipient : staffRecipients) {
+                notificationMapper.insertRecipient(notification.getId(), recipient);
+            }
+            notificationPushService.pushToUsers(staffRecipients, Map.of(
+                    "id", notification.getId(),
+                    "eventType", notification.getEventType(),
+                    "bizType", notification.getBizType(),
+                    "bizId", notification.getBizId()
+            ));
+            miniProgramNotificationService.dispatchAfterPersisted(notification.getId(), staffRecipients, template, variables);
+        }
+
+        // 写入学生独立通知表
+        if (!studentRecipients.isEmpty()) {
+            for (String sid : studentRecipients) {
+                StudentNotification sn = new StudentNotification();
+                sn.setId("SNF_" + UUID.randomUUID().toString().replace("-", ""));
+                sn.setTitle(title);
+                sn.setSummary(content != null && content.length() > 200 ? content.substring(0, 200) + "..." : content);
+                sn.setType("WORK_ORDER");
+                sn.setBizType(event.getBizType().trim().toUpperCase());
+                sn.setBizId(event.getBizId());
+                sn.setRecipientUserId(sid);
+                sn.setIsRead(0);
+                sn.setCreateTime(now);
+                studentNotificationMapper.insert(sn);
+            }
+        }
     }
 
     public Map<String, Object> listForUser(String userId, int page, int size, boolean onlyUnread,

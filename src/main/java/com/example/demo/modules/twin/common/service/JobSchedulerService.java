@@ -590,7 +590,8 @@ public class JobSchedulerService {
                 || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_PREVIOUS_DAY.equals(jobKey)
                 || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_PREVIOUS_WEEK.equals(jobKey)
                 || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_SINCE_LAST.equals(jobKey)
-                || JobExecutionRegistry.JOB_TELEMETRY_ARCHIVE_PURGE.equals(jobKey);
+                || JobExecutionRegistry.JOB_TELEMETRY_ARCHIVE_PURGE.equals(jobKey)
+                || JobExecutionRegistry.JOB_CAGE_SPECIAL_STATUS_SCAN.equals(jobKey);
     }
 
     private void ensureTable() {

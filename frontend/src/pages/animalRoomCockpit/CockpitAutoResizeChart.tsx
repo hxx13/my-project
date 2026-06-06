@@ -36,7 +36,7 @@ export function CockpitAutoResizeChart({ option, className, style }: Props) {
       <ReactECharts
         ref={chartRef}
         option={option}
-        style={{ height: "100%", width: "100%", minHeight: minH }}
+        style={{ height: "100%", width: "100%", minHeight: minH, minWidth: 0 }}
         opts={{ renderer: "canvas" }}
         notMerge={false}
         lazyUpdate

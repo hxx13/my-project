@@ -34,7 +34,8 @@
       "Bash(git clone *)",
       "Skill(update-config)",
       "Skill(update-config:*)",
-      "mcp__playwright__browser_navigate"
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_run_code_unsafe"
     ]
   }
 }

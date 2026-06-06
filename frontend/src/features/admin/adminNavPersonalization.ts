@@ -4,6 +4,7 @@ import { buildFriendsNavSidebarItem, normalizeAdminPath } from "@/features/admin
 
 const RECENT_KEY = "aro-admin-nav-recent";
 const STARS_KEY = "aro-admin-nav-stars";
+const LOCK_KEY = "aro-admin-nav-lock";
 const RECENT_MAX = 8;
 
 export const ADMIN_NAV_PERSONALIZATION_EVENT = "aro-admin-nav-personalization";
@@ -74,6 +75,41 @@ export function toggleAdminNavStar(pathname: string): boolean {
 export function isAdminNavStarred(pathname: string): boolean {
   const p = normalizeAdminPath(pathname);
   return readAdminNavStars().includes(p);
+}
+
+export function readAdminNavLock(): string | null {
+  try {
+    const raw = localStorage.getItem(LOCK_KEY);
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? normalizeAdminPath(trimmed) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 切换锁定状态；同一时间仅允许锁定一个页面。返回是否已锁定。 */
+export function toggleAdminNavLock(pathname: string): boolean {
+  const p = normalizeAdminPath(pathname);
+  if (!p.startsWith("/admin")) return false;
+  try {
+    const current = readAdminNavLock();
+    if (current === p) {
+      localStorage.removeItem(LOCK_KEY);
+      dispatchPersonalizationChanged();
+      return false;
+    }
+    localStorage.setItem(LOCK_KEY, p);
+    dispatchPersonalizationChanged();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function isAdminNavLocked(pathname: string): boolean {
+  const p = normalizeAdminPath(pathname);
+  return readAdminNavLock() === p;
 }
 
 export type PersonalizedPaletteSplit = {
@@ -175,6 +211,9 @@ export function prependPersonalNavSidebarGroups(
   }
 
   const out: AdminSidebarNavGroup[] = [];
+  if (starredItems.length) {
+    out.push({ id: STARS_GROUP_ID, title: "收藏", items: starredItems });
+  }
   if (showFriendsShortcut) {
     const ft = (friendsBadgeText || "").trim();
     out.push({
@@ -185,9 +224,6 @@ export function prependPersonalNavSidebarGroups(
   }
   if (recentItems.length) {
     out.push({ id: RECENT_GROUP_ID, title: "常用", items: recentItems });
-  }
-  if (starredItems.length) {
-    out.push({ id: STARS_GROUP_ID, title: "收藏", items: starredItems });
   }
   return [...out, ...baseGroups];
 }

@@ -26,7 +26,7 @@ public class StudentNotificationController {
     }
 
     @GetMapping("/notifications")
-    @Operation(summary = "获取学生通知列表")
+    @Operation(summary = "获取学生通知列表（独立系统：ARO + 平台 + 工单）")
     public Result<Map<String, Object>> getNotifications(@RequestParam(defaultValue = "") String type,
                                                          @RequestParam(defaultValue = "1") int page,
                                                          @RequestParam(defaultValue = "20") int size,
@@ -40,14 +40,25 @@ public class StudentNotificationController {
     }
 
     @PutMapping("/notifications/{id}/read")
-    @Operation(summary = "标记通知为已读")
-    public Result<Void> markRead(@PathVariable Long id,
+    @Operation(summary = "标记单条通知为已读")
+    public Result<Void> markRead(@PathVariable String id,
                                   HttpServletRequest request) {
         User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
         if (user == null) {
             return Result.fail(401, "未登录或登录已过期");
         }
         studentNotificationService.markRead(user, id);
+        return Result.success();
+    }
+
+    @PutMapping("/notifications/read-all")
+    @Operation(summary = "标记全部通知为已读")
+    public Result<Void> markAllRead(HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) {
+            return Result.fail(401, "未登录或登录已过期");
+        }
+        studentNotificationService.markAllRead(user);
         return Result.success();
     }
 }

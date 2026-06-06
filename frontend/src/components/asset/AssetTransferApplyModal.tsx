@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { lockAsset, searchAssets, submitTransferRequest, type AssetRow } from "@/api/domains/asset.api";
 
@@ -99,7 +100,7 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
@@ -199,7 +200,8 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

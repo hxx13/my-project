@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, ArrowDown, ArrowUp, Download, Plus, RefreshCw, Settings, Trash2, Upload } from "lucide-react";
+import { Portal } from "@/components/Portal";
 import DailyInspectionPanel from "@/components/facility-maintenance/DailyInspectionPanel";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
@@ -550,6 +551,7 @@ export default function AdminFacilityMaintenancePage() {
         )}
 
         {settingsOpen && (
+          <Portal>
           <div
             className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4"
             role="dialog"
@@ -1030,6 +1032,7 @@ export default function AdminFacilityMaintenancePage() {
               )}
             </div>
           </div>
+          </Portal>
         )}
 
         {tab === "inspection" && (
@@ -1225,6 +1228,7 @@ export default function AdminFacilityMaintenancePage() {
 
       {/* Modals */}
       {siteOpen && (
+        <Portal>
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4">
             <h3 className="mb-3 font-semibold">{siteEdit ? "编辑机房" : "新增机房"}</h3>
@@ -1254,9 +1258,11 @@ export default function AdminFacilityMaintenancePage() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
 
       {optOpen && (
+        <Portal>
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4">
             <h3 className="mb-3 font-semibold">{optEdit ? "编辑选项集" : "新增选项集"}</h3>
@@ -1277,9 +1283,11 @@ export default function AdminFacilityMaintenancePage() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
 
       {tplOpen && (
+        <Portal>
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 overflow-y-auto">
           <div className="my-8 w-full max-w-3xl rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4">
             <h3 className="mb-3 font-semibold">{tplEdit ? "编辑模板" : "新增模板"}</h3>
@@ -1414,9 +1422,11 @@ export default function AdminFacilityMaintenancePage() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
 
       {cOpen && (
+        <Portal>
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4 space-y-2">
             <h3 className="font-semibold">耗材登记</h3>
@@ -1458,9 +1468,11 @@ export default function AdminFacilityMaintenancePage() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
 
       {rOpen && (
+        <Portal>
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4 space-y-2">
             <h3 className="font-semibold">更换记录</h3>
@@ -1494,6 +1506,7 @@ export default function AdminFacilityMaintenancePage() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </AdminPageShell>
   );

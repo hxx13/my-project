@@ -1,10 +1,18 @@
 package com.example.demo.modules.cageshelf.service;
 
+import com.alibaba.fastjson2.JSON;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
+import com.example.demo.modules.cageshelf.entity.CageSpecialStatusSnapshot;
+import com.example.demo.modules.cageshelf.mapper.CageShelfGridCacheMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
+import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
+import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
+import com.example.demo.modules.student.mapper.CageCellAnnotationMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import javax.annotation.PostConstruct;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.BufferedReader;
@@ -20,11 +28,26 @@ import java.util.Map;
 @Service
 public class CageShelfService {
     private final CageShelfMapper cageShelfMapper;
+    private final CageSpecialStatusSnapshotMapper specialStatusSnapshotMapper;
+    private final CageShelfGridCacheMapper gridCacheMapper;
+    private final CageCellAnnotationMapper annotationMapper;
     private final AroService aroService;
 
-    public CageShelfService(CageShelfMapper cageShelfMapper, AroService aroService) {
+    public CageShelfService(CageShelfMapper cageShelfMapper,
+                            CageSpecialStatusSnapshotMapper specialStatusSnapshotMapper,
+                            CageShelfGridCacheMapper gridCacheMapper,
+                            CageCellAnnotationMapper annotationMapper,
+                            AroService aroService) {
         this.cageShelfMapper = cageShelfMapper;
+        this.specialStatusSnapshotMapper = specialStatusSnapshotMapper;
+        this.gridCacheMapper = gridCacheMapper;
+        this.annotationMapper = annotationMapper;
         this.aroService = aroService;
+    }
+
+    @PostConstruct
+    public void ensureCacheTable() {
+        gridCacheMapper.ensureTable();
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -130,8 +153,63 @@ public class CageShelfService {
         return out;
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * 获取笼架详情：仅返回缓存快照。缓存未命中时返回空 grid（不自动拉取 ARO）。
+     * 需要最新数据时由前端调用 refresh 接口手动触发。
+     */
     public Map<String, Object> fetchShelfDetail(String shelveId) {
+        if (shelveId == null || shelveId.isBlank()) {
+            throw new IllegalArgumentException("shelveId 不能为空");
+        }
+        Map<String, Object> cached = gridCacheMapper.selectByShelveId(shelveId);
+        if (cached != null && !cached.isEmpty()) {
+            try {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> grid = (List<Map<String, Object>>) (List<?>) JSON.parseArray(
+                        String.valueOf(cached.getOrDefault("gridJson", "[]")), Map.class);
+                @SuppressWarnings("unchecked")
+                Map<String, Object> shelfMeta = (Map<String, Object>) JSON.parseObject(
+                        String.valueOf(cached.getOrDefault("shelfMetaJson", "{}")), Map.class);
+                Map<String, Object> out = new LinkedHashMap<>();
+                out.put("shelfMeta", shelfMeta);
+                out.put("grid", grid);
+                out.put("totalCells", cached.getOrDefault("totalCells", 80));
+                out.put("filledCells", cached.getOrDefault("filledCells", 0));
+                out.put("fromCache", true);
+                out.put("cachedAt", cached.getOrDefault("updatedAt", ""));
+                return out;
+            } catch (Exception e) {
+                // 缓存解析失败 → 返回空 grid
+            }
+        }
+        // 缓存未命中 → 从索引表获取元信息，返回空 grid（不调用 ARO）
+        CageShelfIndex idx = cageShelfMapper.findByShelveId(shelveId);
+        Map<String, Object> shelfMeta = new LinkedHashMap<>();
+        if (idx != null) {
+            shelfMeta.put("campusName", idx.getCampusName() != null ? idx.getCampusName() : "");
+            shelfMeta.put("areaName", idx.getAreaName() != null ? idx.getAreaName() : "");
+            shelfMeta.put("floorName", idx.getFloorName() != null ? idx.getFloorName() : "");
+            shelfMeta.put("roomName", idx.getRoomName() != null ? idx.getRoomName() : "");
+            shelfMeta.put("shelveId", idx.getShelveId() != null ? String.valueOf(idx.getShelveId()) : shelveId);
+            shelfMeta.put("shelveName", idx.getShelveName() != null ? idx.getShelveName() : shelveId);
+        } else {
+            shelfMeta.put("shelveId", shelveId);
+            shelfMeta.put("shelveName", shelveId);
+        }
+        Map<String, Object> empty = new LinkedHashMap<>();
+        empty.put("shelfMeta", shelfMeta);
+        empty.put("grid", List.of());
+        empty.put("totalCells", 80);
+        empty.put("filledCells", 0);
+        empty.put("fromCache", false);
+        return empty;
+    }
+
+    /**
+     * 强制从 ARO 实时拉取笼架数据，更新缓存后返回。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> refreshShelfDetail(String shelveId) {
         if (shelveId == null || shelveId.isBlank()) {
             throw new IllegalArgumentException("shelveId 不能为空");
         }
@@ -145,9 +223,9 @@ public class CageShelfService {
         }
         Long roomId = index.getRoomId();
         if (roomId == null) {
-            throw new IllegalArgumentException("索引中缺少房间ID，无法查询笼位列表（请确认 CSV 含「房间id」并已重新导入）");
+            throw new IllegalArgumentException("索引中缺少房间ID，无法查询笼位列表");
         }
-        // 官方接口：GET /jtu/api/admin/book/{roomId}/{shelveId}/animalCages ，根级 data 为笼位数组
+
         Map<String, Object> raw = aroService.fetchAnimalCagesByRoomAndShelve(roomId, externalId);
         if (raw == null || raw.isEmpty()) {
             throw new IllegalStateException("外部笼位列表无响应（网络异常或未登录 ARO），请稍后重试");
@@ -155,7 +233,7 @@ public class CageShelfService {
         if (!isAroListBodySuccess(raw)) {
             String tip = trim(raw.get("message"));
             throw new IllegalStateException(
-                    tip.isEmpty() ? "官方笼位接口返回失败（status 非成功）" : "官方笼位接口: " + tip);
+                    tip.isEmpty() ? "官方笼位接口返回失败" : "官方笼位接口: " + tip);
         }
         Object dataObj = raw.get("data");
         if (dataObj != null && !(dataObj instanceof List<?>)) {
@@ -163,22 +241,15 @@ public class CageShelfService {
         }
         List<Map<String, Object>> cages = castList(dataObj);
 
-        // 状态回填：新接口缺失状态时，从旧 book 接口按坐标补齐状态字段
         Map<String, Object> statusRaw = aroService.fetchAnimalCagesStatusByBook(roomId, externalId);
         Map<String, Map<String, Object>> statusByPos = buildStatusByPosition(statusRaw);
         Map<String, Map<String, Object>> byPos = new HashMap<>();
         for (Map<String, Object> cage : cages) {
             Integer x = toIntObj(cage.get("postionX"));
-            if (x == null) {
-                x = toIntObj(cage.get("positionX"));
-            }
+            if (x == null) x = toIntObj(cage.get("positionX"));
             Integer y = toIntObj(cage.get("postionY"));
-            if (y == null) {
-                y = toIntObj(cage.get("positionY"));
-            }
-            if (x == null || y == null || x < 1 || x > 8 || y < 1 || y > 10) {
-                continue;
-            }
+            if (y == null) y = toIntObj(cage.get("positionY"));
+            if (x == null || y == null || x < 1 || x > 8 || y < 1 || y > 10) continue;
             fillStatusFromFallback(cage, statusByPos.get(y + "-" + x));
             byPos.put(y + "-" + x, simplifyCell(cage, x, y, index));
         }
@@ -199,20 +270,96 @@ public class CageShelfService {
             }
         }
 
-        Map<String, Object> out = new LinkedHashMap<>();
         Map<String, Object> shelfMeta = new LinkedHashMap<>();
         shelfMeta.put("campusId", index.getCampusId());
         shelfMeta.put("campusName", index.getCampusName());
         shelfMeta.put("areaName", index.getAreaName());
         shelfMeta.put("floorName", index.getFloorName());
         shelfMeta.put("roomName", index.getRoomName());
-        shelfMeta.put("shelveId", index.getShelveId());
+        shelfMeta.put("shelveId", String.valueOf(index.getShelveId()));
         shelfMeta.put("shelveName", index.getShelveName());
+
+        // 写入缓存
+        try {
+            String gridJson = JSON.toJSONString(grid);
+            String shelfMetaJson = JSON.toJSONString(shelfMeta);
+            gridCacheMapper.upsert(shelveId, gridJson, shelfMetaJson, grid.size(), byPos.size());
+        } catch (Exception e) {
+            // 缓存写入失败不影响返回
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
         out.put("shelfMeta", shelfMeta);
         out.put("grid", grid);
         out.put("totalCells", grid.size());
         out.put("filledCells", byPos.size());
+        out.put("fromCache", false);
         return out;
+    }
+
+    /**
+     * 手动打开笼位详情时，同步调用 /back + /book/ 刷新该单个笼位数据。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> refreshCell(String shelveId, int x, int y) {
+        if (shelveId == null || shelveId.isBlank()) {
+            throw new IllegalArgumentException("shelveId 不能为空");
+        }
+        CageShelfIndex index = cageShelfMapper.findByShelveId(shelveId);
+        if (index == null) {
+            throw new IllegalArgumentException("未找到该笼架索引");
+        }
+        Long externalId = toLong(shelveId);
+        Long roomId = index.getRoomId();
+        if (externalId == null || roomId == null) {
+            throw new IllegalArgumentException("shelveId/roomId 非法");
+        }
+
+        // 调用 /back 获取笼位数据
+        Map<String, Object> raw = aroService.fetchAnimalCagesByRoomAndShelve(roomId, externalId);
+        if (raw == null || raw.isEmpty() || !isAroListBodySuccess(raw)) {
+            throw new IllegalStateException("外部笼位接口无响应");
+        }
+        List<Map<String, Object>> cages = castList(raw.get("data"));
+        if (cages.isEmpty()) {
+            throw new IllegalStateException("该笼架无笼位数据");
+        }
+
+        // 状态回填
+        Map<String, Object> statusRaw = aroService.fetchAnimalCagesStatusByBook(roomId, externalId);
+        Map<String, Map<String, Object>> statusByPos = buildStatusByPosition(statusRaw);
+
+        // 定位到指定坐标的 cage
+        Map<String, Object> target = null;
+        for (Map<String, Object> cage : cages) {
+            Integer cx = toIntObj(cage.get("postionX"));
+            if (cx == null) cx = toIntObj(cage.get("positionX"));
+            Integer cy = toIntObj(cage.get("postionY"));
+            if (cy == null) cy = toIntObj(cage.get("positionY"));
+            if (cx != null && cx == x && cy != null && cy == y) {
+                fillStatusFromFallback(cage, statusByPos.get(y + "-" + x));
+                target = cage;
+                break;
+            }
+        }
+
+        if (target == null) {
+            throw new IllegalArgumentException("未找到坐标 (" + x + "," + y + ") 对应的笼位");
+        }
+
+        Map<String, Object> cell = simplifyCell(target, x, y, index);
+
+        // 附带学生端标注信息
+        try {
+            Map<String, Object> annotation = annotationMapper.selectByPosition(shelveId, x, y);
+            if (annotation != null && !annotation.isEmpty()) {
+                cell.put("annotation", annotation);
+            }
+        } catch (Exception ignored) {
+            // 标注查询失败不影响主流程
+        }
+
+        return cell;
     }
 
     public Map<String, Object> listIndexRows(Integer campusId, String areaId, String floorId, String roomId, int page, int size) {
@@ -269,6 +416,9 @@ public class CageShelfService {
         cell.put("isCageBox", cage.get("isCageBox"));
         cell.put("stateLabel", resolveStateLabel(toIntObj(cage.get("animalCageType")), toIntObj(cage.get("rentType"))));
 
+        // 特殊状态标记（合笼/繁殖、特殊饲养、请分笼、健康异常、动物转移）
+        cell.put("specialStatuses", SpecialStatusComputer.compute(cageBoxVo));
+
         // UE 蓝图字段白名单二次封装：供前端按统一键名读取笼盒信息
         cell.put("cageBoxInfo", buildCageBoxInfo(cage, cageBoxVo, index, x, y));
         cell.put("detail", buildDetailWhitelist(cage, cageBoxVo));
@@ -301,6 +451,11 @@ public class CageShelfService {
         d.put("UpdateTime", decodeDisplayText(firstNonNull(cageBoxVo, cage, "updateTime")));
         d.put("SpecialBreedingName", decodeDisplayText(firstNonNull(cageBoxVo, "specialBreedingName")));
         d.put("specialBreedingDescription", decodeDisplayText(firstNonNull(cageBoxVo, "specialBreedingDescription")));
+        d.put("NeedDivideYn", toIntObj(firstNonNull(cageBoxVo, "needDivideYn")));
+        d.put("NeedFeedingYn", toIntObj(firstNonNull(cageBoxVo, "needFeedingYn")));
+        d.put("NeedTransferYn", toIntObj(firstNonNull(cageBoxVo, "needTransferYn")));
+        d.put("AbnormalHealthYn", toIntObj(firstNonNull(cageBoxVo, "abnormalHealthYn")));
+        d.put("ClosingDate", decodeDisplayText(firstNonNull(cageBoxVo, "closingdate")));
         d.put("State", toIntObj(firstNonNullOr(cage, "state", firstNonNull(cage, "animalCageType"))));
         d.put("StateName", decodeDisplayText(firstNonNull(cage, "stateName")));
         d.put("HasPhysicalBox", toBooleanObj(firstNonNullOr(cage, "isCageBox", firstNonNull(cageBoxVo, "isBindAnimalCage"))));
@@ -414,8 +569,8 @@ public class CageShelfService {
         if (animalCageType != null) {
             return switch (animalCageType) {
                 case 1 -> "等待分配";
-                case 2 -> "已预约(无笼盒)";
-                case 3 -> "已预约(有笼盒)";
+                case 2 -> "已预约(空笼盒)";
+                case 3 -> "已预约(饲养中)";
                 case 4 -> "异常";
                 default -> "未知";
             };
@@ -487,6 +642,74 @@ public class CageShelfService {
 
     private static boolean isMissingStateCode(Integer v) {
         return v == null || v <= 0;
+    }
+
+    /**
+     * 特殊状态总览：从最新扫描快照中按状态分组返回。
+     */
+    public Map<String, Object> getSpecialStatusOverview() {
+        // 确保表及 campus_name 列存在（存量 DB 可能缺列）
+        specialStatusSnapshotMapper.ensureTable();
+        try { specialStatusSnapshotMapper.addCampusColumnIfMissing(); } catch (Exception ignored) {}
+
+        Map<String, Object> batchInfo = specialStatusSnapshotMapper.selectLatestBatchInfo();
+        if (batchInfo == null || batchInfo.isEmpty()) {
+            return Map.of("groups", List.of(), "totalAbnormal", 0, "scannedAt", "");
+        }
+        String scanBatchId = String.valueOf(batchInfo.getOrDefault("scanBatchId", ""));
+        String scannedAt = String.valueOf(batchInfo.getOrDefault("scannedAt", ""));
+
+        List<Map<String, Object>> grouped = specialStatusSnapshotMapper.selectGroupedByStatus(scanBatchId);
+        List<Map<String, Object>> groups = new ArrayList<>();
+        int totalAbnormal = 0;
+        for (Map<String, Object> g : grouped) {
+            String statusCode = String.valueOf(g.getOrDefault("statusCode", ""));
+            String statusLabel = String.valueOf(g.getOrDefault("statusLabel", ""));
+            Object countObj = g.get("count");
+            int count = countObj instanceof Number n ? n.intValue() : 0;
+            totalAbnormal += count;
+
+            List<CageSpecialStatusSnapshot> cages =
+                    specialStatusSnapshotMapper.selectByBatchId(scanBatchId, statusCode, 0, 200);
+
+            List<Map<String, Object>> cageList = new ArrayList<>();
+            for (var row : cages) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("shelveId", String.valueOf(row.getShelveId()));
+                // campusName 回退：存量数据可能为空，从 shelter index 补充
+                String campusName = row.getCampusName();
+                if (campusName == null || campusName.isBlank()) {
+                    CageShelfIndex idx = cageShelfMapper.findByShelveId(String.valueOf(row.getShelveId()));
+                    campusName = idx != null ? idx.getCampusName() : "";
+                }
+                item.put("campusName", campusName != null ? campusName : "");
+                item.put("roomName", row.getRoomName());
+                item.put("position", row.getPositionLabel());
+                item.put("positionX", row.getPositionX());
+                item.put("positionY", row.getPositionY());
+                item.put("piName", row.getPiName());
+                item.put("departmentName", row.getDepartmentName());
+                item.put("projectPiName", row.getProjectPiName());
+                item.put("cageBoxQrCode", row.getCageBoxQrCode());
+                item.put("detailName", row.getDetailName());
+                item.put("detailDescription", row.getDetailDescription());
+                item.put("animalCageType", row.getAnimalCageType());
+                cageList.add(item);
+            }
+
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("statusCode", statusCode);
+            group.put("statusLabel", statusLabel);
+            group.put("count", count);
+            group.put("cages", cageList);
+            groups.add(group);
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("groups", groups);
+        out.put("totalAbnormal", totalAbnormal);
+        out.put("scannedAt", scannedAt);
+        return out;
     }
 
     private static String toPosition(int x, int y) {

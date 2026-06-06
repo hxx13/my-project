@@ -21,6 +21,7 @@ import {
   type DahuaDeviceChannelRow,
   type DahuaDeviceChannelRemarkCategory,
 } from "@/api/twinApi";
+import { Portal } from "@/components/Portal";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
@@ -438,8 +439,7 @@ export default function AdminAccessRulesPage() {
         </AdminButton>
       </div>
 
-      {editorOpen && (
-        <div
+      {editorOpen && <Portal><div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           role="presentation"
         >
@@ -709,8 +709,7 @@ export default function AdminAccessRulesPage() {
               </AdminButton>
             </div>
           </div>
-        </div>
-      )}
+        </div></Portal>}
     </div>
     </AdminPageShell>
   );

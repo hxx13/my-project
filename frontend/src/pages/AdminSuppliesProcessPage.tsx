@@ -17,6 +17,7 @@ import {
   usePurgeAllAdminClaims,
   useRestoreAdminClaim,
 } from "@/api/hooks/useSupplies";
+import { Portal } from "@/components/Portal";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
@@ -283,6 +284,7 @@ export default function AdminSuppliesProcessPage() {
       ) : null}
 
       {detail ? (
+        <Portal>
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => { setDetail(null); setGrantMap({}); }}>
           <div className="w-full max-w-xl rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-4" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between">
@@ -330,6 +332,7 @@ export default function AdminSuppliesProcessPage() {
             ) : null}
           </div>
         </div>
+        </Portal>
       ) : null}
     </div>
   );

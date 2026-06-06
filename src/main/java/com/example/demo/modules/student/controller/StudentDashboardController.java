@@ -45,4 +45,14 @@ public class StudentDashboardController {
         }
         return Result.success(studentDashboardService.getAiPredictions(user.getId()));
     }
+
+    @GetMapping("/activity")
+    @Operation(summary = "获取学生所在课题组的活跃度概览 + 个人活跃度")
+    public Result<?> getActivity(HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) {
+            return Result.fail(401, "未登录或登录已过期");
+        }
+        return Result.success(studentDashboardService.getStudentActivity(user));
+    }
 }

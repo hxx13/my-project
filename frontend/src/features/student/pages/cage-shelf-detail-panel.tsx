@@ -4,6 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { cn } from "@/lib/utils";
 import { fetchCellAnnotation, saveCellAnnotation } from "../api/student.api";
 import type { CageShelfCell } from "../api/student.api";
+import { STATUS_COLOR, STATUS_ABBR } from "@/features/cage-shelf/components/CageCellOverlays";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -11,8 +12,8 @@ import type { CageShelfCell } from "../api/student.api";
 
 function cageTypeLabel(t?: number): string {
   if (t === 1) return "等待分配";
-  if (t === 2) return "已预约(无笼盒)";
-  if (t === 3) return "已预约(有笼盒)";
+  if (t === 2) return "已预约(空笼盒)";
+  if (t === 3) return "已预约(饲养中)";
   return "未知";
 }
 
@@ -131,6 +132,23 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
           <div className="grid grid-cols-2 gap-2">
             {isPermitted ? (
               <>
+                {/* 特殊状态标签 */}
+                {cell.specialStatuses && cell.specialStatuses.filter(s => s.code !== "NORMAL").length > 0 && (
+                  <div className="col-span-2 mb-1">
+                    <div className="flex flex-wrap gap-1">
+                      {cell.specialStatuses.filter(s => s.code !== "NORMAL").map((s) => {
+                        const colorClass = STATUS_COLOR[s.code] ?? "bg-gray-400 ring-gray-200";
+                        const abbr = STATUS_ABBR[s.code] ?? "?";
+                        return (
+                          <span key={s.code} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white ${colorClass}`}>
+                            <span className="w-3 h-3 rounded-full bg-white/30 flex items-center justify-center text-[7px] font-bold">{abbr}</span>
+                            {s.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <FieldRow label="动物类型">{cageTypeLabel(cell.animalCageType)}</FieldRow>
                 <FieldRow label="状态">{cell.stateLabel}</FieldRow>
                 <FieldRow label="课题组">{cell.departmentName || "-"}</FieldRow>
@@ -143,6 +161,17 @@ export function CellDetailPanel({ cell, gridMeta, shelveId, onClose }: CellDetai
                       <QRCodeSVG value={cell.cageBoxQrCode} size={80} level="M" />
                     </div>
                   </FieldRow>
+                )}
+                {/* 笼盒关键字段（复用教职工端 cageBoxInfo） */}
+                {cell.cageBoxInfo && (
+                  <>
+                    {(cell.cageBoxInfo as any).NeedDivideYn === 1 && <FieldRow label="请分笼"><span className="text-rose-600 font-medium">是</span></FieldRow>}
+                    {(cell.cageBoxInfo as any).NeedFeedingYn === 1 && <FieldRow label="特殊饲养"><span className="text-orange-600 font-medium">是</span></FieldRow>}
+                    {(cell.cageBoxInfo as any).NeedTransferYn === 1 && <FieldRow label="动物转移"><span className="text-cyan-600 font-medium">是</span></FieldRow>}
+                    {(cell.cageBoxInfo as any).AbnormalHealthYn === 1 && <FieldRow label="健康异常"><span className="text-yellow-600 font-medium">是</span></FieldRow>}
+                    {(cell.cageBoxInfo as any).ClosingDate && <FieldRow label="合笼日期">{(cell.cageBoxInfo as any).ClosingDate}</FieldRow>}
+                    {(cell.cageBoxInfo as any).SpecialBreedingName && <FieldRow label="特殊饲养名称">{(cell.cageBoxInfo as any).SpecialBreedingName}</FieldRow>}
+                  </>
                 )}
                 {gridMeta && (
                   <FieldRow label="位置" className="col-span-2">

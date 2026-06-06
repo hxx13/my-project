@@ -178,6 +178,11 @@ export default function DebugTablePage() {
                         }}
                         onSubmit={submitKeywordSearch}
                     />
+                    <div className="flex shrink-0 flex-nowrap items-center gap-1 rounded-xl border border-slate-200 bg-white px-2 py-1 shadow-sm sm:gap-2 sm:px-3">
+                        <button type="button" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2">◀</button>
+                        <span className="shrink-0 whitespace-nowrap text-xs font-bold text-slate-700 sm:text-sm">第 {page} / {totalPages || 1} 页</span>
+                        <button type="button" disabled={page === totalPages || totalPages === 0} onClick={() => setPage((p) => p + 1)} className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2">▶</button>
+                    </div>
                 </AdminToolbarActions>
             </AdminToolbar>
 
@@ -294,17 +299,6 @@ export default function DebugTablePage() {
                     </table>
                 </div>
 
-                <div
-                    data-twin-debug-pipeline-pager
-                    className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-                >
-                    <span className="text-xs font-bold text-slate-500">当前显示第 {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, listData?.total || 0)} 条</span>
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                        <button type="button" disabled={page === 1} onClick={() => setPage(p => p - 1)} className="rounded px-3 py-1 text-sm font-black text-indigo-600 transition-all hover:bg-indigo-50 disabled:opacity-30 disabled:hover:bg-transparent">◀ 上一页</button>
-                        <span className="rounded border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 shadow-sm">{page} / {totalPages || 1}</span>
-                        <button type="button" disabled={page === totalPages || totalPages === 0} onClick={() => setPage(p => p + 1)} className="rounded px-3 py-1 text-sm font-black text-indigo-600 transition-all hover:bg-indigo-50 disabled:opacity-30 disabled:hover:bg-transparent">下一页 ▶</button>
-                    </div>
-                </div>
             </div>
         </div>
     );

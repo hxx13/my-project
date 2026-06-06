@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.cageshelf.mapper.CageShelfBookmarkMapper">
+
+    <select id="selectByUserId" resultType="map">
+        SELECT room_id AS roomId, shelve_id AS shelveId, created_at AS createdAt
+        FROM cage_shelf_bookmark
+        WHERE user_id = #{userId}
+        ORDER BY created_at ASC
+    </select>
+
+    <insert id="insert">
+        INSERT INTO cage_shelf_bookmark (user_id, room_id, shelve_id)
+        VALUES (#{userId}, #{roomId}, #{shelveId})
+    </insert>
+
+    <delete id="delete">
+        DELETE FROM cage_shelf_bookmark
+        WHERE user_id = #{userId} AND room_id = #{roomId} AND shelve_id = #{shelveId}
+    </delete>
+
+    <select id="countByUserRoomShelve" resultType="int">
+        SELECT COUNT(*) FROM cage_shelf_bookmark
+        WHERE user_id = #{userId} AND room_id = #{roomId} AND shelve_id = #{shelveId}
+    </select>
+</mapper>

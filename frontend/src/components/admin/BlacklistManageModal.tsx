@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Check, Plus, ShieldAlert, Trash2, User, X } from "lucide-react";
 import { toast } from "react-hot-toast";
@@ -122,7 +123,7 @@ export function BlacklistManageModal({ open, onClose, onChanged }: Props) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
       <div className="flex w-[min(600px,96vw)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
@@ -246,6 +247,7 @@ export function BlacklistManageModal({ open, onClose, onChanged }: Props) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

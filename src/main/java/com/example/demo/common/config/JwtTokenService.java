@@ -77,7 +77,6 @@ public class JwtTokenService {
         if (token.startsWith(LEGACY_MOCK_PREFIX)) {
             String userId = token.substring(LEGACY_MOCK_PREFIX.length());
             if (userId.isBlank()) return null;
-            log.warn("[JWT] 检测到旧版 mock token，已兼容放行 userId={}，请前端重新登录以升级为 JWT", userId);
             User user = userMapper.findById(userId);
             if (user == null) return null;
             if (user.getStatus() != null && user.getStatus() == 0) return null;

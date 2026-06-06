@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -88,6 +89,38 @@ public class StudentCageShelfController {
         }
     }
 
+    @GetMapping("/special-status-overview")
+    @Operation(summary = "特殊状态总览（学生端：仅显示本课题组笼位）")
+    public Result<Map<String, Object>> specialStatusOverview(HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) return Result.fail(401, "未登录或登录已过期");
+        try {
+            return Result.success(studentCageShelfService.getSpecialStatusOverview(user));
+        } catch (Exception e) {
+            log.warn("[student-cage-shelf] 特殊状态总览查询失败 userId={} err={}", user.getId(), e.getMessage());
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @GetMapping("/{shelveId}/cells/{x}/{y}/refresh")
+    @Operation(summary = "手动刷新单个笼位数据（调用 ARO /back + /book/ 获取最新状态）")
+    public Result<Map<String, Object>> refreshCell(
+            @PathVariable String shelveId,
+            @PathVariable int x,
+            @PathVariable int y,
+            HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) return Result.fail(401, "未登录或登录已过期");
+        try {
+            Map<String, Object> data = studentCageShelfService.refreshCell(user, shelveId, x, y);
+            return Result.success(data);
+        } catch (Exception e) {
+            log.warn("[student-cage-shelf] 刷新笼位失败 userId={} shelveId={} pos={}-{} err={}",
+                    user.getId(), shelveId, x, y, e.getMessage());
+            return Result.error(e.getMessage());
+        }
+    }
+
     @GetMapping("/{shelveId}/cells/{x}/{y}/annotation")
     @Operation(summary = "获取笼位标注信息")
     public Result<Map<String, Object>> getAnnotation(
@@ -131,6 +164,38 @@ public class StudentCageShelfController {
                     user.getId(), shelveId, x, y, e.getMessage());
             return Result.error(e.getMessage());
         }
+    }
+
+    // ---- 收藏（置顶） ----
+
+    @PutMapping("/{shelveId}/pin")
+    @Operation(summary = "切换笼架收藏状态（shelveId 全局唯一，无需 roomId）")
+    public Result<?> togglePin(HttpServletRequest request,
+                                @PathVariable String shelveId) {
+        User user = resolveUser(request);
+        if (user == null) return Result.fail(401, "未登录");
+        log.info("[CageShelf-Pin-Controller] togglePin userId={} shelveId={}",
+                user.getId(), shelveId);
+        studentCageShelfService.togglePin(user, shelveId);
+        boolean pinned = studentCageShelfService.isPinned(user, shelveId);
+        log.info("[CageShelf-Pin-Controller] togglePin RESULT shelveId={} isPinned={}", shelveId, pinned);
+        return Result.success(Map.of("shelveId", shelveId, "isPinned", pinned));
+    }
+
+    @GetMapping("/pinned")
+    @Operation(summary = "获取当前用户收藏的笼架详情列表（含 roomId + grid 数据）")
+    public Result<?> getPinnedShelves(HttpServletRequest request) {
+        User user = resolveUser(request);
+        if (user == null) return Result.fail(401, "未登录");
+        log.info("[CageShelf-Pin-Controller] getPinnedShelves userId={}", user.getId());
+        List<Map<String, Object>> result = studentCageShelfService.getPinnedShelves(user);
+        log.info("[CageShelf-Pin-Controller] getPinnedShelves DONE userId={} resultCount={}",
+                user.getId(), result.size());
+        return Result.success(result);
+    }
+
+    private User resolveUser(HttpServletRequest request) {
+        return authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
     }
 
     private static String toPositionLabel(int x, int y) {

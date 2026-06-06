@@ -1,8 +1,19 @@
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, LogOut, Menu } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Bell, ChevronDown, LogOut, Menu, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authStorage } from "@/features/auth/authStorage";
-import { Avatar } from "../ui";
+import { getImpersonationState, returnToStaffView, fullLogout } from "@/features/auth/impersonation";
+import { fetchStudentProfile } from "../../api/student.api";
+import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface StudentHeaderProps {
   onMenuClick: () => void;
@@ -10,12 +21,31 @@ interface StudentHeaderProps {
 
 export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
   const navigate = useNavigate();
-  const userInfo = authStorage.getUserInfo();
+  const impersonation = useMemo(() => getImpersonationState(), []);
 
-  const displayName = userInfo?.displayName || userInfo?.displayNickname || userInfo?.username || "";
+  // 独立拉取学生档案获取真实姓名和头像
+  const { data: profile } = useQuery({
+    queryKey: ["student", "profile", "header"],
+    queryFn: fetchStudentProfile,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const realName = profile?.personnel?.name || "";
+  const headUrl = profile?.personnel?.head
+    ? resolvePersonnelAvatarUrl(profile.personnel.head)
+    : null;
+
+  const displayName = realName || "学生";
+  const avatarLetter = realName ? realName.charAt(0) : "学";
+
+  const handleReturnToStaff = () => {
+    returnToStaffView();
+    navigate("/admin");
+  };
 
   const handleLogout = () => {
-    authStorage.clear();
+    fullLogout();
     navigate("/student/login", { replace: true });
   };
 
@@ -27,7 +57,6 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
     >
       {/* Left side */}
       <div className="flex items-center gap-3">
-        {/* Hamburger - visible only on mobile */}
         <button
           type="button"
           onClick={onMenuClick}
@@ -37,7 +66,6 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
           <Menu className="h-4 w-4" />
         </button>
 
-        {/* Title */}
         <h1 className="text-lg font-semibold text-[var(--student-ink)] tracking-tight">
           学生中心
         </h1>
@@ -48,24 +76,77 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
         {/* Notification bell */}
         <button
           type="button"
+          onClick={() => navigate("/student/notifications")}
           className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] transition-colors"
           aria-label="通知"
         >
           <Bell className="h-4 w-4" />
         </button>
 
-        {/* Logout */}
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] transition-colors"
-          aria-label="退出登录"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
+        {/* Avatar dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="flex max-w-full min-w-0 items-center gap-2 rounded-lg py-1.5 pl-0.5 pr-1 text-left hover:bg-[var(--student-canvas-soft)] transition-colors"
+            >
+              {/* 真实头像或首字母 fallback */}
+              {headUrl ? (
+                <img
+                  src={headUrl}
+                  alt={displayName}
+                  className="size-8 shrink-0 rounded-full object-cover ring-1 ring-[var(--student-border)]"
+                />
+              ) : (
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--student-primary)] text-sm font-semibold text-white">
+                  {avatarLetter}
+                </span>
+              )}
+              <span className="hidden min-w-0 flex-col text-left sm:flex">
+                <span className="truncate text-sm font-medium text-[var(--student-ink)]">
+                  {displayName}
+                </span>
+                {impersonation?.isImpersonating && (
+                  <span className="truncate text-[10px] text-amber-600">模拟模式</span>
+                )}
+              </span>
+              <ChevronDown className="hidden h-4 w-4 shrink-0 text-[var(--student-mute)] sm:block" aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {/* Mobile-only name display */}
+            <div className="px-2 py-1.5 sm:hidden">
+              <div className="truncate text-sm font-medium text-[var(--student-ink)]">
+                {displayName}
+              </div>
+              {impersonation?.isImpersonating && (
+                <div className="truncate text-[11px] text-amber-600">模拟模式</div>
+              )}
+            </div>
 
-        {/* Avatar */}
-        <Avatar name={displayName} size="sm" />
+            {impersonation?.isImpersonating && (
+              <>
+                <div className="px-2 py-1 text-[10px] text-[var(--student-mute)]">
+                  模拟查看 · {impersonation.impersonatedUserId}
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={handleReturnToStaff}>
+                  <UserRound className="mr-2 h-4 w-4" />
+                  返回教职工后台
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+
+            <DropdownMenuItem
+              className="text-red-700 focus:bg-red-50 focus:text-red-800"
+              onSelect={handleLogout}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              退出登录
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

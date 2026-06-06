@@ -25,6 +25,7 @@ import {
 } from "@/api/hooks/useAsset";
 import { queryKeys } from "@/api/hooks/queryKeys";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
+import { Portal } from "@/components/Portal";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
@@ -647,7 +648,8 @@ export default function AdminAssetRecordPage() {
           }}
         />
         {addOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <Portal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="w-full max-h-[85vh] max-w-3xl overflow-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-base font-semibold text-[var(--twin-ink)]">新增资产</h3>
@@ -694,10 +696,12 @@ export default function AdminAssetRecordPage() {
                 </button>
               </div>
             </div>
-          </div>
+            </div>
+          </Portal>
         )}
         {deleteOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <Portal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="w-full max-w-2xl rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-base font-semibold text-[var(--twin-ink)]">删除资产（移入回收站）</h3>
@@ -739,10 +743,12 @@ export default function AdminAssetRecordPage() {
                 </button>
               </div>
             </div>
-          </div>
+            </div>
+          </Portal>
         )}
         {recycleOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <Portal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="w-full max-h-[85vh] max-w-3xl overflow-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-base font-semibold text-[var(--twin-ink)]">回收站</h3>
@@ -814,10 +820,12 @@ export default function AdminAssetRecordPage() {
                 </button>
               </div>
             </div>
-          </div>
+            </div>
+          </Portal>
         )}
         {detailAsset && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <Portal>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
             <div className="w-full max-w-lg rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-base font-semibold text-[var(--twin-ink)]">资产详情</h3>
@@ -859,17 +867,20 @@ export default function AdminAssetRecordPage() {
                 )}
               </div>
             </div>
-          </div>
+            </div>
+          </Portal>
         )}
         {detailImagePreview && (
-          <button
-            type="button"
-            className="fixed inset-0 z-[60] flex cursor-default items-center justify-center border-0 bg-black/80 p-4"
-            onClick={() => setDetailImagePreview(null)}
-            aria-label="关闭预览"
-          >
-            <img src={detailImagePreview} alt="" className="max-h-[90vh] max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
-          </button>
+          <Portal>
+            <button
+              type="button"
+              className="fixed inset-0 z-[60] flex cursor-default items-center justify-center border-0 bg-black/80 p-4"
+              onClick={() => setDetailImagePreview(null)}
+              aria-label="关闭预览"
+            >
+              <img src={detailImagePreview} alt="" className="max-h-[90vh] max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
+            </button>
+          </Portal>
         )}
       </div>
     </AdminPageShell>

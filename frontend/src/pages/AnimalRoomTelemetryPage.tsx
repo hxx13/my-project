@@ -12,6 +12,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
+import { Portal } from "@/components/Portal";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AnimalRoomHubViewChunk, AnimalRoomTelemetryPageDto } from "@/api/telemetryApi";
@@ -526,7 +527,7 @@ function TelemetryDialogsProvider({ children }: { children: React.ReactNode }) {
       value={{ confirm, confirmWinccSwitch, alertMessage, promptString, promptWinccSetpoint }}
     >
       {children}
-      {overlay ? createPortal(overlay, document.body) : null}
+      {overlay ? <Portal>{overlay}</Portal> : null}
     </TelemetryDialogsContext.Provider>
   );
 }
@@ -2298,13 +2299,16 @@ export default function AnimalRoomTelemetryPage() {
   }, [location.state, location.key]);
 
   const handleReturnToPriorPage = useCallback(() => {
-    if (!returnToPath) return;
     try {
       sessionStorage.removeItem(ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY);
     } catch {
       /* ignore */
     }
-    navigate(returnToPath, { replace: true });
+    if (returnToPath) {
+      navigate(returnToPath, { replace: true });
+    } else {
+      navigate(-1);
+    }
   }, [navigate, returnToPath]);
 
   const [gateTick, setGateTick] = useState(0);
@@ -2784,22 +2788,20 @@ export default function AnimalRoomTelemetryPage() {
                   10s
                 </span>
               </label>
-              {returnToPath ? (
-                <button
-                  type="button"
-                  onClick={handleReturnToPriorPage}
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold shadow-sm transition-colors sm:px-2 sm:text-xs",
-                    telemetryFxIconVariant
-                      ? "border-cyan-500/35 bg-slate-900/90 text-cyan-50 hover:bg-slate-800/95"
-                      : "border-sky-200/90 bg-gradient-to-b from-sky-50 to-white text-sky-900 hover:from-sky-100 hover:to-sky-50"
-                  )}
-                  title="返回上一页"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                  <span className="hidden min-[380px]:inline">返回</span>
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={handleReturnToPriorPage}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold shadow-sm transition-colors sm:px-2 sm:text-xs",
+                  telemetryFxIconVariant
+                    ? "border-cyan-500/35 bg-slate-900/90 text-cyan-50 hover:bg-slate-800/95"
+                    : "border-sky-200/90 bg-gradient-to-b from-sky-50 to-white text-sky-900 hover:from-sky-100 hover:to-sky-50"
+                )}
+                title={returnToPath ? "返回进入前页面" : "返回上一页"}
+              >
+                <ArrowLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="hidden min-[380px]:inline">返回</span>
+              </button>
             </div>
           </div>
         </div>

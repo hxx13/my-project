@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Portal } from "@/components/Portal";
 import {
     fetchCardMappings, searchCardMappings, updateExemptFlag, updateCardStatus, searchPersonnel,
     deleteCardMapping, runManualReaper, issueDahuaCard, fetchDahuaDepartments, refreshDahuaDepartments,
@@ -861,8 +862,7 @@ export default function DebugCardMappingPage() {
                         </div>
                     )}
 
-            {freezeSlotModal !== null && (
-                <div
+            {freezeSlotModal !== null && <Portal><div
                     className="fixed inset-0 z-[250] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
                     onClick={() => setFreezeSlotModal(null)}
                     role="presentation"
@@ -969,11 +969,9 @@ export default function DebugCardMappingPage() {
                             </button>
                         </div>
                     </div>
-                </div>
-            )}
+                </div></Portal>}
 
-            {exemptModal && (
-                <div
+            {exemptModal && <Portal><div
                     className="fixed inset-0 z-[250] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
                     onClick={() => setExemptModal(null)}
                     role="presentation"
@@ -1018,11 +1016,9 @@ export default function DebugCardMappingPage() {
                             ))}
                         </div>
                     </div>
-                </div>
-            )}
+                </div></Portal>}
 
-            {linkageModalOpen && (
-                <div
+            {linkageModalOpen && <Portal><div
                     className="fixed inset-0 z-[250] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
                     onClick={() => setLinkageModalOpen(false)}
                     role="presentation"
@@ -1116,11 +1112,9 @@ export default function DebugCardMappingPage() {
                             </button>
                         </div>
                     </div>
-                </div>
-            )}
+                </div></Portal>}
 
-            {isAddModalOpen && (
-                <div
+            {isAddModalOpen && <Portal><div
                     className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
                     role="presentation"
                 >
@@ -1592,8 +1586,7 @@ export default function DebugCardMappingPage() {
                             </AdminButton>
                         </div>
                     </div>
-                </div>
-            )}
+                </div></Portal>}
         </AdminPageShell>
     );
 }

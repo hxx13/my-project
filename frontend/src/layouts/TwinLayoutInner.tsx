@@ -82,8 +82,11 @@ export default function TwinLayoutInner() {
     }, [animalSciFiShell]);
 
     return (
-        <div className={cn("fixed inset-0 w-screen m-0 p-0", isPreview ? "min-h-screen overflow-y-auto" : "h-screen overflow-y-auto")} style={{ backgroundColor: isPreview ? "#0A0014" : "#f8f9fa" }}>
+        <div className={cn("fixed inset-0 w-screen m-0 p-0 overflow-x-hidden", isPreview ? "min-h-screen overflow-y-auto" : "h-screen overflow-y-auto")} style={{ backgroundColor: isPreview ? "#0A0014" : "#f8f9fa" }}>
             <style>{`
+                .nebula-bg {
+                    overflow: clip;
+                }
                 .nebula-bg::before {
                     content: "";
                     position: absolute;
@@ -93,13 +96,8 @@ export default function TwinLayoutInner() {
                     left: -20%;
                     background: radial-gradient(circle at 20% 30%, rgba(0, 229, 255, 0.08) 0%, transparent 40%),
                                 radial-gradient(circle at 80% 70%, rgba(112, 0, 255, 0.08) 0%, transparent 40%);
-                    animation: nebula-float 20s ease-in-out infinite alternate;
                     z-index: -1;
                     pointer-events: none;
-                }
-                @keyframes nebula-float {
-                    from { transform: translate(-10%, -10%) rotate(0deg); }
-                    to { transform: translate(5%, 5%) rotate(5deg); }
                 }
             `}</style>
 
@@ -114,7 +112,7 @@ export default function TwinLayoutInner() {
                     )}
                     data-twin-chrome-theme={themeId}
                 >
-                    <PageTransition key={pathname} variant="fadeIn" duration={0.25}>
+                    <PageTransition key={pathname} variant="fadeIn" duration={0.25} className="h-full min-h-0">
                       <Outlet />
                     </PageTransition>
                 </div>

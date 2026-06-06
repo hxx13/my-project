@@ -9,6 +9,7 @@ import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleConfigService;
+import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleEngineService;
 import com.example.demo.modules.twin.dashboard.service.TwinScanPopupAnnouncementService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationNoticeConfigService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
@@ -53,6 +54,9 @@ public class TwinScanAppService {
 
     @Autowired
     private DahuaSwingRuleConfigService dahuaSwingRuleConfigService;
+
+    @Autowired
+    private DahuaSwingRuleEngineService dahuaSwingRuleEngineService;
 
     @Autowired
     private TwinStudentViolationService twinStudentViolationService;
@@ -129,6 +133,14 @@ public class TwinScanAppService {
                     System.currentTimeMillis() - tMapUser,
                     mappingForUser != null ? "hit" : "miss");
             result.setHasPhysicalCardMapping(mappingForUser != null);
+
+            // 弹窗会话活跃期间，同一人再次刷卡只提示，避免误触重复签退
+            if (dahuaSwingRuleEngineService.isPopupActive(realPhysicalId)) {
+                result.setSuccess(true);
+                result.setCurrentState("INSIDE");
+                result.setRepeatedSwipeWarning("请抬起您的卡片，防止多次刷卡误操作");
+                return result;
+            }
 
             long tScanStatus = System.currentTimeMillis();
             Map<String, Object> scanStatus = twinScanService.processScanStatus(realPhysicalId, traceId);
@@ -242,6 +254,10 @@ public class TwinScanAppService {
                         System.currentTimeMillis() - tAnn, "");
             } catch (Exception e) {
                 log.debug("[扫码·解析] trace={} 公告加载失败 id={} err={}", traceId, realPhysicalId, e.getMessage());
+            }
+            // 当人员处于场内状态时，标记弹窗会话活跃，防止本人在机器上反复刷卡误触签退
+            if ("INSIDE".equals(result.getCurrentState())) {
+                dahuaSwingRuleEngineService.markPopupActive(realPhysicalId);
             }
             result.setSuccess(true);
         } catch (Exception e) {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
+import { Portal } from "@/components/Portal";
 import { ClipboardList, Download } from "lucide-react";
 import {
   appendTransferAfterPhotos,
@@ -658,6 +659,7 @@ export default function AdminAssetTransferRecordPage() {
       </div>
 
       {continueRow && (
+        <Portal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
             <div className="mb-3 flex items-center justify-between">
@@ -806,9 +808,11 @@ export default function AdminAssetTransferRecordPage() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
 
       {detailTransfer && (
+        <Portal>
         <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/40 p-4" onClick={closeDetail}>
           <div
             className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3"
@@ -868,9 +872,11 @@ export default function AdminAssetTransferRecordPage() {
             {!detailLoading && !detailAsset && <p className="text-sm text-[var(--twin-mute)]">未获取到该资产详情</p>}
           </div>
         </div>
+        </Portal>
       )}
 
       {previewUrl && (
+        <Portal>
         <button
           type="button"
           className="fixed inset-0 z-[60] flex cursor-default items-center justify-center border-0 bg-black/80 p-4"
@@ -879,9 +885,11 @@ export default function AdminAssetTransferRecordPage() {
         >
           <img src={previewUrl} alt="" className="max-h-[90vh] max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
         </button>
+        </Portal>
       )}
 
       {linkModalRow && (
+        <Portal>
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-2xl rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
             <div className="mb-3 flex items-center justify-between">
@@ -960,6 +968,7 @@ export default function AdminAssetTransferRecordPage() {
             </div>
           </div>
         </div>
+        </Portal>
       )}
     </div>
     </AdminPageShell>

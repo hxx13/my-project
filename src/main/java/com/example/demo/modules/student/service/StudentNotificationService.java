@@ -3,124 +3,137 @@ package com.example.demo.modules.student.service;
 import com.example.demo.modules.aro.dto.AroNewsSummaryDto;
 import com.example.demo.modules.aro.service.AroNewsProxyService;
 import com.example.demo.modules.auth.entity.User;
-import com.example.demo.modules.notification.dto.NotificationView;
-import com.example.demo.modules.notification.service.NotificationService;
+import com.example.demo.modules.notification.entity.StudentNotification;
+import com.example.demo.modules.notification.mapper.StudentNotificationMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+/**
+ * 学生端独立通知服务 —— 查询 sys_student_notification 表（与教职工 sys_notification 物理隔离）
+ * ARO 新闻从外部拉取后缓存到本地，与平台/工单通知统一分页。
+ */
 @Service
 public class StudentNotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(StudentNotificationService.class);
 
-    private final NotificationService notificationService;
+    private final StudentNotificationMapper studentNotificationMapper;
     private final AroNewsProxyService aroNewsProxyService;
 
-    public StudentNotificationService(NotificationService notificationService,
+    public StudentNotificationService(StudentNotificationMapper studentNotificationMapper,
                                        AroNewsProxyService aroNewsProxyService) {
-        this.notificationService = notificationService;
+        this.studentNotificationMapper = studentNotificationMapper;
         this.aroNewsProxyService = aroNewsProxyService;
     }
 
+    /**
+     * 获取学生通知列表。
+     * type 可为空（全部）、PLATFORM、ARO、WORK_ORDER。
+     */
     public Map<String, Object> getNotifications(User user, String type, int page, int size) {
-        boolean wantPlatform = type.isEmpty() || "PLATFORM".equals(type);
-        boolean wantAro = type.isEmpty() || "ARO".equals(type);
+        // 先同步 ARO 新闻缓存（幂等：INSERT IGNORE）
+        syncAroNewsCache(user.getId());
 
-        List<Map<String, Object>> merged = new ArrayList<>();
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), 50);
+        int offset = (safePage - 1) * safeSize;
 
-        // 1. Platform notifications
-        if (wantPlatform) {
-            try {
-                Map<String, Object> result = notificationService.listForUser(
-                        user.getId(), 1, 200, false, null, null, null);
-                if (result != null && result.get("data") instanceof List) {
-                    List<?> list = (List<?>) result.get("data");
-                    for (Object item : list) {
-                        if (!(item instanceof NotificationView nv)) continue;
-                        Map<String, Object> m = new LinkedHashMap<>();
-                        m.put("id", nv.getId());
-                        m.put("title", nv.getTitle() != null ? nv.getTitle() : "");
-                        m.put("summary", nv.getContent() != null
-                                ? (nv.getContent().length() > 80
-                                        ? nv.getContent().substring(0, 80) + "..."
-                                        : nv.getContent())
-                                : "");
-                        m.put("type", "PLATFORM");
-                        m.put("publishDate", nv.getCreateTime() != null ? nv.getCreateTime().toString() : "");
-                        m.put("isRead", nv.getIsRead() != null && nv.getIsRead() == 1);
-                        merged.add(m);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Failed to fetch platform notifications for user {}", user.getId(), e);
-            }
+        String filterType = (type != null && !type.isEmpty()) ? type : null;
+
+        List<StudentNotification> rows = studentNotificationMapper.listForUser(
+                user.getId(), filterType, null, offset, safeSize);
+        int total = studentNotificationMapper.countForUser(user.getId(), filterType, null);
+        int unreadCount = studentNotificationMapper.countUnread(user.getId());
+
+        List<Map<String, Object>> items = new ArrayList<>();
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        for (StudentNotification sn : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", sn.getId());
+            m.put("title", sn.getTitle() != null ? sn.getTitle() : "");
+            m.put("summary", sn.getSummary() != null ? sn.getSummary() : "");
+            m.put("type", sn.getType());
+            m.put("bizType", sn.getBizType());
+            m.put("bizId", sn.getBizId());
+            m.put("publishDate", sn.getCreateTime() != null ? sn.getCreateTime().format(fmt) : "");
+            m.put("isRead", sn.getIsRead() != null && sn.getIsRead() == 1);
+            m.put("sourceUrl", sn.getSourceUrl());
+            items.add(m);
         }
-
-        // 2. ARO official news
-        if (wantAro) {
-            try {
-                var aroNews = aroNewsProxyService.fetchNewsList();
-                if (aroNews != null && aroNews.getList() != null) {
-                    for (AroNewsSummaryDto news : aroNews.getList()) {
-                        Map<String, Object> m = new LinkedHashMap<>();
-                        m.put("id", "aro-" + (news.getId() != null ? news.getId() : ""));
-                        m.put("title", news.getNewsName() != null ? news.getNewsName() : "");
-                        m.put("summary", "");
-                        m.put("type", "ARO");
-                        m.put("publishDate", news.getCreateTime() != null ? news.getCreateTime() : "");
-                        m.put("isRead", true); // public news, always "read"
-                        merged.add(m);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Failed to fetch ARO news for user {}", user.getId(), e);
-            }
-        }
-
-        // Sort by publishDate descending
-        merged.sort((a, b) -> {
-            String da = (String) a.getOrDefault("publishDate", "");
-            String db = (String) b.getOrDefault("publishDate", "");
-            return db.compareTo(da);
-        });
-
-        int total = merged.size();
-
-        // Unread count from platform only
-        int unreadCount = 0;
-        try {
-            Map<String, Object> unreadResult = notificationService.listForUser(
-                    user.getId(), 1, 1, true, null, null, null);
-            if (unreadResult != null && unreadResult.get("total") instanceof Integer) {
-                unreadCount = (Integer) unreadResult.get("total");
-            }
-        } catch (Exception e) {
-            log.warn("Failed to query unread count for user {}", user.getId(), e);
-        }
-
-        // Paginate merged list
-        int offset = (page - 1) * size;
-        int toIndex = Math.min(offset + size, merged.size());
-        List<Map<String, Object>> paged = offset < merged.size()
-                ? merged.subList(offset, toIndex)
-                : Collections.emptyList();
 
         Map<String, Object> resp = new LinkedHashMap<>();
-        resp.put("data", paged);
+        resp.put("data", items);
         resp.put("total", total);
         resp.put("unreadCount", unreadCount);
         return resp;
     }
 
-    public void markRead(User user, Long noticeId) {
-        if (noticeId == null) return;
+    public void markRead(User user, String noticeId) {
+        if (noticeId == null || noticeId.isBlank()) return;
         try {
-            notificationService.markRead(user.getId(), String.valueOf(noticeId));
+            studentNotificationMapper.markRead(user.getId(), noticeId);
         } catch (Exception e) {
-            log.warn("Failed to mark notification {} as read for user {}", noticeId, user.getId(), e);
+            log.warn("Failed to mark student notification {} as read for user {}", noticeId, user.getId(), e);
+        }
+    }
+
+    /** 标记全部已读 */
+    public void markAllRead(User user) {
+        try {
+            studentNotificationMapper.markAllRead(user.getId());
+        } catch (Exception e) {
+            log.warn("Failed to mark all student notifications read for user {}", user.getId(), e);
+        }
+    }
+
+    /**
+     * 从 ARO 外部系统拉取新闻并缓存到本地通知表。
+     * INSERT IGNORE 保证幂等，已存在的记录不会重复写入。
+     */
+    private void syncAroNewsCache(String userId) {
+        try {
+            var aroNews = aroNewsProxyService.fetchNewsList();
+            if (aroNews == null || aroNews.getList() == null || aroNews.getList().isEmpty()) {
+                return;
+            }
+            List<StudentNotification> batch = new ArrayList<>();
+            LocalDateTime now = LocalDateTime.now();
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            for (AroNewsSummaryDto news : aroNews.getList()) {
+                StudentNotification sn = new StudentNotification();
+                sn.setId("SNF_ARO_" + (news.getId() != null ? news.getId() : UUID.randomUUID().toString().substring(0, 8)));
+                sn.setTitle(news.getNewsName() != null ? news.getNewsName() : "");
+                sn.setSummary("");
+                sn.setType("ARO");
+                sn.setRecipientUserId(userId);
+                sn.setSourceUrl(null); // ARO DTO 暂不提供详情链接
+                sn.setIsRead(0);
+                sn.setCreateTime(news.getCreateTime() != null
+                        ? parseAroTime(news.getCreateTime(), fmt)
+                        : now);
+                batch.add(sn);
+            }
+            if (!batch.isEmpty()) {
+                studentNotificationMapper.insertBatch(batch);
+            }
+            // 清除 30 天前的旧 ARO 缓存
+            String cutoff = now.minusDays(30).format(fmt);
+            studentNotificationMapper.deleteExpiredAroNews(cutoff);
+        } catch (Exception e) {
+            log.warn("Failed to sync ARO news cache for user {}", userId, e);
+        }
+    }
+
+    private LocalDateTime parseAroTime(String timeStr, DateTimeFormatter fmt) {
+        try {
+            return LocalDateTime.parse(timeStr, fmt);
+        } catch (Exception e) {
+            return LocalDateTime.now();
         }
     }
 }

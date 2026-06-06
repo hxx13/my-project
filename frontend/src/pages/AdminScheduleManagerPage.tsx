@@ -71,6 +71,7 @@ const SINGLE_KEYS = new Set([
   STATS_PULL_SCHEDULE_JOB.PREVIOUS_WEEK,
   STATS_PULL_SCHEDULE_JOB.SINCE_LAST,
   ...Array.from(FREEZE_KEYS),
+  "CAGE_SPECIAL_STATUS_SCAN",
 ]);
 
 const WINCC_POLL_KEYS = TELEMETRY_WINCC_POLL_KEYS;
@@ -195,6 +196,10 @@ export default function AdminScheduleManagerPage() {
       {
         title: "大华缓存",
         keys: new Set(["DAHUA_GROUP_REFRESH", "DAHUA_CHANNEL_REFRESH", "DAHUA_DEPT_REFRESH"]),
+      },
+      {
+        title: "笼架管理",
+        keys: new Set(["CAGE_SPECIAL_STATUS_SCAN"]),
       },
     ],
     []

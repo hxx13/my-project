@@ -9,6 +9,7 @@ import {
   type DahuaDeviceChannelRemarkCategory,
 } from "@/api/twinApi";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { Portal } from "@/components/Portal";
 
 const MODES = [
   { key: "OPEN", label: "远程开门" },
@@ -305,8 +306,7 @@ export default function AdminDoorControlPage() {
         <button className="px-2 py-1 border rounded disabled:opacity-40" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>下一页</button>
       </div>
 
-      {confirmModal.open && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      {confirmModal.open && <Portal><div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
             <h3 className="text-base font-bold text-slate-800">确认执行操作</h3>
             <p className="mt-2 text-sm text-slate-600">
@@ -330,8 +330,7 @@ export default function AdminDoorControlPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </div></Portal>}
     </div>
   );
 }

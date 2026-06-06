@@ -30,12 +30,21 @@
   --student-accent-profile-soft:  #ede9fe;
 
   /* === 语义色 === */
-  --student-success:          #16a34a;
-  --student-success-soft:     #dcfce7;
-  --student-error:            #dc2626;
-  --student-error-soft:       #fee2e2;
-  --student-warning:          #f59e0b;
-  --student-warning-soft:     #fef3c7;
+  --student-success:              #16a34a;
+  --student-success-soft:         #dcfce7;
+  --student-error:                #dc2626;
+  --student-error-soft:           #fee2e2;
+  --student-warning:              #f59e0b;
+  --student-warning-soft:         #fef3c7;
+
+  /* === 映射别名（与组件接口对齐） === */
+  --student-foreground:           var(--student-ink);
+  --student-mute-foreground:      var(--student-mute);
+  --student-border:               var(--student-hairline);
+  --student-card-soft-bg:         var(--student-canvas-soft-2);
+  --student-destructive:          #dc2626;
+  --student-destructive-foreground: #ffffff;
+  --student-primary-foreground:   #ffffff;
 
   /* === 圆角 === */
   --student-radius-xs:   6px;

@@ -12,7 +12,7 @@
             animal_cage_type, state_label,
             project_pi_name, department_name,
             cage_box_qr_code, aup_number,
-            is_empty, raw_data_json,
+            is_empty, raw_data_json, special_statuses_json,
             refreshed_at, refreshed_by
         ) VALUES
         <foreach collection="list" item="row" separator=",">
@@ -23,7 +23,7 @@
                 #{row.animalCageType}, #{row.stateLabel},
                 #{row.projectPiName}, #{row.departmentName},
                 #{row.cageBoxQrCode}, #{row.aupNumber},
-                #{row.isEmpty}, #{row.rawDataJson},
+                #{row.isEmpty}, #{row.rawDataJson}, #{row.specialStatusesJson},
                 #{row.refreshedAt}, #{row.refreshedBy}
             )
         </foreach>
@@ -45,6 +45,7 @@
                aup_number AS aupNumber,
                is_empty AS isEmpty,
                raw_data_json AS rawDataJson,
+               special_statuses_json AS specialStatusesJson,
                refreshed_at AS refreshedAt,
                refreshed_by AS refreshedBy,
                created_at AS createdAt
@@ -70,6 +71,7 @@
                aup_number AS aupNumber,
                is_empty AS isEmpty,
                raw_data_json AS rawDataJson,
+               special_statuses_json AS specialStatusesJson,
                refreshed_at AS refreshedAt,
                refreshed_by AS refreshedBy,
                created_at AS createdAt

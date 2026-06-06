@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 export interface NotificationItemProps {
   title: string
   summary: string
-  type: "ARO" | "PLATFORM"
+  type: "ARO" | "PLATFORM" | "WORK_ORDER"
   publishDate: string
   isRead: boolean
   onClick: () => void
@@ -13,7 +13,7 @@ export interface NotificationItemProps {
 }
 
 const typeConfig: Record<
-  "ARO" | "PLATFORM",
+  "ARO" | "PLATFORM" | "WORK_ORDER",
   { label: string; textClass: string; bgClass: string }
 > = {
   ARO: {
@@ -25,6 +25,11 @@ const typeConfig: Record<
     label: "平台公告",
     textClass: "text-[#2563eb]",
     bgClass: "bg-[#dbeafe]",
+  },
+  WORK_ORDER: {
+    label: "工单通知",
+    textClass: "text-[#7c3aed]",
+    bgClass: "bg-[#ede9fe]",
   },
 }
 

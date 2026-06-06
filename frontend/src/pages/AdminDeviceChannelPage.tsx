@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Portal } from "@/components/Portal";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Settings2 } from "lucide-react";
@@ -276,97 +277,99 @@ export default function AdminDeviceChannelPage() {
       </div>
 
       {settingsOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-twin-lg bg-[var(--twin-canvas)] p-4 shadow-twin-level-3">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h3 className="text-base font-semibold text-[var(--twin-ink)]">备注分类配置</h3>
-              <button type="button" className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm" onClick={() => setSettingsOpen(false)}>
-                关闭
-              </button>
-            </div>
-            <p className="mb-3 text-xs text-[var(--twin-body)]">
-              下列分类会出现在表格「备注」下拉里，用于给通道打标签，便于后续按分类筛选与二次封装选型。
-            </p>
-            <div className="space-y-2">
-              {categories.map((c) => {
-                const e = getEdit(c);
-                return (
-                  <div key={c.id} className="flex flex-wrap items-center gap-2 rounded-twin-sm border border-[var(--twin-hairline)] p-2">
-                    <input
-                      className="min-w-[8rem] flex-1 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm"
-                      value={e.name}
-                      onChange={(ev) =>
-                        setEdits((s) => ({
-                          ...s,
-                          [c.id]: { name: ev.target.value, sortOrder: e.sortOrder },
-                        }))
-                      }
-                      placeholder="名称"
-                    />
-                    <input
-                      type="number"
-                      className="w-20 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm"
-                      value={e.sortOrder}
-                      onChange={(ev) =>
-                        setEdits((s) => ({
-                          ...s,
-                          [c.id]: {
-                            name: e.name,
-                            sortOrder: Number(ev.target.value) || 0,
-                          },
-                        }))
-                      }
-                      title="排序，越小越靠前"
-                    />
-                    <button
-                      type="button"
-                      className="rounded-twin-sm bg-[var(--twin-primary)] px-2 py-1 text-xs font-medium text-[var(--twin-on-primary)]"
-                      onClick={() => void handleSaveCategory(c)}
-                    >
-                      保存
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-twin-sm border border-red-200 px-2 py-1 text-xs text-red-600"
-                      onClick={() => void handleDeleteCategory(c)}
-                    >
-                      删除
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-4 border-t border-[var(--twin-hairline)] pt-3">
-              <div className="text-xs font-medium text-[var(--twin-body)]">新增分类</div>
-              <div className="mt-2 flex flex-wrap items-end gap-2">
-                <input
-                  className="min-w-[8rem] flex-1 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm"
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  placeholder="分类名称"
-                />
-                <input
-                  type="number"
-                  className="w-20 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm"
-                  value={newCatSort}
-                  onChange={(e) => setNewCatSort(Number(e.target.value) || 0)}
-                  title="排序"
-                />
-                <button
-                  type="button"
-                  className="rounded-twin-sm bg-[var(--twin-ink)] px-3 py-1.5 text-sm font-medium text-[var(--twin-canvas)]"
-                  onClick={() => void handleAddCategory()}
-                >
-                  添加
+        <Portal>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-twin-lg bg-[var(--twin-canvas)] p-4 shadow-twin-level-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">备注分类配置</h3>
+                <button type="button" className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm" onClick={() => setSettingsOpen(false)}>
+                  关闭
                 </button>
+              </div>
+              <p className="mb-3 text-xs text-[var(--twin-body)]">
+                下列分类会出现在表格「备注」下拉里，用于给通道打标签，便于后续按分类筛选与二次封装选型。
+              </p>
+              <div className="space-y-2">
+                {categories.map((c) => {
+                  const e = getEdit(c);
+                  return (
+                    <div key={c.id} className="flex flex-wrap items-center gap-2 rounded-twin-sm border border-[var(--twin-hairline)] p-2">
+                      <input
+                        className="min-w-[8rem] flex-1 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm"
+                        value={e.name}
+                        onChange={(ev) =>
+                          setEdits((s) => ({
+                            ...s,
+                            [c.id]: { name: ev.target.value, sortOrder: e.sortOrder },
+                          }))
+                        }
+                        placeholder="名称"
+                      />
+                      <input
+                        type="number"
+                        className="w-20 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm"
+                        value={e.sortOrder}
+                        onChange={(ev) =>
+                          setEdits((s) => ({
+                            ...s,
+                            [c.id]: {
+                              name: e.name,
+                              sortOrder: Number(ev.target.value) || 0,
+                            },
+                          }))
+                        }
+                        title="排序，越小越靠前"
+                      />
+                      <button
+                        type="button"
+                        className="rounded-twin-sm bg-[var(--twin-primary)] px-2 py-1 text-xs font-medium text-[var(--twin-on-primary)]"
+                        onClick={() => void handleSaveCategory(c)}
+                      >
+                        保存
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-twin-sm border border-red-200 px-2 py-1 text-xs text-red-600"
+                        onClick={() => void handleDeleteCategory(c)}
+                      >
+                        删除
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-4 border-t border-[var(--twin-hairline)] pt-3">
+                <div className="text-xs font-medium text-[var(--twin-body)]">新增分类</div>
+                <div className="mt-2 flex flex-wrap items-end gap-2">
+                  <input
+                    className="min-w-[8rem] flex-1 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm"
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    placeholder="分类名称"
+                  />
+                  <input
+                    type="number"
+                    className="w-20 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-sm"
+                    value={newCatSort}
+                    onChange={(e) => setNewCatSort(Number(e.target.value) || 0)}
+                    title="排序"
+                  />
+                  <button
+                    type="button"
+                    className="rounded-twin-sm bg-[var(--twin-ink)] px-3 py-1.5 text-sm font-medium text-[var(--twin-canvas)]"
+                    onClick={() => void handleAddCategory()}
+                  >
+                    添加
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
     </div>
   );

@@ -8,6 +8,7 @@ interface PageTransitionProps {
   variant?: "fadeUp" | "fadeIn" | "slideLeft" | "none";
   duration?: number;
   delay?: number;
+  className?: string;
 }
 
 /**
@@ -19,6 +20,7 @@ export function PageTransition({
   variant = "fadeUp",
   duration = 0.35,
   delay = 0,
+  className,
 }: PageTransitionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -38,7 +40,7 @@ export function PageTransition({
     { scope: containerRef },
   );
 
-  return <div ref={containerRef}>{children}</div>;
+  return <div ref={containerRef} className={className}>{children}</div>;
 }
 
 /**

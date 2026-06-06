@@ -83,7 +83,7 @@ export default function DebugPersonnelPage() {
     try {
       const res = await searchPersonnel(keyword.trim(), 1, SEARCH_PAGE_SIZE);
       setSearchResults(
-        (res.data || []).map((row) => toPersonRow(row as Record<string, unknown>)),
+        ((res.data || []) as Record<string, unknown>[]).map((row: Record<string, unknown>) => toPersonRow(row)),
       );
       setSearchTotal(res.total ?? 0);
     } catch (error) {
@@ -97,7 +97,7 @@ export default function DebugPersonnelPage() {
     try {
       const res = await searchPersonnel(searchDraft.trim(), newPage, SEARCH_PAGE_SIZE);
       setSearchResults(
-        (res.data || []).map((row) => toPersonRow(row as Record<string, unknown>)),
+        ((res.data || []) as Record<string, unknown>[]).map((row: Record<string, unknown>) => toPersonRow(row)),
       );
       setSearchTotal(res.total ?? 0);
     } catch (error) {

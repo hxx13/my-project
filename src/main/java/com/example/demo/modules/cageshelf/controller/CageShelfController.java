@@ -4,6 +4,10 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.cageshelf.entity.CageEventLog;
+import com.example.demo.modules.cageshelf.mapper.CageEventLogMapper;
+import com.example.demo.modules.cageshelf.mapper.UserCageColorConfigMapper;
+import com.example.demo.modules.cageshelf.service.CageScanProgressService;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -11,10 +15,16 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/cage-shelves")
@@ -22,10 +32,20 @@ import org.springframework.web.multipart.MultipartFile;
 public class CageShelfController {
     private final AuthContextService authContextService;
     private final CageShelfService cageShelfService;
+    private final CageScanProgressService cageScanProgressService;
+    private final UserCageColorConfigMapper colorConfigMapper;
+    private final CageEventLogMapper eventLogMapper;
 
-    public CageShelfController(AuthContextService authContextService, CageShelfService cageShelfService) {
+    public CageShelfController(AuthContextService authContextService,
+                               CageShelfService cageShelfService,
+                               CageScanProgressService cageScanProgressService,
+                               UserCageColorConfigMapper colorConfigMapper,
+                               CageEventLogMapper eventLogMapper) {
         this.authContextService = authContextService;
         this.cageShelfService = cageShelfService;
+        this.cageScanProgressService = cageScanProgressService;
+        this.colorConfigMapper = colorConfigMapper;
+        this.eventLogMapper = eventLogMapper;
     }
 
     @PostMapping("/import")
@@ -63,7 +83,7 @@ public class CageShelfController {
     }
 
     @GetMapping("/{shelveId}/detail")
-    @Operation(summary = "获取笼架详情（后端代理外部接口）")
+    @Operation(summary = "获取笼架详情（优先缓存，缓存未命中时实时拉取 ARO）")
     public Result<?> detail(@RequestHeader(value = "Authorization", required = false) String authorization,
                             @PathVariable String shelveId) {
         User user = resolveUser(authorization);
@@ -73,6 +93,66 @@ public class CageShelfController {
         }
         try {
             return Result.success(cageShelfService.fetchShelfDetail(shelveId));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{shelveId}/refresh")
+    @Operation(summary = "强制刷新笼架详情（调用 ARO 实时拉取并更新缓存）")
+    public Result<?> refreshShelf(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                   @PathVariable String shelveId) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            return Result.success(cageShelfService.refreshShelfDetail(shelveId));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @GetMapping("/{shelveId}/cells/{x}/{y}/refresh")
+    @Operation(summary = "手动刷新单个笼位数据（调用 /back + /book/ 获取最新状态）")
+    public Result<?> refreshCell(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                  @PathVariable String shelveId,
+                                  @PathVariable int x,
+                                  @PathVariable int y) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            return Result.success(cageShelfService.refreshCell(shelveId, x, y));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @GetMapping("/scan-progress")
+    @Operation(summary = "获取笼位特殊状态扫描进度")
+    public Result<?> scanProgress(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) {
+            return denied;
+        }
+        return Result.success(cageScanProgressService.getProgress());
+    }
+
+    @GetMapping("/special-status-overview")
+    @Operation(summary = "特殊状态总览（从最新扫描快照按状态分组）")
+    public Result<?> specialStatusOverview(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            return Result.success(cageShelfService.getSpecialStatusOverview());
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
@@ -93,6 +173,54 @@ public class CageShelfController {
             return denied;
         }
         return Result.success(cageShelfService.listIndexRows(campusId, areaId, floorId, roomId, page, size));
+    }
+
+    // ---- 用户笼位颜色偏好 ----
+
+    @GetMapping("/user-colors")
+    @Operation(summary = "获取当前用户的笼位颜色配置")
+    public Result<?> getUserColors(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("未登录");
+        colorConfigMapper.ensureTable();
+        List<Map<String, Object>> rows = colorConfigMapper.selectByUserId(user.getId());
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            out.put(String.valueOf(row.get("statusCode")), Map.of(
+                "bg", String.valueOf(row.getOrDefault("bgColor", "")),
+                "border", String.valueOf(row.getOrDefault("borderColor", ""))
+            ));
+        }
+        return Result.success(out);
+    }
+
+    @SuppressWarnings("unchecked")
+    @PostMapping("/user-colors")
+    @Operation(summary = "保存当前用户的笼位颜色配置")
+    public Result<?> saveUserColors(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     @RequestBody Map<String, Object> body) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("未登录");
+        colorConfigMapper.ensureTable();
+        Map<String, Object> configs = (Map<String, Object>) body.get("colors");
+        if (configs != null && !configs.isEmpty()) {
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (Map.Entry<String, Object> entry : configs.entrySet()) {
+                Map<String, Object> val = (Map<String, Object>) entry.getValue();
+                if (val != null) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("statusCode", entry.getKey());
+                    row.put("bgColor", String.valueOf(val.getOrDefault("bg", "")));
+                    row.put("borderColor", String.valueOf(val.getOrDefault("border", "")));
+                    rows.add(row);
+                }
+            }
+            if (!rows.isEmpty()) {
+                colorConfigMapper.deleteByUserId(user.getId());
+                colorConfigMapper.batchUpsert(user.getId(), rows);
+            }
+        }
+        return Result.success();
     }
 
     private User resolveUser(String authorization) {
@@ -117,5 +245,45 @@ public class CageShelfController {
             return Result.error("无权限访问");
         }
         return null;
+    }
+
+    // ---- 笼位事件日志查询 ----
+
+    @GetMapping("/event-logs")
+    @Operation(summary = "查询笼位事件日志（支持筛选）")
+    public Result<?> searchEventLogs(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) String eventType,
+            @RequestParam(required = false) String campusName,
+            @RequestParam(required = false) String searchText,
+            @RequestParam(required = false) String startTime,
+            @RequestParam(required = false) String endTime,
+            @RequestParam(defaultValue = "0") int offset,
+            @RequestParam(defaultValue = "50") int limit) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        eventLogMapper.ensureTable();
+        List<CageEventLog> rows = eventLogMapper.search(eventType, campusName, searchText, startTime, endTime, offset, limit);
+        int total = eventLogMapper.countSearch(eventType, campusName, searchText, startTime, endTime);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("rows", rows);
+        out.put("total", total);
+        out.put("offset", offset);
+        out.put("limit", limit);
+        return Result.success(out);
+    }
+
+    @GetMapping("/event-logs/timeline/{cageBoxQrCode}")
+    @Operation(summary = "按笼盒卡号查询事件时间线")
+    public Result<?> timelineByBox(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable String cageBoxQrCode,
+            @RequestParam(defaultValue = "100") int limit) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        eventLogMapper.ensureTable();
+        return Result.success(eventLogMapper.timelineByBox(cageBoxQrCode, limit));
     }
 }

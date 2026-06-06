@@ -1,0 +1,173 @@
+<h2>侧边栏文件夹管理 — 交互流程</h2>
+<p class="subtitle">三个关键视图：侧边栏入口 → 管理页面 → 编辑操作</p>
+
+<h3>1. 侧边栏底部新增齿轮按钮（w-72 加宽后）</h3>
+<div class="mockup" style="margin-bottom:24px;">
+  <div class="mockup-header">侧边栏底部 — 收起/展开按钮旁边新增管理入口</div>
+  <div class="mockup-body">
+    <div style="display:flex; width:288px; background:#1e293b; color:white; flex-direction:column; border-radius:8px; overflow:hidden; font-size:13px;">
+      <!-- sidebar header -->
+      <div style="padding:16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #334155;">
+        <div style="width:32px;height:32px;background:#3b82f6;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:bold;">🐭</div>
+        <div><div style="font-weight:600;">Aro 管理系统</div><div style="font-size:11px;color:#94a3b8;">浦东园区</div></div>
+      </div>
+      <!-- nav items - more room with w-72 -->
+      <div style="flex:1; padding:12px;">
+        <div style="padding:8px 12px; color:#94a3b8; font-size:11px; margin-top:4px;">⭐ 收藏</div>
+        <div style="padding:8px 12px; display:flex; align-items:center; gap:8px; border-radius:6px; cursor:pointer;">📋 报修申请</div>
+        <div style="padding:8px 12px; color:#94a3b8; font-size:11px; margin-top:8px;">💬 消息 <span style="background:#ef4444; color:white; border-radius:10px; padding:1px 7px; font-size:10px; margin-left:4px;">3</span></div>
+        <div style="padding:8px 12px; display:flex; align-items:center; gap:8px; border-radius:6px;">✉️ 站内信</div>
+        <div style="padding:8px 12px; color:#94a3b8; font-size:11px; margin-top:8px;">📦 资产与运维</div>
+        <div style="padding:8px 12px; display:flex; align-items:center; gap:8px; border-radius:6px;">📋 资产入库记录</div>
+        <div style="padding:8px 12px; display:flex; align-items:center; gap:8px; border-radius:6px;">🔄 资产转移记录</div>
+        <div style="padding:8px 12px; display:flex; align-items:center; gap:8px; border-radius:6px;">🗄️ 笼架管理</div>
+        <div style="padding:8px 12px; display:flex; align-items:center; gap:8px; border-radius:6px;">🚪 门禁设备通道</div>
+        <div style="padding:8px 12px; display:flex; align-items:center; gap:8px; border-radius:6px;">🔧 设施维护</div>
+      </div>
+      <!-- bottom bar with gear -->
+      <div style="padding:12px 16px; border-top:1px solid #334155; display:flex; align-items:center; gap:12px;">
+        <span style="cursor:pointer; font-size:14px;">◀</span>
+        <div style="flex:1;"></div>
+        <span style="cursor:pointer; font-size:16px; opacity:0.7; background:#334155; padding:4px 8px; border-radius:4px;" title="管理文件夹">⚙️</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>2. 管理页面 — 左侧树 + 右侧编辑面板</h3>
+<div class="mockup" style="margin-bottom:24px;">
+  <div class="mockup-header">点击齿轮 → 进入全屏管理页面</div>
+  <div class="mockup-body">
+    <div style="display:flex; height: 480px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+      <!-- Left: folder tree -->
+      <div style="width: 320px; background: #f9fafb; border-right: 1px solid #e5e7eb; display:flex; flex-direction:column;">
+        <div style="padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-weight:600;font-size:14px;">📁 文件夹结构</span>
+          <button class="mock-button" style="padding:4px 10px;font-size:12px;">+ 新建</button>
+        </div>
+        <div style="flex:1; overflow-y:auto; padding: 8px;">
+          <!-- draggable groups -->
+          <div style="margin:2px 0; padding:8px 10px; background:#e0e7ff; border-radius:4px; border-left:3px solid #6366f1; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+            <span>📂 资产与运维</span>
+            <span style="font-size:11px; color:#6b7280;">5 项 ▾</span>
+          </div>
+          <!-- expanded group shows children -->
+          <div style="margin-left:12px;">
+            <div style="margin:2px 0; padding:6px 8px; background:#f3f4f6; border-radius:3px; font-size:12px; display:flex; align-items:center; gap:6px;">⋮⋮ 📄 资产入库记录</div>
+            <div style="margin:2px 0; padding:6px 8px; background:#f3f4f6; border-radius:3px; font-size:12px; display:flex; align-items:center; gap:6px;">⋮⋮ 📄 资产转移记录</div>
+            <div style="margin:2px 0; padding:6px 8px; background:#f3f4f6; border-radius:3px; font-size:12px; display:flex; align-items:center; gap:6px;">⋮⋮ 📄 笼架管理</div>
+          </div>
+          <!-- group with subgroups -->
+          <div style="margin:2px 0; padding:8px 10px; background:#fff; border:1px solid #e5e7eb; border-radius:4px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+            <span>📂 报修与物资领用</span>
+            <span style="font-size:11px; color:#6b7280;">8 项 ▸</span>
+          </div>
+          <div style="margin:2px 0; padding:8px 10px; background:#fff; border:1px solid #e5e7eb; border-radius:4px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+            <span>📂 门禁、元数据与环境</span>
+            <span style="font-size:11px; color:#6b7280;">6 项 ▸</span>
+          </div>
+          <div style="margin:2px 0; padding:8px 10px; background:#fff; border:1px solid #e5e7eb; border-radius:4px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+            <span>📂 系统与安全</span>
+            <span style="font-size:11px; color:#6b7280;">4 项 ▸</span>
+          </div>
+          <!-- drag indicator between groups -->
+          <div style="margin:4px 0; height:2px; background:linear-gradient(to right, transparent, #6366f1, transparent); border-radius:1px;"></div>
+        </div>
+      </div>
+      <!-- Right: detail panel -->
+      <div style="flex:1; padding: 20px 24px; overflow-y:auto;">
+        <!-- selected: "资产与运维" -->
+        <h3 style="margin:0 0 4px 0; font-size:16px;">编辑：资产与运维</h3>
+        <p style="margin:0 0 16px 0; color:#9ca3af; font-size:13px;">顶级分组 · 包含 5 个入口</p>
+
+        <div style="margin-bottom:14px;">
+          <label class="label" style="display:block; margin-bottom:4px;">文件夹名称</label>
+          <div style="display:flex; gap:8px;">
+            <input class="mock-input" value="资产与运维" style="flex:1;" />
+            <button class="mock-button">保存</button>
+          </div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+          <label class="label" style="display:block; margin-bottom:4px;">排序位置</label>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="mock-button" style="padding:4px 8px;">↑ 上移</button>
+            <button class="mock-button" style="padding:4px 8px;">↓ 下移</button>
+            <span style="color:#9ca3af; font-size:12px;">当前第 2 位</span>
+          </div>
+        </div>
+
+        <hr style="margin:16px 0; border-color:#e5e7eb;" />
+
+        <label class="label" style="display:block; margin-bottom:6px;">包含的入口</label>
+        <div style="border:1px solid #e5e7eb; border-radius:6px; padding:4px; margin-bottom:8px;">
+          <div style="padding:8px 10px; margin:2px; background:#f9fafb; border-radius:4px; display:flex; align-items:center; gap:8px; cursor:grab;">
+            <span style="color:#d1d5db;">⋮⋮</span> 📄 资产入库记录
+            <span style="flex:1;"></span>
+            <span style="cursor:pointer; color:#ef4444; opacity:0.5;">✕</span>
+          </div>
+          <div style="padding:8px 10px; margin:2px; background:#f9fafb; border-radius:4px; display:flex; align-items:center; gap:8px; cursor:grab;">
+            <span style="color:#d1d5db;">⋮⋮</span> 📄 资产转移记录
+            <span style="flex:1;"></span>
+            <span style="cursor:pointer; color:#ef4444; opacity:0.5;">✕</span>
+          </div>
+          <div style="padding:8px 10px; margin:2px; background:#f9fafb; border-radius:4px; display:flex; align-items:center; gap:8px; cursor:grab;">
+            <span style="color:#d1d5db;">⋮⋮</span> 📄 笼架管理
+            <span style="flex:1;"></span>
+            <span style="cursor:pointer; color:#ef4444; opacity:0.5;">✕</span>
+          </div>
+          <div style="padding:8px 10px; margin:2px; background:#f9fafb; border-radius:4px; display:flex; align-items:center; gap:8px; cursor:grab;">
+            <span style="color:#d1d5db;">⋮⋮</span> 📄 门禁设备通道
+            <span style="flex:1;"></span>
+            <span style="cursor:pointer; color:#ef4444; opacity:0.5;">✕</span>
+          </div>
+          <div style="padding:8px 10px; margin:2px; background:#f9fafb; border-radius:4px; display:flex; align-items:center; gap:8px; cursor:grab;">
+            <span style="color:#d1d5db;">⋮⋮</span> 📄 设施维护
+            <span style="flex:1;"></span>
+            <span style="cursor:pointer; color:#ef4444; opacity:0.5;">✕</span>
+          </div>
+        </div>
+        <p style="font-size:12px; color:#9ca3af; margin-bottom:0;">从其他文件夹拖拽入口到此区域即可移动归属</p>
+
+        <hr style="margin:20px 0; border-color:#e5e7eb;" />
+        <div style="display:flex; gap:8px;">
+          <button class="mock-button" style="background:#ef4444; color:white; border-color:#ef4444;">🗑 删除此文件夹</button>
+          <button class="mock-button" style="background:#f59e0b; color:white; border-color:#f59e0b;">🔄 重置为默认</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>3. 新建文件夹弹窗</h3>
+<div class="mockup" style="margin-bottom:24px;">
+  <div class="mockup-header">点击"+ 新建" → 弹出创建对话框</div>
+  <div class="mockup-body">
+    <div style="max-width:420px; margin:0 auto; border:1px solid #e5e7eb; border-radius:8px; padding:20px; background:white;">
+      <div style="margin-bottom:12px;">
+        <label class="label" style="display:block; margin-bottom:4px;">文件夹类型</label>
+        <select style="padding:6px 10px; border:1px solid #d1d5db; border-radius:4px; width:100%;">
+          <option>顶级分组 (Group)</option>
+          <option>子分组 (Subgroup) — 需选择父分组</option>
+        </select>
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="label" style="display:block; margin-bottom:4px;">名称</label>
+        <input class="mock-input" placeholder="输入文件夹名称..." style="width:100%;" />
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="label" style="display:block; margin-bottom:4px;">所属父分组（仅子分组需要）</label>
+        <select style="padding:6px 10px; border:1px solid #d1d5db; border-radius:4px; width:100%;">
+          <option>— 顶级分组，不需要 —</option>
+          <option>资产与运维</option>
+          <option>报修与物资领用</option>
+          <option>门禁、元数据与环境</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:16px;">
+        <button class="mock-button" style="background:#f3f4f6; color:#374151; border-color:#d1d5db;">取消</button>
+        <button class="mock-button">创建</button>
+      </div>
+    </div>
+  </div>
+</div>

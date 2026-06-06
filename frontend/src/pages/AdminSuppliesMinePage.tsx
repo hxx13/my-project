@@ -20,6 +20,7 @@ import {
 } from "@/api/hooks/useSupplies";
 import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
+import { Portal } from "@/components/Portal";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
@@ -297,70 +298,75 @@ export default function AdminSuppliesMinePage() {
       ) : null}
 
       {detailOpen && detail ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setDetailOpen(false)}>
-          <div className="max-h-[82vh] w-full max-w-lg overflow-hidden rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-4" onClick={(e) => e.stopPropagation()}>
-            <div className="border-b border-[var(--twin-hairline)] px-4 py-3">
-              <div className="text-base font-semibold text-[var(--twin-ink)]">领用明细</div>
-              <div className="text-xs text-[var(--twin-mute)]">
-                {STATUS_LABEL[String(detail.status || "").toUpperCase()] || detail.status} · {toTimeText(detail.createdAt)}
-              </div>
-            </div>
-            <div className="max-h-[50vh] space-y-2 overflow-y-auto px-4 py-3 text-sm">
-              <div className="text-[var(--twin-body)]">
-                申请人 <span className="font-medium text-[var(--twin-ink)]">{detail.applicantName || "本人"}</span>
-              </div>
-              {String(detail.status || "").toUpperCase() === "FULFILLED" ? (
+        <Portal>
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => setDetailOpen(false)}>
+            <div className="max-h-[82vh] w-full max-w-lg overflow-hidden rounded-twin-xl bg-[var(--twin-canvas)] shadow-twin-level-4" onClick={(e) => e.stopPropagation()}>
+              <div className="border-b border-[var(--twin-hairline)] px-4 py-3">
+                <div className="text-base font-semibold text-[var(--twin-ink)]">领用明细</div>
                 <div className="text-xs text-[var(--twin-mute)]">
-                  出库完成 {toTimeText(detail.fulfilledAt)}
-                  {detail.fulfilledByName ? ` · 操作人 ${detail.fulfilledByName}` : ""}
+                  {STATUS_LABEL[String(detail.status || "").toUpperCase()] || detail.status} · {toTimeText(detail.createdAt)}
                 </div>
-              ) : null}
-              {(detail.lines || []).map((line) => (
-                <div key={line.id} className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2">
-                  <div className="font-medium text-[var(--twin-ink)]">{line.snapshotName}</div>
-                  <div className="text-xs text-[var(--twin-body)]">
-                    申请 {line.qty} · 实发 {line.fulfilledQty ?? 0}
+              </div>
+              <div className="max-h-[50vh] space-y-2 overflow-y-auto px-4 py-3 text-sm">
+                <div className="text-[var(--twin-body)]">
+                  申请人 <span className="font-medium text-[var(--twin-ink)]">{detail.applicantName || "本人"}</span>
+                </div>
+                {String(detail.status || "").toUpperCase() === "FULFILLED" ? (
+                  <div className="text-xs text-[var(--twin-mute)]">
+                    出库完成 {toTimeText(detail.fulfilledAt)}
+                    {detail.fulfilledByName ? ` · 操作人 ${detail.fulfilledByName}` : ""}
                   </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2 border-t border-[var(--twin-hairline)] px-4 py-3">
-              {String(detail.status || "").toUpperCase() === "PENDING" ? (
-                <button
-                  type="button"
-                  className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white"
-                  onClick={() => goRevise(detail.id)}
-                >
-                  修改
+                ) : null}
+                {(detail.lines || []).map((line) => (
+                  <div key={line.id} className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2">
+                    <div className="font-medium text-[var(--twin-ink)]">{line.snapshotName}</div>
+                    <div className="text-xs text-[var(--twin-body)]">
+                      申请 {line.qty} · 实发 {line.fulfilledQty ?? 0}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2 border-t border-[var(--twin-hairline)] px-4 py-3">
+                {String(detail.status || "").toUpperCase() === "PENDING" ? (
+                  <button
+                    type="button"
+                    className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-medium text-white"
+                    onClick={() => goRevise(detail.id)}
+                  >
+                    修改
+                  </button>
+                ) : null}
+                <button type="button" className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)]" onClick={() => setDetailOpen(false)}>
+                  关闭
                 </button>
-              ) : null}
-              <button type="button" className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)]" onClick={() => setDetailOpen(false)}>
-                关闭
-              </button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       ) : null}
 
       {deleteId ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-4" onClick={() => setDeleteId(null)}>
-          <div className="w-full max-w-sm rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4" onClick={(e) => e.stopPropagation()}>
-            <div className="text-base font-semibold text-[var(--twin-ink)]">删除记录</div>
-            <p className="mt-2 text-sm text-[var(--twin-body)]">确认删除该领用工单？删除后可在回收站恢复。</p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)]" onClick={() => setDeleteId(null)}>
-                取消
-              </button>
-              <button type="button" className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white" onClick={() => confirmDelete()}>
-                删除
-              </button>
+        <Portal>
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-4" onClick={() => setDeleteId(null)}>
+            <div className="w-full max-w-sm rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4" onClick={(e) => e.stopPropagation()}>
+              <div className="text-base font-semibold text-[var(--twin-ink)]">删除记录</div>
+              <p className="mt-2 text-sm text-[var(--twin-body)]">确认删除该领用工单？删除后可在回收站恢复。</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)]" onClick={() => setDeleteId(null)}>
+                  取消
+                </button>
+                <button type="button" className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white" onClick={() => confirmDelete()}>
+                  删除
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       ) : null}
 
       {linkModalRow ? (
-        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/40 p-4" onClick={() => setLinkModalRow(null)}>
+        <Portal>
+          <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/40 p-4" onClick={() => setLinkModalRow(null)}>
           <div className="w-full max-w-2xl rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-4" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -437,6 +443,7 @@ export default function AdminSuppliesMinePage() {
             </div>
           </div>
         </div>
+        </Portal>
       ) : null}
     </div>
   );

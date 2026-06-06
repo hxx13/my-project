@@ -121,9 +121,9 @@ export function DebugPipelineFilterBar({ filters, onChange, onClear, invalidateK
             onChange={(e) => onChange({ ...filters, roomName: e.target.value })}
             className="w-[130px] rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] font-bold text-slate-700 outline-none transition-colors focus:border-indigo-400"
           />
-        </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-3 sm:border-t-0 sm:pt-0">
+          <span className="mx-1 h-6 w-px bg-slate-200" />
+
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
             <div className="relative">
               <input

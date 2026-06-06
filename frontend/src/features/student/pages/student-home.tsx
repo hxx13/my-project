@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   FileText,
   AlertTriangle,
@@ -12,12 +13,20 @@ import {
   Brain,
   Clock,
   TrendingUp,
+  Mail,
+  Phone,
+  MapPin,
+  Star,
+  ShieldCheck,
+  ShieldAlert,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
+import { useQuery } from "@tanstack/react-query";
 import { useStudentDashboard } from "../hooks/use-student-dashboard";
 import { useStudentAiProfile } from "../hooks/use-student-ai-profile";
+import { StudentActivityDashboard } from "../components/student-activity-dashboard";
+import { fetchRooms } from "../api/student.api";
 import type { AiPredictionRecord } from "../api/student.api";
 import {
   StudentCard,
@@ -26,8 +35,9 @@ import {
   ErrorRetry,
   EmptyState,
   RoomCard,
-  Tooltip,
+  Avatar,
 } from "../components/ui";
+import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 
 /* ------------------------------------------------------------------ */
 /*  Sub-components                                                     */
@@ -40,15 +50,20 @@ function StatCard({ label, value }: { label: string; value: number }) {
   useEffect(() => {
     const el = numRef.current;
     if (!el) return;
-    const obj = { n: 0 };
-    gsap.to(obj, {
-      n: value,
-      duration: 1.2,
-      ease: "power2.out",
-      onUpdate: () => {
-        el.textContent = String(Math.round(obj.n));
-      },
-    });
+    const target = value;
+    const duration = 1000;
+    const start = performance.now();
+    let raf: number;
+    const animate = (now: number) => {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      // easeOutQuad
+      const eased = 1 - (1 - progress) * (1 - progress);
+      el.textContent = String(Math.round(eased * target));
+      if (progress < 1) raf = requestAnimationFrame(animate);
+    };
+    raf = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(raf);
   }, [value]);
 
   return (
@@ -68,45 +83,54 @@ function QuickActionItem({
   icon: Icon,
   label,
   onClick,
-  disabled = false,
 }: {
   icon: React.ElementType;
   label: string;
   onClick?: () => void;
-  disabled?: boolean;
 }) {
-  const button = (
+  return (
     <button
-      aria-disabled={disabled || undefined}
-      onClick={disabled ? undefined : onClick}
+      type="button"
+      onClick={onClick}
       className={cn(
-        "flex items-center gap-2.5 w-full px-1 py-2 rounded-[var(--student-radius-sm)] text-left transition-colors",
-        disabled
-          ? "cursor-not-allowed opacity-60"
-          : "cursor-pointer hover:bg-[var(--student-mute)]",
+        "flex items-center gap-2.5 w-full px-2 py-2.5 rounded-[var(--student-radius-sm)] text-left",
+        "transition-all duration-150",
+        "cursor-pointer",
+        "hover:bg-[var(--student-primary-soft)] hover:shadow-sm",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--student-primary)]/40",
+        "active:scale-[0.98]",
       )}
     >
-      <Icon
-        aria-hidden="true"
-        className="size-4 text-[var(--student-primary)] shrink-0"
-        strokeWidth={1.5}
-      />
-      <span className="text-[13px] text-[var(--student-foreground)]">
+      <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--student-primary-soft)]">
+        <Icon
+          aria-hidden="true"
+          className="size-3.5 text-[var(--student-primary)]"
+          strokeWidth={1.5}
+        />
+      </span>
+      <span className="text-[13px] font-medium text-[var(--student-ink)]">
         {label}
       </span>
     </button>
   );
-
-  if (disabled) {
-    return <Tooltip content="即将上线">{button}</Tooltip>;
-  }
-  return button;
 }
 
 /** Pattern for displaying an access-record type badge */
 function recordTypeVariant(type: string): "success" | "warning" {
   if (type === "进入") return "success";
   return "warning";
+}
+
+/** Gender label */
+function genderLabel(g?: number): string {
+  if (g === 1) return "男";
+  if (g === 2) return "女";
+  return "未知";
+}
+
+/** Simple level from EXP — sqrt(exp/50) floor */
+function levelFromExp(exp: number): number {
+  return Math.max(1, Math.floor(Math.sqrt(Math.max(0, exp) / 50)));
 }
 
 /** Pattern for displaying a notification type colour dot */
@@ -211,48 +235,26 @@ export default function StudentHomePage() {
   const { data, isLoading, isError, error, refetch } = useStudentDashboard();
   const { data: aiData } = useStudentAiProfile();
   const [showAiModal, setShowAiModal] = useState(false);
-  const pageRef = useRef<HTMLDivElement>(null);
 
-  /* ---- GSAP staggered entrance ---- */
-  useGSAP(
-    () => {
-      if (!pageRef.current) return;
-      // Stat cards stagger
-      gsap.from(".stat-card", {
-        opacity: 0,
-        y: 24,
-        duration: 0.5,
-        stagger: 0.1,
-        ease: "power3.out",
-      });
-      // Room cards stagger
-      gsap.from(".pinned-room-item", {
-        opacity: 0,
-        scale: 0.92,
-        duration: 0.4,
-        stagger: 0.06,
-        ease: "back.out(1.4)",
-      });
-      // Left sidebar panels
-      gsap.from(".left-panel", {
-        opacity: 0,
-        x: -24,
-        duration: 0.45,
-        stagger: 0.12,
-        ease: "power2.out",
-      });
-      // Right main cards
-      gsap.from(".right-card", {
-        opacity: 0,
-        y: 20,
-        duration: 0.45,
-        stagger: 0.1,
-        delay: 0.2,
-        ease: "power2.out",
-      });
-    },
-    { scope: pageRef, dependencies: [data] },
-  );
+  // 常用房间：ARO API 匹配 + 手动收藏（与 /student/rooms 页同源）
+  const { data: myRoomsData } = useQuery({
+    queryKey: ["student", "rooms", { pinned: "1" }],
+    queryFn: () => fetchRooms({ pinned: "1", page: 1, size: 20 }),
+    staleTime: 60_000,
+  });
+  const aroRooms = myRoomsData?.data ?? [];
+  // 拆分为收藏和常用
+  const { pinnedRoomsHome, frequentRoomsHome } = useMemo(() => {
+    const pinned: typeof aroRooms = [];
+    const freq: typeof aroRooms = [];
+    for (const r of aroRooms) {
+      if ((r as any).isPinned) pinned.push(r);
+      else freq.push(r);
+    }
+    return { pinnedRoomsHome: pinned, frequentRoomsHome: freq };
+  }, [aroRooms]);
+  const maxShow = 6;
+  const pageRef = useRef<HTMLDivElement>(null);
 
   /* ---- loading ---- */
   if (isLoading) return <DashboardSkeleton />;
@@ -274,41 +276,124 @@ export default function StudentHomePage() {
   /* ---- empty / guard ---- */
   if (!data) return null;
 
-  const { profile, stats, pinnedRooms, recentRecords, recentNotices } = data;
+  const { profile, stats, recentRecords, recentNotices } = data;
 
   /* ---- normal ---- */
   return (
     <div ref={pageRef} className="flex gap-5 p-6 bg-[var(--student-canvas-soft)] min-h-full">
+      <style>{`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(16px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInLeft {
+          from { opacity: 0; transform: translateX(-16px); }
+          to { opacity: 1; transform: translateX(0); }
+        }
+        .stat-card { animation: fadeInUp 0.4s ease-out both; }
+        .stat-card:nth-child(2) { animation-delay: 0.08s; }
+        .stat-card:nth-child(3) { animation-delay: 0.16s; }
+        .stat-card:nth-child(4) { animation-delay: 0.24s; }
+        .pinned-room-item { animation: fadeInUp 0.35s ease-out both; }
+        .left-panel { animation: fadeInLeft 0.35s ease-out both; }
+        .left-panel:nth-child(2) { animation-delay: 0.1s; }
+        .right-card { animation: fadeInUp 0.35s ease-out both; }
+        .right-card:nth-child(2) { animation-delay: 0.08s; }
+        .right-card:nth-child(3) { animation-delay: 0.16s; }
+        @media (prefers-reduced-motion: reduce) {
+          .stat-card, .pinned-room-item, .left-panel, .right-card { animation: none !important; opacity: 1 !important; }
+        }
+      `}</style>
       {/* ============================================================ */}
       {/* LEFT COLUMN — 260px fixed width                              */}
       {/* ============================================================ */}
       <aside className="w-[260px] shrink-0 flex flex-col gap-3">
-        {/* 1. Personal Identity Card */}
+        {/* 1. Personal Identity Card — expanded */}
         <StudentCard padding="lg" className="left-panel">
           <div className="flex flex-col items-center text-center">
-            {/* Avatar circle */}
-            <div className="flex items-center justify-center size-16 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-white text-xl font-bold mb-3">
-              {profile.name?.charAt(0) || "?"}
-            </div>
+            {/* Avatar — real head image with initials fallback */}
+            <Avatar
+              src={profile.head ? resolvePersonnelAvatarUrl(profile.head) : undefined}
+              name={profile.name || ""}
+              size="lg"
+              className="mb-3 ring-2 ring-[var(--student-primary-soft)]"
+            />
 
             <h2 className="text-[16px] font-bold text-[var(--student-foreground)]">
               {profile.name || "--"}
             </h2>
 
-            <p className="text-[12px] text-[var(--student-mute-foreground)] mt-0.5">
-              {profile.roleLabel}
-              {profile.projectGroupName
-                ? ` · ${profile.projectGroupName}`
-                : ""}
-            </p>
+            {profile.departmentName && (
+              <p className="text-[11px] text-[var(--student-mute-foreground)] mt-0.5 truncate max-w-full">
+                {profile.departmentName}
+              </p>
+            )}
 
-            <div className="flex items-center gap-1.5 mt-3">
-              <Badge variant="success">
-                {profile.authStatus || "已授权"}
-              </Badge>
+            <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2">
+              {profile.authStatus === "已授权" ? (
+                <Badge variant="success">{profile.authStatus}</Badge>
+              ) : (
+                <Badge variant="warning">{profile.authStatus}</Badge>
+              )}
               <Badge variant="profile">
                 {profile.roleLabel || "学生"}
               </Badge>
+            </div>
+
+            {/* Detail info rows */}
+            <div className="w-full mt-3 pt-3 border-t border-[var(--student-border)] space-y-2">
+              {/* Gender + Level + EXP */}
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="flex items-center gap-1 text-[var(--student-mute-foreground)]">
+                  <User className="size-3" strokeWidth={1.5} />
+                  {genderLabel(profile.gender)}
+                </span>
+                <span className="flex items-center gap-1 text-[var(--student-mute-foreground)]">
+                  <span className="font-semibold text-[var(--student-ink)]">
+                    Lv.{levelFromExp(profile.totalExp ?? 0)}
+                  </span>
+                  <Star className="size-3 text-amber-500" strokeWidth={1.5} />
+                  <span className="font-semibold text-[var(--student-ink)]">{profile.totalExp ?? 0}</span>
+                  <span className="text-[10px]">EXP</span>
+                </span>
+              </div>
+
+              {/* Mobile */}
+              {profile.mobilePhone && (
+                <div className="flex items-center gap-1.5 text-[12px] text-[var(--student-mute-foreground)]">
+                  <Phone className="size-3 shrink-0" strokeWidth={1.5} />
+                  <span className="truncate">{profile.mobilePhone}</span>
+                </div>
+              )}
+
+              {/* Email */}
+              {profile.email && (
+                <div className="flex items-center gap-1.5 text-[12px] text-[var(--student-mute-foreground)]">
+                  <Mail className="size-3 shrink-0" strokeWidth={1.5} />
+                  <span className="truncate">{profile.email}</span>
+                </div>
+              )}
+
+              {/* Project Group */}
+              {profile.projectGroupName && (
+                <div className="flex items-center gap-1.5 text-[12px] text-[var(--student-mute-foreground)]">
+                  <MapPin className="size-3 shrink-0" strokeWidth={1.5} />
+                  <span className="truncate">{profile.projectGroupName}</span>
+                </div>
+              )}
+
+              {/* Allowed rooms */}
+              {profile.allowedRoomsDisplayZh ? (
+                <div className="flex items-start gap-1.5 text-[12px] text-[var(--student-mute-foreground)]">
+                  <ShieldCheck className="size-3 shrink-0 mt-0.5 text-green-500" strokeWidth={1.5} />
+                  <span className="leading-relaxed line-clamp-2">{profile.allowedRoomsDisplayZh}</span>
+                </div>
+              ) : (
+                <div className="flex items-start gap-1.5 text-[12px] text-[var(--student-mute-foreground)]">
+                  <ShieldAlert className="size-3 shrink-0 mt-0.5 text-amber-500" strokeWidth={1.5} />
+                  <span>暂无房间权限</span>
+                </div>
+              )}
             </div>
           </div>
         </StudentCard>
@@ -322,7 +407,7 @@ export default function StudentHomePage() {
             <QuickActionItem
               icon={Key}
               label="我的门禁权限"
-              disabled
+              onClick={() => navigate("/student/rooms")}
             />
             <QuickActionItem
               icon={FileText}
@@ -332,7 +417,7 @@ export default function StudentHomePage() {
             <QuickActionItem
               icon={AlertTriangle}
               label="违规记录"
-              disabled
+              onClick={() => navigate("/student/records")}
             />
             <QuickActionItem
               icon={BarChart3}
@@ -355,61 +440,96 @@ export default function StudentHomePage() {
           <StatCard label="可进房间" value={stats.accessibleRoomCount} />
         </div>
 
-        {/* 4. Pinned Rooms Section */}
+        {/* 3.5 课题组活跃度模块 */}
+        <StudentActivityDashboard
+          groupName={profile.projectGroupName || ""}
+          className="right-card"
+        />
+
+        {/* 4. Rooms Section: 收藏 + 常用 */}
         <StudentCard className="right-card">
-          {/* Header row */}
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-[13px] font-semibold text-[var(--student-foreground)]">
-              ⭐ 我的常用房间
+              🚪 我的房间
             </h3>
             <button
               onClick={() => navigate("/student/rooms")}
               className="text-[12px] text-[var(--student-primary)] hover:underline transition-colors flex items-center gap-0.5"
             >
-              管理置顶
+              查看全部
               <ChevronRight className="size-3" />
             </button>
           </div>
 
-          {/* Room cards + trailing "+" card */}
-          {pinnedRooms.length > 0 ? (
-            <div className="flex flex-wrap gap-3">
-              {pinnedRooms.map((room) => (
-                <RoomCard
-                  key={room.roomId}
-                  className="w-[200px] pinned-room-item"
-                  roomName={room.roomName}
-                  floor={room.floor}
-                  zone={room.zone}
-                  occupantCount={room.occupantCount}
-                  capacity={room.capacity}
-                  status={room.status}
-                  isPinned={room.isPinned}
-                  onClick={() =>
-                    navigate(`/student/rooms?highlight=${room.roomId}`)
-                  }
-                />
-              ))}
-              {/* "+" add card — always visible */}
-              <button
-                aria-label="添加房间"
-                onClick={() => navigate("/student/rooms")}
-                className="w-[200px] h-[108px] flex items-center justify-center rounded-[var(--student-radius-md)] border-2 border-dashed border-[var(--student-hairline)] bg-[var(--student-mute)]/30 hover:bg-[var(--student-mute)]/50 transition-colors"
-              >
-                <Plus
-                  className="size-5 text-[var(--student-mute-foreground)]"
-                  strokeWidth={1.5}
-                />
-              </button>
-            </div>
+          {pinnedRoomsHome.length === 0 && frequentRoomsHome.length === 0 ? (
+            <p className="text-[12px] text-[var(--student-mute)] py-4 text-center">暂无房间数据</p>
           ) : (
-            <EmptyState
-              icon={Pin}
-              title="暂无常用房间"
-              description="前往房间管理页添加常用房间"
-              actionLabel="前往房间管理"
-              onAction={() => navigate("/student/rooms")}
-            />
+            <div className="space-y-3">
+              {/* Pinned rooms */}
+              {pinnedRoomsHome.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-medium text-amber-700 mb-1.5">⭐ 收藏的房间</p>
+                  <div className="flex flex-wrap gap-2">
+                    {pinnedRoomsHome.slice(0, maxShow).map((room: any) => (
+                      <RoomCard
+                        key={room.roomId}
+                        className="w-[180px] pinned-room-item"
+                        roomName={room.roomName}
+                        floor={room.floor}
+                        zone={room.zone}
+                        occupantCount={room.occupantCount}
+                        capacity={room.capacity}
+                        status={room.status}
+                        isPinned={room.isPinned}
+                        onClick={() => navigate(`/student/rooms?highlight=${room.roomId}`)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ARO-matched rooms */}
+              {frequentRoomsHome.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-medium text-[var(--student-primary)] mb-1.5">🚪 常用房间（门禁权限）</p>
+                  <div className="flex flex-wrap gap-2">
+                    {frequentRoomsHome.slice(0, maxShow).map((room: any) => (
+                      <RoomCard
+                        key={room.roomId}
+                        className="w-[180px] pinned-room-item"
+                        roomName={room.roomName}
+                        floor={room.floor}
+                        zone={room.zone}
+                        occupantCount={room.occupantCount}
+                        capacity={room.capacity}
+                        status={room.status}
+                        isPinned={room.isPinned}
+                        onClick={() => navigate(`/student/rooms?highlight=${room.roomId}`)}
+                      />
+                    ))}
+                    {/* "+" add card inline */}
+                    <button
+                      aria-label="添加房间"
+                      onClick={() => navigate("/student/rooms")}
+                      className="w-[180px] h-[100px] flex items-center justify-center rounded-[var(--student-radius-md)] border-2 border-dashed border-[var(--student-hairline)] bg-[var(--student-mute)]/10 hover:bg-[var(--student-mute)]/20 transition-colors"
+                    >
+                      <Plus className="size-5 text-[var(--student-mute-foreground)]" strokeWidth={1.5} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* "+" card when no rooms at all */}
+          {pinnedRoomsHome.length === 0 && frequentRoomsHome.length === 0 && (
+            <button
+              aria-label="添加房间"
+              onClick={() => navigate("/student/rooms")}
+              className="w-[180px] h-[100px] flex items-center justify-center rounded-[var(--student-radius-md)] border-2 border-dashed border-[var(--student-hairline)] bg-[var(--student-mute)]/10 hover:bg-[var(--student-mute)]/20 transition-colors"
+            >
+              <Plus className="size-5 text-[var(--student-mute-foreground)]" strokeWidth={1.5} />
+            </button>
           )}
         </StudentCard>
 
@@ -505,7 +625,7 @@ export default function StudentHomePage() {
       </main>
 
       {/* ---- AI 个人画像 Modal ---- */}
-      {showAiModal && (
+      {showAiModal && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAiModal(false)}>
           <div
             className="w-full max-w-lg max-h-[75vh] overflow-hidden rounded-xl border border-[var(--student-hairline)] bg-white shadow-xl"
@@ -567,7 +687,8 @@ export default function StudentHomePage() {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

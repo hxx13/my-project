@@ -1,4 +1,5 @@
 import { type FormEvent, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "react-hot-toast";
 import { usePurchaseList, useCreatePurchase, useWithdrawPurchase } from "@/api/hooks/usePurchase";
 import type { PurchaseOrderRecord } from "@/api/domains/purchase.api";
@@ -210,18 +211,20 @@ export default function PurchaseRequestPage() {
         </div>
       </section>
 
-      {previewUrl && (
-        <div
-          className="fixed inset-0 z-[1200] bg-black/70 flex items-center justify-center p-4"
-          onClick={() => setPreviewUrl("")}
-        >
-          <img
-            src={previewUrl}
-            alt="预览图片"
-            className="max-h-[90vh] max-w-[90vw] rounded-lg border border-white/20 object-contain"
-          />
-        </div>
-      )}
+      {previewUrl &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[1200] bg-black/70 flex items-center justify-center p-4"
+            onClick={() => setPreviewUrl("")}
+          >
+            <img
+              src={previewUrl}
+              alt="预览图片"
+              className="max-h-[90vh] max-w-[90vw] rounded-lg border border-white/20 object-contain"
+            />
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

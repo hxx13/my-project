@@ -14,6 +14,7 @@ public class AnalyticsReportRegistry {
     public static final String REPORT_ISOLATION_USAGE = "isolation_usage";
     public static final String REPORT_CAGE_OCCUPANCY = "cage_occupancy";
     public static final String REPORT_STUDENT_ACTIVITY = "student_activity";
+    public static final String REPORT_CAGE_SPECIAL_STATUS = "cage_special_status";
 
     public List<AnalyticsReportDescriptorDto> listReports() {
         return List.of(
@@ -36,6 +37,13 @@ public class AnalyticsReportRegistry {
                         "学生活跃度统计",
                         "按课题组筛选成员，查看进出次数、在馆时长、时段热力等活跃度指标。",
                         "人员与活跃度",
+                        true
+                ),
+                new AnalyticsReportDescriptorDto(
+                        REPORT_CAGE_SPECIAL_STATUS,
+                        "笼位特殊状态统计",
+                        "汇总合笼/繁殖、特殊饲养、请分笼、健康异常、动物转移等特殊状态笼位，支持按校区/房间/课题组筛选。",
+                        "笼架与预约",
                         true
                 )
         );

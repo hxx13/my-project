@@ -80,7 +80,7 @@ const PRESETS: { key: TimePreset; label: string }[] = [
 export function ActivityFilterBar({ groupName, groupPage, groupTotal, onGroupChange, onGroupPageChange, startTime, endTime, onTimeChange, onExportCSV, campus, onCampusChange, disabled }: Props) {
   const [keyword, setKeyword] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
-  const [preset, setPreset] = useState<TimePreset>("month");
+  const [preset, setPreset] = useState<TimePreset>("week");
   const [customStart, setCustomStart] = useState(startTime.slice(0, 10));
   const [customEnd, setCustomEnd] = useState(endTime.slice(0, 10));
 

@@ -17,6 +17,7 @@ import type { PersonnelAuthRecord, SystemUserRecord } from "@/api/domains/admin.
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminPageShell, AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { Portal } from "@/components/Portal";
 
 const ROLE_OPTIONS = ["STUDENT", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
 const STAFF_CREATE_ROLE_OPTIONS = ["STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN"];
@@ -386,8 +387,7 @@ export default function AdminPersonnelPage() {
         ) : null}
       </div>
 
-      {createOpen && activeTab === "system" ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+      {createOpen && activeTab === "system" ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
           <div className="w-full max-w-md rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-twin-level-4">
             <h3 className="mb-3 text-base font-semibold text-[var(--twin-ink)]">新建员工账号</h3>
             <p className="mb-3 text-xs text-[var(--twin-mute)]">登录密码由你设置；新建账号首次登录需改密。不可创建平台所有者。</p>
@@ -454,8 +454,7 @@ export default function AdminPersonnelPage() {
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        </div></Portal> : null}
 
       <AdminDataTableWrap scrollable>
         <table className="min-w-full text-xs">
@@ -675,8 +674,7 @@ export default function AdminPersonnelPage() {
         </table>
       </AdminDataTableWrap>
 
-      {detailOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+      {detailOpen ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
           <div className="max-h-[80vh] w-full max-w-md overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-4">
             <div className="border-b border-[var(--twin-hairline)] px-4 py-3 text-sm font-semibold text-[var(--twin-ink)]">{detailTitle}</div>
             <div className="max-h-[60vh] space-y-3 overflow-y-auto p-4 text-xs">
@@ -697,11 +695,9 @@ export default function AdminPersonnelPage() {
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        </div></Portal> : null}
 
-      {nickOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+      {nickOpen ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
           <div className="w-full max-w-sm rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-4">
             <div className="text-sm font-semibold text-[var(--twin-ink)]">修改展示昵称</div>
             <input
@@ -732,8 +728,7 @@ export default function AdminPersonnelPage() {
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        </div></Portal> : null}
 
       <div className="mt-3 flex items-center justify-between text-sm text-[var(--twin-body)]">
         <div>共 {total} 条</div>

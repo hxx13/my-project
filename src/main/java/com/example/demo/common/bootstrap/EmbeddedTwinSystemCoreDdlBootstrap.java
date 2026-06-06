@@ -48,6 +48,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
             twinStudentViolationService.markSchemaReady();
         }
         runScript("db/bootstrap-twin-scan-popup-announcement.sql", "twin_scan_popup_announcement（扫码弹窗公告）");
+        runScript("db/cage-shelf-cell-snapshot.sql", "cage_shelf_cell_snapshot（笼位快照）");
+        runScript("db/cage-shelf-bookmark.sql", "cage_shelf_bookmark（笼架收藏）");
+        runScript("db/student-room-pin.sql", "student_room_pin（房间置顶）");
     }
 
     /** @return 是否执行成功 */

@@ -8,6 +8,7 @@ import com.example.demo.modules.aro.dto.AroIncrementalSyncResult;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.analytics.service.AnalyticsPipelineHook;
 import com.example.demo.modules.aro.task.AroSyncTask;
+import com.example.demo.modules.cageshelf.service.CageSpecialStatusScanService;
 import com.example.demo.modules.twin.common.dto.JobRunOutcome;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingStatsPullService;
@@ -65,6 +66,8 @@ public class JobExecutionRegistry {
     public static final String JOB_ACCESS_CLEAN_PACKAGE_DAILY = "ACCESS_CLEAN_PACKAGE_DAILY";
     /** WinCC 温湿度归档表 telemetry_value_archive 按保留天数分批清理 */
     public static final String JOB_TELEMETRY_ARCHIVE_PURGE = "TELEMETRY_ARCHIVE_PURGE";
+    /** 笼架·特殊状态全量扫描（每周一次，数万笼位级） */
+    public static final String JOB_CAGE_SPECIAL_STATUS_SCAN = "CAGE_SPECIAL_STATUS_SCAN";
 
     private static final Set<String> DEPRECATED_JOB_KEYS =
             Set.of(
@@ -98,6 +101,7 @@ public class JobExecutionRegistry {
     private final DahuaSwingStatsPullService dahuaSwingStatsPullService;
     private final com.example.demo.modules.accessfusion.service.AccessSwingCleanWorkspaceService accessSwingCleanWorkspaceService;
     private final AnalyticsPipelineHook analyticsPipelineHook;
+    private final CageSpecialStatusScanService cageSpecialStatusScanService;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
     public JobExecutionRegistry(
@@ -117,7 +121,8 @@ public class JobExecutionRegistry {
             TelemetryArchiveService telemetryArchiveService,
             DahuaSwingStatsPullService dahuaSwingStatsPullService,
             com.example.demo.modules.accessfusion.service.AccessSwingCleanWorkspaceService accessSwingCleanWorkspaceService,
-            AnalyticsPipelineHook analyticsPipelineHook) {
+            AnalyticsPipelineHook analyticsPipelineHook,
+            CageSpecialStatusScanService cageSpecialStatusScanService) {
         this.rpgEngineService = rpgEngineService;
         this.aroService = aroService;
         this.personnelDbService = personnelDbService;
@@ -135,6 +140,7 @@ public class JobExecutionRegistry {
         this.dahuaSwingStatsPullService = dahuaSwingStatsPullService;
         this.accessSwingCleanWorkspaceService = accessSwingCleanWorkspaceService;
         this.analyticsPipelineHook = analyticsPipelineHook;
+        this.cageSpecialStatusScanService = cageSpecialStatusScanService;
     }
 
     public Map<String, String> jobNameMap() {
@@ -166,6 +172,7 @@ public class JobExecutionRegistry {
                 "审计门禁·水位增量（仅 SINCE_LAST 任务）");
         jobs.put(JOB_ACCESS_CLEAN_PACKAGE_DAILY, "门禁统计·自动入库总库（每日到点，仅增量）");
         jobs.put(JOB_TELEMETRY_ARCHIVE_PURGE, "温湿度·WinCC归档自动清理");
+        jobs.put(JOB_CAGE_SPECIAL_STATUS_SCAN, "笼架·特殊状态全量扫描（每周）");
         return jobs;
     }
 
@@ -300,6 +307,14 @@ public class JobExecutionRegistry {
                         yield JobRunOutcome.noop(jobKey, summary + "（无启用通道）", metrics);
                     }
                     yield JobRunOutcome.ok(jobKey, summary, metrics);
+                }
+                case JOB_CAGE_SPECIAL_STATUS_SCAN -> {
+                    String triggeredBy = preferSync ? "ui-manual" : "system-scheduler";
+                    Map<String, Object> result = cageSpecialStatusScanService.executeFullScan(triggeredBy);
+                    Object cagesWithStatus = result.get("cagesWithStatus");
+                    int cws = cagesWithStatus instanceof Number n ? n.intValue() : 0;
+                    yield JobRunOutcome.ok(jobKey,
+                            "全量笼架特殊状态扫描完成，发现 " + cws + " 个特殊状态笼位", result);
                 }
                 default -> throw new IllegalArgumentException("不支持的任务: " + jobKey);
             };

@@ -15,6 +15,7 @@ import {
   CalendarClock,
   CircleCheck,
   ClipboardCheck,
+  Clock,
   CreditCard,
   DoorOpen,
   Download,
@@ -36,6 +37,7 @@ import {
   ShoppingCart,
   SlidersHorizontal,
   Table2,
+  TableProperties,
   Terminal,
   Thermometer,
   Ticket,
@@ -416,6 +418,24 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         fallbackMinRole: "STAFF",
         sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves", "STAFF"),
       },
+      {
+        id: "cage-index",
+        path: "/admin/cage-shelf-indexes",
+        label: "笼架落库索引",
+        icon: TableProperties,
+        homeTone: "from-slate-500 to-gray-600",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelf-indexes", "STAFF"),
+      },
+      {
+        id: "cage-event-log",
+        path: "/admin/cage-shelves/event-log",
+        label: "笼位事件日志",
+        icon: Clock,
+        homeTone: "from-teal-500 to-cyan-600",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/event-log", "STAFF"),
+      },
     ],
   },
   {
@@ -578,7 +598,8 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p === "/admin/door-group-storage" ||
     p === "/admin/device-channels" ||
     p === "/admin/aro-rooms" ||
-    p === "/admin/cage-shelves"
+    p === "/admin/cage-shelves" ||
+    p === "/admin/cage-shelves/event-log"
   ) {
     return "ARO 房间与联动";
   }
