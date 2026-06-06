@@ -10,15 +10,10 @@ export function SwipeFailureBanner() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const role = authStorage.getRole();
 
-  // Auto-dismiss timer — must be called before any conditional return (Rules of Hooks)
+  // Reset leaving state when a new alert arrives (must be before conditional return)
   useEffect(() => {
     if (!activeAlert) return;
     setLeaving(false);
-    if (activeAlert.bannerDurationSec > 0) {
-      timerRef.current = setTimeout(() => {
-        dismissAlert();
-      }, activeAlert.bannerDurationSec * 1000);
-    }
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
@@ -38,15 +33,17 @@ export function SwipeFailureBanner() {
         userId: authStorage.getUserIdFromToken() || authStorage.getRole(),
       });
     }
-    setTimeout(() => dismissAlert(), 300);
+    // 点击已读后，按 bannerDurationSec 延时后真正消失（0=立即消失，仅保留离开动画 300ms）
+    const delayMs = activeAlert.bannerDurationSec > 0
+      ? activeAlert.bannerDurationSec * 1000
+      : 300;
+    setTimeout(() => dismissAlert(), delayMs);
   };
 
   // Go to records page (use hash router, not full page navigation)
   const handleGoToRecords = () => {
     window.location.hash = "#/admin/dahua-swing-tasks?tab=records";
   };
-
-  const dur = activeAlert.bannerDurationSec || 10;
 
   return (
     <>
@@ -59,10 +56,6 @@ export function SwipeFailureBanner() {
         @keyframes swipe-alert-pulse {
           0%   { transform: scale(1); opacity: 0.8; }
           100% { transform: scale(2.2); opacity: 0; }
-        }
-        @keyframes swipe-alert-bar {
-          0%   { width: calc(100% - 116px); }
-          100% { width: 0%; }
         }
       `}</style>
 
@@ -140,21 +133,6 @@ export function SwipeFailureBanner() {
           >
             {activeAlert.body}
           </div>
-          {/* Countdown bar */}
-          {activeAlert.bannerDurationSec > 0 && (
-            <div
-              style={{
-                position: "absolute",
-                bottom: -6,
-                left: 0,
-                height: 2,
-                background: "rgba(239,68,68,0.5)",
-                borderRadius: 1,
-                width: "calc(100% - 116px)",
-                animation: `swipe-alert-bar ${dur}s linear forwards`,
-              }}
-            />
-          )}
         </div>
 
         {/* Actions */}
