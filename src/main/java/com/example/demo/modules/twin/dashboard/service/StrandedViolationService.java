@@ -320,6 +320,9 @@ public class StrandedViolationService {
         if (v instanceof Number n) {
             return n.intValue();
         }
+        if (v instanceof Boolean b) {
+            return b ? 1 : 0;
+        }
         try {
             return Integer.parseInt(String.valueOf(v));
         } catch (Exception e) {
