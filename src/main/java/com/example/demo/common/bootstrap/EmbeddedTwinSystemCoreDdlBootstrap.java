@@ -51,6 +51,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
         runScript("db/cage-shelf-cell-snapshot.sql", "cage_shelf_cell_snapshot（笼位快照）");
         runScript("db/cage-shelf-bookmark.sql", "cage_shelf_bookmark（笼架收藏）");
         runScript("db/student-room-pin.sql", "student_room_pin（房间置顶）");
+        runScript("db/bootstrap-twin-swipe-alert-rule.sql", "swipe_alert_rule（刷卡失败灵动岛告警规则）");
     }
 
     /** @return 是否执行成功 */
