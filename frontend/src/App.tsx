@@ -6,7 +6,9 @@ import { io, Socket } from "socket.io-client";
 import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 Store
 import { Toaster } from "react-hot-toast";
 import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
-import { SOCKET_CLIENT_FORCE_RELOAD } from "@/config/socketEvents";
+import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS } from "@/config/socketEvents";
+import { SwipeFailureBanner } from "@/features/swipe-alert/SwipeFailureBanner";
+import { useSwipeAlertStore } from "@/store/useSwipeAlertStore";
 import { authStorage } from "@/features/auth/authStorage";
 import type { AnimalRoomTelemetryPageDto, TelemetryTagItem } from "@/api/telemetryApi";
 import {
@@ -97,6 +99,18 @@ function GlobalSocketListener() {
         };
         socket.on(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
 
+        // 📡 监听：刷卡失败灵动岛告警
+        socket.on(SOCKET_SWIPE_FAILURE_ALERT, (alert) => {
+            console.log("🚨 收到刷卡失败告警:", alert?.ruleName);
+            useSwipeAlertStore.getState().showAlert(alert);
+        });
+
+        // 📡 监听：刷卡失败告警联动消失
+        socket.on(SOCKET_SWIPE_FAILURE_ALERT_DISMISS, (payload) => {
+            console.log("✅ 告警已被远端标记已读:", payload?.dismissedBy);
+            useSwipeAlertStore.getState().dismissAlert();
+        });
+
         /** 强制登出时立即断开 WebSocket，停止重连 */
         const handleForceLogout = () => {
             console.log("[数字孪生基站] 收到强制登出信号，断开 WebSocket");
@@ -109,6 +123,8 @@ function GlobalSocketListener() {
             socket.off(SOCKET_TELEMETRY_ANIMAL_ROOM_TAG_DELTA, onTelemetryTagDelta);
             socket.off(SOCKET_TELEMETRY_ANIMAL_ROOM_SNAPSHOT_FULL, onTelemetrySnapshotFull);
             socket.off(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
+            socket.off(SOCKET_SWIPE_FAILURE_ALERT);
+            socket.off(SOCKET_SWIPE_FAILURE_ALERT_DISMISS);
             socket.disconnect();
         };
     }, [addEvent, setConnected, setPieStats, queryClient]);
@@ -124,6 +140,7 @@ function App() {
             <GlobalSocketListener />
             <RouterProvider router={router} />
             <Toaster position="top-right" />
+            <SwipeFailureBanner />
         </QueryClientProvider>
     );
 }
