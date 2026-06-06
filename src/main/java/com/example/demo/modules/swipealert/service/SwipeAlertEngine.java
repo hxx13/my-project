@@ -170,6 +170,9 @@ public class SwipeAlertEngine {
             // ---- build & fire alert ----
             Map<String, Object> alert = buildAlert(rule, timestamps.size(), record);
             fireAlert(alert);
+
+            // Clear window after firing so old timestamps don't re-trigger after cooldown
+            timestamps.clear();
         }
     }
 
