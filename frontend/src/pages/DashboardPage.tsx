@@ -4,8 +4,9 @@ import { useState } from 'react';
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { useEventStore } from '@/store/useEventStore';
+import type { UniversalEvent } from '@/store/useEventStore';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { fetchLineChartData } from '@/api/twinApi'; // 确保路径对应你的 api 文件
+import { fetchLineChartData } from '@/api/twinApi';
 import type { LineStats } from '@/api/twinApi';
 import { HubPeakLineChart } from '@/features/dashboard/HubPeakLineChart';
 import { TimelineWaterfall } from '@/features/realtime-stream/TimelineWaterfall';
@@ -14,8 +15,9 @@ import { UnifiedRankingCard } from '@/features/dashboard/UnifiedRankingCard';
 import { DashboardHeatmapChart } from '@/features/dashboard/DashboardHeatmapChart';
 import { RoomPreferenceChart } from '@/features/dashboard/RoomPreferenceChart';
 import { fetchStudentActivityHeatmap, fetchStudentActivityRoomUsage } from '@/api/domains/analytics.api';
+import type { HeatmapCell, RoomUsageItem } from '@/api/domains/analytics.api';
 import { RetentionRadarStream } from '@/features/realtime-stream/RetentionRadarStream';
-import { RuleCodexCard } from '@/features/dashboard/RuleCodexCard'; // 确认路径和你刚才建的一致
+import { RuleCodexCard } from '@/features/dashboard/RuleCodexCard';
 import { SciFiDashboardChrome } from '@/features/dashboard-scifi-theme/SciFiDashboardChrome';
 import { DashboardSciFiVisualProvider } from '@/features/dashboard-scifi-theme/DashboardSciFiVisualContext';
 import { useTwinChromeTheme } from '@/features/twin-chrome/TwinChromeThemeContext';
@@ -82,6 +84,80 @@ export default function DashboardPage() {
         }),
         refetchInterval: 300_000,
     });
+
+    // ---- 实时 WebSocket 事件 → 增量热力图 + 房间偏好 ----
+    const realtimeEvents = useEventStore((s) => s.realtimeEvents);
+
+    // 本周一的 Date 对象（用于过滤本周事件）
+    const thisMonday = useMemo(() => {
+      const now = new Date();
+      const d = now.getDay();
+      const m = new Date(now);
+      m.setDate(now.getDate() - (d === 0 ? 6 : d - 1));
+      m.setHours(0, 0, 0, 0);
+      return m;
+    }, []);
+
+    // 从实时事件中提取本周 ENTER 事件
+    const liveEntries = useMemo<UniversalEvent[]>(() => {
+      return realtimeEvents.filter((evt) => {
+        if (evt.action !== "ENTER") return false;
+        const ts = new Date(evt.timestamp);
+        return ts >= thisMonday;
+      });
+    }, [realtimeEvents, thisMonday]);
+
+    // 合并：API 热力图数据 + 实时增量
+    const mergedHeatmap = useMemo<HeatmapCell[]>(() => {
+      const base = heatmapData ?? [];
+      if (liveEntries.length === 0) return base;
+
+      // 复制 base 为可变 Map: key = "dow-hour"
+      const map = new Map<string, HeatmapCell>();
+      for (const cell of base) {
+        map.set(`${cell.dayOfWeek}-${cell.hour}`, { ...cell });
+      }
+
+      for (const evt of liveEntries) {
+        const ts = new Date(evt.timestamp);
+        const dayOfWeek = ts.getDay(); // 0=Sun
+        const hour = ts.getHours();
+        if (hour < 7 || hour > 20) continue; // 只统计 7-20
+        const key = `${dayOfWeek}-${hour}`;
+        const existing = map.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          map.set(key, { dayOfWeek, hour, count: 1 });
+        }
+      }
+
+      return Array.from(map.values());
+    }, [heatmapData, liveEntries]);
+
+    // 合并：API 房间偏好数据 + 实时增量
+    const mergedRoomUsage = useMemo<RoomUsageItem[]>(() => {
+      const base = roomUsageData ?? [];
+      if (liveEntries.length === 0) return base;
+
+      const map = new Map<string, RoomUsageItem>();
+      for (const item of base) {
+        map.set(item.roomName, { ...item });
+      }
+
+      for (const evt of liveEntries) {
+        const room = evt.location?.room;
+        if (!room) continue;
+        const existing = map.get(room);
+        if (existing) {
+          existing.entryCount += 1;
+        } else {
+          map.set(room, { roomName: room, entryCount: 1 });
+        }
+      }
+
+      return Array.from(map.values());
+    }, [roomUsageData, liveEntries]);
 
     return (
         <>
@@ -184,7 +260,7 @@ export default function DashboardPage() {
                     <div className="flex min-h-0 flex-[2.5] dash-card">
                         <GlassCard blobColor="rgba(124,58,237,0.15)">
                             <DashboardHeatmapChart
-                                data={heatmapData ?? []}
+                                data={mergedHeatmap}
                                 loading={isHeatmapLoading}
                             />
                         </GlassCard>
@@ -192,7 +268,7 @@ export default function DashboardPage() {
                     <div className="flex min-h-0 flex-[2.5] dash-card">
                         <GlassCard blobColor="rgba(236,72,153,0.12)">
                             <RoomPreferenceChart
-                                data={roomUsageData ?? []}
+                                data={mergedRoomUsage}
                                 loading={isRoomLoading}
                             />
                         </GlassCard>
