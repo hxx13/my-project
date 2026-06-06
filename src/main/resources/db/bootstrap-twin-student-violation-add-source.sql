@@ -1,8 +1,3 @@
--- 学生违规表：新增来源字段，区分手动新建(MANUAL)与自动滞留检测(AUTO_STRANDED)
-ALTER TABLE twin_student_violation
-  ADD COLUMN IF NOT EXISTS source VARCHAR(30) NOT NULL DEFAULT 'MANUAL'
-  COMMENT '来源：MANUAL=手动新建, AUTO_STRANDED=自动滞留检测';
-
 -- 滞留违规配置表
 CREATE TABLE IF NOT EXISTS stranded_violation_config (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
