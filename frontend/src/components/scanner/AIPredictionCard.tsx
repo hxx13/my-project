@@ -315,15 +315,15 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                 <div className="border-t border-white/5 pt-3 flex gap-3">
                     <button
                         onClick={onQuickActions}
-                        className="flex-1 rounded-xl border-2 border-emerald-400 bg-emerald-500/20 px-3 py-2.5 text-sm font-black text-emerald-300 shadow-[0_0_20px_rgba(52,211,153,0.15)] transition-all duration-300 hover:bg-emerald-500 hover:text-white hover:shadow-[0_0_30px_rgba(52,211,153,0.35)] hover:scale-[1.03] active:scale-[0.97]"
+                        className="flex-1 rounded-lg border border-emerald-500/30 bg-emerald-500/8 px-2.5 py-2 text-xs font-semibold text-emerald-300/90 transition-all duration-300 hover:border-emerald-400/60 hover:bg-emerald-500/16 hover:text-emerald-200"
                     >
-                        📋 快捷业务
+                        <span className="mr-1.5 text-sm">📋</span>快捷业务
                     </button>
                     <button
                         onClick={onEnterStudentCenter}
-                        className={`flex-1 rounded-xl border-2 px-3 py-2.5 text-sm font-black shadow-[0_0_20px_rgba(96,165,250,0.15)] transition-all duration-300 hover:text-white hover:scale-[1.03] active:scale-[0.97] ${isPink ? 'border-rose-400 bg-rose-500/20 text-rose-300 hover:bg-rose-500 hover:shadow-[0_0_30px_rgba(251,113,133,0.35)]' : 'border-blue-400 bg-blue-500/20 text-blue-300 hover:bg-blue-500 hover:shadow-[0_0_30px_rgba(96,165,250,0.35)]'}`}
+                        className={`flex-1 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-all duration-300 ${isPink ? 'border-rose-500/30 bg-rose-500/8 text-rose-300/90 hover:border-rose-400/60 hover:bg-rose-500/16 hover:text-rose-200' : 'border-blue-500/30 bg-blue-500/8 text-blue-300/90 hover:border-blue-400/60 hover:bg-blue-500/16 hover:text-blue-200'}`}
                     >
-                        🎓 个人中心
+                        <span className="mr-1.5 text-sm">🎓</span>个人中心
                     </button>
                 </div>
             </div>
