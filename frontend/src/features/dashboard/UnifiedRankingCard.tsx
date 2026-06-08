@@ -422,7 +422,7 @@ export function UnifiedRankingCard() {
                         width: 24,
                         textAlign: "center",
                         fontWeight: 900,
-                        fontSize: 14,
+                        fontSize: 11,
                         color: "#cbd5e1",
                         flexShrink: 0,
                       }}
@@ -431,8 +431,8 @@ export function UnifiedRankingCard() {
                     </span>
                     <span
                       style={{
-                        width: 130,
-                        fontSize: 13,
+                        width: 120,
+                        fontSize: 11,
                         color: "#334155",
                         textAlign: "left",
                         overflow: "hidden",
@@ -481,7 +481,7 @@ export function UnifiedRankingCard() {
                     <span
                       style={{
                         fontWeight: 800,
-                        fontSize: 14,
+                        fontSize: 11,
                         color: "#475569",
                         width: 40,
                         textAlign: "right",
