@@ -204,20 +204,13 @@ export function UnifiedRankingCard() {
         <span
           className="animate-arrow-bounce"
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            minWidth: 36,
-            padding: "1px 6px",
-            borderRadius: 10,
-            fontSize: 11,
-            fontWeight: 800,
-            color: "#fff",
-            background: "linear-gradient(135deg, #22c55e, #16a34a)",
-            boxShadow: "0 1px 4px rgba(34,197,94,0.3)",
+            fontSize: 14,
+            fontWeight: 900,
+            color: "#16a34a",
+            textShadow: "0 0 6px rgba(22,163,74,0.3)",
           }}
         >
-          ↑{trendValue}
+          ▲{trendValue}
         </span>
       );
     }
@@ -226,40 +219,19 @@ export function UnifiedRankingCard() {
         <span
           className="animate-arrow-bounce"
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            minWidth: 36,
-            padding: "1px 6px",
-            borderRadius: 10,
-            fontSize: 11,
-            fontWeight: 800,
-            color: "#fff",
-            background: "linear-gradient(135deg, #ef4444, #dc2626)",
-            boxShadow: "0 1px 4px rgba(239,68,68,0.3)",
+            fontSize: 14,
+            fontWeight: 900,
+            color: "#dc2626",
+            textShadow: "0 0 6px rgba(220,38,38,0.3)",
           }}
         >
-          ↓{trendValue}
+          ▼{trendValue}
         </span>
       );
     }
     return (
-      <span
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          minWidth: 36,
-          padding: "1px 6px",
-          borderRadius: 10,
-          fontSize: 11,
-          fontWeight: 800,
-          color: "#fff",
-          background: "linear-gradient(135deg, #94a3b8, #64748b)",
-          boxShadow: "0 1px 3px rgba(100,116,139,0.2)",
-        }}
-      >
-        →
+      <span style={{ fontSize: 14, fontWeight: 900, color: "#94a3b8" }}>
+        ▬
       </span>
     );
   };
@@ -536,7 +508,7 @@ export function UnifiedRankingCard() {
                       {item.value}
                     </span>
                     <span
-                      style={{ width: 48, textAlign: "right", flexShrink: 0 }}
+                      style={{ width: 34, textAlign: "right", flexShrink: 0 }}
                     >
                       {trendEl(item.trend, item.trendValue)}
                     </span>

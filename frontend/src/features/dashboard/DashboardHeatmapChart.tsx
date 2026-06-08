@@ -66,7 +66,7 @@ export function DashboardHeatmapChart({ data, loading, groupName }: Props) {
           📌 {groupName}
         </div>
       )}
-      <div className="flex-1 overflow-hidden p-0.5">
+      <div className="flex-1 p-0.5">
       <table
         className="border-collapse text-[8px]"
         style={{ width: "100%", tableLayout: "fixed" }}
