@@ -227,7 +227,7 @@ export function UnifiedRankingCard() {
       }
 
       const start = performance.now();
-      const duration = Math.max(4000, maxScroll * 15); // ~67px/s, min 4s
+      const duration = Math.max(4000, maxScroll * 38); // ~26px/s, 与公告模块相同速度
 
       const animate = (now: number) => {
         if (!active) return;

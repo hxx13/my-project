@@ -17,12 +17,13 @@
 
     <update id="updateConfig">
         UPDATE stranded_violation_config
-        SET enabled = #{enabled},
-            auto_signout_enabled = #{autoSignoutEnabled},
+        SET auto_signout_enabled = #{autoSignoutEnabled},
             violation_text_tpl = #{violationTextTpl},
             forbid_enter = #{forbidEnter},
             expire_after_days = #{expireAfterDays},
-            whitelist_depts = #{whitelistDepts}
+            whitelist_depts = #{whitelistDepts},
+            interactive_challenge_enabled = #{interactiveChallengeEnabled},
+            interactive_challenge_phrase = #{interactiveChallengePhrase}
         WHERE id = 1
     </update>
 </mapper>

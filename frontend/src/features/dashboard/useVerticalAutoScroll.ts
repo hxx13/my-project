@@ -12,6 +12,8 @@ export type VerticalAutoScrollOptions = {
   resetKey?: unknown;
   /** loop=同 Tab 内反复滚动；cycle=滚一轮后回调（默认） */
   mode?: "loop" | "cycle";
+  /** cycle 模式下上下往返次数（默认 1，即只向下滚一次）。>1 时向下滚到底再滚回去再滚到底… */
+  roundTrips?: number;
 };
 
 function waitMs(ms: number, alive: () => boolean): Promise<void> {
@@ -50,6 +52,7 @@ export function useVerticalAutoScroll(
     onCycleComplete,
     resetKey,
     mode = "cycle",
+    roundTrips = 1,
   } = opts;
   const onCycleCompleteRef = useRef(onCycleComplete);
   onCycleCompleteRef.current = onCycleComplete;
@@ -106,9 +109,6 @@ export function useVerticalAutoScroll(
         await waitForLayout(box, isAlive);
         if (!alive) return;
 
-        await wait(pauseStartMs);
-        if (!alive) return;
-
         const distance = Math.max(0, box.scrollHeight - box.clientHeight);
         if (distance <= 2) {
           await wait(fallbackTimeoutMs);
@@ -120,12 +120,29 @@ export function useVerticalAutoScroll(
           continue;
         }
 
-        const durationMs = Math.max(1200, distance * msPerPx);
-        await scrollTo(distance, durationMs);
-        if (!alive) return;
+        const trips = mode === "cycle" ? Math.max(1, roundTrips) : 1;
+        for (let t = 0; t < trips; t++) {
+          // scroll down — first trip waits pauseStartMs at top, others already paused at top from previous scroll-up
+          if (t === 0) {
+            await wait(pauseStartMs);
+            if (!alive) return;
+          }
+          const downMs = Math.max(1200, distance * msPerPx);
+          await scrollTo(distance, downMs);
+          if (!alive) return;
 
-        await wait(pauseEndMs);
-        if (!alive) return;
+          await wait(pauseEndMs); // pause at bottom
+          if (!alive) return;
+
+          // if not the last trip, scroll back up and pause at top
+          if (t < trips - 1) {
+            const upMs = Math.max(1200, distance * msPerPx);
+            await scrollTo(0, upMs);
+            if (!alive) return;
+            await wait(pauseStartMs); // pause at top, same duration as initial
+            if (!alive) return;
+          }
+        }
 
         if (mode === "cycle") {
           onCycleCompleteRef.current?.();
@@ -141,5 +158,5 @@ export function useVerticalAutoScroll(
       alive = false;
       clearTimers();
     };
-  }, [ref, enabled, pauseStartMs, pauseEndMs, msPerPx, fallbackTimeoutMs, resetKey, mode]);
+  }, [ref, enabled, pauseStartMs, pauseEndMs, msPerPx, fallbackTimeoutMs, resetKey, mode, roundTrips]);
 }

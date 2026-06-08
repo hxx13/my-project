@@ -18,4 +18,6 @@ public class ScanStudentViolationNoticeDTO {
     private Boolean enterLocked;
     /** 剩余允许成功进入次数；null 表示未配置上限 */
     private Integer remainingEnterAllowance;
+    /** 交互式确认短语（如 "一人一卡,严禁尾随"）；null 表示普通公告 */
+    private String interactiveChallenge;
 }

@@ -327,6 +327,7 @@ public class AdminTwinStudentViolationController {
         m.put("updatedAt", v.getUpdatedAt());
         m.put("clearedAt", v.getClearedAt());
         m.put("clearedByUserId", v.getClearedByUserId());
+        m.put("interactiveChallenge", v.getInteractiveChallenge());
         return m;
     }
 

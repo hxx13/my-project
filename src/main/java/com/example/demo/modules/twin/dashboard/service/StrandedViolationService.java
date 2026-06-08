@@ -80,10 +80,7 @@ public class StrandedViolationService {
             log.info("[stranded-violation] 配置行不存在，跳过");
             return;
         }
-        if (!Boolean.TRUE.equals(toBool(config.get("enabled")))) {
-            log.info("[stranded-violation] disabled，跳过");
-            return;
-        }
+        // enabled 开关已由定时器 enable/disable 控制，此处不再二次判断
 
         boolean autoSignout = Boolean.TRUE.equals(toBool(config.get("auto_signout_enabled")));
         String tpl = Objects.toString(config.get("violation_text_tpl"), DEFAULT_VIOLATION_TPL);
@@ -91,6 +88,8 @@ public class StrandedViolationService {
         int expireDays = toInt(config.get("expire_after_days"), 1);
         List<String> whitelistDepts = parseJsonArray(
                 Objects.toString(config.get("whitelist_depts"), "[]"));
+        boolean interactiveEnabled = Boolean.TRUE.equals(toBool(config.get("interactive_challenge_enabled")));
+        String interactivePhrase = Objects.toString(config.get("interactive_challenge_phrase"), "");
 
         // 2. 查询当前 ACTIVATED 用户
         List<Map<String, Object>> activatedUsers = dahuaSwingMapper.listActivatedUsers();
@@ -158,7 +157,8 @@ public class StrandedViolationService {
                         true,  // showNoticeEveryScan
                         expireDays,
                         "SYSTEM",
-                        SOURCE_AUTO_STRANDED);
+                        SOURCE_AUTO_STRANDED,
+                        interactiveEnabled && !interactivePhrase.isBlank() ? interactivePhrase : null);
                 created++;
 
             } catch (Exception e) {
@@ -191,19 +191,23 @@ public class StrandedViolationService {
         String depts = Objects.toString(body.get("whitelist_depts"), "");
         if (depts.isBlank()) depts = "[]";
 
+        String interactivePhrase = Objects.toString(body.get("interactive_challenge_phrase"), "");
+        int interactiveEnabled = toInt(body.get("interactive_challenge_enabled"), 0);
+
         configMapper.updateConfig(
-                toInt(body.get("enabled"), 0),
                 toInt(body.get("auto_signout_enabled"), 1),
                 tpl,
                 toInt(body.get("forbid_enter"), 0),
                 toInt(body.get("expire_after_days"), 1),
-                depts);
-        log.info("[stranded-violation] config saved: enabled={}, autoSignout={}, tpl={}, forbidEnter={}, expireDays={}",
-                toInt(body.get("enabled"), 0),
+                depts,
+                interactiveEnabled,
+                interactivePhrase);
+        log.info("[stranded-violation] config saved: autoSignout={}, tpl={}, forbidEnter={}, expireDays={}, interactive={}",
                 toInt(body.get("auto_signout_enabled"), 1),
                 tpl,
                 toInt(body.get("forbid_enter"), 0),
-                toInt(body.get("expire_after_days"), 1));
+                toInt(body.get("expire_after_days"), 1),
+                interactiveEnabled);
     }
 
     /**

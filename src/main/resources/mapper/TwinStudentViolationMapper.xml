@@ -19,6 +19,7 @@
         <result column="cleared_at" property="clearedAt"/>
         <result column="cleared_by_user_id" property="clearedByUserId"/>
         <result column="source" property="source"/>
+        <result column="interactive_challenge" property="interactiveChallenge"/>
     </resultMap>
 
     <update id="expireActivePastDue">
@@ -53,11 +54,11 @@
         INSERT INTO twin_student_violation (
             target_user_id, violation_text, image_urls,
             forbid_enter, max_enter_success, enter_success_count, show_notice_every_scan,
-            expire_at, status, created_by_user_id, source
+            expire_at, status, created_by_user_id, source, interactive_challenge
         ) VALUES (
             #{targetUserId}, #{violationText}, #{imageUrls},
             #{forbidEnter}, #{maxEnterSuccess}, #{enterSuccessCount}, #{showNoticeEveryScan},
-            #{expireAt}, #{status}, #{createdByUserId}, #{source}
+            #{expireAt}, #{status}, #{createdByUserId}, #{source}, #{interactiveChallenge}
         )
     </insert>
 

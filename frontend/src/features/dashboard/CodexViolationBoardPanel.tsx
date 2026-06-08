@@ -46,9 +46,10 @@ export function CodexViolationBoardPanel({
 
   useVerticalAutoScroll(ref, {
     enabled: active && hasItems,
-    pauseStartMs: 1200,
-    pauseEndMs: 2000,
-    msPerPx: 38,
+    pauseStartMs: 10000,
+    pauseEndMs: 10000,
+    msPerPx: 60,
+    roundTrips: 3,
     fallbackTimeoutMs: 5000,
     onCycleComplete,
     resetKey: `${generation}-${items.length}-${items.map((i) => i.id).join(",")}`,
@@ -100,7 +101,7 @@ export function CodexViolationBoardPanel({
       </div>
       <div
         ref={ref}
-        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 [scrollbar-gutter:stable]"
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {items.map((item) => (
           <ViolationBoardRow key={item.id} item={item} />

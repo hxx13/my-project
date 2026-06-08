@@ -9,7 +9,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { useProfilePopup } from "./useProfilePopup";
 import { ProfileHeader } from "./components/ProfileHeader";
-import { CapacityStatusList } from "./components/CapacityStatusList";
+import { StudentEntryCard } from "./StudentEntryCard";
 import { ActionButtons } from "./components/ActionButtons";
 import { DisciplinaryModal } from "./components/DisciplinaryModal";
 import { ScanAccessNoticeOverlay } from "./ScanAccessNoticeOverlay";
@@ -185,25 +185,6 @@ export function UiverseProfilePopup(props: PopupProps) {
                         当前未绑卡，点我绑定卡
                     </button>
                 ) : null}
-                {/* Student entry buttons */}
-                {studentUserId && (
-                    <div className="absolute bottom-8 left-1/2 z-[10001] -translate-x-1/2 flex gap-3">
-                        <button
-                            type="button"
-                            className="rounded-xl border border-cyan-400/60 bg-cyan-500/20 px-4 py-2.5 text-center text-[12px] font-bold text-cyan-50 shadow-lg shadow-cyan-900/40 hover:bg-cyan-500/35 transition-colors"
-                            onClick={handleEnterStudentCenter}
-                        >
-                            进入学生中心
-                        </button>
-                        <button
-                            type="button"
-                            className="rounded-xl border border-emerald-400/60 bg-emerald-500/20 px-4 py-2.5 text-center text-[12px] font-bold text-emerald-50 shadow-lg shadow-emerald-900/40 hover:bg-emerald-500/35 transition-colors"
-                            onClick={() => setShowQuickActions(true)}
-                        >
-                            快捷业务
-                        </button>
-                    </div>
-                )}
                 <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-hidden p-10 pb-20">
                     <div className="flex w-full max-w-[min(96vw,1120px)] shrink-0 justify-center px-1 pt-1">
                         <ScanPopupNoticeCoordinator result={result} />
@@ -238,14 +219,17 @@ export function UiverseProfilePopup(props: PopupProps) {
                         <div className="basis-1/2 min-h-0">
                             <ProfileHeader user={state.user} isAvatarLoaded={state.isAvatarLoaded} globalUserState={state.globalUserState} onAvatarError={() => actions.setAvatarLoaded(false)} onOpenRiskModal={() => actions.setShowRiskModal(true)} />
                         </div>
-                        <div className="basis-1/2 min-h-0 rounded-2xl border border-white/5 px-4 flex flex-col min-h-0 overflow-hidden">
-                            <div className="flex-1 min-h-0 w-full flex flex-col overflow-hidden">
-                                <CapacityStatusList
-                                    items={state.myCapacityStats}
-                                    roomOverviewFetching={state.roomOverviewFetching}
-                                    roomOverviewSourceCount={state.roomOverviewSourceCount}
-                                />
-                            </div>
+                        <div className="basis-1/2 min-h-0 flex flex-col min-h-0">
+                            <StudentEntryCard
+                                capacityStats={state.myCapacityStats}
+                                roomOverviewFetching={state.roomOverviewFetching}
+                                roomOverviewSourceCount={state.roomOverviewSourceCount}
+                                studentUserId={studentUserId}
+                                studentName={state.user?.name}
+                                onEnterStudentCenter={handleEnterStudentCenter}
+                                onOpenQuickActions={() => setShowQuickActions(true)}
+                                onClosePopup={onClose}
+                            />
                         </div>
                     </div>
                     <div className="flex flex-col items-center justify-center gap-14">

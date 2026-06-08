@@ -83,6 +83,8 @@ export interface StudentViolationNotice {
     enterLocked?: boolean;
     /** 剩余允许成功进入次数；未配置上限时为 undefined */
     remainingEnterAllowance?: number | null;
+    /** 交互式确认短语（如 "一人一卡,严禁尾随"）；null 表示普通公告 */
+    interactiveChallenge?: string | null;
 }
 
 export interface ExecutePayload {

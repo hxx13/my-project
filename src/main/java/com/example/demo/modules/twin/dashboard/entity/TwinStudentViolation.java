@@ -25,4 +25,6 @@ public class TwinStudentViolation {
     private LocalDateTime clearedAt;
     private String clearedByUserId;
     private String source;
+    /** 交互式确认短语；null=普通公告，非空=扫码弹窗显示交互拼图 */
+    private String interactiveChallenge;
 }

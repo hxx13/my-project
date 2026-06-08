@@ -186,13 +186,13 @@ export default function AdminStudentViolationsPage() {
   const [editingSwipeRule, setEditingSwipeRule] = useState<SwipeAlertRuleRow | null>(null);
 
   // Stranded violation config state
-  const [strandedEnabled, setStrandedEnabled] = useState(false);
   const [strandedAutoSignout, setStrandedAutoSignout] = useState(true);
   const [strandedViolationTpl, setStrandedViolationTpl] = useState("");
   const [strandedForbidEnter, setStrandedForbidEnter] = useState(false);
   const [strandedExpireDays, setStrandedExpireDays] = useState("1");
   const [strandedWhitelistDepts, setStrandedWhitelistDepts] = useState<string[]>([]);
-  const [strandedLastResult, setStrandedLastResult] = useState("");
+  const [interactiveChallengeEnabled, setInteractiveChallengeEnabled] = useState(false);
+  const [interactiveChallengePhrase, setInteractiveChallengePhrase] = useState("一人一卡,严禁尾随");
   const [strandedConfigLoading, setStrandedConfigLoading] = useState(false);
   const [strandedConfigSaving, setStrandedConfigSaving] = useState(false);
   // Test state
@@ -649,13 +649,13 @@ export default function AdminStudentViolationsPage() {
     try {
       const res = await adminHttp.get("/twin/student-violations/stranded-config");
       const cfg = (res as any)?.data?.data ?? (res as any)?.data ?? {};
-      setStrandedEnabled(Boolean(cfg.enabled));
       setStrandedAutoSignout(cfg.auto_signout_enabled !== 0);
       setStrandedViolationTpl(cfg.violation_text_tpl || "");
       setStrandedForbidEnter(Boolean(cfg.forbid_enter));
       setStrandedExpireDays(String(cfg.expire_after_days ?? 1));
       setStrandedWhitelistDepts(parseJsonArrayStr(cfg.whitelist_depts));
-      setStrandedLastResult(cfg.last_execution_result || "");
+      setInteractiveChallengeEnabled(Boolean(cfg.interactive_challenge_enabled));
+      setInteractiveChallengePhrase(cfg.interactive_challenge_phrase || "一人一卡,严禁尾随");
     } catch { /* ignore */ }
     finally { setStrandedConfigLoading(false); }
   };
@@ -665,18 +665,14 @@ export default function AdminStudentViolationsPage() {
     try {
       // Save stranded violation config (keys must be snake_case for backend Map.get())
       await adminHttp.put("/twin/student-violations/stranded-config", {
-        enabled: strandedEnabled,
         auto_signout_enabled: strandedAutoSignout,
         violation_text_tpl: strandedViolationTpl,
         forbid_enter: strandedForbidEnter,
         expire_after_days: Number(strandedExpireDays) || 1,
         whitelist_depts: JSON.stringify(strandedWhitelistDepts),
+        interactive_challenge_enabled: interactiveChallengeEnabled ? 1 : 0,
+        interactive_challenge_phrase: interactiveChallengePhrase,
       });
-      // Sync timer job enabled state
-      try {
-        const { updateScheduleJob } = await import("@/api/domains/schedule.api");
-        await updateScheduleJob("STRANDED_VIOLATION_CHECK", { enabled: strandedEnabled });
-      } catch { /* timer sync is best-effort */ }
       toast.success("自动滞留配置已保存");
       loadStrandedConfig();
     } catch (e) {
@@ -1239,18 +1235,10 @@ export default function AdminStudentViolationsPage() {
             <p className="text-sm text-[var(--twin-mute)]">加载配置中…</p>
           ) : (
             <div className="space-y-4">
-              {/* Enabled */}
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" className="h-4 w-4" checked={strandedEnabled}
-                  onChange={(e) => setStrandedEnabled(e.target.checked)} />
-                启用每日自动滞留检测
-              </label>
-
               {/* Auto signout */}
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" className="h-4 w-4" checked={strandedAutoSignout}
-                  onChange={(e) => setStrandedAutoSignout(e.target.checked)}
-                  disabled={!strandedEnabled} />
+                  onChange={(e) => setStrandedAutoSignout(e.target.checked)} />
                 同时执行签退操作（帮助滞留人员离开）
               </label>
 
@@ -1263,7 +1251,6 @@ export default function AdminStudentViolationsPage() {
                   className={cn(inputBase, "mt-1.5 min-h-[60px] resize-y")}
                   value={strandedViolationTpl}
                   onChange={(e) => setStrandedViolationTpl(e.target.value)}
-                  disabled={!strandedEnabled}
                   placeholder={"${name}(${dept})滞留未签退，系统自动登记"}
                 />
                 <p className="mt-0.5 text-[10px] text-neutral-400">
@@ -1302,12 +1289,30 @@ export default function AdminStudentViolationsPage() {
                 </div>
               </div>
 
-              {/* Last execution result */}
-              {strandedLastResult && (
-                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700">
-                  📋 上次执行：{strandedLastResult}
-                </div>
-              )}
+              {/* Interactive challenge config */}
+              <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input type="checkbox" className="h-4 w-4" checked={interactiveChallengeEnabled}
+                    onChange={(e) => setInteractiveChallengeEnabled(e.target.checked)} />
+                  🧩 启用交互式违规确认
+                </label>
+                {interactiveChallengeEnabled && (
+                  <div>
+                    <label className="text-xs font-medium text-[var(--twin-body)]">
+                      拼图目标短语（按字拆分卡片，随机排列）
+                    </label>
+                    <input
+                      className={cn(inputBase, "mt-1.5")}
+                      value={interactiveChallengePhrase}
+                      onChange={(e) => setInteractiveChallengePhrase(e.target.value)}
+                      placeholder="一人一卡,严禁尾随"
+                    />
+                    <p className="mt-1 text-[10px] text-neutral-400">
+                      违规人员扫码时必须按顺序点击文字卡片，完成后方可关闭公告进入
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {/* Save button */}
               <AdminButton type="button" tone="primary" loading={strandedConfigSaving}

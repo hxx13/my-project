@@ -73,6 +73,21 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
 
       {/* Right side */}
       <div className="flex items-center gap-2">
+        {/* Return to scanner */}
+        <button
+          type="button"
+          onClick={() => {
+            authStorage.clear();
+            navigate("/");
+          }}
+          className="inline-flex items-center gap-1 h-8 px-3 rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-xs text-[var(--student-mute)] hover:text-[var(--student-ink)] hover:bg-[var(--student-canvas-soft)] transition-colors"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          返回扫码页
+        </button>
+
         {/* Notification bell */}
         <button
           type="button"

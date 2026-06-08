@@ -121,6 +121,7 @@ public class TwinStudentViolationService {
         boolean locked = computeEnterLocked(row);
         dto.setEnterLocked(locked);
         dto.setRemainingEnterAllowance(computeRemaining(row));
+        dto.setInteractiveChallenge(row.getInteractiveChallenge());
         return dto;
     }
 
@@ -258,7 +259,7 @@ public class TwinStudentViolationService {
             String createdByUserId
     ) {
         return create(targetUserId, violationText, imageUrls, forbidEnter, maxEnterSuccess,
-                showNoticeEveryScan, expireAfterDays, createdByUserId, "MANUAL");
+                showNoticeEveryScan, expireAfterDays, createdByUserId, "MANUAL", null);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -271,7 +272,8 @@ public class TwinStudentViolationService {
             boolean showNoticeEveryScan,
             Integer expireAfterDays,
             String createdByUserId,
-            String source
+            String source,
+            String interactiveChallenge
     ) {
         if (!StringUtils.hasText(targetUserId)) {
             throw new IllegalArgumentException("缺少 targetUserId");
@@ -310,6 +312,7 @@ public class TwinStudentViolationService {
         row.setStatus(STATUS_ACTIVE);
         row.setCreatedByUserId(createdByUserId);
         row.setSource(source != null && !source.isBlank() ? source.trim() : "MANUAL");
+        row.setInteractiveChallenge(interactiveChallenge);
         try {
             violationMapper.insert(row);
         } catch (Exception e) {

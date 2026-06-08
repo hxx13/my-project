@@ -14,10 +14,11 @@ public interface StrandedViolationConfigMapper {
     void updateExecutionResult(@Param("executedAt") LocalDateTime executedAt,
                                @Param("result") String result);
 
-    void updateConfig(@Param("enabled") Integer enabled,
-                      @Param("autoSignoutEnabled") Integer autoSignoutEnabled,
+    void updateConfig(@Param("autoSignoutEnabled") Integer autoSignoutEnabled,
                       @Param("violationTextTpl") String violationTextTpl,
                       @Param("forbidEnter") Integer forbidEnter,
                       @Param("expireAfterDays") Integer expireAfterDays,
-                      @Param("whitelistDepts") String whitelistDepts);
+                      @Param("whitelistDepts") String whitelistDepts,
+                      @Param("interactiveChallengeEnabled") Integer interactiveChallengeEnabled,
+                      @Param("interactiveChallengePhrase") String interactiveChallengePhrase);
 }

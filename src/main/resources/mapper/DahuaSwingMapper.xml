@@ -506,8 +506,9 @@
 
     <select id="listActivatedUsers" resultType="map">
         SELECT DISTINCT das.user_id, ap.name, ap.department_name
-        FROM dahua_activation_state das
+        FROM twin_dahua_activation_state das
         LEFT JOIN aro_personnel ap ON ap.user_id = das.user_id
         WHERE das.state = 'ACTIVATED'
+          AND DATE(das.activated_at) = CURDATE()
     </select>
 </mapper>

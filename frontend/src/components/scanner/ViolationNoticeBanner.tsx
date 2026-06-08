@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, Megaphone, X } from "lucide-react";
 import type { StudentViolationNotice } from "@/api/types/scanner";
+import { InteractiveChallenge } from "./InteractiveChallenge";
 
 export type ViolationNoticeKind = "violation" | "unbound";
 
@@ -130,19 +131,33 @@ export function ViolationNoticeBanner({
     return notice.imageUrls.filter((u) => typeof u === "string" && u.trim().length > 0);
   }, [notice?.imageUrls]);
 
+  const interactivePhrase = notice?.interactiveChallenge || null;
+  const [interactiveDone, setInteractiveDone] = useState(false);
+  // Reset interactive state when notice changes
+  const prevNoticeIdRef = useRef<number | null | undefined>(null);
+  useEffect(() => {
+    if (notice?.id !== prevNoticeIdRef.current) {
+      prevNoticeIdRef.current = notice?.id;
+      setInteractiveDone(false);
+    }
+  }, [notice?.id]);
+
   const acknowledge = useCallback(() => {
     if (!notice?.id || notice.showNoticeEveryScan) return;
+    if (interactivePhrase && !interactiveDone) return;
     try {
       sessionStorage.setItem(ackKey(kind, notice.id), "1");
     } catch {
       /* ignore */
     }
     setPanelOpen(false);
-  }, [kind, notice?.id, notice?.showNoticeEveryScan, setPanelOpen]);
+  }, [kind, notice?.id, notice?.showNoticeEveryScan, setPanelOpen, interactivePhrase, interactiveDone]);
 
   const closePanel = useCallback(() => {
+    // Interactive challenge must be completed before closing
+    if (interactivePhrase && !interactiveDone) return;
     setPanelOpen(false);
-  }, [setPanelOpen]);
+  }, [setPanelOpen, interactivePhrase, interactiveDone]);
 
   const openPanel = useCallback(() => {
     setPanelOpen(true);
@@ -244,16 +259,26 @@ export function ViolationNoticeBanner({
                     {!notice.showNoticeEveryScan ? (
                       <button
                         type="button"
+                        disabled={Boolean(interactivePhrase && !interactiveDone)}
                         onClick={acknowledge}
-                        className={`rounded-full border px-3 py-1 text-[11px] font-bold hover:bg-white/10 ${theme.btnBorder} ${theme.btnText}`}
+                        className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-opacity ${
+                          interactivePhrase && !interactiveDone
+                            ? "border-amber-500/20 text-amber-200/30 cursor-not-allowed"
+                            : `hover:bg-white/10 ${theme.btnBorder} ${theme.btnText}`
+                        }`}
                       >
-                        已知悉
+                        {interactivePhrase && !interactiveDone ? "请先完成验证" : "已知悉"}
                       </button>
                     ) : null}
                     <button
                       type="button"
+                      disabled={Boolean(interactivePhrase && !interactiveDone)}
                       onClick={closePanel}
-                      className={`rounded-full p-2 hover:bg-white/10 ${theme.closeBtn}`}
+                      className={`rounded-full p-2 transition-opacity ${
+                        interactivePhrase && !interactiveDone
+                          ? "text-amber-200/20 cursor-not-allowed"
+                          : `hover:bg-white/10 ${theme.closeBtn}`
+                      }`}
                       aria-label="关闭"
                     >
                       <X className="h-4 w-4" />
@@ -280,7 +305,14 @@ export function ViolationNoticeBanner({
                         ))}
                       </div>
                     ) : null}
-                    {text ? (
+                    {interactivePhrase ? (
+                      <div className="w-full max-w-2xl rounded-2xl border bg-black/30 p-5 ${theme.textBorder}">
+                        <InteractiveChallenge
+                          phrase={interactivePhrase}
+                          onComplete={() => setInteractiveDone(true)}
+                        />
+                      </div>
+                    ) : text ? (
                       <p
                         className={`w-full max-w-2xl rounded-2xl border bg-black/30 p-4 text-center text-sm leading-relaxed whitespace-pre-wrap break-words ${theme.textBorder} ${theme.textBody}`}
                       >
