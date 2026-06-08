@@ -101,10 +101,10 @@ export function UiverseProfilePopup(props: PopupProps & { swipeWarning?: string 
     const [showQuickActions, setShowQuickActions] = useState(false);
     const [keypadUserId, setKeypadUserId] = useState("");
     const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
+    // AnalyzeUserInfo uses snake_case: user_type_names
     const isStudentRole = (() => {
-      const typeNames = String(state.user?.userTypeNames || "").toLowerCase();
-      const className = String(state.user?.userClassName || "").toLowerCase();
-      return typeNames.includes("学生") || className.includes("学生");
+      const typeNames = String(state.user?.user_type_names || "").toLowerCase();
+      return typeNames.includes("学生");
     })();
 
     const handleEnterStudentCenter = async () => {
