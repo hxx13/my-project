@@ -1,8 +1,11 @@
 /**
- * 扫码弹窗会话守卫：抑制同一人弹窗打开期间重复刷卡/扫码导致的误触发（尤其进入状态连扫触发自动离开）。
+ * 扫码弹窗会话守卫：抑制同一人弹窗打开后短时间重复刷卡/扫码导致的误触发（尤其进入状态连扫触发自动离开）。
  */
 
 export type ScanAccessAction = "ENTER" | "EXIT";
+
+/** 弹窗打开后，同一人重复刷卡的最短屏蔽间隔 */
+const POPUP_OPEN_RESCAN_MS = 30_000;
 
 /** 手动/流程「进入」成功后，禁止同一人再次走识别通道的时长 */
 const POST_ENTER_RESCAN_MS = 15_000;
@@ -78,10 +81,10 @@ export function canScheduleAutoExit(userId: string, scanKey?: string): boolean {
 export function tryBeginScanChannel(
   scanKey: string,
   knownUserId?: string | null
-): { allow: true } | { allow: false; message: string } {
+): { allow: true } | { allow: false; message: string; blockedUntil: number } {
   const key = normalizeKey(scanKey);
   if (!key) {
-    return { allow: false, message: "无效的扫码内容" };
+    return { allow: false, message: "无效的扫码内容", blockedUntil: 0 };
   }
 
   const uid = knownUserId ? normalizeKey(knownUserId) : "";
@@ -91,21 +94,24 @@ export function tryBeginScanChannel(
     return {
       allow: false,
       message: "上一笔进出正在提交，请稍候再扫，避免重复触发",
+      blockedUntil: 0,
     };
   }
 
-  // 弹窗打开期间（不限时长）：同一 scanKey 或同一人员再刷卡 → 拦截至弹窗关闭
-  if (popupScanKey && popupScanKey === key) {
+  // 弹窗打开后 30s 内：同一 scanKey 或同一人员再刷卡 → 拦截
+  if (popupScanKey && popupScanKey === key && now - popupOpenedAt < POPUP_OPEN_RESCAN_MS) {
     return {
       allow: false,
       message: "请抬起您的卡片，防止多次刷卡误操作",
+      blockedUntil: popupOpenedAt + POPUP_OPEN_RESCAN_MS,
     };
   }
 
-  if (uid && popupUserId && popupUserId === uid) {
+  if (uid && popupUserId && popupUserId === uid && now - popupOpenedAt < POPUP_OPEN_RESCAN_MS) {
     return {
       allow: false,
       message: "请抬起您的卡片，防止多次刷卡误操作",
+      blockedUntil: popupOpenedAt + POPUP_OPEN_RESCAN_MS,
     };
   }
 
@@ -116,6 +122,7 @@ export function tryBeginScanChannel(
         return {
           allow: false,
           message: "刚完成进入登记，请稍候再扫，避免误触发离开",
+          blockedUntil: 0,
         };
       }
     }

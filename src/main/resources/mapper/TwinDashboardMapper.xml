@@ -292,6 +292,28 @@
         LIMIT #{limit}
     </select>
 
+    <select id="getOrderRankingByTimeRange" resultType="map">
+        SELECT project_name AS projectName, SUM(male_qty + female_qty) AS totalQuantity
+        FROM aro_animal_order
+        WHERE create_time &gt;= #{startTime}
+          AND create_time &lt; #{endTime}
+        <if test="region == 'PUDONG'"> AND area_name LIKE '%浦东%' </if>
+        <if test="region == 'PUXI'"> AND area_name LIKE '%浦西%' </if>
+        <if test="blacklist != null and blacklist.size() > 0">
+            AND pi_name NOT IN
+            <foreach item="item" collection="blacklist" open="(" separator="," close=")">
+                #{item}
+            </foreach>
+            AND project_name NOT IN
+            <foreach item="item" collection="blacklist" open="(" separator="," close=")">
+                #{item}
+            </foreach>
+        </if>
+        GROUP BY project_name
+        ORDER BY totalQuantity DESC
+        LIMIT #{limit}
+    </select>
+
     <insert id="saveOrUpdateOrderDetail">
         INSERT INTO aro_animal_order (
             item_id, sn, area_name, project_name, pi_name, create_time, arrival_date, supplier_name, strain_name, spec_name,
@@ -340,7 +362,9 @@
                SUM(male_qty + female_qty) AS totalQty,
                SUM(male_qty) AS maleQty,
                SUM(female_qty) AS femaleQty,
-               SUM(CASE WHEN DATE_FORMAT(create_time, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m') THEN (male_qty + female_qty) ELSE 0 END) AS monthQty
+               SUM(CASE WHEN DATE_FORMAT(create_time, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m') THEN (male_qty + female_qty) ELSE 0 END) AS monthQty,
+               SUM(CASE WHEN create_time &gt;= #{weekStart} THEN (male_qty + female_qty) ELSE 0 END) -
+               SUM(CASE WHEN create_time &gt;= #{lastWeekStart} AND create_time &lt; #{weekStart} THEN (male_qty + female_qty) ELSE 0 END) AS weekQty
         FROM aro_animal_order
         WHERE project_name = #{projectName}
           AND pi_name = #{piName}

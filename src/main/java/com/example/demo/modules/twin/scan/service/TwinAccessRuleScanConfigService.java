@@ -53,6 +53,7 @@ public class TwinAccessRuleScanConfigService {
             row.setExitDispatchEnabled(1);
             row.setEnterUnfreezeEnabled(1);
             row.setExitFreezeEnabled(1);
+            row.setSwipeExitSkipConfirm(0);
         }
         return row;
     }
@@ -84,6 +85,7 @@ public class TwinAccessRuleScanConfigService {
         m.put("exitDispatchEnabled", flagOn(row.getExitDispatchEnabled()));
         m.put("enterUnfreezeEnabled", flagOn(row.getEnterUnfreezeEnabled()));
         m.put("exitFreezeEnabled", flagOn(row.getExitFreezeEnabled()));
+        m.put("swipeExitSkipConfirm", flagOn(row.getSwipeExitSkipConfirm()));
         m.put("updatedBy", row.getUpdatedBy());
         m.put("updatedAt", row.getUpdatedAt() != null ? row.getUpdatedAt().toString() : null);
         return m;
@@ -94,6 +96,7 @@ public class TwinAccessRuleScanConfigService {
             boolean exitDispatchEnabled,
             boolean enterUnfreezeEnabled,
             boolean exitFreezeEnabled,
+            boolean swipeExitSkipConfirm,
             String updatedBy) {
         ensureRow();
         mapper.updateConfig(
@@ -102,6 +105,7 @@ public class TwinAccessRuleScanConfigService {
                 exitDispatchEnabled ? 1 : 0,
                 enterUnfreezeEnabled ? 1 : 0,
                 exitFreezeEnabled ? 1 : 0,
+                swipeExitSkipConfirm ? 1 : 0,
                 updatedBy != null ? updatedBy : "system"
         );
         return getConfigMap();

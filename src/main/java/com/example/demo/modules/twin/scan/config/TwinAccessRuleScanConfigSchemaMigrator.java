@@ -32,6 +32,7 @@ public class TwinAccessRuleScanConfigSchemaMigrator {
                         exit_dispatch_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=扫码离开时执行门禁规则大华权限回收',
                         enter_unfreeze_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=扫码进入时解冻物理卡',
                         exit_freeze_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=扫码/自动签退离开时冻结物理卡',
+                        swipe_exit_skip_confirm TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=跳过离开确认弹窗直接签退 0=弹窗确认后签退',
                         updated_by VARCHAR(64) NULL,
                         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码进出是否执行门禁规则（大华联动）全局开关'
@@ -45,6 +46,11 @@ public class TwinAccessRuleScanConfigSchemaMigrator {
                     "twin_access_rule_scan_config",
                     "exit_freeze_enabled",
                     "ALTER TABLE twin_access_rule_scan_config ADD COLUMN exit_freeze_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1=扫码/自动签退离开时冻结物理卡' AFTER enter_unfreeze_enabled"
+            );
+            ensureColumnExists(
+                    "twin_access_rule_scan_config",
+                    "swipe_exit_skip_confirm",
+                    "ALTER TABLE twin_access_rule_scan_config ADD COLUMN swipe_exit_skip_confirm TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=跳过离开确认弹窗直接签退 0=弹窗确认后签退' AFTER exit_freeze_enabled"
             );
             log.info("[twin-access-rule-scan-config-schema] 表已就绪");
         } catch (Exception e) {

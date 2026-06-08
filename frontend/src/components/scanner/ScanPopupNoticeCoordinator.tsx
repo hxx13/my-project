@@ -10,9 +10,10 @@ type Props = {
   result: AnalyzeResponse;
   swipeWarning?: string | null;
   swipeWarningKey?: number;
+  swipeBlockedUntil?: number;
 };
 
-export function ScanPopupNoticeCoordinator({ result, swipeWarning, swipeWarningKey = 0 }: Props) {
+export function ScanPopupNoticeCoordinator({ result, swipeWarning, swipeWarningKey = 0, swipeBlockedUntil = 0 }: Props) {
   const [dialogId, setDialogId] = useState<ScanNoticeDialogId | null>(null);
   const chainRef = useRef<ScanNoticeDialogId[]>([]);
   const chainConsumedRef = useRef(false);
@@ -99,7 +100,7 @@ export function ScanPopupNoticeCoordinator({ result, swipeWarning, swipeWarningK
           suppressAutoOpen
         />
       ) : null}
-      <RepeatedSwipeWarningBanner message={swipeWarning ?? null} triggerKey={swipeWarningKey} />
+      <RepeatedSwipeWarningBanner message={swipeWarning ?? null} triggerKey={swipeWarningKey} blockedUntil={swipeBlockedUntil} />
     </div>
   );
 }

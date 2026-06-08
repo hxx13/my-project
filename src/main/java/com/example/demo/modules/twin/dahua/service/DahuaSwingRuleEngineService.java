@@ -421,16 +421,6 @@ public class DahuaSwingRuleEngineService {
                     linkageSnapshot,
                     "dahua-swing-due"
             );
-            // 签退前二次确认：用户是否已通过扫码重新进入或重新激活
-            boolean userReEntered = dahuaSwingMapper.existsPendingActivationForUser(
-                    GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL) > 0
-                    || dahuaSwingMapper.countActivatedStatesForUser(GLOBAL_RULE_TASK_ID, userId) > 0;
-            if (userReEntered) {
-                log.info("[swing-rule] due-skip-reentered userId={} state={} channel={} — user already re-entered, clean old state",
-                        userId, state.getState(), state.getChannelCode());
-                dahuaSwingMapper.deleteActivationStatesByUserId(userId);
-                continue;
-            }
             boolean ok = dahuaAutoSignoutService.autoSignout(
                     userId,
                     "TIMER",

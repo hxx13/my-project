@@ -16,7 +16,9 @@ public final class JobSchedulePolicy {
         if (!StringUtils.hasText(jobKey)) {
             return false;
         }
-        return JobExecutionRegistry.JOB_ARO_PENETRATION_POLL.equals(jobKey);
+        return JobExecutionRegistry.JOB_ARO_PENETRATION_POLL.equals(jobKey)
+                || JobExecutionRegistry.JOB_DASHBOARD_RANKING_ACTIVITY.equals(jobKey)
+                || JobExecutionRegistry.JOB_DASHBOARD_RANKING_ANIMAL.equals(jobKey);
     }
 
     /** 每日固定时刻执行一次（非窗口内轮询） */
@@ -33,6 +35,12 @@ public final class JobSchedulePolicy {
     public static int defaultPollIntervalSeconds(String jobKey) {
         if (JobExecutionRegistry.JOB_ARO_PENETRATION_POLL.equals(jobKey)) {
             return 60;
+        }
+        if (JobExecutionRegistry.JOB_DASHBOARD_RANKING_ACTIVITY.equals(jobKey)) {
+            return 300; // 5 分钟
+        }
+        if (JobExecutionRegistry.JOB_DASHBOARD_RANKING_ANIMAL.equals(jobKey)) {
+            return 1800; // 30 分钟
         }
         return 60;
     }

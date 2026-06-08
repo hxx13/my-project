@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchGroupRanking, fetchAnimalOrderRanking } from "@/api/twinApi";
+import { fetchGroupRanking, fetchAnimalOrderRanking, fetchRankingPollConfig, ensureRankingSnapshot } from "@/api/twinApi";
 import { Trophy } from "lucide-react";
 
 type Region = "TOTAL" | "PUDONG" | "PUXI";
@@ -51,63 +51,133 @@ export function UnifiedRankingCard() {
   const [region, setRegion] = useState<Region>("TOTAL");
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const scrollBoxRef = useRef<HTMLDivElement>(null);
-  const prevRankMapRef = useRef<Map<string, number>>(new Map());
   const autoTabTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---- Data fetching ----
+
+  // 读取定时管理页面配置的轮询间隔（默认：活跃5分钟，动物30分钟）
+  const { data: pollConfig } = useQuery({
+    queryKey: ["dashboard", "rankingPollConfig"],
+    queryFn: fetchRankingPollConfig,
+    staleTime: 600_000, // 10分钟内不重复请求
+  });
+  const activityInterval = (pollConfig?.activityIntervalSeconds ?? 300) * 1000;
+  const animalInterval = (pollConfig?.animalIntervalSeconds ?? 1800) * 1000;
+
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ["dashboard", "ranking", "MONTH", region],
     queryFn: () => fetchGroupRanking("MONTH", region),
-    refetchInterval: 300_000,
+    refetchInterval: activityInterval,
   });
 
-  const { data: animalData, isLoading: animalLoading } = useQuery({
-    queryKey: ["dashboard", "animalRanking", region],
-    queryFn: () => fetchAnimalOrderRanking(region),
-    refetchInterval: 1_800_000,
+  // 动物消耗：本周 / 上周 / 上上周（用于自动选取最新非空周 + 趋势对比基线）
+  const { data: animalWeek0, isLoading: animalLoading0 } = useQuery({
+    queryKey: ["dashboard", "animalRanking", region, "week", 0],
+    queryFn: () => fetchAnimalOrderRanking(region, 0),
+    refetchInterval: animalInterval,
+  });
+  const { data: animalWeekMinus1 } = useQuery({
+    queryKey: ["dashboard", "animalRanking", region, "week", -1],
+    queryFn: () => fetchAnimalOrderRanking(region, -1),
+    staleTime: 1_800_000,
+  });
+  const { data: animalWeekMinus2 } = useQuery({
+    queryKey: ["dashboard", "animalRanking", region, "week", -2],
+    queryFn: () => fetchAnimalOrderRanking(region, -2),
+    staleTime: 3_600_000,
   });
 
-  // ---- Data normalization (animal API uses different field names) ----
-  const rawActivityList: { name?: string; value?: number; count?: number }[] =
-    Array.isArray(activityData) ? activityData : [];
+  const animalLoading = animalLoading0;
 
-  const rawAnimalListNormalized: { name: string; value: number }[] = useMemo(() => {
-    const arr = Array.isArray(animalData) ? animalData : [];
+  // 进出活跃趋势快照：直接调 ensure 端点查缺补漏，避免首次 GET 返回空 → 颁奖台无趋势箭头
+  const { data: activitySnapshot } = useQuery({
+    queryKey: ["dashboard", "rankingSnapshot", region],
+    queryFn: () => ensureRankingSnapshot(region),
+    staleTime: 300_000,
+  });
+  const prevRankMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (activitySnapshot) {
+      for (const it of activitySnapshot) {
+        if (it.name) map.set(it.name, it.rank);
+      }
+    }
+    return map;
+  }, [activitySnapshot]);
+
+  // ---- Data normalization ----
+  const rawActivityList = useMemo<{ name?: string; value?: number; count?: number }[]>(() => {
+    return Array.isArray(activityData) ? activityData : [];
+  }, [activityData]);
+
+  /** Normalise a raw animal ranking payload into {name, value}[] */
+  const normAnimal = (raw: any): { name: string; value: number }[] => {
+    const arr = Array.isArray(raw) ? raw : [];
     return arr.map((item: { projectName?: string; totalQuantity?: number }) => ({
       name: item.projectName ?? "",
       value: item.totalQuantity ?? 0,
     }));
-  }, [animalData]);
+  };
 
-  const rawList: { name?: string; value?: number; count?: number }[] =
-    activeTab === "activity" ? rawActivityList : rawAnimalListNormalized;
+  // Pick the most recent non-empty week for display; fall back through -1, -2
+  const { displayAnimalData, baselineAnimalMap } = useMemo(() => {
+    const weeks = [
+      { data: normAnimal(animalWeek0), baseline: normAnimal(animalWeekMinus1) },
+      { data: normAnimal(animalWeekMinus1), baseline: normAnimal(animalWeekMinus2) },
+      { data: normAnimal(animalWeekMinus2), baseline: [] },
+    ];
+    for (const w of weeks) {
+      if (w.data.length > 0) {
+        const map = new Map<string, number>();
+        for (const it of w.baseline) {
+          if (it.name) map.set(it.name, it.value);
+        }
+        return { displayAnimalData: w.data, baselineAnimalMap: map };
+      }
+    }
+    return { displayAnimalData: [] as { name: string; value: number }[], baselineAnimalMap: new Map<string, number>() };
+  }, [animalWeek0, animalWeekMinus1, animalWeekMinus2]);
 
   const rankedList = useMemo<RankItem[]>(() => {
-    const items: RankItem[] = rawList.slice(0, MAX_ITEMS).map((item, idx) => {
+    const src = activeTab === "activity" ? rawActivityList : displayAnimalData;
+    const items: RankItem[] = src.slice(0, MAX_ITEMS).map((item, idx) => {
       const name = item.name ?? "";
-      const value = item.value ?? item.count ?? 0;
-      const prevRank = prevRankMapRef.current.get(name);
+      const value = item.value ?? 0;
       let trend: RankItem["trend"] = "same";
       let trendValue = 0;
-      if (prevRank !== undefined) {
-        if (prevRank > idx + 1) {
-          trend = "up";
-          trendValue = prevRank - (idx + 1);
-        } else if (prevRank < idx + 1) {
-          trend = "down";
-          trendValue = idx + 1 - prevRank;
+
+      if (activeTab === "activity") {
+        // 进出活跃：对比后端快照中的上次排名 (prevRankMap)
+        const prevRank = prevRankMap.get(name);
+        if (prevRank !== undefined) {
+          const curRank = idx + 1;
+          if (prevRank > curRank) {
+            trend = "up";
+            trendValue = prevRank - curRank;
+          } else if (prevRank < curRank) {
+            trend = "down";
+            trendValue = curRank - prevRank;
+          }
+        }
+      } else {
+        // 动物消耗：对比上一周数量 (baselineAnimalMap)
+        const prevVal = baselineAnimalMap.get(name);
+        if (prevVal !== undefined && prevVal > 0) {
+          if (value > prevVal) {
+            trend = "up";
+            trendValue = value - prevVal;
+          } else if (value < prevVal) {
+            trend = "down";
+            trendValue = prevVal - value;
+          }
         }
       }
       return { name, value, trend, trendValue };
     });
 
-    const newMap = new Map<string, number>();
-    items.forEach((item, i) => newMap.set(item.name, i + 1));
-    prevRankMapRef.current = newMap;
-
     return items;
-  }, [rawList]);
+  }, [rawActivityList, displayAnimalData, activeTab, region, baselineAnimalMap, prevRankMap]);
 
   const top3 = rankedList.slice(0, 3);
   const rest = rankedList.slice(3);
@@ -157,13 +227,12 @@ export function UnifiedRankingCard() {
       }
 
       const start = performance.now();
-      const duration = maxScroll * 60; // 60ms per px
+      const duration = Math.max(4000, maxScroll * 15); // ~67px/s, min 4s
 
       const animate = (now: number) => {
         if (!active) return;
         const progress = Math.min((now - start) / duration, 1);
-        const eased = 1 - Math.pow(1 - progress, 3);
-        el.scrollTop = eased * maxScroll;
+        el.scrollTop = progress * maxScroll; // linear, no easing
         if (progress < 1) {
           raf = requestAnimationFrame(animate);
         } else {

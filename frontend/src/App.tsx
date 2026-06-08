@@ -49,11 +49,15 @@ function GlobalSocketListener() {
         socket.on("connect", () => {
             console.log("🟢 [数字孪生基站] WebSocket 链路已接通！");
             setConnected(true);
+            // Expose socket globally for swipe-alert ACK emission
+            (window as any).__swipeAlertSocket = socket;
         });
 
         socket.on("reconnect", () => {
             console.log("🟡 [数字孪生基站] WebSocket 已重新连接");
             setConnected(true);
+            // Re-expose after reconnect (new socket instance)
+            (window as any).__swipeAlertSocket = socket;
         });
 
         socket.on("disconnect", (reason) => {
@@ -105,10 +109,19 @@ function GlobalSocketListener() {
             useSwipeAlertStore.getState().showAlert(alert);
         });
 
-        // 📡 监听：刷卡失败告警联动消失
+        // 📡 监听：刷卡失败告警联动消失（触发离开动画 → 300ms 后移除）
         socket.on(SOCKET_SWIPE_FAILURE_ALERT_DISMISS, (payload) => {
-            console.log("✅ 告警已被远端标记已读:", payload?.dismissedBy);
-            useSwipeAlertStore.getState().dismissAlert();
+            console.log("✅ 告警已被远端标记已读:", payload?.dismissedBy, payload?.alertId);
+            if (payload?.alertId) {
+                useSwipeAlertStore.getState().startDismiss(payload.alertId);
+            }
+        });
+
+        // 📡 监听：定时管理触发排行榜数据刷新
+        socket.on("DASHBOARD_RANKING_REFRESH", (payload: { jobKey?: string; at?: string }) => {
+            console.log("🔄 排行榜刷新信号:", payload?.jobKey);
+            queryClient.invalidateQueries({ queryKey: ["dashboard", "ranking"] });
+            queryClient.invalidateQueries({ queryKey: ["dashboard", "animalRanking"] });
         });
 
         /** 强制登出时立即断开 WebSocket，停止重连 */
@@ -125,6 +138,8 @@ function GlobalSocketListener() {
             socket.off(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
             socket.off(SOCKET_SWIPE_FAILURE_ALERT);
             socket.off(SOCKET_SWIPE_FAILURE_ALERT_DISMISS);
+            socket.off("DASHBOARD_RANKING_REFRESH");
+            delete (window as any).__swipeAlertSocket;
             socket.disconnect();
         };
     }, [addEvent, setConnected, setPieStats, queryClient]);

@@ -57,6 +57,15 @@ public class JobSchedulerService {
         return buildWinccTelemetryLikeDockPollConfig(JobExecutionRegistry.JOB_TELEMETRY_WINCC_LIMITS_UI);
     }
 
+    /** 大屏排行榜轮询间隔（秒）；若未配置则返回默认值 */
+    public int getRankingPollIntervalSeconds(String jobKey, int defaultSeconds) {
+        ensureDefaults();
+        TwinJobScheduleConfig cfg = mapper.selectByJobKey(jobKey);
+        if (cfg == null || cfg.getEnabled() == null || cfg.getEnabled() == 0) return defaultSeconds;
+        Integer poll = cfg.getPollIntervalSeconds();
+        return (poll != null && poll > 0) ? poll : defaultSeconds;
+    }
+
     private TelemetryWinccDockPollConfigDto buildWinccTelemetryLikeDockPollConfig(String jobKey) {
         ensureDefaults();
         TwinJobScheduleConfig cfg = mapper.selectByJobKey(jobKey);
@@ -498,6 +507,30 @@ public class JobSchedulerService {
         disableDeprecatedScheduleJobs();
         migrateLegacyStatsPullScheduleJob();
         initTelemetryArchivePurgeSchedule();
+        initRankingPollDefaults();
+    }
+
+    /** 大屏排行榜刷新：首次创建时写入正确的 poll 默认值（300s / 1800s） */
+    private void initRankingPollDefaults() {
+        for (String jobKey : List.of(
+                JobExecutionRegistry.JOB_DASHBOARD_RANKING_ACTIVITY,
+                JobExecutionRegistry.JOB_DASHBOARD_RANKING_ANIMAL)) {
+            try {
+                TwinJobScheduleConfig cfg = mapper.selectByJobKey(jobKey);
+                if (cfg == null) continue;
+                if (cfg.getLastRunAt() != null) continue; // already been run, don't touch
+                int expected = JobSchedulePolicy.defaultPollIntervalSeconds(jobKey);
+                if (cfg.getPollIntervalSeconds() != null && cfg.getPollIntervalSeconds() == expected) continue;
+                // Re-fetch full row and only change poll_interval + updated_by
+                cfg.setPollIntervalSeconds(expected);
+                cfg.setUpdatedBy("system-init-ranking");
+                jdbcTemplate.update(
+                        "UPDATE twin_job_schedule_config SET poll_interval_seconds = ?, updated_by = ? WHERE job_key = ?",
+                        expected, "system-init-ranking", jobKey);
+            } catch (Exception ignored) {
+                log.debug("初始化排行榜轮询默认值失败 jobKey={}: {}", jobKey, ignored.getMessage());
+            }
+        }
     }
 
     /** 新装默认开启 WinCC 归档清理（03:40），可在定时任务管理改时刻 */

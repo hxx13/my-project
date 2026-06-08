@@ -78,7 +78,7 @@ public class AccessCleanPackageAnalyticsService {
         }
 
         Map<String, Object> main =
-                eventAggregator.aggregate(logs, totalEvents, studentEvents, staffEvents, DATA_SOURCE);
+                eventAggregator.aggregate(logs, totalEvents, studentEvents, staffEvents, DATA_SOURCE, true);
         @SuppressWarnings("unchecked")
         Map<String, Object> summary =
                 main.get("summary") instanceof Map<?, ?> m
@@ -86,7 +86,7 @@ public class AccessCleanPackageAnalyticsService {
                         : new LinkedHashMap<>();
         // 涉及人数：全量 SQL（mapping / person_code / record_id 兜底）
         summary.put("uniqueUsers", longVal(scopeMetrics.get("uniqueUsers")));
-        // 课题组：与 byProjectGroup 同源（ARO 档案 GROUP_CONCAT 后按逗号拆分），禁止用 countScopeMetrics 覆盖
+        // 课题组/uniqueGroups：仅统计学生（audienceType=STUDENT），与 byProjectGroup 同源
         summary.put("allEnabledChannels", pkg.isAllEnabledChannels());
         summary.put("resolvedChannelCodes", new ArrayList<>(scope.codes()));
         if (byChannel != null && !byChannel.isEmpty()) {
@@ -138,7 +138,7 @@ public class AccessCleanPackageAnalyticsService {
         summary.put("directionScope", "不按进出筛选门禁记录");
         summary.put("enabledChannelCount", channelCount);
         String metricNote =
-                "条数/涉及人数=清洗总库；课题组/涉及学生人数由 ARO 流水口径在报表编排层合并；学生/工作人员按 audience_type；学生部门ID="
+                "条数/涉及人数=清洗总库；课题组=仅学生（audienceType=STUDENT，无档案默认「未标注课题组」）；学生/工作人员按 audience_type；学生部门="
                         + AccessAudienceConstants.studentRuleLabel();
         if (truncated) {
             metricNote += "；明细抽样 " + rowsScanned + "/" + totalEvents + "，分布图可能不完整";

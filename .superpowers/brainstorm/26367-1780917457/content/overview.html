@@ -1,0 +1,96 @@
+<h2>需求理解 — 两种方案的架构总览</h2>
+<p class="subtitle">基于代码库现有架构的理解，请确认方向是否正确</p>
+
+<div class="section">
+  <h3>当前已有流程</h3>
+  <div class="mockup">
+    <div class="mockup-header">现有：刷卡 → 弹窗 → 绑卡 流程</div>
+    <div class="mockup-body" style="padding:16px;font-size:13px;line-height:1.8">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span class="mock-button" style="background:#2d5cf7;color:#fff;font-size:11px">刷卡/输入ID</span>
+        <span>→</span>
+        <span class="mock-button" style="background:#0a0f1d;color:#fff;font-size:11px">UiverseProfilePopup 弹窗</span>
+        <span>→</span>
+        <span class="mock-button" style="background:#6366f1;color:#fff;font-size:11px">绑定校园卡 (StudentDahuaBindPanel)</span>
+      </div>
+      <p style="color:#94a3b8;font-size:11px">
+        弹窗已具备：个人信息展示、房间进出操作、<strong>onOpenStudentBind 绑卡入口</strong><br/>
+        绑卡通过 8 位大华卡号 + userId 完成，已内置防抖和格式校验
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>你的两个方案方向</h3>
+</div>
+
+<div class="cards">
+  <div class="card" data-choice="option1" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:20px;background:#0f172a;min-height:180px">
+      <div style="font-size:12px;color:#cbd5e1;text-align:left">
+        <div style="margin-bottom:12px"><strong>方案一：跳转学生中心（特殊通道）</strong></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="background:#2d5cf7;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px">弹窗</span>
+            <span style="color:#94a3b8">→</span>
+            <span style="background:#f59e0b;color:#000;padding:2px 8px;border-radius:4px;font-size:10px">数字键盘密码</span>
+            <span style="color:#94a3b8">→</span>
+            <span style="background:#10b981;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px">学生中心 /student/*</span>
+          </div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:6px">
+            ✓ 无需账号密码登录<br/>
+            ✓ userId 预绑定 + 数据预写入<br/>
+            ✓ 特殊通道 token 免密进入<br/>
+            ⚠ 需数字键盘验证（弹窗生成）
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>方案一 · 跳转学生中心</h3>
+      <p>弹窗按钮 → 数字密码 → 免密登录 → 学生中心全功能页面</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="option2" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:20px;background:#0f172a;min-height:180px">
+      <div style="font-size:12px;color:#cbd5e1;text-align:left">
+        <div style="margin-bottom:12px"><strong>方案二：弹窗内直接操作业务</strong></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="background:#2d5cf7;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px">弹窗</span>
+            <span style="color:#94a3b8">→</span>
+            <span style="background:#8b5cf6;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px">覆盖层/按钮展开业务</span>
+            <span style="color:#94a3b8">→</span>
+            <span style="background:#f59e0b;color:#000;padding:2px 8px;border-radius:4px;font-size:10px">二级密码</span>
+            <span style="color:#94a3b8">→</span>
+            <span style="background:#ef4444;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px">提交确认</span>
+          </div>
+          <div style="font-size:10px;color:#94a3b8;margin-top:6px">
+            ✓ 不跳转，沉浸式操作<br/>
+            ✓ 覆盖层/按钮触达业务<br/>
+            ⚠ 提交时需输入二级密码<br/>
+            ⚠ 弹窗承载内容有限
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>方案二 · 弹窗内直接操作</h3>
+      <p>覆盖弹窗展开业务 → 操作 → 二级密码确认提交</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>共需确认的关键设计点</h3>
+  <div style="background:#1e293b;border-radius:8px;padding:16px;font-size:12px;color:#cbd5e1">
+    <ol style="margin:0;padding-left:18px;line-height:2">
+      <li><strong>数字键盘密码</strong> — 在人员授权页（学生 tab）新增"个人密码"字段存储</li>
+      <li><strong>数据预写入</strong> — 未注册用户也要提前建好数据和密码</li>
+      <li><strong>特殊通道登录</strong> — 绕过账号密码，用 userId + 个人密码 认证</li>
+      <li><strong>二级密码</strong> — 方案二的提交确认密码（可能与方案一的密码复用同一套？）</li>
+    </ol>
+  </div>
+</div>

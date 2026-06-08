@@ -17,5 +17,6 @@ public interface TwinAccessRuleScanConfigMapper {
             @Param("exitDispatchEnabled") int exitDispatchEnabled,
             @Param("enterUnfreezeEnabled") int enterUnfreezeEnabled,
             @Param("exitFreezeEnabled") int exitFreezeEnabled,
+            @Param("swipeExitSkipConfirm") int swipeExitSkipConfirm,
             @Param("updatedBy") String updatedBy);
 }

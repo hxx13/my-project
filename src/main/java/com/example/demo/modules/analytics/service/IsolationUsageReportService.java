@@ -109,20 +109,15 @@ public class IsolationUsageReportService {
                 aroScope.get("summary") instanceof Map<?, ?> asm
                         ? (Map<String, Object>) asm
                         : Map.of();
-        if (aroSummary.get("uniqueGroups") != null) {
-            summary.put("uniqueGroups", aroSummary.get("uniqueGroups"));
-        }
         if (aroSummary.get("uniqueStudentUsers") != null) {
             summary.put("uniqueStudentUsers", aroSummary.get("uniqueStudentUsers"));
         }
         if (aroSummary.get("rawLogCount") != null) {
             summary.put("aroFlowLogCount", aroSummary.get("rawLogCount"));
         }
-        if (aroScope.get("byProjectGroup") != null) {
-            main.put("byProjectGroup", aroScope.get("byProjectGroup"));
-        }
+        // 课题组/uniqueGroups 由清洗总库聚合器自身产出（仅学生 + 同源），不再用 ARO 流水覆盖
         String metricNote =
-                "条数/涉及人数=清洗总库；课题组/涉及学生人数=ARO 流水（与订阅校区楼层进出一致）；学生/工作人员条数按 audience_type；学生部门ID="
+                "条数/涉及人数=清洗总库；课题组=仅学生·清洗总库同源（mapping_user_id→aro_personnel，无档案默认「未标注课题组」）；涉及学生人数=ARO 流水辅助；学生/工作人员条数按 audience_type；学生部门="
                         + AccessAudienceConstants.studentRuleLabel();
         summary.put("metricNote", metricNote);
         main.put("summary", summary);

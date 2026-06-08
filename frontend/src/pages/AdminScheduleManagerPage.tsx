@@ -53,6 +53,8 @@ const DEPRECATED_JOB_KEYS = new Set([
 ]);
 
 const PLATFORM_POLL_KEYS = new Set(["ARO_PENETRATION_POLL"]);
+const RANKING_POLL_KEYS = new Set(["DASHBOARD_RANKING_ACTIVITY", "DASHBOARD_RANKING_ANIMAL"]);
+const ALL_POLL_KEYS = new Set([...PLATFORM_POLL_KEYS, ...RANKING_POLL_KEYS]);
 const FREEZE_KEYS = new Set(["RUN_REAPER", "RUN_REAPER_SECOND", "DAILY_EXEMPT_RESET", "STRANDED_VIOLATION_CHECK"]);
 const DAILY_EXEMPT_RESET_KEY = "DAILY_EXEMPT_RESET";
 const SINGLE_KEYS = new Set([
@@ -254,6 +256,10 @@ export default function AdminScheduleManagerPage() {
           title: "ARO 渗透（窗口 + 轮询秒）",
           rows: rangeRows.filter((r) => PLATFORM_POLL_KEYS.has(r.jobKey)),
         },
+        {
+          title: "大屏排行榜刷新（窗口 + 轮询秒）",
+          rows: rangeRows.filter((r) => RANKING_POLL_KEYS.has(r.jobKey)),
+        },
       ].filter((g) => g.rows.length > 0),
     [rangeRows]
   );
@@ -282,12 +288,12 @@ export default function AdminScheduleManagerPage() {
         scheduleStartTime: row.scheduleStartTime || "07:00",
         scheduleEndTime: row.scheduleEndTime || "22:00",
         weekDays: row.weekDays || "",
-        ...(TELEMETRY_WINCC_POLL_KEYS.has(jobKey) || PLATFORM_POLL_KEYS.has(jobKey)
+        ...(TELEMETRY_WINCC_POLL_KEYS.has(jobKey) || ALL_POLL_KEYS.has(jobKey)
           ? {
               pollIntervalSeconds: Math.max(
                 10,
                 Math.min(
-                  PLATFORM_POLL_KEYS.has(jobKey) ? 86400 : 3600,
+                  ALL_POLL_KEYS.has(jobKey) ? 86400 : 3600,
                   Number(row.pollIntervalSeconds ?? 60)
                 )
               ),
@@ -511,18 +517,18 @@ export default function AdminScheduleManagerPage() {
                               <input type="time" className={inputClass} value={d.scheduleEndTime || "22:00"} onChange={(e) => updateDraft(r.jobKey, { scheduleEndTime: e.target.value })} />
                             </td>
                             <td className="border border-[var(--twin-hairline)] px-2 py-2">
-                              {TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey) || PLATFORM_POLL_KEYS.has(r.jobKey) ? (
+                              {TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey) || ALL_POLL_KEYS.has(r.jobKey) ? (
                                 <input
                                   type="number"
                                   className="w-24 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1"
                                   min={10}
-                                  max={PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600}
+                                  max={ALL_POLL_KEYS.has(r.jobKey) ? 86400 : 3600}
                                   value={d.pollIntervalSeconds ?? 60}
                                   onChange={(e) =>
                                     updateDraft(r.jobKey, {
                                       pollIntervalSeconds: Math.max(
                                         10,
-                                        Math.min(PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600, Number(e.target.value || 60))
+                                        Math.min(ALL_POLL_KEYS.has(r.jobKey) ? 86400 : 3600, Number(e.target.value || 60))
                                       ),
                                     })
                                   }
@@ -941,8 +947,8 @@ function normalizeScheduleRow(r: ScheduleJobRow): ScheduleJobRow {
     scheduleStartTime: normalizeTime(r.scheduleStartTime, "07:00"),
     scheduleEndTime: normalizeTime(r.scheduleEndTime, "22:00"),
     pollIntervalSeconds:
-      TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey) || PLATFORM_POLL_KEYS.has(r.jobKey)
-        ? Math.max(10, Math.min(PLATFORM_POLL_KEYS.has(r.jobKey) ? 86400 : 3600, Number(r.pollIntervalSeconds ?? 60)))
+      TELEMETRY_WINCC_POLL_KEYS.has(r.jobKey) || ALL_POLL_KEYS.has(r.jobKey)
+        ? Math.max(10, Math.min(ALL_POLL_KEYS.has(r.jobKey) ? 86400 : 3600, Number(r.pollIntervalSeconds ?? 60)))
         : r.pollIntervalSeconds,
   };
 }

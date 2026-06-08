@@ -206,16 +206,28 @@ export default function DashboardPage() {
             <div ref={dashRef} className="w-full h-full min-h-0 grid grid-cols-[25fr,50fr,25fr] gap-[20px] relative z-10">
 
                 {/* 左侧 25% */}
-                {/* 💥 修复 2：疯狂扒掉所有的 overflow-hidden 紧箍咒！ */}
                 <div className="flex min-h-0 flex-col gap-[15px]">
                     <div className="flex min-h-0 flex-[6] dash-card">
                         <GlassCard blobColor="rgba(52,199,89,0.3)">
                             <TimelineWaterfall />
                         </GlassCard>
                     </div>
-                    <div className="flex min-h-0 flex-[4] dash-card">
-                        <GlassCard blobColor="rgba(45,92,247,0.3)">
-                            <NestedPieChart />
+                    <div className="flex min-h-0 flex-[2.5] dash-card">
+                        <GlassCard blobColor="rgba(124,58,237,0.15)">
+                            <DashboardHeatmapChart
+                                data={heatmapData ?? []}
+                                loading={isHeatmapLoading}
+                                groupName={activeGroup ? `${activeGroup} · ${timeRange === "week" ? "本周" : "本月"}` : undefined}
+                            />
+                        </GlassCard>
+                    </div>
+                    <div className="flex min-h-0 flex-[1.5] dash-card">
+                        <GlassCard blobColor="rgba(236,72,153,0.12)">
+                            <RoomPreferenceChart
+                                data={roomUsageData ?? []}
+                                loading={isRoomLoading}
+                                groupName={activeGroup ? `${activeGroup} · ${timeRange === "week" ? "本周" : "本月"}` : undefined}
+                            />
                         </GlassCard>
                     </div>
                 </div>
@@ -265,22 +277,9 @@ export default function DashboardPage() {
                             <UnifiedRankingCard />
                         </GlassCard>
                     </div>
-                    <div className="flex min-h-0 flex-[2.5] dash-card">
-                        <GlassCard blobColor="rgba(124,58,237,0.15)">
-                            <DashboardHeatmapChart
-                                data={heatmapData ?? []}
-                                loading={isHeatmapLoading}
-                                groupName={activeGroup ? `${activeGroup} · ${timeRange === "week" ? "本周" : "本月"}` : undefined}
-                            />
-                        </GlassCard>
-                    </div>
-                    <div className="flex min-h-0 flex-[1.5] dash-card">
-                        <GlassCard blobColor="rgba(236,72,153,0.12)">
-                            <RoomPreferenceChart
-                                data={roomUsageData ?? []}
-                                loading={isRoomLoading}
-                                groupName={activeGroup ? `${activeGroup} · ${timeRange === "week" ? "本周" : "本月"}` : undefined}
-                            />
+                    <div className="flex min-h-0 flex-[4] dash-card">
+                        <GlassCard blobColor="rgba(45,92,247,0.3)">
+                            <NestedPieChart />
                         </GlassCard>
                     </div>
                 </div>

@@ -130,13 +130,8 @@ public class TwinMappingController {
     }
 
     @GetMapping("/access-rule-scan-linkage-config")
-    @Operation(summary = "读取扫码时是否执行门禁规则（大华下发/回收）全局开关")
-    public Result<?> getAccessRuleScanLinkageConfig(
-            @RequestHeader(value = "Authorization", required = false) String authorization) {
-        Result<?> denied = requireSenior(authorization);
-        if (denied != null) {
-            return denied;
-        }
+    @Operation(summary = "读取扫码时是否执行门禁规则（大华下发/回收）全局开关（所有已登录用户可读）")
+    public Result<?> getAccessRuleScanLinkageConfig() {
         return Result.success(accessRuleScanConfigService.getConfigMap());
     }
 
@@ -154,10 +149,11 @@ public class TwinMappingController {
         boolean exitDispatch = parseBoolBody(body, "exitDispatchEnabled", true);
         boolean enterUnfreeze = parseBoolBody(body, "enterUnfreezeEnabled", true);
         boolean exitFreeze = parseBoolBody(body, "exitFreezeEnabled", true);
+        boolean swipeExitSkipConfirm = parseBoolBody(body, "swipeExitSkipConfirm", false);
         Map<String, Object> saved = accessRuleScanConfigService.saveConfig(
-                enterDispatch, exitDispatch, enterUnfreeze, exitFreeze, user.getId());
-        log.info("[twin] access-rule-scan-linkage-config updated by userId={} enterDispatch={} exitDispatch={} enterUnfreeze={} exitFreeze={}",
-                user.getId(), enterDispatch, exitDispatch, enterUnfreeze, exitFreeze);
+                enterDispatch, exitDispatch, enterUnfreeze, exitFreeze, swipeExitSkipConfirm, user.getId());
+        log.info("[twin] access-rule-scan-linkage-config updated by userId={} enterDispatch={} exitDispatch={} enterUnfreeze={} exitFreeze={} swipeExitSkipConfirm={}",
+                user.getId(), enterDispatch, exitDispatch, enterUnfreeze, exitFreeze, swipeExitSkipConfirm);
         return Result.success(saved);
     }
 

@@ -16,6 +16,7 @@ import com.example.demo.modules.twin.dashboard.service.TwinPredictionEngineServi
 import com.example.demo.modules.twin.rpg.service.RpgEngineService;
 import com.example.demo.modules.telemetry.service.TelemetryArchiveService;
 import com.example.demo.modules.telemetry.service.TelemetrySnapshotService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -69,6 +70,10 @@ public class JobExecutionRegistry {
     /** 笼架·特殊状态全量扫描（每周一次，数万笼位级） */
     public static final String JOB_CAGE_SPECIAL_STATUS_SCAN = "CAGE_SPECIAL_STATUS_SCAN";
     public static final String JOB_STRANDED_VIOLATION_CHECK = "STRANDED_VIOLATION_CHECK";
+    /** 大屏排行榜·进出活跃度刷新（根据 pollIntervalSeconds 向大屏 WebSocket 推送刷新信号） */
+    public static final String JOB_DASHBOARD_RANKING_ACTIVITY = "DASHBOARD_RANKING_ACTIVITY";
+    /** 大屏排行榜·动物消耗刷新（同上） */
+    public static final String JOB_DASHBOARD_RANKING_ANIMAL = "DASHBOARD_RANKING_ANIMAL";
 
     private static final Set<String> DEPRECATED_JOB_KEYS =
             Set.of(
@@ -104,6 +109,8 @@ public class JobExecutionRegistry {
     private final AnalyticsPipelineHook analyticsPipelineHook;
     private final CageSpecialStatusScanService cageSpecialStatusScanService;
     private final com.example.demo.modules.twin.dashboard.service.StrandedViolationService strandedViolationService;
+    @Autowired(required = false)
+    private com.corundumstudio.socketio.SocketIOServer socketServer;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
     public JobExecutionRegistry(
@@ -178,6 +185,8 @@ public class JobExecutionRegistry {
         jobs.put(JOB_ACCESS_CLEAN_PACKAGE_DAILY, "门禁统计·自动入库总库（每日到点，仅增量）");
         jobs.put(JOB_TELEMETRY_ARCHIVE_PURGE, "温湿度·WinCC归档自动清理");
         jobs.put(JOB_CAGE_SPECIAL_STATUS_SCAN, "笼架·特殊状态全量扫描（每周）");
+        jobs.put(JOB_DASHBOARD_RANKING_ACTIVITY, "大屏·进出活跃排行榜刷新");
+        jobs.put(JOB_DASHBOARD_RANKING_ANIMAL, "大屏·动物消耗排行榜刷新");
         return jobs;
     }
 
@@ -324,6 +333,13 @@ public class JobExecutionRegistry {
                     int cws = cagesWithStatus instanceof Number n ? n.intValue() : 0;
                     yield JobRunOutcome.ok(jobKey,
                             "全量笼架特殊状态扫描完成，发现 " + cws + " 个特殊状态笼位", result);
+                }
+                case JOB_DASHBOARD_RANKING_ACTIVITY, JOB_DASHBOARD_RANKING_ANIMAL -> {
+                    if (socketServer != null) {
+                        socketServer.getBroadcastOperations().sendEvent("DASHBOARD_RANKING_REFRESH",
+                                Map.of("jobKey", jobKey, "at", java.time.LocalDateTime.now().toString()));
+                    }
+                    yield JobRunOutcome.ok(jobKey, "排行榜刷新信号已广播");
                 }
                 default -> throw new IllegalArgumentException("不支持的任务: " + jobKey);
             };

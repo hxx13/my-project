@@ -180,7 +180,7 @@ export default function LoginPage() {
     const from = st?.from?.pathname;
     const fromFull =
       from && from !== "/login" ? `${from}${st?.from?.search || ""}${st?.from?.hash || ""}` : null;
-    const r = authStorage.getRole() || "STUDENT";
+    const r = authStorage.getRole() || "";
     try {
       const to = await resolvePostLoginTarget({
         role: r,

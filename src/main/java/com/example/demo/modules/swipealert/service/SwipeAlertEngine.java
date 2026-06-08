@@ -51,14 +51,27 @@ public class SwipeAlertEngine {
     @Autowired(required = false)
     private com.example.demo.modules.twin.common.mapper.TwinDashboardMapper personnelMapper;
 
-    /** ARO status lookup — optional, may timeout */
+    /** Activation state lookup — checks if user has been activated for any toggle door */
     @Autowired(required = false)
-    private com.example.demo.modules.aro.service.AroService aroService;
+    private com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper dahuaSwingMapper;
 
-    /** In-memory sliding windows: ruleId -> deque of event timestamps (epoch ms). */
-    private final Map<Long, Deque<Long>> windowMap = new ConcurrentHashMap<>();
+    // ---- Fixed-window state: anchored to the FIRST failure in each window ----
+    private static class FixedWindow {
+        final long windowStart; // epoch ms
+        int count;
+        boolean fired;
 
-    /** Cooldown: ruleId -> last fire timestamp (epoch ms). */
+        FixedWindow(long windowStart, int count) {
+            this.windowStart = windowStart;
+            this.count = count;
+            this.fired = false;
+        }
+    }
+
+    /** ruleId -> current fixed window (null = no active window, next failure starts one) */
+    private final Map<Long, FixedWindow> windowStateMap = new ConcurrentHashMap<>();
+
+    /** Cooldown: ruleId -> last fire timestamp (epoch ms). Prevents back-to-back alerts. */
     private final Map<Long, Long> lastFireMap = new ConcurrentHashMap<>();
 
     /** Dedup: recordId -> processTime. Prevents same record triggering alerts on re-pull. */
@@ -100,6 +113,11 @@ public class SwipeAlertEngine {
                     (client, data, ackRequest) -> {
                         String alertId = (String) data.get("alertId");
                         String userId = (String) data.get("userId");
+                        // Reset engine cooldown+window so acknowledged batch won't re-trigger
+                        Object rawRuleId = data.get("ruleId");
+                        if (rawRuleId instanceof Number n) {
+                            acknowledgeAlert(alertId, n.longValue());
+                        }
                         Map<String, Object> dismiss = new LinkedHashMap<>();
                         dismiss.put("alertId", alertId);
                         dismiss.put("dismissedBy", userId);
@@ -163,34 +181,36 @@ public class SwipeAlertEngine {
                 continue;
             }
 
-            // ---- sliding window ----
-            Deque<Long> timestamps = windowMap.computeIfAbsent(
-                    rule.getId(), k -> new ArrayDeque<>());
-            long windowStart = now - windowSec * 1000L;
-            while (!timestamps.isEmpty() && timestamps.peekFirst() < windowStart) {
-                timestamps.pollFirst();
-            }
-            timestamps.addLast(now);
+            long windowMs = windowSec * 1000L;
+            Long ruleId = rule.getId();
 
-            // ---- threshold check ----
-            if (timestamps.size() < thresholdCount) continue;
-
-            // ---- cooldown check ----
-            Integer cooldownSec = rule.getCooldownSec();
-            if (cooldownSec != null && cooldownSec > 0) {
-                Long lastFire = lastFireMap.get(rule.getId());
-                if (lastFire != null && (now - lastFire) < cooldownSec * 1000L) {
-                    continue;
+            // ---- fixed window: anchored to the FIRST failure in this window ----
+            FixedWindow w = windowStateMap.compute(ruleId, (k, prev) -> {
+                if (prev == null || now > prev.windowStart + windowMs) {
+                    // No active window, or previous window expired → start new one
+                    return new FixedWindow(now, 1);
                 }
+                // Still within the same window → accumulate
+                prev.count++;
+                return prev;
+            });
+
+            // ---- threshold + fire (at most once per window) ----
+            if (w.count >= thresholdCount && !w.fired) {
+                // Cooldown check (additional safety gap between alerts)
+                Integer cooldownSec = rule.getCooldownSec();
+                if (cooldownSec != null && cooldownSec > 0) {
+                    Long lastFire = lastFireMap.get(ruleId);
+                    if (lastFire != null && (now - lastFire) < cooldownSec * 1000L) {
+                        continue;
+                    }
+                }
+                w.fired = true;
+                lastFireMap.put(ruleId, now);
+
+                Map<String, Object> alert = buildAlert(rule, w.count, record);
+                fireAlert(alert);
             }
-            lastFireMap.put(rule.getId(), now);
-
-            // ---- build & fire alert ----
-            Map<String, Object> alert = buildAlert(rule, timestamps.size(), record);
-            fireAlert(alert);
-
-            // Clear window after firing so old timestamps don't re-trigger after cooldown
-            timestamps.clear();
         }
     }
 
@@ -298,17 +318,21 @@ public class SwipeAlertEngine {
                     personCode = Objects.toString(p.get("job_number"), "");
                     userId = Objects.toString(p.get("user_id"), "");
 
-                    // Query ARO current status
-                    if (aroService != null && !userId.isBlank()) {
+                    // Barrier status: check if user has activated any toggle door
+                    // Enter + activated → inside barrier; Enter + not activated → outside; Exit → always outside
+                    if (dahuaSwingMapper != null && !userId.isBlank()) {
                         try {
-                            List<?> noLeaveRooms = aroService.getNoLeaveRoom(userId);
-                            if (noLeaveRooms != null && !noLeaveRooms.isEmpty()) {
-                                aroStatus = "INSIDE";
-                            } else {
+                            Integer enterOrExit = record.getEnterOrExit();
+                            if (enterOrExit != null && enterOrExit == 2) {
+                                // Leaving → always outside barrier
                                 aroStatus = "OUTSIDE";
+                            } else {
+                                // Entering → check activation state
+                                int activatedCount = dahuaSwingMapper.countActivatedStatesForUser(0L, userId);
+                                aroStatus = activatedCount > 0 ? "INSIDE" : "OUTSIDE";
                             }
                         } catch (Exception e) {
-                            log.debug("[swipe-alert] ARO status lookup failed for userId={}: {}",
+                            log.debug("[swipe-alert] activation lookup failed for userId={}: {}",
                                     userId, e.getMessage());
                             aroStatus = "UNKNOWN";
                         }
@@ -375,6 +399,24 @@ public class SwipeAlertEngine {
         alert.put("matchedRecords", Collections.singletonList(recordSnap));
 
         return alert;
+    }
+
+    // =========================================================================
+    // ACK — admin acknowledged an alert
+    // =========================================================================
+
+    /**
+     * Called when an admin clicks "已读" on a swipe-failure alert.
+     * Resets the cooldown timer and clears the sliding window for the rule
+     * so that only failures occurring AFTER the acknowledgement count toward
+     * the next alert.
+     */
+    public void acknowledgeAlert(String alertId, Long ruleId) {
+        if (ruleId == null) return;
+        long now = System.currentTimeMillis();
+        lastFireMap.put(ruleId, now);              // extend cooldown
+        windowStateMap.remove(ruleId);             // discard current window → next failure starts fresh
+        log.info("[swipe-alert] ack reset: alertId={} ruleId={} cooldown+window cleared", alertId, ruleId);
     }
 
     // =========================================================================

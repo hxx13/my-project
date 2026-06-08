@@ -74,6 +74,12 @@ public class TwinApiController {
     @Autowired
     private PersonnelAvatarProxyService personnelAvatarProxyService;
 
+    @Autowired
+    private com.example.demo.modules.twin.common.service.JobSchedulerService jobSchedulerService;
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     /**
      * 同源代理 ARO 人员头像。优先使用 {@code /h/{base64}}，避免超长 query。
      */
@@ -193,6 +199,111 @@ public class TwinApiController {
             @RequestParam(defaultValue = "TODAY") String timeType,
             @RequestParam(defaultValue = "TOTAL") String region) {
         return Result.success(new ListMapDataResponseDTO(dashboardService.getGroupRanking(timeType, region)));
+    }
+
+    /**
+     * ⏱ 大屏排行榜轮询间隔配置（公开接口，供前端读取定时管理中的 pollIntervalSeconds）
+     */
+    @GetMapping("/ranking-poll-config")
+    public Result<Map<String, Object>> getRankingPollConfig() {
+        Map<String, Object> config = new HashMap<>();
+        config.put("activityIntervalSeconds",
+                jobSchedulerService.getRankingPollIntervalSeconds(
+                        com.example.demo.modules.twin.common.service.JobExecutionRegistry.JOB_DASHBOARD_RANKING_ACTIVITY, 300));
+        config.put("animalIntervalSeconds",
+                jobSchedulerService.getRankingPollIntervalSeconds(
+                        com.example.demo.modules.twin.common.service.JobExecutionRegistry.JOB_DASHBOARD_RANKING_ANIMAL, 1800));
+        return Result.success(config);
+    }
+
+    // ============================================================
+    // 📸 排行榜趋势快照（每次刷新保存，用于计算 ▲/▼）
+    // ============================================================
+
+    @GetMapping("/ranking-snapshot")
+    public Result<List<Map<String, Object>>> getRankingSnapshot(@RequestParam String key) {
+        try {
+            String json = jdbcTemplate.queryForObject(
+                    "SELECT snapshot_json FROM dashboard_ranking_snapshot WHERE snapshot_key = ?",
+                    String.class, key);
+            if (json == null) return Result.success(List.of());
+            List<Map<String, Object>> list = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+            return Result.success(list);
+        } catch (org.springframework.dao.EmptyResultDataAccessException e) {
+            return Result.success(List.of());
+        } catch (Exception e) {
+            return Result.success(List.of());
+        }
+    }
+
+    @PutMapping("/ranking-snapshot")
+    public Result<Map<String, Object>> saveRankingSnapshot(@RequestParam String key,
+                                                            @RequestBody List<Map<String, Object>> data) {
+        try {
+            String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(data);
+            jdbcTemplate.update(
+                    "INSERT IGNORE INTO dashboard_ranking_snapshot (snapshot_key, snapshot_json) VALUES (?, ?)",
+                    key, json);
+            return Result.success(Map.of("ok", true));
+        } catch (Exception e) {
+            return Result.error("保存快照失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 查缺补漏：确保当天排行榜基线快照存在。若不存在，从原始流水日志溯本清源算出凌晨至今的排名并写入。
+     */
+    @PostMapping("/ranking-snapshot/ensure")
+    public Result<List<Map<String, Object>>> ensureRankingSnapshot(@RequestParam String region) {
+        String today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        String key = "activity:" + region + ":" + today;
+
+        // 已有快照 → 直接返回
+        try {
+            String existing = jdbcTemplate.queryForObject(
+                    "SELECT snapshot_json FROM dashboard_ranking_snapshot WHERE snapshot_key = ?",
+                    String.class, key);
+            if (existing != null) {
+                List<Map<String, Object>> list = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(existing, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+                return Result.success(list);
+            }
+        } catch (org.springframework.dao.EmptyResultDataAccessException ignored) {
+            // 不存在，继续计算
+        } catch (Exception e) {
+            log.warn("[ranking-snapshot] 查询已有快照异常 key={}: {}", key, e.getMessage());
+        }
+
+        // 溯本清源：从当天 00:00:00 的流水日志重新计算排名
+        String startTime = today + " 00:00:00";
+        List<Map<String, Object>> ranking = dashboardService.getGroupRanking("TODAY", region);
+
+        if (ranking.isEmpty()) {
+            return Result.success(List.of());
+        }
+
+        // 写入快照（INSERT IGNORE 防止并发重复写入）
+        try {
+            List<Map<String, Object>> snap = new java.util.ArrayList<>();
+            int rank = 1;
+            for (Map<String, Object> row : ranking) {
+                Map<String, Object> item = new java.util.LinkedHashMap<>();
+                item.put("name", row.get("name"));
+                item.put("value", row.get("value"));
+                item.put("rank", rank++);
+                snap.add(item);
+            }
+            String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(snap);
+            jdbcTemplate.update(
+                    "INSERT IGNORE INTO dashboard_ranking_snapshot (snapshot_key, snapshot_json) VALUES (?, ?)",
+                    key, json);
+            log.info("[ranking-snapshot] 查缺补漏已写入基线 key={} items={}", key, snap.size());
+            return Result.success(snap);
+        } catch (Exception e) {
+            log.error("[ranking-snapshot] 写入基线失败 key={}: {}", key, e.getMessage());
+            return Result.error("写入快照失败: " + e.getMessage());
+        }
     }
 
     /**

@@ -204,10 +204,12 @@ public class DahuaSwingPullService {
                     DahuaSwingRecord existing = dahuaSwingMapper.findRecordByTaskIdAndRecordId(task.getId(), record.getRecordId());
                     boolean alreadyLinkageEligible =
                             existing != null && Integer.valueOf(1).equals(existing.getMappingHit());
+                    boolean isNewRecord = existing == null;
                     dahuaSwingMapper.upsertRecord(record);
                     accessRawEventIngestService.ingestFromSwing(record, "DAHUA_PULL");
-                    // Feed failures to SwipeAlertEngine for Dynamic Island notifications
-                    if (swipeAlertEngine != null) {
+                    // Feed failures to SwipeAlertEngine ONLY for first-time records;
+                    // re-pulled records already went through the engine on their first pull.
+                    if (isNewRecord && swipeAlertEngine != null) {
                         try {
                             com.example.demo.modules.dahua.dto.DahuaRecordDTO dto =
                                     new com.example.demo.modules.dahua.dto.DahuaRecordDTO();

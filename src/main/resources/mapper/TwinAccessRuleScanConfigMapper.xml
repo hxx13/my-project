@@ -8,21 +8,22 @@
         <result column="exit_dispatch_enabled" property="exitDispatchEnabled"/>
         <result column="enter_unfreeze_enabled" property="enterUnfreezeEnabled"/>
         <result column="exit_freeze_enabled" property="exitFreezeEnabled"/>
+        <result column="swipe_exit_skip_confirm" property="swipeExitSkipConfirm"/>
         <result column="updated_by" property="updatedBy"/>
         <result column="updated_at" property="updatedAt"/>
     </resultMap>
 
     <select id="selectById" resultMap="TwinAccessRuleScanConfigMap">
-        SELECT id, enter_dispatch_enabled, exit_dispatch_enabled, enter_unfreeze_enabled, exit_freeze_enabled, updated_by, updated_at
+        SELECT id, enter_dispatch_enabled, exit_dispatch_enabled, enter_unfreeze_enabled, exit_freeze_enabled, swipe_exit_skip_confirm, updated_by, updated_at
         FROM twin_access_rule_scan_config
         WHERE id = #{id}
     </select>
 
     <insert id="insertIgnoreDefault">
         INSERT IGNORE INTO twin_access_rule_scan_config (
-            id, enter_dispatch_enabled, exit_dispatch_enabled, enter_unfreeze_enabled, exit_freeze_enabled, updated_by
+            id, enter_dispatch_enabled, exit_dispatch_enabled, enter_unfreeze_enabled, exit_freeze_enabled, swipe_exit_skip_confirm, updated_by
         )
-        VALUES (#{id}, 1, 1, 1, 1, 'system')
+        VALUES (#{id}, 1, 1, 1, 1, 0, 'system')
     </insert>
 
     <update id="updateConfig">
@@ -31,6 +32,7 @@
             exit_dispatch_enabled = #{exitDispatchEnabled},
             enter_unfreeze_enabled = #{enterUnfreezeEnabled},
             exit_freeze_enabled = #{exitFreezeEnabled},
+            swipe_exit_skip_confirm = #{swipeExitSkipConfirm},
             updated_by = #{updatedBy},
             updated_at = NOW()
         WHERE id = #{id}

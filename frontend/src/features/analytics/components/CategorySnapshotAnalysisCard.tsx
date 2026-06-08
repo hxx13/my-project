@@ -267,7 +267,7 @@ export function CategorySnapshotAnalysisCard({
               ) : (
                 <ChevronRight className="h-3.5 w-3.5" />
               )}
-              {`课题组${isAccessPackage ? (matchedGroups ? "（人员库匹配）" : "（ARO 流水）") : metricUnit}（本期，全部 ${groups.length} 个）`}
+              {`课题组${isAccessPackage ? "（仅学生 · 清洗总库同源）" : metricUnit}（本期，全部 ${groups.length} 个）`}
               {!topGroupsExpanded ? (
                 <span className="font-normal text-neutral-400">（点击展开）</span>
               ) : null}
@@ -517,7 +517,7 @@ function ScopeSummaryCard({
     <div className="flex min-h-[5.5rem] flex-col justify-center rounded-xl border border-neutral-200 bg-neutral-50/90 px-2.5 py-2 text-center shadow-sm">
       <p className="text-[10px] font-medium text-neutral-500">本期规模</p>
       {isAccessPackage && !isCageMetric ? (
-        <p className="mt-0.5 text-[9px] leading-snug text-neutral-400">课题组 · ARO 流水</p>
+        <p className="mt-0.5 text-[9px] leading-snug text-neutral-400">课题组 · 仅学生同源</p>
       ) : null}
       {loading ? (
         <p className="mt-2 text-xs text-neutral-400">加载中…</p>

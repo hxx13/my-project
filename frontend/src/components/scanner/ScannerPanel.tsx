@@ -26,6 +26,7 @@ export default function ScannerPanel() {
     const [executeErrorMessage, setExecuteErrorMessage] = useState('');
     const [swipeWarning, setSwipeWarning] = useState<string | null>(null);
     const [swipeWarningKey, setSwipeWarningKey] = useState(0);
+    const [swipeBlockedUntil, setSwipeBlockedUntil] = useState(0);
     const [lastScannedId, setLastScannedId] = useState('');
     const lastScannedIdRef = useRef('');
 
@@ -96,6 +97,7 @@ export default function ScannerPanel() {
         if (!guard.allow) {
             setSwipeWarning(guard.message);
             setSwipeWarningKey((k) => k + 1);
+            setSwipeBlockedUntil(guard.blockedUntil);
             return;
         }
         lastScannedIdRef.current = hardwareId;
@@ -241,6 +243,7 @@ export default function ScannerPanel() {
                         result={activeResult}
                         swipeWarning={swipeWarning}
                         swipeWarningKey={swipeWarningKey}
+                        swipeBlockedUntil={swipeBlockedUntil}
                         onClose={() => {
                             setStudentBindOpen(false);
                             setActiveResult(null);

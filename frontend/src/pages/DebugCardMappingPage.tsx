@@ -122,6 +122,7 @@ export default function DebugCardMappingPage() {
         exitDispatchEnabled: true,
         enterUnfreezeEnabled: true,
         exitFreezeEnabled: true,
+        swipeExitSkipConfirm: false,
     });
     const [issueAccessPrefill, setIssueAccessPrefill] = useState<DahuaIssueAccessPrefill | null>(null);
     const [issueRuleSelectedKeys, setIssueRuleSelectedKeys] = useState<string[]>([]);
@@ -563,6 +564,7 @@ export default function DebugCardMappingPage() {
                 exitDispatchEnabled: cfg.exitDispatchEnabled !== false,
                 enterUnfreezeEnabled: cfg.enterUnfreezeEnabled !== false,
                 exitFreezeEnabled: cfg.exitFreezeEnabled !== false,
+                swipeExitSkipConfirm: cfg.swipeExitSkipConfirm === true,
             });
         } catch (e) {
             console.error(e);
@@ -580,6 +582,7 @@ export default function DebugCardMappingPage() {
                 exitDispatchEnabled: linkageForm.exitDispatchEnabled,
                 enterUnfreezeEnabled: linkageForm.enterUnfreezeEnabled,
                 exitFreezeEnabled: linkageForm.exitFreezeEnabled,
+                swipeExitSkipConfirm: linkageForm.swipeExitSkipConfirm,
             });
             setScanExitFreezeEnabled(linkageForm.exitFreezeEnabled);
             alert("扫码门禁联动配置已保存");
@@ -1048,6 +1051,22 @@ export default function DebugCardMappingPage() {
                             </div>
                         ) : (
                             <div className="space-y-4 mb-4">
+                                <div>
+                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">确认弹窗</p>
+                                    <div className="space-y-2 bg-amber-50/60 border border-amber-200 rounded-lg p-3">
+                                        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={linkageForm.swipeExitSkipConfirm}
+                                                onChange={(e) => setLinkageForm((p) => ({ ...p, swipeExitSkipConfirm: e.target.checked }))}
+                                            />
+                                            二次刷卡离开跳过确认
+                                        </label>
+                                        <p className="text-[11px] text-slate-500 leading-snug ml-6">
+                                            开启后，已进入状态再次扫码将直接执行离开，不弹出确认对话框。
+                                        </p>
+                                    </div>
+                                </div>
                                 <div>
                                     <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">权限（大华门禁规则）</p>
                                     <div className="space-y-2">

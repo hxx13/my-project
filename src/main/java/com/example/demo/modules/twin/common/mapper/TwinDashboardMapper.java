@@ -69,6 +69,8 @@ public interface TwinDashboardMapper {
 
     List<Map<String, Object>> getMonthlyOrderRanking(@Param("region") String region, @Param("blacklist") java.util.List<String> blacklist, @Param("limit") int limit);
 
+    List<Map<String, Object>> getOrderRankingByTimeRange(@Param("region") String region, @Param("blacklist") java.util.List<String> blacklist, @Param("startTime") String startTime, @Param("endTime") String endTime, @Param("limit") int limit);
+
 
     void saveOrUpdateOrderDetail(
             @Param("itemId") long itemId, @Param("sn") String sn, @Param("areaName") String areaName, @Param("projectName") String projectName, @Param("piName") String piName, @Param("createTime") String createTime,
@@ -78,7 +80,7 @@ public interface TwinDashboardMapper {
 
     Map<String, Object> getResearchGroupInfoByRank(@Param("keyword") String keyword, @Param("offset") int offset);
 
-    Map<String, Object> getResearchGroupRow1Summary(@Param("projectName") String projectName, @Param("piName") String piName);
+    Map<String, Object> getResearchGroupRow1Summary(@Param("projectName") String projectName, @Param("piName") String piName, @Param("weekStart") String weekStart, @Param("lastWeekStart") String lastWeekStart);
 
     List<Map<String, Object>> getResearchGroupDetailLog(@Param("projectName") String projectName, @Param("piName") String piName);
 

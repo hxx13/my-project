@@ -10,6 +10,7 @@ type GroupOrderSummary = {
     projectName?: string;
     piName?: string;
     monthQty?: number;
+    weekQty?: number;
     totalQty?: number;
     maleQty?: number;
     femaleQty?: number;
@@ -186,9 +187,15 @@ export default function DebugOrderPage() {
                                 </div>
                             </td>
 
-                            <td colSpan={2} className="px-4 py-3.5 align-middle text-right border-r border-blue-100">
-                                <div className="flex flex-col items-end mr-4">
-                                    <span className="text-base font-bold text-slate-400">本月新增消耗</span>
+                            <td className="px-4 py-3.5 align-middle text-right border-r border-blue-100">
+                                <div className="flex flex-col items-end mr-3">
+                                    <span className="text-sm font-bold text-slate-400">本周新增消耗</span>
+                                    <span className="text-2xl font-black text-emerald-600">+{summary.weekQty || 0}</span>
+                                </div>
+                            </td>
+                            <td className="px-4 py-3.5 align-middle text-right border-r border-blue-100">
+                                <div className="flex flex-col items-end mr-3">
+                                    <span className="text-sm font-bold text-slate-400">本月新增消耗</span>
                                     <span className="text-2xl font-black text-amber-600">+{summary.monthQty || 0}</span>
                                 </div>
                             </td>

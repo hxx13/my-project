@@ -17,6 +17,8 @@ public class TwinAccessRuleScanConfigRow {
     private Integer enterUnfreezeEnabled;
     /** 1=离开扫码/自动签退时冻结物理卡 */
     private Integer exitFreezeEnabled;
+    /** 1=跳过离开确认弹窗直接签退（0=需弹窗确认） */
+    private Integer swipeExitSkipConfirm;
     private String updatedBy;
     private LocalDateTime updatedAt;
 }

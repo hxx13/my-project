@@ -24,6 +24,9 @@ public class DahuaService {
     @Autowired
     private DahuaAuthService authService; // 💥 引入新基建
 
+    @Autowired(required = false)
+    private com.example.demo.modules.swipealert.service.SwipeAlertEngine swipeAlertEngine;
+
     private final String myCallbackUrl = "http://172.22.161.252:8080/api/event";
 
     private static final Set<String> ALLOWED_OPEN_TYPES = new HashSet<>(Arrays.asList("48", "49", "51", "52"));
@@ -34,9 +37,88 @@ public class DahuaService {
     // =========================================================================
     // 1. 🚀 核心流水线：原样保留！完全没动你的孪生逻辑
     // =========================================================================
+    @SuppressWarnings("unchecked")
     public void processAndBroadcast(String rawPayload) {
-        // ... (此处为您原先 processAndBroadcast 的所有代码，一行未改，为了节约篇幅我折叠了，请您原样粘贴您的逻辑) ...
-        // (注：由于我是在回答，请您直接保留您原始的该方法实现即可)
+        try {
+            Map<String, Object> payload = JSON.parseObject(rawPayload, Map.class);
+            if (payload == null) return;
+
+            // 大华 Webhook 可能包裹在 data / events 下，也可能直接就是单条事件
+            List<Map<String, Object>> events = new ArrayList<>();
+            Object dataObj = payload.get("data");
+            if (dataObj instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> m) events.add((Map<String, Object>) m);
+                }
+            } else if (dataObj instanceof Map<?, ?> m) {
+                events.add((Map<String, Object>) m);
+            }
+            Object eventsObj = payload.get("events");
+            if (eventsObj instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> m) events.add((Map<String, Object>) m);
+                }
+            }
+            // 兜底：payload 本身就是一条事件
+            if (events.isEmpty() && (payload.containsKey("openType") || payload.containsKey("swingTime"))) {
+                events.add(payload);
+            }
+
+            for (Map<String, Object> evt : events) {
+                try {
+                    String recordId = str(evt.get("id"));
+                    String personName = str(evt.get("personName"));
+                    String channelName = str(evt.get("channelName"));
+                    String channelCode = str(evt.get("channelCode"));
+                    Integer openType = intvObj(evt.get("openType"));
+                    Integer enterOrExit = intvObj(evt.get("enterOrExit"));
+                    Integer openResult = intvObj(evt.get("openResult"));
+                    String swingTime = str(evt.get("swingTime"));
+
+                    // ---- 实时馈入告警引擎（Webhook 路径，零延迟） ----
+                    feedSwipeAlertEngine(recordId, personName, channelName, channelCode,
+                            openType, enterOrExit, openResult, swingTime);
+                } catch (Exception e) {
+                    log.debug("[dahua-webhook] 单条事件处理失败: {}", e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[dahua-webhook] 解析 Webhook 失败: {}", e.getMessage());
+        }
+    }
+
+    private static String str(Object o) {
+        return o == null ? "" : String.valueOf(o);
+    }
+
+    private static Integer intvObj(Object o) {
+        if (o instanceof Number n) return n.intValue();
+        if (o instanceof String s && !s.isBlank()) {
+            try { return Integer.parseInt(s.trim()); } catch (NumberFormatException ignored) {}
+        }
+        return null;
+    }
+
+    /** 将 Webhook 路径的刷卡记录喂给告警引擎（与定时拉取路径共享同一引擎） */
+    private void feedSwipeAlertEngine(String recordId, String personName, String channelName,
+                                       String channelCode, Integer openType, Integer enterOrExit,
+                                       Integer openResult, String swingTime) {
+        if (swipeAlertEngine == null) return;
+        try {
+            com.example.demo.modules.dahua.dto.DahuaRecordDTO dto =
+                    new com.example.demo.modules.dahua.dto.DahuaRecordDTO();
+            dto.setId(recordId);
+            dto.setPersonName(personName);
+            dto.setChannelName(channelName);
+            dto.setChannelCode(channelCode);
+            dto.setOpenType(openType);
+            dto.setEnterOrExit(enterOrExit);
+            dto.setOpenResult(openResult);
+            dto.setSwingTime(swingTime);
+            swipeAlertEngine.onSwingRecord(dto);
+        } catch (Exception e) {
+            log.debug("[swipe-alert] webhook feed failed: {}", e.getMessage());
+        }
     }
 
     // =========================================================================

@@ -1,5 +1,6 @@
 import {useState, useRef, useEffect} from 'react';
 import {useNavigate, useLocation} from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {motion, AnimatePresence} from 'framer-motion';
 // 💥 加上 Map as MapIcon
 import {
@@ -11,6 +12,8 @@ import type { AnalyzeResponse, RoomInfo } from '@/api/types/scanner';
 import {UiverseProfilePopup} from '@/components/scanner/UiverseProfilePopup';
 import { StudentDahuaBindPanel } from '@/components/scanner/StudentDahuaBindPanel';
 import { PopupErrorBoundary } from '@/components/scanner/PopupErrorBoundary';
+import { SwipeExitConfirmDialog } from '@/components/scanner/SwipeExitConfirmDialog';
+import { fetchAccessRuleScanLinkageConfig } from '@/api/twinApi';
 import {CreditCard } from 'lucide-react';
 import { authStorage } from '@/features/auth/authStorage';
 import { hasMinRole } from '@/features/auth/roleAccess';
@@ -45,6 +48,17 @@ export default function DebugNav() {
     const lastScannedIdRef = useRef('');
 
     const [activeResult, setActiveResult] = useState<AnalyzeResponse | null>(null);
+
+    // 读取离开确认开关配置（GET 公开可读）
+    const { data: linkageCfg = {} } = useQuery({
+        queryKey: ["access-rule-scan-linkage-config"],
+        queryFn: fetchAccessRuleScanLinkageConfig,
+        staleTime: 60_000,
+    });
+    const swipeExitSkipConfirm = (linkageCfg as any).swipeExitSkipConfirm === true;
+
+    const [autoExitConfirm, setAutoExitConfirm] = useState<ExecutePayload | null>(null);
+
     const [studentBindOpen, setStudentBindOpen] = useState(false);
     const [studentBindTarget, setStudentBindTarget] = useState<{ userId: string; userName: string } | null>(null);
     const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,6 +73,8 @@ export default function DebugNav() {
     // 💥 1. 新增：视觉钢印。用来告诉底下的弹窗，现在是哪个房间在全自动离开
     const [autoActionRoomId, setAutoActionRoomId] = useState<string>('');
     const hasLoggedStampRef = useRef(false);
+    // 仅硬件刷卡/手动扫码/输入回车这三种方式触发的离开需确认弹窗
+    const needsExitConfirmRef = useRef(false);
 
     useEffect(() => {
         if (hasLoggedStampRef.current) return;
@@ -155,11 +171,21 @@ export default function DebugNav() {
         },
     });
 
-    const runExecute = (payload: ExecutePayload) => {
+    const doExecute = (payload: ExecutePayload) => {
         setScanExecutePending(payload.userId);
         executeMutation.mutate(payload, {
             onSettled: () => setScanExecutePending(null),
         });
+    };
+
+    const runExecute = (payload: ExecutePayload) => {
+        // 仅硬件刷卡/手动扫码/输入回车触发的离开受开关控制
+        if (payload.action === 'EXIT' && needsExitConfirmRef.current && !swipeExitSkipConfirm) {
+            setAutoExitConfirm(payload);
+            return;
+        }
+        needsExitConfirmRef.current = false;
+        doExecute(payload);
     };
 
     const handleScanAction = (code: string) => {
@@ -177,6 +203,9 @@ export default function DebugNav() {
         setLastScannedId(cleanValue);
         setErrorMsg('');
         setExecuteErrorMessage('');
+
+        // 三种手动输入方式都需要离开确认弹窗检查
+        needsExitConfirmRef.current = true;
 
         // 💥 打标签：这可是真正的扫码枪滴出来的！放行自动逻辑！
         isHardwareScanRef.current = true;
@@ -306,6 +335,7 @@ export default function DebugNav() {
 
                                 // 💥 关窗时清空视觉钢印
                                 setAutoActionRoomId('');
+                                needsExitConfirmRef.current = false;
                             }}
                             onExecute={(payload) => runExecute(payload)}
                             isWorking={executeMutation.isPending}
@@ -535,6 +565,20 @@ export default function DebugNav() {
                     </motion.div>
                 </motion.div>
             </div>
+
+            {/* 离开确认弹窗：统一拦截所有 EXIT（高于所有弹窗） */}
+            <SwipeExitConfirmDialog
+                open={autoExitConfirm !== null}
+                userName=""
+                roomName=""
+                onConfirm={() => {
+                    if (autoExitConfirm) {
+                        doExecute(autoExitConfirm);
+                    }
+                    setAutoExitConfirm(null);
+                }}
+                onCancel={() => setAutoExitConfirm(null)}
+            />
         </>
     );
 }

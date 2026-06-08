@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, BellOff, Pencil, Plus, Settings2, Share2, Sparkles, Trash2, Upload } from "lucide-react";
+import { Bell, BellOff, Pencil, Plus, Settings2, Share2, Sparkles, Star, Trash2, Upload } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
   deleteAnalyticsView,
@@ -44,6 +44,22 @@ import { cn } from "@/lib/utils";
 import { fetchStatsTasksHealth } from "@/api/domains/dahuaSwingStats.api";
 
 const REPORT_KEY = "isolation_usage";
+const FAV_VIEW_LS_KEY = "analyticsFavoriteViewId_isolation_usage";
+
+function loadFavoriteViewId(): number | null {
+  try {
+    const raw = localStorage.getItem(FAV_VIEW_LS_KEY);
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch { return null; }
+}
+function saveFavoriteViewId(id: number | null) {
+  try {
+    if (id != null) localStorage.setItem(FAV_VIEW_LS_KEY, String(id));
+    else localStorage.removeItem(FAV_VIEW_LS_KEY);
+  } catch { /* noop */ }
+}
 
 function formatPreviewTime(v?: string): string {
   if (!v) return "";
@@ -67,6 +83,10 @@ export function IsolationUsageReportPanel() {
   const [previewing, setPreviewing] = useState(false);
   const [previewResult, setPreviewResult] = useState<IsolationUsageQueryResult | null>(null);
   const [applyingConfig, setApplyingConfig] = useState(false);
+  const [favoriteViewId, setFavoriteViewId] = useState<number | null>(() => {
+    // 从 localStorage 恢复，后续在 views 加载后校验
+    return loadFavoriteViewId();
+  });
 
   const { data: views = [] } = useQuery({
     queryKey: ["analytics", "views", REPORT_KEY],
@@ -79,6 +99,15 @@ export function IsolationUsageReportPanel() {
     refetchInterval: 120_000,
     staleTime: 60_000,
   });
+
+  // 收藏置顶：收藏的配置排最前，其余保持原序
+  const orderedViews = useMemo(() => {
+    if (!favoriteViewId) return views;
+    const fav = views.find((v) => v.id === favoriteViewId);
+    if (!fav) return views;
+    const rest = views.filter((v) => v.id !== favoriteViewId);
+    return [fav, ...rest];
+  }, [views, favoriteViewId]);
 
   const activeView = useMemo(
     () => views.find((v) => v.id === activeViewId) ?? null,
@@ -122,9 +151,20 @@ export function IsolationUsageReportPanel() {
 
   useEffect(() => {
     if (activeViewId == null && views.length > 0) {
+      // 优先选中收藏的配置
+      if (favoriteViewId != null) {
+        const fav = views.find((v) => v.id === favoriteViewId);
+        if (fav) {
+          setActiveViewId(fav.id);
+          return;
+        }
+        // 收藏的配置已不存在，清理
+        setFavoriteViewId(null);
+        saveFavoriteViewId(null);
+      }
       setActiveViewId(views[0].id);
     }
-  }, [views, activeViewId]);
+  }, [views, activeViewId, favoriteViewId]);
 
   useEffect(() => {
     if (activeView) {
@@ -478,7 +518,19 @@ export function IsolationUsageReportPanel() {
               <p className="text-xs text-neutral-400">暂无，请保存配置</p>
             ) : (
               <ul className="space-y-1">
-                {views.map((v) => (
+                {orderedViews.map((v) => {
+                  const isFav = favoriteViewId === v.id;
+                  const toggleFav = () => {
+                    if (isFav) {
+                      setFavoriteViewId(null);
+                      saveFavoriteViewId(null);
+                    } else {
+                      setFavoriteViewId(v.id);
+                      saveFavoriteViewId(v.id);
+                      setActiveViewId(v.id);
+                    }
+                  };
+                  return (
                   <li
                     key={v.id}
                     className={cn(
@@ -490,6 +542,17 @@ export function IsolationUsageReportPanel() {
                           : "border-neutral-200 bg-white"
                     )}
                   >
+                    <button
+                      type="button"
+                      className={cn(
+                        "shrink-0 p-0.5 transition",
+                        isFav ? "text-amber-500" : "text-neutral-300 opacity-0 group-hover:opacity-100"
+                      )}
+                      onClick={(e) => { e.stopPropagation(); toggleFav(); }}
+                      title={isFav ? "取消收藏" : "收藏此配置"}
+                    >
+                      <Star className={cn("h-3.5 w-3.5", isFav ? "fill-amber-400" : "")} />
+                    </button>
                     <button
                       type="button"
                       className="min-w-0 flex-1 truncate text-left font-medium"
@@ -512,7 +575,8 @@ export function IsolationUsageReportPanel() {
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </AdminFormCard>

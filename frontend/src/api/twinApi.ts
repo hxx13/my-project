@@ -167,6 +167,28 @@ export const executeAccess = async (payload: ExecutePayload) => {
     return response.data;
 };
 
+// 📸 排行榜趋势快照（后端存储，重启不丢）
+export const fetchRankingSnapshot = async (key: string): Promise<{ name: string; value: number; rank: number }[]> => {
+    const res = await api.get(`/ranking-snapshot`, { params: { key } });
+    return asArrayData(res.data?.data);
+};
+
+/** 查缺补漏：确保当天基线快照存在（若不存在则从原始流水溯本清源计算） */
+export const ensureRankingSnapshot = async (region: string): Promise<{ name: string; value: number; rank: number }[]> => {
+    const res = await api.post(`/ranking-snapshot/ensure`, null, { params: { region } });
+    return asArrayData(res.data?.data);
+};
+
+// ⏱ 排行榜轮询间隔配置（读取定时管理中的 pollIntervalSeconds）
+export const fetchRankingPollConfig = async (): Promise<{ activityIntervalSeconds: number; animalIntervalSeconds: number }> => {
+    const res = await api.get(`/ranking-poll-config`);
+    const data = res.data?.data ?? {};
+    return {
+        activityIntervalSeconds: data.activityIntervalSeconds ?? 300,
+        animalIntervalSeconds: data.animalIntervalSeconds ?? 1800,
+    };
+};
+
 // 🏆 API 1：课题组排行榜数据接口
 export const fetchGroupRanking = async (timeType: 'TODAY' | 'MONTH', region: 'TOTAL' | 'PUDONG' | 'PUXI') => {
     const res = await api.get(`/ranking`, { params: { timeType, region } });
@@ -338,9 +360,9 @@ export const fetchPredictionRoomsByUser = async (userId: string): Promise<Predic
 // 🐭 实验动物订单模块 API
 // =========================================================
 
-// 🏆 课题组动物订购月度排行榜
-export const fetchAnimalOrderRanking = async (region: 'TOTAL' | 'PUDONG' | 'PUXI', limit = 50) => {
-    const response = await authHttp.get(`/v1/twin/order/ranking?region=${region}&limit=${limit}`);
+// 🏆 课题组动物订购排行榜（按周，支持 weekOffset 偏移取上周数据）
+export const fetchAnimalOrderRanking = async (region: 'TOTAL' | 'PUDONG' | 'PUXI', weekOffset = 0, limit = 50) => {
+    const response = await authHttp.get(`/v1/twin/order/ranking`, { params: { region, weekOffset, limit } });
     return asArrayData(response.data?.data);
 };
 
@@ -728,6 +750,7 @@ export interface TwinAccessRuleScanLinkageConfig {
     exitDispatchEnabled?: boolean;
     enterUnfreezeEnabled?: boolean;
     exitFreezeEnabled?: boolean;
+    swipeExitSkipConfirm?: boolean;
     updatedBy?: string | null;
     updatedAt?: string | null;
 }
@@ -742,6 +765,7 @@ export const saveAccessRuleScanLinkageConfig = async (payload: {
     exitDispatchEnabled: boolean;
     enterUnfreezeEnabled: boolean;
     exitFreezeEnabled: boolean;
+    swipeExitSkipConfirm: boolean;
 }) => {
     const res = await authHttp.put('/v1/twin/mappings/access-rule-scan-linkage-config', payload);
     return res.data;

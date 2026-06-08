@@ -5,9 +5,6 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 /** 无「落地页 / 回跳地址」时，按角色与后台页面权限决定默认首页 */
 export async function resolveDefaultPathAfterLogin(role: string): Promise<string> {
   try {
-    if (role === "STUDENT") {
-      return "/student/home";
-    }
     const nodes = await fetchPublicPagePermissions("WEB");
     if (hasMinRole(role, "STAFF") && canAccessWebPage(nodes || [], "/admin", role, "STAFF")) {
       return "/admin";

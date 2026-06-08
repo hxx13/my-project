@@ -38,7 +38,7 @@ export function SnapshotProvenanceInfoButton({ loading, detail, disabled }: Prop
           <DialogHeader>
             <DialogTitle className="text-sm">快照生成时的数据调用</DialogTitle>
             <DialogDescription className="text-xs">
-              清洗总库主口径与 ARO 流水辅助的查询步骤与耗时
+              清洗总库主口径（课题组同源）+ ARO 流水辅助的查询步骤与耗时
             </DialogDescription>
           </DialogHeader>
           <IsolationQueryProvenancePanel

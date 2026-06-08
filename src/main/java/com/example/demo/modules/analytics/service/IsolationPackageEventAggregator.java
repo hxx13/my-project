@@ -35,6 +35,19 @@ public class IsolationPackageEventAggregator {
             long studentEvents,
             long staffEvents,
             String dataSourceLabel) {
+        return aggregate(logs, totalEvents, studentEvents, staffEvents, dataSourceLabel, false);
+    }
+
+    /**
+     * @param studentOnly 为 true 时课题组/uniqueGroups 仅统计 audienceType=STUDENT 的行
+     */
+    public Map<String, Object> aggregate(
+            List<Map<String, Object>> logs,
+            long totalEvents,
+            long studentEvents,
+            long staffEvents,
+            String dataSourceLabel,
+            boolean studentOnly) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (logs == null || logs.isEmpty()) {
             out.put("summary", eventSummary(0, studentEvents, staffEvents, 0, 0, 0, 0, dataSourceLabel));
@@ -74,6 +87,10 @@ public class IsolationPackageEventAggregator {
             }
 
             for (String g : resolveGroups(log)) {
+                // studentOnly 时仅统计 audienceType=STUDENT 的行
+                if (studentOnly && !"STUDENT".equalsIgnoreCase(str(log.get("audienceType")))) {
+                    continue;
+                }
                 GroupAgg ga = groupAgg.computeIfAbsent(g, k -> new GroupAgg());
                 ga.events++;
             }

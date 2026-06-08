@@ -27,14 +27,51 @@ export interface SwipeAlertRecordBrief {
   aroStatus: string;                // INSIDE | OUTSIDE | UNKNOWN
 }
 
+const MAX_ALERTS = 5;
+
 interface SwipeAlertState {
-  activeAlert: SwipeAlertPayload | null;
+  /** Active alerts ordered newest-first (alerts[0] = top of stack) */
+  alerts: SwipeAlertPayload[];
+  /** Alert IDs currently in their leave animation (local or remote dismiss) */
+  dismissingIds: Set<string>;
+  /** Push a new alert to the top of the stack. Dedup by alertId, cap at MAX_ALERTS. */
   showAlert: (alert: SwipeAlertPayload) => void;
-  dismissAlert: () => void;
+  /** Phase 1: mark alert as leaving (triggers leave animation in the UI). */
+  startDismiss: (alertId: string) => void;
+  /** Phase 2: remove alert from the array AND the dismissing set. */
+  finishDismiss: (alertId: string) => void;
 }
 
 export const useSwipeAlertStore = create<SwipeAlertState>((set) => ({
-  activeAlert: null,
-  showAlert: (alert) => set({ activeAlert: alert }),
-  dismissAlert: () => set({ activeAlert: null }),
+  alerts: [],
+  dismissingIds: new Set<string>(),
+
+  showAlert: (alert) =>
+    set((state) => {
+      // Dedup: skip if this alertId is already in the queue
+      if (state.alerts.some((a) => a.alertId === alert.alertId)) {
+        return state;
+      }
+      // Prepend new alert (newest on top), cap at MAX_ALERTS
+      const next = [alert, ...state.alerts].slice(0, MAX_ALERTS);
+      return { alerts: next };
+    }),
+
+  startDismiss: (alertId) =>
+    set((state) => {
+      if (state.dismissingIds.has(alertId)) return state; // already leaving
+      const next = new Set(state.dismissingIds);
+      next.add(alertId);
+      return { dismissingIds: next };
+    }),
+
+  finishDismiss: (alertId) =>
+    set((state) => {
+      const nextDismissing = new Set(state.dismissingIds);
+      nextDismissing.delete(alertId);
+      return {
+        alerts: state.alerts.filter((a) => a.alertId !== alertId),
+        dismissingIds: nextDismissing,
+      };
+    }),
 }));

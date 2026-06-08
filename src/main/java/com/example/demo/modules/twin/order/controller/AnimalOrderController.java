@@ -14,6 +14,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -60,8 +64,13 @@ public class AnimalOrderController {
                 String piName = (String) groupInfo.get("piName");
 
                 // 3. 异步并发查询 (此处简写，可改为 CompletableFuture )：
-                // a. 针对该组计算大屏第一行统计
-                result.setRow1Summary(dashboardMapper.getResearchGroupRow1Summary(projectName, piName));
+                // a. 针对该组计算大屏第一行统计 (本月新增 + 本周vs上周增量)
+                LocalDate thisMonday = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+                LocalDate lastMonday = thisMonday.minusWeeks(1);
+                DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                String weekStart = thisMonday.format(fmt) + " 00:00:00";
+                String lastWeekStart = lastMonday.format(fmt) + " 00:00:00";
+                result.setRow1Summary(dashboardMapper.getResearchGroupRow1Summary(projectName, piName, weekStart, lastWeekStart));
                 // b. 针对该组拉取全量详情源数据流水
                 result.setDetailLogs(dashboardMapper.getResearchGroupDetailLog(projectName, piName));
             } else {
@@ -98,19 +107,28 @@ public class AnimalOrderController {
     }
 
     // ==========================================
-    // 🏆 接口 1 - 大屏排行榜专用 (支持 TOTAL, PUDONG, PUXI + 黑名单)
+    // 🏆 接口 1 - 大屏排行榜专用 (支持 TOTAL, PUDONG, PUXI + 黑名单 + 周偏移)
     // ==========================================
     @GetMapping("/ranking")
-    @Operation(summary = "获取订单排行榜")
+    @Operation(summary = "获取订单排行榜（按周）")
     public Result<ListMapDataResponseDTO> getOrderRanking(@RequestParam(defaultValue = "TOTAL") String region,
-                                                          @RequestParam(defaultValue = "20") int limit) {
+                                                          @RequestParam(defaultValue = "0") int weekOffset,
+                                                          @RequestParam(defaultValue = "50") int limit) {
         // 💥 黑名单配置中心 💥
-        // 你不想让谁上大屏的排行榜，就把他的 课题组名字 或者 PI名字 写进这里！
         java.util.List<String> blacklist = java.util.Arrays.asList(
                 ""
         );
 
-        // 调用带黑名单的 Mapper 查出当前榜单数据
-        return Result.success(new ListMapDataResponseDTO(dashboardMapper.getMonthlyOrderRanking(region, blacklist, limit)));
+        LocalDate today = LocalDate.now();
+        LocalDate thisMonday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate targetMonday = thisMonday.plusWeeks(weekOffset);
+        LocalDate targetNextMonday = targetMonday.plusWeeks(1);
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+        String startTime = targetMonday.format(fmt) + " 00:00:00";
+        String endTime = targetNextMonday.format(fmt) + " 00:00:00";
+
+        return Result.success(new ListMapDataResponseDTO(
+                dashboardMapper.getOrderRankingByTimeRange(region, blacklist, startTime, endTime, limit)));
     }
 }

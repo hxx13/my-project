@@ -74,6 +74,7 @@ import AdminContentHubPage from "@/pages/AdminContentHubPage";
 import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
 import AdminNavManager from "@/features/admin/AdminNavManager";
 import StudentRegisterPage from "@/features/student/pages/student-register";
+import StudentLoginPage from "@/features/student/pages/student-login";
 import StudentLayout from "@/features/student/components/layout/student-layout";
 import StudentHomePage from "@/features/student/pages/student-home";
 import StudentRecordsPage from "@/features/student/pages/student-records";
@@ -95,6 +96,7 @@ export const router = createHashRouter([
     },
     // 学生端公开路由
     { path: "/student/register", element: <StudentRegisterPage /> },
+    { path: "/student/login", element: <StudentLoginPage /> },
     // 学生端受保护路由
     {
         path: "/student",

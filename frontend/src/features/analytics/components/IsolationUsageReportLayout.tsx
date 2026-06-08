@@ -60,7 +60,7 @@ export function IsolationUsageReportLayout({ report, fromSnapshot, periodLabel }
         </p>
       ) : null}
 
-      {chartData.length > 0 && report.summary?.dataSource !== "access_package" ? (
+      {chartData.length > 0 ? (
         <AdminFormCard title="课题组人次分布">
           <MeasuredChartBox height={chartHeight}>
               <BarChart layout="vertical" data={chartData} margin={{ top: 4, right: 16, left: 4, bottom: 4 }}>
