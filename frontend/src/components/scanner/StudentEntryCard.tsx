@@ -120,8 +120,8 @@ export function StudentEntryCard({
                     key={`${stat.name}-${i}`}
                     className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.02] border border-white/5"
                   >
-                    {/* Room name — fixed width, left-aligned */}
-                    <span className="text-[9px] text-white/70 w-12 truncate shrink-0 text-left">
+                    {/* Room name — compact, left-aligned */}
+                    <span className="text-[8px] text-white/60 w-10 truncate shrink-0 text-left">
                       {stat.name}
                     </span>
 
@@ -137,9 +137,9 @@ export function StudentEntryCard({
                       </div>
                     </div>
 
-                    {/* Count — fixed width, right-aligned */}
+                    {/* Count — compact, right-aligned */}
                     <span
-                      className={`text-[9px] font-bold w-9 text-right shrink-0 ${
+                      className={`text-[8px] font-bold w-8 text-right shrink-0 ${
                         isFull ? "text-rose-400" : "text-cyan-300"
                       }`}
                     >
@@ -188,12 +188,12 @@ export function StudentEntryCard({
           <div className="absolute bottom-2 right-2 z-20">
             <button
               onClick={() => setPage(2)}
-              className="flex items-center gap-1 px-2 py-1 rounded-3xl
-                         border border-white/5 text-[9px] text-slate-400
-                         hover:bg-white/5 hover:text-white transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-3xl
+                         border border-white/10 text-[11px] text-slate-300
+                         hover:bg-white/10 hover:text-white transition-colors"
             >
               下一页
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
                 <path d="M9 18l6-6-6-6" />
               </svg>
             </button>
@@ -205,11 +205,11 @@ export function StudentEntryCard({
           <div className="absolute bottom-2 left-2 z-20">
             <button
               onClick={() => setPage(1)}
-              className="flex items-center gap-1 px-2 py-1 rounded-3xl
-                         border border-white/5 text-[9px] text-slate-400
-                         hover:bg-white/5 hover:text-white transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-3xl
+                         border border-white/10 text-[11px] text-slate-300
+                         hover:bg-white/10 hover:text-white transition-colors"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
                 <path d="M15 18l-6-6 6-6" />
               </svg>
               上一页
