@@ -348,7 +348,7 @@ export function UnifiedRankingCard() {
                     </div>
                     <div
                       style={{
-                        fontWeight: 400,
+                        fontWeight: 600,
                         fontSize,
                         color: podiumIdx === 0 ? "#b45309" : "#475569",
                         lineHeight: 1.2,
@@ -432,13 +432,13 @@ export function UnifiedRankingCard() {
                     <span
                       style={{
                         width: 130,
-                        fontSize: 14,
+                        fontSize: 13,
                         color: "#334155",
                         textAlign: "left",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
-                        fontWeight: 400,
+                        fontWeight: 600,
                         flexShrink: 0,
                       }}
                       title={item.name}
