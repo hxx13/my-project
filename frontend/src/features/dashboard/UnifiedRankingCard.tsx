@@ -201,37 +201,21 @@ export function UnifiedRankingCard() {
   const trendEl = (trend: RankItem["trend"], trendValue: number) => {
     if (trend === "up") {
       return (
-        <span
-          className="animate-arrow-bounce"
-          style={{
-            fontSize: 14,
-            fontWeight: 900,
-            color: "#16a34a",
-            textShadow: "0 0 6px rgba(22,163,74,0.3)",
-          }}
-        >
-          ▲{trendValue}
+        <span style={{ color: "#16a34a", fontSize: 15, fontWeight: 900 }}>
+          ↑{trendValue}
         </span>
       );
     }
     if (trend === "down") {
       return (
-        <span
-          className="animate-arrow-bounce"
-          style={{
-            fontSize: 14,
-            fontWeight: 900,
-            color: "#dc2626",
-            textShadow: "0 0 6px rgba(220,38,38,0.3)",
-          }}
-        >
-          ▼{trendValue}
+        <span style={{ color: "#dc2626", fontSize: 15, fontWeight: 900 }}>
+          ↓{trendValue}
         </span>
       );
     }
     return (
-      <span style={{ fontSize: 14, fontWeight: 900, color: "#94a3b8" }}>
-        ▬
+      <span style={{ color: "#94a3b8", fontSize: 15, fontWeight: 900 }}>
+        −
       </span>
     );
   };
