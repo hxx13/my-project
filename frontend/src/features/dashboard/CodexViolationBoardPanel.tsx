@@ -46,11 +46,11 @@ export function CodexViolationBoardPanel({
 
   useVerticalAutoScroll(ref, {
     enabled: active && hasItems,
-    pauseStartMs: 10000,
-    pauseEndMs: 10000,
+    pauseStartMs: 30000,
+    pauseEndMs: 30000,
     msPerPx: 60,
     roundTrips: 3,
-    fallbackTimeoutMs: 5000,
+    fallbackTimeoutMs: 30000,
     onCycleComplete,
     resetKey: `${generation}-${items.length}-${items.map((i) => i.id).join(",")}`,
     mode: "cycle",

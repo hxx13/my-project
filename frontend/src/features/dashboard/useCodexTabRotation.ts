@@ -47,12 +47,12 @@ export function useCodexTabRotation(options: {
 
   useEffect(() => {
     if (!violationEnabled || !hasViolations) return;
-    const ms = Math.max(5000, autoRotateSeconds * 1000);
+    const ms = Math.max(300_000, autoRotateSeconds * 1000); // ≥5min, 给 3轮×30s 留足时间
     const id = window.setInterval(() => {
       toggleTab();
     }, ms);
     return () => window.clearInterval(id);
-  }, [violationEnabled, hasViolations, autoRotateSeconds, toggleTab]);
+  }, [violationEnabled, hasViolations, autoRotateSeconds, toggleTab, generation]);
 
   return {
     tab,

@@ -114,6 +114,113 @@ function violationStatusLabel(status: string | undefined): { text: string; hint?
   }
 }
 
+/** 违规文案模板快捷选择 + 保存预设 */
+function ViolationTemplateQuickSelect({
+  onSelect,
+  currentText,
+}: {
+  onSelect: (text: string) => void;
+  currentText: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const { data: templates = [], refetch } = useQuery({
+    queryKey: ["violationTextTemplates"],
+    queryFn: () => import("@/api/domains/violationTextTemplate.api").then((m) => m.listViolationTextTemplates()),
+    staleTime: 30_000,
+  });
+
+  const handleSave = async () => {
+    if (!currentText.trim()) return;
+    setSaving(true);
+    try {
+      const { createViolationTextTemplate } = await import("@/api/domains/violationTextTemplate.api");
+      await createViolationTextTemplate(saveName || `模板 ${templates.length + 1}`, currentText, 0);
+      await refetch();
+      setSaveName("");
+      toast.success("模板已保存");
+    } catch { toast.error("保存失败"); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      const { deleteViolationTextTemplate } = await import("@/api/domains/violationTextTemplate.api");
+      await deleteViolationTextTemplate(id);
+      await refetch();
+      toast.success("模板已删除");
+    } catch { toast.error("删除失败"); }
+  };
+
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  return (
+    <div className="relative flex items-center gap-1" ref={ref}>
+      <button
+        type="button"
+        className="text-[11px] font-medium text-blue-600 hover:text-blue-800 transition-colors"
+        onClick={() => setOpen(!open)}
+      >
+        📋 选择模板 {templates.length > 0 ? `(${templates.length})` : ""}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-7 z-50 w-72 rounded-xl border border-neutral-200 bg-white shadow-xl p-2 max-h-[300px] overflow-y-auto">
+          {templates.length === 0 ? (
+            <p className="text-[11px] text-neutral-400 p-2">暂无保存的模板</p>
+          ) : (
+            templates.map((t) => (
+              <div key={t.id} className="flex items-center gap-1 rounded-lg p-1.5 hover:bg-blue-50 transition-colors group">
+                <button
+                  type="button"
+                  className="flex-1 text-left text-xs truncate font-medium text-neutral-700"
+                  title={t.violationText}
+                  onClick={() => { onSelect(t.violationText); setOpen(false); }}
+                >
+                  {t.name}
+                  <span className="block text-[10px] text-neutral-400 truncate">{t.violationText.slice(0, 40)}{t.violationText.length > 40 ? "…" : ""}</span>
+                </button>
+                <button
+                  type="button"
+                  className="shrink-0 text-[10px] text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => handleDelete(t.id)}
+                >
+                  ✕
+                </button>
+              </div>
+            ))
+          )}
+          <div className="mt-2 border-t border-neutral-100 pt-2 flex gap-1">
+            <input
+              className="flex-1 text-[11px] px-2 py-1 rounded border border-neutral-200"
+              placeholder="模板名称（可选）"
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSave(); }}
+            />
+            <button
+              type="button"
+              disabled={saving || !currentText.trim()}
+              className="shrink-0 text-[11px] font-bold px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+              onClick={handleSave}
+            >
+              保存当前
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function parsePageTab(raw: string | null): PageTabId {
   if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert") return raw;
   return "unbound";
@@ -1123,7 +1230,13 @@ export default function AdminStudentViolationsPage() {
           )}
 
           <div>
-            <label className="text-xs font-medium text-[var(--twin-body)]">违规说明</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-[var(--twin-body)]">违规说明</label>
+              <ViolationTemplateQuickSelect
+                onSelect={(text) => setViolationText(text)}
+                currentText={violationText}
+              />
+            </div>
             <textarea
               className={cn(inputBase, "mt-1.5 min-h-[100px] resize-y")}
               value={violationText}
@@ -1244,9 +1357,15 @@ export default function AdminStudentViolationsPage() {
 
               {/* Violation text template */}
               <div>
-                <label className="text-xs font-medium text-[var(--twin-body)]">
-                  违规文案模板
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-[var(--twin-body)]">
+                    违规文案模板
+                  </label>
+                  <ViolationTemplateQuickSelect
+                    onSelect={(text) => setStrandedViolationTpl(text)}
+                    currentText={strandedViolationTpl}
+                  />
+                </div>
                 <textarea
                   className={cn(inputBase, "mt-1.5 min-h-[60px] resize-y")}
                   value={strandedViolationTpl}
@@ -1585,7 +1704,13 @@ export default function AdminStudentViolationsPage() {
             </div>
             <div className="space-y-3 px-5 py-4">
               <div>
-                <label className="text-xs font-medium text-[var(--twin-body)]">违规说明</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-[var(--twin-body)]">违规说明</label>
+                  <ViolationTemplateQuickSelect
+                    onSelect={(text) => setEditText(text)}
+                    currentText={editText}
+                  />
+                </div>
                 <textarea
                   className={cn(inputBase, "mt-1.5 min-h-[88px] resize-y")}
                   value={editText}

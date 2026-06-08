@@ -118,7 +118,7 @@ export function StudentEntryCard({
                 return (
                   <div
                     key={`${stat.name}-${i}`}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.02] border border-white/5"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.02] border border-white/5 w-4/5 mx-auto"
                   >
                     {/* Room name — compact, left-aligned */}
                     <span className="text-[8px] text-white/60 w-10 truncate shrink-0 text-left">
@@ -152,7 +152,7 @@ export function StudentEntryCard({
           </div>
         ) : (
           /* ---- Page 2: Action Buttons ---- */
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 w-4/5 mx-auto">
             {actions.map((action, i) => (
               <button
                 key={i}
