@@ -3,6 +3,9 @@ import type { AuthUserInfo } from "@/api/domains/auth.api";
 const TOKEN_KEY = "auth_token";
 const ROLE_KEY = "auth_role";
 const USER_INFO_KEY = "auth_user_info";
+const PREV_TOKEN_KEY = "auth_prev_token";
+const PREV_ROLE_KEY = "auth_prev_role";
+const PREV_USER_INFO_KEY = "auth_prev_user_info";
 const MOCK_JWT_PREFIX = "jwt_mock_token_";
 
 /** 登录或自助改昵称后写入 userInfo，供头部等订阅刷新 */
@@ -77,5 +80,52 @@ export const authStorage = {
     if (!t.startsWith(MOCK_JWT_PREFIX)) return null;
     const id = t.slice(MOCK_JWT_PREFIX.length).trim();
     return id.length > 0 ? id : null;
+  },
+
+  /**
+   * 特殊通道进入学生中心前，保存当前登录态为"上一会话"。
+   * 用于返回扫码页时恢复教职工身份，避免角色泄露或被迫重新登录。
+   */
+  savePreviousSession() {
+    const token = this.getToken();
+    if (!token) return; // 无当前会话则跳过
+    localStorage.setItem(PREV_TOKEN_KEY, token);
+    localStorage.setItem(PREV_ROLE_KEY, this.getRole());
+    const raw = localStorage.getItem(USER_INFO_KEY);
+    if (raw) localStorage.setItem(PREV_USER_INFO_KEY, raw);
+  },
+
+  /** 是否存在已保存的上一会话 */
+  hasPreviousSession(): boolean {
+    return Boolean(localStorage.getItem(PREV_TOKEN_KEY));
+  },
+
+  /**
+   * 从学生中心返回扫码页时调用：恢复上一会话身份。
+   * @returns true=已恢复上一会话，false=无上一会话（调用方需自行清理跳转）
+   */
+  restorePreviousSession(): boolean {
+    const prevToken = localStorage.getItem(PREV_TOKEN_KEY);
+    if (!prevToken) {
+      this.clear();
+      return false;
+    }
+    const prevRole = localStorage.getItem(PREV_ROLE_KEY) ?? "";
+    let prevUserInfo = null;
+    try {
+      const raw = localStorage.getItem(PREV_USER_INFO_KEY);
+      if (raw) prevUserInfo = JSON.parse(raw);
+    } catch { /* ignore */ }
+
+    this.setAuth(prevToken, prevRole, prevUserInfo as AuthUserInfo | null);
+    this.clearPreviousSession();
+    return true;
+  },
+
+  /** 清除已保存的上一会话（不修改当前登录态） */
+  clearPreviousSession() {
+    localStorage.removeItem(PREV_TOKEN_KEY);
+    localStorage.removeItem(PREV_ROLE_KEY);
+    localStorage.removeItem(PREV_USER_INFO_KEY);
   },
 };

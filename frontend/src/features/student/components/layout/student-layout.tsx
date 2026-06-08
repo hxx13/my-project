@@ -25,7 +25,9 @@ export default function StudentLayout() {
     timeoutMs: IDLE_TIMEOUT_MS,
     warningMs: IDLE_WARNING_MS,
     onTimeout: () => {
-      authStorage.clear();
+      // 优先恢复上一会话（教职工操作员身份），其次清空跳转
+      const restored = authStorage.restorePreviousSession();
+      if (!restored) authStorage.clear();
       navigate("/");
     },
   });

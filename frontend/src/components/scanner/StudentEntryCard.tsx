@@ -69,7 +69,7 @@ export function StudentEntryCard({
   ];
 
   return (
-    <div className="w-full flex flex-col rounded-2xl bg-[#0b0c10] border border-white/5 shadow-2xl overflow-hidden relative">
+    <div className="w-full flex-1 min-h-0 flex flex-col rounded-2xl bg-[#0b0c10] border border-white/5 shadow-2xl overflow-hidden relative">
       {/* Left glow effect */}
       <div className="absolute top-1/2 -translate-y-1/2 -left-10 w-16 h-1/2 bg-purple-500 blur-[60px] opacity-10 pointer-events-none" />
 

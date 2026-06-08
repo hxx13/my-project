@@ -125,6 +125,9 @@ export function UiverseProfilePopup(props: PopupProps) {
     };
 
     const handleKeypadSuccess = (authData: { token: string; role: string; userInfo: unknown }) => {
+      // 进入学生中心前保存当前终端操作员的登录态，
+      // 以便学生点击"返回扫码页"时恢复教职工身份，避免角色泄露或被迫重新登录。
+      authStorage.savePreviousSession();
       authStorage.setAuth(authData.token, authData.role, authData.userInfo as Parameters<typeof authStorage.setAuth>[2]);
       setShowKeypad(null);
       onClose();

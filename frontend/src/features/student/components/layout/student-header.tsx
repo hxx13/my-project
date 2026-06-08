@@ -73,12 +73,21 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
 
       {/* Right side */}
       <div className="flex items-center gap-2">
-        {/* Return to scanner */}
+        {/* Return to scanner — restore previous session (staff operator) if exists,
+               otherwise clear and go to login. Prevents role leakage: a staff member
+               scanning a student then entering student center should return as staff,
+               not as the student. */}
         <button
           type="button"
           onClick={() => {
-            authStorage.clear();
-            navigate("/");
+            const restored = authStorage.restorePreviousSession();
+            if (restored) {
+              navigate("/");
+            } else {
+              // 无上一会话（学生直连场景）：清空跳转首页，由 AuthGuard 重定向到登录
+              authStorage.clear();
+              navigate("/");
+            }
           }}
           className="inline-flex items-center gap-1 h-8 px-3 rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-xs text-[var(--student-mute)] hover:text-[var(--student-ink)] hover:bg-[var(--student-canvas-soft)] transition-colors"
         >
