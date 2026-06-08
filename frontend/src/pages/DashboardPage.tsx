@@ -65,10 +65,27 @@ export default function DashboardPage() {
       return { startTime: fmt(monday), endTime: fmt(sunday) };
     }, []);
 
+    // 本月起止时间
+    const thisMonthRange = useMemo(() => {
+      const now = new Date();
+      const first = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      const last = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      const fmt = (d: Date) => {
+        const y = d.getFullYear();
+        const mo = String(d.getMonth() + 1).padStart(2, "0");
+        const da = String(d.getDate()).padStart(2, "0");
+        const h = String(d.getHours()).padStart(2, "0");
+        const mi = String(d.getMinutes()).padStart(2, "0");
+        const s = String(d.getSeconds()).padStart(2, "0");
+        return `${y}-${mo}-${da} ${h}:${mi}:${s}`;
+      };
+      return { startTime: fmt(first), endTime: fmt(last) };
+    }, []);
+
     // ---- 实时 WebSocket 事件 ----
     const realtimeEvents = useEventStore((s) => s.realtimeEvents);
 
-    // 最新进入的人的课题组（直接计算，放在查询之前避免 TDZ）
+    // 最新进入的人的课题组
     const activeGroup = useMemo(() => {
       const now = new Date();
       const d = now.getDay();
@@ -83,22 +100,33 @@ export default function DashboardPage() {
       return latestEnter?.person?.group ?? "";
     }, [realtimeEvents]);
 
+    // 本周/本月自动切换（10s 轮换）
+    const [timeRange, setTimeRange] = useState<"week" | "month">("week");
+    useEffect(() => {
+      const timer = setInterval(() => {
+        setTimeRange((prev) => (prev === "week" ? "month" : "week"));
+      }, 10_000);
+      return () => clearInterval(timer);
+    }, []);
+
+    const activeTimeRange = timeRange === "week" ? thisWeekRange : thisMonthRange;
+
     const { data: heatmapData, isLoading: isHeatmapLoading } = useQuery({
-        queryKey: ["dashboard", "heatmap", activeGroup, thisWeekRange.startTime, thisWeekRange.endTime],
+        queryKey: ["dashboard", "heatmap", activeGroup, activeTimeRange.startTime, activeTimeRange.endTime],
         queryFn: () => fetchStudentActivityHeatmap({
             groupName: activeGroup,
-            startTime: thisWeekRange.startTime,
-            endTime: thisWeekRange.endTime,
+            startTime: activeTimeRange.startTime,
+            endTime: activeTimeRange.endTime,
         }),
         refetchInterval: 300_000,
     });
 
     const { data: roomUsageData, isLoading: isRoomLoading } = useQuery({
-        queryKey: ["dashboard", "roomUsage", activeGroup, thisWeekRange.startTime, thisWeekRange.endTime],
+        queryKey: ["dashboard", "roomUsage", activeGroup, activeTimeRange.startTime, activeTimeRange.endTime],
         queryFn: () => fetchStudentActivityRoomUsage({
             groupName: activeGroup,
-            startTime: thisWeekRange.startTime,
-            endTime: thisWeekRange.endTime,
+            startTime: activeTimeRange.startTime,
+            endTime: activeTimeRange.endTime,
         }),
         refetchInterval: 300_000,
     });
@@ -242,7 +270,7 @@ export default function DashboardPage() {
                             <DashboardHeatmapChart
                                 data={heatmapData ?? []}
                                 loading={isHeatmapLoading}
-                                groupName={activeGroup || undefined}
+                                groupName={activeGroup ? `${activeGroup} · ${timeRange === "week" ? "本周" : "本月"}` : undefined}
                             />
                         </GlassCard>
                     </div>
@@ -251,7 +279,7 @@ export default function DashboardPage() {
                             <RoomPreferenceChart
                                 data={roomUsageData ?? []}
                                 loading={isRoomLoading}
-                                groupName={activeGroup || undefined}
+                                groupName={activeGroup ? `${activeGroup} · ${timeRange === "week" ? "本周" : "本月"}` : undefined}
                             />
                         </GlassCard>
                     </div>

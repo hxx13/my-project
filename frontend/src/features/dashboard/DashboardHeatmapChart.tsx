@@ -62,7 +62,7 @@ export function DashboardHeatmapChart({ data, loading, groupName }: Props) {
   return (
     <div className="h-full w-full flex flex-col overflow-hidden rounded-md border border-purple-100">
       {groupName && (
-        <div className="shrink-0 px-2 py-0.5 text-[8px] font-semibold text-purple-600 bg-purple-50 border-b border-purple-100 text-center">
+        <div className="shrink-0 px-1.5 py-0.5 text-[7px] font-semibold text-purple-600 bg-purple-50 border-b border-purple-100 text-center truncate">
           📌 {groupName}
         </div>
       )}

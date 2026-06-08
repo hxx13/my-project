@@ -101,7 +101,7 @@ export function RoomPreferenceChart({ data, loading, groupName }: Props) {
   return (
     <div className="h-full w-full flex flex-col overflow-hidden rounded-md border border-pink-100">
       {groupName && (
-        <div className="shrink-0 px-2 py-0.5 text-[8px] font-semibold text-pink-600 bg-pink-50 border-b border-pink-100 text-center">
+        <div className="shrink-0 px-1.5 py-0.5 text-[7px] font-semibold text-pink-600 bg-pink-50 border-b border-pink-100 text-center truncate">
           📌 {groupName}
         </div>
       )}
