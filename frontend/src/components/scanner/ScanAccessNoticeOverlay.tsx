@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
+import { Z_INDEX } from "@/constants/zIndex";
 
 type Props = {
     open: boolean;
@@ -56,7 +57,8 @@ export function ScanAccessNoticeOverlay({ open, message, durationMs, onDismiss, 
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    className={`pointer-events-none fixed inset-0 z-[100150] flex items-center justify-center p-6 ${theme.backdrop}`}
+                    className={`pointer-events-none fixed inset-0 flex items-center justify-center p-6 ${theme.backdrop}`}
+                    style={{ zIndex: Z_INDEX.popupNotice }}
                 >
                     <motion.div
                         initial={{ opacity: 0, scale: 0.92, y: 16 }}

@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -14,6 +15,10 @@ import { DisciplinaryModal } from "./components/DisciplinaryModal";
 import { ScanAccessNoticeOverlay } from "./ScanAccessNoticeOverlay";
 import type { PopupProps } from "./components/types";
 import { ScanPopupNoticeCoordinator } from "./ScanPopupNoticeCoordinator";
+import { Z_INDEX } from "@/constants/zIndex";
+import { NumericKeypad } from "@/components/ui/NumericKeypad";
+import { BizOverlayShell } from "./BizOverlayShell";
+import { checkPinStatus } from "./specialChannel.api";
 
 const WeeklyRoutineMatrixChart = ({ predictions, themeColor }: { predictions: any[]; themeColor: string }) => {
     const isPink = themeColor === "#fbb9b6";
@@ -90,6 +95,37 @@ export function UiverseProfilePopup(props: PopupProps & { swipeWarning?: string 
     const themeColor = String(state.user?.gender) === "2" ? "#fbb9b6" : "#2d5cf7";
     const popupMessage = (state.inlineMessage || executeErrorMessage || "").trim();
 
+    // -- Special channel student entry --
+    const navigate = useNavigate();
+    const [showKeypad, setShowKeypad] = useState<"set" | "verify" | null>(null);
+    const [showQuickActions, setShowQuickActions] = useState(false);
+    const [keypadUserId, setKeypadUserId] = useState("");
+    const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
+    const isStudentRole = (() => {
+      const typeNames = String(state.user?.userTypeNames || "").toLowerCase();
+      const className = String(state.user?.userClassName || "").toLowerCase();
+      return typeNames.includes("学生") || className.includes("学生");
+    })();
+
+    const handleEnterStudentCenter = async () => {
+      if (!studentUserId) return;
+      try {
+        const hasPin = await checkPinStatus(studentUserId);
+        setKeypadUserId(studentUserId);
+        setShowKeypad(hasPin ? "verify" : "set");
+      } catch {
+        setKeypadUserId(studentUserId);
+        setShowKeypad("set");
+      }
+    };
+
+    const handleKeypadSuccess = (authData: { token: string; role: string; userInfo: unknown }) => {
+      authStorage.setAuth(authData.token, authData.role, authData.userInfo as Parameters<typeof authStorage.setAuth>[2]);
+      setShowKeypad(null);
+      onClose();
+      navigate("/student/home");
+    };
+
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
@@ -129,7 +165,8 @@ export function UiverseProfilePopup(props: PopupProps & { swipeWarning?: string 
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="fixed inset-0 z-[99999] flex flex-col overflow-hidden bg-[#050A15]/85 backdrop-blur-sm"
+                className="fixed inset-0 flex flex-col overflow-hidden bg-[#050A15]/85 backdrop-blur-sm"
+                style={{ zIndex: Z_INDEX.scannerPopup }}
             >
                 <button className="absolute top-6 right-6 z-[10000] flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white hover:border-red-500 hover:bg-red-500/80" onClick={onClose} title="关闭 Esc">
                     <X className="w-5 h-5" />
@@ -143,6 +180,25 @@ export function UiverseProfilePopup(props: PopupProps & { swipeWarning?: string 
                         当前未绑卡，点我绑定卡
                     </button>
                 ) : null}
+                {/* Student entry buttons */}
+                {isStudentRole && (
+                    <div className="absolute bottom-8 left-1/2 z-[10001] -translate-x-1/2 flex gap-3">
+                        <button
+                            type="button"
+                            className="rounded-xl border border-cyan-400/60 bg-cyan-500/20 px-4 py-2.5 text-center text-[12px] font-bold text-cyan-50 shadow-lg shadow-cyan-900/40 hover:bg-cyan-500/35 transition-colors"
+                            onClick={handleEnterStudentCenter}
+                        >
+                            进入学生中心
+                        </button>
+                        <button
+                            type="button"
+                            className="rounded-xl border border-emerald-400/60 bg-emerald-500/20 px-4 py-2.5 text-center text-[12px] font-bold text-emerald-50 shadow-lg shadow-emerald-900/40 hover:bg-emerald-500/35 transition-colors"
+                            onClick={() => setShowQuickActions(true)}
+                        >
+                            快捷业务
+                        </button>
+                    </div>
+                )}
                 <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-hidden p-10 pb-20">
                     <div className="flex w-full max-w-[min(96vw,1120px)] shrink-0 justify-center px-1 pt-1">
                         <ScanPopupNoticeCoordinator result={result} swipeWarning={swipeWarning} swipeWarningKey={swipeWarningKey} swipeBlockedUntil={swipeBlockedUntil} />
@@ -262,6 +318,24 @@ export function UiverseProfilePopup(props: PopupProps & { swipeWarning?: string 
                     </div>
                 </div>
             </motion.div>
+            {/* Keypad overlay */}
+            {showKeypad && (
+                <NumericKeypad
+                    mode={showKeypad}
+                    userId={keypadUserId}
+                    userName={state.user?.name}
+                    onSuccess={handleKeypadSuccess}
+                    onCancel={() => setShowKeypad(null)}
+                />
+            )}
+            {/* Quick actions overlay */}
+            {showQuickActions && (
+                <BizOverlayShell
+                    userId={studentUserId}
+                    title="快捷业务"
+                    onCancel={() => setShowQuickActions(false)}
+                />
+            )}
         </>,
         document.body
     );

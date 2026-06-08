@@ -18,6 +18,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminPageShell, AdminDataTableWrap } from "@/components/admin/AdminPageShell";
 import { Portal } from "@/components/Portal";
+import { resetStudentPin } from "@/api/domains/specialChannel.api";
 
 const ROLE_OPTIONS = ["STUDENT", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
 const STAFF_CREATE_ROLE_OPTIONS = ["STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN"];
@@ -214,6 +215,16 @@ export default function AdminPersonnelPage() {
         : "确认重置吗？将清空该账号的 openId 绑定。";
     if (!window.confirm(msg)) return;
     resetOpenIdMut.mutate(id);
+  };
+
+  const handleResetPin = async (id: string) => {
+    if (!window.confirm("确认重置该学生的个人密码（PIN）吗？重置后学生需重新设置。")) return;
+    try {
+      await resetStudentPin(id);
+      toast.success("PIN 已重置");
+    } catch (err: any) {
+      toast.error(err?.message || "重置 PIN 失败");
+    }
   };
 
   const handleCreateStaff = () => {
@@ -475,6 +486,9 @@ export default function AdminPersonnelPage() {
               ) : null}
               <th className="px-2 py-2 text-left font-medium">角色</th>
               <th className="px-2 py-2 text-left font-medium">密码</th>
+              {isSuperAdmin ? (
+                <th className="px-2 py-2 text-left font-medium">个人密码</th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -551,6 +565,9 @@ export default function AdminPersonnelPage() {
                     </select>
                   </td>
                   <td className="px-2 py-1.5 align-middle">{renderPasswordCell(row)}</td>
+                  {isSuperAdmin ? (
+                    <td className="px-2 py-1.5 align-middle text-[var(--twin-mute)] text-[11px]">—</td>
+                  ) : null}
                 </tr>
               ))
             ) : (
@@ -593,6 +610,15 @@ export default function AdminPersonnelPage() {
                           <button type="button" className={inkBtn} onClick={() => handleResetOpenId(row.id)}>
                             重置绑定
                           </button>
+                          {isSuperAdmin && (row.role === "STUDENT" || String(row.role).includes("STUDENT")) ? (
+                            <button
+                              type="button"
+                              className={`${inkBtn} border-amber-200 text-amber-700 hover:bg-amber-50`}
+                              onClick={() => handleResetPin(row.id)}
+                            >
+                              重置PIN
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             disabled={
@@ -667,6 +693,9 @@ export default function AdminPersonnelPage() {
                     </select>
                   </td>
                   <td className="px-2 py-1.5 align-middle">{renderPasswordCell(row)}</td>
+                  {isSuperAdmin ? (
+                    <td className="px-2 py-1.5 align-middle text-[var(--twin-mute)] text-[11px]">—</td>
+                  ) : null}
                 </tr>
               ))
             )}
