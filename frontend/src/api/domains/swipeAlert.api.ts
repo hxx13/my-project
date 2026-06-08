@@ -1,5 +1,12 @@
 import { adminHttp } from "@/api/core/adminHttp";
 
+interface Result<T> {
+  code: number;
+  success: boolean;
+  message: string;
+  data: T;
+}
+
 export interface SwipeAlertRuleRow {
   id: number;
   name: string;
@@ -34,17 +41,17 @@ export interface SwipeAlertRuleUpsert {
 }
 
 export async function listSwipeAlertRules(): Promise<SwipeAlertRuleRow[]> {
-  const res = await adminHttp.get<SwipeAlertRuleRow[]>("/swipe-alert/rules");
+  const res = await adminHttp.get<Result<SwipeAlertRuleRow[]>>("/swipe-alert/rules");
   return res.data?.data ?? [];
 }
 
 export async function createSwipeAlertRule(body: SwipeAlertRuleUpsert): Promise<SwipeAlertRuleRow> {
-  const res = await adminHttp.post<SwipeAlertRuleRow>("/swipe-alert/rules", body);
+  const res = await adminHttp.post<Result<SwipeAlertRuleRow>>("/swipe-alert/rules", body);
   return res.data?.data as SwipeAlertRuleRow;
 }
 
 export async function updateSwipeAlertRule(id: number, body: SwipeAlertRuleUpsert): Promise<SwipeAlertRuleRow> {
-  const res = await adminHttp.put<SwipeAlertRuleRow>(`/swipe-alert/rules/${id}`, body);
+  const res = await adminHttp.put<Result<SwipeAlertRuleRow>>(`/swipe-alert/rules/${id}`, body);
   return res.data?.data as SwipeAlertRuleRow;
 }
 
@@ -53,6 +60,6 @@ export async function deleteSwipeAlertRule(id: number): Promise<void> {
 }
 
 export async function toggleSwipeAlertRule(id: number): Promise<SwipeAlertRuleRow> {
-  const res = await adminHttp.patch<SwipeAlertRuleRow>(`/swipe-alert/rules/${id}/toggle`);
+  const res = await adminHttp.patch<Result<SwipeAlertRuleRow>>(`/swipe-alert/rules/${id}/toggle`);
   return res.data?.data as SwipeAlertRuleRow;
 }

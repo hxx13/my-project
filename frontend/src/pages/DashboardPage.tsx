@@ -1,5 +1,5 @@
-import { useRef, useMemo } from "react";
-import { useQuery } from '@tanstack/react-query';
+import { useRef, useMemo, useEffect } from "react";
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -15,7 +15,6 @@ import { UnifiedRankingCard } from '@/features/dashboard/UnifiedRankingCard';
 import { DashboardHeatmapChart } from '@/features/dashboard/DashboardHeatmapChart';
 import { RoomPreferenceChart } from '@/features/dashboard/RoomPreferenceChart';
 import { fetchStudentActivityHeatmap, fetchStudentActivityRoomUsage } from '@/api/domains/analytics.api';
-import type { HeatmapCell, RoomUsageItem } from '@/api/domains/analytics.api';
 import { RetentionRadarStream } from '@/features/realtime-stream/RetentionRadarStream';
 import { RuleCodexCard } from '@/features/dashboard/RuleCodexCard';
 import { SciFiDashboardChrome } from '@/features/dashboard-scifi-theme/SciFiDashboardChrome';
@@ -24,6 +23,7 @@ import { useTwinChromeTheme } from '@/features/twin-chrome/TwinChromeThemeContex
 
 export default function DashboardPage() {
     useEventStore((state) => state.setInitialFeed);
+    const queryClient = useQueryClient();
     const sciFiTheme = useTwinChromeTheme();
     const [activeTab, setActiveTab] = useState<'浦东' | '浦西'>('浦东');
     const dashRef = useRef<HTMLDivElement>(null);
@@ -122,64 +122,22 @@ export default function DashboardPage() {
       });
     }, [realtimeEvents, thisMonday]);
 
-    // activeGroup 已在上方定义，此处不再重复
+    // 有新 ENTER 事件时 → 触发 API 重新拉取（保证数据准确，不手动叠加）
+    const lastEntryIdRef = useRef<string | null>(null);
+    useEffect(() => {
+      const latest = liveEntries[0];
+      if (!latest || latest.eventId === lastEntryIdRef.current) return;
+      lastEntryIdRef.current = latest.eventId;
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "heatmap"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "roomUsage"] });
+    }, [liveEntries, queryClient]);
 
-    // 滤出 activeGroup 的实时 ENTER 事件（只统计同一课题组）
-    const groupLiveEntries = useMemo<UniversalEvent[]>(() => {
-      if (!activeGroup) return [];
-      return liveEntries.filter((evt) => evt.person?.group === activeGroup);
-    }, [liveEntries, activeGroup]);
-
-    // 合并：API 热力图数据（已按 activeGroup 查） + activeGroup 实时增量
-    const mergedHeatmap = useMemo<HeatmapCell[]>(() => {
-      const base = heatmapData ?? [];
-      if (groupLiveEntries.length === 0) return base;
-
-      const map = new Map<string, HeatmapCell>();
-      for (const cell of base) {
-        map.set(`${cell.dayOfWeek}-${cell.hour}`, { ...cell });
-      }
-
-      for (const evt of groupLiveEntries) {
-        const ts = new Date(evt.timestamp);
-        const dayOfWeek = ts.getDay();
-        const hour = ts.getHours();
-        if (hour < 7 || hour > 20) continue;
-        const key = `${dayOfWeek}-${hour}`;
-        const existing = map.get(key);
-        if (existing) {
-          existing.count += 1;
-        } else {
-          map.set(key, { dayOfWeek, hour, count: 1 });
-        }
-      }
-
-      return Array.from(map.values());
-    }, [heatmapData, groupLiveEntries]);
-
-    // 合并：API 房间偏好数据（已按 activeGroup 查） + activeGroup 实时增量
-    const mergedRoomUsage = useMemo<RoomUsageItem[]>(() => {
-      const base = roomUsageData ?? [];
-      if (groupLiveEntries.length === 0) return base;
-
-      const map = new Map<string, RoomUsageItem>();
-      for (const item of base) {
-        map.set(item.roomName, { ...item });
-      }
-
-      for (const evt of groupLiveEntries) {
-        const room = evt.location?.room;
-        if (!room) continue;
-        const existing = map.get(room);
-        if (existing) {
-          existing.entryCount += 1;
-        } else {
-          map.set(room, { roomName: room, entryCount: 1 });
-        }
-      }
-
-      return Array.from(map.values());
-    }, [roomUsageData, groupLiveEntries]);
+    // activeGroup 变化时也触发重新拉取
+    useEffect(() => {
+      if (!activeGroup) return;
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "heatmap"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "roomUsage"] });
+    }, [activeGroup, queryClient]);
 
     return (
         <>
@@ -282,7 +240,7 @@ export default function DashboardPage() {
                     <div className="flex min-h-0 flex-[2] dash-card">
                         <GlassCard blobColor="rgba(124,58,237,0.15)">
                             <DashboardHeatmapChart
-                                data={mergedHeatmap}
+                                data={heatmapData ?? []}
                                 loading={isHeatmapLoading}
                                 groupName={activeGroup || undefined}
                             />
@@ -291,7 +249,7 @@ export default function DashboardPage() {
                     <div className="flex min-h-0 flex-[2] dash-card">
                         <GlassCard blobColor="rgba(236,72,153,0.12)">
                             <RoomPreferenceChart
-                                data={mergedRoomUsage}
+                                data={roomUsageData ?? []}
                                 loading={isRoomLoading}
                                 groupName={activeGroup || undefined}
                             />

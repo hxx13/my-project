@@ -675,7 +675,7 @@ export default function AdminStudentViolationsPage() {
       // Sync timer job enabled state
       try {
         const { updateScheduleJob } = await import("@/api/domains/schedule.api");
-        await updateScheduleJob("STRANDED_VIOLATION_CHECK", { enabled: strandedEnabled ? 1 : 0 });
+        await updateScheduleJob("STRANDED_VIOLATION_CHECK", { enabled: strandedEnabled });
       } catch { /* timer sync is best-effort */ }
       toast.success("自动滞留配置已保存");
       loadStrandedConfig();

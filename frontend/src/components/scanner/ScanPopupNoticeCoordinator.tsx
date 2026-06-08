@@ -99,7 +99,7 @@ export function ScanPopupNoticeCoordinator({ result, swipeWarning, swipeWarningK
           suppressAutoOpen
         />
       ) : null}
-      <RepeatedSwipeWarningBanner message={swipeWarning} triggerKey={swipeWarningKey} />
+      <RepeatedSwipeWarningBanner message={swipeWarning ?? null} triggerKey={swipeWarningKey} />
     </div>
   );
 }
