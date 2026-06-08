@@ -1263,7 +1263,7 @@ export default function AdminStudentViolationsPage() {
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" className="h-4 w-4" checked={strandedForbidEnter}
                     onChange={(e) => setStrandedForbidEnter(e.target.checked)}
-                    disabled={!strandedEnabled} />
+ />
                   禁止扫码进入
                 </label>
                 <div>
@@ -1272,7 +1272,7 @@ export default function AdminStudentViolationsPage() {
                   </label>
                   <input className={cn(inputBase, "mt-1")} type="number" min="1"
                     value={strandedExpireDays} onChange={(e) => setStrandedExpireDays(e.target.value)}
-                    disabled={!strandedEnabled} />
+ />
                 </div>
               </div>
 

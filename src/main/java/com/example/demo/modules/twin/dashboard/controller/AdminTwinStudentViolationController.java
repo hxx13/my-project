@@ -8,9 +8,11 @@ import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.twin.dashboard.dto.UnboundCardNoticeSettingsDTO;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.common.service.TwinPersonnelArchiveQueryService;
+import com.example.demo.modules.twin.dashboard.entity.ViolationTextTemplate;
 import com.example.demo.modules.twin.dashboard.service.StrandedViolationService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationNoticeConfigService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
+import com.example.demo.modules.twin.dashboard.service.ViolationTextTemplateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
@@ -36,6 +38,7 @@ public class AdminTwinStudentViolationController {
     private final AuthContextService authContextService;
     private final UserDisplayNameService userDisplayNameService;
     private final StrandedViolationService strandedViolationService;
+    private final ViolationTextTemplateService templateService;
 
     public AdminTwinStudentViolationController(
             TwinStudentViolationService violationService,
@@ -43,7 +46,8 @@ public class AdminTwinStudentViolationController {
             TwinPersonnelArchiveQueryService personnelArchiveQueryService,
             AuthContextService authContextService,
             UserDisplayNameService userDisplayNameService,
-            StrandedViolationService strandedViolationService
+            StrandedViolationService strandedViolationService,
+            ViolationTextTemplateService templateService
     ) {
         this.violationService = violationService;
         this.unboundNoticeConfigService = unboundNoticeConfigService;
@@ -51,6 +55,7 @@ public class AdminTwinStudentViolationController {
         this.authContextService = authContextService;
         this.userDisplayNameService = userDisplayNameService;
         this.strandedViolationService = strandedViolationService;
+        this.templateService = templateService;
     }
 
     @GetMapping("/unbound-notice-settings")
@@ -354,6 +359,16 @@ public class AdminTwinStudentViolationController {
         return "1".equals(s) || "true".equalsIgnoreCase(s);
     }
 
+    private static int toIntSafe(Object v, int def) {
+        if (v == null) return def;
+        if (v instanceof Number n) return n.intValue();
+        try {
+            return Integer.parseInt(String.valueOf(v));
+        } catch (Exception e) {
+            return def;
+        }
+    }
+
     private String readableError(Throwable throwable) {
         Throwable cur = throwable;
         while (cur.getCause() != null) {
@@ -402,6 +417,79 @@ public class AdminTwinStudentViolationController {
         private String expireMode;
         /** RELATIVE 时：从当前时刻起算的天数 */
         private Integer expireAfterDays;
+    }
+
+    // ---- 违规文案模板预设 ----
+
+    @GetMapping("/text-templates")
+    @Operation(summary = "获取违规文案模板列表")
+    public Result<?> listTextTemplates(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        List<ViolationTextTemplate> list = templateService.listAll();
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        for (ViolationTextTemplate t : list) {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", t.getId());
+            m.put("name", t.getName());
+            m.put("violationText", t.getViolationText());
+            m.put("sortOrder", t.getSortOrder());
+            m.put("createdAt", t.getCreatedAt());
+            m.put("updatedAt", t.getUpdatedAt());
+            out.add(m);
+        }
+        return Result.success(out);
+    }
+
+    @PostMapping("/text-templates")
+    @Operation(summary = "新建违规文案模板")
+    public Result<?> createTextTemplate(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, Object> body
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        String name = body != null ? Objects.toString(body.get("name"), "") : "";
+        String text = body != null ? Objects.toString(body.get("violationText"), "") : "";
+        int sort = toIntSafe(body != null ? body.get("sortOrder") : null, 0);
+        if (text.isBlank()) return Result.error("违规文案不能为空");
+        ViolationTextTemplate t = templateService.create(name, text, sort);
+        return Result.success(Map.of("id", t.getId(), "name", t.getName()));
+    }
+
+    @PutMapping("/text-templates/{id}")
+    @Operation(summary = "更新违规文案模板")
+    public Result<?> updateTextTemplate(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") long id,
+            @RequestBody Map<String, Object> body
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        try {
+            String name = body != null ? Objects.toString(body.get("name"), null) : null;
+            String text = body != null ? Objects.toString(body.get("violationText"), null) : null;
+            Integer sort = body != null && body.get("sortOrder") != null
+                    ? toIntSafe(body.get("sortOrder"), 0) : null;
+            ViolationTextTemplate t = templateService.update(id, name, text, sort);
+            return Result.success(Map.of("id", t.getId(), "name", t.getName()));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/text-templates/{id}")
+    @Operation(summary = "删除违规文案模板")
+    public Result<?> deleteTextTemplate(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") long id
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        boolean ok = templateService.delete(id);
+        return ok ? Result.success() : Result.error("模板不存在");
     }
 
     // ---- 滞留自动违规配置 ----

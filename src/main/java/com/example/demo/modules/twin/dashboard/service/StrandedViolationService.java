@@ -286,7 +286,7 @@ public class StrandedViolationService {
 
         violationService.create(
                 userId, text, null, forbidEnter == 1, null, true,
-                expireDays, "SYSTEM", SOURCE_AUTO_STRANDED);
+                expireDays, "SYSTEM", SOURCE_AUTO_STRANDED, null);
 
         sb.append("已创建违规记录");
         return sb.toString();
