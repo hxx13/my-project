@@ -101,38 +101,66 @@
 
 ## 5. 前端设计
 
-### 5.1 解耦原则（重要）
+### 5.1 组件注册与文件组织（重要）
 
-所有新增组件 **逻辑与样式彻底分离**：
-- 核心逻辑抽为独立 hook（如 `useNumericKeypad`），不包含任何样式
-- UI 组件接受 `className`、`style` props
-- 颜色/间距/圆角等使用 CSS 变量，后续统一设计时替换
-- 组件仅定义语义结构，视觉由独立样式文件控制
-
-### 5.2 NumericKeypad 组件
-
-**文件**: `frontend/src/components/scanner/NumericKeypad.tsx`
-**Hook**: `frontend/src/components/scanner/useNumericKeypad.ts`
+采用 barrel export 模式，组件接口契约与实现分离：
 
 ```
-Props:
-  mode: "set" | "verify"
-  userId: string
-  userName?: string         // 展示用
-  onSuccess: (token, role, userInfo) => void
-  onCancel: () => void
-  className?: string
-
-内部逻辑 (useNumericKeypad):
-  - 输入缓冲: 6-8 位数字
-  - 设置模式: 两次输入比对一致 → POST set-pin → onSuccess
-  - 验证模式: POST login → onSuccess
-  - 错误限制: 3 次失败锁定 30s (客户端计时)
-  - 键盘布局: [1-9] [0] [⌫] 三列网格
-  - Portal 渲染到 document.body，z-index 高于弹窗
+frontend/src/components/scanner/
+├── index.ts                          # barrel 统一导出 — 调用方唯一入口
+├── NumericKeypad.tsx                  # 组件壳 (可替换为开源组件)
+├── useNumericKeypad.ts               # 纯逻辑 hook (与 UI 无关)
+├── NumericKeypad.types.ts            # Props / 事件类型定义
+├── BizOverlayShell.tsx               # 覆盖层容器壳 (可替换)
+├── useBizOverlayShell.ts             # 覆盖层逻辑 hook
+├── BizOverlayShell.types.ts          # Props / 事件类型定义
+├── specialChannel.api.ts             # 特殊通道 API 封装 (check/set/login)
+└── ...已有文件不变
 ```
 
-### 5.3 UiverseProfilePopup 改造
+**调用方只需**:
+```ts
+import { NumericKeypad, BizOverlayShell } from '@/components/scanner';
+```
+
+组件实现内部通过 hook 驱动，壳与逻辑解耦。替换开源组件时：保持 Props 接口不变，只改壳文件。
+
+### 5.2 解耦原则
+
+- **逻辑 hook** — 纯 TS，不引入 JSX，不依赖任何 UI 库。处理状态机、API 调用、错误计数
+- **组件壳** — 仅渲染，从 hook 取值，通过 `className`/`style` 透出样式控制点
+- **类型文件** — 所有 Props 集中定义，组件与 hook 共同引用
+- **API 文件** — 封装 `check-pin-status` / `set-pin` / `login` 三个调用，返回 Promise
+
+### 5.3 NumericKeypad 组件
+
+**类型**: `NumericKeypad.types.ts`
+
+```ts
+interface NumericKeypadProps {
+  mode: "set" | "verify";
+  userId: string;
+  userName?: string;
+  onSuccess: (result: { token: string; role: string; userInfo: AuthUserInfo }) => void;
+  onCancel: () => void;
+  className?: string;
+}
+```
+
+**Hook**: `useNumericKeypad.ts`
+- 输入缓冲管理：追加/删除数字，长度限制 6-8
+- 设置模式：两阶段（输入 → 确认），比对一致后调 `setPin()`，成功回调 onSuccess
+- 验证模式：调 `specialChannelLogin()`，成功回调 onSuccess
+- 错误限制：连续 3 次失败锁定 30s（客户端计时器）
+- 键盘布局约定：`[1,2,3] [4,5,6] [7,8,9] [空,0,退格]` 三列网格
+- Portal 层：z-index 高于弹窗（约定值 100001）
+
+**组件壳**: `NumericKeypad.tsx`
+- 调用 `useNumericKeypad` 获取状态和 handler
+- 渲染数字键盘网格 + 圆点指示器 + 提示文字
+- 所有样式通过 CSS 变量和 className 控制，无硬编码视觉
+
+### 5.4 UiverseProfilePopup 改造
 
 在弹窗底部新增两个操作按钮：
 
@@ -147,29 +175,29 @@ Props:
 
 按钮区域与现有 ActionButtons 并列，通过 prop 控制显示。
 
-### 5.4 BizOverlayShell 覆盖层容器
+### 5.5 BizOverlayShell 覆盖层容器
 
-**文件**: `frontend/src/components/scanner/BizOverlayShell.tsx`
+**类型**: `BizOverlayShell.types.ts`
 
-```
-Props:
-  userId: string
-  title: string
-  children: ReactNode          // 业务内容插槽（后续 agent 填充）
-  onConfirm: (pin: string) => void  // PIN 验证通过后回调
-  onCancel: () => void
-  className?: string
-
-结构:
-  Portal (z=100000，高于弹窗)
-  ├── 遮罩层
-  ├── Header: title + 关闭按钮
-  ├── Body: {children} (预留插槽)
-  └── Footer: 提交按钮 → 点击打开 NumericKeypad(mode="verify")
-       → 验证通过 → onConfirm(pin)
+```ts
+interface BizOverlayShellProps {
+  userId: string;
+  title: string;
+  children: ReactNode;
+  onConfirm: (pin: string) => void;
+  onCancel: () => void;
+  className?: string;
+}
 ```
 
-当前 children 为空，仅渲染占位提示。后续 agent 传入具体业务内容。
+**Hook**: `useBizOverlayShell.ts`
+- 管理覆盖层开/关状态
+- 管理提交确认流：点击提交 → 打开 NumericKeypad(verify) → 验证通过 → onConfirm
+
+**组件壳**: `BizOverlayShell.tsx`
+- Portal (z=100000)，高于弹窗
+- 结构：遮罩层 / Header(title + 关闭) / Body(children 插槽) / Footer(提交按钮)
+- 当前 children 为空时渲染占位提示，后续 agent 注入具体业务内容
 
 ### 5.5 AdminPersonnelPage 改造
 
