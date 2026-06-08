@@ -202,20 +202,20 @@ export function UnifiedRankingCard() {
     if (trend === "up") {
       return (
         <span style={{ color: "#16a34a", fontSize: 14, fontWeight: 900 }}>
-          ↑{trendValue}
+          ▲{trendValue}
         </span>
       );
     }
     if (trend === "down") {
       return (
         <span style={{ color: "#dc2626", fontSize: 14, fontWeight: 900 }}>
-          ↓{trendValue}
+          ▼{trendValue}
         </span>
       );
     }
     return (
       <span style={{ color: "#94a3b8", fontSize: 14, fontWeight: 900 }}>
-        →
+        ◆
       </span>
     );
   };
