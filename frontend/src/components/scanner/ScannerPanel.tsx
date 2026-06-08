@@ -12,6 +12,7 @@ import {
 } from '@/components/scanner/scanSessionGuard';
 import { UiverseProfilePopup } from './UiverseProfilePopup';
 import { StudentDahuaBindPanel } from './StudentDahuaBindPanel';
+import { RepeatedSwipeWarningBanner } from './RepeatedSwipeWarningBanner';
 import { AnimatePresence } from 'framer-motion';
 
 const toHalfWidth = (value: string) =>
@@ -241,9 +242,6 @@ export default function ScannerPanel() {
                 {activeResult && (
                     <UiverseProfilePopup
                         result={activeResult}
-                        swipeWarning={swipeWarning}
-                        swipeWarningKey={swipeWarningKey}
-                        swipeBlockedUntil={swipeBlockedUntil}
                         onClose={() => {
                             setStudentBindOpen(false);
                             setActiveResult(null);
@@ -274,6 +272,10 @@ export default function ScannerPanel() {
                     />
                 )}
             </AnimatePresence>
+            {/* 重复刷卡警告 — 独立于 Popup 渲染，使用自己的 createPortal(document.body)。
+                 原先在 ScanPopupNoticeCoordinator 内部，被 violation/unbound/announcement
+                 的 return-null 守卫截断，导致无违规/公告时警告弹窗永远不显示。 */}
+            <RepeatedSwipeWarningBanner message={swipeWarning} triggerKey={swipeWarningKey} blockedUntil={swipeBlockedUntil} />
             {studentBindOpen && studentBindTarget ? (
                 <StudentDahuaBindPanel
                     userId={studentBindTarget.userId}
