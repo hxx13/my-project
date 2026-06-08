@@ -23,6 +23,8 @@ export interface StudentViolationRow {
   updatedAt?: string;
   clearedAt?: string | null;
   clearedByUserId?: string | null;
+  /** 交互式确认短语；null 表示普通公告 */
+  interactiveChallenge?: string | null;
 }
 
 export interface CreateStudentViolationPayload {
@@ -102,6 +104,8 @@ export interface UpdateStudentViolationPayload {
   /** KEEP | CLEAR | RELATIVE */
   expireMode: "KEEP" | "CLEAR" | "RELATIVE";
   expireAfterDays: number | null;
+  /** 交互式确认短语；传 null 或空串=关闭，传非空=开启 */
+  interactiveChallenge?: string | null;
 }
 
 export async function updateStudentViolation(id: number, body: UpdateStudentViolationPayload) {

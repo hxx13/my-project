@@ -129,6 +129,7 @@
             forbid_enter = #{forbidEnter},
             max_enter_success = #{maxEnterSuccess},
             show_notice_every_scan = #{showNoticeEveryScan},
+            interactive_challenge = #{interactiveChallenge},
             expire_at = #{expireAt},
             updated_at = NOW()
         WHERE id = #{id}

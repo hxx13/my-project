@@ -279,6 +279,7 @@ export default function AdminStudentViolationsPage() {
   const [editShowEvery, setEditShowEvery] = useState(true);
   const [editExpireMode, setEditExpireMode] = useState<"KEEP" | "CLEAR" | "RELATIVE">("KEEP");
   const [editExpireDays, setEditExpireDays] = useState("");
+  const [editInteractiveChallenge, setEditInteractiveChallenge] = useState("");
   const [editUploading, setEditUploading] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [unboundEnabled, setUnboundEnabled] = useState(true);
@@ -652,6 +653,7 @@ export default function AdminStudentViolationsPage() {
     setEditShowEvery(r.showNoticeEveryScan !== 0);
     setEditExpireMode("KEEP");
     setEditExpireDays("");
+    setEditInteractiveChallenge(r.interactiveChallenge || "");
     setEditOpen(true);
   };
 
@@ -704,6 +706,7 @@ export default function AdminStudentViolationsPage() {
         showNoticeEveryScan: editShowEvery,
         expireMode: editExpireMode,
         expireAfterDays: editExpireMode === "RELATIVE" ? editExpireDaysParsed : null,
+        interactiveChallenge: editInteractiveChallenge.trim() || null,
       });
       toast.success("已保存修改");
       setEditOpen(false);
@@ -766,6 +769,13 @@ export default function AdminStudentViolationsPage() {
     } catch { /* ignore */ }
     finally { setStrandedConfigLoading(false); }
   };
+
+  // 交互式确认开启时，强制锁定禁止进入
+  useEffect(() => {
+    if (interactiveChallengeEnabled) {
+      setStrandedForbidEnter(true);
+    }
+  }, [interactiveChallengeEnabled]);
 
   const saveStrandedConfig = async () => {
     setStrandedConfigSaving(true);
@@ -1379,11 +1389,13 @@ export default function AdminStudentViolationsPage() {
 
               {/* Forbid enter + expire */}
               <div className="grid grid-cols-2 gap-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" className="h-4 w-4" checked={strandedForbidEnter}
-                    onChange={(e) => setStrandedForbidEnter(e.target.checked)}
+                <label className={`flex items-center gap-2 text-sm ${interactiveChallengeEnabled ? "text-amber-700" : ""}`}>
+                  <input type="checkbox" className="h-4 w-4"
+                    checked={interactiveChallengeEnabled || strandedForbidEnter}
+                    disabled={interactiveChallengeEnabled}
+                    onChange={(e) => { if (!interactiveChallengeEnabled) setStrandedForbidEnter(e.target.checked); }}
  />
-                  禁止扫码进入
+                  {interactiveChallengeEnabled ? "🔒 禁止扫码进入（交互式确认要求）" : "禁止扫码进入"}
                 </label>
                 <div>
                   <label className="text-xs font-medium text-[var(--twin-body)]">
@@ -1767,6 +1779,20 @@ export default function AdminStudentViolationsPage() {
                 />
                 每次扫码都提示违规内容
               </label>
+              <div>
+                <label className="text-xs font-medium text-[var(--twin-body)]">
+                  🧩 交互式确认短语（留空=关闭）
+                </label>
+                <input
+                  className={cn(inputBase, "mt-1")}
+                  value={editInteractiveChallenge}
+                  onChange={(e) => setEditInteractiveChallenge(e.target.value)}
+                  placeholder="如：一人一卡,严禁尾随"
+                />
+                <p className="mt-0.5 text-[10px] text-neutral-400">
+                  非空时扫码弹窗显示文字拼图，违规人员必须按顺序点击完成后方可关闭
+                </p>
+              </div>
               <div>
                 <label className="text-xs font-medium text-[var(--twin-body)]">进入次数上限（留空=不限制）</label>
                 <input className={cn(inputBase, "mt-1")} inputMode="numeric" value={editMax} onChange={(e) => setEditMax(e.target.value)} />

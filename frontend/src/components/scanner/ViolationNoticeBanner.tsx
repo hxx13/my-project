@@ -189,7 +189,7 @@ export function ViolationNoticeBanner({
 
   return (
     <>
-      <div className="flex min-w-[min(148px,30vw)] flex-1 basis-0 justify-center">
+      <div className="flex min-w-[min(148px,30vw)] max-w-[420px] flex-1 basis-0 justify-center">
         <button
           type="button"
           onClick={() => (panelOpen ? closePanel() : openPanel())}

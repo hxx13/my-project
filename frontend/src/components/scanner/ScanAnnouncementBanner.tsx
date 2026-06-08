@@ -105,11 +105,11 @@ export function ScanAnnouncementBanner({
 
   return (
     <>
-      <div className="flex min-w-[min(148px,30vw)] flex-1 basis-0 justify-center">
+      <div className="flex min-w-[min(148px,30vw)] max-w-[420px] flex-1 basis-0 justify-center">
         <button
           type="button"
           onClick={() => setPanelOpen(!panelOpen)}
-          className="group flex w-full min-w-0 items-center gap-2 rounded-[999px] border border-violet-500/45 bg-gradient-to-r from-black/75 via-violet-950/40 to-black/75 px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-transform active:scale-[0.98] sm:gap-2.5 sm:px-4 sm:py-2.5"
+          className="group flex w-full min-w-0 max-w-[420px] items-center gap-2 rounded-[999px] border border-violet-500/45 bg-gradient-to-r from-black/75 via-violet-950/40 to-black/75 px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-transform active:scale-[0.98] sm:gap-2.5 sm:px-4 sm:py-2.5"
         >
           <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-500/20 ring-1 ring-violet-400/40">
             <Megaphone className="h-4 w-4 text-violet-300" />

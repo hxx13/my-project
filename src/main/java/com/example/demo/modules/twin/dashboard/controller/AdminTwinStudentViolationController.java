@@ -136,7 +136,8 @@ public class AdminTwinStudentViolationController {
                     maxEnter,
                     body.getShowNoticeEveryScan() == null || Boolean.TRUE.equals(body.getShowNoticeEveryScan()),
                     body.getExpireMode(),
-                    body.getExpireAfterDays()
+                    body.getExpireAfterDays(),
+                    body.getInteractiveChallenge()
             );
             return Result.success(toRow(row, null));
         } catch (IllegalArgumentException e) {
@@ -417,6 +418,8 @@ public class AdminTwinStudentViolationController {
         private String expireMode;
         /** RELATIVE 时：从当前时刻起算的天数 */
         private Integer expireAfterDays;
+        /** 交互式确认短语；null 或空串=关闭 */
+        private String interactiveChallenge;
     }
 
     // ---- 违规文案模板预设 ----

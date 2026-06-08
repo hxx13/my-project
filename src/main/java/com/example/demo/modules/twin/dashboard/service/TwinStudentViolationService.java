@@ -454,7 +454,8 @@ public class TwinStudentViolationService {
             Integer maxEnterSuccess,
             boolean showNoticeEveryScan,
             String expireMode,
-            Integer expireAfterDays
+            Integer expireAfterDays,
+            String interactiveChallenge
     ) {
         if (violationTableAbsent.get()) {
             throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
@@ -473,6 +474,7 @@ public class TwinStudentViolationService {
         row.setForbidEnter(forbidEnter ? 1 : 0);
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
+        row.setInteractiveChallenge(interactiveChallenge);
         String mode = expireMode != null ? expireMode.trim().toUpperCase() : "KEEP";
         if ("CLEAR".equals(mode)) {
             row.setExpireAt(null);

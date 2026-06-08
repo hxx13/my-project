@@ -231,6 +231,8 @@ public class StrandedViolationService {
         int expireDays = toInt(config.get("expire_after_days"), 1);
         List<String> whitelistDepts = parseJsonArray(
                 Objects.toString(config.get("whitelist_depts"), "[]"));
+        boolean interactiveEnabled = Boolean.TRUE.equals(toBool(config.get("interactive_challenge_enabled")));
+        String interactivePhrase = Objects.toString(config.get("interactive_challenge_phrase"), "");
 
         // 检查 ARO 是否仍在内
         List<?> noLeaveRooms = aroService.getNoLeaveRoom(userId);
@@ -286,7 +288,8 @@ public class StrandedViolationService {
 
         violationService.create(
                 userId, text, null, forbidEnter == 1, null, true,
-                expireDays, "SYSTEM", SOURCE_AUTO_STRANDED, null);
+                expireDays, "SYSTEM", SOURCE_AUTO_STRANDED,
+                interactiveEnabled && !interactivePhrase.isBlank() ? interactivePhrase : null);
 
         sb.append("已创建违规记录");
         return sb.toString();
