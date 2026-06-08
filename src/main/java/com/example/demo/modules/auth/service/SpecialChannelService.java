@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -62,7 +64,8 @@ public class SpecialChannelService {
 
         // 防竞态：Mapper XML 有 WHERE personal_pin IS NULL 条件
         String pinHash = passwordEncoder.encode(rawPin);
-        String now = Instant.now().toString();
+        // MySQL DATETIME 需要 yyyy-MM-dd HH:mm:ss 格式，不能用 ISO 8601
+        String now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         int updated = aroPersonnelMapper.updatePersonalPin(userId, pinHash, now);
         if (updated == 0) {
             throw TwinBusinessException.of(

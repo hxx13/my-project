@@ -95,14 +95,22 @@ export function UiverseProfilePopup(props: PopupProps & { swipeWarning?: string 
     const themeColor = String(state.user?.gender) === "2" ? "#fbb9b6" : "#2d5cf7";
     const popupMessage = (state.inlineMessage || executeErrorMessage || "").trim();
 
-    // -- Special channel student entry --
+    // ============================================================
+    // 特殊通道学生入口 — 按钮显隐设计决策
+    // ============================================================
+    // 不做角色过滤的原因：
+    //   1. AnalyzeUserInfo 字段为 snake_case（如 user_type_names），
+    //      且不同人员类型的 user_type_names 取值不统一（"学生"/"在校学生"/"研究生"/…）
+    //   2. 后端 PIN API（set-pin / login）第一步就是查 aro_personnel 表，
+    //      不存在的人员直接返回 404。前端替后端做身份判断只是徒增 bug。
+    //   3. 入口按钮只决定"是否展示按钮"，不是安全边界。
+    // 因此：只要刷卡人解析出了 userId（即人员库命中），就展示两个入口按钮。
+    // ============================================================
     const navigate = useNavigate();
     const [showKeypad, setShowKeypad] = useState<"set" | "verify" | null>(null);
     const [showQuickActions, setShowQuickActions] = useState(false);
     const [keypadUserId, setKeypadUserId] = useState("");
     const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
-    // 只要刷卡人有 userId（人员库存在），就展示入口。
-    // PIN 设置/登录的后端 API 会校验 aro_personnel 存在性，前端不过滤。
 
     const handleEnterStudentCenter = async () => {
       if (!studentUserId) return;
