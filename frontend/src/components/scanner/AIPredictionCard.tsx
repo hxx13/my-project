@@ -21,11 +21,15 @@ interface AIPredictionCardProps {
     predictions?: RoomPrediction[];
     isLoading?: boolean;
     themeColor?: string;
+    onQuickActions?: () => void;
+    onEnterStudentCenter?: () => void;
 }
 
 const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                                                                predictions = [],
-                                                               themeColor = "#2d5cf7"
+                                                               themeColor = "#2d5cf7",
+                                                               onQuickActions,
+                                                               onEnterStudentCenter,
                                                            }) => {
     const isPink = themeColor === '#fbb9b6';
 
@@ -310,10 +314,16 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
 
                 <div className="border-t border-white/5 pt-3 flex gap-3">
                     <button
-                        className="flex-1 rounded-lg border border-white/10 bg-transparent px-2 py-1.5 text-xs font-bold text-slate-400 transition-colors duration-300 hover:bg-slate-800 hover:text-white">轨迹画像
+                        onClick={onQuickActions}
+                        className="flex-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 py-1.5 text-xs font-bold text-emerald-400 transition-colors duration-300 hover:bg-emerald-500 hover:text-white"
+                    >
+                        📋 快捷业务
                     </button>
                     <button
-                        className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-bold transition-colors duration-300 ${isPink ? 'border-rose-500/50 bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white' : 'border-blue-500/50 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white'}`}>日程干预
+                        onClick={onEnterStudentCenter}
+                        className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-bold transition-colors duration-300 ${isPink ? 'border-rose-500/50 bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white' : 'border-blue-500/50 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white'}`}
+                    >
+                        🎓 个人中心
                     </button>
                 </div>
             </div>

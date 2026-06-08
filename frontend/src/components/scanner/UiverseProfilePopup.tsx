@@ -240,7 +240,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                             <WeeklyRoutineMatrixChart predictions={state.predictionList} themeColor={themeColor} />
                         </div>
                         <div style={{ transform: "scale(1.1)", transformOrigin: "center center" }} className="w-[500px]">
-                            <AIPredictionCard predictions={state.predictionList} isLoading={state.isPredLoading} themeColor={themeColor} />
+                            <AIPredictionCard predictions={state.predictionList} isLoading={state.isPredLoading} themeColor={themeColor} onQuickActions={() => setShowQuickActions(true)} onEnterStudentCenter={handleEnterStudentCenter} />
                         </div>
                     </div>
                     <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
