@@ -30,4 +30,13 @@ public interface AroPersonnelMapper {
             @Result(property = "id", column = "user_id")
     })
     AroPersonnel findByName(@Param("name") String name);
+
+    @Select("SELECT personal_pin FROM aro_personnel WHERE user_id = #{userId}")
+    String findPersonalPinByUserId(@Param("userId") String userId);
+
+    int updatePersonalPin(@Param("userId") String userId,
+                          @Param("pinHash") String pinHash,
+                          @Param("now") String now);
+
+    int clearPersonalPin(@Param("userId") String userId);
 }

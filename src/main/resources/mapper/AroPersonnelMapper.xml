@@ -45,4 +45,19 @@
         WHERE user_id = #{userId}
     </update>
 
+    <update id="updatePersonalPin">
+        UPDATE aro_personnel
+        SET personal_pin = #{pinHash},
+            pin_updated_at = #{now}
+        WHERE user_id = #{userId}
+          AND personal_pin IS NULL
+    </update>
+
+    <update id="clearPersonalPin">
+        UPDATE aro_personnel
+        SET personal_pin = NULL,
+            pin_updated_at = NULL
+        WHERE user_id = #{userId}
+    </update>
+
 </mapper>
