@@ -50,8 +50,8 @@ export const updateScheduleJob = async (
   jobKey: string,
   payload: {
     enabled: boolean;
-    scheduleType: ScheduleType;
-    scheduleTime: string;
+    scheduleType?: ScheduleType;
+    scheduleTime?: string;
     scheduleStartTime?: string;
     scheduleEndTime?: string;
     weekDays?: string;
