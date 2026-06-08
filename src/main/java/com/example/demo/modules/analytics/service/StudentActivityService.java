@@ -327,6 +327,7 @@ public class StudentActivityService {
 
         Map<String, Integer> grid = new LinkedHashMap<>();
         for (Map<String, Object> log : rawLogs) {
+            if (parseAccessType(log) != 1) continue; // 只统计进入，排除离开
             String ts = String.valueOf(log.getOrDefault("create_time", ""));
             LocalDateTime dt = parseTime(ts);
             if (dt == null) continue;
@@ -395,6 +396,7 @@ public class StudentActivityService {
 
         Map<String, Integer> roomCounts = new LinkedHashMap<>();
         for (Map<String, Object> log : rawLogs) {
+            if (parseAccessType(log) != 1) continue; // 只统计进入，排除离开
             String room = String.valueOf(log.getOrDefault("room_name", ""));
             if (room.isEmpty() || "null".equals(room)) continue;
             roomCounts.merge(room, 1, Integer::sum);

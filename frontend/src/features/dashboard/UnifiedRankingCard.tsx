@@ -114,14 +114,30 @@ export function UnifiedRankingCard() {
   const maxValue =
     rankedList.length > 0 ? Math.max(rankedList[0].value, 1) : 1;
 
-  // ---- Auto-scroll ----
-  // 重置滚动位置（region/tab 切换时）
+  // ---- Coordinated auto-scroll + region/tab rotation ----
+  // Scrolls list from top to bottom, pauses 3s, then advances to next region.
+  // After all 3 regions, switches to the other tab. Cycle:
+  //   Activity TOTAL → PUDONG → PUXI → Animal TOTAL → PUDONG → PUXI → loop
+  const advanceCycle = useCallback(() => {
+    setRegion((prev) => {
+      const idx = REGIONS.indexOf(prev);
+      if (idx < REGIONS.length - 1) {
+        return REGIONS[idx + 1];
+      }
+      // All regions exhausted — switch to next tab, reset to TOTAL
+      setActiveTab((prevTab) => (prevTab === "activity" ? "animal" : "activity"));
+      return "TOTAL";
+    });
+  }, []);
+
+  // Reset scroll position on region/tab change
   useEffect(() => {
     if (scrollBoxRef.current) scrollBoxRef.current.scrollTop = 0;
   }, [region, activeTab]);
 
   useEffect(() => {
-    if (!isAutoPlaying || rest.length <= 3) return;
+    const displayCount = activeTab === "activity" ? rest.length : rankedList.length;
+    if (!isAutoPlaying || displayCount <= 3) return;
     let active = true;
     let raf: number;
     let timeout: ReturnType<typeof setTimeout>;
@@ -129,13 +145,16 @@ export function UnifiedRankingCard() {
     const scrollOneCycle = () => {
       if (!active || !scrollBoxRef.current) return;
       const el = scrollBoxRef.current;
-      // reset to top first
       el.scrollTop = 0;
       const maxScroll = el.scrollHeight - el.clientHeight;
-      if (maxScroll <= 0) return;
+      if (maxScroll <= 0) {
+        // nothing to scroll — brief pause then advance
+        timeout = setTimeout(advanceCycle, 3000);
+        return;
+      }
 
       const start = performance.now();
-      const duration = maxScroll * 60; // slow: 60ms per px for easy reading
+      const duration = maxScroll * 60; // 60ms per px
 
       const animate = (now: number) => {
         if (!active) return;
@@ -145,11 +164,8 @@ export function UnifiedRankingCard() {
         if (progress < 1) {
           raf = requestAnimationFrame(animate);
         } else {
-          // scroll complete — pause 3s then loop
-          timeout = setTimeout(() => {
-            el.scrollTop = 0;
-            scrollOneCycle();
-          }, 3000);
+          // reached bottom — pause 3s then advance region/tab
+          timeout = setTimeout(advanceCycle, 3000);
         }
       };
       raf = requestAnimationFrame(animate);
@@ -162,31 +178,7 @@ export function UnifiedRankingCard() {
       clearTimeout(timeout);
       cancelAnimationFrame(raf);
     };
-  }, [isAutoPlaying, rest.length, region, activeTab]);
-
-  // ---- Tab auto-rotate ----
-  useEffect(() => {
-    if (!isAutoPlaying) return;
-    autoTabTimerRef.current = setInterval(() => {
-      setActiveTab((prev) => (prev === "activity" ? "animal" : "activity"));
-      setRegion("TOTAL"); // reset region when tab switches
-    }, 12000);
-    return () => {
-      if (autoTabTimerRef.current) clearInterval(autoTabTimerRef.current);
-    };
-  }, [isAutoPlaying]);
-
-  // ---- Region auto-rotate (TOTAL → PUDONG → PUXI) ----
-  useEffect(() => {
-    if (!isAutoPlaying) return;
-    const timer = setInterval(() => {
-      setRegion((prev) => {
-        const idx = REGIONS.indexOf(prev);
-        return REGIONS[(idx + 1) % REGIONS.length];
-      });
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [isAutoPlaying, activeTab]);
+  }, [isAutoPlaying, rest.length, rankedList.length, region, activeTab, advanceCycle]);
 
   const handleTabClick = useCallback((tab: TabKey) => {
     setActiveTab(tab);
@@ -352,7 +344,7 @@ export function UnifiedRankingCard() {
                 const item = top3[podiumIdx];
                 if (!item) return null;
                 const colors = podiumColors[podiumIdx];
-                const fontSize = podiumIdx === 0 ? 13 : podiumIdx === 1 ? 12 : 11;
+                const fontSize = podiumIdx === 0 ? 11 : podiumIdx === 1 ? 10 : 9;
                 const numSize = podiumIdx === 0 ? 22 : podiumIdx === 1 ? 18 : 14;
                 return (
                   <div
@@ -456,7 +448,7 @@ export function UnifiedRankingCard() {
                     <span
                       style={{
                         width: 130,
-                        fontSize: 14,
+                        fontSize: 12,
                         color: "#334155",
                         textAlign: "left",
                         overflow: "hidden",
