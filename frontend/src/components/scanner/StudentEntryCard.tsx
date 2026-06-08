@@ -69,11 +69,12 @@ export function StudentEntryCard({
   ];
 
   return (
-    <div className="w-full flex-1 min-h-0 flex flex-col rounded-2xl bg-[#0b0c10] border border-white/5 shadow-2xl overflow-hidden relative">
+    <div className="w-full flex-1 min-h-0 flex flex-col rounded-2xl bg-[#0b0c10] border border-white/5 shadow-2xl relative">
       {/* Left glow effect */}
       <div className="absolute top-1/2 -translate-y-1/2 -left-10 w-16 h-1/2 bg-purple-500 blur-[60px] opacity-10 pointer-events-none" />
 
-      <div className="relative z-10 p-3 flex flex-col gap-2.5">
+      {/* Header — fixed at top */}
+      <div className="relative z-10 shrink-0 px-3 pt-3 pb-1 flex flex-col items-center gap-1.5">
         {/* Page indicator dots */}
         <div className="flex justify-center gap-1">
           {([1, 2] as Page[]).map((p) => (
@@ -89,20 +90,20 @@ export function StudentEntryCard({
         </div>
 
         {/* Icon */}
-        <div className="flex justify-center">
-          <span className="text-2xl">{current.icon}</span>
-        </div>
+        <span className="text-xl">{current.icon}</span>
 
         {/* Title + subtitle */}
         <div className="text-center">
           <h3 className="text-xs font-semibold text-white">{current.title}</h3>
           <p className="text-[9px] text-slate-500 mt-0.5">{current.subtitle}</p>
         </div>
+      </div>
 
-        {/* Page content */}
+      {/* Content — fills remaining space, scrollable */}
+      <div className="relative z-10 flex-1 min-h-0 overflow-y-auto px-3 pb-10 [&::-webkit-scrollbar]:hidden">
         {page === 1 ? (
           /* ---- Page 1: Room Capacity ---- */
-          <div className="flex flex-col gap-1 max-h-[160px] overflow-y-auto [&::-webkit-scrollbar]:hidden">
+          <div className="flex flex-col gap-1.5">
             {roomOverviewFetching && capacityStats.length === 0 && roomOverviewSourceCount === 0 ? (
               <div className="h-8 w-full rounded-lg bg-white/[0.02] border border-white/5 animate-pulse" />
             ) : capacityStats.length === 0 ? (
@@ -117,25 +118,32 @@ export function StudentEntryCard({
                 return (
                   <div
                     key={`${stat.name}-${i}`}
-                    className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/[0.02] border border-white/5"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.02] border border-white/5"
                   >
-                    <span className="text-[9px] text-white/70 w-14 truncate shrink-0">
+                    {/* Room name — fixed width, left-aligned */}
+                    <span className="text-[9px] text-white/70 w-12 truncate shrink-0 text-left">
                       {stat.name}
                     </span>
-                    <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          isFull ? "bg-rose-500" : "bg-cyan-400"
-                        }`}
-                        style={{ width: `${pct}%` }}
-                      />
+
+                    {/* Progress bar — centered, shorter, thicker */}
+                    <div className="flex-1 flex justify-center">
+                      <div className="w-3/5 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            isFull ? "bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.5)]" : "bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.4)]"
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
                     </div>
+
+                    {/* Count — fixed width, right-aligned */}
                     <span
-                      className={`text-[9px] font-bold w-12 text-right shrink-0 ${
+                      className={`text-[9px] font-bold w-9 text-right shrink-0 ${
                         isFull ? "text-rose-400" : "text-cyan-300"
                       }`}
                     >
-                      {isFull ? "满载" : `${stat.count}/${totalSlots}`}
+                      {isFull ? "满载" : stat.count}
                     </span>
                   </div>
                 );
@@ -144,12 +152,12 @@ export function StudentEntryCard({
           </div>
         ) : (
           /* ---- Page 2: Action Buttons ---- */
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1.5">
             {actions.map((action, i) => (
               <button
                 key={i}
                 onClick={action.onClick}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl
+                className="flex items-center gap-2 px-2.5 py-2 rounded-xl
                            bg-[#12141a] border border-white/5
                            hover:bg-[#1a1c23] hover:border-white/10
                            active:scale-[0.98] transition-all text-left group"
@@ -171,25 +179,13 @@ export function StudentEntryCard({
             ))}
           </div>
         )}
+      </div>
 
-        {/* Footer: prev/next */}
-        <div className="flex justify-between items-center">
-          {page === 1 ? (
-            <div />
-          ) : (
-            <button
-              onClick={() => setPage(1)}
-              className="flex items-center gap-1 px-2 py-1 rounded-3xl
-                         border border-white/5 text-[9px] text-slate-400
-                         hover:bg-white/5 hover:text-white transition-colors"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-              上一页
-            </button>
-          )}
-          {page === 1 ? (
+      {/* Footer — prev/next fixed at bottom corners */}
+      {page === 1 ? (
+        <>
+          {/* Page 1: only "下一页" at bottom-right */}
+          <div className="absolute bottom-2 right-2 z-20">
             <button
               onClick={() => setPage(2)}
               className="flex items-center gap-1 px-2 py-1 rounded-3xl
@@ -201,11 +197,26 @@ export function StudentEntryCard({
                 <path d="M9 18l6-6-6-6" />
               </svg>
             </button>
-          ) : (
-            <div />
-          )}
-        </div>
-      </div>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Page 2: "上一页" at bottom-left */}
+          <div className="absolute bottom-2 left-2 z-20">
+            <button
+              onClick={() => setPage(1)}
+              className="flex items-center gap-1 px-2 py-1 rounded-3xl
+                         border border-white/5 text-[9px] text-slate-400
+                         hover:bg-white/5 hover:text-white transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+              上一页
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
