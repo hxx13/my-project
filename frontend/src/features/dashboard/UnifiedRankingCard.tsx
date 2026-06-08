@@ -118,16 +118,19 @@ export function UnifiedRankingCard() {
   // Scrolls list from top to bottom, pauses 3s, then advances to next region.
   // After all 3 regions, switches to the other tab. Cycle:
   //   Activity TOTAL → PUDONG → PUXI → Animal TOTAL → PUDONG → PUXI → loop
+  const regionRef = useRef<Region>(region);
+  regionRef.current = region;
+
   const advanceCycle = useCallback(() => {
-    setRegion((prev) => {
-      const idx = REGIONS.indexOf(prev);
-      if (idx < REGIONS.length - 1) {
-        return REGIONS[idx + 1];
-      }
-      // All regions exhausted — switch to next tab, reset to TOTAL
-      setActiveTab((prevTab) => (prevTab === "activity" ? "animal" : "activity"));
-      return "TOTAL";
-    });
+    const cur = regionRef.current;
+    const idx = REGIONS.indexOf(cur);
+    if (idx < REGIONS.length - 1) {
+      setRegion(REGIONS[idx + 1]);
+    } else {
+      // All regions exhausted — switch tab and reset region
+      setRegion("TOTAL");
+      setActiveTab((prev) => (prev === "activity" ? "animal" : "activity"));
+    }
   }, []);
 
   // Reset scroll position on region/tab change
@@ -345,7 +348,7 @@ export function UnifiedRankingCard() {
                     </div>
                     <div
                       style={{
-                        fontWeight: 800,
+                        fontWeight: 400,
                         fontSize,
                         color: podiumIdx === 0 ? "#b45309" : "#475569",
                         lineHeight: 1.2,
@@ -435,7 +438,7 @@ export function UnifiedRankingCard() {
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
-                        fontWeight: 800,
+                        fontWeight: 400,
                         flexShrink: 0,
                       }}
                       title={item.name}
