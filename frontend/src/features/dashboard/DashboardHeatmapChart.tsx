@@ -66,11 +66,10 @@ export function DashboardHeatmapChart({ data, loading, groupName }: Props) {
           📌 {groupName}
         </div>
       )}
-      <div className="flex-1 flex items-center justify-center">
-      <div style={{ width: "100%", maxWidth: "100%", aspectRatio: "14/8", maxHeight: "100%" }}>
+      <div className="flex-1 overflow-auto p-0.5">
       <table
         className="border-collapse text-[8px]"
-        style={{ width: "100%", height: "100%", tableLayout: "fixed" }}
+        style={{ width: "100%", tableLayout: "fixed" }}
       >
         <colgroup>
           <col style={{ width: "10%" }} />
@@ -141,7 +140,6 @@ export function DashboardHeatmapChart({ data, loading, groupName }: Props) {
           ))}
         </tbody>
       </table>
-      </div>
       </div>
     </div>
   );
