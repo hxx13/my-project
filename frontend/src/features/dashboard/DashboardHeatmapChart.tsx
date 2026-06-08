@@ -55,7 +55,7 @@ export function DashboardHeatmapChart({ data, loading, groupName }: Props) {
         ? `0 0 ${4 + intensity * 10}px rgba(124,58,237,${0.2 + intensity * 0.2})`
         : undefined,
       animation: isPeak ? "cellBreathe 2s ease-in-out infinite" : undefined,
-      fontSize: 7,
+      fontSize: 8,
     };
   };
 
@@ -68,7 +68,7 @@ export function DashboardHeatmapChart({ data, loading, groupName }: Props) {
       )}
       <div className="flex-1 overflow-hidden p-0.5">
       <table
-        className="border-collapse text-[7px]"
+        className="border-collapse text-[8px]"
         style={{ width: "100%", tableLayout: "fixed" }}
       >
         <colgroup>
@@ -81,10 +81,10 @@ export function DashboardHeatmapChart({ data, loading, groupName }: Props) {
           <tr style={{ background: "linear-gradient(180deg, #faf5ff, #f3e8ff)" }}>
             <th
               style={{
-                padding: "1px 2px",
+                padding: "1px 3px",
                 color: "#7c3aed",
                 fontWeight: 600,
-                fontSize: 7,
+                fontSize: 8,
               }}
             >
               📅
@@ -96,7 +96,7 @@ export function DashboardHeatmapChart({ data, loading, groupName }: Props) {
                   padding: "1px",
                   color: "#a78bfa",
                   fontWeight: 400,
-                  fontSize: 7,
+                  fontSize: 8,
                 }}
               >
                 {h}
@@ -109,11 +109,11 @@ export function DashboardHeatmapChart({ data, loading, groupName }: Props) {
             <tr key={dow}>
               <td
                 style={{
-                  padding: "1px 2px",
+                  padding: "1px 3px",
                   fontWeight: 600,
                   color: "#6d28d9",
                   background: "#faf5ff",
-                  fontSize: 7,
+                  fontSize: 8,
                 }}
               >
                 {DAY_LABELS[dow]}
