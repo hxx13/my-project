@@ -101,11 +101,8 @@ export function UiverseProfilePopup(props: PopupProps & { swipeWarning?: string 
     const [showQuickActions, setShowQuickActions] = useState(false);
     const [keypadUserId, setKeypadUserId] = useState("");
     const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
-    // AnalyzeUserInfo uses snake_case: user_type_names
-    const isStudentRole = (() => {
-      const typeNames = String(state.user?.user_type_names || "").toLowerCase();
-      return typeNames.includes("学生");
-    })();
+    // 只要刷卡人有 userId（人员库存在），就展示入口。
+    // PIN 设置/登录的后端 API 会校验 aro_personnel 存在性，前端不过滤。
 
     const handleEnterStudentCenter = async () => {
       if (!studentUserId) return;
@@ -165,7 +162,7 @@ export function UiverseProfilePopup(props: PopupProps & { swipeWarning?: string 
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="fixed inset-0 flex flex-col overflow-hidden bg-[#050A15]/85 backdrop-blur-sm"
+                className="fixed inset-0 flex flex-col bg-[#050A15]/85 backdrop-blur-sm"
                 style={{ zIndex: Z_INDEX.scannerPopup }}
             >
                 <button className="absolute top-6 right-6 z-[10000] flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white hover:border-red-500 hover:bg-red-500/80" onClick={onClose} title="关闭 Esc">
@@ -181,7 +178,7 @@ export function UiverseProfilePopup(props: PopupProps & { swipeWarning?: string 
                     </button>
                 ) : null}
                 {/* Student entry buttons */}
-                {isStudentRole && (
+                {studentUserId && (
                     <div className="absolute bottom-8 left-1/2 z-[10001] -translate-x-1/2 flex gap-3">
                         <button
                             type="button"
