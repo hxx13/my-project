@@ -118,16 +118,16 @@ export function StudentEntryCard({
                 return (
                   <div
                     key={`${stat.name}-${i}`}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white/[0.02] border border-white/5 w-4/5 mx-auto"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/5 w-4/5 mx-auto"
                   >
-                    {/* Room name — compact, left-aligned */}
-                    <span className="text-[8px] text-white/60 w-10 truncate shrink-0 text-left">
+                    {/* Room name */}
+                    <span className="text-[10px] text-white/70 w-12 truncate shrink-0 text-left">
                       {stat.name}
                     </span>
 
-                    {/* Progress bar — centered, shorter, thicker */}
+                    {/* Progress bar */}
                     <div className="flex-1 flex justify-center">
-                      <div className="w-3/5 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                      <div className="w-3/5 h-2 rounded-full bg-white/10 overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
                             isFull ? "bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.5)]" : "bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.4)]"
@@ -137,9 +137,9 @@ export function StudentEntryCard({
                       </div>
                     </div>
 
-                    {/* Count — compact, right-aligned */}
+                    {/* Count */}
                     <span
-                      className={`text-[8px] font-bold w-8 text-right shrink-0 ${
+                      className={`text-[10px] font-bold w-9 text-right shrink-0 ${
                         isFull ? "text-rose-400" : "text-cyan-300"
                       }`}
                     >
