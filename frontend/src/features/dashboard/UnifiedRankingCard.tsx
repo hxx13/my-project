@@ -328,7 +328,7 @@ export function UnifiedRankingCard() {
                 const item = top3[podiumIdx];
                 if (!item) return null;
                 const colors = podiumColors[podiumIdx];
-                const fontSize = podiumIdx === 0 ? 11 : podiumIdx === 1 ? 10 : 9;
+                const fontSize = podiumIdx === 0 ? 10 : podiumIdx === 1 ? 9 : 8;
                 const numSize = podiumIdx === 0 ? 22 : podiumIdx === 1 ? 18 : 14;
                 return (
                   <div
@@ -384,7 +384,7 @@ export function UnifiedRankingCard() {
                         {podiumIdx + 1}
                       </span>
                     </div>
-                    <div style={{ marginTop: 2, fontSize: 10, fontWeight: 700 }}>
+                    <div style={{ marginTop: 2, fontSize: 9, fontWeight: 700 }}>
                       {item.value}{" "}
                       {trendEl(item.trend, item.trendValue)}
                     </div>
