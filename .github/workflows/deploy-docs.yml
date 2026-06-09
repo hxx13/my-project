@@ -3,7 +3,7 @@ name: Deploy Docs
 on:
   push:
     branches:
-      - main
+      - refactor/twin-package-split
     paths:
       - 'docs/**'
       - 'package.json'
