@@ -159,7 +159,12 @@ function cleanMarkdown(md: string, urlMapping: Map<string, PageMapping>): string
   // 5. 清理标题中的多余空格和锚点残留
   md = md.replace(/^#{1,4}\s+#/gm, (m: string) => m.replace(/\s+#/, ' '));
 
-  // 6. 清理多余空行
+  // 6. 替换 base64 图片为占位符（减小文件体积，避免 CI 内存溢出）
+  md = md.replace(/!\[([^\]]*)\]\(data:image\/[^)]+\)/g, (_full: string, alt: string) => {
+    return `> 📷 *${alt || '截图'}*`;
+  });
+
+  // 7. 清理多余空行
   md = md.replace(/\n{4,}/g, '\n\n\n');
 
   return md;
