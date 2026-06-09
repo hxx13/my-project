@@ -33,7 +33,7 @@ export default defineTeekConfig({
   // ── Site Metadata ──
   title: 'TwinSystem 设计档案',
   description: 'TwinSystem 网站内部逻辑全景 — 架构文档、设计档案、业务导图、开发指南',
-  base: '/',
+  base: '/my-project/',
 
   // 排除内部设计文档（含大量 JSX 代码片段，会导致构建报错）
   srcExclude: ['**/superpowers/**'],
