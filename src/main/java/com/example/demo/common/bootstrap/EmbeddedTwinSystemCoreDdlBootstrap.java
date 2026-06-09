@@ -50,6 +50,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
         runScript("db/bootstrap-twin-student-violation-add-source.sql", "stranded_violation_config（滞留违规配置表）");
         runScript("db/bootstrap-twin-student-violation-source-col.sql", "twin_student_violation source列（如已存在则跳过）");
         runScript("db/bootstrap-twin-student-violation-interactive-challenge.sql", "twin_student_violation interactive_challenge列");
+        runScript("db/bootstrap-twin-student-violation-interactive-verified.sql", "twin_student_violation interactive_challenge_verified_at列");
+        runScript("db/bootstrap-twin-student-violation-interactive-unlock.sql", "twin_student_violation interactive_unlock_on_verify列");
+        runScript("db/bootstrap-stranded-config-interactive-unlock.sql", "stranded_violation_config interactive_unlock_on_verify列");
         runScript("db/bootstrap-stranded-config-interactive-challenge.sql", "stranded_violation_config 交互式确认字段");
         runScript("db/bootstrap-twin-scan-popup-announcement.sql", "twin_scan_popup_announcement（扫码弹窗公告）");
         runScript("db/cage-shelf-cell-snapshot.sql", "cage_shelf_cell_snapshot（笼位快照）");

@@ -15,6 +15,13 @@ export interface PopupProps {
     autoActionRoomId?: string;
     /** 未绑卡时打开学生快捷绑卡页 */
     onOpenStudentBind?: () => void;
+    /** 交互拼图永久确认后合并 analyze 结果（禁止整表刷新，post-save-no-full-refresh.mdc） */
+    onViolationInteractiveVerified?: (patch: {
+        violationId: number;
+        enterLocked: boolean;
+        interactiveChallengeVerified: boolean;
+        violationExpired?: boolean;
+    }) => void;
 }
 
 export interface CapacityStat {

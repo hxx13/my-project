@@ -2,6 +2,7 @@ package com.example.demo.modules.twin.dashboard.dto;
 
 import lombok.Data;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -20,4 +21,10 @@ public class ScanStudentViolationNoticeDTO {
     private Integer remainingEnterAllowance;
     /** 交互式确认短语（如 "一人一卡,严禁尾随"）；null 表示普通公告 */
     private String interactiveChallenge;
+    /** 是否已完成交互拼图并永久解除禁入 */
+    private Boolean interactiveChallengeVerified;
+    /** 违规期限；NULL 表示不按时间过期 */
+    private LocalDateTime expireAt;
+    /** 已超过违规期限且交互验证仍未完成（须先完成验证才能结束） */
+    private Boolean pastExpireAwaitingInteractive;
 }

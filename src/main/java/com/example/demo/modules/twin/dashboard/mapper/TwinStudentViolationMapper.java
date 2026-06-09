@@ -11,6 +11,9 @@ public interface TwinStudentViolationMapper {
 
     int expireActivePastDue();
 
+    /** 交互验证完成后，若已超过 expire_at 则立即结束 */
+    int expireByIdIfPastDue(@Param("id") long id);
+
     int supersedeActiveByTargetUserId(@Param("targetUserId") String targetUserId);
 
     TwinStudentViolation selectActiveByTargetUserId(@Param("targetUserId") String targetUserId);
@@ -35,6 +38,9 @@ public interface TwinStudentViolationMapper {
     TwinStudentViolation selectById(@Param("id") long id);
 
     int updateEditableById(TwinStudentViolation row);
+
+    /** 交互拼图完成；unlockOnVerify=1 时同步解除禁入 */
+    int acknowledgeInteractiveById(@Param("id") long id, @Param("unlockOnVerify") int unlockOnVerify);
 
     int deleteById(@Param("id") long id);
 

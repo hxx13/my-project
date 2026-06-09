@@ -84,6 +84,9 @@ build-and-start.bat
 build-and-start-public.bat
 HELP.md
 
+# ===== MkDocs =====
+site/
+
 # ===== Misc =====
 *.pdf
 *.zip

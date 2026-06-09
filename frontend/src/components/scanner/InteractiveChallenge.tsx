@@ -139,13 +139,12 @@ export function InteractiveChallenge({ phrase, onComplete }: Props) {
         })}
       </div>
 
-      {/* completion indicator */}
-      {allDone && (
+      {allDone ? (
         <div className="flex items-center gap-2 rounded-full border border-green-500/40 bg-green-500/15 px-4 py-1.5 animate-in fade-in zoom-in">
           <Check className="h-4 w-4 text-green-400" />
           <span className="text-xs font-bold text-green-300">验证通过</span>
         </div>
-      )}
+      ) : null}
 
       <style>{`
         @keyframes shake {

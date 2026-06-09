@@ -154,6 +154,8 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
         if (remRaw === null) remainingEnterAllowance = null;
         else if (typeof remRaw === "number" && Number.isFinite(remRaw)) remainingEnterAllowance = remRaw;
         else remainingEnterAllowance = undefined;
+        const interactiveChallenge =
+            asString(n.interactiveChallenge ?? n.interactive_challenge) ?? null;
         return {
             id: idNum as number,
             violationText: asString(n.violationText ?? n.violation_text),
@@ -161,6 +163,12 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             showNoticeEveryScan: asBooleanLike(n.showNoticeEveryScan ?? n.show_notice_every_scan) ?? true,
             enterLocked: asBooleanLike(n.enterLocked ?? n.enter_locked) ?? false,
             remainingEnterAllowance,
+            interactiveChallenge,
+            interactiveChallengeVerified:
+                asBooleanLike(n.interactiveChallengeVerified ?? n.interactive_challenge_verified) ?? false,
+            expireAt: asString(n.expireAt ?? n.expire_at) ?? null,
+            pastExpireAwaitingInteractive:
+                asBooleanLike(n.pastExpireAwaitingInteractive ?? n.past_expire_awaiting_interactive) ?? false,
         };
     };
     const studentViolationNotice = parseViolationNotice(
@@ -230,6 +238,8 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
         studentViolationNotice,
         unboundCardNotice,
         scanPopupAnnouncements,
+        violationInteractiveChallenge:
+            asString(safe.violationInteractiveChallenge ?? safe.violation_interactive_challenge) ?? null,
     };
 };
 
@@ -243,6 +253,31 @@ export const executeAccess = async (payload: ExecutePayload): Promise<ExecuteRes
     const result = toExecuteResult(response.data);
     assertApiSuccess(result, "官方接口拒绝操作");
     return result;
+};
+
+export type ViolationInteractiveAckResponse = {
+    violationId: number;
+    interactiveChallengeVerified: boolean;
+    enterLocked: boolean;
+    violationExpired?: boolean;
+};
+
+export const acknowledgeViolationInteractive = async (body: {
+    violationId: number;
+    userId: string;
+}): Promise<ViolationInteractiveAckResponse> => {
+    const response = await http.post<ApiResponse<ViolationInteractiveAckResponse> | ViolationInteractiveAckResponse>(
+        "/scan/violation-interactive-ack",
+        body
+    );
+    const raw = unwrapData(response.data, {} as ViolationInteractiveAckResponse);
+    const idNum = typeof raw.violationId === "number" ? raw.violationId : Number(raw.violationId);
+    return {
+        violationId: Number.isFinite(idNum) ? idNum : body.violationId,
+        interactiveChallengeVerified: Boolean(raw.interactiveChallengeVerified),
+        enterLocked: Boolean(raw.enterLocked),
+        violationExpired: Boolean(raw.violationExpired),
+    };
 };
 
 export const fetchUserStatus = async (userId: string): Promise<UserStatusResponse> => {

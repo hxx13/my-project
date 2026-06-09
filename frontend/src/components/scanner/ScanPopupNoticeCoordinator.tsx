@@ -7,9 +7,15 @@ export type ScanNoticeDialogId = "violation" | "unbound" | "announcement";
 
 type Props = {
   result: AnalyzeResponse;
+  onViolationInteractiveVerified?: (patch: {
+    violationId: number;
+    enterLocked: boolean;
+    interactiveChallengeVerified: boolean;
+    violationExpired?: boolean;
+  }) => void;
 };
 
-export function ScanPopupNoticeCoordinator({ result }: Props) {
+export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerified }: Props) {
   const [dialogId, setDialogId] = useState<ScanNoticeDialogId | null>(null);
   const chainRef = useRef<ScanNoticeDialogId[]>([]);
   const chainConsumedRef = useRef(false);
@@ -74,6 +80,8 @@ export function ScanPopupNoticeCoordinator({ result }: Props) {
         <ViolationNoticeBanner
           notice={violation}
           kind="violation"
+          targetUserId={result.userInfo?.userId}
+          onInteractiveVerified={onViolationInteractiveVerified}
           panelOpen={dialogId === "violation"}
           onPanelOpenChange={(open) => (open ? openDialog("violation") : closeDialog("violation"))}
           suppressAutoOpen

@@ -860,6 +860,9 @@ CREATE TABLE IF NOT EXISTS twin_student_violation (
     cleared_at DATETIME NULL,
     cleared_by_user_id VARCHAR(64) NULL,
     source VARCHAR(30) NOT NULL DEFAULT 'MANUAL' COMMENT '来源：MANUAL=手动新建, AUTO_STRANDED=自动滞留检测',
+    interactive_challenge VARCHAR(128) NULL COMMENT '交互确认短语;null=普通公告',
+    interactive_challenge_verified_at DATETIME NULL COMMENT '交互拼图完成时间;非NULL=已完成验证',
+    interactive_unlock_on_verify TINYINT(1) NOT NULL DEFAULT 1 COMMENT '交互验证完成后是否自动解除禁入;1=是',
     KEY idx_tsv_target_status (target_user_id, status),
     KEY idx_tsv_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生违规记录（扫码弹窗通告与进房限制）';
@@ -872,6 +875,9 @@ CREATE TABLE IF NOT EXISTS stranded_violation_config (
     forbid_enter TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否禁止进入',
     expire_after_days INT NOT NULL DEFAULT 1 COMMENT '自动过期天数',
     whitelist_depts JSON DEFAULT NULL COMMENT '白名单部门JSON数组',
+    interactive_challenge_enabled TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用交互式违规确认',
+    interactive_challenge_phrase VARCHAR(128) NOT NULL DEFAULT '一人一卡,严禁尾随' COMMENT '交互拼图目标短语',
+    interactive_unlock_on_verify TINYINT(1) NOT NULL DEFAULT 1 COMMENT '交互验证完成后是否自动解除禁入;1=是',
     last_execution_at DATETIME DEFAULT NULL COMMENT '上次执行时间',
     last_execution_result VARCHAR(255) DEFAULT NULL COMMENT '上次执行结果',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

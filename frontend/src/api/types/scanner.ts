@@ -60,6 +60,8 @@ export interface AnalyzeResponse {
     unboundCardNotice?: StudentViolationNotice;
     /** 扫码弹窗公告（多条翻页） */
     scanPopupAnnouncements?: ScanPopupAnnouncementBundle;
+    /** 违规交互确认短语（顶层透传） */
+    violationInteractiveChallenge?: string | null;
 }
 
 export interface ScanPopupAnnouncementItem {
@@ -85,6 +87,12 @@ export interface StudentViolationNotice {
     remainingEnterAllowance?: number | null;
     /** 交互式确认短语（如 "一人一卡,严禁尾随"）；null 表示普通公告 */
     interactiveChallenge?: string | null;
+    /** 是否已完成交互拼图并永久解除禁入 */
+    interactiveChallengeVerified?: boolean;
+    /** 违规到期时间（ISO 字符串） */
+    expireAt?: string | null;
+    /** 已超过违规期限且交互验证仍未完成 */
+    pastExpireAwaitingInteractive?: boolean;
 }
 
 export interface ExecutePayload {

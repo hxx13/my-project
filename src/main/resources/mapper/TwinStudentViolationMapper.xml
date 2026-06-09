@@ -20,12 +20,31 @@
         <result column="cleared_by_user_id" property="clearedByUserId"/>
         <result column="source" property="source"/>
         <result column="interactive_challenge" property="interactiveChallenge"/>
+        <result column="interactive_challenge_verified_at" property="interactiveChallengeVerifiedAt"/>
+        <result column="interactive_unlock_on_verify" property="interactiveUnlockOnVerify"/>
     </resultMap>
+
+    <!-- 交互验证未完成时，超期仍保持 ACTIVE，直至用户完成拼图 -->
+    <sql id="pendingInteractivePastExpireClause">
+        interactive_challenge IS NOT NULL
+        AND TRIM(interactive_challenge) &lt;&gt; ''
+        AND interactive_challenge_verified_at IS NULL
+    </sql>
 
     <update id="expireActivePastDue">
         UPDATE twin_student_violation
         SET status = 'EXPIRED', updated_at = NOW()
         WHERE status = 'ACTIVE'
+          AND expire_at IS NOT NULL
+          AND expire_at &lt; NOW()
+          AND NOT (<include refid="pendingInteractivePastExpireClause"/>)
+    </update>
+
+    <update id="expireByIdIfPastDue">
+        UPDATE twin_student_violation
+        SET status = 'EXPIRED', updated_at = NOW()
+        WHERE id = #{id}
+          AND status = 'ACTIVE'
           AND expire_at IS NOT NULL
           AND expire_at &lt; NOW()
     </update>
@@ -45,7 +64,11 @@
         FROM twin_student_violation
         WHERE target_user_id = #{targetUserId}
           AND status = 'ACTIVE'
-          AND (expire_at IS NULL OR expire_at &gt; NOW())
+          AND (
+            expire_at IS NULL
+            OR expire_at &gt; NOW()
+            OR (<include refid="pendingInteractivePastExpireClause"/>)
+          )
         ORDER BY id DESC
         LIMIT 1
     </select>
@@ -54,11 +77,11 @@
         INSERT INTO twin_student_violation (
             target_user_id, violation_text, image_urls,
             forbid_enter, max_enter_success, enter_success_count, show_notice_every_scan,
-            expire_at, status, created_by_user_id, source, interactive_challenge
+            expire_at, status, created_by_user_id, source, interactive_challenge, interactive_unlock_on_verify
         ) VALUES (
             #{targetUserId}, #{violationText}, #{imageUrls},
             #{forbidEnter}, #{maxEnterSuccess}, #{enterSuccessCount}, #{showNoticeEveryScan},
-            #{expireAt}, #{status}, #{createdByUserId}, #{source}, #{interactiveChallenge}
+            #{expireAt}, #{status}, #{createdByUserId}, #{source}, #{interactiveChallenge}, #{interactiveUnlockOnVerify}
         )
     </insert>
 
@@ -130,9 +153,23 @@
             max_enter_success = #{maxEnterSuccess},
             show_notice_every_scan = #{showNoticeEveryScan},
             interactive_challenge = #{interactiveChallenge},
+            interactive_challenge_verified_at = #{interactiveChallengeVerifiedAt},
+            interactive_unlock_on_verify = #{interactiveUnlockOnVerify},
             expire_at = #{expireAt},
             updated_at = NOW()
         WHERE id = #{id}
+    </update>
+
+    <update id="acknowledgeInteractiveById">
+        UPDATE twin_student_violation
+        SET interactive_challenge_verified_at = NOW(),
+            forbid_enter = CASE WHEN #{unlockOnVerify} = 1 THEN 0 ELSE forbid_enter END,
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND status = 'ACTIVE'
+          AND interactive_challenge IS NOT NULL
+          AND TRIM(interactive_challenge) &lt;&gt; ''
+          AND interactive_challenge_verified_at IS NULL
     </update>
 
     <delete id="deleteById">
@@ -145,6 +182,10 @@
         WHERE target_user_id = #{targetUserId}
           AND source = 'AUTO_STRANDED'
           AND status = 'ACTIVE'
-          AND (expire_at IS NULL OR expire_at &gt; NOW())
+          AND (
+            expire_at IS NULL
+            OR expire_at &gt; NOW()
+            OR (<include refid="pendingInteractivePastExpireClause"/>)
+          )
     </select>
 </mapper>

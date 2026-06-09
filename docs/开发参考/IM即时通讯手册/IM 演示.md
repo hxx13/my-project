@@ -1,0 +1,127 @@
+---
+title: IM 演示
+category: IM即时通讯手册
+---
+
+# IM 演示
+
+##  1. 演示地址
+
+###  1.1 IM 管理后台
+
+-   演示地址：http://dashboard-vue3.yudao.iocoder.cn/
+-   菜单："IM 即时通讯"下的「聊天」「运营管理」「内容管理」「数据统计」
+-   仓库：https://github.com/yudaocode/yudao-ui-admin-vue3 的 `im` 目录，基于 Vue3 + Element Plus 实现
+
+| 聊天界面 | 聊天管理 |
+| --- | --- |
+|  |  |
+
+###  1.2 IM 后端
+
+支持 Spring Boot 单体、Spring Cloud 微服务架构。
+
+-   单体仓库： https://github.com/YunaiV/ruoyi-vue-pro 的 `yudao-module-im` 模块
+-   微服务仓库： https://github.com/YunaiV/yudao-cloud 的 `yudao-module-im` 服务
+
+##  2. IM 启动
+
+参见 《IM 即时通讯手册 —— 功能开启》 文档，一般 3 分钟就可以启动完成。
+
+##  3. IM 交流
+
+专属交流社区，欢迎扫码加入。
+
+![交流群](data:image/png;base64,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)
+
+##  4. 功能描述
+
+IM 即时通讯系统，提供管理后台内置的聊天能力，主要包含聊天界面和聊天管理两部分。
+
+###  4.1 聊天界面
+
+对应 `yudao-ui-admin-vue3` 项目的 `@/views/im/home` 目录，提供全屏聊天工作台：
+
+-   消息：私聊、群聊、频道消息三类会话，使用 IndexedDB 本地缓存会话、消息、草稿和基础资料。
+-   通讯录：好友列表、好友申请、群列表、加群申请。
+-   消息类型：文本、图片、语音、视频、文件、表情、名片、合并转发、频道素材。
+-   消息动作：发送、撤回、引用回复、已读回执、@ 成员、群消息置顶。
+-   好友关系：申请、同意、拒绝、删除、备注、置顶、免打扰、拉黑。
+-   群组管理：创建群、邀请入群、申请进群、退群、移除成员、群主转让、管理员设置、群公告、全员禁言、成员禁言、入群审批。
+-   音视频通话：支持私聊单人通话、群聊多人通话，可发起语音通话、视频通话和共享屏幕。
+
+###  4.2 聊天管理
+
+对应 `yudao-ui-admin-vue3` 项目的 `@/views/im/manager` 目录，菜单包括：
+
+-   数据统计：查看总用户、总群组、日活用户、今日消息、消息趋势、用户趋势、消息类型分布、群规模分布、消息发送 TOP 10。
+-   私聊管理：包含好友列表、好友申请、好友消息，用于查询好友关系、申请记录和私聊消息。
+-   群聊管理：包含群聊列表、群聊申请、群聊消息，用于查询群信息、入群申请和群聊消息。
+-   通话记录：查看音视频通话记录、参与人、通话状态、通话时长和结束原因。
+-   敏感词管理：维护敏感词内容、标签和启用状态。
+-   表情管理：包含系统表情、用户表情，用于维护表情包、表情图和用户上传的个人表情。
+-   频道管理：包含频道列表、频道素材、频道消息，用于维护频道、图文素材和推送记录。
+
+##  5. 表结构
+
+IM 共 **16** 张业务表，表名统一以 `im_` 为前缀：
+
+| 模块 | 子前缀 | 表数量 | 核心职责 |
+| --- | --- | --- | --- |
+| 消息中心 | im_private_message / im_group_message | 2 | 私聊、群聊消息入库，记录消息类型、内容、状态、发送时间 |
+| 好友关系 | im_friend* | 2 | 双向好友关系、好友申请、备注、置顶、拉黑、免打扰 |
+| 群组管理 | im_group* | 3 | 群信息、群成员、入群申请、群角色、禁言、群置顶消息 |
+| 频道推送 | im_channel* | 3 | 频道、图文素材、频道消息推送记录 |
+| 音视频通话 | im_rtc* | 2 | 通话主记录、参与者状态、接通与结束时间 |
+| 其他 | im_face* / im_sensitive_word | 4 | 表情包、用户表情、消息敏感词配置 |
+
+###  5.1 消息中心
+
+消息中心保存私聊和群聊两类用户聊天消息：
+
+-   `im_private_message`：私聊消息表，按发送人、接收人记录消息。
+-   `im_group_message`：群聊消息表，按发送人、群编号记录消息，支持 @ 成员、定向可见、群回执。
+
+频道消息保存到 `im_channel_message`，在本文档的「频道推送」中单独说明。
+
+###  5.2 好友关系
+
+好友关系分为好友主表和申请记录：
+
+-   `im_friend`：好友关系表，一条记录表示用户侧对某个好友的单边关系。
+-   `im_friend_request`：好友申请记录表，记录申请理由、处理结果、处理时间。
+
+###  5.3 群组管理
+
+群组管理围绕群信息、成员和申请记录展开：
+
+-   `im_group`：群信息表，记录群名称、群主、头像、公告、封禁、全员禁言、入群审批等信息。
+-   `im_group_member`：群成员表，记录成员角色、群昵称、群备注、免打扰、禁言到期时间等信息。
+-   `im_group_request`：加群申请记录表，记录主动申请或邀请入群的处理过程。
+
+###  5.4 频道推送
+
+频道推送用于运营侧图文消息：
+
+-   `im_channel`：频道表。
+-   `im_channel_material`：频道素材表，支持站内富文本和外链两类素材。
+-   `im_channel_message`：频道消息表，记录素材推送快照和接收人范围。
+
+###  5.5 音视频通话
+
+音视频通话由两张表记录：
+
+-   `im_rtc_call`：通话记录表，一通通话一行，记录会话类型、媒体类型、发起人、状态和结束原因。
+-   `im_rtc_participant`：通话参与者表，一通通话中每个参与者一行，记录邀请、接听、离开等时间。
+
+###  5.6 其他
+
+① 表情体系，包含系统表情包和用户个人表情：
+
+-   `im_face_pack`：系统表情包表。
+-   `im_face_pack_item`：系统表情包项表。
+-   `im_face_user_item`：用户私有表情表。
+
+② 内容安全，用于文本消息发送前的敏感词校验：
+
+-   `im_sensitive_word`：敏感词表。

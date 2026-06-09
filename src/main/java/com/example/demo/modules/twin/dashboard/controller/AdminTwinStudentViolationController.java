@@ -137,7 +137,8 @@ public class AdminTwinStudentViolationController {
                     body.getShowNoticeEveryScan() == null || Boolean.TRUE.equals(body.getShowNoticeEveryScan()),
                     body.getExpireMode(),
                     body.getExpireAfterDays(),
-                    body.getInteractiveChallenge()
+                    body.getInteractiveChallenge(),
+                    body.getInteractiveUnlockOnVerify()
             );
             return Result.success(toRow(row, null));
         } catch (IllegalArgumentException e) {
@@ -222,7 +223,9 @@ public class AdminTwinStudentViolationController {
                     maxEnter,
                     body.getShowNoticeEveryScan() == null || Boolean.TRUE.equals(body.getShowNoticeEveryScan()),
                     body.getExpireAfterDays(),
-                    admin.getId()
+                    admin.getId(),
+                    body.getInteractiveChallenge(),
+                    body.getInteractiveUnlockOnVerify()
             );
             return Result.success(summary);
         } catch (IllegalArgumentException e) {
@@ -262,7 +265,10 @@ public class AdminTwinStudentViolationController {
                     maxEnter,
                     body.getShowNoticeEveryScan() == null || Boolean.TRUE.equals(body.getShowNoticeEveryScan()),
                     body.getExpireAfterDays(),
-                    admin.getId()
+                    admin.getId(),
+                    "MANUAL",
+                    body.getInteractiveChallenge(),
+                    body.getInteractiveUnlockOnVerify()
             );
             return Result.success(toRow(row, null));
         } catch (IllegalArgumentException e) {
@@ -334,6 +340,8 @@ public class AdminTwinStudentViolationController {
         m.put("clearedAt", v.getClearedAt());
         m.put("clearedByUserId", v.getClearedByUserId());
         m.put("interactiveChallenge", v.getInteractiveChallenge());
+        m.put("interactiveChallengeVerifiedAt", v.getInteractiveChallengeVerifiedAt());
+        m.put("interactiveUnlockOnVerify", v.getInteractiveUnlockOnVerify());
         return m;
     }
 
@@ -394,6 +402,10 @@ public class AdminTwinStudentViolationController {
         private Integer maxEnterSuccess;
         private Boolean showNoticeEveryScan;
         private Integer expireAfterDays;
+        /** 交互式确认短语；非空时与 forbidEnter 勾选联动为强制禁入 */
+        private String interactiveChallenge;
+        /** 交互验证完成后是否自动解除禁入；默认 true */
+        private Boolean interactiveUnlockOnVerify;
     }
 
     @Data
@@ -405,6 +417,8 @@ public class AdminTwinStudentViolationController {
         private Integer maxEnterSuccess;
         private Boolean showNoticeEveryScan;
         private Integer expireAfterDays;
+        private String interactiveChallenge;
+        private Boolean interactiveUnlockOnVerify;
     }
 
     @Data
@@ -420,6 +434,8 @@ public class AdminTwinStudentViolationController {
         private Integer expireAfterDays;
         /** 交互式确认短语；null 或空串=关闭 */
         private String interactiveChallenge;
+        /** 交互验证完成后是否自动解除禁入 */
+        private Boolean interactiveUnlockOnVerify;
     }
 
     // ---- 违规文案模板预设 ----

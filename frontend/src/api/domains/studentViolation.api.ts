@@ -25,6 +25,7 @@ export interface StudentViolationRow {
   clearedByUserId?: string | null;
   /** 交互式确认短语；null 表示普通公告 */
   interactiveChallenge?: string | null;
+  interactiveUnlockOnVerify?: number;
 }
 
 export interface CreateStudentViolationPayload {
@@ -35,6 +36,10 @@ export interface CreateStudentViolationPayload {
   maxEnterSuccess: number | null;
   showNoticeEveryScan: boolean;
   expireAfterDays: number | null;
+  /** 交互式确认短语；非空时强制禁止进入直至扫码端完成拼图 */
+  interactiveChallenge?: string | null;
+  /** 交互验证完成后是否自动解除禁入；默认 true */
+  interactiveUnlockOnVerify?: boolean;
 }
 
 export type BatchCreateStudentViolationPayload = Omit<CreateStudentViolationPayload, "targetUserId"> & {
@@ -106,6 +111,7 @@ export interface UpdateStudentViolationPayload {
   expireAfterDays: number | null;
   /** 交互式确认短语；传 null 或空串=关闭，传非空=开启 */
   interactiveChallenge?: string | null;
+  interactiveUnlockOnVerify?: boolean;
 }
 
 export async function updateStudentViolation(id: number, body: UpdateStudentViolationPayload) {

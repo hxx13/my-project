@@ -128,6 +128,40 @@ public class TwinScanController {
         }
     }
 
+    /** 扫码端完成交互拼图：永久解除该条违规的禁入（写入库表，跨会话有效） */
+    @PostMapping("/violation-interactive-ack")
+    public Result<Map<String, Object>> acknowledgeViolationInteractive(
+            @RequestBody Map<String, Object> body
+    ) {
+        try {
+            if (body == null) {
+                return Result.error("缺少请求体");
+            }
+            Object idRaw = body.get("violationId");
+            long violationId;
+            if (idRaw instanceof Number) {
+                violationId = ((Number) idRaw).longValue();
+            } else if (idRaw != null) {
+                violationId = Long.parseLong(String.valueOf(idRaw).trim());
+            } else {
+                return Result.error("缺少 violationId");
+            }
+            String userId = body.get("userId") != null ? String.valueOf(body.get("userId")).trim() : "";
+            var row = twinStudentViolationService.acknowledgeInteractiveChallenge(violationId, userId);
+            Map<String, Object> out = new HashMap<>();
+            out.put("violationId", row.getId());
+            out.put("interactiveChallengeVerified", row.getInteractiveChallengeVerifiedAt() != null);
+            out.put("violationExpired", "EXPIRED".equals(row.getStatus()));
+            out.put("enterLocked", twinStudentViolationService.isEnterBlocked(userId));
+            return Result.success(out);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            log.warn("[scan] violation-interactive-ack failed: {}", e.getMessage());
+            return Result.error("交互确认失败: " + e.getMessage());
+        }
+    }
+
     @PostMapping("/execute")
     public Result<ScanExecuteResponseDTO> executeScan(
             @RequestBody Map<String, Object> payload,

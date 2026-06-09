@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Archive, Download, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   clearAssetTable,
   createAssetColumn,
@@ -158,6 +158,7 @@ export default function AdminAssetRecordPage() {
   const recycleRows: AssetRecycleRow[] = recycleData?.rows ?? [];
   const recycleTotal = recycleData?.total ?? 0;
 
+  const qc = useQueryClient();
   const createAssetMut = useCreateAsset();
   const deleteAssetMut = useDeleteAsset();
   const importAssetMut = useImportAssetExcel();
@@ -413,6 +414,53 @@ export default function AdminAssetRecordPage() {
     }
   };
 
+  const finishEditing = async () => {
+    // Collect all rows with pending unsaved edits
+    const pendingByRow = new Map<string, { row: AssetRow; dynamicValues: Record<string, string> }>();
+    for (const [key, value] of Object.entries(editing)) {
+      const sepIdx = key.indexOf("::");
+      if (sepIdx < 0) continue;
+      const rowId = key.slice(0, sepIdx);
+      const columnKey = key.slice(sepIdx + 2);
+      if (!pendingByRow.has(rowId)) {
+        const row = rows.find((r) => r.id === rowId);
+        if (!row) continue;
+        pendingByRow.set(rowId, {
+          row,
+          dynamicValues: { ...(row.dynamicValues || {}) },
+        });
+      }
+      pendingByRow.get(rowId)!.dynamicValues[columnKey] = value;
+    }
+
+    if (pendingByRow.size === 0) {
+      setTableEditMode(false);
+      return;
+    }
+
+    let saved = 0;
+    const errors: string[] = [];
+    for (const [, { row, dynamicValues }] of pendingByRow) {
+      try {
+        await patchAssetRecord(row.id, { dynamicValues });
+        saved++;
+      } catch (e) {
+        errors.push(`${row.assetCode}: ${e instanceof Error ? e.message : "未知错误"}`);
+      }
+    }
+
+    if (saved > 0) {
+      toast.success(`已保存 ${saved} 条记录`);
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+    }
+    if (errors.length > 0) {
+      errors.forEach((msg) => toast.error(msg));
+    }
+
+    setEditing({});
+    setTableEditMode(false);
+  };
+
   return (
     <AdminPageShell
       title={
@@ -455,7 +503,13 @@ export default function AdminAssetRecordPage() {
             type="button"
             tone={tableEditMode ? "secondary" : "primary"}
             className="inline-flex min-h-9 items-center gap-2"
-            onClick={() => setTableEditMode((v) => !v)}
+            onClick={() => {
+              if (tableEditMode) {
+                void finishEditing();
+              } else {
+                setTableEditMode(true);
+              }
+            }}
           >
             <Pencil className="h-4 w-4 shrink-0" aria-hidden />
             {tableEditMode ? "完成编辑" : "编辑表格"}
@@ -507,7 +561,7 @@ export default function AdminAssetRecordPage() {
         </div>
       }
     >
-    <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-hidden pb-2">
+    <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-auto pb-2">
         <AdminFormCard title="筛选" description={`共 ${total} 条；列宽可随内容在「更多操作」中刷新。`}>
           <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
             <label className="flex w-full max-w-full min-w-0 flex-col gap-1 lg:max-w-md">
@@ -593,7 +647,7 @@ export default function AdminAssetRecordPage() {
                           <input
                             value={display}
                             onChange={(e) => setEditing((prev) => ({ ...prev, [key]: e.target.value }))}
-                            className="w-full min-w-0 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
+                            className="w-full min-w-[8ch] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
                           />
                         ) : (
                           <span className="block min-w-0 max-w-[48ch] truncate text-[var(--twin-ink)]" title={String(display)}>

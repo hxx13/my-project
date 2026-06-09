@@ -20,5 +20,6 @@ public interface StrandedViolationConfigMapper {
                       @Param("expireAfterDays") Integer expireAfterDays,
                       @Param("whitelistDepts") String whitelistDepts,
                       @Param("interactiveChallengeEnabled") Integer interactiveChallengeEnabled,
-                      @Param("interactiveChallengePhrase") String interactiveChallengePhrase);
+                      @Param("interactiveChallengePhrase") String interactiveChallengePhrase,
+                      @Param("interactiveUnlockOnVerify") Integer interactiveUnlockOnVerify);
 }

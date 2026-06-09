@@ -90,6 +90,7 @@ public class StrandedViolationService {
                 Objects.toString(config.get("whitelist_depts"), "[]"));
         boolean interactiveEnabled = Boolean.TRUE.equals(toBool(config.get("interactive_challenge_enabled")));
         String interactivePhrase = Objects.toString(config.get("interactive_challenge_phrase"), "");
+        boolean interactiveUnlockOnVerify = toInt(config.get("interactive_unlock_on_verify"), 1) != 0;
 
         // 2. 查询当前 ACTIVATED 用户
         List<Map<String, Object>> activatedUsers = dahuaSwingMapper.listActivatedUsers();
@@ -148,17 +149,20 @@ public class StrandedViolationService {
                         .replace("${date}",
                                 LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
 
+                String challenge = interactiveEnabled && !interactivePhrase.isBlank() ? interactivePhrase.trim() : null;
+                boolean effectiveForbidEnter = forbidEnter == 1 || challenge != null;
                 violationService.create(
                         userId,
                         text,
                         null,  // no images
-                        forbidEnter == 1,
+                        effectiveForbidEnter,
                         null,  // maxEnterSuccess
                         true,  // showNoticeEveryScan
                         expireDays,
                         "SYSTEM",
                         SOURCE_AUTO_STRANDED,
-                        interactiveEnabled && !interactivePhrase.isBlank() ? interactivePhrase : null);
+                        challenge,
+                        interactiveUnlockOnVerify);
                 created++;
 
             } catch (Exception e) {
@@ -193,6 +197,7 @@ public class StrandedViolationService {
 
         String interactivePhrase = Objects.toString(body.get("interactive_challenge_phrase"), "");
         int interactiveEnabled = toInt(body.get("interactive_challenge_enabled"), 0);
+        int interactiveUnlockOnVerify = toInt(body.get("interactive_unlock_on_verify"), 1);
 
         configMapper.updateConfig(
                 toInt(body.get("auto_signout_enabled"), 1),
@@ -201,7 +206,8 @@ public class StrandedViolationService {
                 toInt(body.get("expire_after_days"), 1),
                 depts,
                 interactiveEnabled,
-                interactivePhrase);
+                interactivePhrase,
+                interactiveUnlockOnVerify);
         log.info("[stranded-violation] config saved: autoSignout={}, tpl={}, forbidEnter={}, expireDays={}, interactive={}",
                 toInt(body.get("auto_signout_enabled"), 1),
                 tpl,
@@ -233,6 +239,7 @@ public class StrandedViolationService {
                 Objects.toString(config.get("whitelist_depts"), "[]"));
         boolean interactiveEnabled = Boolean.TRUE.equals(toBool(config.get("interactive_challenge_enabled")));
         String interactivePhrase = Objects.toString(config.get("interactive_challenge_phrase"), "");
+        boolean interactiveUnlockOnVerify = toInt(config.get("interactive_unlock_on_verify"), 1) != 0;
 
         // 检查 ARO 是否仍在内
         List<?> noLeaveRooms = aroService.getNoLeaveRoom(userId);
@@ -286,10 +293,13 @@ public class StrandedViolationService {
                 .replace("${date}",
                         LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
 
+        String challenge = interactiveEnabled && !interactivePhrase.isBlank() ? interactivePhrase.trim() : null;
+        boolean effectiveForbidEnter = forbidEnter == 1 || challenge != null;
         violationService.create(
-                userId, text, null, forbidEnter == 1, null, true,
+                userId, text, null, effectiveForbidEnter, null, true,
                 expireDays, "SYSTEM", SOURCE_AUTO_STRANDED,
-                interactiveEnabled && !interactivePhrase.isBlank() ? interactivePhrase : null);
+                challenge,
+                interactiveUnlockOnVerify);
 
         sb.append("已创建违规记录");
         return sb.toString();

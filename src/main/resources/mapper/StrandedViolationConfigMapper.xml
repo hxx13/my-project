@@ -23,7 +23,8 @@
             expire_after_days = #{expireAfterDays},
             whitelist_depts = #{whitelistDepts},
             interactive_challenge_enabled = #{interactiveChallengeEnabled},
-            interactive_challenge_phrase = #{interactiveChallengePhrase}
+            interactive_challenge_phrase = #{interactiveChallengePhrase},
+            interactive_unlock_on_verify = #{interactiveUnlockOnVerify}
         WHERE id = 1
     </update>
 </mapper>

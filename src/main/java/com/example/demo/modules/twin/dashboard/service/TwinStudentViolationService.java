@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -122,12 +123,98 @@ public class TwinStudentViolationService {
         dto.setEnterLocked(locked);
         dto.setRemainingEnterAllowance(computeRemaining(row));
         dto.setInteractiveChallenge(row.getInteractiveChallenge());
+        dto.setInteractiveChallengeVerified(row.getInteractiveChallengeVerifiedAt() != null);
+        dto.setExpireAt(row.getExpireAt());
+        dto.setPastExpireAwaitingInteractive(isPastExpireAwaitingInteractive(row));
         return dto;
     }
 
     public boolean isEnterBlocked(String targetUserId) {
         TwinStudentViolation row = findActiveRow(targetUserId);
         return row != null && computeEnterLocked(row);
+    }
+
+    /**
+     * 扫码端完成交互拼图：写入验证时间；若 interactive_unlock_on_verify=1 则同步解除禁入（幂等）。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public TwinStudentViolation acknowledgeInteractiveChallenge(long violationId, String targetUserId) {
+        if (violationTableAbsent.get()) {
+            throw new IllegalStateException("库表 twin_student_violation 未创建");
+        }
+        if (!StringUtils.hasText(targetUserId)) {
+            throw new IllegalArgumentException("缺少 userId");
+        }
+        TwinStudentViolation row = getById(violationId);
+        if (row == null || !STATUS_ACTIVE.equals(row.getStatus())) {
+            throw new IllegalArgumentException("违规记录不存在或已失效");
+        }
+        if (!targetUserId.trim().equals(row.getTargetUserId())) {
+            throw new IllegalArgumentException("无权确认该违规");
+        }
+        if (!StringUtils.hasText(row.getInteractiveChallenge())) {
+            throw new IllegalArgumentException("该违规无需交互确认");
+        }
+        if (row.getInteractiveChallengeVerifiedAt() != null) {
+            return finalizeAfterInteractiveAck(row);
+        }
+        try {
+            int unlockFlag = isInteractiveUnlockOnVerify(row) ? 1 : 0;
+            int n = violationMapper.acknowledgeInteractiveById(violationId, unlockFlag);
+            if (n <= 0) {
+                TwinStudentViolation latest = getById(violationId);
+                if (latest != null && latest.getInteractiveChallengeVerifiedAt() != null) {
+                    return finalizeAfterInteractiveAck(latest);
+                }
+                throw new IllegalStateException("交互确认失败，请重试");
+            }
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            if (isTwinStudentViolationTableMissing(e)) {
+                markTableAbsentOnce();
+                throw new IllegalStateException("库表 twin_student_violation 未创建");
+            }
+            throw new RuntimeException(e);
+        }
+        return finalizeAfterInteractiveAck(getById(violationId));
+    }
+
+    /**
+     * 交互验证完成后：若已超过违规期限则立即 EXPIRED；期限内已完成则待 expire_at 由定时扫描结束。
+     */
+    private TwinStudentViolation finalizeAfterInteractiveAck(TwinStudentViolation row) {
+        if (row == null || row.getId() == null) {
+            return row;
+        }
+        if (!STATUS_ACTIVE.equals(row.getStatus())) {
+            return row;
+        }
+        if (row.getExpireAt() != null && row.getExpireAt().isBefore(LocalDateTime.now())) {
+            try {
+                violationMapper.expireByIdIfPastDue(row.getId());
+            } catch (Exception e) {
+                if (isTwinStudentViolationTableMissing(e)) {
+                    markTableAbsentOnce();
+                } else {
+                    log.warn("[student-violation] 交互确认后过期失败 id={} err={}", row.getId(), e.getMessage());
+                }
+            }
+            TwinStudentViolation latest = getById(row.getId());
+            return latest != null ? latest : row;
+        }
+        return row;
+    }
+
+    private static boolean isPastExpireAwaitingInteractive(TwinStudentViolation row) {
+        if (row == null || row.getExpireAt() == null) {
+            return false;
+        }
+        if (!row.getExpireAt().isBefore(LocalDateTime.now())) {
+            return false;
+        }
+        return StringUtils.hasText(row.getInteractiveChallenge())
+                && row.getInteractiveChallengeVerifiedAt() == null;
     }
 
     public void recordSuccessfulEnter(String targetUserId) {
@@ -275,6 +362,34 @@ public class TwinStudentViolationService {
             String source,
             String interactiveChallenge
     ) {
+        return create(
+                targetUserId,
+                violationText,
+                imageUrls,
+                forbidEnter,
+                maxEnterSuccess,
+                showNoticeEveryScan,
+                expireAfterDays,
+                createdByUserId,
+                source,
+                interactiveChallenge,
+                null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public TwinStudentViolation create(
+            String targetUserId,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String source,
+            String interactiveChallenge,
+            Boolean interactiveUnlockOnVerify
+    ) {
         if (!StringUtils.hasText(targetUserId)) {
             throw new IllegalArgumentException("缺少 targetUserId");
         }
@@ -300,7 +415,9 @@ public class TwinStudentViolationService {
         row.setTargetUserId(tid);
         row.setViolationText(violationText);
         row.setImageUrls(serializeImageUrls(imageUrls));
-        row.setForbidEnter(forbidEnter ? 1 : 0);
+        row.setInteractiveChallenge(normalizeInteractiveChallenge(interactiveChallenge));
+        row.setInteractiveUnlockOnVerify(resolveInteractiveUnlockOnVerify(row.getInteractiveChallenge(), interactiveUnlockOnVerify));
+        row.setForbidEnter(normalizeForbidEnter(forbidEnter, row.getInteractiveChallenge()) ? 1 : 0);
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setEnterSuccessCount(0);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
@@ -312,7 +429,6 @@ public class TwinStudentViolationService {
         row.setStatus(STATUS_ACTIVE);
         row.setCreatedByUserId(createdByUserId);
         row.setSource(source != null && !source.isBlank() ? source.trim() : "MANUAL");
-        row.setInteractiveChallenge(interactiveChallenge);
         try {
             violationMapper.insert(row);
         } catch (Exception e) {
@@ -341,6 +457,57 @@ public class TwinStudentViolationService {
             Integer expireAfterDays,
             String createdByUserId
     ) {
+        return createBatch(
+                targetUserIds,
+                violationText,
+                imageUrls,
+                forbidEnter,
+                maxEnterSuccess,
+                showNoticeEveryScan,
+                expireAfterDays,
+                createdByUserId,
+                null,
+                null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> createBatch(
+            List<String> targetUserIds,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String interactiveChallenge
+    ) {
+        return createBatch(
+                targetUserIds,
+                violationText,
+                imageUrls,
+                forbidEnter,
+                maxEnterSuccess,
+                showNoticeEveryScan,
+                expireAfterDays,
+                createdByUserId,
+                interactiveChallenge,
+                null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> createBatch(
+            List<String> targetUserIds,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String interactiveChallenge,
+            Boolean interactiveUnlockOnVerify
+    ) {
         if (targetUserIds == null || targetUserIds.isEmpty()) {
             throw new IllegalArgumentException("缺少 targetUserIds");
         }
@@ -368,7 +535,10 @@ public class TwinStudentViolationService {
                         maxEnterSuccess,
                         showNoticeEveryScan,
                         expireAfterDays,
-                        createdByUserId
+                        createdByUserId,
+                        "MANUAL",
+                        interactiveChallenge,
+                        interactiveUnlockOnVerify
                 );
                 created++;
             } catch (Exception e) {
@@ -455,7 +625,8 @@ public class TwinStudentViolationService {
             boolean showNoticeEveryScan,
             String expireMode,
             Integer expireAfterDays,
-            String interactiveChallenge
+            String interactiveChallenge,
+            Boolean interactiveUnlockOnVerify
     ) {
         if (violationTableAbsent.get()) {
             throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
@@ -471,10 +642,22 @@ public class TwinStudentViolationService {
         row.setId(id);
         row.setViolationText(violationText != null ? violationText : "");
         row.setImageUrls(serializeImageUrls(imageUrls));
-        row.setForbidEnter(forbidEnter ? 1 : 0);
+        String newChallenge = normalizeInteractiveChallenge(interactiveChallenge);
+        String oldChallenge = normalizeInteractiveChallenge(existing.getInteractiveChallenge());
+        boolean challengeChanged = !Objects.equals(newChallenge, oldChallenge);
+        row.setInteractiveChallenge(newChallenge);
+        row.setInteractiveUnlockOnVerify(resolveInteractiveUnlockOnVerify(newChallenge, interactiveUnlockOnVerify));
+        if (challengeChanged) {
+            row.setInteractiveChallengeVerifiedAt(null);
+            row.setForbidEnter(normalizeForbidEnter(forbidEnter, newChallenge) ? 1 : 0);
+        } else if (existing.getInteractiveChallengeVerifiedAt() != null) {
+            row.setInteractiveChallengeVerifiedAt(existing.getInteractiveChallengeVerifiedAt());
+            row.setForbidEnter(existing.getForbidEnter());
+        } else {
+            row.setForbidEnter(normalizeForbidEnter(forbidEnter, newChallenge) ? 1 : 0);
+        }
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
-        row.setInteractiveChallenge(interactiveChallenge);
         String mode = expireMode != null ? expireMode.trim().toUpperCase() : "KEEP";
         if ("CLEAR".equals(mode)) {
             row.setExpireAt(null);
@@ -546,15 +729,49 @@ public class TwinStudentViolationService {
         if (row == null || !STATUS_ACTIVE.equals(row.getStatus())) {
             return false;
         }
-        if (row.getForbidEnter() != null && row.getForbidEnter() == 1) {
-            return true;
-        }
         Integer max = row.getMaxEnterSuccess();
         int used = row.getEnterSuccessCount() == null ? 0 : row.getEnterSuccessCount();
         if (max != null && used >= max) {
             return true;
         }
+        if (StringUtils.hasText(row.getInteractiveChallenge())
+                && row.getInteractiveChallengeVerifiedAt() == null) {
+            return true;
+        }
+        if (row.getForbidEnter() != null && row.getForbidEnter() == 1) {
+            return true;
+        }
         return false;
+    }
+
+    private static String normalizeInteractiveChallenge(String interactiveChallenge) {
+        if (!StringUtils.hasText(interactiveChallenge)) {
+            return null;
+        }
+        String trimmed = interactiveChallenge.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    /** 配置交互式确认时，与手动新建/编辑弹窗一致：强制禁止进入直至完成拼图 */
+    private static boolean normalizeForbidEnter(boolean forbidEnter, String interactiveChallenge) {
+        if (StringUtils.hasText(interactiveChallenge)) {
+            return true;
+        }
+        return forbidEnter;
+    }
+
+    private static int resolveInteractiveUnlockOnVerify(String interactiveChallenge, Boolean unlockOnVerify) {
+        if (!StringUtils.hasText(interactiveChallenge)) {
+            return 0;
+        }
+        return Boolean.FALSE.equals(unlockOnVerify) ? 0 : 1;
+    }
+
+    private static boolean isInteractiveUnlockOnVerify(TwinStudentViolation row) {
+        if (row == null || !StringUtils.hasText(row.getInteractiveChallenge())) {
+            return false;
+        }
+        return row.getInteractiveUnlockOnVerify() == null || row.getInteractiveUnlockOnVerify() == 1;
     }
 
     private static Integer computeRemaining(TwinStudentViolation row) {

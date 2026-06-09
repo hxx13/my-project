@@ -269,6 +269,26 @@ export default function ScannerPanel() {
                             executeMutation.reset();
                             if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
                         }}
+                        onViolationInteractiveVerified={(patch) => {
+                            // 保存后仅合并当前扫码结果，禁止整表 load（post-save-no-full-refresh.mdc）
+                            setActiveResult((prev) => {
+                                if (!prev?.studentViolationNotice || prev.studentViolationNotice.id !== patch.violationId) {
+                                    return prev;
+                                }
+                                if (patch.violationExpired) {
+                                    return { ...prev, studentViolationNotice: undefined };
+                                }
+                                return {
+                                    ...prev,
+                                    studentViolationNotice: {
+                                        ...prev.studentViolationNotice,
+                                        enterLocked: patch.enterLocked,
+                                        interactiveChallengeVerified: patch.interactiveChallengeVerified,
+                                        pastExpireAwaitingInteractive: false,
+                                    },
+                                };
+                            });
+                        }}
                     />
                 )}
             </AnimatePresence>

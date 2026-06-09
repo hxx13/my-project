@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, Megaphone, X } from "lucide-react";
 import type { StudentViolationNotice } from "@/api/types/scanner";
 import { InteractiveChallenge } from "./InteractiveChallenge";
+import { ackViolationInteractivePermanent } from "./twinViolationInteractive";
 
 export type ViolationNoticeKind = "violation" | "unbound";
 
@@ -13,6 +14,15 @@ const ackKey = (kind: ViolationNoticeKind, id: number) =>
 type Props = {
   notice: StudentViolationNotice | undefined | null;
   kind?: ViolationNoticeKind;
+  /** 违规人员 userId，交互确认写库时校验 */
+  targetUserId?: string;
+  /** 交互拼图永久确认成功后回调（合并 analyze，禁止整表 refresh） */
+  onInteractiveVerified?: (patch: {
+    violationId: number;
+    enterLocked: boolean;
+    interactiveChallengeVerified: boolean;
+    violationExpired?: boolean;
+  }) => void;
   /** 由 ScanPopupNoticeCoordinator 统一调度，避免多弹窗互相覆盖 */
   panelOpen?: boolean;
   onPanelOpenChange?: (open: boolean) => void;
@@ -92,6 +102,8 @@ function readAcked(kind: ViolationNoticeKind, id: number): boolean {
 export function ViolationNoticeBanner({
   notice,
   kind = "violation",
+  targetUserId,
+  onInteractiveVerified,
   panelOpen: panelOpenProp,
   onPanelOpenChange,
   suppressAutoOpen = false,
@@ -132,15 +144,17 @@ export function ViolationNoticeBanner({
   }, [notice?.imageUrls]);
 
   const interactivePhrase = notice?.interactiveChallenge || null;
-  const [interactiveDone, setInteractiveDone] = useState(false);
-  // Reset interactive state when notice changes
+  const [interactiveDone, setInteractiveDone] = useState(Boolean(notice?.interactiveChallengeVerified));
+  const [interactiveSaving, setInteractiveSaving] = useState(false);
   const prevNoticeIdRef = useRef<number | null | undefined>(null);
   useEffect(() => {
     if (notice?.id !== prevNoticeIdRef.current) {
       prevNoticeIdRef.current = notice?.id;
-      setInteractiveDone(false);
+      setInteractiveDone(Boolean(notice?.interactiveChallengeVerified));
+    } else if (notice?.interactiveChallengeVerified) {
+      setInteractiveDone(true);
     }
-  }, [notice?.id]);
+  }, [notice?.id, notice?.interactiveChallengeVerified]);
 
   const acknowledge = useCallback(() => {
     if (!notice?.id || notice.showNoticeEveryScan) return;
@@ -154,10 +168,8 @@ export function ViolationNoticeBanner({
   }, [kind, notice?.id, notice?.showNoticeEveryScan, setPanelOpen, interactivePhrase, interactiveDone]);
 
   const closePanel = useCallback(() => {
-    // Interactive challenge must be completed before closing
-    if (interactivePhrase && !interactiveDone) return;
     setPanelOpen(false);
-  }, [setPanelOpen, interactivePhrase, interactiveDone]);
+  }, [setPanelOpen]);
 
   const openPanel = useCallback(() => {
     setPanelOpen(true);
@@ -171,19 +183,23 @@ export function ViolationNoticeBanner({
   const imgCount = images.length;
 
   const sessionAcked = !notice.showNoticeEveryScan && readAcked(kind, notice.id);
-  const islandLabel = sessionAcked
-    ? isViolation
-      ? "违规记录（已知晓）"
-      : "未绑卡（已知晓）"
-    : panelOpen
-      ? "详情已展开 · 点我收起"
-      : notice.showNoticeEveryScan
-        ? isViolation
-          ? "违规警示 · 点我"
-          : "未绑卡警示 · 点我"
-        : isViolation
-          ? "违规通告 · 点我查看"
-          : "未绑卡提示 · 点我查看";
+  const islandLabel = interactivePhrase
+    ? interactiveDone
+      ? "交互验证 · 已完成"
+      : `🧩 ${panelOpen ? "请完成验证" : "交互验证 · 点我"}`
+    : sessionAcked
+      ? isViolation
+        ? "违规记录（已知晓）"
+        : "未绑卡（已知晓）"
+      : panelOpen
+        ? "详情已展开 · 点我收起"
+        : notice.showNoticeEveryScan
+          ? isViolation
+            ? "违规警示 · 点我"
+            : "未绑卡警示 · 点我"
+          : isViolation
+            ? "违规通告 · 点我查看"
+            : "未绑卡提示 · 点我查看";
 
   const titleId = kind === "unbound" ? "unbound-notice-title" : "violation-notice-title";
 
@@ -272,13 +288,8 @@ export function ViolationNoticeBanner({
                     ) : null}
                     <button
                       type="button"
-                      disabled={Boolean(interactivePhrase && !interactiveDone)}
                       onClick={closePanel}
-                      className={`rounded-full p-2 transition-opacity ${
-                        interactivePhrase && !interactiveDone
-                          ? "text-amber-200/20 cursor-not-allowed"
-                          : `hover:bg-white/10 ${theme.closeBtn}`
-                      }`}
+                      className={`rounded-full p-2 hover:bg-white/10 ${theme.closeBtn}`}
                       aria-label="关闭"
                     >
                       <X className="h-4 w-4" />
@@ -305,22 +316,40 @@ export function ViolationNoticeBanner({
                         ))}
                       </div>
                     ) : null}
-                    {interactivePhrase ? (
-                      <div className="w-full max-w-2xl rounded-2xl border bg-black/30 p-5 ${theme.textBorder}">
-                        <InteractiveChallenge
-                          phrase={interactivePhrase}
-                          onComplete={() => setInteractiveDone(true)}
-                        />
-                      </div>
-                    ) : text ? (
+                    {text ? (
                       <p
                         className={`w-full max-w-2xl rounded-2xl border bg-black/30 p-4 text-center text-sm leading-relaxed whitespace-pre-wrap break-words ${theme.textBorder} ${theme.textBody}`}
                       >
                         {text}
                       </p>
-                    ) : (
+                    ) : imgCount === 0 && !(interactivePhrase && !interactiveDone) ? (
                       <p className={`text-center text-xs ${theme.emptyHint}`}>未填写文字说明，请查看附图或联系管理员。</p>
-                    )}
+                    ) : null}
+                    {interactivePhrase && !interactiveDone ? (
+                      <div className={`w-full max-w-2xl rounded-2xl border bg-black/30 p-5 ${theme.textBorder}`}>
+                        <InteractiveChallenge
+                          phrase={interactivePhrase}
+                          onComplete={() => {
+                            if (!notice?.id || !targetUserId || interactiveSaving || interactiveDone) return;
+                            setInteractiveSaving(true);
+                            void ackViolationInteractivePermanent(notice.id, targetUserId)
+                              .then((ack) => {
+                                setInteractiveDone(true);
+                                onInteractiveVerified?.({
+                                  violationId: ack.violationId,
+                                  enterLocked: ack.enterLocked,
+                                  interactiveChallengeVerified: ack.interactiveChallengeVerified,
+                                  violationExpired: ack.violationExpired,
+                                });
+                              })
+                              .catch(() => {
+                                setInteractiveDone(false);
+                              })
+                              .finally(() => setInteractiveSaving(false));
+                          }}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </motion.div>

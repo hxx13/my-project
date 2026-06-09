@@ -8,7 +8,6 @@ import {
   Beaker,
   Bell,
   Check,
-  CheckCircle2,
   CreditCard,
   Pencil,
   RefreshCw,
@@ -28,7 +27,6 @@ import {
   getUnboundCardNoticeSettings,
   listStudentViolations,
   listViolationPersonnelByProjectGroup,
-  markStudentViolationProcessed,
   saveUnboundCardNoticeSettings,
   searchViolationProjectGroups,
   UNBOUND_APPLY_ROLE_OPTIONS,
@@ -37,6 +35,7 @@ import {
   type UnboundApplyRoleCode,
 } from "@/api/domains/studentViolation.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
+import { effectiveViolationForbidEnter } from "@/components/scanner/twinViolationInteractive";
 import { adminHttp } from "@/api/core/adminHttp";
 import { searchPersonnel } from "@/api/twinApi";
 import { AdminButton, adminPickableRowClass } from "@/components/admin/AdminButton";
@@ -104,9 +103,8 @@ function violationStatusLabel(status: string | undefined): { text: string; hint?
     case "SUPERSEDED":
       return { text: "已被覆盖", hint: "同一人新建违规时，旧记录由系统自动归档；仅留档，不再生效", className: "text-amber-800" };
     case "CLEARED":
-      return { text: "已解除", hint: "管理员手动「解除」", className: "text-emerald-800" };
     case "PROCESSED":
-      return { text: "已处理", hint: "管理员标记「已处理」，扫码不再弹窗", className: "text-[var(--twin-body)]" };
+      return { text: "已解除", hint: "管理员已结束，扫码不再展示，记录仍保留", className: "text-emerald-800" };
     case "EXPIRED":
       return { text: "已过期", hint: "超过到期时间，系统自动失效", className: "text-[var(--twin-mute)]" };
     default:
@@ -265,6 +263,8 @@ export default function AdminStudentViolationsPage() {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [forbidEnter, setForbidEnter] = useState(false);
+  const [newInteractiveChallenge, setNewInteractiveChallenge] = useState("");
+  const [newInteractiveUnlockOnVerify, setNewInteractiveUnlockOnVerify] = useState(true);
   const [maxEnter, setMaxEnter] = useState("");
   const [showEvery, setShowEvery] = useState(true);
   const [expireDays, setExpireDays] = useState("");
@@ -280,6 +280,7 @@ export default function AdminStudentViolationsPage() {
   const [editExpireMode, setEditExpireMode] = useState<"KEEP" | "CLEAR" | "RELATIVE">("KEEP");
   const [editExpireDays, setEditExpireDays] = useState("");
   const [editInteractiveChallenge, setEditInteractiveChallenge] = useState("");
+  const [editInteractiveUnlockOnVerify, setEditInteractiveUnlockOnVerify] = useState(true);
   const [editUploading, setEditUploading] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [unboundEnabled, setUnboundEnabled] = useState(true);
@@ -301,6 +302,7 @@ export default function AdminStudentViolationsPage() {
   const [strandedWhitelistDepts, setStrandedWhitelistDepts] = useState<string[]>([]);
   const [interactiveChallengeEnabled, setInteractiveChallengeEnabled] = useState(false);
   const [interactiveChallengePhrase, setInteractiveChallengePhrase] = useState("一人一卡,严禁尾随");
+  const [strandedInteractiveUnlockOnVerify, setStrandedInteractiveUnlockOnVerify] = useState(true);
   const [strandedConfigLoading, setStrandedConfigLoading] = useState(false);
   const [strandedConfigSaving, setStrandedConfigSaving] = useState(false);
   // Test state
@@ -557,6 +559,8 @@ export default function AdminStudentViolationsPage() {
     setMaxEnter("");
     setExpireDays("");
     setForbidEnter(false);
+    setNewInteractiveChallenge("");
+    setNewInteractiveUnlockOnVerify(true);
     setShowEvery(true);
   };
 
@@ -568,14 +572,17 @@ export default function AdminStudentViolationsPage() {
       }
       setSaving(true);
       try {
+        const interactiveChallenge = newInteractiveChallenge.trim() || null;
         await createStudentViolation({
           targetUserId: picked.userId,
           violationText: violationText.trim(),
           imageUrls,
-          forbidEnter,
+          forbidEnter: effectiveViolationForbidEnter(forbidEnter, newInteractiveChallenge),
           maxEnterSuccess: maxEnterParsed,
           showNoticeEveryScan: showEvery,
           expireAfterDays: expireDaysParsed,
+          interactiveChallenge,
+          interactiveUnlockOnVerify: interactiveChallenge ? newInteractiveUnlockOnVerify : undefined,
         });
         toast.success("已保存违规记录");
         clearPickedPerson();
@@ -603,14 +610,17 @@ export default function AdminStudentViolationsPage() {
     }
     setSaving(true);
     try {
+      const interactiveChallenge = newInteractiveChallenge.trim() || null;
       const summary = await batchCreateStudentViolations({
         targetUserIds: ids,
         violationText: violationText.trim(),
         imageUrls,
-        forbidEnter,
+        forbidEnter: effectiveViolationForbidEnter(forbidEnter, newInteractiveChallenge),
         maxEnterSuccess: maxEnterParsed,
         showNoticeEveryScan: showEvery,
         expireAfterDays: expireDaysParsed,
+        interactiveChallenge,
+        interactiveUnlockOnVerify: interactiveChallenge ? newInteractiveUnlockOnVerify : undefined,
       });
       const created = summary?.createdCount ?? 0;
       const failed = summary?.failed?.length ?? 0;
@@ -633,7 +643,7 @@ export default function AdminStudentViolationsPage() {
     lockMode === "single" ? Boolean(picked) : Boolean(selectedGroup) && batchSelectedIds.size > 0;
 
   const onClear = async (id: number) => {
-    if (!window.confirm("确认解除该条违规？")) return;
+    if (!window.confirm("解除后该条将不再在扫码弹窗展示，记录仍保留。确定？")) return;
     try {
       await clearStudentViolation(id);
       toast.success("已解除");
@@ -648,12 +658,13 @@ export default function AdminStudentViolationsPage() {
     setEditTargetLabel(personDisplayName(r));
     setEditText(r.violationText || "");
     setEditUrls(parseRowImageUrls(r));
-    setEditForbid(Boolean(r.forbidEnter));
+    setEditForbid(Boolean(r.forbidEnter) || Boolean(r.interactiveChallenge?.trim()));
     setEditMax(r.maxEnterSuccess != null && r.maxEnterSuccess !== undefined ? String(r.maxEnterSuccess) : "");
     setEditShowEvery(r.showNoticeEveryScan !== 0);
     setEditExpireMode("KEEP");
     setEditExpireDays("");
     setEditInteractiveChallenge(r.interactiveChallenge || "");
+    setEditInteractiveUnlockOnVerify(r.interactiveUnlockOnVerify !== 0);
     setEditOpen(true);
   };
 
@@ -698,15 +709,17 @@ export default function AdminStudentViolationsPage() {
     }
     setSavingEdit(true);
     try {
+      const interactiveChallenge = editInteractiveChallenge.trim() || null;
       const updated = await updateStudentViolation(editId, {
         violationText: editText.trim(),
         imageUrls: editUrls,
-        forbidEnter: editForbid,
+        forbidEnter: effectiveViolationForbidEnter(editForbid, editInteractiveChallenge),
         maxEnterSuccess: editMaxParsed,
         showNoticeEveryScan: editShowEvery,
         expireMode: editExpireMode,
         expireAfterDays: editExpireMode === "RELATIVE" ? editExpireDaysParsed : null,
-        interactiveChallenge: editInteractiveChallenge.trim() || null,
+        interactiveChallenge,
+        interactiveUnlockOnVerify: interactiveChallenge ? editInteractiveUnlockOnVerify : undefined,
       });
       toast.success("已保存修改");
       setEditOpen(false);
@@ -742,17 +755,6 @@ export default function AdminStudentViolationsPage() {
     }
   };
 
-  const onMarkProcessed = async (id: number) => {
-    if (!window.confirm("标记为「已处理」后，该条将不再在扫码弹窗展示，记录仍保留。确定？")) return;
-    try {
-      await markStudentViolationProcessed(id);
-      toast.success("已标记处理");
-      await qc.invalidateQueries({ queryKey: violationsQueryKey });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "操作失败");
-    }
-  };
-
   // ---- Stranded config ----
   const loadStrandedConfig = async () => {
     setStrandedConfigLoading(true);
@@ -766,6 +768,7 @@ export default function AdminStudentViolationsPage() {
       setStrandedWhitelistDepts(parseJsonArrayStr(cfg.whitelist_depts));
       setInteractiveChallengeEnabled(Boolean(cfg.interactive_challenge_enabled));
       setInteractiveChallengePhrase(cfg.interactive_challenge_phrase || "一人一卡,严禁尾随");
+      setStrandedInteractiveUnlockOnVerify(cfg.interactive_unlock_on_verify !== 0);
     } catch { /* ignore */ }
     finally { setStrandedConfigLoading(false); }
   };
@@ -784,11 +787,12 @@ export default function AdminStudentViolationsPage() {
       await adminHttp.put("/twin/student-violations/stranded-config", {
         auto_signout_enabled: strandedAutoSignout,
         violation_text_tpl: strandedViolationTpl,
-        forbid_enter: strandedForbidEnter,
+        forbid_enter: interactiveChallengeEnabled ? 1 : (strandedForbidEnter ? 1 : 0),
         expire_after_days: Number(strandedExpireDays) || 1,
         whitelist_depts: JSON.stringify(strandedWhitelistDepts),
         interactive_challenge_enabled: interactiveChallengeEnabled ? 1 : 0,
         interactive_challenge_phrase: interactiveChallengePhrase,
+        interactive_unlock_on_verify: strandedInteractiveUnlockOnVerify ? 1 : 0,
       });
       toast.success("自动滞留配置已保存");
       loadStrandedConfig();
@@ -1294,14 +1298,15 @@ export default function AdminStudentViolationsPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
+            <label className={`flex items-center gap-2 text-sm ${newInteractiveChallenge.trim() ? "text-amber-700" : "text-[var(--twin-ink)]"}`}>
               <input
                 type="checkbox"
                 className="h-4 w-4 rounded border-[var(--twin-hairline-strong)] text-[var(--twin-ink)] focus-visible:ring-2 focus-visible:ring-[#0070f3]/25"
-                checked={forbidEnter}
+                checked={newInteractiveChallenge.trim() ? true : forbidEnter}
+                disabled={Boolean(newInteractiveChallenge.trim())}
                 onChange={(e) => setForbidEnter(e.target.checked)}
               />
-              立即禁止扫码进入
+              {newInteractiveChallenge.trim() ? "🔒 禁止扫码进入（交互式确认要求）" : "立即禁止扫码进入"}
             </label>
             <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <input
@@ -1312,6 +1317,32 @@ export default function AdminStudentViolationsPage() {
               />
               每次扫码都提示违规内容
             </label>
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-[var(--twin-body)]">
+                🧩 交互式确认短语（留空=关闭）
+              </label>
+              <input
+                className={cn(inputBase, "mt-1")}
+                value={newInteractiveChallenge}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setNewInteractiveChallenge(v);
+                  if (v.trim()) setForbidEnter(true);
+                }}
+                placeholder="如：一人一卡,严禁尾随"
+              />
+              {newInteractiveChallenge.trim() ? (
+                <label className="mt-2 flex items-center gap-2 text-sm text-[var(--twin-ink)]">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={newInteractiveUnlockOnVerify}
+                    onChange={(e) => setNewInteractiveUnlockOnVerify(e.target.checked)}
+                  />
+                  验证完成后自动解除禁入
+                </label>
+              ) : null}
+            </div>
             <div>
               <label className="text-xs font-medium text-[var(--twin-body)]">可以「进入」次数上限（留空=不限制）</label>
               <input
@@ -1438,9 +1469,15 @@ export default function AdminStudentViolationsPage() {
                       onChange={(e) => setInteractiveChallengePhrase(e.target.value)}
                       placeholder="一人一卡,严禁尾随"
                     />
-                    <p className="mt-1 text-[10px] text-neutral-400">
-                      违规人员扫码时必须按顺序点击文字卡片，完成后方可关闭公告进入
-                    </p>
+                    <label className="mt-2 flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={strandedInteractiveUnlockOnVerify}
+                        onChange={(e) => setStrandedInteractiveUnlockOnVerify(e.target.checked)}
+                      />
+                      验证完成后自动解除禁入
+                    </label>
                   </div>
                 )}
               </div>
@@ -1628,18 +1665,6 @@ export default function AdminStudentViolationsPage() {
                               tone="secondary"
                               size="sm"
                               className="gap-1 text-emerald-900"
-                              onClick={() => void onMarkProcessed(r.id)}
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                              已处理
-                            </AdminButton>
-                          ) : null}
-                          {r.status === "ACTIVE" ? (
-                            <AdminButton
-                              type="button"
-                              tone="secondary"
-                              size="sm"
-                              className="gap-1 text-amber-900"
                               onClick={() => void onClear(r.id)}
                             >
                               <Ban className="h-3.5 w-3.5" aria-hidden />
@@ -1761,14 +1786,15 @@ export default function AdminStudentViolationsPage() {
                   </div>
                 ) : null}
               </div>
-              <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
+              <label className={`flex items-center gap-2 text-sm ${editInteractiveChallenge.trim() ? "text-amber-700" : "text-[var(--twin-ink)]"}`}>
                 <input
                   type="checkbox"
                   className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
-                  checked={editForbid}
+                  checked={editInteractiveChallenge.trim() ? true : editForbid}
+                  disabled={Boolean(editInteractiveChallenge.trim())}
                   onChange={(e) => setEditForbid(e.target.checked)}
                 />
-                立即禁止扫码进入
+                {editInteractiveChallenge.trim() ? "🔒 禁止扫码进入（交互式确认要求）" : "立即禁止扫码进入"}
               </label>
               <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
                 <input
@@ -1786,12 +1812,24 @@ export default function AdminStudentViolationsPage() {
                 <input
                   className={cn(inputBase, "mt-1")}
                   value={editInteractiveChallenge}
-                  onChange={(e) => setEditInteractiveChallenge(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setEditInteractiveChallenge(v);
+                    if (v.trim()) setEditForbid(true);
+                  }}
                   placeholder="如：一人一卡,严禁尾随"
                 />
-                <p className="mt-0.5 text-[10px] text-neutral-400">
-                  非空时扫码弹窗显示文字拼图，违规人员必须按顺序点击完成后方可关闭
-                </p>
+                {editInteractiveChallenge.trim() ? (
+                  <label className="mt-2 flex items-center gap-2 text-sm text-[var(--twin-ink)]">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={editInteractiveUnlockOnVerify}
+                      onChange={(e) => setEditInteractiveUnlockOnVerify(e.target.checked)}
+                    />
+                    验证完成后自动解除禁入
+                  </label>
+                ) : null}
               </div>
               <div>
                 <label className="text-xs font-medium text-[var(--twin-body)]">进入次数上限（留空=不限制）</label>

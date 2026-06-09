@@ -27,4 +27,8 @@ public class TwinStudentViolation {
     private String source;
     /** 交互式确认短语；null=普通公告，非空=扫码弹窗显示交互拼图 */
     private String interactiveChallenge;
+    /** 交互拼图完成时间；非 null 表示已永久解除禁入 */
+    private LocalDateTime interactiveChallengeVerifiedAt;
+    /** 交互验证完成后是否自动解除禁入；1=是 */
+    private Integer interactiveUnlockOnVerify;
 }

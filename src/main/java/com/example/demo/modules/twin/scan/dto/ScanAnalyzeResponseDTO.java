@@ -30,4 +30,6 @@ public class ScanAnalyzeResponseDTO {
     private ScanStudentViolationNoticeDTO unboundCardNotice;
     /** 扫码弹窗公告（多条翻页）；无则 null */
     private ScanPopupAnnouncementBundleDTO scanPopupAnnouncements;
+    /** 违规交互确认短语（直接透传，不经过子DTO序列化） */
+    private String violationInteractiveChallenge;
 }

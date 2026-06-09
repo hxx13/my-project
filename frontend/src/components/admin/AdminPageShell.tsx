@@ -1,8 +1,6 @@
 import { useRef } from "react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
 
 type AdminPageShellProps = {
   title: ReactNode;
@@ -54,19 +52,6 @@ export function AdminTableShell({
   scrollable,
 }: AdminTableShellProps) {
   const tableRef = useRef<HTMLDivElement>(null);
-
-  // Staggered row entrance when data loads
-  useGSAP(() => {
-    if (!tableRef.current || !children || loading) return;
-    // Delay to let DOM render, then stagger table rows
-    const timer = setTimeout(() => {
-      const rows = tableRef.current?.querySelectorAll("tbody tr");
-      if (rows && rows.length > 0) {
-        gsap.fromTo(rows, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.35, stagger: 0.03, ease: "power2.out", clearProps: "transform,opacity" });
-      }
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [children, loading]);
 
   if (loading) {
     return (
