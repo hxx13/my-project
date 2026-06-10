@@ -51,7 +51,7 @@ export function AdminCommandPalette({
 
   const run = (it: AdminCommandPaletteItem) => {
     appendAdminNavRecent(it.path);
-    onOpenChange(false);
+    // Navigate first, THEN close — prevents race condition where dialog closes before navigation
     if (it.telemetry) {
       try {
         const returnKey = it.telemetryReturnStorageKey ?? ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY;
@@ -61,6 +61,7 @@ export function AdminCommandPalette({
     } else {
       void navigate(it.path);
     }
+    onOpenChange(false);
   };
 
   /** 搜索 value: label + path + group + alias，保证全局模糊匹配 */
@@ -73,7 +74,7 @@ export function AdminCommandPalette({
       key={`${context}-${it.id}`}
       value={searchValue(it, context)}
       onSelect={() => run(it)}
-      className="cursor-pointer rounded-md py-2.5 transition-colors aria-selected:bg-neutral-100 hover:bg-neutral-50 flex items-center gap-3"
+      className="cursor-pointer rounded-md py-2.5 px-2 transition-colors aria-selected:bg-neutral-100 hover:bg-neutral-100 flex items-center gap-3 text-neutral-800"
     >
       {it.icon && createElement(it.icon, { className: "h-4 w-4 shrink-0 text-neutral-400" })}
       <div className="min-w-0 flex-1">

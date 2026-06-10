@@ -1,38 +1,18 @@
 import { createElement, useEffect, useMemo, useState } from "react";
 import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
-import type { KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
-import {
-  fetchPublicPagePermissions,
-  WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED,
-  type PublicPagePermissionNode,
-  type MinRole,
-} from "@/api/domains/pagePermission.api";
+import { fetchPublicPagePermissions, WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, type MinRole } from "@/api/domains/pagePermission.api";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
-import {
-  buildAdminNavModel,
-  createAdminNavContext,
-  normalizeAdminPath,
-} from "@/features/admin/buildAdminNavModel";
-import {
-  ADMIN_NAV_PERSONALIZATION_EVENT,
-  isAdminNavStarred,
-  readAdminNavRecent,
-  toggleAdminNavStar,
-} from "@/features/admin/adminNavPersonalization";
+import { buildAdminNavModel, createAdminNavContext, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import { ADMIN_NAV_PERSONALIZATION_EVENT, isAdminNavStarred, readAdminNavRecent, toggleAdminNavStar } from "@/features/admin/adminNavPersonalization";
 import { cn } from "@/lib/utils";
-import { Lock, Sparkles, Star } from "lucide-react";
+import { Sparkles, Star, ChevronDown, ChevronRight } from "lucide-react";
 
 const ROLE_LABEL: Record<MinRole, string> = {
-  STUDENT: "学生",
-  STAFF: "教职工",
-  SENIOR: "高级职工",
-  ADMIN: "管理员",
-  SUPER_ADMIN: "超级管理员",
-  PLATFORM_OWNER: "平台所有者",
+  STUDENT: "学生", STAFF: "教职工", SENIOR: "高级职工", ADMIN: "管理员", SUPER_ADMIN: "超级管理员", PLATFORM_OWNER: "平台所有者",
 };
 
 export default function AdminHomePage() {
@@ -40,6 +20,7 @@ export default function AdminHomePage() {
   const qc = useQueryClient();
   const role = authStorage.getRole() || "STUDENT";
   const [navBump, setNavBump] = useState(0);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const { data: permNodes = [] } = useQuery({
     queryKey: ["publicPagePermissions", "WEB"] as const,
@@ -48,11 +29,9 @@ export default function AdminHomePage() {
   });
 
   useEffect(() => {
-    const onWebPermUpdated = () => {
-      qc.invalidateQueries({ queryKey: ["publicPagePermissions"] });
-    };
-    window.addEventListener(WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, onWebPermUpdated);
-    return () => window.removeEventListener(WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, onWebPermUpdated);
+    const fn = () => qc.invalidateQueries({ queryKey: ["publicPagePermissions"] });
+    window.addEventListener(WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, fn);
+    return () => window.removeEventListener(WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, fn);
   }, [qc]);
 
   useEffect(() => {
@@ -62,190 +41,129 @@ export default function AdminHomePage() {
   }, []);
 
   const navCtx = useMemo(() => createAdminNavContext(role, permNodes), [role, permNodes]);
-
   const [navModel, setNavModel] = useState<Awaited<ReturnType<typeof buildAdminNavModel>> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    buildAdminNavModel(navCtx, null).then((model) => {
-      if (!cancelled) setNavModel(model);
-    });
+    buildAdminNavModel(navCtx, null).then((model) => { if (!cancelled) setNavModel(model); });
     return () => { cancelled = true; };
   }, [navCtx]);
 
-  const cards = useMemo(() => {
+  const allCards = useMemo(() => {
     const homeSections = navModel?.homeSections ?? [];
-    return homeSections.map((g) => ({
-      ...g,
-      entries: g.entries.map((e) => {
+    return homeSections.flatMap((g) =>
+      g.entries.map((e) => {
         const roleOk = hasMinRole(role, e.minRole);
         const permOk = canShowWebEntry(permNodes, e.path, "sidebar", role, e.minRole);
-        return {
-          ...e,
-          enabled: roleOk && permOk,
-          icon: createElement(e.icon, { className: "h-5 w-5" }),
-        };
-      }),
-    }));
+        return { ...e, enabled: roleOk && permOk, groupTitle: g.title, icon: createElement(e.icon, { className: "h-5 w-5" }) };
+      })
+    );
   }, [navModel, permNodes, role]);
 
-  const flatEntries = useMemo(() => cards.flatMap((g) => g.entries), [cards]);
-
-  const recentQuick = useMemo(() => {
-    void navBump;
-    const paths = readAdminNavRecent();
-    const out: (typeof flatEntries)[number][] = [];
-    for (const p of paths) {
-      const hit = flatEntries.find((e) => normalizeAdminPath(e.path) === p && e.enabled);
-      if (hit) out.push(hit);
+  const groups = useMemo(() => {
+    const m = new Map<string, typeof allCards>();
+    for (const c of allCards) {
+      if (!m.has(c.groupTitle)) m.set(c.groupTitle, []);
+      m.get(c.groupTitle)!.push(c);
     }
-    return out;
-  }, [flatEntries, navBump]);
+    return [...m.entries()];
+  }, [allCards]);
+
+  const starred = useMemo(() => allCards.filter(c => isAdminNavStarred(c.path) && c.enabled), [allCards, navBump]);
+  const recent = useMemo(() => {
+    const paths = readAdminNavRecent();
+    const out: typeof allCards = [];
+    for (const p of paths) { const hit = allCards.find(e => normalizeAdminPath(e.path) === p && e.enabled); if (hit) out.push(hit); }
+    return out.slice(0, 8);
+  }, [allCards, navBump]);
 
   const roleLabel = ROLE_LABEL[role as MinRole] ?? role;
-  const enabledCount = flatEntries.filter((e) => e.enabled).length;
+  const enabledCount = allCards.filter((e) => e.enabled).length;
+
+  const toggleGroup = (title: string) => setCollapsed(p => { const n = new Set(p); n.has(title) ? n.delete(title) : n.add(title); return n; });
 
   return (
     <AdminFullWidthPage>
-      <div className="space-y-8">
-      <section className="relative overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-6 shadow-twin-level-1 sm:p-8">
-        <div
-          className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-[conic-gradient(from_180deg_at_50%_50%,rgba(0,112,243,0.12),transparent_55%,rgba(121,40,202,0.08),transparent)] opacity-90 blur-2xl"
-          aria-hidden
-        />
-        <div className="pointer-events-none absolute -bottom-16 left-1/2 h-32 w-[min(100%,28rem)] -translate-x-1/2 rounded-full bg-gradient-to-t from-[var(--twin-canvas-soft)] to-transparent blur-xl" aria-hidden />
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0 space-y-2">
-            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--twin-mute)]">
-              <Sparkles className="h-3.5 w-3.5 text-[var(--twin-link-deep)]" aria-hidden />
-              工作台
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight text-[var(--twin-ink)] sm:text-3xl">欢迎回来</h1>
-            <p className="max-w-xl text-sm leading-relaxed text-[var(--twin-body)]">
-              从下方分区进入各管理模块。收藏会同步到命令面板{" "}
-              <kbd className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-1.5 py-0.5 font-mono text-[10px] font-medium text-[var(--twin-body)]">
-                Ctrl
-              </kbd>
-              <kbd className="ml-0.5 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-1.5 py-0.5 font-mono text-[10px] font-medium text-[var(--twin-body)]">
-                K
-              </kbd>{" "}
-              快速跳转。
-            </p>
+      <div className="space-y-6 p-4 sm:p-6">
+        {/* Header */}
+        <section className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--twin-mute)]"><Sparkles className="h-3.5 w-3.5 text-[var(--twin-link-deep)]" />工作台</p>
+            <h1 className="text-xl font-semibold tracking-tight text-[var(--twin-ink)]">欢迎回来</h1>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <span className="inline-flex items-center rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-1 text-xs font-medium text-[var(--twin-body)]">
-              当前身份 · {roleLabel}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-emerald-200/80 bg-emerald-50/90 px-3 py-1 text-xs font-medium text-emerald-800">
-              已开放入口 · {enabledCount}
-            </span>
+          <div className="flex items-center gap-2 text-xs text-[var(--twin-mute)]">
+            <span>{roleLabel}</span><span>·</span><span>{enabledCount} 入口</span>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {recentQuick.length ? (
-        <section className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-twin-level-1 sm:p-6">
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--twin-mute)]">最近访问</h2>
-          <div className="flex flex-wrap gap-2">
-            {recentQuick.map((e) => (
-              <button
-                key={e.path}
-                type="button"
-                onClick={() => navigate(e.path)}
-                className="max-w-full truncate rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3.5 py-1.5 text-left text-xs font-medium text-[var(--twin-ink)] shadow-twin-level-1 transition hover:border-[var(--twin-link-deep)]/35 hover:bg-[var(--twin-canvas)]"
-                title={e.path}
-              >
-                {e.title}
+        {/* Starred */}
+        {starred.length > 0 && (
+          <section>
+            <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--twin-mute)]"><Star className="h-3 w-3 fill-amber-400 text-amber-500" />收藏</h2>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+              {starred.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} starred />)}
+            </div>
+          </section>
+        )}
+
+        {/* Recent */}
+        {recent.length > 0 && (
+          <section>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--twin-mute)]">最近访问</h2>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+              {recent.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} />)}
+            </div>
+          </section>
+        )}
+
+        {/* Groups — collapsible */}
+        {groups.map(([title, entries]) => {
+          const enabled = entries.filter(e => e.enabled);
+          if (enabled.length === 0) return null;
+          const isCollapsed = collapsed.has(title);
+          return (
+            <section key={title}>
+              <button onClick={() => toggleGroup(title)} className="mb-2 flex w-full items-center gap-1 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">
+                {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {title}
+                <span className="ml-1 text-[10px] opacity-50">({enabled.length})</span>
               </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {cards.map((group) => (
-        <section
-          key={group.title}
-          className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-twin-level-1 sm:p-6"
-        >
-          <h2 className="mb-4 border-b border-[var(--twin-hairline)] pb-3 text-base font-semibold tracking-tight text-[var(--twin-ink)]">
-            {group.title}
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {group.entries.map((entry, idx) => {
-              const starred = isAdminNavStarred(entry.path);
-              const openEntry = () => {
-                if (entry.enabled) void navigate(entry.path);
-              };
-              const onCardKey = (e: KeyboardEvent) => {
-                if (!entry.enabled) return;
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  openEntry();
-                }
-              };
-              return (
-                <div
-                  key={`${entry.path}-${idx}`}
-                  role="button"
-                  tabIndex={entry.enabled ? 0 : -1}
-                  aria-disabled={!entry.enabled}
-                  onClick={openEntry}
-                  onKeyDown={onCardKey}
-                  className={cn(
-                    "group rounded-twin-xl border p-4 text-left outline-none transition duration-200",
-                    "focus-visible:ring-2 focus-visible:ring-[var(--twin-link-deep)]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--twin-canvas)]",
-                    entry.enabled
-                      ? "cursor-pointer border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1 hover:-translate-y-0.5 hover:border-[var(--twin-hairline-strong)] hover:shadow-twin-level-2"
-                      : "cursor-not-allowed border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] opacity-[0.72]"
-                  )}
-                >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div
-                      className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-twin-xl bg-gradient-to-br text-white shadow-md ring-1 ring-black/5 ${entry.tone}`}
-                    >
-                      {entry.icon}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button
-                        type="button"
-                        title={starred ? "取消收藏" : "加入收藏（同步到命令面板）"}
-                        aria-pressed={starred}
-                        disabled={!entry.enabled}
-                        onClick={(ev) => {
-                          ev.preventDefault();
-                          ev.stopPropagation();
-                          if (!entry.enabled) return;
-                          toggleAdminNavStar(entry.path);
-                        }}
-                        className={cn(
-                          "rounded-twin-lg p-2 text-[var(--twin-mute)] transition hover:bg-[var(--twin-canvas-soft)] hover:text-amber-600",
-                          starred && "text-amber-500"
-                        )}
-                      >
-                        <Star className={cn("h-4 w-4", starred && "fill-amber-400 text-amber-600")} />
-                      </button>
-                      {!entry.enabled ? <Lock className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> : null}
-                    </div>
-                  </div>
-                  <div className="text-sm font-semibold tracking-tight text-[var(--twin-ink)]">{entry.title}</div>
-                  <div className="mt-1.5 text-[11px] text-[var(--twin-mute)]">权限要求：{ROLE_LABEL[entry.minRole]}</div>
-                  <div
-                    className={cn(
-                      "mt-2 inline-flex rounded-twin-md px-2 py-0.5 text-[11px] font-medium",
-                      entry.enabled
-                        ? "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80"
-                        : "bg-rose-50 text-rose-800 ring-1 ring-rose-200/80"
-                    )}
-                  >
-                    {entry.enabled ? "可访问" : "无权限（仅禁用跳转）"}
-                  </div>
+              {!isCollapsed && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+                  {enabled.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} />)}
                 </div>
-              );
-            })}
-          </div>
-        </section>
-      ))}
-    </div>
-      </AdminFullWidthPage>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    </AdminFullWidthPage>
+  );
+}
+
+function HomeCard({ entry, navigate, starred }: { entry: any; navigate: (p: string) => void; starred?: boolean }) {
+  const [isStarred, setIsStarred] = useState(starred ?? isAdminNavStarred(entry.path));
+  return (
+    <button
+      onClick={() => entry.enabled && navigate(entry.path)}
+      disabled={!entry.enabled}
+      className={cn(
+        "group relative flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-colors",
+        entry.enabled
+          ? "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] hover:border-[var(--twin-hairline-strong)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer"
+          : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] opacity-50 cursor-not-allowed"
+      )}
+    >
+      <div className={cn("inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-sm", entry.tone)}>
+        {entry.icon}
+      </div>
+      <span className="text-[11px] font-medium text-[var(--twin-ink)] leading-tight line-clamp-2">{entry.title}</span>
+      <button
+        onClick={(e) => { e.stopPropagation(); toggleAdminNavStar(entry.path); setIsStarred(!isStarred); }}
+        className={cn("absolute top-1 right-1 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity", isStarred ? "opacity-100 text-amber-500" : "text-[var(--twin-mute)] hover:text-amber-500")}
+      >
+        <Star className={cn("h-3 w-3", isStarred && "fill-amber-400")} />
+      </button>
+    </button>
   );
 }
