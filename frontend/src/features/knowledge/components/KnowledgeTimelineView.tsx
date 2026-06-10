@@ -47,7 +47,7 @@ export function KnowledgeTimelineView({ onSelectPage }: Props) {
   useEffect(() => {
     setLoading(true);
     fetchKnowledgeTimeline({ limit: 80, type: typeFilter === "all" ? undefined : typeFilter })
-      .then(setEvents)
+      .then((data) => setEvents(data as TimelineEvent[]))
       .finally(() => setLoading(false));
   }, [typeFilter]);
 

@@ -50,6 +50,9 @@ export function KnowledgeCategoryManager() {
     slug: n.categorySlug,
     icon: n.icon,
     pageCount: n.pages.length,
+    categoryId: n.categoryId,
+    categoryName: n.categoryName,
+    categorySlug: n.categorySlug,
   })) ?? [];
 
   return (

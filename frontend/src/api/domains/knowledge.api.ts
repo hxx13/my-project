@@ -44,11 +44,13 @@ export interface KnowledgeHistory {
 
 export interface KnowledgeTreeNode {
   categoryId: number;
+  parentId: number | null;
   categoryName: string;
   categorySlug: string;
   icon: string;
   sortOrder: number;
   pages: KnowledgePageSummary[];
+  children: KnowledgeTreeNode[];
 }
 
 export interface KnowledgePageSummary {

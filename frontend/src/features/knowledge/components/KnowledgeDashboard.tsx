@@ -7,7 +7,7 @@ interface Props {
   tags: TagStats[];
   recentPages: { id: number; title: string; version: number; updatedAt: string }[];
   onSelectPage: (id: number) => void;
-  onSelectTag: (tag: string) => void;
+  onSelectTag: (tag: string | null) => void;
   activeTag: string | null;
 }
 

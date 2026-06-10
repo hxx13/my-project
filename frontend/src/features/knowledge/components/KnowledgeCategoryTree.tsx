@@ -68,7 +68,7 @@ export function KnowledgeCategoryTree({
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      await createKnowledgeCategory({ name: newName.trim(), slug: newSlug.trim() || undefined });
+      await createKnowledgeCategory({ name: newName.trim(), slug: newSlug.trim() || newName.trim().replace(/[^a-zA-Z0-9]/g, '-').toLowerCase() });
       setNewName(""); setNewSlug(""); setShowCreate(false); refresh();
     } catch { alert("创建失败"); }
     finally { setCreating(false); }
