@@ -14,11 +14,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class KnowledgePageService {
 
     private static final Logger log = LoggerFactory.getLogger(KnowledgePageService.class);
+
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final KnowledgePageMapper mapper;
     private final KnowledgeHistoryMapper historyMapper;
@@ -80,6 +83,7 @@ public class KnowledgePageService {
         page.setVersion(1);
         page.setAuthor(author != null ? author : "system");
         page.setIsPublished(1);
+        page.setTags(serializeTags(req.getTags()));
         mapper.insert(page);
 
         // 写入 v1 历史快照
@@ -116,6 +120,7 @@ public class KnowledgePageService {
         page.setTitle(req.getTitle() != null ? req.getTitle() : page.getTitle());
         if (req.getContentHtml() != null) page.setContentHtml(req.getContentHtml());
         if (req.getContentMd() != null) page.setContentMd(req.getContentMd());
+        if (req.getTags() != null) page.setTags(serializeTags(req.getTags()));
         page.setVersion(newVersion);
         if (author != null) page.setAuthor(author);
         mapper.update(page);
@@ -182,5 +187,14 @@ public class KnowledgePageService {
             return mapper.searchByCategory(q, categoryId);
         }
         return mapper.search(q);
+    }
+
+    private String serializeTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) return "[]";
+        try {
+            return objectMapper.writeValueAsString(tags);
+        } catch (Exception e) {
+            return "[]";
+        }
     }
 }

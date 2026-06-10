@@ -23,13 +23,13 @@ public interface KnowledgePageMapper {
     @Select("SELECT * FROM knowledge_pages WHERE (title LIKE CONCAT('%', #{q}, '%') OR content_html LIKE CONCAT('%', #{q}, '%') OR content_md LIKE CONCAT('%', #{q}, '%')) AND category_id=#{categoryId} ORDER BY updated_at DESC")
     List<KnowledgePage> searchByCategory(@Param("q") String q, @Param("categoryId") Long categoryId);
 
-    @Insert("INSERT INTO knowledge_pages (category_id, slug, title, content_html, content_md, source, version, author, is_published, created_at, updated_at) " +
-            "VALUES (#{categoryId}, #{slug}, #{title}, #{contentHtml}, #{contentMd}, #{source}, #{version}, #{author}, #{isPublished}, NOW(), NOW())")
+    @Insert("INSERT INTO knowledge_pages (category_id, slug, title, content_html, content_md, tags, source, version, author, is_published, created_at, updated_at) " +
+            "VALUES (#{categoryId}, #{slug}, #{title}, #{contentHtml}, #{contentMd}, #{tags}, #{source}, #{version}, #{author}, #{isPublished}, NOW(), NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(KnowledgePage page);
 
     @Update("UPDATE knowledge_pages SET title=#{title}, slug=#{slug}, content_html=#{contentHtml}, content_md=#{contentMd}, " +
-            "version=#{version}, author=#{author}, is_published=#{isPublished}, updated_at=NOW() WHERE id=#{id}")
+            "tags=#{tags}, version=#{version}, author=#{author}, is_published=#{isPublished}, updated_at=NOW() WHERE id=#{id}")
     int update(KnowledgePage page);
 
     @Delete("DELETE FROM knowledge_pages WHERE id=#{id}")

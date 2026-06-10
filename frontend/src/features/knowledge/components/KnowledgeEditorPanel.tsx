@@ -1,36 +1,51 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
-import { useKnowledgePage } from "@/features/knowledge/hooks/useKnowledgePage";
+import { useState, useEffect, useCallback } from "react";
+import { ArrowLeft, Save, Loader2, X } from "lucide-react";
 import { useKnowledgeSave } from "@/features/knowledge/hooks/useKnowledgeSave";
 import { KnowledgePageRenderer } from "@/features/knowledge/components/KnowledgePageRenderer";
 import { generateSlug } from "@/features/knowledge/utils";
+import type { KnowledgePage } from "@/api/domains/knowledge.api";
 import type { KnowledgePageSaveRequest } from "@/api/domains/knowledge.api";
 
 interface KnowledgeEditorPanelProps {
-  pageId?: number | null;
-  categoryId?: number | null;
+  existingPage?: KnowledgePage | null;
+  onSaved?: (page: KnowledgePage) => void;
+  onCancel?: () => void;
 }
 
-export function KnowledgeEditorPanel({ pageId, categoryId }: KnowledgeEditorPanelProps) {
-  const navigate = useNavigate();
-  const { data: existingPage } = useKnowledgePage(pageId ?? null);
-  const saveMutation = useKnowledgeSave(pageId);
+export function KnowledgeEditorPanel({
+  existingPage,
+  onSaved,
+  onCancel,
+}: KnowledgeEditorPanelProps) {
+  const saveMutation = useKnowledgeSave(existingPage?.id ?? null);
 
   const [initialized, setInitialized] = useState(false);
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [contentMd, setContentMd] = useState("");
   const [summary, setSummary] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
   const [preview, setPreview] = useState(false);
 
   // Lazy init from existing page
-  if (existingPage && !initialized) {
-    setTitle(existingPage.title);
-    setSlug(existingPage.slug);
-    setContentMd(existingPage.contentMd ?? existingPage.contentHtml ?? "");
-    setInitialized(true);
-  }
+  useEffect(() => {
+    if (existingPage && !initialized) {
+      setTitle(existingPage.title);
+      setSlug(existingPage.slug);
+      setContentMd(existingPage.contentMd ?? existingPage.contentHtml ?? "");
+      // Parse tags from page if available
+      try {
+        if ((existingPage as any).tags) {
+          const parsed = typeof (existingPage as any).tags === "string"
+            ? JSON.parse((existingPage as any).tags)
+            : (existingPage as any).tags;
+          if (Array.isArray(parsed)) setTags(parsed);
+        }
+      } catch {}
+      setInitialized(true);
+    }
+  }, [existingPage, initialized]);
 
   const handleTitleChange = (v: string) => {
     setTitle(v);
@@ -39,18 +54,43 @@ export function KnowledgeEditorPanel({ pageId, categoryId }: KnowledgeEditorPane
     }
   };
 
+  const addTag = useCallback(() => {
+    const t = tagInput.trim();
+    if (t && !tags.includes(t)) {
+      setTags(prev => [...prev, t]);
+    }
+    setTagInput("");
+  }, [tagInput, tags]);
+
+  const removeTag = (t: string) => {
+    setTags(prev => prev.filter(x => x !== t));
+  };
+
+  // Ctrl+S shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [title, slug, contentMd, summary, tags]);
+
   const handleSave = () => {
-    const data: KnowledgePageSaveRequest = {
-      categoryId: categoryId ?? existingPage?.categoryId ?? 0,
+    if (!title) return;
+    const data: KnowledgePageSaveRequest & { tags?: string[] } = {
+      categoryId: existingPage?.categoryId ?? 0,
       slug,
       title,
-      contentHtml: contentMd,
       contentMd,
       summary: summary || undefined,
+      tags,
     };
     saveMutation.mutate(data, {
       onSuccess: (page) => {
-        navigate(`/admin/knowledge/page/${page.id}`, { replace: true });
+        onSaved?.(page);
       },
     });
   };
@@ -60,13 +100,13 @@ export function KnowledgeEditorPanel({ pageId, categoryId }: KnowledgeEditorPane
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b border-[var(--app-color-border-default)] px-4 py-2">
         <button
-          onClick={() => navigate(-1)}
+          onClick={onCancel}
           className="rounded-[var(--app-radius-element)] p-1.5 text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
         >
           <ArrowLeft className="size-4" />
         </button>
         <div className="flex-1 text-sm font-medium text-[var(--app-color-text-secondary)]">
-          {pageId ? "编辑文档" : "新建文档"}
+          {existingPage ? "编辑文档" : "新建文档"}
         </div>
         <button
           onClick={() => setPreview(!preview)}
@@ -88,7 +128,7 @@ export function KnowledgeEditorPanel({ pageId, categoryId }: KnowledgeEditorPane
       </div>
 
       {/* Metadata fields */}
-      <div className="space-y-3 border-b border-[var(--app-color-border-default)] px-4 py-3">
+      <div className="space-y-2 border-b border-[var(--app-color-border-default)] px-4 py-3">
         <input
           type="text"
           value={title}
@@ -103,6 +143,28 @@ export function KnowledgeEditorPanel({ pageId, categoryId }: KnowledgeEditorPane
           placeholder="URL 标识（自动生成）"
           className="w-full rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-sm font-mono text-[var(--app-color-text-secondary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-border-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--app-color-accent)]/25"
         />
+        {/* Tags row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {tags.map(t => (
+            <span key={t} className="inline-flex items-center gap-1 rounded-full bg-[var(--app-color-accent-soft)] px-2 py-0.5 text-[10px] font-mono text-[var(--app-color-accent)]">
+              {t}
+              <button onClick={() => removeTag(t)}><X className="size-2.5" /></button>
+            </span>
+          ))}
+          <input
+            type="text"
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                addTag();
+              }
+            }}
+            placeholder={tags.length === 0 ? "添加标签（回车确认）" : "+ 标签"}
+            className="w-32 rounded-[var(--app-radius-element)] border border-transparent bg-transparent px-2 py-0.5 text-[10px] font-mono text-[var(--app-color-text-tertiary)] placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-border-default)] focus:outline-none"
+          />
+        </div>
       </div>
 
       {/* Editor / Preview */}
@@ -115,7 +177,7 @@ export function KnowledgeEditorPanel({ pageId, categoryId }: KnowledgeEditorPane
           <textarea
             value={contentMd}
             onChange={(e) => setContentMd(e.target.value)}
-            placeholder="# 输入 Markdown 内容..."
+            placeholder="# 输入 Markdown 内容…&#10;&#10;使用 [[文档标题]] 创建内部链接"
             className="h-full w-full resize-none bg-[var(--app-color-surface-page)] p-4 font-mono text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:outline-none"
           />
         )}

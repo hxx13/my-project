@@ -1,6 +1,7 @@
 package com.example.demo.modules.knowledge.model;
 
 import lombok.Data;
+import java.util.List;
 
 @Data
 public class KnowledgePageSaveRequest {
@@ -10,4 +11,5 @@ public class KnowledgePageSaveRequest {
     private String contentHtml;
     private String contentMd;
     private String summary;
+    private List<String> tags;
 }

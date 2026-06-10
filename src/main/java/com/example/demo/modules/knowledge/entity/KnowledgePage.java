@@ -16,6 +16,7 @@ public class KnowledgePage {
     private Integer version;
     private String author;
     private Integer isPublished;
+    private String tags; // JSON array string
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
