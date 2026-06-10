@@ -62,6 +62,12 @@ export interface AnalyzeResponse {
     scanPopupAnnouncements?: ScanPopupAnnouncementBundle;
     /** 违规交互确认短语（顶层透传） */
     violationInteractiveChallenge?: string | null;
+    /** 自动签退计时器状态；无计时器时为 null */
+    autoSignoutState?: string | null;
+    /** 计划自动签退时刻 */
+    autoSignoutScheduledAt?: string | null;
+    /** 距离自动签退剩余秒数 */
+    autoSignoutSecondsRemaining?: number | null;
 }
 
 export interface ScanPopupAnnouncementItem {
