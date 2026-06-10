@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import DOMPurify from "dompurify";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -238,8 +239,9 @@ export default function AdminContentHubPage() {
   );
 
   return (
-    <div className="p-6">
-      <AdminPageShell
+    <AdminFullWidthPage>
+      <div className="p-4">
+        <AdminPageShell
         title="小程序内容中心"
         description="公告（管理员及以上）与版本更新（仅平台所有者可写）；正文保存前经 DOMPurify 与后端 Jsoup 消毒。"
       >
@@ -453,6 +455,7 @@ export default function AdminContentHubPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </AdminFullWidthPage>
   );
 }

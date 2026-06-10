@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Bot, Layers, Star } from "lucide-react";
 import {
@@ -77,7 +78,8 @@ export default function AdminAnalyticsPage() {
   };
 
   return (
-    <AdminPageShell
+    <AdminFullWidthPage>
+      <AdminPageShell
       title={
         <span className="inline-flex items-center gap-2">
           <BarChart3 className="h-7 w-7 text-violet-600" />
@@ -207,5 +209,6 @@ function ReportNavCard({
         <Star className={cn("h-3.5 w-3.5", isFavorite ? "fill-amber-400" : "")} />
       </button>
     </div>
+      </AdminFullWidthPage>
   );
 }

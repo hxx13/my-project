@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, memo } from "react";
+import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
@@ -144,7 +145,7 @@ function ShelfGrid({ title, detail, loading, emptyHint, onCellClick, isBookmarke
 /* ------------------------------------------------------------------ */
 
 export default function AdminCageShelfPage() {
-  return <CageColorProvider><AdminCageShelfInner /></CageColorProvider>;
+  return <AdminFullWidthPage><CageColorProvider><AdminCageShelfInner /></CageColorProvider></AdminFullWidthPage>;
 }
 
 type ShelfTab = "bookmarks" | "filter";

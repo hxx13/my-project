@@ -1,4 +1,5 @@
 import { createElement, useEffect, useMemo, useState } from "react";
+import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import type { KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -105,7 +106,8 @@ export default function AdminHomePage() {
   const enabledCount = flatEntries.filter((e) => e.enabled).length;
 
   return (
-    <div className="space-y-8">
+    <AdminFullWidthPage>
+      <div className="space-y-8">
       <section className="relative overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-6 shadow-twin-level-1 sm:p-8">
         <div
           className="pointer-events-none absolute -right-24 -top-24 h-56 w-56 rounded-full bg-[conic-gradient(from_180deg_at_50%_50%,rgba(0,112,243,0.12),transparent_55%,rgba(121,40,202,0.08),transparent)] opacity-90 blur-2xl"
@@ -244,5 +246,6 @@ export default function AdminHomePage() {
         </section>
       ))}
     </div>
+      </AdminFullWidthPage>
   );
 }
