@@ -29,6 +29,19 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
                 "VALUES ('item-knowledge', 'system-security', 'ITEM', '知识库', '/admin/knowledge', 'BookOpen', 9)");
 
+            // 确保智能表格入口始终存在
+            jdbcTemplate.update(
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-smartsheet', 'system-security', 'ITEM', '智能表格', '/admin/smartsheet', 'Table2', 11)");
+
+            // 确保「审核」分组与「申领审核」入口始终存在
+            jdbcTemplate.update(
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) " +
+                "VALUES ('material-review', NULL, 'GROUP', '审核', 7)");
+            jdbcTemplate.update(
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-material-review', 'material-review', 'ITEM', '申领审核', '/admin/material/review', 'ClipboardCheck', 0)");
+
             log.info("[admin-nav-config] 表结构已就绪，种子数据已检查");
         } catch (Exception e) {
             log.error("[admin-nav-config] 迁移失败: {}", e.getMessage());

@@ -287,12 +287,25 @@ features/student/pages/
 
 ### 7.3 教职工端页面
 
-在管理后台导航注册中新增"审核"文件夹：
+在管理后台导航注册中新增"审核"文件夹。
+
+**⚠️ 关键实现说明**：管理后台导航由数据库 `admin_nav_config` 表驱动（`AdminNavConfigSchemaMigrator`），前端 `buildAdminNavModel()` 优先使用服务端配置。仅修改 `adminNavRegistry.ts` 的硬编码注册不生效——必须同时在 `AdminNavConfigSchemaMigrator.java` 的 `run()` 方法中添加 `INSERT IGNORE` 语句，确保启动时写入数据库：
+
+```java
+// admin_nav_config 表 —— INSERT IGNORE 确保幂等
+"INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) " +
+"VALUES ('material-review', NULL, 'GROUP', '审核', 7)";
+"INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+"VALUES ('item-material-review', 'material-review', 'ITEM', '申领审核', '/admin/material/review', 'ClipboardCheck', 0)";
+```
+
+两层注册缺一不可：
+1. **数据库**：`AdminNavConfigSchemaMigrator` → `INSERT IGNORE`（运行时生效）
+2. **前端硬编码**：`adminNavRegistry.ts` → `ADMIN_NAV_REGISTRY`（fallback、首页工作台命令面板、路由标题推导）
 
 ```
 pages/
   MaterialReviewPage.tsx        ← 新建：申领审核（待审+历史）
-  MaterialManagePage.tsx        ← 新建：物品管理（分类+物品+入库）
   MaterialAuditPage.tsx         ← 新建：统计审计面板
 ```
 
