@@ -605,7 +605,7 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         icon: ClipboardCheck,
         homeTone: "from-blue-600 to-indigo-700",
         fallbackMinRole: "STAFF",
-        sidebarVisible: (ctx) => show(ctx, "/admin/material/review", "STAFF"),
+        sidebarVisible: () => true,
       },
     ],
   },

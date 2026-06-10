@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, FileText } from "lucide-react";
 import { useMyMaterialRequests, useWithdrawMaterialRequest, useConfirmMaterialReceive } from "@/api/hooks/useMaterial";
 import type { MaterialRequest } from "@/api/domains/material.api";
 import { StudentCard, Badge, Skeleton, EmptyState } from "../components/ui";
@@ -44,7 +44,7 @@ export default function StudentMaterialRequestsPage() {
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[80px]" />)
         ) : !data?.data || data.data.length === 0 ? (
-          <EmptyState message="暂无申领记录" />
+          <EmptyState icon={FileText} title="暂无申领记录" />
         ) : (
           data.data.map((req) => (
             <StudentCard key={req.id} className="p-3 space-y-2">

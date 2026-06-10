@@ -1,7 +1,7 @@
 /** 学生物资商城 — 快捷入口路由：/student/material */
 import { useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ShoppingCart, ChevronLeft, Plus, Minus, Send } from "lucide-react";
+import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package } from "lucide-react";
 import { useMaterialCategories, useMaterialItems, useMaterialCart, useSaveMaterialCart, useCreateMaterialRequest } from "@/api/hooks/useMaterial";
 import type { MaterialItem } from "@/api/domains/material.api";
 import { StudentCard, Skeleton, EmptyState, Badge } from "../components/ui";
@@ -86,7 +86,7 @@ export default function StudentMaterialPage() {
               {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[120px]" />)}
             </div>
           ) : !items || items.length === 0 ? (
-            <EmptyState message="暂无上架物品" />
+            <EmptyState icon={Package} title="暂无上架物品" />
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
               {items.map((item) => (
