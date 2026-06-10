@@ -19,8 +19,8 @@ export function KnowledgeHistoryDrawer({ open, pageId, onClose, onRollback }: Pr
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
-      <div className="fixed inset-y-0 right-0 z-50 w-[360px] border-l border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] shadow-2xl flex flex-col">
+      <div className="fixed inset-0 bg-black/30" style={{ zIndex: "var(--z-overlay)" }} onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 w-[360px] border-l border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] flex flex-col" style={{ zIndex: "var(--z-modal)", boxShadow: "var(--app-elevation-modal)" }}>
         <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
           <h3 className="text-sm font-semibold font-mono">版本历史</h3>
           <button onClick={onClose} className="rounded p-1 hover:bg-[var(--app-color-surface-hover)]"><X className="size-4" /></button>
