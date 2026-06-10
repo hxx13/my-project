@@ -10,6 +10,7 @@ import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.material.dto.*;
 import com.example.demo.modules.material.entity.MaterialDemand;
 import com.example.demo.modules.material.mapper.MaterialDemandMapper;
+import com.example.demo.modules.material.mapper.MaterialRequestMapper;
 import com.example.demo.modules.material.service.MaterialExcelExportService;
 import com.example.demo.modules.material.service.MaterialService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,6 +38,7 @@ public class MaterialAdminController {
     private final MaterialDemandMapper demandMapper;
     private final UserMapper userMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final MaterialRequestMapper requestMapper;
     private final UserDisplayNameService userDisplayNameService;
 
     public MaterialAdminController(AuthContextService authContextService, MaterialService materialService,
@@ -44,7 +46,8 @@ public class MaterialAdminController {
                                     MaterialDemandMapper demandMapper,
                                     UserMapper userMapper,
                                     JdbcTemplate jdbcTemplate,
-                                    UserDisplayNameService userDisplayNameService) {
+                                    UserDisplayNameService userDisplayNameService,
+                                    MaterialRequestMapper requestMapper) {
         this.authContextService = authContextService;
         this.materialService = materialService;
         this.excelExportService = excelExportService;
@@ -52,6 +55,7 @@ public class MaterialAdminController {
         this.userMapper = userMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.userDisplayNameService = userDisplayNameService;
+        this.requestMapper = requestMapper;
     }
 
     @GetMapping("/categories")
@@ -272,6 +276,12 @@ public class MaterialAdminController {
             "UPDATE sys_system_config SET config_value = ? WHERE module='material' AND config_key='material.demand_entry_visible'",
             next);
         return Result.success(Map.of("visible", "true".equals(next)));
+    }
+
+    @GetMapping("/groups-with-records")
+    @Operation(summary = "有申领记录的课题组列表")
+    public Result<List<String>> groupsWithRecords() {
+        return Result.success(requestMapper.selectDistinctGroups());
     }
 
     @GetMapping("/eligible-reviewers")
