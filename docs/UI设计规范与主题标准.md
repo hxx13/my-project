@@ -1235,20 +1235,23 @@ function CascadingItem({ node, onMove }) {
 | 排除自身 | `excludeId` 防止将文件夹移入自身 |
 | 当前项 disabled | `currentId === id` 时灰显不可点击 |
 
-**已知陷阱：遮罩覆盖 header 导致右上角菜单失效**
+**已知陷阱：遮罩覆盖 header 导致右上角菜单失效**（已全站修复，以下为规范）
 
-`--z-overlay` (600) > header `z-20` (20)，因此全屏遮罩（backdrop）会覆盖 sticky header，导致右上角用户菜单、搜索框等无法点击。
+**根因**：`--z-overlay` (600) > header `z-20` (20)。所有 `fixed inset-0` 遮罩都会覆盖 sticky header。
 
-**解法**：遮罩和抽屉面板使用 `top-16`（64px，等于 admin header 的 `h-16`）作为起始位置，让 header 区域始终保持可交互：
-```tsx
-{/* backdrop: 从 header 下方开始 */}
-<div className="fixed inset-0 top-16 bg-black/30" style={{ zIndex: "var(--z-overlay)" }} />
+**全站修复策略**：
 
-{/* drawer: 从 header 下方开始 */}
-<div className="fixed top-16 bottom-0 right-0 w-[360px]" style={{ zIndex: "var(--z-modal)" }} />
-```
+| 层级 | 修复位置 | 影响范围 |
+|------|---------|---------|
+| `DialogOverlay` 组件 | `components/ui/dialog.tsx:18` → `inset-0 top-16` | **所有** shadcn Dialog（退出登录、确认删除等） |
+| 自定义 modal | 逐个文件 → `inset-0 top-16` | Repair/Purchase 图片预览等 |
 
-**不推荐的做法**：硬编码 `zIndex: 1400` 兜底。这破坏了令牌体系，且治标不治本——如果未来有其他遮罩层级更高，问题会复现。
+**规则**：AdminLayout 下所有 `fixed inset-0` 遮罩必须加 `top-16`（header 高度 64px）。
+
+**例外**：
+- `AdminLoggingConsolePage` — 全屏日志终端，有意覆盖 header
+- TwinLayout 下的 scanner 弹窗 — 不同 header 结构，不需 `top-16`
+- `TwinLayoutInner` — 根布局，不是遮罩
 
 ### 6.4 侧边栏（Sidebar）
 
