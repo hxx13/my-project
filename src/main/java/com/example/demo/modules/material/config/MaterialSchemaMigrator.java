@@ -161,9 +161,30 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
                 VALUES ('material', 'material.demand_entry_visible', 'true', 'BOOLEAN', '学生端需求建议入口开关', NOW())
                 """);
 
+            // locked_qty 预占库存字段
+            ensureColumnExists("material_item", "locked_qty",
+                    "ALTER TABLE material_item ADD COLUMN locked_qty INT NOT NULL DEFAULT 0 COMMENT '已锁定（申领中预占）数量'");
+
             log.info("[material-schema] 物资申领表结构已就绪");
         } catch (Exception e) {
             log.error("[material-schema] 表结构迁移失败: {}", e.getMessage());
+        }
+    }
+
+    private void ensureColumnExists(String tableName, String columnName, String alterSql) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(1) FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = ?
+                  AND COLUMN_NAME = ?
+                """,
+                Integer.class,
+                tableName,
+                columnName
+        );
+        if (count != null && count == 0) {
+            jdbcTemplate.execute(alterSql);
         }
     }
 }

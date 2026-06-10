@@ -113,7 +113,7 @@ export type SettingsNavGroup = {
 const MODULE_GROUP_DEFS: Array<{ id: string; title: string; keys: string[] }> = [
   { id: "notify", title: "通知与权限", keys: ["notification", "template", "capability"] },
   { id: "experience", title: "界面与展示", keys: ["dashboard_codex", "telemetry_facility", "frontend_runtime", "scanner"] },
-  { id: "business", title: "业务扩展", keys: ["supplies", "mini_program", "llm"] },
+  { id: "business", title: "业务扩展", keys: ["supplies", "mini_program", "llm", "material"] },
   { id: "platform", title: "平台与网络", keys: ["network", "system", "logging", "credentials", "integration"] },
 ];
 
@@ -152,6 +152,8 @@ export function moduleDescription(moduleKey: string): string {
       return "动物房 B1F 等设施房间的 3D 布局规则（JSON，修改后通常即时生效）。";
     case "supplies":
       return "物资领用相关系统参数。";
+    case "material":
+      return "学生物资申领系统配置。控制需求建议入口开关等参数。";
     case "mini_program":
       return "微信小程序订阅消息等推送参数。";
     case "frontend_runtime":

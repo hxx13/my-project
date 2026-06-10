@@ -98,6 +98,87 @@ public class SmartsheetController {
         }
     }
 
+    @PostMapping("/sheet/bulk-delete")
+    public Result<Map<String, Object>> bulkDelete(@RequestBody List<Long> ids, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        int count = sheetService.bulkDelete(ids);
+        return Result.success(Map.of("deleted", count));
+    }
+
+    @PutMapping("/sheet/{id}/rename")
+    public Result<Void> rename(@PathVariable Long id, @RequestBody Map<String, String> body, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        sheetService.rename(id, body.getOrDefault("name", ""));
+        return Result.success(null);
+    }
+
+    @PostMapping("/sheet/{id}/duplicate")
+    public Result<SmartsheetDefinition> duplicate(@PathVariable Long id,
+                                                   @RequestParam(defaultValue = "false") boolean withData,
+                                                   HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        Long userId = getCurrentUserId(request);
+        return Result.success(sheetService.duplicate(id, withData, userId));
+    }
+
+    @PostMapping("/sheet/{id}/clear")
+    public Result<Void> clearData(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        sheetService.clearData(id);
+        return Result.success(null);
+    }
+
+    @PostMapping("/sheet/{id}/pin")
+    public Result<Void> togglePin(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) return Result.error(denied.getMessage());
+        sheetService.togglePin(id);
+        return Result.success(null);
+    }
+
+    @GetMapping("/sheet/{id}/export-json")
+    public void exportJson(@PathVariable Long id, HttpServletResponse response, HttpServletRequest request) throws IOException {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) { response.sendError(403); return; }
+        SmartsheetDefinition sheet = sheetService.getById(id);
+        List<SmartsheetRow> rows = rowService.getRowsBySheetId(id);
+        Map<String, Object> backup = Map.of("definition", sheet, "rows", rows);
+        response.setContentType("application/json;charset=UTF-8");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + sheet.getName() + ".json\"");
+        response.getWriter().write(objectMapper.writeValueAsString(backup));
+    }
+
+    @PostMapping("/sheet/{id}/import-json")
+    public Result<Map<String, Object>> importJson(@PathVariable Long id,
+                                                    @RequestBody Map<String, Object> backup,
+                                                    HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        try {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) backup.get("rows");
+            if (rows == null) return Result.error("无效的备份文件");
+            List<SmartsheetRow> entities = new ArrayList<>();
+            for (Map<String, Object> r : rows) {
+                SmartsheetRow row = new SmartsheetRow();
+                row.setRowLabel((String) r.getOrDefault("rowLabel", ""));
+                row.setRowEntityId((String) r.get("rowEntityId"));
+                Object cd = r.get("cellData");
+                row.setCellData(cd instanceof String s ? s : objectMapper.writeValueAsString(cd != null ? cd : Map.of()));
+                row.setRowIndex(((Number) r.getOrDefault("rowIndex", 0)).intValue());
+                entities.add(row);
+            }
+            int count = rowService.batchInsert(id, entities);
+            return Result.success(Map.of("imported", count));
+        } catch (Exception e) {
+            return Result.error("导入失败: " + e.getMessage());
+        }
+    }
+
     // ═══════ Row CRUD ═══════
 
     @GetMapping("/{sheetId}/rows")

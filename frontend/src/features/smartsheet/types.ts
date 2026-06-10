@@ -32,6 +32,7 @@ export interface SmartSheetDefinition {
   columnsConfig: ColumnConfig[];
   rowEntitySource?: RowEntitySource;
   templateId?: string;
+  isPinned?: number;
   createdBy?: string;
   updatedBy?: string;
   createdAt: string;

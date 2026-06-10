@@ -45,4 +45,7 @@ public interface SmartsheetRowMapper {
 
     @Select("SELECT COALESCE(MAX(row_index), 0) FROM smartsheet_row WHERE sheet_id = #{sheetId}")
     int maxRowIndex(@Param("sheetId") Long sheetId);
+
+    @Delete("DELETE FROM smartsheet_row WHERE sheet_id = #{sheetId}")
+    int clearBySheetId(@Param("sheetId") Long sheetId);
 }

@@ -19,4 +19,10 @@ public interface MaterialItemMapper {
     List<MaterialItem> selectRecycle(@Param("offset") int offset, @Param("size") int size);
     int countRecycle();
     int updateStock(@Param("id") Long id, @Param("qty") int qty);
+    /** 提交申领时预占库存：locked_qty += qty, stock_qty -= qty */
+    int lockStock(@Param("id") Long id, @Param("qty") int qty);
+    /** 拒绝/撤回时释放锁定：locked_qty -= qty, stock_qty += qty */
+    int releaseLock(@Param("id") Long id, @Param("qty") int qty);
+    /** 审核通过时确认扣减：locked_qty -= qty（stock_qty 已在 lockStock 扣过） */
+    int applyLock(@Param("id") Long id, @Param("qty") int qty);
 }

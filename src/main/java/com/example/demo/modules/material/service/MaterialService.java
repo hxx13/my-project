@@ -2,6 +2,7 @@ package com.example.demo.modules.material.service;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.material.dto.*;
 import com.example.demo.modules.material.entity.*;
 import com.example.demo.modules.material.mapper.*;
@@ -31,13 +32,15 @@ public class MaterialService {
     private final MaterialStockMovementMapper stockMovementMapper;
     private final MaterialOperationLogMapper operationLogMapper;
     private final NotificationService notificationService;
+    private final UserDisplayNameService userDisplayNameService;
 
     public MaterialService(MaterialCategoryMapper categoryMapper, MaterialItemMapper itemMapper,
                            MaterialCartMapper cartMapper, MaterialRequestMapper requestMapper,
                            MaterialRequestLineMapper requestLineMapper,
                            MaterialStockMovementMapper stockMovementMapper,
                            MaterialOperationLogMapper operationLogMapper,
-                           NotificationService notificationService) {
+                           NotificationService notificationService,
+                           UserDisplayNameService userDisplayNameService) {
         this.categoryMapper = categoryMapper;
         this.itemMapper = itemMapper;
         this.cartMapper = cartMapper;
@@ -46,6 +49,7 @@ public class MaterialService {
         this.stockMovementMapper = stockMovementMapper;
         this.operationLogMapper = operationLogMapper;
         this.notificationService = notificationService;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     // ==================== 分类 ====================
@@ -274,6 +278,14 @@ public class MaterialService {
             lines.add(line);
         }
         requestLineMapper.insertBatch(lines);
+        // 预占库存
+        for (var lr : req.getLines()) {
+            MaterialItem item = itemMapper.selectById(lr.getItemId());
+            if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
+                int lockQty = Math.min(lr.getQty(), item.getStockQty() != null ? item.getStockQty() : 0);
+                if (lockQty > 0) itemMapper.lockStock(lr.getItemId(), lockQty);
+            }
+        }
         logOp("REQUEST", id, "SUBMIT", Map.of("lines", req.getLines().size()));
         publishMaterialEvent("CREATED", id, user.getId(), user.getId(), "共 " + req.getLines().size() + " 项物资");
         return Result.success(toRequestView(requestMapper.selectById(id)));
@@ -388,6 +400,14 @@ public class MaterialService {
             }
         }
         if (finalApproved) {
+            // 确认扣减锁定库存
+            List<MaterialRequestLine> approveLines = requestLineMapper.selectByRequestId(id);
+            for (MaterialRequestLine line : approveLines) {
+                MaterialItem item = itemMapper.selectById(line.getItemId());
+                if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
+                    itemMapper.applyLock(line.getItemId(), line.getQty());
+                }
+            }
             publishMaterialEvent("APPROVED", id, reviewer.getId(), request.getUserId(), "审核已通过，等待出库");
         }
         return Result.success(toRequestView(requestMapper.selectById(id)));
@@ -399,6 +419,14 @@ public class MaterialService {
         if (request == null) return Result.error("申领单不存在");
         if (!canReview(request, reviewer)) return Result.error("无权审核此申领单");
         requestMapper.updateStatus(id, "REJECTED");
+        // 回退锁定库存
+        List<MaterialRequestLine> rejectLines = requestLineMapper.selectByRequestId(id);
+        for (MaterialRequestLine line : rejectLines) {
+            MaterialItem item = itemMapper.selectById(line.getItemId());
+            if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
+                itemMapper.releaseLock(line.getItemId(), line.getQty());
+            }
+        }
         logOp("REQUEST", id, "REJECT", Map.of("reviewer", reviewer.getId()));
         publishMaterialEvent("COMPLETED", id, reviewer.getId(), request.getUserId(), "审核已拒绝");
         return Result.success(null);
@@ -600,6 +628,11 @@ public class MaterialService {
             vars.put("requestId", requestId);
             vars.put("bizId", requestId);
             vars.put("summary", summary);
+            // 解析显示名：优先人员库姓名 → displayNickname → username
+            vars.put("applicantName", userDisplayNameService.resolveDisplayName(applicantId));
+            if (senderId != null) {
+                vars.put("senderName", userDisplayNameService.resolveDisplayName(senderId));
+            }
             event.setVariables(vars);
             notificationService.publish(event);
         } catch (Exception e) {

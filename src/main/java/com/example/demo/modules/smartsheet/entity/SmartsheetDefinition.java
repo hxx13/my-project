@@ -12,6 +12,7 @@ public class SmartsheetDefinition {
     private String columnsConfig;    // JSON string (MyBatis maps to/from JSON column)
     private String rowEntitySource;  // JSON string, nullable
     private Long templateId;
+    private Integer isPinned;
     private Long createdBy;
     private Long updatedBy;
     private LocalDateTime createdAt;

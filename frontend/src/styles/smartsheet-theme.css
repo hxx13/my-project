@@ -1,11 +1,11 @@
-/* smartsheet-theme.css — revo-grid theme bridge
+/* smartsheet-theme.css — 🍱 Bento 表格样式
    ═══════════════════════════════════════════
    组件令牌层（第三层）：--smartsheet-* 全部引用 --app-* 语义令牌（第二层）
-   遵守 docs/UI设计规范与主题标准.md §二 令牌分层架构
+   CSS 类名对应 Bento 预览：.bt-grid / .corner / .rh / .ch / .dc / .cv-*
    禁止在此文件定义独立颜色值（G04 门禁）
    ═══════════════════════════════════════════ */
 
-/* ═══════ 亮色主题 ═══════ */
+/* ═══════ 组件令牌 ═══════ */
 :root {
   --smartsheet-bg:              var(--app-color-surface-container);
   --smartsheet-surface:         var(--app-color-surface-page);
@@ -18,15 +18,16 @@
   --smartsheet-accent-glow:     var(--app-glow-accent);
   --smartsheet-hover:           var(--app-color-surface-hover);
   --smartsheet-selected:        var(--app-color-surface-active);
-  --smartsheet-zebra:           rgba(0, 0, 0, 0.02);
+  --smartsheet-zebra:           var(--app-color-surface-page);
   --smartsheet-header-bg:       var(--app-color-surface-page);
   --smartsheet-row-header-bg:   var(--app-row-header-tint);
   --smartsheet-success:         var(--app-color-feedback-success);
   --smartsheet-warning:         var(--app-color-feedback-warning);
   --smartsheet-danger:          var(--app-color-feedback-danger);
+  /* 表格特有细边框 */
+  --smartsheet-cell-border:     var(--app-color-border-default);
 }
 
-/* ═══════ 暗色主题 ═══════ */
 .dark {
   --smartsheet-bg:              var(--app-color-surface-container);
   --smartsheet-surface:         var(--app-color-surface-page);
@@ -39,95 +40,130 @@
   --smartsheet-accent-glow:     var(--app-glow-selected);
   --smartsheet-hover:           var(--app-color-surface-hover);
   --smartsheet-selected:        var(--app-color-surface-active);
-  --smartsheet-zebra:           rgba(255, 255, 255, 0.015);
+  --smartsheet-zebra:           var(--app-color-surface-page);
   --smartsheet-header-bg:       var(--app-color-surface-elevated);
   --smartsheet-row-header-bg:   var(--app-row-header-tint);
   --smartsheet-success:         var(--app-color-feedback-success);
   --smartsheet-warning:         var(--app-color-feedback-warning);
   --smartsheet-danger:          var(--app-color-feedback-danger);
+  --smartsheet-cell-border:     var(--app-color-border-default);
 }
 
-/* ═══════ revo-grid 变量注入 ═══════ */
-revo-grid {
-  --background-color:       var(--smartsheet-bg);
-  --border-color:           var(--smartsheet-border);
-  --header-background-color: var(--smartsheet-header-bg);
-  --header-text-color:      var(--smartsheet-text-secondary);
-  --cell-text-color:        var(--smartsheet-text);
-  --cell-hover-color:       var(--smartsheet-hover);
-  --cell-selection-color:   var(--smartsheet-selected);
-  --cell-focus-outline-color: var(--smartsheet-accent);
+/* ═══════ 表格容器 ═══════ */
+.table-scroll {
+  flex: 1;
+  overflow: auto;
 }
 
-/* ═══════ 🍱 Bento 表格单元格样式 ═══════ */
+/* ═══════ 🍱 Bento Grid 表格 ═══════ */
+.bt-grid {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 12.5px;
+}
 
-/* 列头类型标签 */
-.ch-type {
+/* ── 左上角 (行头 × 列头交叉) ── */
+.bt-grid .corner {
+  background: var(--smartsheet-header-bg);
+  border-right: 1px solid var(--smartsheet-border);
+  border-bottom: 1px solid var(--smartsheet-border);
+  padding: 10px 14px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--smartsheet-text-tertiary);
+  font-weight: 600;
+  position: sticky; left: 0; top: 0; z-index: 3;
+}
+.corner-text { font-size: 10px; color: var(--smartsheet-text-tertiary); font-weight: 600; }
+
+/* ── 行头 (第一列，暖桃色弱底) ── */
+.bt-grid .rh {
+  background: var(--smartsheet-row-header-bg);
+  border-right: 2px solid var(--smartsheet-accent-glow);
+  border-bottom: 1px solid var(--smartsheet-border);
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--smartsheet-text);
+  text-align: left;
+  white-space: nowrap;
+  position: sticky; left: 0; z-index: 2;
+  min-width: 100px;
+}
+.bt-grid .rh .cfg-btn {
+  color: var(--smartsheet-text-tertiary);
+  margin-left: 6px;
+  font-size: 10px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+.bt-grid .rh .cfg-btn:hover { color: var(--smartsheet-text-secondary); }
+
+/* ── 列头 (钢蓝底线) ── */
+.bt-grid th.ch {
+  background: var(--smartsheet-header-bg);
+  border-bottom: 2px solid var(--smartsheet-accent);
+  border-right: 1px solid var(--smartsheet-border);
+  padding: 10px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--smartsheet-text-secondary);
+  text-align: center;
+  white-space: nowrap;
+  position: sticky; top: 0; z-index: 2;
+  min-width: 105px;
+  cursor: pointer;
+}
+.bt-grid th.ch:hover { background: var(--smartsheet-hover); }
+.bt-grid th.ch .ch-type {
   display: block;
   font-size: 9px;
   color: var(--smartsheet-text-tertiary);
   font-weight: 400;
 }
 
-/* 行头：暖桃色弱底 */
-.revo-grid .row-head {
-  background: var(--smartsheet-row-header-bg) !important;
-  border-right: 2px solid var(--smartsheet-accent-glow) !important;
+/* ── 数据单元格 ── */
+.bt-grid td.dc {
+  border: 1px solid var(--smartsheet-cell-border);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: var(--smartsheet-text);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.12s;
+  min-width: 105px;
+  position: relative;
 }
-
-/* 列头：钢蓝底线 */
-.revo-grid .col-head {
-  border-bottom: 2px solid var(--smartsheet-accent) !important;
-}
-
-/* 单元格 hover */
-.revo-grid .cell:hover {
+/* Hover */
+.bt-grid td.dc:hover {
+  background: var(--smartsheet-selected);
   outline: 1.5px solid var(--smartsheet-accent);
   outline-offset: -1px;
   border-radius: 6px;
   z-index: 1;
   position: relative;
-  background: var(--smartsheet-selected) !important;
 }
 
-/* 选中单元格 */
-.revo-grid .cell.focused,
-.revo-grid .cell.selected {
-  outline: 2px solid var(--smartsheet-accent);
-  outline-offset: -2px;
-  border-radius: 6px;
-  z-index: 1;
-  position: relative;
-  background: var(--smartsheet-selected) !important;
-  box-shadow: 0 0 0 3px var(--smartsheet-accent-glow);
+/* ── 斑马纹 ── */
+.bt-grid.striped tbody tr:nth-child(even) td.dc {
+  background: var(--smartsheet-zebra);
 }
 
-/* ═══════ 斑马纹 ═══════ */
-.smartsheet-zebra .revo-grid .row:nth-child(even) .cell {
-  background-color: var(--smartsheet-zebra);
-}
-
-/* ═══════ 冻结窗格 ═══════ */
-.smartsheet-frozen .revo-grid .frozen-border {
-  box-shadow: 2px 0 0 var(--smartsheet-border-heavy);
-}
-
-/* ═══════ 条件格式 ═══════ */
-.smartsheet-cf-great { color: var(--smartsheet-success); font-weight: 600; }
-.smartsheet-cf-warn  { color: var(--smartsheet-warning); }
-.smartsheet-cf-bad   { color: var(--smartsheet-danger); font-weight: 600; }
-
-/* ═══════ 🍱 Bento 单元格值变体 ═══════ */
+/* ═══════ 🍱 单元格值变体 ═══════ */
 .cv-num {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--smartsheet-text);
 }
 .cv-sel {
   color: var(--smartsheet-text);
   cursor: pointer;
 }
-.cv-sel .arr {
+/* 下拉箭头 */
+.cv-sel::after {
+  content: '▾';
   color: var(--smartsheet-text-tertiary);
   margin-left: 4px;
   font-size: 9px;
@@ -150,34 +186,20 @@ revo-grid {
   font-size: 11px;
 }
 
-/* ═══════ 单元格注释角标 ═══════ */
-.smartsheet-cell-comment {
-  position: absolute;
-  top: 2px;
-  right: 4px;
-  width: 8px;
-  height: 8px;
-  background: var(--smartsheet-danger);
-  clip-path: polygon(100% 0, 0 0, 100% 100%);
+/* ═══════ 冻结窗格 ═══════ */
+.smartsheet-frozen .bt-grid .corner,
+.smartsheet-frozen .bt-grid .rh {
+  position: sticky;
+  left: 0;
+  z-index: 2;
 }
+.smartsheet-frozen .bt-grid .corner { z-index: 3; }
 
-/* ═══════ 🍱 Bento 暗色 revo-grid 微调 ═══════ */
-.dark .revo-grid .row-head {
-  background: var(--smartsheet-row-header-bg) !important;
-  border-right-color: var(--smartsheet-accent-glow) !important;
+/* ═══════ 🍱 暗色微调 ═══════ */
+.dark .bt-grid td.dc { border-color: var(--smartsheet-cell-border); }
+.dark .bt-grid.striped tbody tr:nth-child(even) td.dc {
+  background: var(--smartsheet-zebra);
 }
-.dark .smartsheet-zebra .revo-grid .row:nth-child(even) .cell {
-  background-color: var(--smartsheet-zebra);
+.dark .bt-grid td.dc:hover {
+  background: var(--smartsheet-selected);
 }
-.dark .revo-grid .cell:hover {
-  background: var(--smartsheet-selected) !important;
-}
-.dark .revo-grid .cell.focused,
-.dark .revo-grid .cell.selected {
-  background: var(--smartsheet-selected) !important;
-}
-
-/* ═══════ 暗色下单元格值变体微调 ═══════ */
-.dark .cv-date { color: var(--smartsheet-text-secondary); }
-.dark .cv-empty { color: var(--smartsheet-text-tertiary); }
-.dark .cv-false { color: var(--smartsheet-text-tertiary); }

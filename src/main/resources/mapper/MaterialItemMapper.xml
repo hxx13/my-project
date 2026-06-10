@@ -43,4 +43,13 @@
     <update id="updateStock">
         UPDATE material_item SET stock_qty = stock_qty + #{qty}, last_inbound_at = IF(#{qty} &gt; 0, NOW(), last_inbound_at) WHERE id = #{id}
     </update>
+    <update id="lockStock">
+        UPDATE material_item SET locked_qty = COALESCE(locked_qty,0) + #{qty}, stock_qty = stock_qty - #{qty} WHERE id = #{id} AND stock_qty >= #{qty}
+    </update>
+    <update id="releaseLock">
+        UPDATE material_item SET locked_qty = COALESCE(locked_qty,0) - #{qty}, stock_qty = stock_qty + #{qty} WHERE id = #{id}
+    </update>
+    <update id="applyLock">
+        UPDATE material_item SET locked_qty = COALESCE(locked_qty,0) - #{qty} WHERE id = #{id}
+    </update>
 </mapper>

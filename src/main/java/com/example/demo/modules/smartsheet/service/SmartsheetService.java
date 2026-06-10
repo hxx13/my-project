@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.demo.modules.smartsheet.entity.SmartsheetRow;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -82,11 +84,73 @@ public class SmartsheetService {
 
     @Transactional
     public void delete(Long id) {
-        getById(id); // ensure exists
+        getById(id);
         changeLogMapper.deleteBySheetId(id);
         rowMapper.deleteBySheetId(id);
         definitionMapper.deleteById(id);
         log.info("[SmartSheet] sheet deleted id={}", id);
+    }
+
+    @Transactional
+    public int bulkDelete(List<Long> ids) {
+        for (Long id : ids) {
+            changeLogMapper.deleteBySheetId(id);
+            rowMapper.deleteBySheetId(id);
+        }
+        int count = definitionMapper.deleteByIds(ids);
+        log.info("[SmartSheet] bulk deleted {} sheets", count);
+        return count;
+    }
+
+    public void rename(Long id, String name) {
+        getById(id);
+        definitionMapper.rename(id, name);
+        log.info("[SmartSheet] renamed id={} name={}", id, name);
+    }
+
+    @Transactional
+    public SmartsheetDefinition duplicate(Long id, boolean withData, Long userId) {
+        SmartsheetDefinition src = getById(id);
+        SmartsheetDefinition dup = new SmartsheetDefinition();
+        dup.setName(src.getName() + " (副本)");
+        dup.setDescription(src.getDescription());
+        dup.setLayoutMode(src.getLayoutMode());
+        dup.setColumnsConfig(src.getColumnsConfig());
+        dup.setRowEntitySource(src.getRowEntitySource());
+        dup.setCreatedBy(userId);
+        dup.setUpdatedBy(userId);
+        definitionMapper.insert(dup);
+        if (withData) {
+            List<SmartsheetRow> rows = rowMapper.selectBySheetId(id);
+            List<SmartsheetRow> newRows = new ArrayList<>();
+            for (SmartsheetRow r : rows) {
+                SmartsheetRow nr = new SmartsheetRow();
+                nr.setSheetId(dup.getId());
+                nr.setRowIndex(r.getRowIndex());
+                nr.setRowLabel(r.getRowLabel());
+                nr.setRowEntityId(r.getRowEntityId());
+                nr.setCellData(r.getCellData());
+                nr.setVersion(0);
+                newRows.add(nr);
+            }
+            if (!newRows.isEmpty()) rowMapper.insertBatch(newRows);
+        }
+        log.info("[SmartSheet] duplicated id={} -> {} withData={}", id, dup.getId(), withData);
+        return dup;
+    }
+
+    public void clearData(Long id) {
+        getById(id);
+        rowMapper.clearBySheetId(id);
+        changeLogMapper.deleteBySheetId(id);
+        log.info("[SmartSheet] cleared data sheet={}", id);
+    }
+
+    public void togglePin(Long id) {
+        SmartsheetDefinition def = getById(id);
+        int newPin = def.getIsPinned() != null && def.getIsPinned() == 1 ? 0 : 1;
+        definitionMapper.updatePin(id, newPin);
+        log.info("[SmartSheet] pin id={} pinned={}", id, newPin);
     }
 
     @SuppressWarnings("unchecked")

@@ -13,6 +13,8 @@ public class MaterialItem {
     private String shelfStatus;
     private String stockMode;
     private Integer stockQty;
+    /** 已锁定（申领中预占）数量 */
+    private Integer lockedQty;
     /** SIMPLE or DUAL_REVIEW — 物品级别可选审核流程 */
     private String workflowType;
     /** 初审人账号 ID JSON 数组 */

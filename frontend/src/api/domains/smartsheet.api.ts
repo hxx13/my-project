@@ -63,6 +63,37 @@ export async function deleteSheet(id: string) {
   await adminHttp.delete(`${BASE}/sheet/${id}`);
 }
 
+export async function bulkDeleteSheets(ids: string[]) {
+  const { data } = await adminHttp.post(`${BASE}/sheet/bulk-delete`, ids);
+  return data.data as { deleted: number };
+}
+
+export async function renameSheet(id: string, name: string) {
+  await adminHttp.put(`${BASE}/sheet/${id}/rename`, { name });
+}
+
+export async function duplicateSheet(id: string, withData = false) {
+  const { data } = await adminHttp.post(`${BASE}/sheet/${id}/duplicate`, null, { params: { withData } });
+  return normalizeSheet(data.data);
+}
+
+export async function clearSheetData(id: string) {
+  await adminHttp.post(`${BASE}/sheet/${id}/clear`);
+}
+
+export async function togglePinSheet(id: string) {
+  await adminHttp.post(`${BASE}/sheet/${id}/pin`);
+}
+
+export function getExportJsonUrl(sheetId: string) {
+  return `/api/admin/smartsheet/sheet/${sheetId}/export-json`;
+}
+
+export async function importJsonBackup(sheetId: string, backup: object) {
+  const { data } = await adminHttp.post(`${BASE}/sheet/${sheetId}/import-json`, backup);
+  return data.data as { imported: number };
+}
+
 // Row CRUD
 export async function fetchRows(sheetId: string) {
   const { data } = await adminHttp.get(`${BASE}/${sheetId}/rows`);

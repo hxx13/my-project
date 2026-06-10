@@ -195,6 +195,7 @@ public class NotificationSettingsService {
         if ("network".equals(module)) return "网络配置";
         if ("system".equals(module)) return "系统配置";
         if ("supplies".equals(module)) return "物资领用";
+        if ("material".equals(module)) return "物资申领系统";
         if ("dashboard_codex".equals(module)) return "主页公告/还卡说明";
         if ("telemetry_facility".equals(module)) return "动物房设施布局";
         if ("scanner".equals(module)) return "扫码终端";

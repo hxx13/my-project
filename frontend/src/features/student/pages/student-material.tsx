@@ -52,6 +52,7 @@ export default function StudentMaterialPage() {
     if (!cart || cartCount === 0) return;
     const lines = Object.entries(cart).filter(([, qty]) => qty > 0).map(([itemId, qty]) => ({ itemId: Number(itemId), qty }));
     await createRequest.mutateAsync(lines);
+    saveCart.mutate({}); // 清空购物车
     navigate("/student/material/requests");
   }
 
