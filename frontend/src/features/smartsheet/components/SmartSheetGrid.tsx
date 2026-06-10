@@ -123,11 +123,31 @@ export default function SmartSheetGrid({
   onAddRow, onDeleteRows, onDuplicateRow, onMoveRow, onUndoRedoState,
 }: Props) {
   const [editingCell, setEditingCell] = useState<{ rowId: string; colKey: string } | null>(null);
-  const [selection, setSelection] = useState<{ start: { row: number; col: number }; end: { row: number; col: number } } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; rowId: string; rowIdx: number } | null>(null);
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const undoRedo = useUndoRedo();
   const { format: contextFormat, setFormat } = useCellFormat();
   const showRowHeader = layoutMode !== 'table';
+
+  // Column resize handlers
+  const resizeRef = useRef<{ colKey: string; startX: number; startW: number } | null>(null);
+  const handleResizeStart = useCallback((e: React.MouseEvent, colKey: string, currentW: number) => {
+    e.preventDefault(); e.stopPropagation();
+    resizeRef.current = { colKey, startX: e.clientX, startW: currentW };
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+  }, []);
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!resizeRef.current) return;
+    const diff = e.clientX - resizeRef.current.startX;
+    const newW = Math.max(50, resizeRef.current.startW + diff);
+    setColWidths(prev => ({ ...prev, [resizeRef.current!.colKey]: newW }));
+  }, []);
+  const handleResizeEnd = useCallback(() => {
+    resizeRef.current = null;
+    document.removeEventListener('mousemove', handleResizeMove);
+    document.removeEventListener('mouseup', handleResizeEnd);
+  }, [handleResizeMove]);
 
   // Expose undo/redo state to parent
   useEffect(() => {
@@ -201,16 +221,17 @@ export default function SmartSheetGrid({
             </span>
           );
         },
-        size: col.width || 110, minSize: 60,
+        size: colWidths[col.key] || col.width || 110, minSize: 60,
       });
     }
     return defs;
-  }, [columns, showRowHeader, editingCell, onCellEdit, rows, undoRedo, conditionalRules, viewOptions.conditionalFormat, contextFormat, setFormat]);
+  }, [columns, showRowHeader, editingCell, onCellEdit, rows, undoRedo, conditionalRules, viewOptions.conditionalFormat, contextFormat, setFormat, colWidths]);
 
   const table = useReactTable({ data: rows, columns: colDefs, getCoreRowModel: getCoreRowModel(), getRowId: (r) => r.id });
 
   return (
-    <div className={`table-scroll ${viewOptions.freeze ? 'smartsheet-frozen' : ''}`} style={{ flex: 1, overflow: 'auto' }}>
+    <div className={`table-scroll ${viewOptions.freeze ? 'smartsheet-frozen' : ''}`} style={{ flex: 1, overflow: 'auto' }}
+         onContextMenu={(e) => { e.preventDefault(); }}>
       <table className={`bt-grid ${viewOptions.zebra ? 'striped' : ''}`}>
         <thead>
           {table.getHeaderGroups().map(hg => (
@@ -220,9 +241,13 @@ export default function SmartSheetGrid({
                 const colConfig = columns.find(c => c.key === h.column.id);
                 return (
                   <th key={h.id} className={isRH ? 'corner' : 'ch'}
-                      style={{ width: h.getSize(), minWidth: h.getSize() }}
+                      style={{ width: h.getSize(), minWidth: h.getSize(), position: 'relative' }}
                       onClick={() => { if (colConfig) onColumnConfigClick(colConfig.key); }}>
                     {flexRender(h.column.columnDef.header, h.getContext())}
+                    {!isRH && colConfig && (
+                      <div className="absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize hover:bg-app-accent/30 z-10"
+                           onMouseDown={(e) => handleResizeStart(e, colConfig.key, h.getSize())} />
+                    )}
                   </th>
                 );
               })}
@@ -234,9 +259,18 @@ export default function SmartSheetGrid({
             <tr key={row.id} onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, rowId: row.original.id, rowIdx: row.index }); }}>
               {row.getVisibleCells().map(cell => {
                 const isRH = cell.column.id === '__row_header';
+                const colConfig = columns.find(c => c.key === cell.column.id);
                 return (
                   <td key={cell.id} className={isRH ? 'rh' : 'dc'}
-                      style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}>
+                      style={{ width: cell.column.getSize(), minWidth: cell.column.getSize(), minHeight: 36 }}
+                      onClick={() => {
+                        if (!isRH && colConfig) {
+                          const rawVal = (row.original.cellData || {})[colConfig.key];
+                          const fmt = getCellFormat(rawVal);
+                          setFormat(fmt);
+                          setEditingCell({ rowId: row.original.id, colKey: colConfig.key });
+                        }
+                      }}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 );

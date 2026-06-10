@@ -52,6 +52,16 @@ export function useSmartSheet(sheetId: string | undefined) {
     onError: (e: Error) => { toast.error(e.message || '更新失败'); },
   });
 
+  const addColumnMutation = useMutation({
+    mutationFn: async (col: ColumnConfig) => {
+      if (!sheetQuery.data) return;
+      const cols = [...sheetQuery.data.columnsConfig, col];
+      await updateSheet(sheetId!, { columnsConfig: cols });
+    },
+    onSuccess: () => { invalidate(); toast.success('已添加新列'); },
+    onError: (e: Error) => { toast.error(e.message || '添加列失败'); },
+  });
+
   const addRowMutation = useMutation({
     mutationFn: () => addRow(sheetId!, '', undefined),
     onSuccess: () => invalidate(),
@@ -133,6 +143,7 @@ export function useSmartSheet(sheetId: string | undefined) {
     moveRow,
     updateColumn: (colKey: string, config: Partial<ColumnConfig>) =>
       updateColumnMutation.mutate({ colKey, config }),
+    addColumn: (col: ColumnConfig) => addColumnMutation.mutate(col),
     invalidate,
   };
 }

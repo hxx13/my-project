@@ -17,7 +17,7 @@ import toast from 'react-hot-toast';
 
 export default function SmartSheetPage() {
   const { id } = useParams<{ id: string }>();
-  const { sheet, rows, isLoading, updateCell, addRow, insertRow, deleteRows, duplicateRow, moveRow, updateColumn, invalidate } = useSmartSheet(id);
+  const { sheet, rows, isLoading, updateCell, addRow, insertRow, deleteRows, duplicateRow, moveRow, updateColumn, addColumn, invalidate } = useSmartSheet(id);
   const [viewOptions, setViewOptions] = useState<ViewOptions>(DEFAULT_VIEW_OPTIONS);
   const [selectedColumn, setSelectedColumn] = useState<ColumnConfig | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
@@ -91,7 +91,8 @@ export default function SmartSheetPage() {
           onViewOptionChange={handleViewOptionChange}
           onAddRow={() => addRow()}
           onAddColumn={() => {
-            updateColumn(`col_${Date.now()}`, { key: `col_${Date.now()}`, label: '新列', type: 'text', width: 110 });
+            const key = `col_${Date.now()}`;
+            addColumn({ key, label: '新列', type: 'text', width: 110 });
           }}
           onImport={() => setShowImport(true)}
           onExport={handleExport}

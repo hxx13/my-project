@@ -128,13 +128,14 @@
 /* ── 数据单元格 ── */
 .bt-grid td.dc {
   border: 1px solid var(--smartsheet-cell-border);
-  padding: 8px 10px;
+  padding: 10px 12px;
   font-size: 12.5px;
   color: var(--smartsheet-text);
   text-align: center;
   cursor: pointer;
   transition: all 0.12s;
-  min-width: 105px;
+  min-width: 80px;
+  height: 38px;
   position: relative;
 }
 /* Hover */
