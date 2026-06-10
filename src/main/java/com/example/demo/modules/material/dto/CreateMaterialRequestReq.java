@@ -5,6 +5,8 @@ import java.util.List;
 
 @Data
 public class CreateMaterialRequestReq {
+    /** 申请人所属课题组（前端传入） */
+    private String applicantGroup;
     private List<LineItem> lines;
 
     @Data

@@ -25,7 +25,13 @@ function maybeParse(v: unknown): unknown {
 
 function normalizeCellValue(raw: unknown): CellValue {
   if (raw == null || raw === '') return { v: '' };
-  if (typeof raw === 'string') return { v: raw };
+  if (typeof raw === 'string') {
+    // Try parsing as JSON first (cell data may be stored as JSON string)
+    if (raw.startsWith('{')) {
+      try { const parsed = JSON.parse(raw); if (parsed && typeof parsed === 'object' && 'v' in parsed) return parsed as CellValue; } catch {}
+    }
+    return { v: raw };
+  }
   if (typeof raw === 'object' && 'v' in (raw as any)) return raw as CellValue;
   return { v: String(raw) };
 }

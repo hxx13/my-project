@@ -260,7 +260,7 @@ public class MaterialService {
         request.setId(id);
         request.setUserId(user.getId());
         request.setApplicantName(userDisplayNameService.resolveDisplayName(user.getId()));
-        request.setApplicantGroup(null);
+        request.setApplicantGroup(req.getApplicantGroup() != null ? req.getApplicantGroup() : null);
         request.setStatus("PENDING");
         MaterialItem firstItem = itemMapper.selectById(req.getLines().get(0).getItemId());
         request.setWorkflowType(firstItem != null ? firstItem.getWorkflowType() : "SIMPLE");
