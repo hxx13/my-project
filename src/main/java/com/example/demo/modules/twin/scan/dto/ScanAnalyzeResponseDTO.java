@@ -32,4 +32,10 @@ public class ScanAnalyzeResponseDTO {
     private ScanPopupAnnouncementBundleDTO scanPopupAnnouncements;
     /** 违规交互确认短语（直接透传，不经过子DTO序列化） */
     private String violationInteractiveChallenge;
+    /** 自动签退计时器状态：PENDING_ACTIVATION / AUTO_EXIT_SCHEDULED；无计时器时为 null */
+    private String autoSignoutState;
+    /** 计划自动签退时刻 (yyyy-MM-dd HH:mm:ss)；无计时器时为 null */
+    private String autoSignoutScheduledAt;
+    /** 距离自动签退剩余秒数；无计时器或已到期时为 null */
+    private Integer autoSignoutSecondsRemaining;
 }
