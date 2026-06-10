@@ -306,6 +306,8 @@ export function UiverseProfilePopup(props: PopupProps) {
                                     isExitLocked={actions.isExitLocked}
                                     getKeepCardState={actions.getKeepCardState}
                                     setKeepCardState={actions.setKeepCardState}
+                                    autoSignoutSecondsRemaining={state.autoSignoutSecondsRemaining}
+                                    autoSignoutState={state.autoSignoutState}
                                 />
                             </div>
                         </div>

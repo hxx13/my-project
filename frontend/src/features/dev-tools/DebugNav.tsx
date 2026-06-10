@@ -48,6 +48,7 @@ export default function DebugNav() {
     const lastScannedIdRef = useRef('');
 
     const [activeResult, setActiveResult] = useState<AnalyzeResponse | null>(null);
+    const [activeAutoSignoutSeconds, setActiveAutoSignoutSeconds] = useState<number | null>(null);
 
     // 读取离开确认开关配置（GET 公开可读）
     const { data: linkageCfg = {} } = useQuery({
@@ -100,6 +101,7 @@ export default function DebugNav() {
                 return; // ⛔ 阻断执行，绝不调用 setActiveResult！
             }
             setActiveResult(data);
+            setActiveAutoSignoutSeconds(data.autoSignoutSecondsRemaining ?? null);
             resetCloseTimer();
             const uid = data.userInfo?.userId ? String(data.userInfo.userId) : "";
             setScanPopupSession(uid || null, lastScannedIdRef.current);
@@ -578,6 +580,13 @@ export default function DebugNav() {
                     setAutoExitConfirm(null);
                 }}
                 onCancel={() => setAutoExitConfirm(null)}
+                autoSignoutSeconds={activeAutoSignoutSeconds}
+                onCountdownEnd={() => {
+                    setAutoExitConfirm(null);
+                    if (lastScannedId) {
+                        analyzeMutation.mutate(lastScannedId);
+                    }
+                }}
             />
         </>
     );
