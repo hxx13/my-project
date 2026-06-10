@@ -197,6 +197,46 @@ public class MaterialAdminController {
         return materialService.reject(user, id);
     }
 
+    @DeleteMapping("/requests/{id}")
+    @Operation(summary = "删除申领单（软删除进回收站）")
+    public Result<?> deleteRequest(@RequestHeader(value = "Authorization", required = false) String auth,
+                                    @PathVariable String id) {
+        User user = resolveUser(auth);
+        return materialService.softDeleteRequest(user, id);
+    }
+
+    @GetMapping("/requests/recycle")
+    @Operation(summary = "申领回收站")
+    public Result<Map<String, Object>> requestRecycle(@RequestParam(defaultValue = "1") int page,
+                                                       @RequestParam(defaultValue = "50") int size) {
+        return materialService.listRequestRecycle(page, size);
+    }
+
+    @PostMapping("/requests/recycle/{id}/restore")
+    @Operation(summary = "恢复回收站申领单")
+    public Result<?> restoreRequest(@PathVariable String id) {
+        return materialService.restoreRequest(id);
+    }
+
+    @DeleteMapping("/requests/recycle/{id}")
+    @Operation(summary = "彻底删除回收站申领单")
+    public Result<?> purgeRequest(@PathVariable String id) {
+        return materialService.purgeRequest(id);
+    }
+
+    @PostMapping("/requests/recycle/purge")
+    @Operation(summary = "批量彻底删除回收站申领单")
+    public Result<?> purgeRequests(@RequestBody Map<String, List<String>> payload) {
+        List<String> ids = payload != null ? payload.getOrDefault("ids", List.of()) : List.of();
+        return materialService.purgeRequests(ids);
+    }
+
+    @DeleteMapping("/requests/recycle")
+    @Operation(summary = "一键清空申领回收站")
+    public Result<?> purgeAllRequests() {
+        return materialService.purgeAllRequests();
+    }
+
     @PostMapping("/requests/{id}/fulfill")
     @Operation(summary = "出库履行")
     public Result<MaterialRequestView> fulfill(@RequestHeader(value = "Authorization", required = false) String auth,
@@ -282,6 +322,16 @@ public class MaterialAdminController {
                                                    @RequestParam(defaultValue = "1") int page,
                                                    @RequestParam(defaultValue = "20") int size) {
         return materialService.getAuditTrail(from, to, categoryId, groupId, page, size);
+    }
+
+    @GetMapping("/stats/export/personal")
+    @Operation(summary = "导出单张申领单Excel")
+    public ResponseEntity<byte[]> exportPersonalRequestExcel(@RequestParam String requestId) {
+        MaterialRequestView view = materialService.getRequestDetail(null, requestId).getData();
+        if (view == null) return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN).body("申领单不存在".getBytes(StandardCharsets.UTF_8));
+        byte[] body = excelExportService.buildPersonalRequestSheet(view);
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"material-request-" + requestId + ".xlsx\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")).body(body);
     }
 
     @GetMapping("/stats/export")

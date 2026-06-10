@@ -155,7 +155,7 @@ export default function StudentMaterialPage() {
                 <div key={item.id} className="flex items-center justify-between p-2 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)]">
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-medium truncate">{item.name}</p>
-                    <p className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.stockQty}</p>
+                    <p className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : item.stockQty}</p>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => updateCartQty(item.id, -1)} className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center"><Minus className="size-3" /></button>
@@ -193,7 +193,7 @@ function MaterialItemCard({ item, cartQty, onQtyChange }: { item: MaterialItem; 
         </div>
         {item.subtitle && <p className="text-[11px] text-[var(--student-mute)] mt-0.5 line-clamp-2">{item.subtitle}</p>}
         <div className="flex items-center justify-between mt-2">
-          <span className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.stockQty}</span>
+          <span className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : item.stockQty}</span>
           <div className="flex items-center gap-1">
             {cartQty > 0 && <button onClick={() => onQtyChange(-1)} className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center"><Minus className="size-3" /></button>}
             {cartQty > 0 && <span className="text-[13px] w-5 text-center font-medium">{cartQty}</span>}

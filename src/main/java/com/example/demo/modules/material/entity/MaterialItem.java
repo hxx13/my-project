@@ -15,6 +15,8 @@ public class MaterialItem {
     private Integer stockQty;
     /** 已锁定（申领中预占）数量 */
     private Integer lockedQty;
+    /** 学生视角是否显示具体库存数量：1=显示数字，0=显示"有货" */
+    private Integer showStockQty;
     /** SIMPLE or DUAL_REVIEW — 物品级别可选审核流程 */
     private String workflowType;
     /** 初审人账号 ID JSON 数组 */

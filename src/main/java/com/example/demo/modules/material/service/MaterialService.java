@@ -468,6 +468,48 @@ public class MaterialService {
         return Result.success(toRequestView(requestMapper.selectById(id)));
     }
 
+    // ==================== 申领单回收站 ====================
+
+    public Result<?> softDeleteRequest(User operator, String id) {
+        MaterialRequest req = requestMapper.selectById(id);
+        if (req == null) return Result.error("申领单不存在");
+        requestMapper.softDelete(id, operator != null ? operator.getId() : null, java.time.LocalDateTime.now().plusDays(7));
+        logOp("REQUEST", id, "DELETE", null);
+        return Result.success(null);
+    }
+
+    public Result<Map<String, Object>> listRequestRecycle(int page, int size) {
+        int offset = (page - 1) * size;
+        List<MaterialRequest> rows = requestMapper.selectRecycle(offset, size);
+        int total = requestMapper.countRecycle();
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", rows.stream().map(this::toRequestView).collect(Collectors.toList()));
+        result.put("total", total);
+        return Result.success(result);
+    }
+
+    public Result<?> restoreRequest(String id) {
+        requestMapper.restoreById(id);
+        return Result.success(null);
+    }
+
+    public Result<?> purgeRequest(String id) {
+        requestMapper.hardDeleteById(id);
+        return Result.success(null);
+    }
+
+    public Result<?> purgeRequests(List<String> ids) {
+        for (String id : ids) requestMapper.hardDeleteById(id);
+        return Result.success(Map.of("deleted", ids.size()));
+    }
+
+    public Result<?> purgeAllRequests() {
+        List<MaterialRequest> all = requestMapper.selectRecycle(0, 5000);
+        int count = 0;
+        for (MaterialRequest r : all) { requestMapper.hardDeleteById(r.getId()); count++; }
+        return Result.success(Map.of("deleted", count));
+    }
+
     // ==================== 统计审计 ====================
 
     /**

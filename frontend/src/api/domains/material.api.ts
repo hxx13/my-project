@@ -25,6 +25,8 @@ export interface MaterialItem {
   shelfStatus: string;
   stockMode: string;
   stockQty: number;
+  lockedQty?: number;
+  showStockQty?: number;
   workflowType: string;
   reviewerIds?: string;
   secondReviewerIds?: string;

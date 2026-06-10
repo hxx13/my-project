@@ -164,6 +164,9 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
             // locked_qty 预占库存字段
             ensureColumnExists("material_item", "locked_qty",
                     "ALTER TABLE material_item ADD COLUMN locked_qty INT NOT NULL DEFAULT 0 COMMENT '已锁定（申领中预占）数量'");
+            // show_stock_qty 学生视角库存展示控制
+            ensureColumnExists("material_item", "show_stock_qty",
+                    "ALTER TABLE material_item ADD COLUMN show_stock_qty TINYINT NOT NULL DEFAULT 1 COMMENT '学生视角是否显示具体库存：1=显示数字 0=显示有货'");
 
             log.info("[material-schema] 物资申领表结构已就绪");
         } catch (Exception e) {

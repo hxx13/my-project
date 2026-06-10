@@ -2,6 +2,7 @@ package com.example.demo.modules.material.service;
 
 import com.example.demo.common.excel.ExcelExportColumnAutosizer;
 import com.example.demo.modules.material.dto.MaterialAuditTrailView;
+import com.example.demo.modules.material.dto.MaterialRequestView;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -49,6 +50,38 @@ public class MaterialExcelExportService {
             return out.toByteArray();
         } catch (Exception e) {
             throw new RuntimeException("导出物资审计流水 Excel 失败: " + e.getMessage(), e);
+        }
+    }
+
+    /** 单张申领单导出 */
+    public byte[] buildPersonalRequestSheet(MaterialRequestView request) {
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("申领单明细"));
+            int r = 0;
+            Row h1 = sh.createRow(r++); h1.createCell(0).setCellValue("申领单号"); h1.createCell(1).setCellValue(safe(request.getId()));
+            Row h2 = sh.createRow(r++); h2.createCell(0).setCellValue("申领人"); h2.createCell(1).setCellValue(safe(request.getApplicantName()));
+            Row h3 = sh.createRow(r++); h3.createCell(0).setCellValue("课题组"); h3.createCell(1).setCellValue(safe(request.getApplicantGroup()));
+            Row h4 = sh.createRow(r++); h4.createCell(0).setCellValue("状态"); h4.createCell(1).setCellValue(statusZh(request.getStatus()));
+            Row h5 = sh.createRow(r++); h5.createCell(0).setCellValue("申请时间"); h5.createCell(1).setCellValue(safe(request.getCreatedAt()));
+            r++;
+            Row head = sh.createRow(r++);
+            String[] cols = {"物品名称","申请数量","出库数量","审核人","复审人"};
+            for (int i = 0; i < cols.length; i++) head.createCell(i).setCellValue(cols[i]);
+            if (request.getLines() != null) {
+                for (var line : request.getLines()) {
+                    Row row = sh.createRow(r++);
+                    row.createCell(0).setCellValue(safe(line.getSnapshotName()));
+                    row.createCell(1).setCellValue(line.getQty() != null ? line.getQty() : 0);
+                    row.createCell(2).setCellValue(line.getFulfilledQty() != null ? line.getFulfilledQty() : 0);
+                    row.createCell(3).setCellValue(safe(request.getFirstReviewerId()));
+                    row.createCell(4).setCellValue(safe(request.getSecondReviewerId()));
+                }
+            }
+            ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);
+            wb.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("导出申领单Excel失败: " + e.getMessage(), e);
         }
     }
 

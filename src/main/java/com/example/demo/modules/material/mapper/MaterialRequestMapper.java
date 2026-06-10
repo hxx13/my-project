@@ -19,7 +19,11 @@ public interface MaterialRequestMapper {
     int updateReview(@Param("id") String id, @Param("reviewerId") String reviewerId, @Param("status") String status);
     int updateFulfill(@Param("id") String id, @Param("fulfilledBy") String fulfilledBy);
     int updateReceived(@Param("id") String id);
-    int softDelete(@Param("id") String id, @Param("deletedBy") String deletedBy);
+    int softDelete(@Param("id") String id, @Param("deletedBy") String deletedBy, @Param("purgeAfter") java.time.LocalDateTime purgeAfter);
+    int restoreById(@Param("id") String id);
+    int hardDeleteById(@Param("id") String id);
+    List<MaterialRequest> selectRecycle(@Param("offset") int offset, @Param("size") int size);
+    int countRecycle();
     List<MaterialRequest> selectPendingByReviewer(@Param("reviewerId") String reviewerId);
     List<Map<String, Object>> statsByStudent(@Param("from") String from, @Param("to") String to);
     List<Map<String, Object>> statsByItem(@Param("from") String from, @Param("to") String to);
