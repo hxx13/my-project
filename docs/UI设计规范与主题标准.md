@@ -6,8 +6,9 @@
 >
 > **设计日期**：2026-06-09
 >
-> **版本**：v1.4（新增 CSS 变量解耦 + 高度链完整性护栏）
+> **版本**：v1.6（新增级联下拉菜单规范 §6.3a + Bento 设计系统）
 >
+> **外部设计系统**：🍱 [Bento](https://typeui.sh/design-skills/bento) — SKILL.md + DESIGN.md 位于 `.claude/skills/bento/`
 > **实验落地模块**：知识库（`/admin/knowledge`），验证通过后推广至全站。
 
 ---
@@ -439,11 +440,14 @@ export default function MyPage() {
 
 ### 3.1 色板
 
-**48 色体系**：每个色系 11 档（50→950），覆盖亮暗双模。
+**54 色体系**：每个色系 11 档（50→950），覆盖亮暗双模。v1.5 新增 Bento 暖色系。
 
 ```
 Gray 系 (slate)   : 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950
 Accent 系 (blue)  : 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950
+Warm 系 (warm)    : 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950  ← 🍱 Bento surface
+Peach 系 (peach)  : 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950  ← 🍱 Bento primary
+Steel 系 (steel)  : 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950  ← 🍱 Bento secondary
 Danger 系 (red)   : 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950
 Warning 系(amber) : 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950
 Success 系(green) : 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950
@@ -532,7 +536,46 @@ CSS 定义（使用 oklch 色彩空间以保证感知均匀性）：
   --color-cyan-900:   oklch(0.386 0.068 224);
   --color-cyan-950:   oklch(0.291 0.048 225);
 
-  /* ── 绝对色 ── */
+  
+	  /* ── Bento Warm (warm cream #FFF5E6 -> oklch) ── */
+	  --color-warm-50:    oklch(0.98 0.01 82);
+	  --color-warm-100:   oklch(0.96 0.02 82);
+	  --color-warm-200:   oklch(0.92 0.03 80);
+	  --color-warm-300:   oklch(0.85 0.04 78);
+	  --color-warm-400:   oklch(0.78 0.05 76);
+	  --color-warm-500:   oklch(0.70 0.06 74);
+	  --color-warm-600:   oklch(0.60 0.06 72);
+	  --color-warm-700:   oklch(0.50 0.05 70);
+	  --color-warm-800:   oklch(0.40 0.04 68);
+	  --color-warm-900:   oklch(0.30 0.03 66);
+	  --color-warm-950:   oklch(0.20 0.02 64);
+
+	  /* ── Bento Peach (warm peach #FAD4C0 -> oklch) ── */
+	  --color-peach-50:   oklch(0.97 0.03 65);
+	  --color-peach-100:  oklch(0.94 0.05 63);
+	  --color-peach-200:  oklch(0.89 0.08 59);
+	  --color-peach-300:  oklch(0.84 0.10 55);
+	  --color-peach-400:  oklch(0.79 0.12 51);
+	  --color-peach-500:  oklch(0.74 0.14 47);
+	  --color-peach-600:  oklch(0.66 0.14 43);
+	  --color-peach-700:  oklch(0.58 0.13 39);
+	  --color-peach-800:  oklch(0.50 0.11 35);
+	  --color-peach-900:  oklch(0.42 0.09 33);
+	  --color-peach-950:  oklch(0.32 0.06 30);
+
+	  /* ── Bento Steel (steel blue #80A1C1 -> oklch) ── */
+	  --color-steel-50:   oklch(0.97 0.01 250);
+	  --color-steel-100:  oklch(0.93 0.03 248);
+	  --color-steel-200:  oklch(0.88 0.05 246);
+	  --color-steel-300:  oklch(0.82 0.08 244);
+	  --color-steel-400:  oklch(0.76 0.10 242);
+	  --color-steel-500:  oklch(0.70 0.12 240);
+	  --color-steel-600:  oklch(0.62 0.12 238);
+	  --color-steel-700:  oklch(0.54 0.10 236);
+	  --color-steel-800:  oklch(0.46 0.08 234);
+	  --color-steel-900:  oklch(0.38 0.06 232);
+	  --color-steel-950:  oklch(0.28 0.04 230);
+/* ── 绝对色 ── */
   --color-white:      oklch(1 0 0);
   --color-black:      oklch(0 0 0);
 }
@@ -775,64 +818,95 @@ CSS 定义（使用 oklch 色彩空间以保证感知均匀性）：
 --app-motion-layout: var(--motion-duration-slow) var(--motion-easing-spring);
 ```
 
-### 4.6 亮色主题默认映射
+### 4.6 亮色主题默认映射（Bento 暖色系）
+
+> 🍱 **v1.5**：亮色主题已更新为 Bento 暖桃色系。原 slate-blue 方案保留在 `.theme-classic`。
+> 映射规则：Bento 主色 #FAD4C0 → `--app-color-accent` / Bento 表面 #FFF5E6 → `--app-color-surface-page`
 
 ```css
 :root, .theme-standard {
-  /* Surface */
+  /* Surface — Bento: warm cream surface #FFF5E6 */
+  --app-color-surface-page:      var(--color-warm-50);    /* ← #FFF5E6 暖奶油 */
+  --app-color-surface-container: var(--color-white);
+  --app-color-surface-elevated:  var(--color-white);
+  --app-color-surface-hover:     var(--color-warm-100);   /* ← 暖桃色浅变体 */
+  --app-color-surface-active:    var(--color-peach-100);  /* ← #FAD4C0 极浅 */
+
+  /* Text — Bento: #111827 near-black */
+  --app-color-text-primary:      var(--color-slate-900);  /* ← #111827 */
+  --app-color-text-secondary:    var(--color-slate-600);
+  --app-color-text-tertiary:     var(--color-slate-400);
+  --app-color-text-inverse:      var(--color-white);
+
+  /* Accent — Bento: warm peach #FAD4C0 + steel blue #80A1C1 */
+  --app-color-accent:            var(--color-peach-500);  /* ← #FAD4C0 → oklch */
+  --app-color-accent-hover:      var(--color-peach-600);
+  --app-color-accent-active:     var(--color-peach-700);
+  --app-color-accent-soft:       var(--color-peach-100);
+  --app-color-accent-secondary:  var(--color-steel-500);  /* ← #80A1C1 */
+
+  /* Border */
+  --app-color-border-default:    var(--color-warm-200);
+  --app-color-border-strong:     var(--color-peach-400);
+
+  /* Feedback — 继承 Bento DESIGN.md 语义色 */
+  --app-color-feedback-danger:       var(--color-red-500);    /* #DC2626 */
+  --app-color-feedback-danger-soft:  var(--color-red-50);
+  --app-color-feedback-warning:      var(--color-amber-500);  /* #D97706 */
+  --app-color-feedback-warning-soft: var(--color-amber-50);
+  --app-color-feedback-success:      var(--color-green-500);  /* #16A34A */
+  --app-color-feedback-success-soft: var(--color-green-50);
+  --app-color-feedback-info:         var(--color-steel-500);
+  --app-color-feedback-info-soft:    var(--color-steel-100);
+
+  /* Spacing — Bento: 4/8/12/16/24/32 */
+  --app-space-container-padding: var(--space-6);   /* 24px */
+  --app-space-section-gap:       var(--space-8);   /* 32px */
+  --app-space-element-gap:       var(--space-3);   /* 12px */
+  --app-space-page-padding:      var(--space-6);
+
+  /* Radius — Bento: sm=4px, md=8px */
+  --app-radius-container: var(--radius-md);   /* 8px — Bento card radius */
+  --app-radius-element:   var(--radius-sm);   /* 4px — Bento element radius */
+  --app-radius-pill:      var(--radius-full);
+
+  /* Elevation */
+  --app-elevation-card:     var(--elevation-shadow-2);
+  --app-elevation-dropdown: var(--elevation-shadow-3);
+  --app-elevation-modal:    var(--elevation-shadow-5);
+
+  /* Motion — Bento: gentle ease 150-300ms */
+  --app-motion-hover:  var(--motion-duration-fast) var(--motion-easing-default);
+  --app-motion-enter:  var(--motion-duration-base) var(--motion-easing-out);
+  --app-motion-exit:   var(--motion-duration-fast) var(--motion-easing-in);
+  --app-motion-layout: var(--motion-duration-slow) var(--motion-easing-spring);
+}
+```
+
+### 4.6b 经典主题（v1.4 兼容）
+
+```css
+/* 如果偏好原来的 slate-blue 配色，加 class="theme-classic" */
+.theme-classic {
   --app-color-surface-page:      var(--color-slate-50);
   --app-color-surface-container: var(--color-white);
   --app-color-surface-elevated:  var(--color-white);
   --app-color-surface-hover:     var(--color-slate-50);
   --app-color-surface-active:    var(--color-blue-50);
 
-  /* Text */
   --app-color-text-primary:      var(--color-slate-950);
   --app-color-text-secondary:    var(--color-slate-600);
   --app-color-text-tertiary:     var(--color-slate-400);
   --app-color-text-inverse:      var(--color-white);
 
-  /* Accent */
   --app-color-accent:            var(--color-blue-500);
   --app-color-accent-hover:      var(--color-blue-600);
   --app-color-accent-active:     var(--color-blue-700);
   --app-color-accent-soft:       var(--color-blue-50);
+  --app-color-accent-secondary:  var(--color-blue-400);
 
-  /* Border */
   --app-color-border-default:    var(--color-slate-200);
   --app-color-border-strong:     var(--color-blue-500);
-
-  /* Feedback */
-  --app-color-feedback-danger:       var(--color-red-500);
-  --app-color-feedback-danger-soft:  var(--color-red-50);
-  --app-color-feedback-warning:      var(--color-amber-500);
-  --app-color-feedback-warning-soft: var(--color-amber-50);
-  --app-color-feedback-success:      var(--color-green-500);
-  --app-color-feedback-success-soft: var(--color-green-50);
-  --app-color-feedback-info:         var(--color-cyan-500);
-  --app-color-feedback-info-soft:    var(--color-cyan-50);
-
-  /* Spacing — 直接引用基础令牌 */
-  --app-space-container-padding: var(--space-6);
-  --app-space-section-gap:       var(--space-8);
-  --app-space-element-gap:       var(--space-3);
-  --app-space-page-padding:      var(--space-6);
-
-  /* Radius — 直接引用基础令牌 */
-  --app-radius-container: var(--radius-lg);
-  --app-radius-element:   var(--radius-md);
-  --app-radius-pill:      var(--radius-full);
-
-  /* Elevation — 直接引用基础令牌 */
-  --app-elevation-card:     var(--elevation-shadow-2);
-  --app-elevation-dropdown: var(--elevation-shadow-3);
-  --app-elevation-modal:    var(--elevation-shadow-5);
-
-  /* Motion — 直接引用基础令牌 */
-  --app-motion-hover:  var(--motion-duration-fast) var(--motion-easing-default);
-  --app-motion-enter:  var(--motion-duration-base) var(--motion-easing-out);
-  --app-motion-exit:   var(--motion-duration-fast) var(--motion-easing-in);
-  --app-motion-layout: var(--motion-duration-slow) var(--motion-easing-spring);
 }
 ```
 
@@ -1095,6 +1169,71 @@ function App() {
 --dialog-z:                     var(--z-modal);
 ```
 
+### 6.3a 级联下拉菜单（Cascading Dropdown Menu）
+
+**使用场景**：树形结构的"移动到…"、"发送到…"等操作，需要展示完整层级关系供用户选择。
+
+**交互模式**：悬浮展开——鼠标悬停有子级的项，子菜单从右侧弹出。点击叶子项执行操作。
+
+```
+┌─────────────┐     ┌──────────────┐     ┌───────────────┐
+│ 📁 顶层      │     │              │     │               │
+│ 📁 后端手册  ▸│────→│ 📁 Spring    ▸│────→│ 📁 Security   │
+│ 📁 AI大模型  ▸│     │ 📁 MyBatis   │     │ 📁 OAuth2     │
+│ 📁 中间件    ▸│     │ 📁 Redis     │     └───────────────┘
+└─────────────┘     └──────────────┘
+    一级菜单            二级菜单            三级菜单
+```
+
+**实现规范**：
+
+```tsx
+// 1. Portal 渲染的 Dropdown 组件支持 side 属性
+function Dropdown({ anchor, open, onClose, children, side = "bottom" }) {
+  // side="bottom": left = anchor.left, top = anchor.bottom + 4
+  // side="right":  left = anchor.right + 4, top = anchor.top
+  return createPortal(
+    <div style={{ zIndex: "var(--z-modal)" }}>{children}</div>,
+    document.body
+  );
+}
+
+// 2. CascadingItem: 悬浮时展开子级 Dropdown
+function CascadingItem({ node, onMove }) {
+  const itemRef = useRef(null);
+  const [subOpen, setSubOpen] = useState(false);
+  const hasChildren = node.children.length > 0;
+
+  return (
+    <div ref={itemRef}
+      onMouseEnter={() => hasChildren && setSubOpen(true)}
+      onMouseLeave={() => setSubOpen(false)}
+    >
+      <button onClick={() => onMove(node.id)}>
+        {node.name}
+        {hasChildren && <ChevronRight />}
+      </button>
+      {subOpen && hasChildren && (
+        <Dropdown anchor={itemRef.current} open={subOpen} side="right">
+          {node.children.map(c => <CascadingItem ... />)}
+        </Dropdown>
+      )}
+    </div>
+  );
+}
+```
+
+**约束**：
+
+| 规则 | 说明 |
+|------|------|
+| 必须 Portal 到 `<body>` | 避免父级 overflow/stacking context 裁剪 |
+| z-index 必须用 `--z-modal` | 禁止硬编码 `z-[99999]` 等 |
+| side 默认 `"bottom"` | 一级菜单向下展开；子级 `side="right"` 向右展开 |
+| `onMouseEnter`/`onMouseLeave` | 悬浮开、离开关，不用 click 切换 |
+| 排除自身 | `excludeId` 防止将文件夹移入自身 |
+| 当前项 disabled | `currentId === id` 时灰显不可点击 |
+
 ### 6.4 侧边栏（Sidebar）
 
 ```css
@@ -1142,29 +1281,40 @@ function App() {
 
 ## 七、字体与排版
 
+> 🍱 **v1.5**：新增 Bento 字体方案。Bento 指定 Inter（正文）+ JetBrains Mono（代码/标签）。
+
 ### 7.1 字体族
 
 ```css
 :root {
-  --font-family-sans:   'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+  /* ── Bento 推荐字体方案 ── */
+  --font-family-sans:   'Inter Variable', 'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
   --font-family-mono:   'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
   --font-family-display: var(--font-family-sans);
+
+  /* ── 经典字体方案（classic 主题使用） ── */
+  .theme-classic {
+    --font-family-sans:   'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+  }
 }
 ```
 
-- **Figtree Variable**：已安装（`@fontsource-variable/figtree`），覆盖全字重，性能优于多文件加载
-- **JetBrains Mono**：代码块和等宽数字。建议通过 `@fontsource-variable/jetbrains-mono` 引入
+| 字体 | 用途 | Bento 来源 | 安装方式 |
+|------|------|-----------|---------|
+| **Inter Variable** | 🍱 正文/标题/UI（Bento 默认） | DESIGN.md § typography | `@fontsource-variable/inter` |
+| **Figtree Variable** | 经典方案正文（已安装保留） | 项目原有 | `@fontsource-variable/figtree` ✅ |
+| **JetBrains Mono** | 🍱 代码块/等宽标签（Bento 默认） | DESIGN.md § typography | `@fontsource-variable/jetbrains-mono` |
 
-### 7.2 排版层级
+### 7.2 排版层级（Bento 对齐：12/14/16/20/24/32）
 
 ```
-Display    (--font-size-4xl)  — 仅首页标题、大屏数字、Hero 区
-Heading1   (--font-size-3xl)  — 文档一级标题、页面大标题
-Heading2   (--font-size-2xl)  — 文档二级标题、区块标题
-Heading3   (--font-size-xl)   — 卡片标题、对话框标题
-Body       (--font-size-base) — 正文段落、表单标签
-Caption    (--font-size-sm)   — 辅助说明、时间戳、表格内容
-Small      (--font-size-xs)   — 标签、角标、法律文字
+Display    (--font-size-4xl: 2rem/32px)   — 🍱 Bento h1, 仅首页标题、Hero 区
+Heading1   (--font-size-3xl: 1.5rem/24px)  — 文档一级标题、页面大标题
+Heading2   (--font-size-2xl: 1.25rem/20px) — 文档二级标题、区块标题、卡片标题
+Heading3   (--font-size-xl:  1.125rem)     — 小标题
+Body       (--font-size-base: 1rem/16px)   — 🍱 Bento body-md, 正文段落
+Body-sm    (--font-size-sm:  0.875rem/14px)— 辅助说明
+Caption    (--font-size-xs:  0.75rem/12px) — 🍱 Bento label-caps, 标签/角标
 ```
 
 ### 7.3 排版语义令牌
@@ -1424,7 +1574,95 @@ frontend/src/
 
 ---
 
-## 十四、禁止事项清单
+## 十四、🍱 Bento 布局原则 — 模块化卡片网格
+
+> 本章节从 Bento 设计系统提取，定义 TwinSystem 的模块化卡片网格布局规范。
+> 来源：`.claude/skills/bento/SKILL.md` § Brand + § Component Rule Expectations
+
+### 14.1 核心概念：Bento Grid（便当盒网格）
+
+Bento 的核心是**模块化卡片网格**——像日式便当盒一样，用不规则的矩形块在网格中组织内容，每个块有清晰的层次和柔和的视觉对比。
+
+```
+┌──────────────────────┐  ┌──────────┐  ┌──────────┐
+│                      │  │  Stats   │  │  Quick   │
+│     Hero Card        │  │  Card    │  │  Actions │
+│                      │  └──────────┘  └──────────┘
+└──────────────────────┘  ┌──────────┐  ┌──────────┐
+┌──────────┐ ┌──────────┐ │  Chart   │  │  Recent  │
+│  Metric  │ │  Metric  │ │  Card    │  │  Items   │
+│  Card    │ │  Card    │ └──────────┘  └──────────┘
+└──────────┘ └──────────┘
+```
+
+### 14.2 Bento Grid CSS 骨架
+
+```css
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);                /* 🍱 16px — Bento md spacing */
+  padding: var(--app-space-page-padding);
+}
+
+.bento-card {
+  background: var(--app-color-surface-container);
+  border: 1px solid var(--app-color-border-default);
+  border-radius: var(--app-radius-container);  /* 🍱 8px */
+  padding: var(--app-space-container-padding);
+  transition: var(--app-motion-hover);
+}
+
+.bento-card:hover {
+  border-color: var(--app-color-border-strong);
+  box-shadow: var(--app-elevation-card);
+}
+
+/* 大卡片跨多列 */
+.bento-card--wide { grid-column: span 2; }
+.bento-card--tall { grid-row: span 2; }
+```
+
+### 14.3 卡片变体
+
+| 变体 | 用途 | 令牌 |
+|------|------|------|
+| 标准卡片 | 列表项、指标、状态 | `bento-card` |
+| 宽卡片 | Hero 区、图表容器、主要操作 | `bento-card--wide` |
+| 高卡片 | 长列表、时间线、活动日志 | `bento-card--tall` |
+| 交互卡片 | 可点击跳转的卡片 | `bento-card bento-card--interactive` |
+
+### 14.4 布局模式选择
+
+| 模式 | 适用场景 | 实现 |
+|------|---------|------|
+| **Bento Grid** | 仪表盘首页、概览页 | `grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))` |
+| **Bento Stack** | 移动端、窄面板 | `flex-col gap-4`，单列垂直堆叠 |
+| **Bento Split** | 详情页（主内容+侧边栏） | `grid-template-columns: 1fr 320px` |
+| **Bento Feed** | 信息流、时间线 | `flex-col gap-3`，统一宽度 |
+
+### 14.5 间距节奏（Bento Scale: 4/8/12/16/24/32）
+
+```
+元素内 padding:    12px (--space-3) 或 16px (--space-4)
+卡片间 gap:        16px (--space-4)  ← 🍱 Bento md
+区块间 margin:     24px (--space-6) 或 32px (--space-8)
+页面 padding:      24px (--space-6)
+```
+
+### 14.6 Bento 设计约束
+
+| 规则 | 说明 |
+|------|------|
+| 卡片必须有明确边界 | 用 `border` + `border-radius` 而非纯色背景区分 |
+| 层次靠间距表达 | 不靠颜色深浅，靠留白大小 |
+| 交互状态必须显式 | default / hover / active 三种态都要有视觉区别 |
+| 圆角统一 | 卡片 8px (`--radius-md`), 元素 4px (`--radius-sm`) |
+| 不超 3 列 | 桌面端最多 3 列卡片；移动端 1 列 |
+
+---
+
+## 十五、禁止事项清单
 
 | 禁止行为 | 原因 |
 |---------|------|
@@ -1436,8 +1674,10 @@ frontend/src/
 | GSAP 动画不清理（缺少 killTweensOf） | 内存泄漏 |
 | 页面内联 `<style>` 或 inline style | 破坏令牌体系和可维护性 |
 | `!important` | 破坏层叠规则，掩埋真正的问题 |
+| 卡片无边距（内容贴边） | 🍱 Bento 要求卡片必须有视觉边界 |
+| 网格超过 3 列（桌面端） | 🍱 Bento 约束，保持可扫描性 |
 
 ---
 
 *本文档是 TwinSystem UI 层的元规范。所有页面、组件、主题的视觉实现必须以本文档为准。*
-*版本 v1.0 — 知识库模块作为首个实验落地场景。*
+*版本 v1.6 — 新增级联下拉菜单规范 §6.3a；集成 Bento；Warm/Peach/Steel 色系。*
