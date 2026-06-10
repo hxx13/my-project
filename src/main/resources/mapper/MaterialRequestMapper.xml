@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.material.mapper.MaterialRequestMapper">
+    <select id="selectById" resultType="com.example.demo.modules.material.entity.MaterialRequest">
+        SELECT * FROM material_request WHERE id = #{id}
+    </select>
+    <select id="selectByUserId" resultType="com.example.demo.modules.material.entity.MaterialRequest">
+        SELECT * FROM material_request WHERE user_id = #{userId} AND deleted = 0
+        <if test="status != null and status != ''">AND status = #{status}</if>
+        ORDER BY created_at DESC LIMIT #{offset}, #{size}
+    </select>
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(1) FROM material_request WHERE user_id = #{userId} AND deleted = 0
+        <if test="status != null and status != ''">AND status = #{status}</if>
+    </select>
+    <select id="selectAll" resultType="com.example.demo.modules.material.entity.MaterialRequest">
+        SELECT * FROM material_request WHERE deleted = 0
+        <if test="status != null and status != ''">AND status = #{status}</if>
+        ORDER BY created_at DESC LIMIT #{offset}, #{size}
+    </select>
+    <select id="countAll" resultType="int">
+        SELECT COUNT(1) FROM material_request WHERE deleted = 0
+        <if test="status != null and status != ''">AND status = #{status}</if>
+    </select>
+    <insert id="insert">
+        INSERT INTO material_request (id, user_id, applicant_name, applicant_group, status, workflow_type)
+        VALUES (#{id}, #{userId}, #{applicantName}, #{applicantGroup}, #{status}, #{workflowType})
+    </insert>
+    <update id="updateStatus">
+        UPDATE material_request SET status = #{status} WHERE id = #{id}
+    </update>
+    <update id="updateReview">
+        UPDATE material_request SET status = #{status},
+        <if test="status == 'FIRST_OK' or status == 'APPROVED'">first_reviewer_id = #{reviewerId}, first_review_time = NOW()</if>
+        <if test="status == 'APPROVED' and second_reviewer_id != null">second_reviewer_id = #{reviewerId}, second_review_time = NOW()</if>
+        WHERE id = #{id}
+    </update>
+    <update id="updateFulfill">
+        UPDATE material_request SET status = 'FULFILLED', fulfilled_at = NOW(), fulfilled_by = #{fulfilledBy} WHERE id = #{id}
+    </update>
+    <update id="updateReceived">
+        UPDATE material_request SET status = 'RECEIVED', received_at = NOW() WHERE id = #{id}
+    </update>
+    <update id="softDelete">
+        UPDATE material_request SET deleted = 1, deleted_time = NOW(), deleted_by = #{deletedBy} WHERE id = #{id}
+    </update>
+    <select id="selectPendingByReviewer" resultType="com.example.demo.modules.material.entity.MaterialRequest">
+        SELECT * FROM material_request WHERE status IN ('PENDING', 'FIRST_OK') AND deleted = 0 ORDER BY created_at ASC
+    </select>
+    <select id="statsByStudent" resultType="java.util.HashMap">
+        SELECT user_id, applicant_name, applicant_group, COUNT(*) AS total, COUNT(DISTINCT DATE(created_at)) AS active_days
+        FROM material_request WHERE deleted = 0 AND created_at BETWEEN #{from} AND #{to}
+        GROUP BY user_id, applicant_name, applicant_group ORDER BY total DESC
+    </select>
+    <select id="statsByItem" resultType="java.util.HashMap">
+        SELECT l.item_id, l.snapshot_name, SUM(l.qty) AS total_qty, COUNT(DISTINCT l.request_id) AS request_count
+        FROM material_request_line l JOIN material_request r ON l.request_id = r.id
+        WHERE r.deleted = 0 AND r.created_at BETWEEN #{from} AND #{to}
+        GROUP BY l.item_id, l.snapshot_name ORDER BY total_qty DESC
+    </select>
+    <select id="selectAuditTrail" resultType="com.example.demo.modules.material.entity.MaterialRequest">
+        SELECT * FROM material_request WHERE deleted = 0
+        <if test="from != null and to != null">AND created_at BETWEEN #{from} AND #{to}</if>
+        <if test="groupId != null and groupId != ''">AND applicant_group = #{groupId}</if>
+        ORDER BY created_at DESC LIMIT #{offset}, #{size}
+    </select>
+    <select id="countAuditTrail" resultType="int">
+        SELECT COUNT(1) FROM material_request WHERE deleted = 0
+        <if test="from != null and to != null">AND created_at BETWEEN #{from} AND #{to}</if>
+        <if test="groupId != null and groupId != ''">AND applicant_group = #{groupId}</if>
+    </select>
+</mapper>

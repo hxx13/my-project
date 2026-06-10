@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.material.mapper.MaterialRequestLineMapper">
+    <select id="selectByRequestId" resultType="com.example.demo.modules.material.entity.MaterialRequestLine">
+        SELECT * FROM material_request_line WHERE request_id = #{requestId}
+    </select>
+    <insert id="insertBatch" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO material_request_line (request_id, item_id, qty, snapshot_name) VALUES
+        <foreach collection="lines" item="line" separator=",">
+            (#{line.requestId}, #{line.itemId}, #{line.qty}, #{line.snapshotName})
+        </foreach>
+    </insert>
+    <update id="updateFulfilledQty">
+        UPDATE material_request_line SET fulfilled_qty = #{qty} WHERE id = #{id}
+    </update>
+</mapper>

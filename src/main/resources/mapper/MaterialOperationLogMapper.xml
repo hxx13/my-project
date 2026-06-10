@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.material.mapper.MaterialOperationLogMapper">
+    <insert id="insert">
+        INSERT INTO material_operation_log (target_type, target_id, action, operator_user_id, detail)
+        VALUES (#{targetType}, #{targetId}, #{action}, #{operatorUserId}, #{detail})
+    </insert>
+    <select id="selectByTarget" resultType="com.example.demo.modules.material.entity.MaterialOperationLog">
+        SELECT * FROM material_operation_log WHERE target_type = #{targetType} AND target_id = #{targetId} ORDER BY created_at DESC
+    </select>
+</mapper>
