@@ -9,18 +9,22 @@ import type { KnowledgeTreeNode } from "@/features/knowledge/types";
 // 共享组件
 // ═══════════════════════════════════════════
 
-/** Portal 渲染的下拉菜单 — 统一用于文件夹移动和文档移动 */
-function Dropdown({ anchor, open, onClose, children }: { anchor: HTMLElement | null; open: boolean; onClose: () => void; children: ReactNode }) {
+/** Portal 渲染的下拉菜单 */
+function Dropdown({ anchor, open, onClose, children, side = "bottom" }: {
+  anchor: HTMLElement | null; open: boolean; onClose: () => void; children: ReactNode;
+  side?: "bottom" | "right";
+}) {
   const elRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: 0, top: 0 });
   useEffect(() => {
     if (!open || !anchor) return;
     const r = anchor.getBoundingClientRect();
-    setPos({ left: r.left, top: r.bottom + 4 });
+    if (side === "right") setPos({ left: r.right + 4, top: r.top });
+    else setPos({ left: r.left, top: r.bottom + 4 });
     const onClick = (e: MouseEvent) => { if (elRef.current && !elRef.current.contains(e.target as Node)) onClose(); };
     setTimeout(() => document.addEventListener("click", onClick), 0);
     return () => document.removeEventListener("click", onClick);
-  }, [open, anchor, onClose]);
+  }, [open, anchor, onClose, side]);
   if (!open) return null;
   return createPortal(
     <div ref={elRef} className="fixed rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-[var(--app-elevation-modal)] py-1 text-[11px] min-w-[160px]" style={{ left: pos.left, top: pos.top, zIndex: "var(--z-modal)" }}>
@@ -29,49 +33,50 @@ function Dropdown({ anchor, open, onClose, children }: { anchor: HTMLElement | n
   );
 }
 
-/** 树形"移动到…"菜单 — 递归展开，同步文件夹分类层级 */
+/** 级联菜单项 — 悬浮展开子菜单 */
+function CascadingItem({ node, currentId, excludeId, onMove, depth }: {
+  node: KnowledgeTreeNode; currentId: number; excludeId?: number; onMove: (id: number) => void; depth: number;
+}) {
+  const [subOpen, setSubOpen] = useState(false);
+  const itemRef = useRef<HTMLDivElement>(null);
+  const hasChildren = node.children.length > 0 && node.children.some(c => c.categoryId !== excludeId);
+
+  return (
+    <div ref={itemRef} className="relative" onMouseEnter={() => hasChildren && setSubOpen(true)} onMouseLeave={() => setSubOpen(false)}>
+      <button
+        onClick={() => onMove(node.categoryId)}
+        disabled={node.categoryId === currentId}
+        className="flex w-full items-center gap-1 px-3 py-1.5 text-[11px] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 disabled:cursor-not-allowed text-left"
+      >
+        <span>📁 {node.categoryName}</span>
+        {hasChildren && <ChevronRight className="size-3 ml-auto text-[var(--app-color-text-tertiary)]" />}
+      </button>
+      {subOpen && hasChildren && (
+        <Dropdown anchor={itemRef.current} open={subOpen} onClose={() => setSubOpen(false)} side="right">
+          {node.children.filter(c => c.categoryId !== excludeId).map(c => (
+            <CascadingItem key={c.categoryId} node={c} currentId={currentId} excludeId={excludeId} onMove={onMove} depth={depth + 1} />
+          ))}
+        </Dropdown>
+      )}
+    </div>
+  );
+}
+
+/** 级联"移动到…"菜单 — 悬浮展开子级，如右键菜单 */
 function MoveMenu({ anchor, open, onClose, tree, currentId, onMove, label, showRoot, excludeId }: {
   anchor: HTMLElement | null; open: boolean; onClose: () => void;
   tree: KnowledgeTreeNode[]; currentId: number; onMove: (targetId: number | null) => void;
   label: string; showRoot: boolean; excludeId?: number;
 }) {
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const toggle = (id: number) => setExpanded(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
   return (
     <Dropdown anchor={anchor} open={open} onClose={onClose}>
       <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">{label}</div>
       {showRoot && <button onClick={() => onMove(null)} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)] text-[11px]">📁 顶层（无父级）</button>}
-      <MoveTreeNodes nodes={tree} currentId={currentId} excludeId={excludeId} onMove={onMove} expanded={expanded} toggle={toggle} depth={0} />
+      {tree.filter(n => n.categoryId !== excludeId).map(n => (
+        <CascadingItem key={n.categoryId} node={n} currentId={currentId} excludeId={excludeId} onMove={onMove} depth={0} />
+      ))}
     </Dropdown>
   );
-}
-
-function MoveTreeNodes({ nodes, currentId, excludeId, onMove, expanded, toggle, depth }: {
-  nodes: KnowledgeTreeNode[]; currentId: number; excludeId?: number; onMove: (id: number) => void;
-  expanded: Set<number>; toggle: (id: number) => void; depth: number;
-}) {
-  return nodes.filter(n => n.categoryId !== excludeId).map(n => (
-    <div key={n.categoryId}>
-      <div className="flex items-center hover:bg-[var(--app-color-surface-hover)]" style={{ paddingLeft: `${8 + depth * 12}px` }}>
-        {n.children.length > 0 ? (
-          <button onClick={(e) => { e.stopPropagation(); toggle(n.categoryId); }} className="p-0.5 text-[var(--app-color-text-tertiary)] shrink-0">
-            {expanded.has(n.categoryId) ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-          </button>
-        ) : <span className="w-4 shrink-0" />}
-        <button
-          onClick={() => onMove(n.categoryId)}
-          disabled={n.categoryId === currentId}
-          className="flex-1 text-left px-1 py-1.5 text-[11px] disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          📁 {n.categoryName}
-        </button>
-      </div>
-      {expanded.has(n.categoryId) && n.children.length > 0 && (
-        <MoveTreeNodes nodes={n.children} currentId={currentId} excludeId={excludeId} onMove={onMove} expanded={expanded} toggle={toggle} depth={depth + 1} />
-      )}
-    </div>
-  ));
 }
 
 // ═══════════════════════════════════════════
