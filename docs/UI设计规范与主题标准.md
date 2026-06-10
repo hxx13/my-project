@@ -6,7 +6,7 @@
 >
 > **设计日期**：2026-06-09
 >
-> **版本**：v1.2（新增双模滚动体系 + StatusBar 兼容规则）
+> **版本**：v1.3（新增响应式宽度分级体系）
 >
 > **实验落地模块**：知识库（`/admin/knowledge`），验证通过后推广至全站。
 
@@ -276,6 +276,65 @@ export default function MyPage() {
 ```
 页面是表单/设置/简单列表？→ 保持 AdminLayout 默认 padding
 页面是多栏/仪表盘/宽表格/图表？→ 使用 AdminFullWidthPage
+```
+
+### 原则九：响应式宽度分级（Responsive Width Hierarchy）
+
+**禁止一刀切的 `max-width`**。不同内容类型需要不同的宽度约束——文本需要窄行宽保证可读性，代码/表格需要宽度避免折行。
+
+#### 分级体系
+
+| 级别 | 约束 | 适用场景 | 实现 |
+|------|------|---------|------|
+| **T1 阅读** | `max-width: 72ch` | 段落、标题、列表、引用 | CSS 元素级约束 |
+| **T2 内容** | `max-width: 1100px` | 代码块、表格、图片 | 撑满父级可用宽，不限 max-w |
+| **T3 页面** | `max-width: 1200px` | 标准管理页（表单/设置） | AdminLayout 默认 padding |
+| **T4 宽页** | `max-width: 1400px` | 仪表盘、卡片网格 | AdminFullWidthPage 包裹 |
+| **T5 全宽** | 仅受 AdminLayout `1600px` 限制 | 三栏布局、图表、日志 | AdminFullWidthPage + 自然填充 |
+
+#### 大屏 vs 小屏适配
+
+```
+屏幕 ≤ 1366px（笔记本）:
+  T1 72ch ≈ 900px → 若父级 < 900px，自然收缩，不强制 min-w
+  T2 代码/表格 → 撑满可用宽
+  三栏布局 → AdminLayout 1600px 不会触发，内容自然填充
+
+屏幕 1366-1920px（台式机）:
+  T1 文本约束生效，行宽停留在 72ch
+  T2 代码/表格继续扩展，利用额外宽度
+  AdminLayout 居中，两侧留白增加
+
+屏幕 ≥ 1920px（大屏/超宽）:
+  AdminLayout max-w:1600px 居中 → 最大可用宽 1600px
+  三栏中心栏最多 ~1100px（= 1600 - 260 左侧 - 240 右侧）
+  文本仍 72ch（~900px），代码/表格可到 1100px
+```
+
+#### CSS 实现（知识库文档示例）
+
+```css
+/* 文本元素：约束到最佳阅读宽度 */
+.docs-prose h1, .docs-prose h2, .docs-prose h3,
+.docs-prose h4, .docs-prose p, .docs-prose li,
+.docs-prose blockquote {
+  max-width: 72ch;  /* ~900px at 15px font */
+}
+
+/* 代码/表格/图片：撑满父级 */
+.docs-prose pre, .docs-prose table,
+.docs-prose img, .docs-prose hr {
+  max-width: none;
+}
+```
+
+```
+❌ 违规（一刀切）：
+  .docs-prose { max-width: 900px; }     ← 代码块也被限制，折行或溢出
+
+✅ 正确（分级）：
+  .docs-prose p { max-width: 72ch; }    ← 只约束文本
+  .docs-prose pre { max-width: none; }  ← 代码自由撑满
 ```
 
 ---
