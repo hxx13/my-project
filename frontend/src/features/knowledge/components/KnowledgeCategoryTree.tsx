@@ -1,8 +1,32 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ChevronRight, ChevronDown, FileText, Trash2, FolderPlus, Check, X, Pencil, MoveHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createKnowledgeCategory, updateKnowledgeCategory, deleteKnowledgeCategory, updateKnowledgePage } from "@/api/domains/knowledge.api";
 import type { KnowledgeTreeNode } from "@/features/knowledge/types";
+
+/** Portal-based dropdown — renders in <body> to escape overflow clipping and stacking contexts */
+function Dropdown({ anchor, open, onClose, children }: { anchor: HTMLElement | null; open: boolean; onClose: () => void; children: ReactNode }) {
+  const elRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: 0, top: 0 });
+
+  useEffect(() => {
+    if (!open || !anchor) return;
+    const r = anchor.getBoundingClientRect();
+    setPos({ left: r.left, top: r.bottom + 4 });
+    function onClick(e: MouseEvent) { if (elRef.current && !elRef.current.contains(e.target as Node)) onClose(); }
+    setTimeout(() => document.addEventListener("click", onClick), 0);
+    return () => document.removeEventListener("click", onClick);
+  }, [open, anchor, onClose]);
+
+  if (!open) return null;
+  return createPortal(
+    <div ref={elRef} className="fixed z-[99999] rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-[var(--app-elevation-modal)] py-1 text-[11px] min-w-[160px]" style={{ left: pos.left, top: pos.top }}>
+      {children}
+    </div>,
+    document.body
+  );
+}
 
 interface Props {
   tree: KnowledgeTreeNode[];
@@ -85,8 +109,11 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
   const [editName, setEditName] = useState("");
   const [editSlug, setEditSlug] = useState("");
   const [saving, setSaving] = useState(false);
-  const [moveMenu, setMoveMenu] = useState<number | null>(null); // pageId being moved
-  const [moveCatMenu, setMoveCatMenu] = useState(false); // this category being moved
+  const [moveMenu, setMoveMenu] = useState(false);
+  const [moveCatMenu, setMoveCatMenu] = useState(false);
+  const [movingPage, setMovingPage] = useState<{ id: number; slug: string; title: string } | null>(null);
+  const moveBtnRef = useRef<HTMLButtonElement>(null);
+  const moveCatBtnRef = useRef<HTMLButtonElement>(null);
 
   function startEdit() { setEditName(node.categoryName); setEditSlug(node.categorySlug); setEditing(true); }
   async function handleSaveEdit() {
@@ -105,20 +132,15 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
   }
 
   async function handleMoveCategory(newParentId: number | null) {
-    try {
-      await updateKnowledgeCategory(node.categoryId, { parentId: newParentId });
-      setMoveCatMenu(false); onRefresh();
-    } catch { alert("移动失败"); }
+    try { await updateKnowledgeCategory(node.categoryId, { parentId: newParentId }); setMoveCatMenu(false); onRefresh(); }
+    catch { alert("移动失败"); }
   }
 
   async function handleMovePage(pageId: number, newCategoryId: number, pageSlug: string, pageTitle: string) {
-    try {
-      await updateKnowledgePage(pageId, { categoryId: newCategoryId, slug: pageSlug, title: pageTitle });
-      setMoveMenu(null); onRefresh();
-    } catch { alert("移动失败"); }
+    try { await updateKnowledgePage(pageId, { categoryId: newCategoryId, slug: pageSlug, title: pageTitle }); setMoveMenu(false); onRefresh(); }
+    catch { alert("移动失败"); }
   }
 
-  // Collect all category options for move menu
   const allCategories = (function flatten(nodes: KnowledgeTreeNode[]): { id: number; name: string }[] {
     return nodes.flatMap(n => [{ id: n.categoryId, name: n.categoryName }, ...flatten(n.children)]);
   })(allCats);
@@ -142,25 +164,24 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
             <button onClick={() => setEditing(false)} className="rounded p-0.5 hover:bg-[var(--app-color-surface-hover)]"><X className="size-3" /></button>
           </div>
         ) : (
-          <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity relative">
-            <button onClick={(e) => { e.stopPropagation(); setMoveCatMenu(!moveCatMenu); }} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]" title="移动到…"><MoveHorizontal className="size-3" /></button>
+          <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button ref={moveCatBtnRef} onClick={(e) => { e.stopPropagation(); setMoveCatMenu(!moveCatMenu); }} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]" title="移动文件夹"><MoveHorizontal className="size-3" /></button>
             <button onClick={startEdit} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]" title="重命名"><Pencil className="size-3" /></button>
             {node.pages.length === 0 && node.children.length === 0 && (
               <button onClick={handleDelete} disabled={deleting} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-red-500 hover:bg-red-50" title="删除空文件夹"><Trash2 className="size-3" /></button>
             )}
-            {/* Folder move dropdown */}
-            {moveCatMenu && (
-              <div className="absolute left-0 top-full mt-1 z-50 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-1 text-[11px] min-w-[160px]">
-                <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">移动到</div>
-                <button onClick={(e) => { e.stopPropagation(); handleMoveCategory(null); }} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">📁 顶层（无父级）</button>
-                {allCategories.filter(c => c.id !== node.categoryId).map(c => (
-                  <button key={c.id} onClick={(e) => { e.stopPropagation(); handleMoveCategory(c.id); }} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">📁 {c.name}</button>
-                ))}
-              </div>
-            )}
           </div>
         )}
       </div>
+
+      {/* Folder move dropdown (portal) */}
+      <Dropdown anchor={moveCatBtnRef.current} open={moveCatMenu} onClose={() => setMoveCatMenu(false)}>
+        <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">移动到</div>
+        <button onClick={() => handleMoveCategory(null)} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">📁 顶层（无父级）</button>
+        {allCategories.filter(c => c.id !== node.categoryId).map(c => (
+          <button key={c.id} onClick={() => handleMoveCategory(c.id)} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">📁 {c.name}</button>
+        ))}
+      </Dropdown>
 
       {/* Children */}
       {open && (
@@ -171,21 +192,20 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
               <button onClick={() => onSelectPage(p.id)} className={cn("flex flex-1 items-center gap-1.5 rounded-[var(--app-radius-element)] px-2 py-1 text-left text-xs", p.id === activePageId ? "bg-[var(--app-color-accent-soft)] font-medium text-[var(--app-color-accent)]" : "text-[var(--app-color-text-secondary)]")}>
                 <FileText className="size-3 shrink-0 opacity-50" /><span className="truncate">{p.title}</span>
               </button>
-              {/* Move document button */}
-              <button onClick={(e) => { e.stopPropagation(); setMoveMenu(moveMenu === p.id ? null : p.id); }} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="移动到其他分类">
+              <button ref={moveBtnRef} onClick={(e) => { e.stopPropagation(); setMovingPage({ id: p.id, slug: p.slug, title: p.title }); setMoveMenu(!moveMenu); }} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="移动到其他分类">
                 <MoveHorizontal className="size-3" />
               </button>
-              {/* Move dropdown */}
-              {moveMenu === p.id && (
-                <div className="absolute z-50 mt-1 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-1 text-[11px] min-w-[140px]" style={{ marginTop: "60px" }}>
-                  <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">移动到</div>
-                  {allCategories.filter(c => c.id !== node.categoryId).map(c => (
-                    <button key={c.id} onClick={(e) => { e.stopPropagation(); handleMovePage(p.id, c.id, p.slug, p.title); }} className="block w-full text-left px-3 py-1 hover:bg-[var(--app-color-surface-hover)]">{c.name}</button>
-                  ))}
-                </div>
-              )}
             </div>
           ))}
+          {/* Doc move dropdown (portal) */}
+          <Dropdown anchor={moveBtnRef.current} open={moveMenu} onClose={() => { setMoveMenu(false); setMovingPage(null); }}>
+            <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">移动到</div>
+            {allCategories.filter(c => c.id !== node.categoryId).map(c => (
+              <button key={c.id} onClick={() => { if (movingPage) handleMovePage(movingPage.id, c.id, movingPage.slug, movingPage.title); }}>
+                <div className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">{c.name}</div>
+              </button>
+            ))}
+          </Dropdown>
         </div>
       )}
     </div>
