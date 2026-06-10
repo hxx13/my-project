@@ -62,6 +62,14 @@ export default function MaterialAuditPage() {
             <div className="text-xs text-[var(--twin-mute)] mt-1">总出库量</div>
           </div>
           <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center shadow-twin-level-1">
+            <div className="text-2xl font-bold text-[var(--twin-ink)]">{overview.passRate != null ? `${Math.round(overview.passRate * 100)}%` : "-"}</div>
+            <div className="text-xs text-[var(--twin-mute)] mt-1">通过率</div>
+          </div>
+          <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center shadow-twin-level-1">
+            <div className="text-2xl font-bold text-[var(--twin-ink)]">{overview.refuseCount ?? 0}</div>
+            <div className="text-xs text-[var(--twin-mute)] mt-1">拒绝数</div>
+          </div>
+          <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center shadow-twin-level-1">
             <div className="text-2xl font-bold text-[var(--twin-ink)]">{overview.byStudent?.length ?? 0}</div>
             <div className="text-xs text-[var(--twin-mute)] mt-1">涉及学生</div>
           </div>
@@ -73,6 +81,21 @@ export default function MaterialAuditPage() {
       ) : null}
 
       {/* 按学生统计 */}
+      {/* 库存预警 */}
+      {overview?.stockWarnings && overview.stockWarnings.length > 0 && (
+        <section className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1">
+          <h3 className="font-medium text-[var(--twin-ink)] mb-2 flex items-center gap-2"><span className="text-amber-500">⚠️</span>库存预警（≤ 5）</h3>
+          <div className="flex flex-wrap gap-2">
+            {overview.stockWarnings.map((w: any, i: number) => (
+              <span key={i} className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs">
+                <span className="font-medium text-amber-800">{w.name || `ID ${w.itemId}`}</span>
+                <span className="text-amber-600">库存 {w.stockQty}</span>
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
       {overview?.byStudent && overview.byStudent.length > 0 && (
         <section className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1">
           <h3 className="font-medium text-[var(--twin-ink)] mb-3">按学生统计</h3>
