@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useKnowledgeShell } from "@/features/knowledge/hooks/useKnowledgeShell";
 import { useKnowledgeCategories } from "@/features/knowledge/hooks/useKnowledgeCategories";
+import { useKnowledgeStats } from "@/features/knowledge/hooks/useKnowledgeStats";
 import { useKnowledgePage } from "@/features/knowledge/hooks/useKnowledgePage";
 import { TabBar } from "./TabBar";
 import { KnowledgeLayout } from "./KnowledgeLayout";
@@ -20,6 +21,7 @@ import { AlertTriangle, RefreshCw, Pencil, Clock, Upload } from "lucide-react";
 export function KnowledgeShell() {
   const shell = useKnowledgeShell();
   const { data: tree, isLoading, isError, error, refetch } = useKnowledgeCategories();
+  const { data: stats } = useKnowledgeStats();
   const [showImport, setShowImport] = useState(false);
   const { data: page } = useKnowledgePage(shell.selectedPageId);
 
@@ -38,7 +40,7 @@ export function KnowledgeShell() {
   const renderCenter = () => {
     if (shell.isEditing) return <KnowledgeEditorPanel page={shell.editingPageId ? page ?? null : null} onSaved={p => { shell.selectPage(p.id); shell.stopEdit(); }} onCancel={() => shell.stopEdit()} />;
     if (shell.view === "timeline") return <KnowledgeTimelineView onSelectPage={shell.selectPage} />;
-    if (!shell.selectedPageId) return <div className="p-6"><KnowledgeDashboard stats={null} onSelectPage={shell.selectPage} /></div>;
+    if (!shell.selectedPageId) return <div className="p-6"><KnowledgeDashboard stats={stats ?? null} onSelectPage={shell.selectPage} /></div>;
     if (!page) return <div className="flex flex-col items-center justify-center py-16"><p className="text-lg font-semibold">文档不存在</p><button onClick={shell.deselectPage} className="mt-4 rounded border px-4 py-2 text-sm">返回首页</button></div>;
 
     return (
