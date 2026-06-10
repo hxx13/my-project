@@ -322,6 +322,31 @@ html[data-modal-scroll-lock] body {
 }
 
 /* ═══════════════════════════════════════════
+   Admin Page Width System
+   解耦 AdminLayout padding 与子页面的全宽需求
+   原则：AdminLayout 定义 CSS 变量，子页面引用变量而非硬编码值
+   ═══════════════════════════════════════════ */
+
+.admin-page-content {
+  /* These values are the SINGLE SOURCE OF TRUTH for admin page horizontal padding.
+     Pages that need full width use .page-full-bleed which references these variables.
+     Changing the padding here auto-updates all full-bleed pages. */
+  --page-pad-x: 1.5rem;           /* matches p-6 (24px) */
+}
+@media (min-width: 640px) {
+  .admin-page-content {
+    --page-pad-x: 2rem;           /* matches sm:p-8 (32px) */
+  }
+}
+
+/* Apply to pages that need edge-to-edge width.
+   Counteracts the parent .admin-page-content padding via the CSS variable. */
+.page-full-bleed {
+  margin-left: calc(-1 * var(--page-pad-x));
+  margin-right: calc(-1 * var(--page-pad-x));
+}
+
+/* ═══════════════════════════════════════════
    知识库文档排版（docs-prose）
    ═══════════════════════════════════════════ */
 /* Reading-optimized: text constrained, code/tables full-width */

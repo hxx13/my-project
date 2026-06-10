@@ -29,7 +29,7 @@ export function KnowledgeShell() {
   // ── Loading ──
   if (treeLoading) {
     return (
-      <div className="flex h-full flex-col bg-[var(--app-color-surface-page)] -mx-6 sm:-mx-8">
+      <div className="flex h-full flex-col bg-[var(--app-color-surface-page)] page-full-bleed">
         <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} />
         <div className="flex-1 min-h-0">
           <KnowledgeLayoutSkeleton />
@@ -41,7 +41,7 @@ export function KnowledgeShell() {
   // ── Error ──
   if (isError) {
     return (
-      <div className="flex h-full flex-col bg-[var(--app-color-surface-page)] -mx-6 sm:-mx-8">
+      <div className="flex h-full flex-col bg-[var(--app-color-surface-page)] page-full-bleed">
         <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} />
         <div className="flex-1 min-h-0">
           <KnowledgeLayout
@@ -197,7 +197,7 @@ export function KnowledgeShell() {
   // ── Shell: counteract AdminLayout's p-6/sm:p-8 padding for full-width layout.
   //     Pattern A (容器内滚动): h-full flex-col, each panel scrolls independently.
   return (
-    <div className="flex h-full flex-col bg-[var(--app-color-surface-page)] -mx-6 sm:-mx-8">
+    <div className="flex h-full flex-col bg-[var(--app-color-surface-page)] page-full-bleed">
       <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} />
 
       <div className="flex-1 min-h-0">

@@ -1,0 +1,208 @@
+/* ═══════════════════════════════════════════════════════════
+   TwinSystem — 基础令牌（Primitive Tokens）
+   全站所有具体值的唯一定义处。改一个值，全局生效。
+   ═══════════════════════════════════════════════════════════ */
+
+@layer base {
+  :root {
+    /* ═════════════════════════════════════════
+       色板 — 48 色体系，oklch 色彩空间
+       ═════════════════════════════════════════ */
+
+    /* Gray (slate) */
+    --color-slate-50:   oklch(0.985 0 0);
+    --color-slate-100:  oklch(0.97 0 0);
+    --color-slate-200:  oklch(0.922 0 0);
+    --color-slate-300:  oklch(0.87 0 0);
+    --color-slate-400:  oklch(0.708 0 0);
+    --color-slate-500:  oklch(0.556 0 0);
+    --color-slate-600:  oklch(0.439 0 0);
+    --color-slate-700:  oklch(0.371 0 0);
+    --color-slate-800:  oklch(0.269 0 0);
+    --color-slate-900:  oklch(0.205 0 0);
+    --color-slate-950:  oklch(0.145 0 0);
+
+    /* Accent (blue) */
+    --color-blue-50:    oklch(0.97 0.01 255);
+    --color-blue-100:   oklch(0.932 0.032 255);
+    --color-blue-200:   oklch(0.882 0.059 254);
+    --color-blue-300:   oklch(0.809 0.105 251);
+    --color-blue-400:   oklch(0.707 0.165 254);
+    --color-blue-500:   oklch(0.623 0.214 259);
+    --color-blue-600:   oklch(0.546 0.245 262);
+    --color-blue-700:   oklch(0.488 0.243 264);
+    --color-blue-800:   oklch(0.424 0.199 265);
+    --color-blue-900:   oklch(0.379 0.146 265);
+    --color-blue-950:   oklch(0.282 0.091 267);
+
+    /* Danger (red) */
+    --color-red-50:     oklch(0.971 0.013 17);
+    --color-red-100:    oklch(0.936 0.032 17);
+    --color-red-200:    oklch(0.885 0.062 18);
+    --color-red-300:    oklch(0.808 0.114 19);
+    --color-red-400:    oklch(0.704 0.191 22);
+    --color-red-500:    oklch(0.577 0.245 27);
+    --color-red-600:    oklch(0.505 0.213 27);
+    --color-red-700:    oklch(0.444 0.177 26);
+    --color-red-800:    oklch(0.396 0.141 25);
+    --color-red-900:    oklch(0.337 0.102 22);
+    --color-red-950:    oklch(0.258 0.069 20);
+
+    /* Warning (amber) */
+    --color-amber-50:   oklch(0.987 0.022 95);
+    --color-amber-100:  oklch(0.962 0.059 95);
+    --color-amber-200:  oklch(0.924 0.12 95);
+    --color-amber-300:  oklch(0.879 0.169 91);
+    --color-amber-400:  oklch(0.828 0.189 84);
+    --color-amber-500:  oklch(0.723 0.175 80);
+    --color-amber-600:  oklch(0.628 0.151 72);
+    --color-amber-700:  oklch(0.555 0.133 66);
+    --color-amber-800:  oklch(0.473 0.114 61);
+    --color-amber-900:  oklch(0.414 0.098 57);
+    --color-amber-950:  oklch(0.308 0.071 53);
+
+    /* Success (green) */
+    --color-green-50:   oklch(0.982 0.018 155);
+    --color-green-100:  oklch(0.962 0.044 156);
+    --color-green-200:  oklch(0.925 0.084 155);
+    --color-green-300:  oklch(0.871 0.15 154);
+    --color-green-400:  oklch(0.792 0.209 151);
+    --color-green-500:  oklch(0.627 0.194 149);
+    --color-green-600:  oklch(0.527 0.154 150);
+    --color-green-700:  oklch(0.448 0.119 151);
+    --color-green-800:  oklch(0.393 0.095 152);
+    --color-green-900:  oklch(0.339 0.077 151);
+    --color-green-950:  oklch(0.253 0.057 152);
+
+    /* Info (cyan) */
+    --color-cyan-50:    oklch(0.984 0.012 210);
+    --color-cyan-100:   oklch(0.956 0.032 208);
+    --color-cyan-200:   oklch(0.917 0.061 207);
+    --color-cyan-300:   oklch(0.865 0.1 207);
+    --color-cyan-400:   oklch(0.789 0.134 211);
+    --color-cyan-500:   oklch(0.715 0.143 215);
+    --color-cyan-600:   oklch(0.609 0.126 221);
+    --color-cyan-700:   oklch(0.52 0.105 223);
+    --color-cyan-800:   oklch(0.45 0.085 224);
+    --color-cyan-900:   oklch(0.386 0.068 224);
+    --color-cyan-950:   oklch(0.291 0.048 225);
+
+    /* 绝对色 */
+    --color-white:      oklch(1 0 0);
+    --color-black:      oklch(0 0 0);
+
+    /* ═════════════════════════════════════════
+       间距阶梯
+       ═════════════════════════════════════════ */
+    --space-0:   0px;
+    --space-1:   0.25rem;  /*  4px */
+    --space-2:   0.5rem;   /*  8px */
+    --space-3:   0.75rem;  /* 12px */
+    --space-4:   1rem;     /* 16px */
+    --space-5:   1.25rem;  /* 20px */
+    --space-6:   1.5rem;   /* 24px */
+    --space-8:   2rem;     /* 32px */
+    --space-10:  2.5rem;   /* 40px */
+    --space-12:  3rem;     /* 48px */
+    --space-16:  4rem;     /* 64px */
+
+    /* ═════════════════════════════════════════
+       圆角阶梯
+       ═════════════════════════════════════════ */
+    --radius-none:  0px;
+    --radius-xs:    0.25rem;  /*  4px */
+    --radius-sm:    0.375rem; /*  6px */
+    --radius-md:    0.5rem;   /*  8px */
+    --radius-lg:    0.75rem;  /* 12px */
+    --radius-xl:    1rem;     /* 16px */
+    --radius-2xl:   1.5rem;   /* 24px */
+    --radius-full:  9999px;
+
+    /* ═════════════════════════════════════════
+       字号 / 行高 / 字重
+       ═════════════════════════════════════════ */
+    --font-size-xs:     0.75rem;
+    --font-lineheight-xs:   1rem;
+    --font-size-sm:     0.875rem;
+    --font-lineheight-sm:   1.25rem;
+    --font-size-base:   1rem;
+    --font-lineheight-base: 1.5rem;
+    --font-size-lg:     1.125rem;
+    --font-lineheight-lg:   1.75rem;
+    --font-size-xl:     1.25rem;
+    --font-lineheight-xl:   1.75rem;
+    --font-size-2xl:    1.5rem;
+    --font-lineheight-2xl:  2rem;
+    --font-size-3xl:    1.875rem;
+    --font-lineheight-3xl:  2.25rem;
+    --font-size-4xl:    2.25rem;
+    --font-lineheight-4xl:  2.5rem;
+
+    --font-weight-normal:   400;
+    --font-weight-medium:   500;
+    --font-weight-semibold: 600;
+    --font-weight-bold:     700;
+
+    /* ═════════════════════════════════════════
+       阴影层级
+       ═════════════════════════════════════════ */
+    --elevation-shadow-1: 0 1px 2px  rgba(0,0,0,0.04);
+    --elevation-shadow-2: 0 1px 3px  rgba(0,0,0,0.06), 0 1px 2px  rgba(0,0,0,0.04);
+    --elevation-shadow-3: 0 4px 6px  rgba(0,0,0,0.06), 0 2px 4px  rgba(0,0,0,0.04);
+    --elevation-shadow-4: 0 10px 15px rgba(0,0,0,0.08), 0 4px 6px  rgba(0,0,0,0.04);
+    --elevation-shadow-5: 0 20px 25px rgba(0,0,0,0.10), 0 10px 10px rgba(0,0,0,0.04);
+
+    /* ═════════════════════════════════════════
+       Z-Index 层级表 — 全站唯一 z-index 定义处
+       ═════════════════════════════════════════ */
+    --z-base:       0;
+    --z-dropdown:   200;
+    --z-sticky:     400;
+    --z-overlay:    600;
+    --z-modal:      800;
+    --z-toast:      1000;
+    --z-tooltip:    1200;
+    --z-command:    1400;
+
+    /* ═════════════════════════════════════════
+       动效时长 & 缓动函数
+       ═════════════════════════════════════════ */
+    --motion-duration-instant: 0ms;
+    --motion-duration-fast:    150ms;
+    --motion-duration-base:    200ms;
+    --motion-duration-slow:    300ms;
+    --motion-duration-gentle:  500ms;
+
+    --motion-easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+    --motion-easing-in:      cubic-bezier(0.4, 0, 1, 1);
+    --motion-easing-out:     cubic-bezier(0, 0, 0.2, 1);
+    --motion-easing-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* ═════════════════════════════════════════
+       容器宽度
+       ═════════════════════════════════════════ */
+    --container-page:     none;
+    --container-content:  none; /* was 900px — deprecated: pages use page-full-bleed or responsive prose instead */
+    --container-dialog:   512px;
+    --container-sheet:    448px;
+
+    /* ═════════════════════════════════════════
+       字体族
+       ═════════════════════════════════════════ */
+    --font-family-sans:  'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-family-mono:  'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+    --font-family-display: var(--font-family-sans);
+  }
+
+  /* ═════════════════════════════════════════
+     reduced-motion 全局适配
+     ═════════════════════════════════════════ */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --motion-duration-fast:   0ms;
+      --motion-duration-base:   0ms;
+      --motion-duration-slow:   0ms;
+      --motion-duration-gentle: 0ms;
+    }
+  }
+}

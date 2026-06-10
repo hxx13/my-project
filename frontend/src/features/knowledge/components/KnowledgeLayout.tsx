@@ -39,7 +39,7 @@ export function KnowledgeLayout({ sidebar, content, outline }: KnowledgeLayoutPr
   }, []);
 
   return (
-    <div className="flex h-full bg-[var(--app-color-surface-page)]">
+    <div className="flex h-full min-h-0 bg-[var(--app-color-surface-page)]">
       {/* Left sidebar — draggable width, independent scroll */}
       <aside
         style={{ width: sidebarWidth }}
@@ -67,7 +67,7 @@ export function KnowledgeLayout({ sidebar, content, outline }: KnowledgeLayoutPr
 
 export function KnowledgeLayoutSkeleton() {
   return (
-    <div className="flex h-full bg-[var(--app-color-surface-page)]">
+    <div className="flex h-full min-h-0 bg-[var(--app-color-surface-page)]">
       <aside className="w-[260px] shrink-0 border-r border-[var(--app-color-border-default)] bg-[var(--sidebar)] p-4">
         <div className="space-y-3">
           {Array.from({ length: 8 }).map((_, i) => (

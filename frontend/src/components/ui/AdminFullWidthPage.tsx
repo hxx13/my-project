@@ -16,5 +16,5 @@ import type { ReactNode } from "react";
  * Design standard: UI设计规范与主题标准.md 原则六 + 原则八
  */
 export function AdminFullWidthPage({ children }: { children: ReactNode }) {
-  return <div className="-mx-6 sm:-mx-8">{children}</div>;
+  return <div className="page-full-bleed">{children}</div>;
 }
