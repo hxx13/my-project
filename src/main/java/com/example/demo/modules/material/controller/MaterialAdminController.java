@@ -284,6 +284,12 @@ public class MaterialAdminController {
         return Result.success(requestMapper.selectDistinctGroups());
     }
 
+    @GetMapping("/applicants-with-records")
+    @Operation(summary = "有申领记录的人员列表")
+    public Result<List<Map<String, Object>>> applicantsWithRecords() {
+        return Result.success(requestMapper.selectDistinctApplicants());
+    }
+
     @GetMapping("/eligible-reviewers")
     @Operation(summary = "可选的审核人列表（STAFF及以上已启用账号）")
     public Result<List<Map<String, Object>>> eligibleReviewers() {

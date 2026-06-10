@@ -25,8 +25,10 @@ public interface MaterialRequestMapper {
     List<MaterialRequest> selectRecycle(@Param("offset") int offset, @Param("size") int size);
     int countRecycle();
     List<MaterialRequest> selectPendingByReviewer(@Param("reviewerId") String reviewerId);
-    /** 有申领记录的课题组列表（供教职工选择） */
+    /** 有申领记录的课题组列表 */
     List<String> selectDistinctGroups();
+    /** 有申领记录的人员列表（userId + applicantName） */
+    List<Map<String, Object>> selectDistinctApplicants();
     List<Map<String, Object>> statsByStudent(@Param("from") String from, @Param("to") String to);
     List<Map<String, Object>> statsByItem(@Param("from") String from, @Param("to") String to);
     List<MaterialRequest> selectAuditTrail(@Param("from") String from, @Param("to") String to,
