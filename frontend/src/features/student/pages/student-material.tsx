@@ -5,6 +5,7 @@ import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package, Lightbulb } from
 import { useMaterialCategories, useMaterialItems, useMaterialCart, useSaveMaterialCart, useCreateMaterialRequest } from "@/api/hooks/useMaterial";
 import { createMaterialDemand } from "@/api/domains/material.api";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
+import { authStorage } from "@/features/auth/authStorage";
 import type { MaterialItem } from "@/api/domains/material.api";
 import { StudentCard, Skeleton, EmptyState, Badge } from "../components/ui";
 import { cn } from "@/lib/utils";
@@ -59,7 +60,8 @@ export default function StudentMaterialPage() {
   async function handleSubmit() {
     if (!cart || cartCount === 0) return;
     const lines = Object.entries(cart).filter(([, qty]) => qty > 0).map(([itemId, qty]) => ({ itemId: Number(itemId), qty }));
-    await createRequest.mutateAsync(lines);
+    const group = authStorage.getUserInfo()?.departmentName?.trim() || undefined;
+    await createRequest.mutateAsync({ lines, applicantGroup: group });
     saveCart.mutate({}); // 清空购物车
     navigate("/student/material/requests");
   }

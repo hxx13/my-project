@@ -30,7 +30,8 @@ export function useSaveMaterialCart() {
 export function useCreateMaterialRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: createMaterialRequest,
+    mutationFn: (params: { lines: { itemId: number; qty: number }[]; applicantGroup?: string }) =>
+      createMaterialRequest(params.lines, params.applicantGroup),
     onSuccess: () => { qc.invalidateQueries({ queryKey: materialQueryKeys.requests() }); qc.invalidateQueries({ queryKey: materialQueryKeys.cart() }); },
   });
 }

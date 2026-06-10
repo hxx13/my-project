@@ -131,8 +131,8 @@ export async function saveMaterialCart(cart: Record<number, number>): Promise<vo
   await authHttp.put("/material/cart", { lines });
 }
 
-export async function createMaterialRequest(lines: { itemId: number; qty: number }[]) {
-  const res = await authHttp.post<Result<MaterialRequest>>("/material/requests", { lines });
+export async function createMaterialRequest(lines: { itemId: number; qty: number }[], applicantGroup?: string) {
+  const res = await authHttp.post<Result<MaterialRequest>>("/material/requests", { lines, applicantGroup });
   return res.data.data;
 }
 
