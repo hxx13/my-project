@@ -79,57 +79,60 @@ export default function AdminHomePage() {
 
   const roleLabel = ROLE_LABEL[role as MinRole] ?? role;
   const enabledCount = allCards.filter((e) => e.enabled).length;
-
   const toggleGroup = (title: string) => setCollapsed(p => { const n = new Set(p); n.has(title) ? n.delete(title) : n.add(title); return n; });
 
   return (
     <AdminFullWidthPage>
-      <div className="space-y-6 p-4 sm:p-6">
-        {/* Header */}
+      <div className="min-h-full bg-[var(--color-warm-50)] p-4 sm:p-6 space-y-6">
+        {/* Header — Bento warm surface */}
         <section className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--twin-mute)]"><Sparkles className="h-3.5 w-3.5 text-[var(--twin-link-deep)]" />工作台</p>
-            <h1 className="text-xl font-semibold tracking-tight text-[var(--twin-ink)]">欢迎回来</h1>
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-steel-500)]">
+              <Sparkles className="h-3.5 w-3.5 text-[var(--color-peach-500)]" />工作台
+            </p>
+            <h1 className="text-xl font-semibold tracking-tight text-[var(--color-slate-900)]">欢迎回来</h1>
           </div>
-          <div className="flex items-center gap-2 text-xs text-[var(--twin-mute)]">
+          <div className="flex items-center gap-2 text-xs text-[var(--color-steel-500)]">
             <span>{roleLabel}</span><span>·</span><span>{enabledCount} 入口</span>
           </div>
         </section>
 
-        {/* Starred */}
+        {/* ── Starred ── */}
         {starred.length > 0 && (
           <section>
-            <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--twin-mute)]"><Star className="h-3 w-3 fill-amber-400 text-amber-500" />收藏</h2>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+            <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-steel-400)]">
+              <Star className="h-3 w-3 fill-[var(--color-peach-500)] text-[var(--color-peach-500)]" />收藏
+            </h2>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
               {starred.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} starred />)}
             </div>
           </section>
         )}
 
-        {/* Recent */}
+        {/* ── Recent ── */}
         {recent.length > 0 && (
           <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--twin-mute)]">最近访问</h2>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-steel-400)]">最近访问</h2>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
               {recent.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} />)}
             </div>
           </section>
         )}
 
-        {/* Groups — collapsible */}
+        {/* ── Groups ── */}
         {groups.map(([title, entries]) => {
           const enabled = entries.filter(e => e.enabled);
           if (enabled.length === 0) return null;
           const isCollapsed = collapsed.has(title);
           return (
             <section key={title}>
-              <button onClick={() => toggleGroup(title)} className="mb-2 flex w-full items-center gap-1 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--twin-mute)] hover:text-[var(--twin-ink)]">
+              <button onClick={() => toggleGroup(title)} className="mb-2 flex w-full items-center gap-1 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-steel-400)] hover:text-[var(--color-slate-700)]">
                 {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                 {title}
                 <span className="ml-1 text-[10px] opacity-50">({enabled.length})</span>
               </button>
               {!isCollapsed && (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                   {enabled.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} />)}
                 </div>
               )}
@@ -141,6 +144,7 @@ export default function AdminHomePage() {
   );
 }
 
+/** Bento-style compact card — white bg, rounded-2xl, subtle shadow, colored icon circle */
 function HomeCard({ entry, navigate, starred }: { entry: any; navigate: (p: string) => void; starred?: boolean }) {
   const [isStarred, setIsStarred] = useState(starred ?? isAdminNavStarred(entry.path));
   return (
@@ -148,22 +152,28 @@ function HomeCard({ entry, navigate, starred }: { entry: any; navigate: (p: stri
       onClick={() => entry.enabled && navigate(entry.path)}
       disabled={!entry.enabled}
       className={cn(
-        "group relative flex flex-col items-center justify-center gap-1.5 rounded-xl border p-2.5 text-center transition-colors",
-        "w-full min-h-[80px]",
+        "group relative flex flex-col items-center justify-center gap-2 rounded-2xl p-3 text-center transition-all duration-200",
+        "w-full min-h-[88px]",
         entry.enabled
-          ? "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] hover:border-[var(--twin-hairline-strong)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer"
-          : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] opacity-50 cursor-not-allowed"
+          ? "bg-white border border-[var(--twin-hairline)] shadow-sm hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
+          : "bg-[var(--color-warm-100)] border border-[var(--twin-hairline)] opacity-50 cursor-not-allowed"
       )}
     >
-      <div className={cn("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-sm", entry.tone)}>
+      {/* Icon circle — Bento gradient */}
+      <div className={cn(
+        "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm",
+        entry.tone
+      )}>
         {entry.icon}
       </div>
-      <span className="text-[11px] font-medium text-[var(--twin-ink)] leading-tight line-clamp-2">{entry.title}</span>
+      <span className="text-[11px] font-medium text-[var(--color-slate-800)] leading-tight line-clamp-2">{entry.title}</span>
+      {/* Star toggle */}
       <button
         onClick={(e) => { e.stopPropagation(); toggleAdminNavStar(entry.path); setIsStarred(!isStarred); }}
-        className={cn("absolute top-0.5 right-0.5 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity", isStarred ? "opacity-100 text-amber-500" : "text-[var(--twin-mute)] hover:text-amber-500")}
+        className={cn("absolute top-1 right-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity",
+          isStarred ? "opacity-100 text-[var(--color-peach-600)]" : "text-[var(--color-steel-400)] hover:text-[var(--color-peach-500)]")}
       >
-        <Star className={cn("h-3 w-3", isStarred && "fill-amber-400")} />
+        <Star className={cn("h-3.5 w-3.5", isStarred && "fill-[var(--color-peach-500)]")} />
       </button>
     </button>
   );
