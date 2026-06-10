@@ -269,10 +269,73 @@ public class SmartsheetController {
         List<SmartsheetRow> rows = rowService.getRowsBySheetId(sheetId);
         response.setContentType("text/csv;charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"" + sheet.getName() + ".csv\"");
-        response.getWriter().write("row_label,cell_data\n");
-        for (SmartsheetRow r : rows) {
-            response.getWriter().write(r.getRowLabel() + "," + r.getCellData().replace(",", ";") + "\n");
+
+        // UTF-8 BOM for Excel compatibility (prevents garbled Chinese characters)
+        response.getOutputStream().write(0xEF);
+        response.getOutputStream().write(0xBB);
+        response.getOutputStream().write(0xBF);
+
+        java.io.PrintWriter writer = response.getWriter();
+
+        // Parse columns config
+        List<Map<String, Object>> columns = new ArrayList<>();
+        try {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> parsed = objectMapper.readValue(
+                sheet.getColumnsConfig(), List.class);
+            if (parsed != null) columns = parsed;
+        } catch (Exception e) {
+            log.warn("Failed to parse columns config for export: {}", e.getMessage());
         }
+
+        // Write header row with column labels
+        List<String> colKeys = new ArrayList<>();
+        for (Map<String, Object> col : columns) {
+            String key = (String) col.get("key");
+            String label = (String) col.getOrDefault("label", key);
+            if (key != null) {
+                colKeys.add(key);
+                writer.write(escapeCsv(label));
+                writer.write(",");
+            }
+        }
+        if (!colKeys.isEmpty()) {
+            writer.write("\n");
+        }
+
+        // Write data rows
+        for (SmartsheetRow r : rows) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> cellData = objectMapper.readValue(r.getCellData(), Map.class);
+                for (int i = 0; i < colKeys.size(); i++) {
+                    if (i > 0) writer.write(",");
+                    String key = colKeys.get(i);
+                    Object val = cellData != null ? cellData.get(key) : null;
+                    String strVal;
+                    if (val instanceof Map) {
+                        // CellValue object: extract .v field
+                        Object v = ((Map<?, ?>) val).get("v");
+                        strVal = v != null ? v.toString() : "";
+                    } else {
+                        strVal = val != null ? val.toString() : "";
+                    }
+                    writer.write(escapeCsv(strVal));
+                }
+                writer.write("\n");
+            } catch (Exception e) {
+                log.debug("Skipping row {} during export: {}", r.getId(), e.getMessage());
+            }
+        }
+        writer.flush();
+    }
+
+    private String escapeCsv(String value) {
+        if (value == null) return "";
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
     }
 
     @PostMapping("/{sheetId}/import")

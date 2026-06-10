@@ -6,6 +6,7 @@ import SmartSheetGrid from './components/SmartSheetGrid';
 import SmartSheetStatusBar from './components/SmartSheetStatusBar';
 import SmartSheetTabsRow from './components/SmartSheetTabsRow';
 import FindReplaceDialog from './components/FindReplaceDialog';
+import ImportDialog from './components/ImportDialog';
 import { useSmartSheet } from './hooks/useSmartSheet';
 import { DEFAULT_VIEW_OPTIONS } from './types';
 import type { ViewOptions, ColumnConfig, CellValue } from './types';
@@ -14,13 +15,14 @@ import toast from 'react-hot-toast';
 
 export default function SmartSheetPage() {
   const { id } = useParams<{ id: string }>();
-  const { sheet, rows, isLoading, updateCell, addRow, insertRow, deleteRows, duplicateRow, moveRow, updateColumn } = useSmartSheet(id);
+  const { sheet, rows, isLoading, updateCell, addRow, insertRow, deleteRows, duplicateRow, moveRow, updateColumn, invalidate } = useSmartSheet(id);
   const [viewOptions, setViewOptions] = useState<ViewOptions>(DEFAULT_VIEW_OPTIONS);
   const [selectedColumn, setSelectedColumn] = useState<ColumnConfig | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [undoRedo, setUndoRedo] = useState<{ canUndo: boolean; canRedo: boolean }>({ canUndo: false, canRedo: false });
   const [isDirty, setIsDirty] = useState(false);
   const [showFind, setShowFind] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
 
@@ -82,7 +84,7 @@ export default function SmartSheetPage() {
         onAddColumn={() => {
           updateColumn(`col_${Date.now()}`, { key: `col_${Date.now()}`, label: '新列', type: 'text', width: 110 });
         }}
-        onImport={() => toast('导入功能将在下一步实现')}
+        onImport={() => setShowImport(true)}
         onExport={handleExport}
         onSave={() => { toast.success('已保存'); setIsDirty(false); }}
         onUndo={() => undoRef.current()}
@@ -135,6 +137,17 @@ export default function SmartSheetPage() {
           onClose={() => setShowFind(false)}
           rows={rows}
           onReplace={(rowId, colKey, newVal) => updateCell(rowId, colKey, JSON.stringify(newVal))}
+        />
+      )}
+
+      {/* 导入弹窗 */}
+      {showImport && (
+        <ImportDialog
+          sheetId={id!}
+          columns={sheet.columnsConfig}
+          open={showImport}
+          onClose={() => setShowImport(false)}
+          onImported={() => { invalidate(); setShowImport(false); }}
         />
       )}
     </div>
