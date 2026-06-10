@@ -24,11 +24,12 @@ export function KnowledgeShell() {
   const { data: page } = useKnowledgePage(shell.selectedPageId);
 
   // ── Graph view: 全屏沉浸式，不使用三栏布局 ──
+  // ── Graph: immersive full-screen, no page-full-bleed (dark bg fills edge to edge naturally) ──
   if (shell.view === "graph") {
     return (
-      <div className="flex h-full flex-col bg-[var(--app-color-surface-page)] page-full-bleed">
+      <div className="flex h-full flex-col bg-[#0a0f1a] page-full-bleed">
         <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} onImport={() => setShowImport(true)} />
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 relative">
           <KnowledgeGraphView onSelectPage={shell.selectPage} onClose={() => shell.setView("browse")} />
         </div>
         <KnowledgeHistoryDrawer open={shell.isHistoryOpen} pageId={shell.historyPageId} onClose={shell.closeHistory} onRollback={refetch} />
