@@ -163,19 +163,19 @@ export function KnowledgeGraphView({ onSelectPage, onClose }: Props) {
   // ── 渲染 ──
   return (
     <div ref={containerRef} className="h-full w-full" style={{ background: "radial-gradient(ellipse at center, #111827 0%, #0a0f1a 100%)" }}>
-      {/* 浮动工具栏 */}
+      {/* 浮动工具栏 — 暗色画布专用，圆角对齐项目令牌 */}
       <div className="absolute top-3 left-3 z-10 flex items-center gap-1">
-        <button onClick={onClose} className="flex items-center gap-1 rounded-lg bg-black/60 px-3 py-1.5 text-xs text-white/80 hover:bg-black/80 hover:text-white backdrop-blur">
+        <button onClick={onClose} className="flex items-center gap-1 rounded-[var(--app-radius-element)] bg-white/10 px-3 py-1.5 text-xs text-white/80 hover:bg-white/20 hover:text-white backdrop-blur border border-white/10">
           <X className="size-3.5" /> 返回
         </button>
         <div className="w-px h-5 bg-white/15 mx-1" />
-        <button onClick={handleZoomIn} className="rounded-lg bg-black/60 p-1.5 text-white/70 hover:bg-black/80 hover:text-white backdrop-blur" title="放大">
+        <button onClick={handleZoomIn} className="rounded-[var(--app-radius-element)] bg-white/10 p-1.5 text-white/70 hover:bg-white/20 hover:text-white backdrop-blur border border-white/10" title="放大">
           <ZoomIn className="size-3.5" />
         </button>
-        <button onClick={handleZoomOut} className="rounded-lg bg-black/60 p-1.5 text-white/70 hover:bg-black/80 hover:text-white backdrop-blur" title="缩小">
+        <button onClick={handleZoomOut} className="rounded-[var(--app-radius-element)] bg-white/10 p-1.5 text-white/70 hover:bg-white/20 hover:text-white backdrop-blur border border-white/10" title="缩小">
           <ZoomOut className="size-3.5" />
         </button>
-        <button onClick={handleReset} className="rounded-lg bg-black/60 p-1.5 text-white/70 hover:bg-black/80 hover:text-white backdrop-blur" title="重置视图">
+        <button onClick={handleReset} className="rounded-[var(--app-radius-element)] bg-white/10 p-1.5 text-white/70 hover:bg-white/20 hover:text-white backdrop-blur border border-white/10" title="重置视图">
           <Maximize2 className="size-3.5" />
         </button>
         <span className="ml-2 text-[10px] text-white/30 font-mono">
@@ -183,8 +183,8 @@ export function KnowledgeGraphView({ onSelectPage, onClose }: Props) {
         </span>
       </div>
 
-      {/* 图例 */}
-      <div className="absolute bottom-3 right-3 z-10 rounded-lg bg-black/60 px-3 py-2 text-[10px] text-white/50 font-mono backdrop-blur">
+      {/* 图例 — 暗色画布专用浮层 */}
+      <div className="absolute bottom-3 right-3 z-10 rounded-[var(--app-radius-element)] bg-white/10 px-3 py-2 text-[10px] text-white/50 font-mono backdrop-blur border border-white/10">
         <div>🖱 拖拽节点 · 滚轮缩放 · 平移画布</div>
         <div className="mt-1">━━ 实线: wikilink &nbsp; ┅┅ 虚线: 自动发现</div>
       </div>

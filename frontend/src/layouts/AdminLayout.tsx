@@ -912,7 +912,10 @@ export default function AdminLayout() {
         </DialogContent>
       </Dialog>
 
-      <section className="flex min-w-0 flex-1 flex-col">
+{/* ⚠️ self-stretch + minHeight:100dvh 是必须的：父容器 items-start 导致子元素不拉伸，
+    不加这两个属性会导致所有子页面的 h-full 失效（高度塌为 0）。
+    见 docs/UI设计规范与主题标准.md § 高度链完整性 */}
+      <section className="flex min-w-0 flex-1 flex-col self-stretch" style={{ minHeight: "100dvh" }}>
         <header className="sticky top-0 z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)]/95 px-4 py-2 shadow-twin-level-2 backdrop-blur-md sm:px-6 md:h-16 md:flex-nowrap md:py-0">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:flex-1 md:flex-nowrap">
             <button
