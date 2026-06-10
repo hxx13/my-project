@@ -1229,23 +1229,26 @@ function CascadingItem({ node, onMove }) {
 |------|------|
 | 必须 Portal 到 `<body>` | 避免父级 overflow/stacking context 裁剪 |
 | z-index 必须用 `--z-modal` | 禁止硬编码 `z-[99999]` 等 |
-| **Portal 内容加 inline z-index 兜底** | CSS 变量在 Portal 上下文中可能解析失败，必须同时设 `style={{ zIndex: 1400 }}` |
+| 遮罩/抽屉不得覆盖 header | `top-16`（header 高度 64px），确保右上角用户菜单始终可点击 |
 | side 默认 `"bottom"` | 一级菜单向下展开；子级 `side="right"` 向右展开 |
 | `onMouseEnter`/`onMouseLeave` | 悬浮开、离开关，不用 click 切换 |
 | 排除自身 | `excludeId` 防止将文件夹移入自身 |
 | 当前项 disabled | `currentId === id` 时灰显不可点击 |
 
-**已知陷阱：Portal + CSS 变量 z-index 失效**
+**已知陷阱：遮罩覆盖 header 导致右上角菜单失效**
 
-Radix/Dropdown/Popover 等 Portal 组件将内容渲染到 `document.body`。但在某些浏览器或 Tailwind 构建中，`z-[var(--z-command)]` 生成的 CSS 变量可能解析为 `auto` 而非 `1400`，导致弹窗被遮罩（backdrop）覆盖，点击失效。
+`--z-overlay` (600) > header `z-20` (20)，因此全屏遮罩（backdrop）会覆盖 sticky header，导致右上角用户菜单、搜索框等无法点击。
 
-**解法**：Portal 内容同时设置 className 的 z-index（Tailwind 令牌）和 inline style 的 zIndex（硬编码数值兜底）：
+**解法**：遮罩和抽屉面板使用 `top-16`（64px，等于 admin header 的 `h-16`）作为起始位置，让 header 区域始终保持可交互：
 ```tsx
-<DropdownMenuContent
-  className="z-[var(--z-command)] ..."
-  style={{ zIndex: 1400 }}  // ← 硬编码兜底，防止 CSS 变量解析失败
->
+{/* backdrop: 从 header 下方开始 */}
+<div className="fixed inset-0 top-16 bg-black/30" style={{ zIndex: "var(--z-overlay)" }} />
+
+{/* drawer: 从 header 下方开始 */}
+<div className="fixed top-16 bottom-0 right-0 w-[360px]" style={{ zIndex: "var(--z-modal)" }} />
 ```
+
+**不推荐的做法**：硬编码 `zIndex: 1400` 兜底。这破坏了令牌体系，且治标不治本——如果未来有其他遮罩层级更高，问题会复现。
 
 ### 6.4 侧边栏（Sidebar）
 
