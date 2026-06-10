@@ -186,6 +186,11 @@
   font-size: 11px;
 }
 
+/* ═══════ 条件格式 ═══════ */
+.smartsheet-cf-great { color: var(--smartsheet-success); font-weight: 600; }
+.smartsheet-cf-warn  { color: var(--smartsheet-warning); }
+.smartsheet-cf-bad   { color: var(--smartsheet-danger); font-weight: 600; }
+
 /* ═══════ 冻结窗格 ═══════ */
 .smartsheet-frozen .bt-grid th.ch {
   position: sticky;

@@ -7,6 +7,7 @@ import SmartSheetStatusBar from './components/SmartSheetStatusBar';
 import SmartSheetTabsRow from './components/SmartSheetTabsRow';
 import FindReplaceDialog from './components/FindReplaceDialog';
 import ImportDialog from './components/ImportDialog';
+import ConditionalFormatPanel, { type ConditionRule } from './components/ConditionalFormatPanel';
 import { useSmartSheet } from './hooks/useSmartSheet';
 import { DEFAULT_VIEW_OPTIONS } from './types';
 import type { ViewOptions, ColumnConfig, CellValue } from './types';
@@ -23,6 +24,7 @@ export default function SmartSheetPage() {
   const [isDirty, setIsDirty] = useState(false);
   const [showFind, setShowFind] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [condRules, setCondRules] = useState<ConditionRule[]>([]);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
 
@@ -103,6 +105,7 @@ export default function SmartSheetPage() {
           layoutMode={sheet.layoutMode}
           viewOptions={viewOptions}
           selectedRowIds={selectedRowIds}
+          conditionalRules={condRules}
           onCellEdit={handleCellEdit}
           onColumnConfigClick={(colKey) => {
             const col = sheet.columnsConfig.find((c) => c.key === colKey);
@@ -129,6 +132,15 @@ export default function SmartSheetPage() {
 
       {/* 底部标签栏 */}
       <SmartSheetTabsRow sheets={sheetTabs} activeId={id || 'current'} onSelect={() => {}} />
+
+      {/* 条件格式面板 */}
+      <ConditionalFormatPanel
+        columns={sheet.columnsConfig}
+        rules={condRules}
+        onRulesChange={setCondRules}
+        open={viewOptions.conditionalFormat}
+        onClose={() => setViewOptions(prev => ({ ...prev, conditionalFormat: false }))}
+      />
 
       {/* 查找替换弹窗 */}
       {showFind && (

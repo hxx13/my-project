@@ -6,6 +6,7 @@ import type { ColumnDef, Row } from '@tanstack/react-table';
 import type { ColumnConfig, SmartSheetRow, LayoutMode, ColumnType } from '@/features/smartsheet/types';
 import type { ViewOptions } from '@/features/smartsheet/types';
 import SmartSheetContextMenu from './SmartSheetContextMenu';
+import { evaluateRules, type ConditionRule } from './ConditionalFormatPanel';
 
 export interface UndoRedoState {
   canUndo: boolean;
@@ -20,6 +21,7 @@ interface Props {
   layoutMode: LayoutMode;
   viewOptions: ViewOptions;
   selectedRowIds: Set<string>;
+  conditionalRules?: ConditionRule[];
   onCellEdit: (rowId: string, colKey: string, value: string) => void;
   onColumnConfigClick: (colKey: string) => void;
   onRowSelect: (rowId: string, selected: boolean) => void;
@@ -116,7 +118,7 @@ function makeHeaderTemplate(col: ColumnConfig) {
 }
 
 export default function SmartSheetGrid({
-  columns, rows, layoutMode, viewOptions, onCellEdit, onColumnConfigClick,
+  columns, rows, layoutMode, viewOptions, conditionalRules, onCellEdit, onColumnConfigClick,
   onAddRow, onDeleteRows, onDuplicateRow, onMoveRow, onUndoRedoState,
 }: Props) {
   const [editingCell, setEditingCell] = useState<{ rowId: string; colKey: string } | null>(null);
@@ -174,8 +176,12 @@ export default function SmartSheetGrid({
             );
           }
           const fmt = getCellFormat(rawVal);
+          const cfClass = conditionalRules && viewOptions.conditionalFormat
+            ? evaluateRules(getCellValue(rawVal), col.key, conditionalRules)
+            : '';
+          const className = [cellClass(rawVal, col.type), cfClass].filter(Boolean).join(' ');
           return (
-            <span className={cellClass(rawVal, col.type)}
+            <span className={className}
                   style={{
                     fontWeight: fmt.b ? 700 : undefined,
                     fontStyle: fmt.i ? 'italic' : undefined,
@@ -193,7 +199,7 @@ export default function SmartSheetGrid({
       });
     }
     return defs;
-  }, [columns, showRowHeader, editingCell, onCellEdit, rows, undoRedo]);
+  }, [columns, showRowHeader, editingCell, onCellEdit, rows, undoRedo, conditionalRules, viewOptions.conditionalFormat]);
 
   const table = useReactTable({ data: rows, columns: colDefs, getCoreRowModel: getCoreRowModel(), getRowId: (r) => r.id });
 
