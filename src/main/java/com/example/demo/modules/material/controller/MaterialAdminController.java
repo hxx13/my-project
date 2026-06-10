@@ -13,6 +13,7 @@ import com.example.demo.modules.material.service.MaterialExcelExportService;
 import com.example.demo.modules.material.service.MaterialService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -34,16 +35,19 @@ public class MaterialAdminController {
     private final MaterialExcelExportService excelExportService;
     private final MaterialDemandMapper demandMapper;
     private final UserMapper userMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     public MaterialAdminController(AuthContextService authContextService, MaterialService materialService,
                                     MaterialExcelExportService excelExportService,
                                     MaterialDemandMapper demandMapper,
-                                    UserMapper userMapper) {
+                                    UserMapper userMapper,
+                                    JdbcTemplate jdbcTemplate) {
         this.authContextService = authContextService;
         this.materialService = materialService;
         this.excelExportService = excelExportService;
         this.demandMapper = demandMapper;
         this.userMapper = userMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @GetMapping("/categories")
@@ -200,6 +204,30 @@ public class MaterialAdminController {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
         return materialService.fulfill(user, id, body);
+    }
+
+    @GetMapping("/config/demand-entry-visible")
+    @Operation(summary = "查询需求建议入口开关状态")
+    public Result<Map<String, Object>> getDemandEntryVisible() {
+        String val = jdbcTemplate.queryForObject(
+            "SELECT config_value FROM sys_system_config WHERE module='material' AND config_key='material.demand_entry_visible'",
+            String.class);
+        Map<String, Object> m = new HashMap<>();
+        m.put("visible", !"false".equals(val));
+        return Result.success(m);
+    }
+
+    @PostMapping("/config/toggle-demand-entry")
+    @Operation(summary = "切换需求建议入口开关")
+    public Result<?> toggleDemandEntry() {
+        String current = jdbcTemplate.queryForObject(
+            "SELECT config_value FROM sys_system_config WHERE module='material' AND config_key='material.demand_entry_visible'",
+            String.class);
+        String next = "false".equals(current) ? "true" : "false";
+        jdbcTemplate.update(
+            "UPDATE sys_system_config SET config_value = ? WHERE module='material' AND config_key='material.demand_entry_visible'",
+            next);
+        return Result.success(Map.of("visible", "true".equals(next)));
     }
 
     @GetMapping("/eligible-reviewers")
