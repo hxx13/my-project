@@ -47,7 +47,7 @@ import {
   type AdminSidebarNavGroup,
   type AdminSidebarNavItem,
 } from "@/features/admin/buildAdminNavModel";
-import { adminNavSubgroupOpenKey } from "@/features/admin/adminNavRegistry";
+import { ADMIN_NAV_REGISTRY, adminNavSubgroupOpenKey } from "@/features/admin/adminNavRegistry";
 import {
   adminChromeTitle,
   collectSidebarEntryPathsFromPerm,
@@ -1102,7 +1102,7 @@ export default function AdminLayout() {
               <button onClick={() => navigate("/admin")} className="text-[var(--twin-link-deep)] hover:underline font-medium">← 返回工作台</button>
               <span className="text-[var(--twin-mute)]">/</span>
               <span className="text-[var(--twin-body)] truncate">{(() => {
-                const item = ADMIN_NAV_REGISTRY.flatMap(g => g.items ?? []).find(i => i.path === pathname);
+                const item = ADMIN_NAV_REGISTRY.flatMap(g => [...(g.items ?? []), ...(g.subgroups?.flatMap(sg => sg.items) ?? [])]).find(i => i.path === pathname);
                 return item?.label ?? pathname;
               })()}</span>
             </div>

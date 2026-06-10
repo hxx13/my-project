@@ -13,15 +13,18 @@ interface ToolbarProps {
   onImport: () => void;
   onExport: () => void;
   onSave: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
   onSearch: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  isDirty?: boolean;
 }
 
 export default function SmartSheetToolbar({
   sheetName, viewOptions, onViewOptionChange,
   onAddRow, onAddColumn, onImport, onExport, onSave,
-  onUndo, onRedo, onSearch,
+  onUndo, onRedo, onSearch, canUndo, canRedo, isDirty,
 }: ToolbarProps) {
   const navigate = useNavigate();
   return (
@@ -53,10 +56,23 @@ export default function SmartSheetToolbar({
       <span className="flex-1" />
 
       <BentoBtn ghost onClick={onSearch}>🔍 查找</BentoBtn>
-      <button onClick={onUndo} className="px-1.5 py-1 text-[12px] text-app-text-tertiary hover:text-app-text-secondary transition-colors" title="撤销">↩</button>
-      <button onClick={onRedo} className="px-1.5 py-1 text-[12px] text-app-text-tertiary hover:text-app-text-secondary transition-colors" title="重做">↪</button>
+      <button
+        onClick={canUndo ? onUndo : undefined}
+        disabled={!canUndo}
+        className={`px-1.5 py-1 text-[12px] transition-colors ${canUndo ? 'text-app-text-secondary hover:text-app-text-primary cursor-pointer' : 'text-app-text-tertiary opacity-50 cursor-not-allowed'}`}
+        title="撤销 (Ctrl+Z)"
+      >↩</button>
+      <button
+        onClick={canRedo ? onRedo : undefined}
+        disabled={!canRedo}
+        className={`px-1.5 py-1 text-[12px] transition-colors ${canRedo ? 'text-app-text-secondary hover:text-app-text-primary cursor-pointer' : 'text-app-text-tertiary opacity-50 cursor-not-allowed'}`}
+        title="重做 (Ctrl+Y)"
+      >↪</button>
       <Divider />
-      <BentoBtn onClick={onSave}>💾 保存</BentoBtn>
+      <BentoBtn onClick={onSave}>
+        {isDirty && <span className="text-[10px] text-app-feedback-warning mr-1">●</span>}
+        💾 保存
+      </BentoBtn>
     </div>
   );
 }

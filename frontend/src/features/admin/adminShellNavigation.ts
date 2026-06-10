@@ -20,6 +20,7 @@ const SECONDARY_ROUTE_TITLE: Record<string, string> = {
   "/admin/material/review": "申领审核",
   "/admin/material/manage": "物品管理",
   "/admin/material/audit": "物资统计与审计",
+  "/admin/material/audit-export": "申领审计导出",
 };
 
 /** 无 location.state.returnTo 时的默认回退路径 */

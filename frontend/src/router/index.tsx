@@ -44,6 +44,7 @@ import AdminSuppliesAuditExportPage from "@/pages/AdminSuppliesAuditExportPage";
 import MaterialReviewPage from "@/pages/MaterialReviewPage";
 import MaterialManagePage from "@/pages/MaterialManagePage";
 import MaterialAuditPage from "@/pages/MaterialAuditPage";
+import MaterialAuditExportPage from "@/pages/MaterialAuditExportPage";
 import AdminAssetRecordPage from "@/pages/AdminAssetRecordPage";
 import AdminFacilityMaintenancePage from "@/pages/AdminFacilityMaintenancePage";
 import AdminFileTemplatesPage from "@/pages/AdminFileTemplatesPage";
@@ -262,6 +263,7 @@ export const router = createHashRouter([
                                     { path: "material/review", element: <MaterialReviewPage/>},
                                     { path: "material/manage", element: <MaterialManagePage/>},
                                     { path: "material/audit", element: <MaterialAuditPage/>},
+                                    { path: "material/audit-export", element: <MaterialAuditExportPage/>},
                                 ],
                             },
                             {

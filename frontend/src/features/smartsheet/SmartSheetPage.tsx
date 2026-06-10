@@ -1,5 +1,5 @@
 // SmartSheetPage — 🍱 Bento 卡片布局（紧凑型：页眉工具栏 → 表格卡片 → 页脚状态栏 + 标签）
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import SmartSheetToolbar from './components/SmartSheetToolbar';
 import SmartSheetGrid from './components/SmartSheetGrid';
@@ -8,6 +8,7 @@ import SmartSheetTabsRow from './components/SmartSheetTabsRow';
 import { useSmartSheet } from './hooks/useSmartSheet';
 import { DEFAULT_VIEW_OPTIONS } from './types';
 import type { ViewOptions, ColumnConfig } from './types';
+import type { UndoRedoState } from './components/SmartSheetGrid';
 import toast from 'react-hot-toast';
 
 export default function SmartSheetPage() {
@@ -16,6 +17,22 @@ export default function SmartSheetPage() {
   const [viewOptions, setViewOptions] = useState<ViewOptions>(DEFAULT_VIEW_OPTIONS);
   const [selectedColumn, setSelectedColumn] = useState<ColumnConfig | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const [undoRedo, setUndoRedo] = useState<{ canUndo: boolean; canRedo: boolean }>({ canUndo: false, canRedo: false });
+  const [isDirty, setIsDirty] = useState(false);
+  const undoRef = useRef<() => void>(() => {});
+  const redoRef = useRef<() => void>(() => {});
+
+  const handleUndoRedoState = useCallback((state: UndoRedoState) => {
+    setUndoRedo({ canUndo: state.canUndo, canRedo: state.canRedo });
+    undoRef.current = state.undo;
+    redoRef.current = state.redo;
+  }, []);
+
+  // Track dirty state on cell edits
+  const handleCellEdit = useCallback((rowId: string, colKey: string, value: string) => {
+    updateCell(rowId, colKey, value);
+    setIsDirty(true);
+  }, [updateCell]);
 
   const handleViewOptionChange = useCallback((key: keyof ViewOptions) => {
     setViewOptions((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -53,10 +70,13 @@ export default function SmartSheetPage() {
         }}
         onImport={() => toast('导入功能将在下一步实现')}
         onExport={handleExport}
-        onSave={() => toast.success('已保存')}
-        onUndo={() => {}}
-        onRedo={() => {}}
+        onSave={() => { toast.success('已保存'); setIsDirty(false); }}
+        onUndo={() => undoRef.current()}
+        onRedo={() => redoRef.current()}
         onSearch={() => {}}
+        canUndo={undoRedo.canUndo}
+        canRedo={undoRedo.canRedo}
+        isDirty={isDirty}
       />
 
       {/* 主体：表格卡片（填满剩余高度） */}
@@ -67,11 +87,12 @@ export default function SmartSheetPage() {
           layoutMode={sheet.layoutMode}
           viewOptions={viewOptions}
           selectedRowIds={selectedRowIds}
-          onCellEdit={updateCell}
+          onCellEdit={handleCellEdit}
           onColumnConfigClick={(colKey) => {
             const col = sheet.columnsConfig.find((c) => c.key === colKey);
             if (col) setSelectedColumn(col);
           }}
+          onUndoRedoState={handleUndoRedoState}
           onRowSelect={(rowId, selected) => {
             setSelectedRowIds((prev) => { const n = new Set(prev); selected ? n.add(rowId) : n.delete(rowId); return n; });
           }}

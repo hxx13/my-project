@@ -7,6 +7,13 @@ import type { ColumnConfig, SmartSheetRow, LayoutMode, ColumnType } from '@/feat
 import type { ViewOptions } from '@/features/smartsheet/types';
 import SmartSheetContextMenu from './SmartSheetContextMenu';
 
+interface UndoRedoState {
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
+}
+
 interface Props {
   columns: ColumnConfig[];
   rows: SmartSheetRow[];
@@ -20,6 +27,7 @@ interface Props {
   onDeleteRows?: (rowIds: string[]) => void;
   onDuplicateRow?: (rowId: string) => void;
   onMoveRow?: (rowId: string, direction: 'up' | 'down') => void;
+  onUndoRedoState?: (state: UndoRedoState) => void;
 }
 
 // ── Extract display string from a CellValue or plain value ──
@@ -109,13 +117,18 @@ function makeHeaderTemplate(col: ColumnConfig) {
 
 export default function SmartSheetGrid({
   columns, rows, layoutMode, viewOptions, onCellEdit, onColumnConfigClick,
-  onAddRow, onDeleteRows, onDuplicateRow, onMoveRow,
+  onAddRow, onDeleteRows, onDuplicateRow, onMoveRow, onUndoRedoState,
 }: Props) {
   const [editingCell, setEditingCell] = useState<{ rowId: string; colKey: string } | null>(null);
   const [selection, setSelection] = useState<{ start: { row: number; col: number }; end: { row: number; col: number } } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; rowId: string; rowIdx: number } | null>(null);
   const undoRedo = useUndoRedo();
   const showRowHeader = layoutMode !== 'table';
+
+  // Expose undo/redo state to parent
+  useEffect(() => {
+    onUndoRedoState?.({ canUndo: undoRedo.canUndo, canRedo: undoRedo.canRedo, undo: undoRedo.undo, redo: undoRedo.redo });
+  }, [undoRedo.canUndo, undoRedo.canRedo, undoRedo.undo, undoRedo.redo, onUndoRedoState]);
 
   // Close context menu on click outside
   useEffect(() => { if (!contextMenu) return; const h = () => setContextMenu(null); document.addEventListener('click', h); return () => document.removeEventListener('click', h); }, [contextMenu]);
@@ -185,7 +198,7 @@ export default function SmartSheetGrid({
   const table = useReactTable({ data: rows, columns: colDefs, getCoreRowModel: getCoreRowModel(), getRowId: (r) => r.id });
 
   return (
-    <div className="table-scroll" style={{ flex: 1, overflow: 'auto' }}>
+    <div className={`table-scroll ${viewOptions.freeze ? 'smartsheet-frozen' : ''}`} style={{ flex: 1, overflow: 'auto' }}>
       <table className={`bt-grid ${viewOptions.zebra ? 'striped' : ''}`}>
         <thead>
           {table.getHeaderGroups().map(hg => (
