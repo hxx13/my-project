@@ -8,6 +8,7 @@ import { fetchPublicPagePermissions, WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, type M
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { buildAdminNavModel, createAdminNavContext, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 import { ADMIN_NAV_PERSONALIZATION_EVENT, isAdminNavStarred, readAdminNavRecent, toggleAdminNavStar } from "@/features/admin/adminNavPersonalization";
+import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems } from "@/features/admin/adminNavRegistry";
 import { cn } from "@/lib/utils";
 import { Sparkles, Star, ChevronDown, ChevronRight } from "lucide-react";
 
@@ -49,6 +50,17 @@ export default function AdminHomePage() {
     return () => { cancelled = true; };
   }, [navCtx]);
 
+  // Path → Chinese label lookup from registry
+  const pathLabelMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const g of ADMIN_NAV_REGISTRY) {
+      for (const it of collectRegistryGroupItems(g)) {
+        m.set(it.path.replace(/\/+/g, "/"), it.label);
+      }
+    }
+    return m;
+  }, []);
+
   const allCards = useMemo(() => {
     const homeSections = navModel?.homeSections ?? [];
     return homeSections.flatMap((g) =>
@@ -58,10 +70,13 @@ export default function AdminHomePage() {
         // Convert Tailwind gradient class to inline CSS gradient
         // (Tailwind JIT can't scan registry data files for dynamic classes)
         const toneGradient = toneToGradient((e as any).tone);
-        return { ...e, enabled: roleOk && permOk, groupTitle: g.title, icon: createElement(e.icon, { className: "h-5 w-5" }), _toneGradient: toneGradient };
+        // Override English titles with Chinese registry labels
+        const pathKey = (e.path || "").replace(/\/+/g, "/");
+        const chineseTitle = pathLabelMap.get(pathKey) || e.title;
+        return { ...e, title: chineseTitle, enabled: roleOk && permOk, groupTitle: g.title, icon: createElement(e.icon, { className: "h-5 w-5" }), _toneGradient: toneGradient };
       })
     );
-  }, [navModel, permNodes, role]);
+  }, [navModel, permNodes, role, pathLabelMap]);
 
   const groups = useMemo(() => {
     const m = new Map<string, typeof allCards>();
