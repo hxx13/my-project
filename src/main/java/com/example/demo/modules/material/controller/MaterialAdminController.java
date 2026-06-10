@@ -4,6 +4,8 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.material.dto.*;
 import com.example.demo.modules.material.entity.MaterialDemand;
 import com.example.demo.modules.material.mapper.MaterialDemandMapper;
@@ -17,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,14 +33,17 @@ public class MaterialAdminController {
 
     private final MaterialExcelExportService excelExportService;
     private final MaterialDemandMapper demandMapper;
+    private final UserMapper userMapper;
 
     public MaterialAdminController(AuthContextService authContextService, MaterialService materialService,
                                     MaterialExcelExportService excelExportService,
-                                    MaterialDemandMapper demandMapper) {
+                                    MaterialDemandMapper demandMapper,
+                                    UserMapper userMapper) {
         this.authContextService = authContextService;
         this.materialService = materialService;
         this.excelExportService = excelExportService;
         this.demandMapper = demandMapper;
+        this.userMapper = userMapper;
     }
 
     @GetMapping("/categories")
@@ -194,6 +200,21 @@ public class MaterialAdminController {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
         return materialService.fulfill(user, id, body);
+    }
+
+    @GetMapping("/eligible-reviewers")
+    @Operation(summary = "可选的审核人列表（STAFF及以上已启用账号）")
+    public Result<List<Map<String, Object>>> eligibleReviewers() {
+        List<User> users = userMapper.listEnabledUsersByMinRoleLevel(2); // STAFF level = 2
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (User u : users) {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", u.getId());
+            m.put("username", u.getUsername());
+            m.put("displayNickname", u.getDisplayNickname());
+            list.add(m);
+        }
+        return Result.success(list);
     }
 
     @GetMapping("/demands")

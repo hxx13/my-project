@@ -3,7 +3,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import toast from "react-hot-toast";
-import { Eye, EyeOff, ChevronDown, ChevronRight } from "lucide-react";
+import { Eye, EyeOff, ChevronDown, ChevronRight, X, ZoomIn } from "lucide-react";
 import {
   useAdminMaterialCategories, useAdminMaterialItems, useAdminMaterialRecycle,
   useCreateAdminMaterialCategory, useUpdateAdminMaterialCategory, useDeleteAdminMaterialCategory,
@@ -54,6 +54,7 @@ export default function MaterialManagePage() {
   const [panelQty, setPanelQty] = useState("1");
   const [panelNewStock, setPanelNewStock] = useState("");
   const [editingItem, setEditingItem] = useState<MaterialItem | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   /* ── 数据 ── */
   const { data: categories = [] } = useAdminMaterialCategories();
@@ -220,14 +221,11 @@ export default function MaterialManagePage() {
         </div>
       </section>
 
-      {/* ═══════════ 物品网格 ═══════════ */}
-      <section className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 space-y-4 shadow-twin-level-1">
-        <div className="flex items-center justify-between flex-wrap gap-3">
+      {/* ═══════════ 物品列表（左侧分类 + 右侧网格） ═══════════ */}
+      <section className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--twin-hairline)]">
           <h3 className="font-medium text-[var(--twin-ink)]">物品列表</h3>
           <div className="flex items-center gap-2 text-sm">
-            <select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={filterCat === "" ? "" : String(filterCat)} onChange={e => setFilterCat(e.target.value === "" ? "" : Number(e.target.value))}>
-              <option value="">全部分类</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
             <select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={filterWorkflow} onChange={e => setFilterWorkflow(e.target.value as "" | "SIMPLE" | "DUAL_REVIEW")}>
               <option value="">全部流程</option><option value="SIMPLE">简单流程</option><option value="DUAL_REVIEW">复核流程</option>
             </select>
@@ -237,51 +235,92 @@ export default function MaterialManagePage() {
             </button>
           </div>
         </div>
-
-        {itemsLoading ? <DataSkeleton variant="card" rows={6} /> : null}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredItems.map(it => {
-            const panelOpen = cardPanel?.itemId === it.id;
-            const inboundOpen = panelOpen && cardPanel?.kind === "inbound";
-            const stockOpen = panelOpen && cardPanel?.kind === "stock";
-            const imgSrc = webImageSrc(it.coverUrl);
-            const locked = it.lockedQty || 0;
-            const available = Math.max(0, (it.stockQty || 0));
-            return (
-              <div key={it.id} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1 overflow-hidden">
-                <div className="h-[100px] bg-[var(--twin-canvas-soft)] flex items-center justify-center border-b border-[var(--twin-hairline)] relative">
-                  {imgSrc ? <img src={imgSrc} alt={it.name} className="h-full w-full object-cover" /> : <span className="text-xs text-[var(--twin-mute)]">暂无图片</span>}
-                  <div className="absolute top-1.5 right-1.5 flex gap-1">
-                    <button type="button" className={`rounded-twin-sm px-1.5 py-0.5 text-[10px] font-medium border ${inboundOpen ? "border-sky-300 bg-sky-50 text-sky-700" : "border-[var(--twin-hairline)] bg-white/90 text-[var(--twin-body)]"}`} onClick={() => inboundOpen ? closePanel() : openInbound(it)}>入库</button>
-                    {it.stockMode !== "FLAG" && <button type="button" className={`rounded-twin-sm px-1.5 py-0.5 text-[10px] font-medium border ${stockOpen ? "border-amber-300 bg-amber-50 text-amber-800" : "border-[var(--twin-hairline)] bg-white/90 text-[var(--twin-body)]"}`} onClick={() => stockOpen ? closePanel() : openStock(it)}>库存</button>}
+        <div className="flex">
+          {/* 左侧分类栏 */}
+          <aside className="w-[160px] shrink-0 border-r border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2 space-y-0.5 max-h-[600px] overflow-y-auto">
+            <button onClick={() => setFilterCat("")}
+              className={`w-full text-left px-3 py-1.5 rounded-twin-sm text-[12px] transition-colors ${filterCat === "" ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)] font-medium" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"}`}>
+              全部分类 ({items.length})
+            </button>
+            {categories.map(c => {
+              const count = (filterCat && filterCat !== c.id) ? undefined : undefined; // count only when filtered
+              return (
+                <button key={c.id} onClick={() => setFilterCat(filterCat === c.id ? "" : c.id)}
+                  className={`w-full text-left px-3 py-1.5 rounded-twin-sm text-[12px] transition-colors ${filterCat === c.id ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)] font-medium" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"}`}>
+                  {c.name}
+                </button>
+              );
+            })}
+          </aside>
+          {/* 右侧物品网格 */}
+          <div className="flex-1 min-w-0 p-4">
+            {itemsLoading ? <DataSkeleton variant="card" rows={6} /> : null}
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+              {filteredItems.map(it => {
+                const panelOpen = cardPanel?.itemId === it.id;
+                const inboundOpen = panelOpen && cardPanel?.kind === "inbound";
+                const stockOpen = panelOpen && cardPanel?.kind === "stock";
+                const imgSrc = webImageSrc(it.coverUrl);
+                const locked = it.lockedQty || 0;
+                const available = Math.max(0, (it.stockQty || 0));
+                return (
+                  <div key={it.id} className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-1">
+                    <div className="flex items-start gap-2.5 p-2.5">
+                      {/* 缩略图 */}
+                      <div
+                        className="size-14 shrink-0 rounded-twin-sm bg-[var(--twin-canvas-soft)] flex items-center justify-center overflow-hidden border border-[var(--twin-hairline)] relative group cursor-pointer"
+                        onClick={() => imgSrc && setLightboxSrc(imgSrc)}
+                      >
+                        {imgSrc ? (
+                          <>
+                            <img src={imgSrc} alt={it.name} className="size-full object-cover" />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                              <ZoomIn className="size-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                          </>
+                        ) : <span className="text-[9px] text-[var(--twin-mute)]">无图</span>}
+                      </div>
+                      {/* 信息 */}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-start justify-between gap-1">
+                          <div className="font-medium text-[var(--twin-ink)] text-[13px] truncate">{it.name}</div>
+                          <div className="flex gap-0.5 shrink-0">
+                            <button type="button" className={`rounded-twin-sm px-1.5 py-0.5 text-[10px] font-medium border ${inboundOpen ? "border-sky-300 bg-sky-50 text-sky-700" : "border-[var(--twin-hairline)] text-[var(--twin-body)]"}`} onClick={() => inboundOpen ? closePanel() : openInbound(it)}>入库</button>
+                            {it.stockMode !== "FLAG" && <button type="button" className={`rounded-twin-sm px-1.5 py-0.5 text-[10px] font-medium border ${stockOpen ? "border-amber-300 bg-amber-50 text-amber-800" : "border-[var(--twin-hairline)] text-[var(--twin-body)]"}`} onClick={() => stockOpen ? closePanel() : openStock(it)}>库存</button>}
+                          </div>
+                        </div>
+                        {it.subtitle && <div className="text-[11px] text-[var(--twin-mute)] truncate">{it.subtitle}</div>}
+                        <div className="flex flex-wrap gap-1 text-[9px]">
+                          <span className={`px-1 rounded-full ${it.shelfStatus === "PUBLISHED" ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-500"}`}>{SHELF_ZH[it.shelfStatus] || it.shelfStatus}</span>
+                          <span className="px-1 rounded-full bg-slate-100 text-slate-600">库存 {available}</span>
+                          {locked > 0 && <span className="px-1 rounded-full bg-amber-50 text-amber-600">锁定 {locked}</span>}
+                        </div>
+                        <div className="text-[9px] text-[var(--twin-mute)]">{it.workflowType === "DUAL_REVIEW" ? "复核" : "简单"}{it.reviewerIds && it.reviewerIds !== "[]" ? " · 已指定审核人" : ""}</div>
+                        <div className="flex items-center gap-0.5 text-[10px]">
+                          <button className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => { setEditingItem(it); setEditCoverUrl(it.coverUrl || ""); }}>编辑</button>
+                          <label className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer">图片<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadAndSet(f, (url) => { updateItemMut.mutate({ id: it.id, body: { coverUrl: url } }); }, setEditUploading); }} /></label>
+                          <button className="rounded-twin-sm px-1.5 py-0.5 text-red-500 hover:bg-red-50" onClick={() => { if (!window.confirm("删除？")) return; deleteItemMut.mutate(it.id); }}>删</button>
+                        </div>
+                      </div>
+                    </div>
+                    {inboundOpen && <InboundPanel item={it} qty={panelQty} setQty={setPanelQty} onConfirm={() => { const q = it.stockMode === "FLAG" ? 1 : Number(panelQty); if (!q || q <= 0) return toast.error("数量无效"); inboundMut.mutate({ itemId: it.id, qty: q }, { onSuccess: closePanel }); }} onCancel={closePanel} />}
+                    {stockOpen && <StockPanel qty={panelNewStock} setQty={setPanelNewStock} onConfirm={() => { const n = Number(panelNewStock); if (Number.isNaN(n) || n < 0) return toast.error("无效库存"); adjustMut.mutate({ id: it.id, newQty: n }, { onSuccess: closePanel }); }} onCancel={closePanel} />}
                   </div>
-                </div>
-                <div className="p-3 space-y-1.5">
-                  <div className="font-medium text-[var(--twin-ink)] truncate">{it.name}</div>
-                  {it.subtitle && <div className="text-xs text-[var(--twin-mute)] truncate">{it.subtitle}</div>}
-                  <div className="flex flex-wrap gap-1 text-[10px]">
-                    <span className={`px-1.5 py-0.5 rounded-full ${it.shelfStatus === "PUBLISHED" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>{SHELF_ZH[it.shelfStatus] || it.shelfStatus}</span>
-                    <span className="px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">{MODE_ZH[it.stockMode] || it.stockMode}</span>
-                    <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">库存 {available}</span>
-                    {locked > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">锁定 {locked}</span>}
-                  </div>
-                  <div className="text-[10px] text-[var(--twin-mute)]">{it.workflowType === "DUAL_REVIEW" ? "复核流程" : "简单流程"}{it.reviewerIds && it.reviewerIds !== "[]" ? " · 已指定审核人" : " · 审核不限"}</div>
-                  <div className="flex items-center gap-1 pt-1.5 border-t border-[var(--twin-hairline)] text-[11px]">
-                    <button type="button" className="rounded-twin-sm px-2 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => { setEditingItem(it); setEditCoverUrl(it.coverUrl || ""); }}>编辑</button>
-                    <label className="rounded-twin-sm px-2 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer">
-                      图片<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadAndSet(f, setEditCoverUrl, setEditUploading); }} />
-                    </label>
-                    <button type="button" className="rounded-twin-sm px-2 py-0.5 text-red-500 hover:bg-red-50" onClick={() => { if (!window.confirm("删除？")) return; deleteItemMut.mutate(it.id); }}>删</button>
-                  </div>
-                </div>
-                {inboundOpen && <InboundPanel item={it} qty={panelQty} setQty={setPanelQty} onConfirm={() => { const q = it.stockMode === "FLAG" ? 1 : Number(panelQty); if (!q || q <= 0) return toast.error("数量无效"); inboundMut.mutate({ itemId: it.id, qty: q }, { onSuccess: closePanel }); }} onCancel={closePanel} />}
-                {stockOpen && <StockPanel qty={panelNewStock} setQty={setPanelNewStock} onConfirm={() => { const n = Number(panelNewStock); if (Number.isNaN(n) || n < 0) return toast.error("无效库存"); adjustMut.mutate({ id: it.id, newQty: n }, { onSuccess: closePanel }); }} onCancel={closePanel} />}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+            {!itemsLoading && filteredItems.length === 0 && <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无物品</p>}
+          </div>
         </div>
-        {!itemsLoading && filteredItems.length === 0 && <p className="text-center text-sm text-[var(--twin-mute)] py-8">暂无物品</p>}
       </section>
+
+      {/* 图片灯箱 */}
+      {lightboxSrc && (
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/70 p-8" onClick={() => setLightboxSrc(null)}>
+          <button className="absolute top-4 right-4 text-white/80 hover:text-white" onClick={() => setLightboxSrc(null)}><X className="size-6" /></button>
+          <img src={lightboxSrc} alt="" className="max-w-full max-h-full object-contain rounded-twin-lg shadow-twin-level-4" onClick={e => e.stopPropagation()} />
+        </div>
+      )}
 
       {/* ═══════════ 学生预览 ═══════════ */}
       {previewOpen && (
