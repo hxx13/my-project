@@ -8,6 +8,8 @@ import com.example.demo.modules.twin.scan.dto.scan.ScanUserRpgDTO;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
+import com.example.demo.modules.twin.dahua.entity.DahuaActivationState;
+import com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleConfigService;
 import com.example.demo.modules.twin.dashboard.service.TwinScanPopupAnnouncementService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationNoticeConfigService;
@@ -65,6 +67,9 @@ public class TwinScanAppService {
 
     @Autowired
     private ScanAnalyzeTimingTrace analyzeTimingTrace;
+
+    @Autowired
+    private DahuaSwingMapper dahuaSwingMapper;
 
     @Value("${app.business-timezone:Asia/Shanghai}")
     private String businessTimeZone;
@@ -242,6 +247,38 @@ public class TwinScanAppService {
                         System.currentTimeMillis() - tAnn, "");
             } catch (Exception e) {
                 log.debug("[扫码·解析] trace={} 公告加载失败 id={} err={}", traceId, realPhysicalId, e.getMessage());
+            }
+            // 自动签退倒计时：仅 INSIDE 状态有意义（OUTSIDE 无计时器）
+            if ("INSIDE".equals(result.getCurrentState()) && realPhysicalId != null && !realPhysicalId.isBlank()) {
+                try {
+                    List<DahuaActivationState> states =
+                            dahuaSwingMapper.listActivationStatesByUserId(realPhysicalId);
+                    if (states != null && !states.isEmpty()) {
+                        LocalDateTime now = LocalDateTime.now();
+                        DateTimeFormatter dtf =
+                                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                        // 取最早未到期的 scheduled_exit_at
+                        for (DahuaActivationState st : states) {
+                            String schedStr = st.getScheduledExitAt();
+                            if (schedStr == null || schedStr.isBlank()) continue;
+                            try {
+                                LocalDateTime scheduled = LocalDateTime.parse(schedStr, dtf);
+                                long remaining = Duration.between(now, scheduled).getSeconds();
+                                if (remaining > 0) {
+                                    result.setAutoSignoutState(st.getState());
+                                    result.setAutoSignoutScheduledAt(schedStr);
+                                    result.setAutoSignoutSecondsRemaining((int) remaining);
+                                    break;
+                                }
+                            } catch (Exception ignore) {
+                                // 日期解析失败则跳过该行
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("[扫码·解析] trace={} 自动签退计时器查询失败 id={} err={}",
+                            traceId, realPhysicalId, e.getMessage());
+                }
             }
             result.setSuccess(true);
         } catch (Exception e) {
