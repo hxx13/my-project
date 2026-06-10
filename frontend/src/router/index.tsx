@@ -71,8 +71,8 @@ import StaffMessagesPage from "@/pages/StaffMessagesPage";
 import AdminLoginBrandingPage from "@/pages/AdminLoginBrandingPage";
 import AdminInviteCodesPage from "@/pages/AdminInviteCodesPage";
 import AdminContentHubPage from "@/pages/AdminContentHubPage";
-import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
 import AdminKnowledgeHomePage from "@/pages/AdminKnowledgeHomePage";
+import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
 import AdminNavManager from "@/features/admin/AdminNavManager";
 import StudentRegisterPage from "@/features/student/pages/student-register";
 import StudentLoginPage from "@/features/student/pages/student-login";
@@ -208,8 +208,8 @@ export const router = createHashRouter([
                             { path: "facility-maintenance", element: <AdminFacilityMaintenancePage/>},
                             { path: "file-templates", element: <AdminFileTemplatesPage/>},
                             { path: "content-hub", element: <AdminContentHubPage/>},
-                            { path: "analytics", element: <AdminAnalyticsPage/>},
                             { path: "knowledge", element: <AdminKnowledgeHomePage/>},
+                            { path: "analytics", element: <AdminAnalyticsPage/>},
                             { path: "asset-records", element: <AdminAssetRecordPage/>},
                             { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage/>},
                             { path: "cage-shelves", element: <AdminCageShelfPage/>},

@@ -2,108 +2,45 @@ import { useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ShellView } from "@/features/knowledge/types";
 
-interface UseKnowledgeShellReturn {
-  view: ShellView;
-  selectedPageId: number | null;
-  isEditing: boolean;
-  editingPageId: number | null;
-  isHistoryOpen: boolean;
-  historyPageId: number | null;
-  setView: (v: ShellView) => void;
-  selectPage: (id: number) => void;
-  deselectPage: () => void;
-  startEdit: (pageId?: number) => void;
-  stopEdit: () => void;
-  openHistory: (pageId: number) => void;
-  closeHistory: () => void;
-}
-
-export function useKnowledgeShell(): UseKnowledgeShellReturn {
+export function useKnowledgeShell() {
   const [searchParams, setSearchParams] = useSearchParams();
-
-  const view = (searchParams.get("view") as ShellView) || "browse";
-  const selectedPageId = searchParams.get("page") ? Number(searchParams.get("page")) : null;
-  const editingPageId = searchParams.has("edit") ? Number(searchParams.get("edit")) : null;
-  const isEditing = editingPageId !== null || searchParams.has("new");
-
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyPageId, setHistoryPageId] = useState<number | null>(null);
 
+  const view = (searchParams.get("view") as ShellView) || "browse";
+  const selectedPageId = searchParams.get("page") ? Number(searchParams.get("page")) : null;
+  const isEditing = searchParams.has("edit") || searchParams.has("new");
+  const editingPageId = searchParams.has("edit") ? Number(searchParams.get("edit")) : null;
+
   const setView = useCallback((v: ShellView) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      next.set("view", v);
-      return next;
-    }, { replace: true });
+    setSearchParams(p => { const n = new URLSearchParams(p); n.set("view", v); return n; }, { replace: true });
   }, [setSearchParams]);
 
   const selectPage = useCallback((id: number) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      next.set("page", String(id));
-      next.delete("edit");
-      next.delete("new");
-      return next;
-    }, { replace: false });
+    setSearchParams(p => { const n = new URLSearchParams(p); n.set("page", String(id)); n.delete("edit"); n.delete("new"); return n; }, { replace: false });
   }, [setSearchParams]);
 
   const deselectPage = useCallback(() => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      next.delete("page");
-      next.delete("edit");
-      next.delete("new");
-      return next;
-    }, { replace: true });
+    setSearchParams(p => { const n = new URLSearchParams(p); n.delete("page"); n.delete("edit"); n.delete("new"); return n; }, { replace: true });
   }, [setSearchParams]);
 
   const startEdit = useCallback((pageId?: number) => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      if (pageId) {
-        next.set("edit", String(pageId));
-        next.delete("new");
-      } else {
-        next.set("new", "");
-        next.delete("edit");
-        next.delete("page");
-      }
-      return next;
+    setSearchParams(p => {
+      const n = new URLSearchParams(p);
+      if (pageId) { n.set("edit", String(pageId)); n.delete("new"); }
+      else { n.set("new", ""); n.delete("edit"); n.delete("page"); }
+      return n;
     }, { replace: false });
   }, [setSearchParams]);
 
   const stopEdit = useCallback(() => {
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev);
-      next.delete("edit");
-      next.delete("new");
-      return next;
-    }, { replace: true });
+    setSearchParams(p => { const n = new URLSearchParams(p); n.delete("edit"); n.delete("new"); return n; }, { replace: true });
   }, [setSearchParams]);
 
-  const openHistory = useCallback((pageId: number) => {
-    setHistoryPageId(pageId);
-    setIsHistoryOpen(true);
-  }, []);
-
-  const closeHistory = useCallback(() => {
-    setIsHistoryOpen(false);
-    setHistoryPageId(null);
-  }, []);
-
   return {
-    view,
-    selectedPageId,
-    isEditing,
-    editingPageId: editingPageId ?? null,
-    isHistoryOpen,
-    historyPageId,
-    setView,
-    selectPage,
-    deselectPage,
-    startEdit,
-    stopEdit,
-    openHistory,
-    closeHistory,
+    view, selectedPageId, isEditing, editingPageId, isHistoryOpen, historyPageId,
+    setView, selectPage, deselectPage, startEdit, stopEdit,
+    openHistory: (id: number) => { setHistoryPageId(id); setIsHistoryOpen(true); },
+    closeHistory: () => { setIsHistoryOpen(false); setHistoryPageId(null); },
   };
 }

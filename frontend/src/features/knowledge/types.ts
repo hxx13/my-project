@@ -1,3 +1,7 @@
+// ── Shell state ──
+export type ShellView = "browse" | "graph" | "timeline";
+
+// ── Data types ──
 export interface KnowledgeCategory {
   id: number;
   parentId: number | null;
@@ -6,6 +10,31 @@ export interface KnowledgeCategory {
   sortOrder: number;
   icon: string;
   description?: string;
+}
+
+export interface KnowledgePage {
+  id: number;
+  categoryId: number;
+  slug: string;
+  title: string;
+  contentHtml: string;
+  contentMd?: string;
+  source: "imported" | "agent" | "manual";
+  version: number;
+  author: string;
+  isPublished: number;
+  tags?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeHistory {
+  id: number;
+  pageId: number;
+  version: number;
+  author: string;
+  summary?: string;
+  createdAt: string;
 }
 
 export interface KnowledgeTreeNode {
@@ -27,38 +56,17 @@ export interface KnowledgePageSummary {
   version: number;
 }
 
-export interface KnowledgePage {
-  id: number;
+export interface KnowledgePageSaveRequest {
   categoryId: number;
   slug: string;
   title: string;
-  contentHtml: string;
+  contentHtml?: string;
   contentMd?: string;
-  source: 'imported' | 'agent' | 'manual';
-  version: number;
-  author: string;
-  isPublished: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface KnowledgeHistory {
-  id: number;
-  pageId: number;
-  version: number;
-  author: string;
   summary?: string;
-  createdAt: string;
+  tags?: string[];
 }
 
-// ── Shell State ──
-export type ShellView = 'browse' | 'graph' | 'timeline';
-
-export interface GraphData {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-}
-
+// ── Graph ──
 export interface GraphNode {
   id: number;
   title: string;
@@ -70,20 +78,27 @@ export interface GraphNode {
 export interface GraphEdge {
   source: number;
   target: number;
-  type: 'manual' | 'auto';
+  type: "manual" | "auto";
 }
 
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+// ── Timeline ──
 export interface TimelineEvent {
   id: number;
   pageId: number;
   pageTitle: string;
   categoryName: string;
-  type: 'created' | 'edited' | 'imported' | 'rollback';
+  type: "created" | "edited" | "imported" | "rollback";
   author: string;
   summary: string | null;
   createdAt: string;
 }
 
+// ── Stats ──
 export interface TagStats {
   name: string;
   count: number;

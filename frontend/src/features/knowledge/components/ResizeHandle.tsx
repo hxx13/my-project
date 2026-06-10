@@ -1,48 +1,37 @@
 import { useCallback, useRef, useEffect } from "react";
 
-interface Props {
-  onResize: (delta: number) => void;
-  direction?: "horizontal" | "vertical";
-}
+interface Props { onResize: (delta: number) => void }
 
-export function ResizeHandle({ onResize, direction = "horizontal" }: Props) {
+export function ResizeHandle({ onResize }: Props) {
   const dragging = useRef(false);
-  const startCoord = useRef(0);
+  const startX = useRef(0);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     dragging.current = true;
-    startCoord.current = direction === "horizontal" ? e.clientX : e.clientY;
-    document.body.style.cursor = direction === "horizontal" ? "col-resize" : "row-resize";
+    startX.current = e.clientX;
+    document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
-  }, [direction]);
+  }, []);
 
   useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
+    const onMove = (e: MouseEvent) => {
       if (!dragging.current) return;
-      const current = direction === "horizontal" ? e.clientX : e.clientY;
-      const delta = current - startCoord.current;
-      startCoord.current = current;
-      onResize(delta);
+      onResize(e.clientX - startX.current);
+      startX.current = e.clientX;
     };
-    const onMouseUp = () => {
+    const onUp = () => {
       dragging.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-  }, [onResize, direction]);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [onResize]);
 
   return (
-    <div
-      onMouseDown={onMouseDown}
-      className="w-[4px] shrink-0 cursor-col-resize hover:bg-[var(--app-color-accent)] transition-colors bg-transparent active:bg-[var(--app-color-accent)] relative group"
-    >
+    <div onMouseDown={onMouseDown} className="w-1 shrink-0 cursor-col-resize hover:bg-[var(--app-color-accent)] transition-colors relative">
       <div className="absolute inset-y-0 -left-1 -right-1" />
     </div>
   );

@@ -1,18 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createKnowledgePage, updateKnowledgePage, type KnowledgePageSaveRequest } from "@/api/domains/knowledge.api";
+import { createKnowledgePage, updateKnowledgePage } from "@/api/domains/knowledge.api";
+import type { KnowledgePageSaveRequest } from "@/features/knowledge/types";
 
 export function useKnowledgeSave(pageId?: number | null) {
-  const queryClient = useQueryClient();
-
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: KnowledgePageSaveRequest) =>
       pageId ? updateKnowledgePage(pageId, data) : createKnowledgePage(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['knowledge', 'tree'] });
-      if (pageId) {
-        queryClient.invalidateQueries({ queryKey: ['knowledge', 'page', pageId] });
-        queryClient.invalidateQueries({ queryKey: ['knowledge', 'history', pageId] });
-      }
+      qc.invalidateQueries({ queryKey: ["knowledge"] });
     },
   });
 }
