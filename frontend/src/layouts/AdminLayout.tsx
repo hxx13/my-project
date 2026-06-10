@@ -1128,7 +1128,7 @@ export default function AdminLayout() {
       />
 
       <Dialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
-        <DialogContent className="z-[320] sm:max-w-sm">
+        <DialogContent className="z-[var(--z-modal)] sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>退出登录</DialogTitle>
             <DialogDescription>确定要退出当前账号吗？</DialogDescription>
@@ -1159,7 +1159,7 @@ export default function AdminLayout() {
 
       {/* ARO 绑定弹窗 */}
       <Dialog open={aroBindDialogOpen} onOpenChange={setAroBindDialogOpen}>
-        <DialogContent className="z-[320] sm:max-w-sm">
+        <DialogContent className="z-[var(--z-modal)] sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>绑定ARO账号</DialogTitle>
             <DialogDescription>输入要绑定的ARO用户ID</DialogDescription>
@@ -1237,7 +1237,7 @@ export default function AdminLayout() {
 
       {/* ARO 解绑确认弹窗 */}
       <Dialog open={aroUnbindDialogOpen} onOpenChange={setAroUnbindDialogOpen}>
-        <DialogContent className="z-[320] sm:max-w-sm">
+        <DialogContent className="z-[var(--z-modal)] sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>解除ARO绑定</DialogTitle>
             <DialogDescription>
