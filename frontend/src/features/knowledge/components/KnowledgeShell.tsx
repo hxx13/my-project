@@ -24,14 +24,11 @@ export function KnowledgeShell() {
   const { data: page } = useKnowledgePage(shell.selectedPageId);
 
   // ── Graph view: 全屏沉浸式，不使用三栏布局 ──
-  // ── Graph: CSS Grid (not flexbox) for reliable height distribution ──
+  // ── Graph: 全屏沉浸，无 TabBar（图谱自带返回按钮）──
   if (shell.view === "graph") {
     return (
-      <div className="h-full grid bg-[#0a0f1a] page-full-bleed" style={{ gridTemplateRows: "auto 1fr" }}>
-        <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} onImport={() => setShowImport(true)} />
-        <div className="min-h-0">
-          <KnowledgeGraphView onSelectPage={shell.selectPage} onClose={() => shell.setView("browse")} />
-        </div>
+      <div className="h-full bg-[#0a0f1a] page-full-bleed">
+        <KnowledgeGraphView onSelectPage={shell.selectPage} onClose={() => shell.setView("browse")} />
         <KnowledgeHistoryDrawer open={shell.isHistoryOpen} pageId={shell.historyPageId} onClose={shell.closeHistory} onRollback={refetch} />
         <KnowledgeImportDialog open={showImport} onClose={() => setShowImport(false)} onImported={refetch} />
       </div>
