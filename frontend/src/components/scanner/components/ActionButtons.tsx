@@ -4,6 +4,7 @@ import { AnimatedRoomButton } from "@/components/scanner/AnimatedRoomButton";
 import { HamsterExitButton } from "@/components/scanner/HamsterExitButton";
 import type { RoomInfo } from "@/api/types/scanner";
 import { resolveRoomActionDensity } from "@/components/scanner/roomActionDensity";
+import { formatCountdown } from "@/utils/formatCountdown";
 
 export type { RoomActionDensity } from "@/components/scanner/roomActionDensity";
 
@@ -23,19 +24,12 @@ interface ActionButtonsProps {
     setKeepCardState: (index: number, checked: boolean) => void;
     /** 自动签退剩余秒数（来自 analyze）；null 则不显示 */
     autoSignoutSecondsRemaining?: number | null;
-    /** 自动签退计时器状态 */
-    autoSignoutState?: string | null;
 }
 
-function formatCountdown(totalSeconds: number): string {
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
 
 export const ActionButtons = (props: ActionButtonsProps) => {
     const { action, targetRooms, onRoomClick, exitCelebrateRoomId, finishedRooms,
-        autoSignoutSecondsRemaining, autoSignoutState } = props;
+        autoSignoutSecondsRemaining } = props;
     const safeRooms = Array.isArray(targetRooms) ? targetRooms : [];
     const density = resolveRoomActionDensity(safeRooms.length);
     const gapClass = density === "normal" ? "gap-4" : density === "compact" ? "gap-2.5" : "gap-1.5";
@@ -75,7 +69,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
-    }, [countdown != null]);
+    }, [countdown]);
 
     const showCountdown = action === "EXIT" && countdown != null && countdown > 0;
 

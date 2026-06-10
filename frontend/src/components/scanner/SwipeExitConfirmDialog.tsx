@@ -2,12 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut } from "lucide-react";
-
-function formatCountdown(totalSeconds: number): string {
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
+import { formatCountdown } from "@/utils/formatCountdown";
 
 interface SwipeExitConfirmDialogProps {
     open: boolean;
@@ -61,7 +56,7 @@ export function SwipeExitConfirmDialog({
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
-    }, [countdown != null]);
+    }, [countdown]);
 
     // 归零时触发回调（仅一次）
     useEffect(() => {
