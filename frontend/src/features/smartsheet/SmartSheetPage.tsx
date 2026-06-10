@@ -9,8 +9,9 @@ import FindReplaceDialog from './components/FindReplaceDialog';
 import ImportDialog from './components/ImportDialog';
 import ConditionalFormatPanel, { type ConditionRule } from './components/ConditionalFormatPanel';
 import { useSmartSheet } from './hooks/useSmartSheet';
+import { FormatContext } from './hooks/useCellFormat';
 import { DEFAULT_VIEW_OPTIONS } from './types';
-import type { ViewOptions, ColumnConfig, CellValue } from './types';
+import type { ViewOptions, ColumnConfig, CellValue, CellFormat } from './types';
 import type { UndoRedoState } from './components/SmartSheetGrid';
 import toast from 'react-hot-toast';
 
@@ -25,6 +26,7 @@ export default function SmartSheetPage() {
   const [showFind, setShowFind] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [condRules, setCondRules] = useState<ConditionRule[]>([]);
+  const [currentFormat, setCurrentFormat] = useState<CellFormat>({});
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
 
@@ -77,91 +79,97 @@ export default function SmartSheetPage() {
 
   return (
     <div className="flex flex-col h-full gap-3 p-4 sm:p-5 bg-app-surface-page">
-      {/* 页眉：工具栏卡片（含表格名称 + 操作按钮 + 视图开关） */}
-      <SmartSheetToolbar
-        sheetName={sheet.name}
-        viewOptions={viewOptions}
-        onViewOptionChange={handleViewOptionChange}
-        onAddRow={() => addRow()}
-        onAddColumn={() => {
-          updateColumn(`col_${Date.now()}`, { key: `col_${Date.now()}`, label: '新列', type: 'text', width: 110 });
-        }}
-        onImport={() => setShowImport(true)}
-        onExport={handleExport}
-        onSave={() => { toast.success('已保存'); setIsDirty(false); }}
-        onUndo={() => undoRef.current()}
-        onRedo={() => redoRef.current()}
-        onSearch={() => setShowFind(true)}
-        canUndo={undoRedo.canUndo}
-        canRedo={undoRedo.canRedo}
-        isDirty={isDirty}
-      />
-
-      {/* 主体：表格卡片（填满剩余高度） */}
-      <div className="flex-1 min-h-0 rounded-[14px] border border-app-border bg-app-surface-container overflow-hidden shadow-app-card">
-        <SmartSheetGrid
-          columns={sheet.columnsConfig}
-          rows={rows}
-          layoutMode={sheet.layoutMode}
+      <FormatContext.Provider value={{
+        format: currentFormat,
+        setFormat: (f) => setCurrentFormat(prev => ({ ...prev, ...f })),
+        clearFormat: () => setCurrentFormat({}),
+      }}>
+        {/* 页眉：工具栏卡片（含表格名称 + 操作按钮 + 视图开关） */}
+        <SmartSheetToolbar
+          sheetName={sheet.name}
           viewOptions={viewOptions}
-          selectedRowIds={selectedRowIds}
-          conditionalRules={condRules}
-          onCellEdit={handleCellEdit}
-          onColumnConfigClick={(colKey) => {
-            const col = sheet.columnsConfig.find((c) => c.key === colKey);
-            if (col) setSelectedColumn(col);
+          onViewOptionChange={handleViewOptionChange}
+          onAddRow={() => addRow()}
+          onAddColumn={() => {
+            updateColumn(`col_${Date.now()}`, { key: `col_${Date.now()}`, label: '新列', type: 'text', width: 110 });
           }}
-          onUndoRedoState={handleUndoRedoState}
-          onRowSelect={(rowId, selected) => {
-            setSelectedRowIds((prev) => { const n = new Set(prev); selected ? n.add(rowId) : n.delete(rowId); return n; });
-          }}
-          onAddRow={(afterRowId) => insertRow(afterRowId)}
-          onDeleteRows={(ids) => deleteRows(ids)}
-          onDuplicateRow={(rowId) => duplicateRow(rowId)}
-          onMoveRow={(rowId, dir) => moveRow(rowId, dir)}
+          onImport={() => setShowImport(true)}
+          onExport={handleExport}
+          onSave={() => { toast.success('已保存'); setIsDirty(false); }}
+          onUndo={() => undoRef.current()}
+          onRedo={() => redoRef.current()}
+          onSearch={() => setShowFind(true)}
+          canUndo={undoRedo.canUndo}
+          canRedo={undoRedo.canRedo}
+          isDirty={isDirty}
         />
-      </div>
 
-      {/* 页脚：紧凑状态指示器 */}
-      <SmartSheetStatusBar
-        rows={rows}
-        columns={sheet.columnsConfig}
-        selectedColumn={selectedColumn}
-        onColumnClick={(col) => setSelectedColumn(col)}
-      />
+        {/* 主体：表格卡片（填满剩余高度） */}
+        <div className="flex-1 min-h-0 rounded-[14px] border border-app-border bg-app-surface-container overflow-hidden shadow-app-card">
+          <SmartSheetGrid
+            columns={sheet.columnsConfig}
+            rows={rows}
+            layoutMode={sheet.layoutMode}
+            viewOptions={viewOptions}
+            selectedRowIds={selectedRowIds}
+            conditionalRules={condRules}
+            onCellEdit={handleCellEdit}
+            onColumnConfigClick={(colKey) => {
+              const col = sheet.columnsConfig.find((c) => c.key === colKey);
+              if (col) setSelectedColumn(col);
+            }}
+            onUndoRedoState={handleUndoRedoState}
+            onRowSelect={(rowId, selected) => {
+              setSelectedRowIds((prev) => { const n = new Set(prev); selected ? n.add(rowId) : n.delete(rowId); return n; });
+            }}
+            onAddRow={(afterRowId) => insertRow(afterRowId)}
+            onDeleteRows={(ids) => deleteRows(ids)}
+            onDuplicateRow={(rowId) => duplicateRow(rowId)}
+            onMoveRow={(rowId, dir) => moveRow(rowId, dir)}
+          />
+        </div>
 
-      {/* 底部标签栏 */}
-      <SmartSheetTabsRow sheets={sheetTabs} activeId={id || 'current'} onSelect={() => {}} />
-
-      {/* 条件格式面板 */}
-      <ConditionalFormatPanel
-        columns={sheet.columnsConfig}
-        rules={condRules}
-        onRulesChange={setCondRules}
-        open={viewOptions.conditionalFormat}
-        onClose={() => setViewOptions(prev => ({ ...prev, conditionalFormat: false }))}
-      />
-
-      {/* 查找替换弹窗 */}
-      {showFind && (
-        <FindReplaceDialog
-          open={showFind}
-          onClose={() => setShowFind(false)}
+        {/* 页脚：紧凑状态指示器 */}
+        <SmartSheetStatusBar
           rows={rows}
-          onReplace={(rowId, colKey, newVal) => updateCell(rowId, colKey, JSON.stringify(newVal))}
-        />
-      )}
-
-      {/* 导入弹窗 */}
-      {showImport && (
-        <ImportDialog
-          sheetId={id!}
           columns={sheet.columnsConfig}
-          open={showImport}
-          onClose={() => setShowImport(false)}
-          onImported={() => { invalidate(); setShowImport(false); }}
+          selectedColumn={selectedColumn}
+          onColumnClick={(col) => setSelectedColumn(col)}
         />
-      )}
+
+        {/* 底部标签栏 */}
+        <SmartSheetTabsRow sheets={sheetTabs} activeId={id || 'current'} onSelect={() => {}} />
+
+        {/* 条件格式面板 */}
+        <ConditionalFormatPanel
+          columns={sheet.columnsConfig}
+          rules={condRules}
+          onRulesChange={setCondRules}
+          open={viewOptions.conditionalFormat}
+          onClose={() => setViewOptions(prev => ({ ...prev, conditionalFormat: false }))}
+        />
+
+        {/* 查找替换弹窗 */}
+        {showFind && (
+          <FindReplaceDialog
+            open={showFind}
+            onClose={() => setShowFind(false)}
+            rows={rows}
+            onReplace={(rowId, colKey, newVal) => updateCell(rowId, colKey, JSON.stringify(newVal))}
+          />
+        )}
+
+        {/* 导入弹窗 */}
+        {showImport && (
+          <ImportDialog
+            sheetId={id!}
+            columns={sheet.columnsConfig}
+            open={showImport}
+            onClose={() => setShowImport(false)}
+            onImported={() => { invalidate(); setShowImport(false); }}
+          />
+        )}
+      </FormatContext.Provider>
     </div>
   );
 }

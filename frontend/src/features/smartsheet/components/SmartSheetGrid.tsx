@@ -7,6 +7,7 @@ import type { ColumnConfig, SmartSheetRow, LayoutMode, ColumnType } from '@/feat
 import type { ViewOptions } from '@/features/smartsheet/types';
 import SmartSheetContextMenu from './SmartSheetContextMenu';
 import { evaluateRules, type ConditionRule } from './ConditionalFormatPanel';
+import { useCellFormat } from '@/features/smartsheet/hooks/useCellFormat';
 
 export interface UndoRedoState {
   canUndo: boolean;
@@ -125,6 +126,7 @@ export default function SmartSheetGrid({
   const [selection, setSelection] = useState<{ start: { row: number; col: number }; end: { row: number; col: number } } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; rowId: string; rowIdx: number } | null>(null);
   const undoRedo = useUndoRedo();
+  const { format: contextFormat, setFormat } = useCellFormat();
   const showRowHeader = layoutMode !== 'table';
 
   // Expose undo/redo state to parent
@@ -162,7 +164,7 @@ export default function SmartSheetGrid({
               <CellEditor value={getCellValue(rawVal)} type={col.type} options={col.options}
                 onSave={(v) => {
                   const existingFmt = (rawVal && typeof rawVal === 'object') ? (rawVal as any).fmt : undefined;
-                  const newCell = { v, fmt: existingFmt };
+                  const newCell = { v, fmt: { ...existingFmt, ...contextFormat } };
                   const oldV = getCellValue(rawVal);
                   if (v !== oldV) {
                     undoRedo.push({ rowId: row.original.id, colKey: col.key, oldVal: oldV, newVal: v });
@@ -189,7 +191,11 @@ export default function SmartSheetGrid({
                     backgroundColor: fmt.bg || undefined,
                     color: fmt.color || undefined,
                   }}
-                  onClick={() => setEditingCell({ rowId: row.original.id, colKey: col.key })}
+                  onClick={() => {
+                    const fmt = getCellFormat(rawVal);
+                    setFormat(fmt);
+                    setEditingCell({ rowId: row.original.id, colKey: col.key });
+                  }}
                   onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, rowId: row.original.id, rowIdx: row.index }); }}>
               {displayVal(rawVal, col.type)}
             </span>
@@ -199,7 +205,7 @@ export default function SmartSheetGrid({
       });
     }
     return defs;
-  }, [columns, showRowHeader, editingCell, onCellEdit, rows, undoRedo, conditionalRules, viewOptions.conditionalFormat]);
+  }, [columns, showRowHeader, editingCell, onCellEdit, rows, undoRedo, conditionalRules, viewOptions.conditionalFormat, contextFormat, setFormat]);
 
   const table = useReactTable({ data: rows, columns: colDefs, getCoreRowModel: getCoreRowModel(), getRowId: (r) => r.id });
 
