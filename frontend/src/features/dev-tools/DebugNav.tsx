@@ -24,7 +24,6 @@ import {
     cancelScheduledAutoExit,
     canScheduleAutoExit,
     noteScanExecuteSuccess,
-    scheduleAutoExit,
     setScanExecutePending,
     setScanPopupSession,
     tryBeginScanChannel,
@@ -126,19 +125,16 @@ export default function DebugNav() {
                 if (targetRoom) {
                     const roomId = (targetRoom as RoomInfo).officialRoomId || targetRoom.id;
 
-                    // 在倒计时开始前，立刻给弹窗盖上视觉钢印
+                    // 立刻弹出确认离开弹窗（不再等 2 秒延迟）
                     setAutoActionRoomId(roomId);
-
-                    scheduleAutoExit(() => {
-                        runExecute({
-                            userId: data.userInfo.userId,
-                            roomId: roomId,
-                            action: 'EXIT',
-                            isSharedCard: false,
-                            isKeepCard: false,
-                            isBorrowedCard: false,
-                        });
-                    }, 2000);
+                    setAutoExitConfirm({
+                        userId: data.userInfo.userId,
+                        roomId: roomId,
+                        action: 'EXIT',
+                        isSharedCard: false,
+                        isKeepCard: false,
+                        isBorrowedCard: false,
+                    });
                 }
             }
 
@@ -571,8 +567,16 @@ export default function DebugNav() {
             {/* 离开确认弹窗：统一拦截所有 EXIT（高于所有弹窗） */}
             <SwipeExitConfirmDialog
                 open={autoExitConfirm !== null}
-                userName=""
-                roomName=""
+                userName={activeResult?.userInfo?.name ?? ""}
+                roomName={
+                    (() => {
+                        if (!autoExitConfirm || !activeResult?.pendingRooms) return "";
+                        const room = activeResult.pendingRooms.find(
+                            r => (r.officialRoomId || r.id) === autoExitConfirm.roomId
+                        );
+                        return room?.displayName || room?.name || autoExitConfirm.roomId || "";
+                    })()
+                }
                 onConfirm={() => {
                     if (autoExitConfirm) {
                         doExecute(autoExitConfirm);

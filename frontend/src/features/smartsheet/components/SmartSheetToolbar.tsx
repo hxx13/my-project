@@ -1,6 +1,7 @@
 // SmartSheetToolbar — 🍱 Bento 工具栏卡片
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import FormatBar from './FormatBar';
 import type { ViewOptions } from '@/features/smartsheet/types';
 
 interface ToolbarProps {
@@ -27,6 +28,8 @@ export default function SmartSheetToolbar({
     <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-[14px] border border-app-border bg-app-surface-container flex-wrap shrink-0 shadow-app-card">
       {/* Back to list */}
       <BentoBtn ghost onClick={() => navigate('/admin/smartsheet')}>← 返回</BentoBtn>
+      <Divider />
+      <FormatBar />
       <Divider />
       {/* Brand */}
       <span className="font-bold text-[13px] text-app-text-primary mr-1">📋 {sheetName}</span>
