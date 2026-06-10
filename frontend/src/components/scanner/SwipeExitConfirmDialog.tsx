@@ -1,6 +1,13 @@
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut } from "lucide-react";
+
+function formatCountdown(totalSeconds: number): string {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
 interface SwipeExitConfirmDialogProps {
     open: boolean;
@@ -8,6 +15,10 @@ interface SwipeExitConfirmDialogProps {
     roomName: string;
     onConfirm: () => void;
     onCancel: () => void;
+    /** 自动签退剩余秒数（来自 analyze）；null/undefined 则不显示倒计时区块 */
+    autoSignoutSeconds?: number | null;
+    /** 倒计时归零回调：关闭弹窗 + 刷新状态 */
+    onCountdownEnd?: () => void;
 }
 
 export function SwipeExitConfirmDialog({
@@ -16,7 +27,56 @@ export function SwipeExitConfirmDialog({
     roomName,
     onConfirm,
     onCancel,
+    autoSignoutSeconds,
+    onCountdownEnd,
 }: SwipeExitConfirmDialogProps) {
+    const [countdown, setCountdown] = useState<number | null>(null);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const hasEndedRef = useRef(false);
+
+    // 弹窗打开时初始化倒计时
+    useEffect(() => {
+        if (open && autoSignoutSeconds != null && autoSignoutSeconds > 0) {
+            setCountdown(autoSignoutSeconds);
+            hasEndedRef.current = false;
+        } else {
+            setCountdown(null);
+        }
+    }, [open, autoSignoutSeconds]);
+
+    // 每秒 tick
+    useEffect(() => {
+        if (countdown == null || countdown <= 0) {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            return;
+        }
+        intervalRef.current = setInterval(() => {
+            setCountdown((prev) => {
+                if (prev == null || prev <= 1) {
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+        return () => {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+    }, [countdown != null]);
+
+    // 归零时触发回调（仅一次）
+    useEffect(() => {
+        if (countdown === 0 && !hasEndedRef.current) {
+            hasEndedRef.current = true;
+            // 短暂延迟让用户看到 00:00
+            const t = setTimeout(() => {
+                onCountdownEnd?.();
+            }, 800);
+            return () => clearTimeout(t);
+        }
+    }, [countdown, onCountdownEnd]);
+
+    const showCountdown = countdown != null && countdown > 0;
+
     return createPortal(
         <AnimatePresence>
             {open && (
@@ -62,6 +122,20 @@ export function SwipeExitConfirmDialog({
                             <h2 className="text-center text-lg font-bold text-white mb-2">
                                 确认离开
                             </h2>
+
+                            {/* Auto-Signout Countdown Section */}
+                            {showCountdown && (
+                                <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                                    <div className="flex items-center justify-center gap-2 mb-1.5">
+                                        <span className="text-2xl font-mono font-bold text-amber-400 tracking-wider">
+                                            {formatCountdown(countdown!)}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-amber-300/80 text-center leading-snug">
+                                        当前已进入自动签退阶段，系统将在倒计时结束后自动为您签退。要现在手动签退吗？
+                                    </p>
+                                </div>
+                            )}
 
                             {/* User & Room Info */}
                             <div className="text-center mb-5 space-y-1">
