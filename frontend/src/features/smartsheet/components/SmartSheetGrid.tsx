@@ -198,8 +198,8 @@ export default function SmartSheetGrid({
             );
           }
           const fmt = getCellFormat(rawVal);
-          const cfClass = conditionalRules && viewOptions.conditionalFormat
-            ? evaluateRules(getCellValue(rawVal), col.key, conditionalRules)
+          const cfClass = conditionalRules && conditionalRules.length > 0
+            ? evaluateRules(getCellValue(rawVal), col.key, row.original.id, conditionalRules)
             : '';
           const className = [cellClass(rawVal, col.type), cfClass].filter(Boolean).join(' ');
           return (
@@ -210,6 +210,10 @@ export default function SmartSheetGrid({
                     fontSize: fmt.size ? `${fmt.size}px` : undefined,
                     backgroundColor: fmt.bg || undefined,
                     color: fmt.color || undefined,
+                    textAlign: fmt.align || undefined,
+                    display: 'block',
+                    width: '100%',
+                    height: '100%',
                   }}
                   onClick={() => {
                     const fmt = getCellFormat(rawVal);
@@ -225,7 +229,7 @@ export default function SmartSheetGrid({
       });
     }
     return defs;
-  }, [columns, showRowHeader, editingCell, onCellEdit, rows, undoRedo, conditionalRules, viewOptions.conditionalFormat, contextFormat, setFormat, colWidths]);
+  }, [columns, showRowHeader, editingCell, onCellEdit, rows, undoRedo, conditionalRules, contextFormat, setFormat, colWidths]);
 
   const table = useReactTable({ data: rows, columns: colDefs, getCoreRowModel: getCoreRowModel(), getRowId: (r) => r.id });
 

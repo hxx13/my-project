@@ -11,6 +11,7 @@ export interface CellFormat {
   bg?: string;       // background token ref
   color?: string;    // font color token ref
   size?: number;     // 12 | 14 | 16
+  align?: 'left' | 'center' | 'right';  // text alignment
 }
 
 export interface CellValue {

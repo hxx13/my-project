@@ -1,6 +1,6 @@
 // FormatBar — Bold / Italic / bg-color / font-color / font-size toolbar
 import React, { useState, useRef, useEffect } from 'react';
-import { Bold, Italic, PaintBucket, Type } from 'lucide-react';
+import { Bold, Italic, AlignLeft, AlignCenter, AlignRight, PaintBucket, Type } from 'lucide-react';
 import { useCellFormat } from '@/features/smartsheet/hooks/useCellFormat';
 import ColorPicker from './ColorPicker';
 
@@ -107,6 +107,22 @@ export default function FormatBar() {
           />
         )}
       </div>
+
+      {/* Divider */}
+      <span className="w-px h-[18px] bg-app-border shrink-0 mx-0.5" />
+
+      {/* Alignment */}
+      {(['left', 'center', 'right'] as const).map(a => (
+        <button key={a}
+          className={`${btnBase} ${format.align === a ? btnActive : btnInactive}`}
+          title={`对齐: ${a === 'left' ? '居左' : a === 'center' ? '居中' : '居右'}`}
+          onClick={() => setFormat({ align: format.align === a ? undefined : a })}>
+          {a === 'left' ? <AlignLeft size={14} /> : a === 'center' ? <AlignCenter size={14} /> : <AlignRight size={14} />}
+        </button>
+      ))}
+
+      {/* Divider */}
+      <span className="w-px h-[18px] bg-app-border shrink-0 mx-0.5" />
 
       {/* Font size select */}
       <select

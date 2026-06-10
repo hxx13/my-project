@@ -26,6 +26,7 @@ export default function SmartSheetPage() {
   const [showFind, setShowFind] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [condRules, setCondRules] = useState<ConditionRule[]>([]);
+  const [showCondPanel, setShowCondPanel] = useState(false);
   const [currentFormat, setCurrentFormat] = useState<CellFormat>({});
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
@@ -55,6 +56,7 @@ export default function SmartSheetPage() {
   }, [updateCell]);
 
   const handleViewOptionChange = useCallback((key: keyof ViewOptions) => {
+    if (key === 'conditionalFormat') { setShowCondPanel(p => !p); return; }
     setViewOptions((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
@@ -146,8 +148,8 @@ export default function SmartSheetPage() {
           columns={sheet.columnsConfig}
           rules={condRules}
           onRulesChange={setCondRules}
-          open={viewOptions.conditionalFormat}
-          onClose={() => setViewOptions(prev => ({ ...prev, conditionalFormat: false }))}
+          open={showCondPanel}
+          onClose={() => setShowCondPanel(false)}
         />
 
         {/* 查找替换弹窗 */}

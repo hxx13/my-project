@@ -187,6 +187,14 @@
   font-size: 11px;
 }
 
+/* Conditional format background variant */
+.cf-bg.smartsheet-cf-great { background: var(--app-color-feedback-success-soft); color: var(--smartsheet-text); }
+.cf-bg.smartsheet-cf-warn  { background: var(--app-color-feedback-warning-soft); color: var(--smartsheet-text); }
+.cf-bg.smartsheet-cf-bad   { background: var(--app-color-feedback-danger-soft); color: var(--smartsheet-text); }
+.dark .cf-bg.smartsheet-cf-great { background: var(--app-color-feedback-success-soft); }
+.dark .cf-bg.smartsheet-cf-warn  { background: var(--app-color-feedback-warning-soft); }
+.dark .cf-bg.smartsheet-cf-bad   { background: var(--app-color-feedback-danger-soft); }
+
 /* ═══════ 条件格式 ═══════ */
 .smartsheet-cf-great { color: var(--smartsheet-success); font-weight: 600; }
 .smartsheet-cf-warn  { color: var(--smartsheet-warning); }
