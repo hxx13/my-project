@@ -4,6 +4,7 @@ import lombok.Data;
 
 @Data
 public class KnowledgeCategoryRequest {
+    private Long parentId;
     private String name;
     private String slug;
     private Integer sortOrder;

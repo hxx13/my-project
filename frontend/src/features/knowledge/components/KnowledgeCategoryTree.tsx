@@ -30,15 +30,15 @@ function Dropdown({ anchor, open, onClose, children }: { anchor: HTMLElement | n
 }
 
 /** 统一的"移动到…"菜单 */
-function MoveMenu({ anchor, open, onClose, targets, currentId, onMove, label }: {
+function MoveMenu({ anchor, open, onClose, targets, currentId, onMove, label, showRoot }: {
   anchor: HTMLElement | null; open: boolean; onClose: () => void;
   targets: { id: number; name: string }[]; currentId: number; onMove: (targetId: number | null) => void;
-  label: string;
+  label: string; showRoot: boolean;
 }) {
   return (
     <Dropdown anchor={anchor} open={open} onClose={onClose}>
       <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">{label}</div>
-      <button onClick={() => onMove(null)} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">📁 顶层</button>
+      {showRoot && <button onClick={() => onMove(null)} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">📁 顶层</button>}
       {targets.filter(t => t.id !== currentId).map(t => (
         <button key={t.id} onClick={() => onMove(t.id)} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">{t.name}</button>
       ))}
@@ -147,7 +147,8 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
     if (!moveTarget) return;
     try {
       if (moveTarget.type === "folder") {
-        await updateKnowledgeCategory(moveTarget.catId, { parentId: targetId });
+        // pass all current values + new parentId; 0 = move to root
+        await updateKnowledgeCategory(moveTarget.catId, { name: node.categoryName, slug: node.categorySlug, parentId: targetId ?? 0 });
       } else {
         await updateKnowledgePage(moveTarget.pageId, { categoryId: targetId ?? 0, slug: moveTarget.slug, title: moveTarget.title });
       }
@@ -200,6 +201,7 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
         targets={allCategories}
         currentId={moveTarget?.type === "folder" ? moveTarget.catId : node.categoryId}
         onMove={handleMove}
+        showRoot={moveTarget?.type === "folder"}
         label={moveTarget?.type === "folder" ? `移动「${node.categoryName}」到` : "移动文档到"}
       />
     </div>

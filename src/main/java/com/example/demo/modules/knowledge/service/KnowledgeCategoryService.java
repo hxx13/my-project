@@ -62,6 +62,8 @@ public class KnowledgeCategoryService {
         if (req.getSortOrder() != null) cat.setSortOrder(req.getSortOrder());
         if (req.getIcon() != null) cat.setIcon(req.getIcon());
         if (req.getDescription() != null) cat.setDescription(req.getDescription());
+        // parentId: 0 = move to root, null = don't change, >0 = move to that parent
+        if (req.getParentId() != null) cat.setParentId(req.getParentId() == 0 ? null : req.getParentId());
         mapper.update(cat);
         return cat;
     }

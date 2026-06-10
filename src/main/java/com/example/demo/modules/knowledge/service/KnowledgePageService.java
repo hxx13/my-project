@@ -117,6 +117,16 @@ public class KnowledgePageService {
         int oldVersion = page.getVersion();
         int newVersion = oldVersion + 1;
 
+        if (req.getCategoryId() != null && !req.getCategoryId().equals(page.getCategoryId())) {
+            // 校验目标分类存在
+            KnowledgeCategory targetCat = categoryMapper.findById(req.getCategoryId());
+            if (targetCat == null) throw new KnowledgeCategoryService.KnowledgeException(ErrorCodeConstants.KNOWLEDGE_CATEGORY_NOT_FOUND, "目标分类不存在");
+            // 校验目标分类下 slug 唯一
+            String checkSlug = req.getSlug() != null ? req.getSlug() : page.getSlug();
+            int existing = mapper.countByCategoryAndSlug(req.getCategoryId(), checkSlug);
+            if (existing > 0) throw new KnowledgeCategoryService.KnowledgeException(ErrorCodeConstants.KNOWLEDGE_SLUG_DUPLICATE, "目标分类下已存在相同标识的文档");
+            page.setCategoryId(req.getCategoryId());
+        }
         page.setTitle(req.getTitle() != null ? req.getTitle() : page.getTitle());
         if (req.getContentHtml() != null) page.setContentHtml(req.getContentHtml());
         if (req.getContentMd() != null) page.setContentMd(req.getContentMd());
