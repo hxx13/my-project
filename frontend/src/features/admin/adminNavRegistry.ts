@@ -47,6 +47,7 @@ import {
 import type { MinRole, PublicPagePermissionNode } from "@/api/domains/pagePermission.api";
 import type { PendingBadges } from "@/api/domains/me.api";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
+import { hasMinRole } from "@/features/auth/roleAccess";
 import { ANIMAL_ROOM_COCKPIT_RETURN_TO_KEY, DIGITAL_TWIN_SCREEN_RETURN_TO_KEY } from "@/features/admin/adminTelemetryNav";
 
 export type PendingBadgeTextKey = keyof Pick<
@@ -238,6 +239,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-rose-600 to-pink-600",
         fallbackMinRole: "SUPER_ADMIN",
         sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/page-permissions", "SUPER_ADMIN"),
+      },
+      {
+        id: "knowledge",
+        path: "/admin/knowledge",
+        label: "知识库",
+        icon: BookOpen,
+        homeTone: "from-indigo-600 to-violet-700",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx: any) => true,
       },
       {
         id: "login-branding",
