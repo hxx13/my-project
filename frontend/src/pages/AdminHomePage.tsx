@@ -79,9 +79,9 @@ export default function AdminHomePage() {
       g.entries.map((e) => {
         const roleOk = hasMinRole(role, e.minRole);
         const permOk = canShowWebEntry(permNodes, e.path, "sidebar", role, e.minRole);
-        // Convert Tailwind gradient class to inline CSS gradient
-        // (Tailwind JIT can't scan registry data files for dynamic classes)
-        const toneGradient = toneToGradient((e as any).tone);
+        // Get gradient directly from registry (bypasses model which has hardcoded fallback)
+        const homeTone = getHomeToneForPath(e.path);
+        const toneGradient = homeTone ? toneToGradient(homeTone) : undefined;
         // Override English titles with Chinese registry labels
         const pathKey = (e.path || "").replace(/\/+/g, "/");
         const chineseTitle = pathLabelMap.get(pathKey) || e.title;
