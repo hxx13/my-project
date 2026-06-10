@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, createElement } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CommandDialog,
@@ -27,17 +27,10 @@ function orderedGroupTitles(items: AdminCommandPaletteItem[]): string[] {
 }
 
 export function AdminCommandPalette({
-  open,
-  onOpenChange,
-  items,
-  starredItems = [],
-  recentItems = [],
-  pathname,
-  search,
+  open, onOpenChange, items, starredItems = [], recentItems = [], pathname, search,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** 按注册表分组展示（已排除「收藏」「最近」独占项） */
   items: AdminCommandPaletteItem[];
   starredItems?: AdminCommandPaletteItem[];
   recentItems?: AdminCommandPaletteItem[];
@@ -63,42 +56,49 @@ export function AdminCommandPalette({
       try {
         const returnKey = it.telemetryReturnStorageKey ?? ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY;
         sessionStorage.setItem(returnKey, `${pathname}${search}`);
-      } catch {
-        /* ignore */
-      }
+      } catch { /* ignore */ }
       void navigate(it.path, { state: { returnTo: `${pathname}${search}` } });
     } else {
       void navigate(it.path);
     }
   };
 
-  const renderRow = (it: AdminCommandPaletteItem, title: string) => (
+  /** 搜索 value: label + path + group + alias，保证全局模糊匹配 */
+  function searchValue(it: AdminCommandPaletteItem, context: string): string {
+    return [it.label, it.path, it.groupTitle, context, ...(it.alias ?? [])].join(" ");
+  }
+
+  const renderRow = (it: AdminCommandPaletteItem, context: string) => (
     <CommandItem
-      key={`${title}-${it.id}`}
-      value={`${it.label} ${it.path} ${title}`}
+      key={`${context}-${it.id}`}
+      value={searchValue(it, context)}
       onSelect={() => run(it)}
-      className="cursor-pointer rounded-md py-2.5 transition-colors aria-selected:bg-neutral-100 hover:bg-neutral-50"
+      className="cursor-pointer rounded-md py-2.5 transition-colors aria-selected:bg-neutral-100 hover:bg-neutral-50 flex items-center gap-3"
     >
-      <span className="min-w-0 flex-1 truncate font-medium">{it.label}</span>
-      <span className="ml-2 max-w-[40%] shrink-0 truncate text-xs text-neutral-500">{it.path}</span>
+      {it.icon && createElement(it.icon, { className: "h-4 w-4 shrink-0 text-neutral-400" })}
+      <div className="min-w-0 flex-1">
+        <span className="font-medium text-sm">{it.label}</span>
+        <span className="ml-2 text-xs text-neutral-400">{it.groupTitle}</span>
+      </div>
+      <span className="shrink-0 text-[10px] text-neutral-300 font-mono">{it.path}</span>
     </CommandItem>
   );
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="搜索页面标题或路径…" />
-      <CommandList className="[&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:transition-colors [&_[cmdk-item][aria-selected=true]]:bg-neutral-100 [&_[cmdk-item]:hover]:bg-neutral-50">
-        <CommandEmpty>无匹配结果；清空搜索框可浏览全部入口</CommandEmpty>
-        {starredItems.length ? (
-          <CommandGroup heading="收藏">
+      <CommandInput placeholder="搜索页面标题、路径或关键词…" />
+      <CommandList>
+        <CommandEmpty>无匹配结果；尝试其他关键词</CommandEmpty>
+        {starredItems.length > 0 && (
+          <CommandGroup heading="⭐ 收藏">
             {starredItems.map((it) => renderRow(it, "收藏"))}
           </CommandGroup>
-        ) : null}
-        {recentItems.length ? (
-          <CommandGroup heading="最近">
+        )}
+        {recentItems.length > 0 && (
+          <CommandGroup heading="🕐 最近">
             {recentItems.map((it) => renderRow(it, "最近"))}
           </CommandGroup>
-        ) : null}
+        )}
         {groupOrder.map((title) => {
           const list = byGroup.get(title);
           if (!list?.length) return null;
@@ -110,7 +110,7 @@ export function AdminCommandPalette({
         })}
       </CommandList>
       <div className="border-t border-neutral-200 bg-neutral-50 px-3 py-2 text-[11px] leading-relaxed text-neutral-500">
-        点击或 Enter 进入 · Esc 关闭
+        ↑↓ 选择 · Enter 跳转 · Esc 关闭
       </div>
     </CommandDialog>
   );

@@ -22,24 +22,33 @@ interface Props {
   onMoveRow?: (rowId: string, direction: 'up' | 'down') => void;
 }
 
+// ── Extract display string from a CellValue or plain value ──
+function getCellValue(raw: unknown): string {
+  if (raw == null || raw === '') return '';
+  if (typeof raw === 'string') return raw;
+  if (typeof raw === 'object' && 'v' in (raw as any)) return (raw as any).v;
+  return String(raw);
+}
+
 // ── Cell value CSS class by type + value ──
-function cellClass(val: unknown, type: ColumnType): string {
-  if (val == null || val === '') return 'cv-empty';
+function cellClass(raw: unknown, type: ColumnType): string {
+  const v = getCellValue(raw);
+  if (v === '') return 'cv-empty';
   switch (type) {
     case 'number':  return 'cv-num';
     case 'select': case 'multi-select': case 'user': return 'cv-sel';
     case 'date':    return 'cv-date';
-    case 'checkbox': return String(val) === 'true' ? 'cv-true' : 'cv-false';
+    case 'checkbox': return v === 'true' ? 'cv-true' : 'cv-false';
     default:        return '';
   }
 }
 
-function displayVal(val: unknown, type: ColumnType): string {
-  if (val == null || val === '') return '';
-  const s = String(val);
+function displayVal(raw: unknown, type: ColumnType): string {
+  const v = getCellValue(raw);
+  if (v === '') return '';
   switch (type) {
-    case 'checkbox': return s === 'true' ? '✓' : '—';
-    default: return s;
+    case 'checkbox': return v === 'true' ? '✓' : '—';
+    default: return v;
   }
 }
 
@@ -127,12 +136,14 @@ export default function SmartSheetGrid({
             const nextRow = rowIdx < rows.length - 1 ? rows[rowIdx + 1] : null;
             const prevRow = rowIdx > 0 ? rows[rowIdx - 1] : null;
             return (
-              <CellEditor value={rawVal ?? ''} type={col.type} options={col.options}
+              <CellEditor value={getCellValue(rawVal)} type={col.type} options={col.options}
                 onSave={(v) => {
-                  const old = rawVal ?? '';
-                  if (v !== old) {
-                    undoRedo.push({ rowId: row.original.id, colKey: col.key, oldVal: old, newVal: v });
-                    onCellEdit(row.original.id, col.key, v);
+                  const existingFmt = (rawVal && typeof rawVal === 'object') ? (rawVal as any).fmt : undefined;
+                  const newCell = { v, fmt: existingFmt };
+                  const oldV = getCellValue(rawVal);
+                  if (v !== oldV) {
+                    undoRedo.push({ rowId: row.original.id, colKey: col.key, oldVal: oldV, newVal: v });
+                    onCellEdit(row.original.id, col.key, JSON.stringify(newCell));
                   }
                   setEditingCell(null);
                 }}

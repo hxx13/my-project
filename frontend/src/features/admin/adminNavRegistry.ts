@@ -87,6 +87,8 @@ export type AdminNavRegistryItem = {
   icon: LucideIcon;
   homeTone: string;
   fallbackMinRole: MinRole;
+  /** 搜索关键词：中文别名 + 英文关键词 + 缩写 */
+  alias?: string[];
   navEnd?: boolean;
   telemetry?: boolean;
   telemetryReturnStorageKey?: string;
@@ -148,6 +150,7 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         path: "/admin/personnel",
         label: "人员授权",
         icon: Users,
+        alias: ["人员", "用户", "授权", "权限", "personnel", "user", "staff", "role"],
         homeTone: "from-indigo-600 to-blue-700",
         fallbackMinRole: "SUPER_ADMIN",
         sidebarVisible: (ctx) => ctx.flags.canManagePersonnel && show(ctx, "/admin/personnel", "SUPER_ADMIN"),
@@ -245,6 +248,7 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         path: "/admin/knowledge",
         label: "知识库",
         icon: BookOpen,
+        alias: ["docs", "文档", "开发手册", "参考资料", "数字花园", "知识", "knowledge"],
         homeTone: "from-indigo-600 to-violet-700",
         fallbackMinRole: "STAFF",
         sidebarVisible: (ctx: any) => true,

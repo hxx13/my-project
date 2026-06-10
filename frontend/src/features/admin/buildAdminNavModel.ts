@@ -66,6 +66,8 @@ export type AdminCommandPaletteItem = {
   path: string;
   label: string;
   groupTitle: string;
+  icon?: LucideIcon;
+  alias?: string[];
   telemetry?: boolean;
   telemetryReturnStorageKey?: string;
 };
@@ -246,24 +248,31 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
     mergedHome = [...mergedHome, { title: "自动发现", entries: unknown }];
   }
 
+  const registryLookup = new Map(ADMIN_NAV_REGISTRY.flatMap(g =>
+    collectRegistryGroupItems(g).map(it => [it.id, it])
+  ));
   const flatNavigableItems: AdminCommandPaletteItem[] = sidebarGroups.flatMap((g) => {
-    const top = g.items.map((it) => ({
-      id: it.key,
-      path: it.to,
-      label: it.label,
-      groupTitle: g.title,
-      telemetry: it.telemetry,
-      telemetryReturnStorageKey: it.telemetryReturnStorageKey,
-    }));
-    const nested = (g.subgroups ?? []).flatMap((sg) =>
-      sg.items.map((it) => ({
-        id: it.key,
-        path: it.to,
-        label: it.label,
-        groupTitle: `${g.title} · ${sg.title}`,
+    const top = g.items.map((it) => {
+      const reg = registryLookup.get(it.key);
+      return {
+        id: it.key, path: it.to, label: it.label, groupTitle: g.title,
+        icon: it.icon ?? reg?.icon,
+        alias: reg?.alias,
         telemetry: it.telemetry,
         telemetryReturnStorageKey: it.telemetryReturnStorageKey,
-      }))
+      };
+    });
+    const nested = (g.subgroups ?? []).flatMap((sg) =>
+      sg.items.map((it) => {
+        const reg = registryLookup.get(it.key);
+        return {
+          id: it.key, path: it.to, label: it.label, groupTitle: `${g.title} · ${sg.title}`,
+          icon: it.icon ?? reg?.icon,
+          alias: reg?.alias,
+          telemetry: it.telemetry,
+          telemetryReturnStorageKey: it.telemetryReturnStorageKey,
+        };
+      })
     );
     return [...top, ...nested];
   });
@@ -407,24 +416,31 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
     }
   }
 
+  const registryLookup = new Map(ADMIN_NAV_REGISTRY.flatMap(g =>
+    collectRegistryGroupItems(g).map(it => [it.id, it])
+  ));
   const flatNavigableItems: AdminCommandPaletteItem[] = sidebarGroups.flatMap((g) => {
-    const top = g.items.map((it) => ({
-      id: it.key,
-      path: it.to,
-      label: it.label,
-      groupTitle: g.title,
-      telemetry: it.telemetry,
-      telemetryReturnStorageKey: it.telemetryReturnStorageKey,
-    }));
-    const nested = (g.subgroups ?? []).flatMap((sg) =>
-      sg.items.map((it) => ({
-        id: it.key,
-        path: it.to,
-        label: it.label,
-        groupTitle: `${g.title} · ${sg.title}`,
+    const top = g.items.map((it) => {
+      const reg = registryLookup.get(it.key);
+      return {
+        id: it.key, path: it.to, label: it.label, groupTitle: g.title,
+        icon: it.icon ?? reg?.icon,
+        alias: reg?.alias,
         telemetry: it.telemetry,
         telemetryReturnStorageKey: it.telemetryReturnStorageKey,
-      }))
+      };
+    });
+    const nested = (g.subgroups ?? []).flatMap((sg) =>
+      sg.items.map((it) => {
+        const reg = registryLookup.get(it.key);
+        return {
+          id: it.key, path: it.to, label: it.label, groupTitle: `${g.title} · ${sg.title}`,
+          icon: it.icon ?? reg?.icon,
+          alias: reg?.alias,
+          telemetry: it.telemetry,
+          telemetryReturnStorageKey: it.telemetryReturnStorageKey,
+        };
+      })
     );
     return [...top, ...nested];
   });

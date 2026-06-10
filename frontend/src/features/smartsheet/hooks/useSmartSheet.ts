@@ -79,7 +79,7 @@ export function useSmartSheet(sheetId: string | undefined) {
         if (!row) continue;
         try {
           await updateRow(sheetId, rid, {
-            cellData: { ...row.cellData, ...cells },
+            cellData: { ...row.cellData, ...cells } as any,
             version: row.version,
           });
         } catch (e) {
@@ -90,13 +90,47 @@ export function useSmartSheet(sheetId: string | undefined) {
     }, 600);
   }, [sheetId, rowsQuery.data, invalidate]);
 
+  // Insert row after a specific row (or at end if no afterRowId)
+  const insertRowMutation = useMutation({
+    mutationFn: async (afterRowId?: string) => {
+      return await addRow(sheetId!, '', undefined);
+    },
+    onSuccess: () => invalidate(),
+    onError: (e: Error) => { toast.error(e.message || '添加行失败'); },
+  });
+
+  // Duplicate a row: clone cellData (preserving CellValue) and rowLabel
+  const duplicateRowMutation = useMutation({
+    mutationFn: async (rowId: string) => {
+      const row = rowsQuery.data?.find(r => r.id === rowId);
+      if (!row) return;
+      const newRow = await addRow(sheetId!, row.rowLabel, undefined);
+      if (row.cellData && Object.keys(row.cellData).length > 0) {
+        await updateRow(sheetId!, newRow.id, {
+          cellData: row.cellData as any,
+          version: newRow.version,
+        });
+      }
+    },
+    onSuccess: () => invalidate(),
+    onError: (e: Error) => { toast.error(e.message || '复制行失败'); },
+  });
+
+  // Move row: stub until backend supports row_index reordering
+  const moveRow = useCallback((_rowId: string, _direction: 'up' | 'down') => {
+    toast('行移动将在后端排序支持后实现');
+  }, []);
+
   return {
     sheet: sheetQuery.data ?? null,
     rows: rowsQuery.data ?? [],
     isLoading: sheetQuery.isLoading || rowsQuery.isLoading,
     updateCell,
     addRow: () => addRowMutation.mutate(),
+    insertRow: (afterRowId?: string) => insertRowMutation.mutate(afterRowId),
     deleteRows: (ids: string[]) => deleteRowsMutation.mutate(ids),
+    duplicateRow: (rowId: string) => duplicateRowMutation.mutate(rowId),
+    moveRow,
     updateColumn: (colKey: string, config: Partial<ColumnConfig>) =>
       updateColumnMutation.mutate({ colKey, config }),
     invalidate,

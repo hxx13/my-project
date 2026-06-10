@@ -12,7 +12,7 @@ import toast from 'react-hot-toast';
 
 export default function SmartSheetPage() {
   const { id } = useParams<{ id: string }>();
-  const { sheet, rows, isLoading, updateCell, addRow, deleteRows, updateColumn } = useSmartSheet(id);
+  const { sheet, rows, isLoading, updateCell, addRow, insertRow, deleteRows, duplicateRow, moveRow, updateColumn } = useSmartSheet(id);
   const [viewOptions, setViewOptions] = useState<ViewOptions>(DEFAULT_VIEW_OPTIONS);
   const [selectedColumn, setSelectedColumn] = useState<ColumnConfig | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
@@ -75,6 +75,10 @@ export default function SmartSheetPage() {
           onRowSelect={(rowId, selected) => {
             setSelectedRowIds((prev) => { const n = new Set(prev); selected ? n.add(rowId) : n.delete(rowId); return n; });
           }}
+          onAddRow={(afterRowId) => insertRow(afterRowId)}
+          onDeleteRows={(ids) => deleteRows(ids)}
+          onDuplicateRow={(rowId) => duplicateRow(rowId)}
+          onMoveRow={(rowId, dir) => moveRow(rowId, dir)}
         />
       </div>
 

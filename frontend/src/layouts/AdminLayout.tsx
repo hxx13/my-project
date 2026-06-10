@@ -1097,6 +1097,16 @@ export default function AdminLayout() {
 
         <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[var(--twin-canvas-soft)]">
           <BackfillAutoGlobalBanner />
+          {pathname !== "/admin" && (
+            <div className="flex items-center gap-2 border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-4 py-2 text-sm">
+              <button onClick={() => navigate("/admin")} className="text-[var(--twin-link-deep)] hover:underline font-medium">← 返回工作台</button>
+              <span className="text-[var(--twin-mute)]">/</span>
+              <span className="text-[var(--twin-body)] truncate">{(() => {
+                const item = ADMIN_NAV_REGISTRY.flatMap(g => g.items ?? []).find(i => i.path === pathname);
+                return item?.label ?? pathname;
+              })()}</span>
+            </div>
+          )}
           <div className="admin-page-content mx-auto w-full max-w-[1600px] flex-1">
             <PageTransition key={location.pathname} variant="fadeUp" duration={0.3} className="h-full">
               <Outlet />
