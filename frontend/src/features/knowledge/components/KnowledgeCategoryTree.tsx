@@ -29,21 +29,49 @@ function Dropdown({ anchor, open, onClose, children }: { anchor: HTMLElement | n
   );
 }
 
-/** 统一的"移动到…"菜单 */
-function MoveMenu({ anchor, open, onClose, targets, currentId, onMove, label, showRoot }: {
+/** 树形"移动到…"菜单 — 递归展开，同步文件夹分类层级 */
+function MoveMenu({ anchor, open, onClose, tree, currentId, onMove, label, showRoot, excludeId }: {
   anchor: HTMLElement | null; open: boolean; onClose: () => void;
-  targets: { id: number; name: string }[]; currentId: number; onMove: (targetId: number | null) => void;
-  label: string; showRoot: boolean;
+  tree: KnowledgeTreeNode[]; currentId: number; onMove: (targetId: number | null) => void;
+  label: string; showRoot: boolean; excludeId?: number;
 }) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const toggle = (id: number) => setExpanded(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
   return (
     <Dropdown anchor={anchor} open={open} onClose={onClose}>
       <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">{label}</div>
-      {showRoot && <button onClick={() => onMove(null)} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">📁 顶层</button>}
-      {targets.filter(t => t.id !== currentId).map(t => (
-        <button key={t.id} onClick={() => onMove(t.id)} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">{t.name}</button>
-      ))}
+      {showRoot && <button onClick={() => onMove(null)} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)] text-[11px]">📁 顶层（无父级）</button>}
+      <MoveTreeNodes nodes={tree} currentId={currentId} excludeId={excludeId} onMove={onMove} expanded={expanded} toggle={toggle} depth={0} />
     </Dropdown>
   );
+}
+
+function MoveTreeNodes({ nodes, currentId, excludeId, onMove, expanded, toggle, depth }: {
+  nodes: KnowledgeTreeNode[]; currentId: number; excludeId?: number; onMove: (id: number) => void;
+  expanded: Set<number>; toggle: (id: number) => void; depth: number;
+}) {
+  return nodes.filter(n => n.categoryId !== excludeId).map(n => (
+    <div key={n.categoryId}>
+      <div className="flex items-center hover:bg-[var(--app-color-surface-hover)]" style={{ paddingLeft: `${8 + depth * 12}px` }}>
+        {n.children.length > 0 ? (
+          <button onClick={(e) => { e.stopPropagation(); toggle(n.categoryId); }} className="p-0.5 text-[var(--app-color-text-tertiary)] shrink-0">
+            {expanded.has(n.categoryId) ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          </button>
+        ) : <span className="w-4 shrink-0" />}
+        <button
+          onClick={() => onMove(n.categoryId)}
+          disabled={n.categoryId === currentId}
+          className="flex-1 text-left px-1 py-1.5 text-[11px] disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          📁 {n.categoryName}
+        </button>
+      </div>
+      {expanded.has(n.categoryId) && n.children.length > 0 && (
+        <MoveTreeNodes nodes={n.children} currentId={currentId} excludeId={excludeId} onMove={onMove} expanded={expanded} toggle={toggle} depth={depth + 1} />
+      )}
+    </div>
+  ));
 }
 
 // ═══════════════════════════════════════════
@@ -156,10 +184,6 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
     } catch { alert("移动失败"); }
   }
 
-  const allCategories = (function flatten(nodes: KnowledgeTreeNode[]): { id: number; name: string }[] {
-    return nodes.flatMap(n => [{ id: n.categoryId, name: n.categoryName }, ...flatten(n.children)]);
-  })(allCats);
-
   return (
     <div>
       {/* ── 分类行 ── */}
@@ -198,8 +222,9 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
         anchor={moveAnchor}
         open={moveTarget !== null}
         onClose={() => { setMoveAnchor(null); setMoveTarget(null); }}
-        targets={allCategories}
+        tree={allCats}
         currentId={moveTarget?.type === "folder" ? moveTarget.catId : node.categoryId}
+        excludeId={moveTarget?.type === "folder" ? moveTarget.catId : undefined}
         onMove={handleMove}
         showRoot={moveTarget?.type === "folder"}
         label={moveTarget?.type === "folder" ? `移动「${node.categoryName}」到` : "移动文档到"}
