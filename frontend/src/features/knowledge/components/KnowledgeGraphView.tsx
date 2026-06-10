@@ -222,7 +222,7 @@ export function KnowledgeGraphView({ tree, onSelectPage, onClose }: Props) {
 
       {/* 悬停 */}
       {tip && (
-        <div className="fixed z-[9998] rounded-lg border border-white/10 bg-black/85 backdrop-blur px-3 py-2 shadow-lg text-xs pointer-events-none" style={{ left: tip.x + 14, top: tip.y - 10 }}>
+        <div className="fixed rounded-lg border border-white/10 bg-black/85 backdrop-blur px-3 py-2 shadow-lg text-xs pointer-events-none" style={{ left: tip.x + 14, top: tip.y - 10, zIndex: "var(--z-tooltip)" }}>
           <div className="font-semibold text-white">{tip.node.title}</div>
           <div className="mt-1 text-white/50">📁 {tip.node.categoryName} · 🔗 {tip.node.refCount} 引用</div>
         </div>
@@ -232,8 +232,8 @@ export function KnowledgeGraphView({ tree, onSelectPage, onClose }: Props) {
       {popup && popupPage && (
         <div
           ref={popupRef}
-          className="fixed z-[9999] rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-[var(--app-elevation-modal)] flex flex-col"
-          style={{ left: popupPos.x, top: popupPos.y, width: "480px", maxHeight: "65vh" }}
+          className="fixed rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-[var(--app-elevation-modal)] flex flex-col"
+          style={{ zIndex: "var(--z-modal)", left: popupPos.x, top: popupPos.y, width: "480px", maxHeight: "65vh" }}
         >
           {/* 标题栏 — 可拖拽 */}
           <div
