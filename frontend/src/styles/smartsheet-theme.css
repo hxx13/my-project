@@ -187,13 +187,23 @@
 }
 
 /* ═══════ 冻结窗格 ═══════ */
+.smartsheet-frozen .bt-grid th.ch {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
 .smartsheet-frozen .bt-grid .corner,
 .smartsheet-frozen .bt-grid .rh {
   position: sticky;
   left: 0;
   z-index: 2;
 }
-.smartsheet-frozen .bt-grid .corner { z-index: 3; }
+.smartsheet-frozen .bt-grid .corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+}
 
 /* ═══════ 🍱 暗色微调 ═══════ */
 .dark .bt-grid td.dc { border-color: var(--smartsheet-cell-border); }

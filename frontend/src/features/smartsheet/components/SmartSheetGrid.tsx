@@ -7,7 +7,7 @@ import type { ColumnConfig, SmartSheetRow, LayoutMode, ColumnType } from '@/feat
 import type { ViewOptions } from '@/features/smartsheet/types';
 import SmartSheetContextMenu from './SmartSheetContextMenu';
 
-interface UndoRedoState {
+export interface UndoRedoState {
   canUndo: boolean;
   canRedo: boolean;
   undo: () => void;
