@@ -6,7 +6,7 @@
 >
 > **设计日期**：2026-06-09
 >
-> **版本**：v1.6（新增级联下拉菜单规范 §6.3a + Bento 设计系统）
+> **版本**：v1.7（修复 Portal z-index 陷阱 + 级联菜单 + Bento）
 >
 > **外部设计系统**：🍱 [Bento](https://typeui.sh/design-skills/bento) — SKILL.md + DESIGN.md 位于 `.claude/skills/bento/`
 > **实验落地模块**：知识库（`/admin/knowledge`），验证通过后推广至全站。
@@ -1229,10 +1229,23 @@ function CascadingItem({ node, onMove }) {
 |------|------|
 | 必须 Portal 到 `<body>` | 避免父级 overflow/stacking context 裁剪 |
 | z-index 必须用 `--z-modal` | 禁止硬编码 `z-[99999]` 等 |
+| **Portal 内容加 inline z-index 兜底** | CSS 变量在 Portal 上下文中可能解析失败，必须同时设 `style={{ zIndex: 1400 }}` |
 | side 默认 `"bottom"` | 一级菜单向下展开；子级 `side="right"` 向右展开 |
 | `onMouseEnter`/`onMouseLeave` | 悬浮开、离开关，不用 click 切换 |
 | 排除自身 | `excludeId` 防止将文件夹移入自身 |
 | 当前项 disabled | `currentId === id` 时灰显不可点击 |
+
+**已知陷阱：Portal + CSS 变量 z-index 失效**
+
+Radix/Dropdown/Popover 等 Portal 组件将内容渲染到 `document.body`。但在某些浏览器或 Tailwind 构建中，`z-[var(--z-command)]` 生成的 CSS 变量可能解析为 `auto` 而非 `1400`，导致弹窗被遮罩（backdrop）覆盖，点击失效。
+
+**解法**：Portal 内容同时设置 className 的 z-index（Tailwind 令牌）和 inline style 的 zIndex（硬编码数值兜底）：
+```tsx
+<DropdownMenuContent
+  className="z-[var(--z-command)] ..."
+  style={{ zIndex: 1400 }}  // ← 硬编码兜底，防止 CSS 变量解析失败
+>
+```
 
 ### 6.4 侧边栏（Sidebar）
 
