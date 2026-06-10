@@ -9,6 +9,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -16,6 +18,7 @@ import java.util.List;
 @RequestMapping("/api/admin/knowledge")
 public class KnowledgeStatsController {
 
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeStatsController.class);
     private final JdbcTemplate jdbcTemplate;
 
     public KnowledgeStatsController(JdbcTemplate jdbcTemplate) {
@@ -32,16 +35,20 @@ public class KnowledgeStatsController {
         int totalCategories = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM knowledge_categories", Integer.class);
 
-        // Count distinct tags
+        // Count distinct tags (resilient: column may not exist yet before migration runs)
         int totalTags = 0;
-        List<String> tagRows = jdbcTemplate.queryForList(
-            "SELECT tags FROM knowledge_pages WHERE tags IS NOT NULL AND JSON_LENGTH(tags) > 0",
-            String.class);
-        for (String row : tagRows) {
-            String cleaned = row.replaceAll("[\\[\\]\"]", "");
-            for (String tag : cleaned.split(",")) {
-                if (!tag.trim().isEmpty()) totalTags++;
+        try {
+            List<String> tagRows = jdbcTemplate.queryForList(
+                "SELECT tags FROM knowledge_pages WHERE tags IS NOT NULL AND JSON_LENGTH(tags) > 0",
+                String.class);
+            for (String row : tagRows) {
+                String cleaned = row.replaceAll("[\\[\\]\"]", "");
+                for (String tag : cleaned.split(",")) {
+                    if (!tag.trim().isEmpty()) totalTags++;
+                }
             }
+        } catch (Exception e) {
+            log.warn("[KNOWLEDGE] tags column not available yet: {}", e.getMessage());
         }
 
         LocalDateTime lastUpdated = jdbcTemplate.queryForObject(

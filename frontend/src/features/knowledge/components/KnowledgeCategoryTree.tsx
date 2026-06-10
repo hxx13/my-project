@@ -201,9 +201,7 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
           <Dropdown anchor={moveAnchor} open={moveMenu} onClose={() => { setMoveMenu(false); setMovingPage(null); setMoveAnchor(null); }}>
             <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">移动到</div>
             {allCategories.filter(c => c.id !== node.categoryId).map(c => (
-              <button key={c.id} onClick={() => { if (movingPage) handleMovePage(movingPage.id, c.id, movingPage.slug, movingPage.title); }}>
-                <div className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">{c.name}</div>
-              </button>
+              <button key={c.id} onClick={() => { if (movingPage) handleMovePage(movingPage.id, c.id, movingPage.slug, movingPage.title); }} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">{c.name}</button>
             ))}
           </Dropdown>
         </div>

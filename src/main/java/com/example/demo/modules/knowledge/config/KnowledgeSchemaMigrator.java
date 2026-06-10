@@ -80,7 +80,7 @@ public class KnowledgeSchemaMigrator implements ApplicationRunner {
 
             // 迁移：为已有表添加 tags 列（幂等）
             addColumnIfMissing("knowledge_pages", "tags",
-                "JSON DEFAULT '[]' COMMENT '标签数组'");
+                "JSON DEFAULT ('[]') COMMENT '标签数组'");
 
             log.info("[knowledge-schema] 三张表已就绪");
 
