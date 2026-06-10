@@ -8,7 +8,19 @@ import { fetchPublicPagePermissions, WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, type M
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { buildAdminNavModel, createAdminNavContext, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 import { ADMIN_NAV_PERSONALIZATION_EVENT, isAdminNavStarred, readAdminNavRecent, toggleAdminNavStar } from "@/features/admin/adminNavPersonalization";
-import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems } from "@/features/admin/adminNavRegistry";
+import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems, type AdminNavRegistryItem } from "@/features/admin/adminNavRegistry";
+
+/** Direct registry lookup — bypasses model to avoid hardcoded fallback tones */
+function getHomeToneForPath(path: string): string | undefined {
+  const norm = (path || "").replace(/\/+/g, "/");
+  const allItems: AdminNavRegistryItem[] = [];
+  for (const g of ADMIN_NAV_REGISTRY) {
+    for (const it of collectRegistryGroupItems(g)) {
+      if (it.path.replace(/\/+/g, "/") === norm) return it.homeTone;
+    }
+  }
+  return undefined;
+}
 import { cn } from "@/lib/utils";
 import { Sparkles, Star, ChevronDown, ChevronRight } from "lucide-react";
 

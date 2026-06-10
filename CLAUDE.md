@@ -14,11 +14,20 @@
 
 **唯一的例外**：如果用户在首条消息中明确说了要做什么（如"修bug: 弹窗关不掉"），则直接归类到对应工作流并开始，跳过菜单。
 
+## 🔗 核心原则：前后端不分家
+
+**这是一个全栈项目。新功能开发默认前后端并行，Superpowers 技能全部是双端通用的。**
+
+- 用户说"加功能"→ AI 同时派前端 agent + 后端 agent，并行推进
+- 用户明确说"只做前端/后端"→ 尊重意图，单独处理
+- 后端工作流 ④⑩⑪ 已完备，前端工作流 ③ 已完备，① 是全栈默认入口
+- 详细调度规则见 `docs/superpowers/ai-secretary.md` § 前后端联动原则
+
 ## 📁 项目概要
 
 - Java Spring Boot + React TypeScript 全栈应用，基于芋道 ruoyi-vue-pro
 - 前端: React + TypeScript + Tailwind CSS 3 + Radix UI + Vite
-- 后端: Spring Boot + MyBatis + MySQL
+- 后端: Spring Boot 3.5 + MyBatis + MySQL 8.0 + JDK 17
 
 ## 🔗 关键文档
 
@@ -87,10 +96,58 @@ grep -rn '\-\-[a-z]+-' frontend/src/styles/  # 应为 --app-* 或 --<component>-
 
 **自查不通过 → 不准提交 → 先修复违规。**
 
+## ☕ 后端开发 — 硬性执行规则
+
+<!-- ⚠️ 此章节优先级最高。任何后端 Java 编码工作开始前必须先过这一关。 -->
+
+### 🛑 强制触发条件
+
+**当以下任一情况发生时，AI 必须先读后端规范文档再动手：**
+
+- 创建或修改任何 `.java` 文件
+- 创建或修改 MyBatis Mapper XML 文件
+- 创建或修改 SQL 迁移文件
+- 涉及 Controller / Service / Mapper / Entity / DTO 任何一层
+
+### 📖 强制阅读顺序（不可跳过）
+
+**AI 在写第一行后端代码前，必须按顺序读完：**
+
+```
+① docs/后端架构规范.md                 ← 技术栈/包结构/模块约定/编码模式
+② common/exception/ErrorCodeConstants.java  ← 已有错误码，新错误码在此定义
+③ 目标模块的已有代码（至少读 Controller + Service + Mapper 各一份）
+```
+
+**完成阅读后 AI 必须输出确认语**：
+> "已读取后端架构规范。技术栈 Spring Boot 3.5 + MyBatis + MySQL。模块结构 controller/service/mapper/entity/dto。返回 Result<T> 统一包装。异常 throw TwinBusinessException。SQL 参数用 #{} 绑定。"
+
+### ❌ 绝对禁止（违反即错误）
+
+| 禁止行为 | 正确做法 |
+|---------|---------|
+| SQL 用 `${}` 拼接字符串 | `#{}` 参数绑定（防 SQL 注入） |
+| Controller 方法不校验权限 | 调用 `authContextService.getCurrentUserRole()` |
+| Service 吞异常不抛出 | `throw new TwinBusinessException(ErrorCodeConstants.XXX)` |
+| 返回裸对象不包装 | `Result.success(data)` / `Result.error(code, msg)` |
+| 硬编码错误码数字 | 引用 `ErrorCodeConstants` 常量 |
+| 请求 DTO 不加校验注解 | `@NotNull` / `@NotBlank` / `@Valid` |
+| 新增数据库表不写 SQL 迁移文件 | 在 `common/schema/` 下创建 `V{timestamp}__{描述}.sql` |
+| 不读后端规范直接写代码 | 先执行上方"强制阅读顺序" |
+
+### 🔍 自我审查（代码写完后，提交前）
+
+```bash
+# 检查 SQL 注入风险
+grep -rn '\${' src/main/resources/mapper/   # 应无结果（全部用 #{}）
+# 检查硬编码错误码
+grep -rn 'throw new TwinBusinessException([0-9]' src/main/java/  # 应有 ErrorCodeConstants 常量
+```
+
 ## ⚙️ 项目约定
 
 - 新功能遵循 `docs/架构设计规范.md` 的 Spec 模板
-- 数据库变更必须写 SQL 迁移文件
+- 数据库变更必须写 SQL 迁移文件（`common/schema/V{timestamp}__{描述}.sql`）
 - 文档不写大段代码，聚焦架构决策和接口契约
 - 部署/运维需用户确认，不擅自杀进程
 - 文档/文案必须调用 humanizer skill

@@ -110,7 +110,7 @@ function useUndoRedo() {
   const redo = useCallback(() => { if (cursor >= stack.length - 1) return null; const r = stack[cursor + 1]; setCursor(c => c + 1); return r; }, [cursor, stack]);
   const canUndo = cursor >= 0;
   const canRedo = cursor < stack.length - 1;
-  return { push, undo, redo, canUndo, canRedo };
+  return { push, undo, redo, canUndo, canRedo, stack, cursor };
 }
 
 // ── Column header template ──

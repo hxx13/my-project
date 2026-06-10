@@ -65,55 +65,139 @@
 
 <!--
   AI 执行规则：
-  - 共 11 个工作流（①-⑨ 通用 + ⑩-⑪ 后端专项）
-  - 每个工作流按 Phase 顺序执行，不可跳过标记为 [强制] 的 Phase
-  - 每个 Phase 完成后检查：是否需要写 handoff 文档？（见 @handoff）
+  - 共 11 个工作流，每个按 Phase 顺序执行，不可跳过 [强制] 标记
+  - 🔗 前后端不分家：新功能开发默认同时启动前后端子 agent 并行
+  - Superpowers 技能全部是前后端通用的（brainstorming/plans/TDD/debug/verification）
+  - 每个 Phase 完成后检查是否需要写 handoff 文档
   - gates 为 auto 的：verification 阶段自动扫描改动文件匹配 @gates 注册表
-  - 后端工作流 (④⑩⑪) 遵循 docs/后端架构规范.md
   - 所有工作流结束后：更新 handoff/MANIFEST.json
 -->
+
+### 🔗 前后端联动原则
+
+```
+┌─────────────────────────────────────────────────────┐
+│  前后端不分家 — 全栈功能开发的默认调度模式              │
+│                                                     │
+│  用户: "加一个导出Excel功能"                           │
+│    │                                                │
+│    ├─ Phase 1: brainstorming（同时澄清 FE + BE 需求） │
+│    │                                                │
+│    ├─ Phase 2: writing-plans（一份计划，FE 任务 + BE 任务）│
+│    │                                                │
+│    ├─ Phase 3: executing-plans                       │
+│    │     ├─ 子 Agent A: 前端（frontend-design + react）│
+│    │     └─ 子 Agent B: 后端（Spring Boot + MyBatis） │
+│    │          ↑ 并行执行，互不阻塞 ↑                   │
+│    │                                                │
+│    └─ Phase 4: verification                          │
+│          ├─ 前端门禁: G01/G02/G03/G04                │
+│          └─ 后端门禁: G05                            │
+│                                                     │
+│  例外（不需要并行时）:                                 │
+│    - 纯前端改动（改样式/动画）→ 只调前端 agent         │
+│    - 纯后端改动（加字段/改SQL）→ 只调后端 agent        │
+│    - 用户明确说"只做前端/后端" → 尊重用户意图           │
+└─────────────────────────────────────────────────────┘
+```
+
+### Superpowers 技能双端对照表
+
+<!-- 所有 Superpowers 技能都是前后端通用的，按 Phase 而非按端分类 -->
+
+| 技能 | 适用端 | 在工作流中的角色 |
+|------|--------|----------------|
+| `superpowers:brainstorming` | 🔗 双端 | 需求澄清，同时覆盖 FE + BE 设计 |
+| `superpowers:writing-plans` | 🔗 双端 | 实现计划，拆解 FE 任务 + BE 任务 + 数据库任务 |
+| `superpowers:executing-plans` | 🔗 双端 | 并行执行，自动分派 FE agent + BE agent |
+| `superpowers:subagent-driven-development` | 🔗 双端 | 子 agent 调度，每个 agent 独立负责一端 |
+| `superpowers:test-driven-development` | 🔗 双端 | TDD — Java JUnit 测试 or React 组件测试 |
+| `superpowers:systematic-debugging` | 🔗 双端 | 前端追溯链 or 后端追溯链，按需切换 |
+| `superpowers:verification-before-completion` | 🔗 双端 | 完成前验证，同时检查 FE 门禁 + BE 门禁 |
+| `superpowers:dispatching-parallel-agents` | 🔗 双端 | 显式并行分派多个 agent |
+
+**关键规则**：以上 8 个技能**不分前后端**。脑力工作流（①新功能/②Bug修复/⑧重构）默认全栈视角，同时考虑两端。
+
+---
 
 ---
 
 ### ① 新功能开发 (@workflow:new-feature)
 
+<!-- 🔗 全栈默认：前后端并行调度 -->
+
 ```
 Phase 1: 需求澄清 [强制]
   skill: superpowers:brainstorming
+  必须同时覆盖:
+    前端: 页面/组件/交互/状态/设计系统（@design 当前系统）
+    后端: API/数据库/权限/错误码/模块归属
   产出: 设计规格文档 (docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md)
-  涉及 UI: 同时确认使用的设计系统（默认 @design 当前系统）
+    规格必须包含前后端两部分:
+      前端: 组件树/路由/状态机/Props契约
+      后端: API契约/数据库变更/错误码/权限
   handoff_recommended: true  ← 此阶段后建议开新对话继续
 
-Phase 2: 实现计划
+Phase 2: 实现计划 [强制]
   skill: superpowers:writing-plans
-  产出: 实现计划（任务拆解 + 文件清单）
-  rule: 涉及 UI 的任务 → 计划中须标注"令牌合规检查"步骤
-  rule: 涉及 UI 的任务 → 计划中引用 @design 当前设计系统
+  产出: 一份计划，两组任务
+    FE 任务: 组件/页面/路由/hook/状态管理/设计令牌映射
+    BE 任务: Controller/Service/Mapper/Entity/DTO/SQL迁移/错误码
+    共享任务: API 类型定义（前后端契约）
+  rule: 计划中标注每个任务的端归属（FE/BE/共享）
 
-Phase 3: 编码实现
-  skill: superpowers:executing-plans
-  strategy: 前后端子 agent 并行执行
-  前端 agent 启动顺序:
-    ① 读取 @design 当前设计系统 → 有 skill 则读取 SKILL.md + DESIGN.md
-    ② 读取 docs/UI设计规范与主题标准.md（三层令牌架构）
-    ③ 读取 docs/UI令牌实施调教指南.md（Tailwind 语义类名映射）
-    ④ 将设计 skill 令牌映射到 --app-color-* 语义令牌
-    ⑤ 所有颜色引用 --app-color-* 语义令牌
-    ⑥ 所有 z-index 引用 var(--z-*)
-    ⑦ 禁止硬编码颜色值、禁止定义独立变量体系
-  后端 agent: 遵循 docs/后端架构规范.md
+Phase 3: 编码实现 — 前后端并行 [强制]
+  skill: superpowers:subagent-driven-development
+  strategy: |  ← 同时启动，互不阻塞
+  
+  ┌─ 🔵 前端子 Agent ─────────────────────────────┐
+  │ 启动顺序:                                       │
+  │ ① 读 @design 当前设计系统 → Bento SKILL.md       │
+  │ ② 读 docs/UI设计规范与主题标准.md                │
+  │ ③ 读 docs/UI令牌实施调教指南.md                  │
+  │ ④ 映射到 --app-color-* 语义令牌                  │
+  │ ⑤ 编码组件/页面/路由/hook                         │
+  │ ⑥ 调用 frontend-design + bento + react-best-practices │
+  │ 遵循: @gates G04（令牌合规）                      │
+  └──────────────────────────────────────────────┘
+  
+  ┌─ 🟢 后端子 Agent ─────────────────────────────┐
+  │ 启动顺序:                                       │
+  │ ① 读 docs/后端架构规范.md                        │
+  │ ② 读 common/exception/ErrorCodeConstants.java   │
+  │ ③ 读目标模块已有代码（Controller/Service/Mapper） │
+  │ ④ DTO → Mapper → Service → Controller 自上而下  │
+  │ ⑤ 如有数据库变更 → 触发 ⑩ 子流程写 SQL 迁移      │
+  │ 遵循: @gates G05（后端代码合规）                  │
+  └──────────────────────────────────────────────┘
+  
+  共享: API 类型契约（FE 和 BE 协商一致的 DTO 结构）
 
-Phase 4: 验证
+Phase 4: 验证 — 双端并行 [强制]
   skill: superpowers:verification-before-completion
-  gates: auto  ← 自动扫描改动文件，匹配 @gates 注册表（含 Pre-Code + Post-Code）
-  browser_check: true  ← 用 browser_snapshot 验证页面状态
+  前端验证:
+    gates: G01(动画) + G02(弹窗) + G03(表格) + G04(令牌) — 自动匹配
+    browser_check: browser_snapshot 验证页面状态
+  后端验证:
+    gates: G05(后端代码) — 自动匹配
+    执行: 相关模块测试全部通过
+  rule: 双端都通过才算完成
 ```
 
 ---
 
 ### ② Bug修复 (@workflow:bug-fix)
 
+<!-- 🔗 自动判断 FE/BE/全栈，按需调度 -->
+
 ```
+Phase 0: 判定 Bug 范围 [强制]
+  从 Phase 1 信息收集中自动判断:
+    前端报错（浏览器控制台/渲染异常/交互问题）→ 🔵 FE
+    后端报错（500/日志异常/数据错误/接口超时）→ 🟢 BE
+    两端都有问题（接口报错+前端展示异常）→ 🔗 全栈
+  rule: 判定结果告知用户确认
+
 Phase 1: 信息收集 [强制关卡]
   ⚠️ AI 必须问完以下全部问题后才能进入 Phase 2：
     1. "在哪个页面/哪个操作触发的？"
@@ -123,31 +207,36 @@ Phase 1: 信息收集 [强制关卡]
     5. "这个功能之前正常过吗？最近改了什么相关代码？"
   rule: 信息不足 → 继续追问，不准猜，不准假设
 
-Phase 2: 系统溯源
-  skill: superpowers:systematic-debugging
-  前端bug追溯链: 组件 → hook → state → API调用 → 响应数据 → 渲染
-  后端bug追溯链: Controller → Service → Mapper → SQL → 数据库
+Phase 2: 系统溯源 — 按 Phase 0 判定选择追溯链 [强制]
+  skill: superpowers:systematic-debugging  ← 🔗 双端通用
+  🔵 纯前端: 组件 → hook → state → API调用 → 响应数据 → 渲染
+  🟢 纯后端: Controller → Service → Mapper → SQL → 数据库
+  🔗 全栈: 两链并行，交叉验证（前后端各一个子 agent）
   产出: 根因报告（精确到代码行 + 触发条件 + 影响范围）
 
 Phase 3: 同源扫描 [强制]
   ⚠️ 从根因提炼 bad pattern → grep 全仓库 → 分级标记
+  扫描范围:
+    前端 pattern: 同样的 hook 误用 / 状态管理问题 / 渲染异常
+    后端 pattern: 同样的 SQL 注入 / 空指针 / 权限缺失 / 异常处理缺失
   分级:
     🔴 会触发bug: 相同模式且触发条件满足
     🟡 有风险: 相同模式但触发条件不满足（潜在地雷）
     🟢 安全: 类似代码但写法正确（已有防护）
   rule: 呈现扫描结果给用户 → 用户决定修哪些 → 不准AI自己决定全修
 
-Phase 4: 批量修复
-  skill: superpowers:test-driven-development
+Phase 4: 批量修复 + TDD [强制]
+  skill: superpowers:test-driven-development  ← 🔗 双端通用
   步骤:
-    1. 先写复现测试（证明bug存在）
-    2. 修复所有用户确认要修的位置
-    3. 运行回归测试
-    4. 确认复现测试通过（证明bug修复）
+    ① 先写复现测试（前端: 组件测试 / 后端: JUnit 测试）
+    ② 修复所有用户确认要修的位置
+    ③ 运行全模块回归测试
+    ④ 确认复现测试通过
+  🔗 全栈 bug: FE 和 BE 修复可并行执行
 
 Phase 5: 注册表回写
   action: AI 问用户"要把这个 bug 模式加到门禁注册表吗？"
-  if_yes: 在 @gates 注册表新增一行，写清楚触发条件和检查清单
+  if_yes: 前端模式 → G01~G04 补充 / 后端模式 → G05 补充
   commit: 提交门禁注册表更新
 ```
 
@@ -412,24 +501,35 @@ Phase 4: 冒烟测试
 
 ### ⑧ 重构优化 (@workflow:refactor)
 
+<!-- 🔗 双端通用：前后端各自独立分析，并行重构 -->
+
 ```
-Phase 1: 分析
-  skill: simplify
-  产出: 优化点清单（按影响面排序）
-  涉及 UI 重构: 同步检查 @gates G04 令牌合规 + @design 当前系统对齐
+Phase 1: 分析 — 🔗 前后端各一个子 agent 并行
+  skill: simplify  ← 🔗 双端通用
+  strategy: |
+    ├─ 前端 agent: 分析组件/样式/hook/状态管理 → 优化点清单
+    └─ 后端 agent: 分析 Controller/Service/Mapper/SQL → 优化点清单
+  产出: 合并的优化清单（按影响面排序，标注 FE/BE/共享）
 
 Phase 2: 加固测试 [强制]
-  skill: superpowers:test-driven-development
-  确保: 重构前有足够测试覆盖
+  skill: superpowers:test-driven-development  ← 🔗 双端通用
+  确保: 重构前有足够测试覆盖（前端组件测试 + 后端 JUnit）
 
-Phase 3: 重构
-  rule: 小步提交，每步可回滚
-  rule: 不改行为，只改结构
-  rule: UI 重构不得引入新的硬编码颜色或独立变量体系
+Phase 3: 重构 — 🔗 前后端可并行
+  前端:
+    rule: 小步提交，每步可回滚
+    rule: 不得引入新的硬编码颜色或独立变量体系
+    rule: 遵循 @gates G04（令牌合规）
+  后端:
+    rule: 不改 API 契约（除非用户明确要求）
+    rule: 不改变数据库结构
+    rule: 遵循 @gates G05（后端代码合规）
 
-Phase 4: 验证
-  skill: superpowers:verification-before-completion
-  check: 重构前后测试全绿 + 功能不变 + 令牌合规
+Phase 4: 验证 — 双端并行
+  skill: superpowers:verification-before-completion  ← 🔗 双端通用
+  check:
+    前端: 测试全绿 + G04 令牌合规 + 视觉回归
+    后端: 测试全绿 + G05 后端代码合规 + API 响应不变
 ```
 
 ---
@@ -481,6 +581,7 @@ Phase 3: 输出
 | ID | 触发条件 | 检查清单 | 确认方式 |
 |----|---------|---------|---------|
 | G04 | **任何 .css/.scss/.tsx/.jsx 文件新增或修改** | ① 是否定义了独立于项目令牌体系的新 CSS 变量（如 `--smartsheet-*` 而非引用 `--app-color-*`）？→ 必须重写为组件令牌（第三层），引用语义令牌（第二层） ② 是否出现硬编码颜色（`bg-white`、`bg-[#09090b]`、`dark:bg-[#131316]`、`text-slate-800`、`bg-slate-50`、`bg-gray-*`、`bg-zinc-*`）？→ 必须替换为 `var(--app-color-*)` 或 Tailwind 语义类名 ③ z-index 是否使用了裸数字（`z-50`）而非项目令牌（`var(--z-dropdown)` = 200, `var(--z-modal)` = 800）？ ④ 新增 CSS 文件是否定义了独立主题变量而非组件令牌？→ 组件令牌 = `--<component>-<prop>` 引用 `var(--app-color-<semantic>)` ⑤ 暗色主题值是否与 `docs/UI设计规范与主题标准.md` §4.6 官方映射一致？ | **执行自查命令**: `grep -rn 'bg-\[#' frontend/src/` → 应无结果；`grep -rn 'bg-white\|bg-slate\|bg-gray\|bg-zinc' frontend/src/` → 应无结果（排除 node_modules）；`grep -rn 'z-\[[0-9]' frontend/src/` → 应有 var(--z-*) 而非裸数字 → 违规项逐条报告 → 人工确认后修复 |
+| G05 | **任何 .java 文件新增或修改（后端）** | ① SQL 是否使用 `${}` 拼接字符串？→ 必须改为 `#{}` 参数绑定（防 SQL 注入） ② 是否缺少异常处理？→ Controller/Service 必须 try-catch 或 throw TwinBusinessException ③ 是否缺少权限校验？→ Controller 层必须调用 authContextService 验证角色 ④ 是否硬编码错误码数字？→ 必须引用 ErrorCodeConstants 常量 ⑤ 是否缺少 @Valid 校验？→ 请求 DTO 必须加校验注解 ⑥ 返回类型是否用 Result<T> 统一包装？→ 必须 `Result.success(data)` / `Result.error(code, msg)` | Grep 扫描新增 .java 文件 → 检查 SQL 注入/异常处理/权限校验/错误码 → 违规项逐条报告 → 人工确认后修复 |
 
 ### Post-Code 门禁（验证阶段触发）
 
@@ -705,14 +806,28 @@ docs/superpowers/handoff/
 | `agent-skills:react-best-practices` | React 最佳实践 | React 组件开发 |
 | `agent-skills:web-design-guidelines` | Web 设计规范 | 设计系统/规范 |
 | `gsap-core` ~ `gsap-utils` | GSAP 动画（8个） | 动画/过渡效果 |
-| `code-review` | 代码审查 | PR review |
-| `simplify` | 代码简化 | 重构优化 |
-| `security-review` | 安全审查 | 安全审计 |
+| `code-review` | 代码审查（前后端通用） | PR review |
+| `simplify` | 代码简化（前后端通用） | 重构优化 |
+| `security-review` | 安全审查（前后端通用） | 安全审计 |
 | `verify` | 验证变更 | 确认修改正确 |
 | `humanizer` | 去 AI 痕迹 | 文档/文案写作 [强制执行] |
 | `deep-research` | 深度调研 | 技术调研/竞品分析 |
 | `update-config` | 配置管理 | 修改 settings.json |
 | `loop` | 循环任务 | 定时检查/轮询 |
+
+### 后端专用 Skills（可按需从中文合集安装）
+
+| Skill | 用途 | 安装方式 |
+|-------|------|---------|
+| `api-tester` | 自动解析 OpenAPI，快速生成接口测试思路 | 从 [laolaoshiren/claude-code-skills-zh](https://github.com/laolaoshiren/claude-code-skills-zh) 复制 |
+| `db-migrator` | 生成 SQL 迁移脚本，检查兼容性 | 同上 |
+| `error-translator` | 英文错误 → 中文可读解释 | 同上 |
+| `log-analyzer` | 日志模式匹配，定位异常请求 | 同上 |
+| `perf-profiler` | 后端性能瓶颈定位，优先级明确 | 同上 |
+| `refactor-advisor` | 找代码坏味道，给出可执行重构建议 | 同上 |
+| `security-audit` | 后端安全漏洞扫描（注入/越权/敏感信息） | 同上 |
+| `dep-auditor` | Maven 依赖审计，版本冲突/已知漏洞 | 同上 |
+| `test-generator` | 自动生成单元测试骨架 | 同上 |
 
 ### MCP 工具
 
