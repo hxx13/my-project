@@ -168,6 +168,7 @@ export default function SmartSheetGrid({
         size: 130, minSize: 90, enableSorting: false,
       });
     }
+    if (!columns || !Array.isArray(columns)) return defs;
     for (let ci = 0; ci < columns.length; ci++) {
       const col = columns[ci]; const colIdx = ci;
       defs.push({
@@ -177,8 +178,8 @@ export default function SmartSheetGrid({
           const rawVal = (row.original.cellData || {})[col.key];
           const isEditing = editingCell?.rowId === row.original.id && editingCell?.colKey === col.key;
           if (isEditing) {
-            const rowIdx = rows.findIndex(r => r.id === row.original.id);
-            const nextRow = rowIdx < rows.length - 1 ? rows[rowIdx + 1] : null;
+            const rowIdx = rows?.findIndex(r => r.id === row.original.id) ?? -1;
+            const nextRow = rowIdx >= 0 && rowIdx < (rows?.length ?? 0) - 1 ? rows![rowIdx + 1] : null;
             const prevRow = rowIdx > 0 ? rows[rowIdx - 1] : null;
             return (
               <CellEditor value={getCellValue(rawVal)} type={col.type} options={col.options}
