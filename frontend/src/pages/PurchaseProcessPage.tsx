@@ -259,7 +259,7 @@ export default function PurchaseProcessPage() {
       {previewUrl &&
         createPortal(
           <div
-            className="fixed inset-0 z-[1200] bg-black/70 flex items-center justify-center p-4"
+            className="fixed inset-0 top-16 z-[1200] bg-black/70 flex items-center justify-center p-4"
             onClick={() => setPreviewUrl("")}
           >
             <img

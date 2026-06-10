@@ -157,7 +157,7 @@ export function StudentDahuaBindPanel({
   const cardReady = isValidStudentDahuaCardNo(cardNo);
 
   return (
-    <div className="fixed inset-0 z-[100001] flex items-center justify-center bg-[#050A15]/90 backdrop-blur-md p-4">
+    <div className="fixed inset-0 top-16 z-[100001] flex items-center justify-center bg-[#050A15]/90 backdrop-blur-md p-4">
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0a0f1d] shadow-2xl p-5 text-white">
         <h3 className="text-base font-black mb-1">绑定校园卡</h3>
         <p className="text-[11px] text-slate-400 mb-4">
