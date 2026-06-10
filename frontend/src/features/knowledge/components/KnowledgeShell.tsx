@@ -12,6 +12,7 @@ import { KnowledgeEditorPanel } from "./KnowledgeEditorPanel";
 import { KnowledgeGraphView } from "./KnowledgeGraphView";
 import { KnowledgeTimelineView } from "./KnowledgeTimelineView";
 import { KnowledgeHistoryDrawer } from "./KnowledgeHistoryDrawer";
+import { BacklinksList } from "./BacklinksList";
 import { AlertTriangle, RefreshCw, Pencil, Clock, ArrowLeft } from "lucide-react";
 
 export function KnowledgeShell() {
@@ -179,7 +180,12 @@ export function KnowledgeShell() {
   // ── Right panel (browse mode only) ──
   const renderOutline = () => {
     if (shell.isEditing || shell.view !== "browse" || !page) return null;
-    return <KnowledgePageOutline contentMd={page.contentMd} contentHtml={page.contentHtml} />;
+    return (
+      <>
+        <KnowledgePageOutline contentMd={page.contentMd} contentHtml={page.contentHtml} />
+        <BacklinksList pageId={page.id} onSelectPage={shell.selectPage} />
+      </>
+    );
   };
 
   return (
@@ -199,6 +205,14 @@ export function KnowledgeShell() {
           outline={renderOutline()}
           content={renderCenter()}
         />
+      </div>
+
+      {/* Status bar */}
+      <div className="knowledge-status-bar flex items-center gap-2 px-3 h-5 shrink-0 border-t border-[var(--app-color-border-default)]">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+        <span>{tree?.length ?? 0} 分类</span>
+        <span className="opacity-40">·</span>
+        <span>{tree?.reduce((sum, n) => sum + n.pages.length + n.children.reduce((s, c) => s + c.pages.length, 0), 0) ?? 0} 篇</span>
       </div>
 
       <KnowledgeHistoryDrawer

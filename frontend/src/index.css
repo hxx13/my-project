@@ -1,45 +1,58 @@
+/* ── 第三方 ── */
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/figtree";
+
+/* ── TwinSystem 设计令牌（新体系） ── */
+@import "@/styles/tokens.css";
+@import "@/styles/semantic.css";
+
+/* ── 学生端独立令牌（保留，后续逐步合并） ── */
 @import "@/features/student/config/student-design-tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  /* ═══════ shadcn 兼容映射（保留现有组件不崩） ═══════ */
   :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
+    --background:            var(--app-color-surface-page);
+    --foreground:            var(--app-color-text-primary);
+    --card:                  var(--app-color-surface-container);
+    --card-foreground:       var(--app-color-text-primary);
+    --popover:               var(--app-color-surface-elevated);
+    --popover-foreground:    var(--app-color-text-primary);
+    --primary:               var(--app-color-accent);
+    --primary-foreground:    var(--color-white);
+    --secondary:             var(--app-color-surface-hover);
+    --secondary-foreground:  var(--app-color-text-primary);
+    --muted:                 var(--app-color-surface-hover);
+    --muted-foreground:      var(--app-color-text-secondary);
+    --accent:                var(--app-color-accent-soft);
+    --accent-foreground:     var(--app-color-text-primary);
+    --destructive:           var(--app-color-feedback-danger);
+    --destructive-foreground: var(--color-white);
+    --border:                var(--app-color-border-default);
+    --input:                 var(--app-color-border-default);
+    --ring:                  var(--app-color-accent);
+    --radius:                var(--app-radius-element);
+
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
     --chart-3: oklch(0.546 0.245 262.881);
     --chart-4: oklch(0.488 0.243 264.376);
     --chart-5: oklch(0.424 0.199 265.638);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+
+    --sidebar:               var(--app-color-surface-container);
+    --sidebar-foreground:    var(--app-color-text-primary);
+    --sidebar-primary:       var(--app-color-accent);
+    --sidebar-primary-foreground: var(--color-white);
+    --sidebar-accent:        var(--app-color-surface-hover);
+    --sidebar-accent-foreground: var(--app-color-text-primary);
+    --sidebar-border:        var(--app-color-border-default);
+    --sidebar-ring:          var(--app-color-accent);
+
     /* 后台工具栏密度（Fluent 命令栏轻量对齐） */
     --admin-toolbar-gap: 0.5rem;
     --admin-toolbar-row-gap: 0.75rem;
@@ -71,39 +84,9 @@
     --twin-success: #0070f3;
     --twin-page-bg: #fafafa;
   }
+  /* 暗色模式下 shadcn 变量跟随语义令牌自动切换（无需手动覆盖） */
+  /* Twin dark tokens — 保留与旧系统的兼容 */
   .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.809 0.105 251.813);
-    --chart-2: oklch(0.623 0.214 259.815);
-    --chart-3: oklch(0.546 0.245 262.881);
-    --chart-4: oklch(0.488 0.243 264.376);
-    --chart-5: oklch(0.424 0.199 265.638);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
-    /* Twin dark tokens */
     --twin-ink: #f7f8f8;
     --twin-body: #d0d6e0;
     --twin-mute: #8a8f98;
@@ -336,4 +319,133 @@ html[data-modal-scroll-lock] body {
 
 [data-modal-scroll] {
   overscroll-behavior: contain;
+}
+
+/* ═══════════════════════════════════════════
+   知识库文档排版（docs-prose）
+   ═══════════════════════════════════════════ */
+.docs-prose {
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--app-color-text-primary);
+  font-family: 'Figtree Variable', ui-sans-serif, system-ui, sans-serif;
+  max-width: 900px;
+}
+.docs-prose h1 {
+  margin-top: 2.5rem; margin-bottom: 1rem; font-size: 1.5rem; font-weight: 700;
+  letter-spacing: -0.02em; color: var(--app-color-text-primary);
+  border-bottom: 1px solid var(--app-color-border-default); padding-bottom: 0.5rem;
+}
+.docs-prose h2 {
+  margin-top: 2rem; margin-bottom: 0.75rem; font-size: 1.25rem; font-weight: 600;
+  letter-spacing: -0.01em; color: var(--app-color-text-primary);
+}
+.docs-prose h3 {
+  margin-top: 1.5rem; margin-bottom: 0.5rem; font-size: 1.125rem; font-weight: 600;
+  color: var(--app-color-text-primary);
+}
+.docs-prose h4 {
+  margin-top: 1rem; margin-bottom: 0.5rem; font-size: 1rem; font-weight: 500;
+  color: var(--app-color-text-secondary);
+}
+.docs-prose p { margin-bottom: 1rem; line-height: 1.75; }
+.docs-prose a {
+  color: var(--app-color-accent); text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--app-color-accent) 30%, transparent);
+  text-underline-offset: 2px;
+}
+.docs-prose a:hover { text-decoration-color: var(--app-color-accent); }
+
+.docs-prose code:not(pre code) {
+  border-radius: 0.375rem; background: var(--app-color-surface-hover);
+  padding: 0.125rem 0.375rem; font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 0.9em; color: var(--app-color-text-primary); font-weight: 500;
+}
+.docs-prose pre {
+  margin: 1.25rem 0; overflow-x: auto; border-radius: 0.75rem;
+  border: 1px solid var(--app-color-border-default); background: #0f172a; padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.docs-prose pre code {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 0.875rem; line-height: 1.65; color: #e2e8f0;
+}
+.docs-prose table {
+  margin: 1.25rem 0; width: 100%; border-collapse: collapse; overflow: hidden;
+  border-radius: 0.5rem; border: 1px solid var(--app-color-border-default); font-size: 0.9em;
+}
+.docs-prose thead { background: var(--app-color-surface-hover); }
+.docs-prose th {
+  border-bottom: 1px solid var(--app-color-border-default); padding: 0.625rem 1rem;
+  text-align: left; font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--app-color-text-secondary);
+}
+.docs-prose td {
+  border-bottom: 1px solid var(--app-color-border-default); padding: 0.625rem 1rem;
+  color: var(--app-color-text-primary);
+}
+.docs-prose tr:last-child td { border-bottom: 0; }
+.docs-prose ul, .docs-prose ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+.docs-prose li { margin-bottom: 0.375rem; line-height: 1.75; }
+.docs-prose ul > li { list-style: disc; }
+.docs-prose ol > li { list-style: decimal; }
+.docs-prose li::marker { color: var(--app-color-text-tertiary); }
+.docs-prose blockquote {
+  margin: 1.25rem 0; border-left: 3px solid var(--app-color-accent);
+  background: color-mix(in srgb, var(--app-color-accent-soft) 50%, transparent);
+  padding: 0.75rem 1.25rem; color: var(--app-color-text-secondary); font-style: italic;
+}
+.docs-prose hr { margin: 2rem 0; border: 0; border-top: 1px solid var(--app-color-border-default); }
+.docs-prose img {
+  margin: 1.25rem 0; max-width: 100%; border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.docs-prose strong { font-weight: 600; color: var(--app-color-text-primary); }
+
+/* ═══════════════════════════════════════════
+   知识花园（Knowledge Digital Garden）
+   ═══════════════════════════════════════════ */
+
+/* Wikilink styling */
+.knowledge-wikilink {
+  color: var(--app-color-accent);
+  cursor: pointer;
+  border-bottom: 1px dashed color-mix(in srgb, var(--app-color-accent) 40%, transparent);
+  transition: all 0.15s;
+}
+.knowledge-wikilink:hover {
+  color: var(--app-color-accent);
+  border-bottom-style: solid;
+  background: var(--app-color-accent-soft);
+  border-radius: 2px;
+}
+
+/* History drawer slide-in */
+@keyframes knowledge-slide-in-right {
+  from { transform: translate3d(100%, 0, 0); opacity: 0; }
+  to   { transform: translate3d(0, 0, 0);    opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .knowledge-slide-in-right {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Shell content cross-fade */
+.knowledge-content-enter {
+  animation: knowledge-fade-in 0.15s ease-out both;
+}
+@keyframes knowledge-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Status bar */
+.knowledge-status-bar {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  font-size: 10px;
+  background: #0d1117;
+  color: #8b949e;
 }
