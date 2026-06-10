@@ -30,6 +30,14 @@ function getCellValue(raw: unknown): string {
   return String(raw);
 }
 
+// ── Extract CellFormat from a CellValue or return empty ──
+function getCellFormat(raw: unknown): import('@/features/smartsheet/types').CellFormat {
+  if (raw && typeof raw === 'object' && 'fmt' in (raw as any)) {
+    return (raw as any).fmt || {};
+  }
+  return {};
+}
+
 // ── Cell value CSS class by type + value ──
 function cellClass(raw: unknown, type: ColumnType): string {
   const v = getCellValue(raw);
@@ -152,8 +160,16 @@ export default function SmartSheetGrid({
                 onPrev={() => prevRow && setEditingCell({ rowId: prevRow.id, colKey: col.key })} />
             );
           }
+          const fmt = getCellFormat(rawVal);
           return (
             <span className={cellClass(rawVal, col.type)}
+                  style={{
+                    fontWeight: fmt.b ? 700 : undefined,
+                    fontStyle: fmt.i ? 'italic' : undefined,
+                    fontSize: fmt.size ? `${fmt.size}px` : undefined,
+                    backgroundColor: fmt.bg || undefined,
+                    color: fmt.color || undefined,
+                  }}
                   onClick={() => setEditingCell({ rowId: row.original.id, colKey: col.key })}
                   onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, rowId: row.original.id, rowIdx: row.index }); }}>
               {displayVal(rawVal, col.type)}
