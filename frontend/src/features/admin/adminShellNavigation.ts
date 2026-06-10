@@ -17,6 +17,8 @@ const SECONDARY_ROUTE_TITLE: Record<string, string> = {
   "/admin/supplies/claim-export": "领用单导出",
   "/admin/supplies/manage": "物资管理",
   "/admin/supplies/process": "领用出库处理",
+  "/admin/material/review": "申领审核",
+  "/admin/material/audit": "物资统计与审计",
 };
 
 /** 无 location.state.returnTo 时的默认回退路径 */
@@ -25,6 +27,8 @@ const DEFAULT_BACK_PARENT: Record<string, string> = {
   "/admin/supplies/claim-export": "/admin/supplies/mine",
   "/admin/supplies/manage": "/admin/supplies",
   "/admin/supplies/process": "/admin/supplies/audit-export",
+  "/admin/material/review": "/admin",
+  "/admin/material/audit": "/admin/material/review",
 };
 
 export function collectSidebarEntryPathsFromPerm(permNodes: PublicPagePermissionNode[]): Set<string> {

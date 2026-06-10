@@ -1,0 +1,50 @@
+<h2>精简设计 · 学生物资申领系统</h2>
+<p class="subtitle">最小化入口，清晰边界</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">🎓 学生端侧边栏</div>
+    <div class="mockup-body" style="font-size:13px;line-height:2;">
+      👤 个人身份卡片<br>
+      <strong>⚡ 快捷操作</strong><br>
+      &nbsp;&nbsp;🔑 我的门禁权限<br>
+      &nbsp;&nbsp;📋 出入记录<br>
+      &nbsp;&nbsp;⚠️ 违规记录<br>
+      &nbsp;&nbsp;🧠 AI 个人画像<br>
+      &nbsp;&nbsp;<span style="color:var(--accent);font-weight:600;">🆕 申领物品</span> ← 唯一新增入口<br>
+      <br>
+      <span style="font-size:11px;color:var(--text-secondary);">
+      📌 只能看到 <strong>自己的</strong> 申领记录<br>
+      📌 快捷操作 + 扫码弹窗预留快速接口
+      </span>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">👩‍🏫 教职工端管理后台</div>
+    <div class="mockup-body" style="font-size:13px;line-height:2;">
+      ... 现有管理菜单 ...<br>
+      <span style="color:var(--accent);font-weight:600;">📁 审核</span> ← 新增文件夹<br>
+      &nbsp;&nbsp;<span style="color:var(--accent);">📋 申领审核</span><br>
+      <br>
+      <span style="font-size:11px;color:var(--text-secondary);">
+      📌 能看到 <strong>所有人的</strong> 申领记录<br>
+      📌 审核 + 出库履行 + 统计审计
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>📊 统计审计（教职工端）</h3>
+  <div class="mockup">
+    <div class="mockup-body" style="font-size:13px;">
+      <p>审计维度覆盖（排除审核人效率统计）：</p>
+      <ul>
+        <li><strong>学生维度</strong>：申领人、数量、所属课题组、时间、频次、通过率</li>
+        <li><strong>物资维度</strong>：物品被申领排行、库存周转、趋势</li>
+        <li><strong>审计流水</strong>：全字段记录，支持导出</li>
+        <li><strong>接口粒度</strong>：每个统计项独立方法，注释完整，预留 agent 调用</li>
+      </ul>
+    </div>
+  </div>
+</div>

@@ -143,3 +143,21 @@ export const queryKeys = {
       ["facilityMaintenance", "inspections", params ?? {}] as const,
   },
 } as const;
+
+/** 学生物资申领模块 query keys — 数据隔离于 supplies */
+export const materialQueryKeys = {
+  all: ["material"] as const,
+  categories: () => [...materialQueryKeys.all, "categories"] as const,
+  items: (categoryId?: number) => [...materialQueryKeys.all, "items", { categoryId }] as const,
+  cart: () => [...materialQueryKeys.all, "cart"] as const,
+  requests: () => [...materialQueryKeys.all, "requests"] as const,
+  myRequests: (params: Record<string, unknown>) => [...materialQueryKeys.requests(), "mine", params] as const,
+  requestDetail: (id: string) => [...materialQueryKeys.requests(), "detail", id] as const,
+  myStats: () => [...materialQueryKeys.all, "stats", "mine"] as const,
+  adminCategories: () => [...materialQueryKeys.all, "admin", "categories"] as const,
+  adminItems: (categoryId?: number) => [...materialQueryKeys.all, "admin", "items", { categoryId }] as const,
+  pendingRequests: () => [...materialQueryKeys.requests(), "pending"] as const,
+  allRequests: (params: Record<string, unknown>) => [...materialQueryKeys.requests(), "all", params] as const,
+  statsOverview: (from?: string, to?: string) => [...materialQueryKeys.all, "stats", "overview", { from, to }] as const,
+  auditTrail: (params: Record<string, unknown>) => [...materialQueryKeys.all, "stats", "audit", params] as const,
+};

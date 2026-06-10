@@ -1,0 +1,85 @@
+/* smartsheet-theme.css — revo-grid theme bridge
+   ═══════════════════════════════════════════
+   组件令牌层：--smartsheet-* 全部引用 --app-* 语义令牌
+   遵守 docs/UI设计规范与主题标准.md §二 令牌分层架构
+   ═══════════════════════════════════════════ */
+
+/* ═══════ 亮色主题：组件令牌 → 语义令牌 ═══════ */
+:root {
+  --smartsheet-bg:              var(--app-color-surface-container);
+  --smartsheet-surface:         var(--app-color-surface-page);
+  --smartsheet-border:          var(--app-color-border-default);
+  --smartsheet-border-heavy:    var(--app-color-border-strong);
+  --smartsheet-text:            var(--app-color-text-primary);
+  --smartsheet-text-secondary:  var(--app-color-text-secondary);
+  --smartsheet-text-tertiary:   var(--app-color-text-tertiary);
+  --smartsheet-accent:          var(--app-color-accent);
+  --smartsheet-accent-glow:     rgba(250, 212, 192, 0.18); /* 🍱 Bento peach glow */
+  --smartsheet-hover:           var(--app-color-surface-hover);
+  --smartsheet-selected:        var(--app-color-surface-active);
+  --smartsheet-zebra:           rgba(0, 0, 0, 0.02);
+  --smartsheet-header-bg:       var(--app-color-surface-page);
+  --smartsheet-row-header-bg:   rgba(250, 212, 192, 0.10); /* 🍱 Bento warm peach tint */
+  --smartsheet-success:         var(--app-color-feedback-success);
+  --smartsheet-warning:         var(--app-color-feedback-warning);
+  --smartsheet-danger:          var(--app-color-feedback-danger);
+}
+
+/* ═══════ 暗色主题：覆盖组件令牌映射 ═══════ */
+.dark {
+  --smartsheet-bg:              var(--app-color-surface-container);
+  --smartsheet-surface:         var(--app-color-surface-page);
+  --smartsheet-border:          var(--app-color-border-default);
+  --smartsheet-border-heavy:    var(--app-color-border-strong);
+  --smartsheet-text:            var(--app-color-text-primary);
+  --smartsheet-text-secondary:  var(--app-color-text-secondary);
+  --smartsheet-text-tertiary:   var(--app-color-text-tertiary);
+  --smartsheet-accent:          var(--color-steel-400);     /* 🍱 Bento steel blue #80A1C1 */
+  --smartsheet-accent-glow:     rgba(128, 161, 193, 0.15); /* 🍱 Bento steel glow */
+  --smartsheet-hover:           var(--app-color-surface-hover);
+  --smartsheet-selected:        var(--app-color-surface-active);
+  --smartsheet-zebra:           rgba(255, 255, 255, 0.015);
+  --smartsheet-header-bg:       var(--app-color-surface-elevated);
+  --smartsheet-row-header-bg:   rgba(250, 212, 192, 0.06);
+  --smartsheet-success:         var(--app-color-feedback-success);
+  --smartsheet-warning:         var(--app-color-feedback-warning);
+  --smartsheet-danger:          var(--app-color-feedback-danger);
+}
+
+/* ═══════ revo-grid 变量注入 ═══════ */
+revo-grid {
+  --background-color:       var(--smartsheet-bg);
+  --border-color:           var(--smartsheet-border);
+  --header-background-color: var(--smartsheet-header-bg);
+  --header-text-color:      var(--smartsheet-text-secondary);
+  --cell-text-color:        var(--smartsheet-text);
+  --cell-hover-color:       var(--smartsheet-hover);
+  --cell-selection-color:   var(--smartsheet-selected);
+  --cell-focus-outline-color: var(--smartsheet-accent);
+}
+
+/* ═══════ 斑马纹 ═══════ */
+.smartsheet-zebra .revo-grid .row:nth-child(even) .cell {
+  background-color: var(--smartsheet-zebra);
+}
+
+/* ═══════ 冻结窗格 ═══════ */
+.smartsheet-frozen .revo-grid .frozen-border {
+  box-shadow: 2px 0 0 var(--smartsheet-border-heavy);
+}
+
+/* ═══════ 条件格式 ═══════ */
+.smartsheet-cf-great { color: var(--smartsheet-success); font-weight: 600; }
+.smartsheet-cf-warn  { color: var(--smartsheet-warning); }
+.smartsheet-cf-bad   { color: var(--smartsheet-danger); font-weight: 600; }
+
+/* ═══════ 单元格注释角标 ═══════ */
+.smartsheet-cell-comment {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  background: var(--smartsheet-danger);
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+}

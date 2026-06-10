@@ -38,10 +38,16 @@
       "mcp__playwright__browser_run_code_unsafe",
       "mcp__firecrawl__firecrawl_search",
       "mcp__firecrawl__firecrawl_scrape",
-      "Bash(rm \"d:/codex/verson.1.2/20260416/.claude/settings.json\" && echo \"removed\")"
+      "Bash(rm \"d:/codex/verson.1.2/20260416/.claude/settings.json\" && echo \"removed\")",
+      "mcp__firecrawl__firecrawl_map",
+      "Bash(rm -f .git/index.lock)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(cd \"d:\\\\codex\\\\verson.1.2\\\\20260416\" && rm -f .git/index.lock && git add \"docs/UI设计规范与主题标准.md\" && git commit -m \"docs: formalize top-16 rule for all admin modals \\(systemic fix\\)\")"
     ],
     "additionalDirectories": [
-      "d:\\codex\\verson.1.2\\20260416\\.claude"
+      "d:\\codex\\verson.1.2\\20260416\\.claude",
+      "d:\\codex\\verson.1.2\\20260416\\.git"
     ]
   }
 }

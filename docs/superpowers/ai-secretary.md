@@ -77,21 +77,31 @@
 Phase 1: 需求澄清 [强制]
   skill: superpowers:brainstorming
   产出: 设计规格文档 (docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md)
+  涉及 UI: 同时确认使用的设计系统（默认 @design 当前系统）
   handoff_recommended: true  ← 此阶段后建议开新对话继续
 
 Phase 2: 实现计划
   skill: superpowers:writing-plans
   产出: 实现计划（任务拆解 + 文件清单）
+  rule: 涉及 UI 的任务 → 计划中须标注"令牌合规检查"步骤
+  rule: 涉及 UI 的任务 → 计划中引用 @design 当前设计系统
 
 Phase 3: 编码实现
   skill: superpowers:executing-plans
   strategy: 前后端子 agent 并行执行
-  前端 agent: frontend-design + agent-skills:react-best-practices
+  前端 agent 启动顺序:
+    ① 读取 @design 当前设计系统 → 有 skill 则读取 SKILL.md + DESIGN.md
+    ② 读取 docs/UI设计规范与主题标准.md（三层令牌架构）
+    ③ 读取 docs/UI令牌实施调教指南.md（Tailwind 语义类名映射）
+    ④ 将设计 skill 令牌映射到 --app-color-* 语义令牌
+    ⑤ 所有颜色引用 --app-color-* 语义令牌
+    ⑥ 所有 z-index 引用 var(--z-*)
+    ⑦ 禁止硬编码颜色值、禁止定义独立变量体系
   后端 agent: 遵循 docs/后端架构规范.md
 
 Phase 4: 验证
   skill: superpowers:verification-before-completion
-  gates: auto  ← 自动扫描改动文件，匹配 @gates 注册表
+  gates: auto  ← 自动扫描改动文件，匹配 @gates 注册表（含 Pre-Code + Post-Code）
   browser_check: true  ← 用 browser_snapshot 验证页面状态
 ```
 
@@ -142,18 +152,31 @@ Phase 5: 注册表回写
 ### ③ UI/前端调整 (@workflow:ui-change)
 
 ```
+Phase 0: 设计资源加载 [强制，编码前]
+  ⚠️ AI 必须先按 @design 调用链加载资源：
+    ① 检查 CLAUDE.md "当前设计系统" → 🍱 Bento → 读取 .claude/skills/bento/SKILL.md
+    ② 读取 .claude/skills/bento/DESIGN.md 获取令牌表
+    ③ 读取 docs/UI设计规范与主题标准.md（三层令牌：基础→语义→组件）
+    ④ 读取 docs/UI令牌实施调教指南.md（Tailwind 语义类名、暗色映射）
+    ⑤ 输出: "当前使用 Bento 风格（暖桃色+钢蓝），令牌映射到 --app-color-*"
+  rule: 任何新 CSS 变量必须属于第三层（组件令牌），引用 --app-color-* 语义令牌
+  rule: 禁止定义独立的 --xxx-* 变量体系
+
 Phase 1: 设计
   skill: frontend-design
+  叠加: bento ← 应用 Bento 组件规则（圆角 sm=4px md=8px，间距 4/8/12/16/24/32）
   遵循: docs/UI设计规范与主题标准.md
+  output: 设计稿须注明所用令牌 + Bento 规则（如 "bg: var(--app-color-surface-container), rounded: var(--bento-radius-md)"）
 
 Phase 2: 编码
   遵循: docs/前端Web架构规范.md
   动画相关: 使用 gsap-react + gsap-scrolltrigger
   新组件: 遵循 docs/知识库UI状态与通用组件规范.md
+  ⚠️ 编码时自动匹配 @gates Pre-Code 规则（G04令牌合规）
 
 Phase 3: 验证
   skill: superpowers:verification-before-completion
-  gates: auto  ← 自动匹配 @gates 注册表（G01动画/G02弹窗/G03表格）
+  gates: auto  ← 自动匹配 @gates 注册表（G01动画/G02弹窗/G03表格/G04令牌）
   browser_check: true
   确认方式: browser_snapshot + browser_evaluate → 结构化报告 → 人工确认
 ```
@@ -189,11 +212,12 @@ Phase 3: 验证
 执行策略: 三线并行
   ├─ 线1: code-review（正确性 + 代码质量）
   ├─ 线2: security-review（安全漏洞：注入/越权/敏感信息泄露）
-  └─ 线3: simplify（重复代码/过度设计/可简化点）
+  ├─ 线3: simplify（重复代码/过度设计/可简化点）
+  └─ 线4: @gates G04 令牌合规检查（自动扫描改动文件中的颜色/z-index/变量定义）
 
 产出: 汇总报告
-  - 🔴 必须修: 安全漏洞 + 逻辑错误
-  - 🟡 建议修: 代码异味 + 可简化点
+  - 🔴 必须修: 安全漏洞 + 逻辑错误 + 令牌不合规（硬编码颜色/裸z-index/独立变量体系）
+  - 🟡 建议修: 代码异味 + 可简化点 + 设计风格偏离 @design 当前系统
   - 🟢 好实践: 值得保留的模式
 ```
 
@@ -209,6 +233,7 @@ Phase 1: 调研（如需要）
 Phase 2: 撰写
   遵循: docs/架构设计规范.md（Spec 必选章节模板）
   原则: 文档聚焦架构决策和接口契约，不写大段代码 [[feedback_no_code_in_docs]]
+  涉及设计/UI文档: 引用 @design 当前系统令牌（勿硬编码颜色值）
 
 Phase 3: 人味化 [强制]
   skill: humanizer  ← 不可跳过
@@ -248,6 +273,7 @@ Phase 4: 冒烟测试
 Phase 1: 分析
   skill: simplify
   产出: 优化点清单（按影响面排序）
+  涉及 UI 重构: 同步检查 @gates G04 令牌合规 + @design 当前系统对齐
 
 Phase 2: 加固测试 [强制]
   skill: superpowers:test-driven-development
@@ -256,10 +282,11 @@ Phase 2: 加固测试 [强制]
 Phase 3: 重构
   rule: 小步提交，每步可回滚
   rule: 不改行为，只改结构
+  rule: UI 重构不得引入新的硬编码颜色或独立变量体系
 
 Phase 4: 验证
   skill: superpowers:verification-before-completion
-  check: 重构前后测试全绿 + 功能不变
+  check: 重构前后测试全绿 + 功能不变 + 令牌合规
 ```
 
 ---
@@ -285,25 +312,34 @@ Phase 3: 输出
 
 <!--
   AI 规则：
-  1. verification 阶段自动扫描改动的文件
-  2. 匹配"触发条件"列 → 命中则执行"检查清单"
-  3. 用 browser_snapshot + browser_evaluate 产出结构化报告
-  4. 报告呈现给人类确认 → 人类点头才能继续
+  1. Pre-Code 门禁：编码前自动检查（不依赖 browser）
+  2. Post-Code 门禁：verification 阶段自动扫描改动文件
+  3. 匹配"触发条件"列 → 命中则执行"检查清单"
+  4. Post-Code 用 browser_snapshot + browser_evaluate 产出报告
+  5. Pre-Code 用 grep + Read 验证代码合规
+  6. 报告呈现给人类确认 → 人类点头才能继续
 
   人类规则：
   1. 发现新问题模式 → 对 AI 说"加到门禁" → AI 新增一行
   2. 某条门禁不再适用 → 删除对应行
-  3. 格式统一：| ID | 触发条件 | 检查清单 | 确认方式 |
+  3. 格式统一：| ID | 阶段 | 触发条件 | 检查清单 | 确认方式 |
 -->
 
 ### 确认工具说明
 
 | 工具 | 产出 | 适用场景 |
 |------|------|---------|
-| `browser_snapshot` | 页面无障碍结构树（纯文本） | 验证元素存在/消失、层级关系、状态变化 |
-| `browser_evaluate` | 执行 JS 返回结构化数据 | 验证 computed style、re-render 次数、API 调用量 |
+| Grep + Read | 代码文本扫描 | Pre-Code：验证代码引用正确的令牌、无硬编码颜色 |
+| `browser_snapshot` | 页面无障碍结构树（纯文本） | Post-Code：验证元素存在/消失、层级关系、状态变化 |
+| `browser_evaluate` | 执行 JS 返回结构化数据 | Post-Code：验证 computed style、re-render 次数、API 调用量 |
 
-### 注册表（持续扩展中）
+### Pre-Code 门禁（编码前触发）
+
+| ID | 触发条件 | 检查清单 | 确认方式 |
+|----|---------|---------|---------|
+| G04 | **任何 .css/.scss/.tsx/.jsx 文件新增或修改** | ① 是否定义了独立于项目令牌体系的新 CSS 变量（如 `--smartsheet-*` 而非引用 `--app-color-*`）？→ 必须重写为组件令牌（第三层），引用语义令牌（第二层） ② 是否出现硬编码颜色（`bg-white`、`bg-[#09090b]`、`dark:bg-[#131316]`、`text-slate-800`）？→ 必须替换为 `var(--app-color-*)` 或 Tailwind 语义类名 ③ z-index 是否使用了裸数字（`z-50`）而非项目令牌（`var(--z-dropdown)` = 200, `var(--z-modal)` = 800）？ ④ 新增 CSS 文件是否定义了独立主题变量而非组件令牌？→ 组件令牌 = `--<component>-<prop>` 引用 `var(--app-color-<semantic>)` ⑤ 暗色主题值是否与 `docs/UI令牌实施调教指南.md` 的官方映射一致？ | Grep 扫描新代码 → 检查每处颜色/z-index/变量定义 → 违规项逐条报告 → 人工确认后修复 |
+
+### Post-Code 门禁（验证阶段触发）
 
 | ID | 触发条件 | 检查清单 | 确认方式 |
 |----|---------|---------|---------|
@@ -312,9 +348,105 @@ Phase 3: 输出
 | G03 | 文件包含 `Table`/`DataGrid`/`FlatList`/列表类组件 | ① 注入 render 计数器：单次用户操作触发了几次组件 re-render ② 注入 API 拦截器：操作 X 触发了 M 次 API 调用 ③ 行操作（选中/编辑/删除）是否影响其他行状态 ④ 全选/批量操作是否触发逐行 re-render | browser_evaluate 注入计数器 + 拦截器 → 执行操作 → 返回数字报告 → 人工确认 |
 
 <!--
-  ⬇️ 新门禁在此下方追加，格式：
-  | G04 | <触发条件：什么文件/组件改动时触发> | <检查清单：逐条列出要验证什么> | browser_evaluate → 报告 → 人工确认 |
+  ⬇️ 新门禁在此下方追加，Pre-Code 例：
+  | G05 | Pre-Code | <触发条件> | <检查清单> | Grep+Read → 报告 → 人工确认 |
+  Post-Code 例：
+  | G06 | Post-Code | <触发条件> | <检查清单> | browser_evaluate → 报告 → 人工确认 |
 -->
+
+---
+
+## 🎨 设计资源调度系统 (@design)
+
+<!--
+  AI 规则：
+  1. 任何涉及 UI/前端的工作流在编码前必须读取本章节
+  2. 当前活动设计系统由 CLAUDE.md "当前设计系统" 行指定
+  3. 设计资源分四层，按需层层深入
+  4. 切换设计系统 → 从层次一选新 skill → 安装 → 更新 CLAUDE.md → 后续会话自动使用
+-->
+
+### 当前活动设计系统
+
+<!-- AI: 从 CLAUDE.md "当前设计系统" 行读取，如不存在则默认无 -->
+
+| 项目 | 值 |
+|------|-----|
+| 当前系统 | 🍱 **Bento** — 模块化卡片网格、暖桃色 #FAD4C0 + 钢蓝 #80A1C1 |
+| Skill 路径 | `.claude/skills/bento/SKILL.md` |
+| 设计令牌 | `.claude/skills/bento/DESIGN.md` |
+| 后备系统 | `docs/UI设计规范与主题标准.md`（项目自有令牌体系） |
+
+### 四层设计资源 & 联动规则
+
+```
+Agent 做 UI 时按此顺序调用：
+
+┌─ 层次一：当前设计 Skill（如 Bento SKILL.md）
+│  ├─ 优先读取 SKILL.md → 遵循其组件规则/颜色/字体/间距
+│  ├─ 如当前无设计 Skill → 跳到层次二
+│  └─ 如想换风格 → 从 awesome-design-skills 选新 slug → 安装
+│
+├─ 层次二：67 套备用设计 Skill（awesome-design-skills）
+│  ├─ 安装: 从 github.com/bergside/awesome-design-skills 下载
+│  ├─ 预览: https://typeui.sh/design-skills
+│  └─ 自定义: npx typeui.sh generate
+│
+├─ 层次三：73 个品牌 DESIGN.md（awesome-design-md）
+│  ├─ 参考: 精确的品牌令牌值（颜色/字体/间距）
+│  ├─ 预览: https://getdesign.md/<brand>/design-md
+│  └─ 完整目录: docs/superpowers/specs/previews/design-catalog.md
+│
+└─ 层次四：项目自有令牌体系 [强制底线]
+   ├─ docs/UI设计规范与主题标准.md（三层令牌：基础→语义→组件）
+   ├─ docs/UI令牌实施调教指南.md（Tailwind 语义类名映射）
+   └─ ⚠️ 这是底线 — 所有颜色必须最终映射到 --app-color-* 语义令牌
+```
+
+### AI 编码时的设计资源调用链
+
+```
+1. 检查 CLAUDE.md "当前设计系统" → 有则读取对应 SKILL.md
+2. 读取 DESIGN.md 获取令牌表（颜色/字体/间距）
+3. 将设计 Skill 的令牌映射到项目 --app-color-* 语义令牌
+4. 遵循设计 Skill 的组件规则（圆角/阴影/间距/排版）
+5. 遵循 @gates G04（令牌合规）
+6. 最终产出代码引用 --app-color-* 令牌体系
+```
+
+### 如何切换设计系统
+
+```
+用户: "换 design skill 为 <slug>"
+  → AI 从 awesome-design-skills 下载对应 SKILL.md + DESIGN.md
+  → 放到 .claude/skills/<slug>/
+  → 更新 CLAUDE.md "当前设计系统" 行
+  → 更新 ai-secretary.md 此表的"当前系统"行
+  → 告知用户: "已切换。新对话生效。"
+
+用户: "用项目自带设计，不用 skill"
+  → AI 更新 CLAUDE.md 移除设计 skill 引用
+  → 更新 ai-secretary.md 当前系统设为 "项目自有令牌体系"
+  → 后续 UI 工作直接使用 docs/UI设计规范与主题标准.md
+```
+
+### 设计 Skill 安装规范
+
+```
+安装新设计 skill:
+  1. mkdir -p .claude/skills/<slug>/
+  2. curl SKILL.md 和 DESIGN.md 从:
+     https://raw.githubusercontent.com/bergside/awesome-design-skills/main/skills/<slug>/
+  3. 验证两个文件完整
+  4. 更新 CLAUDE.md + ai-secretary.md
+  5. 告知用户技能已可用
+
+查看已安装:
+  ls .claude/skills/   ← 每个子目录是一个设计 skill
+
+卸载:
+  rm -rf .claude/skills/<slug>/  → 更新 CLAUDE.md → 完成
+```
 
 ---
 
@@ -425,7 +557,8 @@ docs/superpowers/handoff/
 | `superpowers:dispatching-parallel-agents` | 并行 agent | 需要同时做多件事 |
 | `superpowers:writing-skills` | 编写新 skill | 需要创建自定义 skill |
 | `superpowers:using-git-worktrees` | Git worktree 隔离 | 需要隔离开发环境 |
-| `frontend-design` | 前端 UI 设计 | 页面/组件设计 |
+| `frontend-design` | 前端 UI 设计（8个锚点） | 页面/组件设计 |
+| `bento` | 🍱 Bento 设计系统（当前选用） | 模块化卡片网格 UI |
 | `agent-skills:react-best-practices` | React 最佳实践 | React 组件开发 |
 | `agent-skills:web-design-guidelines` | Web 设计规范 | 设计系统/规范 |
 | `gsap-core` ~ `gsap-utils` | GSAP 动画（8个） | 动画/过渡效果 |
@@ -454,6 +587,16 @@ docs/superpowers/handoff/
 | `mcp__playwright__browser_click` | 点击元素 | 交互测试 |
 | `mcp__playwright__browser_type` | 输入文本 | 表单测试 |
 | `mcp__playwright__browser_take_screenshot` | 截图 | 仅在必要时使用（非门禁默认方式） |
+
+### 设计资源
+
+| 资源 | 用途 | 链接 |
+|------|------|------|
+| 🍱 Bento Skill（已安装） | 当前选用的设计系统，SKILL.md + DESIGN.md | `.claude/skills/bento/` |
+| awesome-design-skills（67套） | 跨工具设计 Skill 注册表 | `npx typeui.sh list` |
+| typeui.sh 预览 | 所有 67 套在线预览 | [typeui.sh/design-skills](https://typeui.sh/design-skills) |
+| awesome-design-md（73品牌） | 品牌级 DESIGN.md 集合 | [getdesign.md](https://getdesign.md/) |
+| 设计资源完整目录 | 全部四层设计资源 + 安装指南 | `docs/superpowers/specs/previews/design-catalog.md` |
 
 ---
 

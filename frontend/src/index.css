@@ -7,6 +7,9 @@
 @import "@/styles/tokens.css";
 @import "@/styles/semantic.css";
 
+/* ── SmartSheet revo-grid 主题桥接 ── */
+@import "@/styles/smartsheet-theme.css";
+
 /* ── 学生端独立令牌（保留，后续逐步合并） ── */
 @import "@/features/student/config/student-design-tokens.css";
 

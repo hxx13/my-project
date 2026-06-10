@@ -1003,4 +1003,183 @@ A: 两步：
 
 ---
 
+## 十一、🍱 Bento 设计系统集成（v1.5 新增）
+
+> 本章节提供 Bento 风格迁移的精确代码。适用于从经典 slate-blue 配色切换到 Bento 暖桃色系。
+
+### 11.1 集成概览
+
+```
+Step B1: 安装 Inter 字体          ← @fontsource-variable/inter
+Step B2: 更新 tokens.css          ← 追加 Warm/Peach/Steel 色系
+Step B3: 更新 semantic.css        ← 修改亮色主题映射为 Bento 暖色
+Step B4: 新增 .theme-classic      ← 保留经典 slate-blue 方案
+Step B5: 验证 Bento 主题生效       ← 浏览器 DevTools 检查 CSS 变量
+```
+
+### 11.2 Step B1：安装 Inter 字体
+
+```bash
+cd frontend
+npm install @fontsource-variable/inter
+```
+
+### 11.3 Step B2：更新基础令牌文件
+
+在 `frontend/src/styles/tokens.css` 的色板定义末尾（`--color-black` 之后、`}` 之前）追加：
+
+```css
+/* ── 🍱 Bento Warm (warm cream #FFF5E6 → oklch) ── */
+--color-warm-50:    oklch(0.98 0.01 82);
+--color-warm-100:   oklch(0.96 0.02 82);
+--color-warm-200:   oklch(0.92 0.03 80);
+--color-warm-300:   oklch(0.85 0.04 78);
+--color-warm-400:   oklch(0.78 0.05 76);
+--color-warm-500:   oklch(0.70 0.06 74);
+--color-warm-600:   oklch(0.60 0.06 72);
+--color-warm-700:   oklch(0.50 0.05 70);
+--color-warm-800:   oklch(0.40 0.04 68);
+--color-warm-900:   oklch(0.30 0.03 66);
+--color-warm-950:   oklch(0.20 0.02 64);
+
+/* ── 🍱 Bento Peach (warm peach #FAD4C0 → oklch) ── */
+--color-peach-50:   oklch(0.97 0.03 65);
+--color-peach-100:  oklch(0.94 0.05 63);
+--color-peach-200:  oklch(0.89 0.08 59);
+--color-peach-300:  oklch(0.84 0.10 55);
+--color-peach-400:  oklch(0.79 0.12 51);
+--color-peach-500:  oklch(0.74 0.14 47);
+--color-peach-600:  oklch(0.66 0.14 43);
+--color-peach-700:  oklch(0.58 0.13 39);
+--color-peach-800:  oklch(0.50 0.11 35);
+--color-peach-900:  oklch(0.42 0.09 33);
+--color-peach-950:  oklch(0.32 0.06 30);
+
+/* ── 🍱 Bento Steel (steel blue #80A1C1 → oklch) ── */
+--color-steel-50:   oklch(0.97 0.01 250);
+--color-steel-100:  oklch(0.93 0.03 248);
+--color-steel-200:  oklch(0.88 0.05 246);
+--color-steel-300:  oklch(0.82 0.08 244);
+--color-steel-400:  oklch(0.76 0.10 242);
+--color-steel-500:  oklch(0.70 0.12 240);
+--color-steel-600:  oklch(0.62 0.12 238);
+--color-steel-700:  oklch(0.54 0.10 236);
+--color-steel-800:  oklch(0.46 0.08 234);
+--color-steel-900:  oklch(0.38 0.06 232);
+--color-steel-950:  oklch(0.28 0.04 230);
+```
+
+同时在 `tailwind.config.js` 的 `theme.extend.colors` 中追加：
+
+```js
+// tailwind.config.js — 追加 Bento 色系到 app 节点
+colors: {
+  app: {
+    // ... 原有色系 ...
+    'warm-50':   'var(--color-warm-50)',
+    'warm-100':  'var(--color-warm-100)',
+    // ... (11 档完整映射，参照现有 slate 模式) ...
+    'peach-50':  'var(--color-peach-50)',
+    // ... (11 档)
+    'peach-500': 'var(--color-peach-500)',
+    // ...
+    'steel-50':  'var(--color-steel-50)',
+    // ... (11 档)
+  }
+}
+```
+
+### 11.4 Step B3：更新语义令牌（Bento 亮色主题）
+
+修改 `frontend/src/styles/semantic.css` 的 `:root, .theme-standard` 块：
+
+```css
+:root, .theme-standard {
+  /* Surface — Bento: warm cream surface #FFF5E6 */
+  --app-color-surface-page:      var(--color-warm-50);    /* #FFF5E6 */
+  --app-color-surface-container: var(--color-white);
+  --app-color-surface-elevated:  var(--color-white);
+  --app-color-surface-hover:     var(--color-warm-100);
+  --app-color-surface-active:    var(--color-peach-100);
+
+  /* Text — Bento: #111827 near-black */
+  --app-color-text-primary:      var(--color-slate-900);
+  --app-color-text-secondary:    var(--color-slate-600);
+  --app-color-text-tertiary:     var(--color-slate-400);
+  --app-color-text-inverse:      var(--color-white);
+
+  /* Accent — Bento: warm peach #FAD4C0 + steel blue #80A1C1 */
+  --app-color-accent:            var(--color-peach-500);
+  --app-color-accent-hover:      var(--color-peach-600);
+  --app-color-accent-active:     var(--color-peach-700);
+  --app-color-accent-soft:       var(--color-peach-100);
+  --app-color-accent-secondary:  var(--color-steel-500);
+
+  /* Border */
+  --app-color-border-default:    var(--color-warm-200);
+  --app-color-border-strong:     var(--color-peach-400);
+
+  /* Feedback — Bento 语义色 */
+  --app-color-feedback-danger:       var(--color-red-500);
+  --app-color-feedback-danger-soft:  var(--color-red-50);
+  --app-color-feedback-warning:      var(--color-amber-500);
+  --app-color-feedback-warning-soft: var(--color-amber-50);
+  --app-color-feedback-success:      var(--color-green-500);
+  --app-color-feedback-success-soft: var(--color-green-50);
+  --app-color-feedback-info:         var(--color-steel-500);
+  --app-color-feedback-info-soft:    var(--color-steel-100);
+}
+```
+
+### 11.5 Step B4：新增 `.theme-classic`（保留旧方案）
+
+在 `semantic.css` 中追加：
+
+```css
+/* 经典 slate-blue 主题 — 回退到 v1.4 配色 */
+.theme-classic {
+  --app-color-surface-page:      var(--color-slate-50);
+  --app-color-surface-container: var(--color-white);
+  --app-color-surface-hover:     var(--color-slate-50);
+  --app-color-surface-active:    var(--color-blue-50);
+
+  --app-color-accent:            var(--color-blue-500);
+  --app-color-accent-hover:      var(--color-blue-600);
+  --app-color-accent-soft:       var(--color-blue-50);
+  --app-color-accent-secondary:  var(--color-blue-400);
+
+  --app-color-border-default:    var(--color-slate-200);
+  --app-color-border-strong:     var(--color-blue-500);
+}
+```
+
+同时在 `themeRegistry.ts` 中注册 `theme-classic`：
+
+```ts
+export const themeRegistry: ThemeEntry[] = [
+  { id: 'standard',  name: 'Bento 暖色',   className: 'theme-standard' },
+  { id: 'classic',   name: '经典 Slate',    className: 'theme-classic' },
+  { id: 'dark',      name: '暗色模式',      className: 'theme-standard-dark' },
+]
+```
+
+### 11.6 Step B5：验证
+
+```bash
+# 1. 确认 CSS 变量加载
+# DevTools → Elements → Computed → 搜索 --color-peach-500 → 应显示 oklch(0.74 0.14 47)
+
+# 2. 确认亮色主题
+# body 应有 --app-color-surface-page = oklch(0.98 0.01 82)（暖奶油色）
+
+# 3. 确认字体
+# body 的 font-family 应包含 'Inter Variable'
+
+# 4. 切换为经典主题
+# body 加 class="theme-classic" → 颜色恢复为 slate-blue
+```
+
+---
+
 *本文档是 [UI设计规范与主题标准.md](UI设计规范与主题标准.md) 的实施配方，包含精确的代码和迁改步骤。*
+*版本 v1.5 — 新增 🍱 Bento 设计系统集成章节。*

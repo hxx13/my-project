@@ -1,0 +1,72 @@
+<h2>前端导航结构 + 统计审计设计</h2>
+<p class="subtitle">学生端入口：快捷操作 + 独立区块；教职工端：审核 + 管理</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">🎓 学生端侧边栏</div>
+    <div class="mockup-body" style="font-size:12px;line-height:1.8;">
+      <strong>👤 个人身份卡片</strong><br>
+      <strong>⚡ 快捷操作</strong><br>
+      &nbsp;&nbsp;🔑 我的门禁权限<br>
+      &nbsp;&nbsp;📋 出入记录<br>
+      &nbsp;&nbsp;⚠️ 违规记录<br>
+      &nbsp;&nbsp;🧠 AI 个人画像<br>
+      &nbsp;&nbsp;<span style="color:var(--accent);">🆕 申领物资</span> ← 新增<br>
+      <span style="color:var(--accent);"><strong>📦 物资服务</strong></span> ← 新区块<br>
+      &nbsp;&nbsp;<span style="color:var(--accent);">🛒 物资商城</span><br>
+      &nbsp;&nbsp;<span style="color:var(--accent);">📋 我的申领</span><br>
+      &nbsp;&nbsp;<span style="color:var(--accent);">📊 领用统计</span><br>
+      &nbsp;&nbsp;<span style="color:var(--accent);">💡 需求建议</span>（可开关）
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">👩‍🏫 教职工端页面</div>
+    <div class="mockup-body" style="font-size:12px;line-height:1.8;">
+      <strong>📋 审核管理</strong><br>
+      &nbsp;&nbsp;🔍 待审核申领<br>
+      &nbsp;&nbsp;📋 审核历史<br>
+      &nbsp;&nbsp;📦 出库履行<br>
+      <strong>🏷️ 物品管理</strong><br>
+      &nbsp;&nbsp;📂 分类管理<br>
+      &nbsp;&nbsp;📦 物品上架/入库<br>
+      &nbsp;&nbsp;🔄 库存调整<br>
+      <strong>⚙️ 系统设置</strong><br>
+      &nbsp;&nbsp;👥 审核人指派<br>
+      &nbsp;&nbsp;🔧 需求入口开关<br>
+      <strong>📊 统计审计</strong><br>
+      &nbsp;&nbsp;📈 申领统计面板<br>
+      &nbsp;&nbsp;📉 审计流水导出
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>📊 统计审计面板设计</h3>
+  <div class="mockup">
+    <div class="mockup-header">新统计分类：<code>material</code> — 粒度细、注释全、预留 agent 接口</div>
+    <div class="mockup-body" style="font-size:13px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr style="background:var(--surface-secondary);">
+          <th style="padding:6px;text-align:left;border:1px solid var(--border);">维度</th>
+          <th style="padding:6px;text-align:left;border:1px solid var(--border);">统计项</th>
+          <th style="padding:6px;text-align:left;border:1px solid var(--border);">粒度</th>
+        </tr>
+        <tr><td style="padding:6px;border:1px solid var(--border);" rowspan="6"><strong>👤 学生维度</strong></td>
+          <td style="padding:6px;border:1px solid var(--border);">申领总量 / 频次趋势</td><td style="padding:6px;border:1px solid var(--border);">按人·按天/周/月</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border);">申领物品种类分布</td><td style="padding:6px;border:1px solid var(--border);">按人·按分类</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border);">通过率 / 拒绝率</td><td style="padding:6px;border:1px solid var(--border);">按人·按时间段</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border);">平均审核等待时长</td><td style="padding:6px;border:1px solid var(--border);">按人·按物品</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border);">所属课题组汇总</td><td style="padding:6px;border:1px solid var(--border);">按课题组·按时间</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border);">异常申领标记</td><td style="padding:6px;border:1px solid var(--border);">高频/超额/非工作时间</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border);" rowspan="4"><strong>📦 物资维度</strong></td>
+          <td style="padding:6px;border:1px solid var(--border);">被申领次数/数量排行</td><td style="padding:6px;border:1px solid var(--border);">按物品·按分类</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border);">库存周转率</td><td style="padding:6px;border:1px solid var(--border);">入库量/出库量/当前库存</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border);">物品需求频率趋势</td><td style="padding:6px;border:1px solid var(--border);">按周/月·按分类</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border);">库存预警</td><td style="padding:6px;border:1px solid var(--border);">低于阈值自动标记</td></tr>
+        <tr style="background:#fef3c7;"><td style="padding:6px;border:1px solid var(--border);" colspan="3">
+          <strong>🔌 Agent 预留接口</strong>：每个统计项封装为独立查询方法（如 <code>getStudentRequestTrend(studentId, from, to, granularity)</code>），方法签名清晰、带 Javadoc/TSDoc 注释，后续 agent 可直接调用无需二次解读。
+        </td></tr>
+      </table>
+    </div>
+  </div>
+</div>

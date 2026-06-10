@@ -41,4 +41,15 @@ public final class ErrorCodeConstants {
     public static final int KNOWLEDGE_SLUG_DUPLICATE       = 1_005_005;  // "该分类下已存在相同标识的文档"
     public static final int KNOWLEDGE_IMPORT_PARSE_ERROR   = 1_005_006;  // "文档导入解析失败"
     public static final int KNOWLEDGE_VERSION_CONFLICT     = 1_005_007;  // "文档已被他人修改，请刷新后重试"
+
+    /** 智能表格 smartsheet 1-006-xxx */
+    public static final int SMARTSHEET_NOT_FOUND            = 1_006_001;  // "表格不存在"
+    public static final int SMARTSHEET_COLUMN_INVALID       = 1_006_002;  // "列定义不合法"
+    public static final int SMARTSHEET_TOO_MANY_COLUMNS     = 1_006_003;  // "超过最大列数限制(100)"
+    public static final int SMARTSHEET_TOO_MANY_ROWS        = 1_006_004;  // "超过最大行数限制(500)"
+    public static final int SMARTSHEET_VERSION_CONFLICT     = 1_006_005;  // "数据已被他人修改，请刷新"
+    public static final int SMARTSHEET_IMPORT_FORMAT        = 1_006_006;  // "不支持的文件格式，仅接受 .xlsx/.xls/.csv"
+    public static final int SMARTSHEET_ROW_NOT_FOUND        = 1_006_007;  // "数据行不存在"
+    public static final int SMARTSHEET_COLUMN_TYPE_CONFLICT = 1_006_008;  // "列类型变更将清空已有数据"
+    public static final int SMARTSHEET_TEMPLATE_NOT_FOUND   = 1_006_009;  // "模板不存在"
 }

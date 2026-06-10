@@ -41,6 +41,8 @@ import AdminSuppliesClaimExportPage from "@/pages/AdminSuppliesClaimExportPage";
 import AdminSuppliesManagePage from "@/pages/AdminSuppliesManagePage";
 import AdminSuppliesProcessPage from "@/pages/AdminSuppliesProcessPage";
 import AdminSuppliesAuditExportPage from "@/pages/AdminSuppliesAuditExportPage";
+import MaterialReviewPage from "@/pages/MaterialReviewPage";
+import MaterialAuditPage from "@/pages/MaterialAuditPage";
 import AdminAssetRecordPage from "@/pages/AdminAssetRecordPage";
 import AdminFacilityMaintenancePage from "@/pages/AdminFacilityMaintenancePage";
 import AdminFileTemplatesPage from "@/pages/AdminFileTemplatesPage";
@@ -85,6 +87,11 @@ import StudentNotificationsPage from "@/features/student/pages/student-notificat
 import StudentFeedbackPage from "@/features/student/pages/student-feedback";
 import StudentSettingsPage from "@/features/student/pages/student-settings";
 import StudentCageShelfPage from "@/features/student/pages/student-cage-shelf";
+import StudentMaterialPage from "@/features/student/pages/student-material";
+import StudentMaterialRequestsPage from "@/features/student/pages/student-material-requests";
+import StudentMaterialStatsPage from "@/features/student/pages/student-material-stats";
+import SmartSheetPage from "@/features/smartsheet/SmartSheetPage";
+import SmartSheetListPage from "@/features/smartsheet/SmartSheetListPage";
 
 export const router = createHashRouter([
     {
@@ -112,6 +119,9 @@ export const router = createHashRouter([
             { path: "feedback", element: <StudentFeedbackPage /> },
             { path: "settings", element: <StudentSettingsPage /> },
             { path: "cage-shelf", element: <StudentCageShelfPage /> },
+            { path: "material", element: <StudentMaterialPage /> },
+            { path: "material/requests", element: <StudentMaterialRequestsPage /> },
+            { path: "material/stats", element: <StudentMaterialStatsPage /> },
         ],
     },
     {
@@ -209,6 +219,8 @@ export const router = createHashRouter([
                             { path: "file-templates", element: <AdminFileTemplatesPage/>},
                             { path: "content-hub", element: <AdminContentHubPage/>},
                             { path: "knowledge", element: <AdminKnowledgeHomePage/>},
+                            { path: "smartsheet", element: <SmartSheetListPage/>},
+                            { path: "smartsheet/:id", element: <SmartSheetPage/>},
                             { path: "analytics", element: <AdminAnalyticsPage/>},
                             { path: "asset-records", element: <AdminAssetRecordPage/>},
                             { path: "asset-transfer-records", element: <AdminAssetTransferRecordPage/>},
@@ -246,6 +258,8 @@ export const router = createHashRouter([
                                     { path: "supplies/mine", element: <AdminSuppliesMinePage/>},
                                     { path: "supplies/claim-export", element: <AdminSuppliesClaimExportPage/>},
                                     { path: "supplies/audit-export", element: <AdminSuppliesAuditExportPage/>},
+                                    { path: "material/review", element: <MaterialReviewPage/>},
+                                    { path: "material/audit", element: <MaterialAuditPage/>},
                                 ],
                             },
                             {

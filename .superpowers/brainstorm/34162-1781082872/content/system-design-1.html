@@ -1,0 +1,88 @@
+<h2>系统架构总览 · 学生物资申领系统</h2>
+<p class="subtitle">命名空间：<code>material</code> — 与现有 supplies 完全隔离，无名称冲突</p>
+
+<div class="section">
+  <h3>📦 模块命名对照（避免冲突）</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <tr style="background:var(--surface-secondary);">
+      <th style="padding:8px;text-align:left;border:1px solid var(--border);">层级</th>
+      <th style="padding:8px;text-align:left;border:1px solid var(--border);">现有 supplies</th>
+      <th style="padding:8px;text-align:left;border:1px solid var(--border); color:var(--accent);">新系统 material</th>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:1px solid var(--border);">后端模块</td>
+      <td style="padding:8px;border:1px solid var(--border);"><code>modules/supplies/</code></td>
+      <td style="padding:8px;border:1px solid var(--border);color:var(--accent);"><code>modules/material/</code></td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:1px solid var(--border);">物品</td>
+      <td style="padding:8px;border:1px solid var(--border);"><code>SupplyItem</code></td>
+      <td style="padding:8px;border:1px solid var(--border);color:var(--accent);"><code>MaterialItem</code></td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:1px solid var(--border);">分类</td>
+      <td style="padding:8px;border:1px solid var(--border);"><code>SupplyCategory</code></td>
+      <td style="padding:8px;border:1px solid var(--border);color:var(--accent);"><code>MaterialCategory</code></td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:1px solid var(--border);">申领单</td>
+      <td style="padding:8px;border:1px solid var(--border);"><code>SupplyClaimOrder</code></td>
+      <td style="padding:8px;border:1px solid var(--border);color:var(--accent);"><code>MaterialRequest</code></td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:1px solid var(--border);">申领行</td>
+      <td style="padding:8px;border:1px solid var(--border);"><code>SupplyClaimLine</code></td>
+      <td style="padding:8px;border:1px solid var(--border);color:var(--accent);"><code>MaterialRequestLine</code></td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:1px solid var(--border);">库存流水</td>
+      <td style="padding:8px;border:1px solid var(--border);"><code>SupplyInventoryMovement</code></td>
+      <td style="padding:8px;border:1px solid var(--border);color:var(--accent);"><code>MaterialStockMovement</code></td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:1px solid var(--border);">API 前缀</td>
+      <td style="padding:8px;border:1px solid var(--border);"><code>/supplies/</code></td>
+      <td style="padding:8px;border:1px solid var(--border);color:var(--accent);"><code>/material/</code></td>
+    </tr>
+    <tr>
+      <td style="padding:8px;border:1px solid var(--border);">前端页面</td>
+      <td style="padding:8px;border:1px solid var(--border);"><code>AdminSupplies*</code></td>
+      <td style="padding:8px;border:1px solid var(--border);color:var(--accent);"><code>StudentMaterial* / StaffMaterial*</code></td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>🏗️ 三层架构</h3>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;">
+    <div class="mockup" style="flex:1;min-width:200px;">
+      <div class="mockup-header">🎓 学生端</div>
+      <div class="mockup-body" style="font-size:12px;line-height:2;">
+        📱 学生首页快捷入口<br>
+        🛒 物资商城（浏览+购物车）<br>
+        📋 我的申领记录<br>
+        📊 个人领用统计<br>
+        🔗 扫码弹窗快速接口
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;min-width:200px;">
+      <div class="mockup-header">👩‍🏫 教职工端</div>
+      <div class="mockup-body" style="font-size:12px;line-height:2;">
+        ✅ 审核申领（待审/已审）<br>
+        📦 出库履行<br>
+        🏷️ 物品管理（上架/入库）<br>
+        📊 统计审计面板<br>
+        ⚙️ 需求入口开关设置
+      </div>
+    </div>
+    <div class="mockup" style="flex:1;min-width:200px;">
+      <div class="mockup-header">⚙️ 共享后端</div>
+      <div class="mockup-body" style="font-size:12px;line-height:2;">
+        <code>/material/</code> API<br>
+        独立数据表<br>
+        业务逻辑（复制模式）<br>
+        权限 + 账号双重校验
+      </div>
+    </div>
+  </div>
+</div>

@@ -250,6 +250,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx: any) => true,
       },
       {
+        id: "smartsheet",
+        path: "/admin/smartsheet",
+        label: "智能表格",
+        icon: Table2,
+        homeTone: "from-indigo-600 to-violet-700",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx: any) => true,
+      },
+      {
         id: "login-branding",
         path: "/admin/login-branding",
         label: "登录页轮播图",
@@ -582,6 +591,21 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
               show(ctx, "/admin/supplies/audit-export", "STAFF"),
           },
         ],
+      },
+    ],
+  },
+  {
+    id: "material-review",
+    title: "审核",
+    items: [
+      {
+        id: "material-review-pending",
+        path: "/admin/material/review",
+        label: "申领审核",
+        icon: ClipboardCheck,
+        homeTone: "from-blue-600 to-indigo-700",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx) => show(ctx, "/admin/material/review", "STAFF"),
       },
     ],
   },

@@ -8,6 +8,25 @@
 
 **Tech Stack:** React 19 + TypeScript + Tailwind CSS + shadcn/ui + revo-grid (MIT) + @tanstack/react-query | Spring Boot + MyBatis + FastExcel
 
+> ## 🔧 计划修正记录（2026-06-10，编码前）
+>
+> 本计划在 UI 设计（Bento 风格）之前编写，代码示例中存在令牌合规问题。以下修正已在计划文档中应用：
+>
+> | # | 修正项 | 影响 Task | 状态 |
+> |---|--------|----------|------|
+> | 1 | `smartsheet-theme.css` 硬编码颜色 → 组件令牌 `--smartsheet-*` 全部引用 `--app-*` 语义令牌 | Task 10 | ✅ |
+> | 2 | 所有 TSX 组件硬编码 Tailwind 类名（`bg-white`, `text-slate-*`, `dark:bg-[#...]`）→ 语义类名（`bg-app-surface-*`, `text-app-text-*`） | Task 11-14 | ✅ |
+> | 3 | 暗色 `#09090b` → Tokens.css `--color-slate-950`（Bento 暖黑 `#12100E` 对齐） | Task 10, 13 | ✅ |
+> | 4 | 裸 `z-50` → `var(--z-modal)`（项目 Z-Index 层级表） | Task 14 | ✅ |
+> | 5 | Bento 钢蓝 `#80A1C1` → `--color-steel-*` 基础色板（已在 tokens.css 注册） | Task 10 | ✅ |
+> | 6 | 统计卡片 270px 侧面板 → 紧凑 `h-7` 页脚状态栏（用户反馈：放页眉/页脚作为状态指示） | Task 12, 13 | ✅ |
+>
+> **编码时强制规则**：
+> - 所有颜色通过 Tailwind 语义类名（`bg-app-*`, `text-app-*`, `border-app-*`）引用，见 `docs/UI令牌实施调教指南.md` §5.2
+> - 所有 z-index 使用 `var(--z-*)` 令牌
+> - 禁止在组件中定义新的 CSS 变量体系（G04 门禁）
+> - 新 CSS 变量只能是组件令牌（第三层），引用语义令牌（第二层）
+
 ---
 
 ## File Structure
@@ -1693,80 +1712,85 @@ git commit -m "feat: add useSmartSheet hook with debounced cell saving"
 
 - [ ] **Step 1: Write smartsheet-theme.css**
 
+> ⚠️ **令牌合规（G04）**：`--smartsheet-*` 定义为组件令牌（第三层），只引用 `--app-*` 语义令牌（第二层）和基础令牌（第一层）。**禁止**在此文件中定义独立颜色值。Bento 暗色底色使用 `--color-slate-950`（非 `#09090b` 纯黑）。
+
 ```css
-/* smartsheet-theme.css — revo-grid theme bridge */
-/* Maps project Tailwind tokens to revo-grid CSS custom properties */
+/* smartsheet-theme.css — revo-grid theme bridge
+   ═══════════════════════════════════════════
+   组件令牌层：--smartsheet-* 全部引用 --app-* 语义令牌
+   遵守 docs/UI设计规范与主题标准.md §二 令牌分层架构
+   ═══════════════════════════════════════════ */
 
-/* Light theme */
+/* ═══════ 亮色主题：组件令牌 → 语义令牌 ═══════ */
 :root {
-  --smartsheet-bg: #ffffff;
-  --smartsheet-surface: #f8fafc;
-  --smartsheet-border: #e2e8f0;
-  --smartsheet-border-heavy: #cbd5e1;
-  --smartsheet-text: #0f172a;
-  --smartsheet-text-secondary: #475569;
-  --smartsheet-text-tertiary: #94a3b8;
-  --smartsheet-accent: #6366f1;
-  --smartsheet-accent-glow: rgba(99,102,241,0.15);
-  --smartsheet-hover: rgba(99,102,241,0.04);
-  --smartsheet-selected: rgba(99,102,241,0.08);
-  --smartsheet-zebra: rgba(0,0,0,0.02);
-  --smartsheet-header-bg: #f1f5f9;
-  --smartsheet-row-header-bg: #f8fafc;
-  --smartsheet-success: #22c55e;
-  --smartsheet-warning: #f59e0b;
-  --smartsheet-danger: #ef4444;
+  --smartsheet-bg:              var(--app-color-surface-container);
+  --smartsheet-surface:         var(--app-color-surface-page);
+  --smartsheet-border:          var(--app-color-border-default);
+  --smartsheet-border-heavy:    var(--app-color-border-strong);
+  --smartsheet-text:            var(--app-color-text-primary);
+  --smartsheet-text-secondary:  var(--app-color-text-secondary);
+  --smartsheet-text-tertiary:   var(--app-color-text-tertiary);
+  --smartsheet-accent:          var(--app-color-accent);
+  --smartsheet-accent-glow:     rgba(250, 212, 192, 0.18); /* 🍱 Bento peach glow */
+  --smartsheet-hover:           var(--app-color-surface-hover);
+  --smartsheet-selected:        var(--app-color-surface-active);
+  --smartsheet-zebra:           rgba(0, 0, 0, 0.02);       /* 基础令牌：斑马纹无语义对应 */
+  --smartsheet-header-bg:       var(--app-color-surface-page);
+  --smartsheet-row-header-bg:   rgba(250, 212, 192, 0.10); /* 🍱 Bento warm peach tint */
+  --smartsheet-success:         var(--app-color-feedback-success);
+  --smartsheet-warning:         var(--app-color-feedback-warning);
+  --smartsheet-danger:          var(--app-color-feedback-danger);
 }
 
-/* Dark theme */
+/* ═══════ 暗色主题：覆盖组件令牌映射 ═══════ */
 .dark {
-  --smartsheet-bg: #09090b;
-  --smartsheet-surface: #131316;
-  --smartsheet-border: #23232a;
-  --smartsheet-border-heavy: #2e2e37;
-  --smartsheet-text: #f4f4f6;
-  --smartsheet-text-secondary: #a1a1aa;
-  --smartsheet-text-tertiary: #71717a;
-  --smartsheet-accent: #818cf8;
-  --smartsheet-accent-glow: rgba(99,102,241,0.15);
-  --smartsheet-hover: rgba(99,102,241,0.06);
-  --smartsheet-selected: rgba(99,102,241,0.1);
-  --smartsheet-zebra: rgba(255,255,255,0.015);
-  --smartsheet-header-bg: #1a1a1f;
-  --smartsheet-row-header-bg: #1a1a1f;
-  --smartsheet-success: #34d399;
-  --smartsheet-warning: #fbbf24;
-  --smartsheet-danger: #f87171;
+  --smartsheet-bg:              var(--app-color-surface-container);
+  --smartsheet-surface:         var(--app-color-surface-page);
+  --smartsheet-border:          var(--app-color-border-default);
+  --smartsheet-border-heavy:    var(--app-color-border-strong);
+  --smartsheet-text:            var(--app-color-text-primary);
+  --smartsheet-text-secondary:  var(--app-color-text-secondary);
+  --smartsheet-text-tertiary:   var(--app-color-text-tertiary);
+  --smartsheet-accent:          var(--color-steel-400);     /* 🍱 Bento steel blue #80A1C1 */
+  --smartsheet-accent-glow:     rgba(128, 161, 193, 0.15); /* 🍱 Bento steel glow */
+  --smartsheet-hover:           var(--app-color-surface-hover);
+  --smartsheet-selected:        var(--app-color-surface-active);
+  --smartsheet-zebra:           rgba(255, 255, 255, 0.015);
+  --smartsheet-header-bg:       var(--app-color-surface-elevated);
+  --smartsheet-row-header-bg:   rgba(250, 212, 192, 0.06); /* 🍱 Bento warm peach tint (dim) */
+  --smartsheet-success:         var(--app-color-feedback-success);
+  --smartsheet-warning:         var(--app-color-feedback-warning);
+  --smartsheet-danger:          var(--app-color-feedback-danger);
 }
 
-/* revo-grid variable injection */
+/* ═══════ revo-grid 变量注入 ═══════ */
 revo-grid {
-  --background-color: var(--smartsheet-bg);
-  --border-color: var(--smartsheet-border);
+  --background-color:       var(--smartsheet-bg);
+  --border-color:           var(--smartsheet-border);
   --header-background-color: var(--smartsheet-header-bg);
-  --header-text-color: var(--smartsheet-text-secondary);
-  --cell-text-color: var(--smartsheet-text);
-  --cell-hover-color: var(--smartsheet-hover);
-  --cell-selection-color: var(--smartsheet-selected);
+  --header-text-color:      var(--smartsheet-text-secondary);
+  --cell-text-color:        var(--smartsheet-text);
+  --cell-hover-color:       var(--smartsheet-hover);
+  --cell-selection-color:   var(--smartsheet-selected);
   --cell-focus-outline-color: var(--smartsheet-accent);
 }
 
-/* zebra striping class */
+/* ═══════ 斑马纹 ═══════ */
 .smartsheet-zebra .revo-grid .row:nth-child(even) .cell {
   background-color: var(--smartsheet-zebra);
 }
 
-/* frozen panes border */
+/* ═══════ 冻结窗格 ═══════ */
 .smartsheet-frozen .revo-grid .frozen-border {
   box-shadow: 2px 0 0 var(--smartsheet-border-heavy);
 }
 
-/* conditional format helpers */
+/* ═══════ 条件格式 ═══════ */
 .smartsheet-cf-great { color: var(--smartsheet-success); font-weight: 600; }
 .smartsheet-cf-warn  { color: var(--smartsheet-warning); }
 .smartsheet-cf-bad   { color: var(--smartsheet-danger); font-weight: 600; }
 
-/* cell comment dot indicator */
+/* ═══════ 单元格注释角标 ═══════ */
 .smartsheet-cell-comment {
   position: absolute;
   top: 2px;
@@ -1982,6 +2006,8 @@ git commit -m "feat: add SmartSheetGrid revo-grid wrapper with custom editors"
 
 - [ ] **Step 1: Write SmartSheetToolbar**
 
+> ⚠️ **令牌合规（G04）**：所有颜色/边框/圆角使用 Tailwind 语义类名（`bg-app-surface-container` 等），z-index 使用 `var(--z-*)`，禁止硬编码。
+
 ```tsx
 // frontend/src/features/smartsheet/components/SmartSheetToolbar.tsx
 import React from 'react';
@@ -2015,48 +2041,48 @@ export default function SmartSheetToolbar({
   onSearch,
 }: SmartSheetToolbarProps) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-zinc-800 bg-white dark:bg-[#131316] flex-wrap">
-      {/* Sheet name dropdown placeholder */}
-      <span className="text-sm font-semibold text-slate-800 dark:text-zinc-200 mr-2">{sheetName}</span>
-      <span className="w-px h-5 bg-slate-200 dark:bg-zinc-700" />
+    <div className="flex items-center gap-2 px-3 py-1.5 border-b border-app-border bg-app-surface-container flex-wrap shrink-0">
+      {/* Sheet name */}
+      <span className="text-sm font-semibold text-app-text-primary mr-2">{sheetName}</span>
+      <span className="w-px h-4 bg-app-border" />
 
       <button onClick={onImport}
-        className="px-3 py-1.5 text-xs font-medium rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+        className="px-2.5 py-1 text-xs font-medium rounded-app-element bg-app-accent text-app-text-inverse hover:bg-app-accent-hover transition-colors">
         📥 导入
       </button>
       <button onClick={onExport}
-        className="px-3 py-1.5 text-xs font-medium rounded-md border border-slate-300 dark:border-zinc-600 text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
+        className="px-2.5 py-1 text-xs font-medium rounded-app-element border border-app-border text-app-text-secondary hover:bg-app-surface-hover transition-colors">
         📤 导出
       </button>
-      <span className="w-px h-5 bg-slate-200 dark:bg-zinc-700" />
+      <span className="w-px h-4 bg-app-border" />
       <button onClick={onAddRow}
-        className="px-2 py-1 text-xs text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 transition-colors">
+        className="px-2 py-1 text-xs text-app-text-secondary hover:text-app-text-primary transition-colors">
         ＋ 行
       </button>
       <button onClick={onAddColumn}
-        className="px-2 py-1 text-xs text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 transition-colors">
+        className="px-2 py-1 text-xs text-app-text-secondary hover:text-app-text-primary transition-colors">
         ＋ 列
       </button>
-      <span className="w-px h-5 bg-slate-200 dark:bg-zinc-700" />
+      <span className="w-px h-4 bg-app-border" />
 
       {/* View micro-toggles */}
-      <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-zinc-500">视图</span>
+      <span className="text-[10px] uppercase tracking-wider text-app-text-tertiary">视图</span>
       <ViewToggle label="斑马纹" active={viewOptions.zebra} onClick={() => onViewOptionChange('zebra')} />
       <ViewToggle label="冻结" active={viewOptions.freeze} onClick={() => onViewOptionChange('freeze')} />
       <ViewToggle label="条件格式" active={viewOptions.conditionalFormat} onClick={() => onViewOptionChange('conditionalFormat')} />
 
       <span className="flex-1" />
 
-      <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-zinc-500">编辑</span>
+      <span className="text-[10px] uppercase tracking-wider text-app-text-tertiary">编辑</span>
       <button onClick={onSearch}
-        className="px-2 py-1 text-xs text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200">🔍 查找</button>
+        className="px-2 py-1 text-xs text-app-text-secondary hover:text-app-text-primary">🔍 查找</button>
       <button onClick={onUndo}
-        className="px-2 py-1 text-xs text-slate-400 dark:text-zinc-500">↩</button>
+        className="px-2 py-1 text-xs text-app-text-tertiary">↩</button>
       <button onClick={onRedo}
-        className="px-2 py-1 text-xs text-slate-400 dark:text-zinc-500">↪</button>
-      <span className="w-px h-5 bg-slate-200 dark:bg-zinc-700" />
+        className="px-2 py-1 text-xs text-app-text-tertiary">↪</button>
+      <span className="w-px h-4 bg-app-border" />
       <button onClick={onSave}
-        className="px-3 py-1.5 text-xs font-medium rounded-md border border-slate-300 dark:border-zinc-600 text-slate-700 dark:text-zinc-300">
+        className="px-2.5 py-1 text-xs font-medium rounded-app-element border border-app-border text-app-text-secondary hover:bg-app-surface-hover">
         💾 保存
       </button>
     </div>
@@ -2068,11 +2094,11 @@ function ViewToggle({ label, active, onClick }: { label: string; active: boolean
     <button onClick={onClick}
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all
         ${active
-          ? 'bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-300'
-          : 'bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-500 dark:text-zinc-400'
+          ? 'bg-app-accent-soft border border-app-accent text-app-accent'
+          : 'bg-app-surface-hover border border-app-border text-app-text-secondary'
         }`}>
       <span className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center text-[8px]
-        ${active ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-300 dark:border-zinc-600'}`}>
+        ${active ? 'border-app-accent bg-app-accent text-app-text-inverse' : 'border-app-border'}`}>
         {active ? '✓' : ''}
       </span>
       {label}
@@ -2081,7 +2107,9 @@ function ViewToggle({ label, active, onClick }: { label: string; active: boolean
 }
 ```
 
-- [ ] **Step 2: Write useSmartSheetStats and SmartSheetStatsPanel**
+- [ ] **Step 2: Write useSmartSheetStats and SmartSheetStatusBar**
+
+> 📐 **设计调整（用户反馈）**：统计信息不占用大面积侧边面板，改为页脚紧凑状态栏（`h-7`，单行展示核心指标）。列详情统计保留在 click-to-expand 的 popover 中。
 
 ```typescript
 // frontend/src/features/smartsheet/hooks/useSmartSheetStats.ts
@@ -2099,62 +2127,62 @@ export function useSmartSheetStats(sheetId: string | undefined, columnKey: strin
 ```
 
 ```tsx
-// frontend/src/features/smartsheet/components/SmartSheetStatsPanel.tsx
+// frontend/src/features/smartsheet/components/SmartSheetStatusBar.tsx
 import React from 'react';
-import type { ColumnConfig, ColumnStats } from '@/features/smartsheet/types';
+import type { SmartSheetRow, ColumnConfig } from '@/features/smartsheet/types';
 
-interface SmartSheetStatsPanelProps {
+interface SmartSheetStatusBarProps {
+  rows: SmartSheetRow[];
+  columns: ColumnConfig[];
   selectedColumn: ColumnConfig | null;
-  stats: ColumnStats | null;
-  isLoading: boolean;
+  onColumnClick: (col: ColumnConfig) => void;
 }
 
-export default function SmartSheetStatsPanel({ selectedColumn, stats, isLoading }: SmartSheetStatsPanelProps) {
-  if (!selectedColumn) {
-    return (
-      <div className="w-[270px] border-l border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-[#131316] p-3 text-xs text-slate-400 dark:text-zinc-500">
-        <p>点击列头查看统计信息</p>
-      </div>
-    );
-  }
+export default function SmartSheetStatusBar({
+  rows, columns, selectedColumn, onColumnClick,
+}: SmartSheetStatusBarProps) {
+  const fillRate = columns.length > 0 && rows.length > 0
+    ? Math.round((rows.reduce((acc, r) =>
+        acc + Object.values(r.cellData || {}).filter(v => v && v.trim()).length, 0
+      ) / (rows.length * columns.length)) * 100)
+    : 0;
 
   return (
-    <div className="w-[270px] border-l border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-[#131316] p-3 text-xs overflow-y-auto">
-      <h4 className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-zinc-500 mb-3">
-        📊 列统计 · {selectedColumn.label}
-      </h4>
+    <div className="flex items-center gap-3 px-3 h-7 border-t border-app-border bg-app-surface-page text-[11px] text-app-text-tertiary shrink-0 select-none">
+      {/* Row/column counts */}
+      <span>{rows.length} 行</span>
+      <span className="text-app-border">·</span>
+      <span>{columns.length} 列</span>
+      <span className="text-app-border">·</span>
+      <span>填写率 {fillRate}%</span>
 
-      {isLoading && <p className="text-slate-400">加载中...</p>}
-
-      {stats && (
-        <div className="space-y-3">
-          <div className="bg-white dark:bg-[#1a1a1f] rounded-lg p-3 border border-slate-200 dark:border-zinc-700">
-            <div className="text-slate-500 dark:text-zinc-400 mb-1">{stats.totalRows} 行 · {selectedColumn.type}</div>
-            <div className="flex gap-3 flex-wrap">
-              <span>非空: <strong>{stats.nonEmptyCount}</strong></span>
-              {stats.uniqueCount > 0 && <span>去重: <strong>{stats.uniqueCount}</strong></span>}
-              {stats.avg !== null && <span>均值: <strong>{stats.avg?.toFixed(1)}</strong></span>}
-              {stats.sum !== null && <span>求和: <strong>{stats.sum?.toFixed(1)}</strong></span>}
-            </div>
-          </div>
-
-          {stats.distribution.length > 0 && (
-            <div className="bg-white dark:bg-[#1a1a1f] rounded-lg p-3 border border-slate-200 dark:border-zinc-700">
-              <div className="text-slate-500 dark:text-zinc-400 mb-2">分布</div>
-              {stats.distribution.map((d) => (
-                <div key={d.label} className="flex items-center gap-2 mb-1">
-                  <span className="w-16 truncate text-slate-700 dark:text-zinc-300">{d.label}</span>
-                  <div className="flex-1 h-1 bg-slate-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-indigo-500 rounded-full"
-                         style={{ width: `${stats.totalRows > 0 ? (d.count / stats.totalRows) * 100 : 0}%` }} />
-                  </div>
-                  <span className="text-slate-400 dark:text-zinc-500 w-4 text-right">{d.count}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      {selectedColumn && (
+        <>
+          <span className="text-app-border">|</span>
+          <span className="text-app-text-secondary">
+            当前列: <span className="font-medium text-app-text-primary">{selectedColumn.label}</span>
+            <span className="ml-1 text-app-text-tertiary">({selectedColumn.type})</span>
+          </span>
+        </>
       )}
+
+      <span className="flex-1" />
+
+      {/* Column quick-jump pills */}
+      <span className="hidden lg:flex items-center gap-1">
+        {columns.slice(0, 8).map((col) => (
+          <button key={col.key}
+            onClick={() => onColumnClick(col)}
+            className={`px-1.5 py-0.5 rounded text-[10px] transition-colors
+              ${selectedColumn?.key === col.key
+                ? 'bg-app-accent-soft text-app-accent'
+                : 'hover:bg-app-surface-hover text-app-text-tertiary'
+              }`}>
+            {col.label}
+          </button>
+        ))}
+        {columns.length > 8 && <span className="text-app-text-tertiary">+{columns.length - 8}</span>}
+      </span>
     </div>
   );
 }
@@ -2179,17 +2207,19 @@ git commit -m "feat: add SmartSheet toolbar and stats panel"
 
 - [ ] **Step 1: Write SmartSheetPage (editor container)**
 
+> ⚠️ **令牌合规（G04）**：所有颜色/边框使用语义类名。布局改为页眉工具栏 + 主体表格 + 页脚状态栏（紧凑型，用户反馈统计卡片太大）。
+
 ```tsx
 // frontend/src/features/smartsheet/SmartSheetPage.tsx
 import React, { useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import SmartSheetToolbar from './components/SmartSheetToolbar';
 import SmartSheetGrid from './components/SmartSheetGrid';
-import SmartSheetStatsPanel from './components/SmartSheetStatsPanel';
+import SmartSheetStatusBar from './components/SmartSheetStatusBar';
 import { useSmartSheet } from './hooks/useSmartSheet';
-import { useSmartSheetStats } from './hooks/useSmartSheetStats';
 import { DEFAULT_VIEW_OPTIONS } from './types';
 import type { ViewOptions, ColumnConfig } from './types';
+import toast from 'react-hot-toast';
 
 export default function SmartSheetPage() {
   const { id } = useParams<{ id: string }>();
@@ -2197,10 +2227,6 @@ export default function SmartSheetPage() {
   const [viewOptions, setViewOptions] = useState<ViewOptions>(DEFAULT_VIEW_OPTIONS);
   const [selectedColumn, setSelectedColumn] = useState<ColumnConfig | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
-
-  const { data: stats, isLoading: statsLoading } = useSmartSheetStats(
-    id, selectedColumn?.key ?? null
-  );
 
   const handleViewOptionChange = useCallback((key: keyof ViewOptions) => {
     setViewOptions((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -2216,15 +2242,15 @@ export default function SmartSheetPage() {
   }, [id, sheet]);
 
   const handleImport = useCallback(() => {
-    // Opens import dialog (Task 14)
     toast('导入功能将在下一步实现');
   }, []);
 
-  if (isLoading) return <div className="p-8 text-center text-slate-500">加载中...</div>;
-  if (!sheet) return <div className="p-8 text-center text-red-500">表格不存在</div>;
+  if (isLoading) return <div className="flex items-center justify-center h-full text-app-text-secondary text-sm">加载中...</div>;
+  if (!sheet) return <div className="flex items-center justify-center h-full text-app-feedback-danger text-sm">表格不存在</div>;
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-[#09090b]">
+    <div className="flex flex-col h-full bg-app-surface-page">
+      {/* 页眉：工具栏（含紧凑统计指示） */}
       <SmartSheetToolbar
         sheetName={sheet.name}
         viewOptions={viewOptions}
@@ -2244,43 +2270,42 @@ export default function SmartSheetPage() {
         onSearch={() => {}}
       />
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 overflow-hidden">
-          <SmartSheetGrid
-            columns={sheet.columnsConfig}
-            rows={rows}
-            layoutMode={sheet.layoutMode}
-            viewOptions={viewOptions}
-            selectedRowIds={selectedRowIds}
-            onCellEdit={updateCell}
-            onColumnConfigClick={(colKey) => {
-              const col = sheet.columnsConfig.find((c) => c.key === colKey);
-              if (col) setSelectedColumn(col);
-            }}
-            onRowSelect={(rowId, selected) => {
-              setSelectedRowIds((prev) => {
-                const next = new Set(prev);
-                selected ? next.add(rowId) : next.delete(rowId);
-                return next;
-              });
-            }}
-          />
-        </div>
-
-        <SmartSheetStatsPanel
-          selectedColumn={selectedColumn}
-          stats={stats ?? null}
-          isLoading={statsLoading}
+      {/* 主体：表格（填满剩余高度） */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <SmartSheetGrid
+          columns={sheet.columnsConfig}
+          rows={rows}
+          layoutMode={sheet.layoutMode}
+          viewOptions={viewOptions}
+          selectedRowIds={selectedRowIds}
+          onCellEdit={updateCell}
+          onColumnConfigClick={(colKey) => {
+            const col = sheet.columnsConfig.find((c) => c.key === colKey);
+            if (col) setSelectedColumn(col);
+          }}
+          onRowSelect={(rowId, selected) => {
+            setSelectedRowIds((prev) => {
+              const next = new Set(prev);
+              selected ? next.add(rowId) : next.delete(rowId);
+              return next;
+            });
+          }}
         />
       </div>
 
-      {/* Multi-sheet tabs placeholder */}
+      {/* 页脚：紧凑状态栏 */}
+      <SmartSheetStatusBar
+        rows={rows}
+        columns={sheet.columnsConfig}
+        selectedColumn={selectedColumn}
+        onColumnClick={(col) => setSelectedColumn(col)}
+      />
     </div>
   );
 }
-```
-
 - [ ] **Step 2: Write SmartSheetListPage**
+
+> ⚠️ **令牌合规（G04）**：所有颜色/边框使用语义类名。
 
 ```tsx
 // frontend/src/features/smartsheet/SmartSheetListPage.tsx
@@ -2305,7 +2330,7 @@ export default function SmartSheetListPage() {
       <div className="mb-4 flex gap-2">
         {PRESET_TEMPLATES.map((tpl) => (
           <button key={tpl.id}
-            className="px-3 py-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#1a1a1f] hover:border-indigo-300 dark:hover:border-indigo-600 text-sm transition-colors"
+            className="px-3 py-2 rounded-app-element border border-app-border bg-app-surface-container hover:border-app-accent text-sm transition-colors text-app-text-primary"
             onClick={async () => {
               try {
                 const sheet = await createSheet({
@@ -2322,7 +2347,7 @@ export default function SmartSheetListPage() {
           </button>
         ))}
         <button onClick={() => navigate('/admin/smartsheet/new')}
-          className="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm transition-colors flex items-center gap-1">
+          className="px-3 py-2 rounded-app-element bg-app-accent text-app-text-inverse hover:bg-app-accent-hover text-sm transition-colors flex items-center gap-1">
           <Plus className="w-4 h-4" /> 自定义
         </button>
       </div>
@@ -2331,7 +2356,7 @@ export default function SmartSheetListPage() {
         columns={[
           { header: '名称', accessor: 'name' },
           { header: '模式', accessor: 'layoutMode', render: (v: string) => (
-            <span className="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-zinc-800">{v}</span>
+            <span className="text-xs px-2 py-0.5 rounded bg-app-surface-hover text-app-text-secondary">{v}</span>
           )},
           { header: '更新于', accessor: 'updatedAt', render: (v: string) => new Date(v).toLocaleString() },
         ]}
@@ -2372,6 +2397,8 @@ git commit -m "feat: add SmartSheet page and list page"
 
 - [ ] **Step 1: Write SmartSheetColumnConfigSheet**
 
+> ⚠️ **令牌合规（G04+G02）**：弹窗 z-index 使用 `var(--z-modal)`，所有颜色使用语义类名。
+
 ```tsx
 // frontend/src/features/smartsheet/components/SmartSheetColumnConfigSheet.tsx
 import React, { useState } from 'react';
@@ -2405,22 +2432,23 @@ export default function SmartSheetColumnConfigSheet({
   if (!open || !draft) return null;
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[360px] bg-white dark:bg-[#131316] border-l border-slate-200 dark:border-zinc-800 shadow-lg z-50 p-5 overflow-y-auto">
+    <div className="fixed inset-y-0 right-0 w-[360px] bg-app-surface-elevated border-l border-app-border shadow-lg p-5 overflow-y-auto"
+         style={{ zIndex: 'var(--z-modal)' }}>
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-sm font-semibold text-slate-800 dark:text-zinc-200">列配置</h3>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300">✕</button>
+        <h3 className="text-sm font-semibold text-app-text-primary">列配置</h3>
+        <button onClick={onClose} className="text-app-text-tertiary hover:text-app-text-primary">✕</button>
       </div>
 
       <div className="space-y-4">
         <div>
-          <label className="text-xs text-slate-500 dark:text-zinc-400">列名称</label>
-          <input className="w-full mt-1 px-2 py-1.5 rounded border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#1a1a1f] text-sm text-slate-800 dark:text-zinc-200"
+          <label className="text-xs text-app-text-secondary">列名称</label>
+          <input className="w-full mt-1 px-2 py-1.5 rounded-app-element border border-app-border bg-app-surface-container text-sm text-app-text-primary"
                  value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })} />
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-zinc-400">列类型</label>
-          <select className="w-full mt-1 px-2 py-1.5 rounded border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#1a1a1f] text-sm"
+          <label className="text-xs text-app-text-secondary">列类型</label>
+          <select className="w-full mt-1 px-2 py-1.5 rounded-app-element border border-app-border bg-app-surface-container text-sm text-app-text-primary"
                   value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as ColumnType })}>
             {COLUMN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
@@ -2428,23 +2456,23 @@ export default function SmartSheetColumnConfigSheet({
 
         {(draft.type === 'select' || draft.type === 'multi-select') && (
           <div>
-            <label className="text-xs text-slate-500 dark:text-zinc-400">预设选项</label>
+            <label className="text-xs text-app-text-secondary">预设选项</label>
             <div className="mt-1 space-y-1">
               {(draft.options || []).map((opt, i) => (
                 <div key={i} className="flex gap-1">
-                  <input className="flex-1 px-2 py-1 rounded border border-slate-200 dark:border-zinc-700 bg-white dark:bg-[#1a1a1f] text-sm"
+                  <input className="flex-1 px-2 py-1 rounded-app-element border border-app-border bg-app-surface-container text-sm text-app-text-primary"
                          value={opt} onChange={(e) => {
                            const opts = [...(draft.options || [])];
                            opts[i] = e.target.value;
                            setDraft({ ...draft, options: opts });
                          }} />
-                  <button className="text-red-400 hover:text-red-600 text-xs px-1"
+                  <button className="text-app-feedback-danger hover:text-app-feedback-danger/80 text-xs px-1"
                           onClick={() => {
                             setDraft({ ...draft, options: (draft.options || []).filter((_, j) => j !== i) });
                           }}>✕</button>
                 </div>
               ))}
-              <button className="text-xs text-indigo-500 hover:text-indigo-600"
+              <button className="text-xs text-app-accent hover:text-app-accent-hover"
                       onClick={() => setDraft({ ...draft, options: [...(draft.options || []), ''] })}>
                 + 添加选项
               </button>
@@ -2455,14 +2483,14 @@ export default function SmartSheetColumnConfigSheet({
         <div className="flex items-center gap-2">
           <input type="checkbox" checked={draft.required || false}
                  onChange={(e) => setDraft({ ...draft, required: e.target.checked })} />
-          <label className="text-xs text-slate-500 dark:text-zinc-400">必填</label>
+          <label className="text-xs text-app-text-secondary">必填</label>
         </div>
 
         <div className="flex gap-2 pt-4">
           <button onClick={() => { onSave(draft); onClose(); }}
-                  className="flex-1 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-medium">保存</button>
+                  className="flex-1 py-1.5 rounded-app-element bg-app-accent text-app-text-inverse text-sm font-medium hover:bg-app-accent-hover">保存</button>
           <button onClick={() => { onDelete(draft.key); onClose(); }}
-                  className="px-3 py-1.5 rounded-md border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm">删除列</button>
+                  className="px-3 py-1.5 rounded-app-element border border-app-feedback-danger text-app-feedback-danger text-sm hover:bg-app-feedback-danger-soft">删除列</button>
         </div>
       </div>
     </div>
@@ -2541,48 +2569,49 @@ export default function SmartSheetImportDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-[#131316] rounded-xl border border-slate-200 dark:border-zinc-800 shadow-xl w-[600px] max-h-[80vh] overflow-y-auto p-6">
-        <h3 className="text-sm font-semibold mb-4 text-slate-800 dark:text-zinc-200">导入 Excel / CSV</h3>
+    <div className="fixed inset-0 flex items-center justify-center bg-black/50"
+         style={{ zIndex: 'var(--z-modal)' }}>
+      <div className="bg-app-surface-elevated rounded-xl border border-app-border shadow-xl w-[600px] max-h-[80vh] overflow-y-auto p-6">
+        <h3 className="text-sm font-semibold mb-4 text-app-text-primary">导入 Excel / CSV</h3>
 
         {step === 'upload' && (
           <div className="space-y-4">
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFile}
-                   className="text-sm" />
-            <button onClick={onClose} className="px-3 py-1.5 text-sm border rounded-md">取消</button>
+                   className="text-sm text-app-text-primary" />
+            <button onClick={onClose} className="px-3 py-1.5 text-sm border border-app-border rounded-app-element text-app-text-secondary">取消</button>
           </div>
         )}
 
         {step === 'map' && (
           <div className="space-y-4">
-            <p className="text-xs text-slate-500">确认列映射：</p>
+            <p className="text-xs text-app-text-secondary">确认列映射：</p>
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-zinc-700">
-                  <th className="text-left py-1">文件列</th>
-                  <th className="text-left py-1">映射到</th>
-                  <th className="text-left py-1">预览</th>
+                <tr className="border-b border-app-border">
+                  <th className="text-left py-1 text-app-text-secondary">文件列</th>
+                  <th className="text-left py-1 text-app-text-secondary">映射到</th>
+                  <th className="text-left py-1 text-app-text-secondary">预览</th>
                 </tr>
               </thead>
               <tbody>
                 {(preview[0] || []).map((h, i) => (
-                  <tr key={i} className="border-b border-slate-100 dark:border-zinc-800">
-                    <td className="py-1">{h}</td>
+                  <tr key={i} className="border-b border-app-border">
+                    <td className="py-1 text-app-text-primary">{h}</td>
                     <td className="py-1">
-                      <select className="text-xs border rounded px-1 py-0.5" value={mapping[i] || ''}
+                      <select className="text-xs border border-app-border rounded px-1 py-0.5 bg-app-surface-container text-app-text-primary" value={mapping[i] || ''}
                               onChange={(e) => setMapping({ ...mapping, [i]: e.target.value })}>
                         <option value="">跳过</option>
                         {columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                       </select>
                     </td>
-                    <td className="py-1 text-slate-400">{preview[1]?.[i] || ''}</td>
+                    <td className="py-1 text-app-text-tertiary">{preview[1]?.[i] || ''}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <div className="flex gap-2">
-              <button onClick={handleImport} className="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm">确认导入</button>
-              <button onClick={onClose} className="px-3 py-1.5 border rounded-md text-sm">取消</button>
+              <button onClick={handleImport} className="px-3 py-1.5 rounded-app-element bg-app-accent text-app-text-inverse text-sm hover:bg-app-accent-hover">确认导入</button>
+              <button onClick={onClose} className="px-3 py-1.5 border border-app-border rounded-app-element text-sm text-app-text-secondary">取消</button>
             </div>
           </div>
         )}

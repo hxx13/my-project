@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   ShieldAlert,
   User,
+  Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -423,6 +424,11 @@ export default function StudentHomePage() {
               icon={BarChart3}
               label="AI 个人画像"
               onClick={() => setShowAiModal(true)}
+            />
+            <QuickActionItem
+              icon={Package}
+              label="申领物品"
+              onClick={() => navigate("/student/material")}
             />
           </div>
         </StudentCard>
