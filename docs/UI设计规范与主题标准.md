@@ -242,6 +242,42 @@
 
 StatusBar 组件本身**不感知**所处模式——它只是一个 `h-5 shrink-0` 的 div。父级容器决定它的定位方式。
 
+#### AdminFullWidthPage：抵消 AdminLayout 默认 padding
+
+`AdminLayout` 对所有管理页面添加 `p-6 sm:p-8` 提供标准页面留白。这对表单/设置页面合适，但对多栏布局、仪表盘、宽表格等页面造成不必要的水平空间浪费。
+
+使用 `<AdminFullWidthPage>` 包裹页面内容以抵消该 padding：
+
+```tsx
+import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
+
+export default function MyPage() {
+  return (
+    <AdminFullWidthPage>
+      {/* 你的全宽内容 */}
+    </AdminFullWidthPage>
+  );
+}
+```
+
+**实现原理**：`AdminFullWidthPage` 渲染一个 `-mx-6 sm:-mx-8` 的 div，通过负 margin 抵消父级 AdminLayout 的 padding。
+
+**已应用页面**（截至 2026-06-10）：
+
+| 页面 | 原因 |
+|------|------|
+| `AdminKnowledgeHomePage` | 三栏布局，需全宽 |
+| `AdminHomePage` | 卡片网格仪表盘 |
+| `AdminCageShelfPage` | 笼架网格 + 侧面板 |
+| `AdminAnalyticsPage` | 统计图表仪表盘 |
+| `AdminContentHubPage` | 内容卡片 + 原有 p-6 双层 padding |
+
+**判断标准**：
+```
+页面是表单/设置/简单列表？→ 保持 AdminLayout 默认 padding
+页面是多栏/仪表盘/宽表格/图表？→ 使用 AdminFullWidthPage
+```
+
 ---
 
 ## 二、令牌分层架构
