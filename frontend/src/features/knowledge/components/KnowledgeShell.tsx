@@ -9,6 +9,9 @@ import { KnowledgePageRenderer } from "./KnowledgePageRenderer";
 import { KnowledgePageOutline } from "./KnowledgePageOutline";
 import { KnowledgePageMeta } from "./KnowledgePageMeta";
 import { KnowledgeEditorPanel } from "./KnowledgeEditorPanel";
+import { KnowledgeGraphView } from "./KnowledgeGraphView";
+import { KnowledgeTimelineView } from "./KnowledgeTimelineView";
+import { KnowledgeHistoryDrawer } from "./KnowledgeHistoryDrawer";
 import { AlertTriangle, RefreshCw, Pencil, Clock, ArrowLeft } from "lucide-react";
 
 export function KnowledgeShell() {
@@ -76,22 +79,14 @@ export function KnowledgeShell() {
       );
     }
 
-    // Graph view (placeholder — Phase 2)
+    // Graph view
     if (shell.view === "graph") {
-      return (
-        <div className="flex items-center justify-center py-16 text-sm text-[var(--app-color-text-tertiary)]">
-          🕸️ 知识图谱 — Phase 2 实现
-        </div>
-      );
+      return <KnowledgeGraphView onSelectPage={shell.selectPage} />;
     }
 
-    // Timeline view (placeholder — Phase 2)
+    // Timeline view
     if (shell.view === "timeline") {
-      return (
-        <div className="flex items-center justify-center py-16 text-sm text-[var(--app-color-text-tertiary)]">
-          🌱 生长记录 — Phase 2 实现
-        </div>
-      );
+      return <KnowledgeTimelineView onSelectPage={shell.selectPage} />;
     }
 
     // Browse: no page selected → dashboard
@@ -205,6 +200,16 @@ export function KnowledgeShell() {
           content={renderCenter()}
         />
       </div>
+
+      <KnowledgeHistoryDrawer
+        open={shell.isHistoryOpen}
+        pageId={shell.historyPageId}
+        onClose={shell.closeHistory}
+        onRollback={() => {
+          shell.closeHistory();
+          refetch();
+        }}
+      />
     </div>
   );
 }
