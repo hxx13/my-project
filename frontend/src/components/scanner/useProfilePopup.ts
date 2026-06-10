@@ -564,6 +564,8 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             exitCelebrateRoomId,
             accessNotice,
             accessNoticeDurationMs: noticeSettings.durationMs,
+            autoSignoutState: result?.autoSignoutState ?? null,
+            autoSignoutSecondsRemaining: result?.autoSignoutSecondsRemaining ?? null,
         },
         actions: {
             setShowRiskModal,

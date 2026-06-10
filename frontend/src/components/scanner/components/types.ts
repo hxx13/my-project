@@ -58,6 +58,10 @@ export interface PopupState {
     exitCelebrateRoomId: string | null;
     accessNotice: { message: string } | null;
     accessNoticeDurationMs: number;
+    /** 自动签退计时器状态 */
+    autoSignoutState: string | null;
+    /** 距离自动签退剩余秒数 */
+    autoSignoutSecondsRemaining: number | null;
 }
 
 export interface PopupActions {
