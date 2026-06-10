@@ -116,7 +116,7 @@ export function PersonnelSearchDropdown() {
                 </div>
 
                 {isOpen && keyword && (
-                    <div className="absolute top-[50px] right-0 w-[240px] bg-[#191A1E]/95 backdrop-blur-xl border border-white/10 shadow-[0_20px_40px_rgba(0,0,0,0.6)] rounded-[16px] overflow-hidden z-[9999] flex flex-col transition-all animate-in fade-in slide-in-from-top-2">
+                    <div className="absolute top-[50px] right-0 w-[240px] bg-[#191A1E]/95 backdrop-blur-xl border border-white/10 shadow-[0_20px_40px_rgba(0,0,0,0.6)] rounded-[16px] overflow-hidden z-[var(--z-dropdown)] flex flex-col transition-all animate-in fade-in slide-in-from-top-2">
                         {isSearching && <div className="p-4 flex justify-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin" /></div>}
                         {!isSearching && results.length === 0 && <div className="p-4 text-center text-xs font-bold text-slate-400">查无此人</div>}
 
@@ -162,7 +162,7 @@ export function PersonnelSearchDropdown() {
 
             {/* RPG 全息角色档案卡 (Portal 弹窗) */}
             {safeSelected && createPortal(
-                <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#050A15]/70 backdrop-blur-md animate-in fade-in">
+                <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[#050A15]/70 backdrop-blur-md animate-in fade-in">
                     <div className="bg-white rounded-[24px] w-[380px] shadow-2xl relative overflow-hidden animate-in zoom-in-95">
                         <div className="h-24 bg-gradient-to-r from-[#191A1E] to-[#2d5cf7] relative">
                             <button onClick={() => setSelectedPerson(null)} className="absolute top-4 right-4 text-white/70 hover:text-white transition-colors bg-black/20 p-1.5 rounded-full backdrop-blur-sm">

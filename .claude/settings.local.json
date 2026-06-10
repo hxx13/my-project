@@ -37,7 +37,11 @@
       "mcp__playwright__browser_navigate",
       "mcp__playwright__browser_run_code_unsafe",
       "mcp__firecrawl__firecrawl_search",
-      "mcp__firecrawl__firecrawl_scrape"
+      "mcp__firecrawl__firecrawl_scrape",
+      "Bash(rm \"d:/codex/verson.1.2/20260416/.claude/settings.json\" && echo \"removed\")"
+    ],
+    "additionalDirectories": [
+      "d:\\codex\\verson.1.2\\20260416\\.claude"
     ]
   }
 }

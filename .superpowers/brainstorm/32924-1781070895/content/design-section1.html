@@ -1,0 +1,79 @@
+<h2>设计 Part 1：数据模型 &amp; 架构</h2>
+<p class="subtitle">先定数据结构和组件树，后面再细化交互和统计面板</p>
+
+<div class="section">
+  <h3>核心概念：两张表</h3>
+  <div class="mockup">
+    <div class="mockup-header">数据库模型</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; padding: 16px; background: #0d1117; color: #c9d1d9; border-radius: 6px;">
+      <div style="color: #ff7b72; margin-bottom: 8px;">-- ① 表格定义表：存表格的元信息</div>
+      <div style="padding-left: 16px; color: #d2a8ff;">smartsheet_definition</div>
+      <div style="padding-left: 32px; color: #7ee787;">├── id (PK)</div>
+      <div style="padding-left: 32px; color: #7ee787;">├── name (表格名称)</div>
+      <div style="padding-left: 32px; color: #7ee787;">├── description (描述)</div>
+      <div style="padding-left: 32px; color: #7ee787;">├── columns_config (JSON) ← 列定义（类型/选项/校验）</div>
+      <div style="padding-left: 32px; color: #7ee787;">├── created_by / updated_by</div>
+      <div style="padding-left: 32px; color: #7ee787;">└── created_at / updated_at</div>
+      <div style="color: #8b9499; margin: 12px 0;">───────────────────────────</div>
+      <div style="color: #ff7b72; margin-bottom: 8px;">-- ② 数据行表：存每一行的实际数据</div>
+      <div style="padding-left: 16px; color: #d2a8ff;">smartsheet_row</div>
+      <div style="padding-left: 32px; color: #7ee787;">├── id (PK)</div>
+      <div style="padding-left: 32px; color: #7ee787;">├── sheet_id (FK → smartsheet_definition)</div>
+      <div style="padding-left: 32px; color: #7ee787;">├── row_index (行序号)</div>
+      <div style="padding-left: 32px; color: #7ee787;">├── cell_data (JSON) ← 每个单元格的值 {"col_key":"val"}</div>
+      <div style="padding-left: 32px; color: #7ee787;">└── created_at / updated_at</div>
+    </div>
+  </div>
+  <p style="margin-top: 12px; color: #8b9499; font-size: 14px;">💡 用 JSON 存列定义和单元格数据 → 列的数量/类型完全动态，不改表结构就能加列</p>
+</div>
+
+<div class="section">
+  <h3>列类型系统（columns_config JSON）</h3>
+  <p>每个列可以配置为以下类型之一：</p>
+  <table>
+    <thead><tr><th>类型</th><th>交互方式</th><th>配置项</th></tr></thead>
+    <tbody>
+      <tr><td><strong>select</strong></td><td>下拉单选</td><td>options: ["选项A","选项B",...]</td></tr>
+      <tr><td><strong>multi-select</strong></td><td>多选标签</td><td>options: [...]</td></tr>
+      <tr><td><strong>date</strong></td><td>日期选择器</td><td>format: "YYYY-MM-DD"</td></tr>
+      <tr><td><strong>checkbox</strong></td><td>勾选框</td><td>—</td></tr>
+      <tr><td><strong>number</strong></td><td>数字输入</td><td>min / max / decimal</td></tr>
+      <tr><td><strong>text</strong></td><td>自由文本</td><td>maxLength / placeholder</td></tr>
+      <tr><td><strong>user</strong></td><td>人员选择</td><td>— (对接现有 PersonnelSearchDropdown)</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>前端组件树</h3>
+  <div class="mockup">
+    <div class="mockup-header">组件层级</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; padding: 16px; background: #0d1117; color: #c9d1d9; border-radius: 6px;">
+      <div style="color: #ff7b72;">SmartSheetPage (路由页)</div>
+      <div style="padding-left: 20px; color: #d2a8ff;">├── SmartSheetToolbar</div>
+      <div style="padding-left: 40px; color: #7ee787;">│   ├── 表格切换 Dropdown（多表格场景）</div>
+      <div style="padding-left: 40px; color: #7ee787;">│   ├── [新建] [导入Excel] [导出Excel]</div>
+      <div style="padding-left: 40px; color: #7ee787;">│   └── [添加列] [添加行] [撤销][重做]</div>
+      <div style="padding-left: 20px; color: #d2a8ff;">├── SmartSheetGrid (核心：revo-grid 封装)</div>
+      <div style="padding-left: 40px; color: #7ee787;">│   ├── 列头右键菜单（编辑列/删除列/排序）</div>
+      <div style="padding-left: 40px; color: #7ee787;">│   ├── 行勾选框 → 批量操作栏</div>
+      <div style="padding-left: 40px; color: #7ee787;">│   ├── 单元格编辑器注册表</div>
+      <div style="padding-left: 40px; color: #7ee787;">│   └── 选区 / 复制粘贴 / 键盘导航</div>
+      <div style="padding-left: 20px; color: #d2a8ff;">└── SmartSheetStatsPanel (可折叠侧边栏)</div>
+      <div style="padding-left: 40px; color: #7ee787;">    ├── 选中列统计（计数/去重/求和/空值）</div>
+      <div style="padding-left: 40px; color: #7ee787;">    └── 简易图表（可选 recharts 柱/饼图）</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>路由 &amp; 权限</h3>
+  <table>
+    <thead><tr><th>路由</th><th>页面</th><th>权限</th></tr></thead>
+    <tbody>
+      <tr><td>/admin/smartsheet</td><td>表格管理列表</td><td>smartsheet:list</td></tr>
+      <tr><td>/admin/smartsheet/:id</td><td>表格编辑器</td><td>smartsheet:edit</td></tr>
+      <tr><td>/admin/smartsheet/new</td><td>新建表格向导</td><td>smartsheet:create</td></tr>
+    </tbody>
+  </table>
+</div>

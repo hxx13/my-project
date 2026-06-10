@@ -1,0 +1,112 @@
+<h2>设计 Part 2：列配置 &amp; 核心交互</h2>
+<p class="subtitle">"预配置内容、点击填充" 的实现方案 + Excel 导入导出流程</p>
+
+<div class="section">
+  <h3>列配置面板（点击列头 → 右侧弹出）</h3>
+  <div class="mockup">
+    <div class="mockup-header">列编辑器 Sheet</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; padding: 16px; background: #0d1117; color: #c9d1d9; border-radius: 6px;">
+      <div style="color: #ff7b72;">┌─ 列配置面板 (shadcn Sheet 右侧滑出) ──────────┐</div>
+      <div style="padding-left: 20px; color: #d2a8ff;">│  列名称: [ 状态                    ]</div>
+      <div style="padding-left: 20px; color: #d2a8ff;">│  列类型: [ select  ▼            ]</div>
+      <div style="padding-left: 20px; color: #d2a8ff;">│  必填:   [ ✓ ]</div>
+      <div style="padding-left: 20px; color: #8b9499;">│  ─────────────────────────────</div>
+      <div style="padding-left: 20px; color: #d2a8ff;">│  预设选项: (仅 select/multi-select 显示)</div>
+      <div style="padding-left: 40px; color: #7ee787;">│  ┌──────────────────────┐</div>
+      <div style="padding-left: 40px; color: #7ee787;">│  │ 待处理         [×]   │</div>
+      <div style="padding-left: 40px; color: #7ee787;">│  │ 进行中         [×]   │</div>
+      <div style="padding-left: 40px; color: #7ee787;">│  │ 已完成         [×]   │</div>
+      <div style="padding-left: 40px; color: #7ee787;">│  │ [+ 添加选项]         │</div>
+      <div style="padding-left: 40px; color: #7ee787;">│  └──────────────────────┘</div>
+      <div style="padding-left: 20px; color: #8b9499;">│  ─────────────────────────────</div>
+      <div style="padding-left: 20px; color: #d2a8ff;">│  默认值: [ 待处理    ▼     ]</div>
+      <div style="padding-left: 20px; color: #d2a8ff;">│  列宽:   [ 150px           ]</div>
+      <div style="padding-left: 20px; color: #7ee787;">│  [保存]  [删除此列]</div>
+      <div style="color: #ff7b72;">└──────────────────────────────────────────┘</div>
+    </div>
+  </div>
+  <p style="margin-top: 8px; color: #8b9499; font-size: 14px;">💡 列类型切换时，面板动态显示对应的配置区（如 select 显示选项列表，date 显示日期格式）</p>
+</div>
+
+<div class="section">
+  <h3>单元格交互流程</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">点击空白单元格</div>
+      <div class="mockup-body" style="padding: 12px;">
+        <p style="margin: 0 0 8px; font-size: 14px;"><strong>列类型 = select →</strong></p>
+        <div style="border: 1px solid #30363d; border-radius: 4px; overflow: hidden;">
+          <div style="padding: 6px 10px; background: #1c2128; cursor: pointer;">待处理</div>
+          <div style="padding: 6px 10px; background: #161b22; cursor: pointer; color: #58a6ff;">进行中 ← hover</div>
+          <div style="padding: 6px 10px; background: #1c2128; cursor: pointer;">已完成</div>
+        </div>
+        <p style="margin: 8px 0 0; font-size: 12px; color: #8b9499;">revo-grid 内置 dropdown editor</p>
+
+        <p style="margin: 16px 0 8px; font-size: 14px;"><strong>列类型 = date →</strong></p>
+        <div style="border: 1px solid #30363d; border-radius: 4px; padding: 8px; background: #161b22;">
+          📅 2026-06-10
+        </div>
+        <p style="margin: 4px 0 0; font-size: 12px; color: #8b9499;">原生日期选择器弹出</p>
+
+        <p style="margin: 16px 0 8px; font-size: 14px;"><strong>列类型 = user →</strong></p>
+        <div style="border: 1px solid #30363d; border-radius: 4px; padding: 8px; background: #161b22;">
+          🔍 输入搜索人员...
+        </div>
+        <p style="margin: 4px 0 0; font-size: 12px; color: #8b9499;">复用 PersonnelSearchDropdown</p>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">批量填充</div>
+      <div class="mockup-body" style="padding: 12px;">
+        <p style="font-size: 14px; margin: 0 0 12px;">选中多行 → 右键 → "填充选中行"</p>
+        <div style="border: 1px solid #30363d; border-radius: 4px; overflow: hidden;">
+          <div style="padding: 6px 10px; background: #161b22; font-size: 12px; color: #8b9499;">已选中 3 行</div>
+          <div style="padding: 6px 10px; background: #1c2128;">填充 "状态" 列 → 已完成</div>
+        </div>
+        <p style="font-size: 14px; margin: 16px 0 8px;">复制粘贴 (Ctrl+C / Ctrl+V)</p>
+        <div style="border: 1px solid #30363d; border-radius: 4px; padding: 8px; background: #161b22; font-size: 12px;">
+          ✅ 区域内复制粘贴（revo-grid 内置）<br>
+          ✅ 从外部 Excel 粘贴（Clipboard API）
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Excel 导入导出流程</h3>
+  <div class="mockup">
+    <div class="mockup-header">数据流</div>
+    <div class="mockup-body" style="font-family: monospace; font-size: 13px; padding: 16px; background: #0d1117; color: #c9d1d9; border-radius: 6px;">
+      <div style="color: #ff7b72;">📥 导入：</div>
+      <div style="padding-left: 20px;">Excel 文件 → 前端 SheetJS 解析行数据</div>
+      <div style="padding-left: 40px; color: #7ee787;">→ 预览弹窗映射列（source列 → target列）</div>
+      <div style="padding-left: 60px; color: #8b9499;">→ 用户确认 → POST /api/smartsheet/:id/rows/batch</div>
+
+      <div style="color: #ff7b72; margin-top: 12px;">📤 导出：</div>
+      <div style="padding-left: 20px;">后端 GET /api/smartsheet/:id/export</div>
+      <div style="padding-left: 40px; color: #7ee787;">→ FastExcel 注解 @ExcelProperty 生成</div>
+      <div style="padding-left: 60px; color: #8b9499;">→ 动态列？→ 用 FastExcel 动态表头 API</div>
+      <div style="padding-left: 20px; color: #8b9499;">（或前端直接 SheetJS 生成 xlsx → downloadBlob）</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>导入列映射弹窗</h3>
+  <div class="mockup">
+    <div class="mockup-header">预览 &amp; 映射对话框</div>
+    <div class="mockup-body" style="padding: 12px;">
+      <table>
+        <thead><tr><th>Excel 列名</th><th>→</th><th>映射到表格列</th><th>预览（前2行）</th></tr></thead>
+        <tbody>
+          <tr><td>姓名</td><td>→</td><td>姓名 ✓</td><td>张三, 李四</td></tr>
+          <tr><td>部门</td><td>→</td><td>部门 ✓</td><td>技术部, 产品部</td></tr>
+          <tr><td>备注</td><td>→</td><td>（跳过）</td><td>—</td></tr>
+          <tr><td style="color: #f85149;">未知列X</td><td>→</td><td style="color: #f85149;">⚠ 未匹配</td><td>abc, def</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size: 13px; color: #8b9499; margin-top: 8px;">用户可为 "未知列" 选择"创建新列"或"跳过"</p>
+    </div>
+  </div>
+</div>

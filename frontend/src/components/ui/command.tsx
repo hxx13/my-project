@@ -25,8 +25,8 @@ const CommandDialog = ({ children, ...props }: DialogProps) => {
     <Dialog {...props}>
       <DialogContent
         showClose={false}
-        overlayClassName="z-[1300] bg-black/60"
-        className="z-[1301] max-h-[85vh] w-[min(100vw-1.5rem,36rem)] overflow-hidden border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl"
+        overlayClassName="z-[var(--z-command)] bg-black/60"
+        className="z-[var(--z-command)] max-h-[85vh] w-[min(100vw-1.5rem,36rem)] overflow-hidden border border-slate-200 bg-white p-0 text-slate-900 shadow-2xl"
       >
         <DialogTitle className="sr-only">搜索并跳转后台页面</DialogTitle>
         <DialogDescription className="sr-only">输入页面名称或路径筛选，Enter 跳转当前选中项。</DialogDescription>

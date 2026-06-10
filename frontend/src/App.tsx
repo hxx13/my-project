@@ -10,6 +10,7 @@ import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FA
 import { SwipeFailureBanner } from "@/features/swipe-alert/SwipeFailureBanner";
 import { useSwipeAlertStore } from "@/store/useSwipeAlertStore";
 import { authStorage } from "@/features/auth/authStorage";
+import { ThemeProvider } from "@/features/theme/ThemeProvider";
 import type { AnimalRoomTelemetryPageDto, TelemetryTagItem } from "@/api/telemetryApi";
 import {
   ANIMAL_ROOM_TELEMETRY_PAGE_QUERY_KEY,
@@ -149,13 +150,14 @@ function GlobalSocketListener() {
 
 function App() {
     return (
-
         <QueryClientProvider client={queryClient}>
-            {/* 💥 将基站挂载在 React 根节点，只要网页开着就永远在线！ */}
-            <GlobalSocketListener />
-            <RouterProvider router={router} />
-            <Toaster position="top-right" />
-            <SwipeFailureBanner />
+            <ThemeProvider>
+                {/* 💥 将基站挂载在 React 根节点，只要网页开着就永远在线！ */}
+                <GlobalSocketListener />
+                <RouterProvider router={router} />
+                <Toaster position="top-right" />
+                <SwipeFailureBanner />
+            </ThemeProvider>
         </QueryClientProvider>
     );
 }

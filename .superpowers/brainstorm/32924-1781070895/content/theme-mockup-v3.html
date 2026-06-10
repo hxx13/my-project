@@ -1,0 +1,419 @@
+<h2>主题 v3 — 现代清新暗色 + 功能扩展建议</h2>
+<p class="subtitle">暗色参考 Linear / Vercel / GitHub Dark 的现代风格，不再是老气的纯灰蓝</p>
+
+<style>
+  /* ===== Modern Dark Palette ===== */
+  :root {
+    --bg-root: #09090b;
+    --bg-surface: #131316;
+    --bg-elevated: #1a1a1f;
+    --bg-overlay: #1f1f25;
+    --border-subtle: #23232a;
+    --border-default: #2e2e37;
+    --text-primary: #f4f4f6;
+    --text-secondary: #a1a1aa;
+    --text-tertiary: #71717a;
+    --text-disabled: #3f3f46;
+    --accent: #818cf8;
+    --accent-soft: #6366f1;
+    --accent-glow: rgba(99,102,241,0.15);
+    --success: #34d399;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --info: #60a5fa;
+  }
+
+  .mv3-shell {
+    background: var(--bg-root);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 28px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  }
+  .mv3-topbar {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .mv3-topbar .path { color: var(--text-secondary); font-size: 12px; }
+  .mv3-toolbar {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .mv3-btn {
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .mv3-btn:hover { background: var(--bg-overlay); color: var(--text-primary); border-color: #3f3f4a; }
+  .mv3-btn.accent { background: var(--accent-soft); color: #fff; border-color: var(--accent-soft); font-weight: 600; }
+  .mv3-btn.accent:hover { background: #7479f0; }
+  .mv3-btn.ghost { border-color: transparent; background: transparent; }
+  .mv3-btn.ghost:hover { background: var(--bg-elevated); }
+  .mv3-divider { width: 1px; height: 22px; background: var(--border-subtle); }
+  .mv3-body { display: flex; min-height: 400px; }
+  .mv3-main { flex: 1; overflow: auto; background: var(--bg-root); }
+  .mv3-side { width: 270px; border-left: 1px solid var(--border-subtle); background: var(--bg-surface); padding: 14px; font-size: 12px; }
+
+  /* Grid */
+  .mgrid { border-collapse: collapse; width: max-content; min-width: 100%; }
+  /* corner */
+  .mgrid .corner {
+    background: var(--bg-elevated);
+    border-right: 1px solid var(--border-default);
+    border-bottom: 1px solid var(--border-default);
+    padding: 10px 14px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 600;
+    position: sticky; left: 0; top: 0; z-index: 3;
+  }
+  /* row header */
+  .mgrid .rh {
+    background: var(--bg-elevated);
+    border-right: 2px solid var(--border-default);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 16px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: left;
+    white-space: nowrap;
+    position: sticky; left: 0; z-index: 2;
+    min-width: 100px;
+  }
+  .mgrid .rh .rh-icon { color: var(--text-disabled); margin-left: 6px; font-size: 10px; cursor: pointer; }
+  .mgrid .rh .rh-icon:hover { color: var(--accent); }
+  /* col header */
+  .mgrid th.ch {
+    background: var(--bg-elevated);
+    border-bottom: 2px solid var(--border-default);
+    border-right: 1px solid var(--border-subtle);
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: center;
+    white-space: nowrap;
+    position: sticky; top: 0; z-index: 2;
+    min-width: 110px;
+  }
+  .mgrid th.ch .ch-type { font-size: 10px; color: var(--text-tertiary); font-weight: 400; display: block; }
+  .mgrid th.ch .ch-icon { color: var(--text-disabled); margin-left: 4px; font-size: 10px; cursor: pointer; }
+  .mgrid th.ch .ch-icon:hover { color: var(--accent); }
+  /* data cell */
+  .mgrid td.dc {
+    border: 1px solid var(--border-subtle);
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--text-primary);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.12s;
+    min-width: 110px;
+    position: relative;
+  }
+  .mgrid td.dc:hover { background: rgba(99,102,241,0.06); border-color: rgba(99,102,241,0.2); }
+  /* selected cell — soft glow ring */
+  .mgrid td.dc.sel {
+    background: rgba(99,102,241,0.1);
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+    border-radius: 2px;
+    z-index: 1;
+    position: relative;
+    box-shadow: 0 0 0 4px var(--accent-glow), inset 0 0 0 1px rgba(99,102,241,0.1);
+  }
+  /* range selected */
+  .mgrid td.dc.range {
+    background: rgba(99,102,241,0.06);
+    border-color: rgba(99,102,241,0.15);
+  }
+
+  /* cell value styles */
+  .cv-select { color: var(--text-primary); }
+  .cv-select .arr { color: var(--text-tertiary); margin-left: 5px; font-size: 10px; }
+  .cv-number { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cv-date { color: var(--text-secondary); font-size: 12.5px; }
+  .cv-bool-true { color: var(--success); font-weight: 700; font-size: 15px; }
+  .cv-bool-false { color: var(--text-disabled); }
+  .cv-empty { color: var(--text-disabled); font-style: italic; font-size: 12px; }
+  /* conditional formatting hints */
+  .cv-warn { background: rgba(251,191,36,0.08); border-radius: 4px; padding: 2px 8px; display: inline-block; }
+
+  /* side stats */
+  .stat-block { margin-bottom: 18px; }
+  .stat-block h4 { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px; }
+  .stat-row { display: flex; justify-content: space-between; align-items: center; margin: 4px 0; font-size: 12px; color: var(--text-secondary); }
+  .stat-row .val { color: var(--text-primary); font-weight: 600; }
+  .stat-bar-wrap { flex: 1; height: 4px; background: var(--border-subtle); border-radius: 2px; margin: 2px 8px; overflow: hidden; }
+  .stat-bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+  .fill-indigo { background: var(--accent); }
+  .fill-emerald { background: var(--success); }
+  .fill-amber { background: var(--warning); }
+  .fill-rose { background: var(--danger); }
+
+  /* feature chips */
+  .feat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .feat-card {
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 14px;
+    background: var(--bg-surface);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .feat-card:hover { border-color: var(--accent-soft); background: var(--bg-elevated); }
+  .feat-card h4 { margin: 0 0 4px; font-size: 13px; color: var(--text-primary); }
+  .feat-card p { margin: 0; font-size: 12px; color: var(--text-tertiary); line-height: 1.5; }
+  .feat-card .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .tag-core { background: rgba(99,102,241,0.15); color: #a5b4fc; }
+  .tag-plus { background: rgba(52,211,153,0.12); color: #6ee7b7; }
+  .tag-maybe { background: rgba(251,191,36,0.12); color: #fcd34d; }
+</style>
+
+<div class="section">
+  <h3>🌙 现代清新暗色 — 完整页面</h3>
+  <p style="color:var(--text-tertiary);font-size:13px;">
+    色板：根底色 #09090b（接近纯黑微蓝调） · 表面 #131316 · 强调色 靛紫 #818cf8 · 选中发光环效果
+  </p>
+</div>
+
+<div class="mv3-shell">
+  <div class="mv3-topbar">
+    <span style="color:var(--text-primary);font-weight:700;">🏠 Codex</span>
+    <span class="path">/ 智能表格 /</span>
+    <span style="color:var(--text-primary);">月度部门评估表</span>
+    <span style="flex:1;"></span>
+    <span style="font-size:10px;color:var(--text-tertiary);background:var(--bg-elevated);padding:4px 8px;border-radius:6px;">💾 已保存</span>
+  </div>
+
+  <div class="mv3-toolbar">
+    <select class="mv3-btn">📋 月度部门评估表 ▾</select>
+    <span class="mv3-divider"></span>
+    <button class="mv3-btn accent">📥 导入</button>
+    <button class="mv3-btn">📤 导出</button>
+    <span class="mv3-divider"></span>
+    <button class="mv3-btn ghost">＋ 行</button>
+    <button class="mv3-btn ghost">＋ 列</button>
+    <span class="mv3-divider"></span>
+    <button class="mv3-btn ghost">🔍 查找</button>
+    <button class="mv3-btn ghost">🔽 筛选</button>
+    <span style="flex:1;"></span>
+    <button class="mv3-btn ghost" style="opacity:0.4;">↩</button>
+    <button class="mv3-btn ghost" style="opacity:0.4;">↪</button>
+    <span class="mv3-divider"></span>
+    <button class="mv3-btn" style="gap:4px;"><span style="color:var(--accent);">◉</span> 条件格式</button>
+  </div>
+
+  <div class="mv3-body">
+    <div class="mv3-main">
+      <table class="mgrid">
+        <thead>
+          <tr>
+            <th class="corner">
+              <div style="font-size:10px;">冻结 ☰</div>
+              <div style="font-size:9px;color:var(--text-tertiary);">行 / 列</div>
+            </th>
+            <th class="ch">📊 完成率<span class="ch-icon">⚙</span><span class="ch-type">number</span></th>
+            <th class="ch">⭐ 质量评分<span class="ch-icon">⚙</span><span class="ch-type">select</span></th>
+            <th class="ch">🏷 风险等级<span class="ch-icon">⚙</span><span class="ch-type">select</span></th>
+            <th class="ch">👤 负责人<span class="ch-icon">⚙</span><span class="ch-type">user</span></th>
+            <th class="ch">📅 截止日期<span class="ch-icon">⚙</span><span class="ch-type">date</span></th>
+            <th class="ch">✅ 验收<span class="ch-icon">⚙</span><span class="ch-type">checkbox</span></th>
+            <th class="ch">📝 备注<span class="ch-icon">⚙</span><span class="ch-type">text</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="rh">技术部<span class="rh-icon">⚙</span></td>
+            <td class="dc cv-number" style="color:var(--success);">85%</td>
+            <td class="dc cv-select">A<span class="arr">▾</span></td>
+            <td class="dc cv-select"><span class="cv-warn">低风险</span><span class="arr">▾</span></td>
+            <td class="dc cv-select">王经理<span class="arr">▾</span></td>
+            <td class="dc cv-date">2026-06-08</td>
+            <td class="dc cv-bool-true">✓</td>
+            <td class="dc cv-empty">点击填写…</td>
+          </tr>
+          <tr>
+            <td class="rh">产品部<span class="rh-icon">⚙</span></td>
+            <td class="dc cv-number">72%</td>
+            <td class="dc sel cv-select">B+<span class="arr">▾</span></td>
+            <td class="dc cv-select">中风险<span class="arr">▾</span></td>
+            <td class="dc cv-select">赵总监<span class="arr">▾</span></td>
+            <td class="dc cv-date">2026-06-15</td>
+            <td class="dc cv-bool-false">—</td>
+            <td class="dc cv-empty">点击填写…</td>
+          </tr>
+          <tr>
+            <td class="rh">运营部<span class="rh-icon">⚙</span></td>
+            <td class="dc cv-number" style="color:var(--success);">91%</td>
+            <td class="dc cv-select">A-<span class="arr">▾</span></td>
+            <td class="dc cv-select"><span class="cv-warn">低风险</span><span class="arr">▾</span></td>
+            <td class="dc cv-select">陈主管<span class="arr">▾</span></td>
+            <td class="dc cv-date">2026-06-20</td>
+            <td class="dc cv-bool-false">—</td>
+            <td class="dc cv-empty">点击填写…</td>
+          </tr>
+          <tr>
+            <td class="rh">人事部<span class="rh-icon">⚙</span></td>
+            <td class="dc cv-number" style="color:var(--danger);">68%</td>
+            <td class="dc cv-select">B<span class="arr">▾</span></td>
+            <td class="dc cv-select">高风险<span class="arr">▾</span></td>
+            <td class="dc cv-select">周副总<span class="arr">▾</span></td>
+            <td class="dc cv-date">2026-07-01</td>
+            <td class="dc cv-bool-false">—</td>
+            <td class="dc cv-empty">点击填写…</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mv3-side">
+      <div class="stat-block">
+        <h4>📊 "质量评分" 统计</h4>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;">4 行 · select · 去重 4</div>
+        <div class="stat-row"><span>A</span><span class="stat-bar-wrap"><span class="stat-bar-fill fill-indigo" style="width:25%;"></span></span><span class="val">1</span></div>
+        <div class="stat-row"><span>A-</span><span class="stat-bar-wrap"><span class="stat-bar-fill fill-indigo" style="width:25%;"></span></span><span class="val">1</span></div>
+        <div class="stat-row"><span>B+</span><span class="stat-bar-wrap"><span class="stat-bar-fill fill-indigo" style="width:25%;"></span></span><span class="val">1</span></div>
+        <div class="stat-row"><span>B</span><span class="stat-bar-wrap"><span class="stat-bar-fill fill-indigo" style="width:25%;"></span></span><span class="val">1</span></div>
+      </div>
+      <div class="stat-block">
+        <h4>📈 "完成率" 统计</h4>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;">4 行 · number</div>
+        <div class="stat-row"><span>均值</span><span class="val">79.0%</span></div>
+        <div class="stat-row"><span>最小</span><span class="val">68%</span></div>
+        <div class="stat-row"><span>最大</span><span class="val">91%</span></div>
+      </div>
+      <div class="stat-block">
+        <h4>⚡ 条件格式规则</h4>
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">
+          🟢 完成率 ≥ 85% → 绿色<br>
+          🟡 完成率 70-84% → 默认<br>
+          🔴 完成率 &lt; 70% → 红色<br>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>💡 功能扩展建议</h3>
+  <p style="color:var(--text-tertiary);font-size:13px;">下面是可以一起做的功能，点击选中你想要的（多选）</p>
+</div>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="freeze" onclick="toggleSelect(this)">
+    <div class="letter">1</div>
+    <div class="content">
+      <h3>冻结窗格 <span class="tag tag-core">核心</span></h3>
+      <p>横纵表头固定不随滚动，宽表必备。revo-grid 内置支持</p>
+    </div>
+  </div>
+  <div class="option" data-choice="conditional-format" onclick="toggleSelect(this)">
+    <div class="letter">2</div>
+    <div class="content">
+      <h3>条件格式 <span class="tag tag-plus">增强</span></h3>
+      <p>按规则自动着色（如 完成率&lt;70% → 红底红字），支持数字范围/文本匹配</p>
+    </div>
+  </div>
+  <div class="option" data-choice="filter" onclick="toggleSelect(this)">
+    <div class="letter">3</div>
+    <div class="content">
+      <h3>列筛选 & 排序 <span class="tag tag-core">核心</span></h3>
+      <p>每列表头下拉：按值筛选 / 排序 / 搜索。revo-grid 内置 filter/sort 插件</p>
+    </div>
+  </div>
+  <div class="option" data-choice="templates" onclick="toggleSelect(this)">
+    <div class="letter">4</div>
+    <div class="content">
+      <h3>表格模板 <span class="tag tag-plus">增强</span></h3>
+      <p>保存表格结构为模板（列定义+预设选项），新建表格时一键加载</p>
+    </div>
+  </div>
+  <div class="option" data-choice="history" onclick="toggleSelect(this)">
+    <div class="letter">5</div>
+    <div class="content">
+      <h3>单元格历史 <span class="tag tag-maybe">可选</span></h3>
+      <p>右键"查看变更历史" — 谁在什么时候改了什么值。后端多一张 change_log 表</p>
+    </div>
+  </div>
+  <div class="option" data-choice="multisheet" onclick="toggleSelect(this)">
+    <div class="letter">6</div>
+    <div class="content">
+      <h3>多 Sheet 标签页 <span class="tag tag-maybe">可选</span></h3>
+      <p>像 Excel 底部 Tab 切换多个 Sheet。一套数据可以有多张关联表</p>
+    </div>
+  </div>
+  <div class="option" data-choice="search" onclick="toggleSelect(this)">
+    <div class="letter">7</div>
+    <div class="content">
+      <h3>全局查找替换 <span class="tag tag-core">核心</span></h3>
+      <p>Ctrl+F 弹出查找栏，搜索所有单元格内容，支持替换。revo-grid 内置</p>
+    </div>
+  </div>
+  <div class="option" data-choice="drag" onclick="toggleSelect(this)">
+    <div class="letter">8</div>
+    <div class="content">
+      <h3>拖拽排序 <span class="tag tag-plus">增强</span></h3>
+      <p>拖拽行/列重新排列顺序。支持拖拽填充（选中单元格右下角拉拽自动填充）</p>
+    </div>
+  </div>
+  <div class="option" data-choice="comments" onclick="toggleSelect(this)">
+    <div class="letter">9</div>
+    <div class="content">
+      <h3>单元格批注 <span class="tag tag-maybe">可选</span></h3>
+      <p>单元格右上角红色小三角，hover 显示备注文字。后端复用现有 remark 字段</p>
+    </div>
+  </div>
+  <div class="option" data-choice="export-options" onclick="toggleSelect(this)">
+    <div class="letter">10</div>
+    <div class="content">
+      <h3>导出选项增强 <span class="tag tag-core">核心</span></h3>
+      <p>导出时选择：① 保留条件格式 ② 导出为 PDF ③ 选择导出哪些列/行</p>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>🎨 新暗色色板一览</h3>
+  <table>
+    <thead><tr><th>Token</th><th>色值</th><th>用途</th><th>WCAG</th></tr></thead>
+    <tbody>
+      <tr><td>--bg-root</td><td style="background:#09090b;color:#f4f4f6;padding:4px 8px;border-radius:4px;">#09090b</td><td>页面根底</td><td>—</td></tr>
+      <tr><td>--bg-surface</td><td style="background:#131316;color:#f4f4f6;padding:4px 8px;border-radius:4px;">#131316</td><td>卡片/工具栏/侧栏</td><td>—</td></tr>
+      <tr><td>--accent</td><td style="background:#818cf8;color:#09090b;padding:4px 8px;border-radius:4px;">#818cf8</td><td>选中描边 / 链接</td><td>8.2:1</td></tr>
+      <tr><td>--accent-glow</td><td style="background:rgba(99,102,241,0.15);color:#f4f4f6;padding:4px 8px;border-radius:4px;">indigo 15%</td><td>选中发光盒阴影</td><td>—</td></tr>
+      <tr><td>text-primary</td><td style="background:#09090b;color:#f4f4f6;padding:4px 8px;border-radius:4px;">#f4f4f6</td><td>主要文字</td><td>15.8:1 ✅</td></tr>
+      <tr><td>text-secondary</td><td style="background:#09090b;color:#a1a1aa;padding:4px 8px;border-radius:4px;">#a1a1aa</td><td>表头/副文字</td><td>7.6:1 ✅</td></tr>
+      <tr><td>text-tertiary</td><td style="background:#09090b;color:#71717a;padding:4px 8px;border-radius:4px;">#71717a</td><td>辅助说明</td><td>4.7:1 ✅</td></tr>
+    </tbody>
+  </table>
+</div>

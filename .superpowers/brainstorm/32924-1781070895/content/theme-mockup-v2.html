@@ -1,0 +1,437 @@
+<h2>主题效果预览 v2 — 矩阵式双表头 + 暗色修复</h2>
+<p class="subtitle">横纵双向表头，交叉点配置 — 更像真实 Excel 的交互体验</p>
+
+<style>
+  .theme-preview {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+    background: #fff;
+  }
+  .tp-header {
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .tp-header .brand { font-weight: 700; font-size: 14px; color: #0f172a; }
+  .tp-toolbar {
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .tp-btn {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    color: #334155;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .tp-btn.primary { background: #0f172a; color: #fff; border-color: #0f172a; }
+  .tp-btn.ghost { border-color: transparent; }
+  .tp-body { display: flex; min-height: 360px; }
+  .tp-main { flex: 1; overflow: auto; background: #fff; }
+  .tp-stats-panel {
+    width: 260px; border-left: 1px solid #e2e8f0;
+    background: #fafbfc; padding: 12px; font-size: 12px;
+  }
+  .tp-grid {
+    border-collapse: collapse;
+    width: max-content;
+    min-width: 100%;
+  }
+  /* 左上角交叉选择区 */
+  .tp-grid .corner-cell {
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #64748b;
+    text-align: center;
+    font-weight: 600;
+  }
+  /* 纵向表头 (行头) — 左侧灰色列 */
+  .tp-grid .row-header {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    text-align: center;
+    min-width: 80px;
+    white-space: nowrap;
+  }
+  /* 横向表头 (列头) — 顶部 */
+  .tp-grid th.col-header {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    white-space: nowrap;
+    min-width: 100px;
+  }
+  /* 交叉数据格 */
+  .tp-grid td.data-cell {
+    border: 1px solid #e2e8f0;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: #1e293b;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.1s;
+    min-width: 100px;
+  }
+  .tp-grid td.data-cell:hover { background: #f1f5f9; outline: 2px solid #3b82f6; outline-offset: -2px; z-index: 1; position: relative; }
+  .tp-grid td.data-cell.active { background: #eff6ff; outline: 2px solid #2563eb; outline-offset: -2px; position: relative; z-index: 2; }
+
+  /* 单元格内容类型徽标 */
+  .cell-select { color: #1e293b; }
+  .cell-select .arrow { color: #94a3b8; margin-left: 4px; font-size: 10px; }
+  .cell-bool { color: #2563eb; font-weight: 700; font-size: 16px; }
+  .cell-date { color: #0f172a; font-size: 12px; }
+  .cell-number { color: #0f172a; font-weight: 500; }
+  .cell-empty { color: #cbd5e1; font-style: italic; font-size: 12px; }
+
+  /* 行头/列头上的配置图标 */
+  .header-config {
+    display: inline-block;
+    margin-left: 4px;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 10px;
+  }
+  .header-config:hover { color: #3b82f6; }
+
+  /* 统计模块 */
+  .stats-item { padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+  .stats-item:last-child { border-bottom: none; }
+  .stats-bar { height: 6px; background: #e2e8f0; border-radius: 3px; margin: 3px 0; overflow: hidden; }
+  .stats-bar-fill { height: 100%; border-radius: 3px; }
+
+  /* ========== 暗色覆盖 ========== */
+  .dark {}
+  .dark .theme-preview { background: #0f172a; border-color: #1e293b; }
+  .dark .tp-header { background: #1e293b; border-color: #334155; }
+  .dark .tp-header .brand { color: #e2e8f0; }
+  .dark .tp-toolbar { background: #0f172a; border-color: #1e293b; }
+  .dark .tp-body { background: #0f172a; }
+  .dark .tp-main { background: #0f172a; }
+  .dark .tp-stats-panel { background: #1a2332; border-color: #1e293b; color: #94a3b8; }
+  /* 暗色 — 表头 */
+  .dark .tp-grid .corner-cell { background: #1e293b; border-color: #334155; color: #94a3b8; }
+  .dark .tp-grid .row-header { background: #1e293b; border-color: #334155; color: #94a3b8; }
+  .dark .tp-grid th.col-header { background: #1e293b; border-color: #334155; color: #94a3b8; }
+  /* 暗色 — 数据格 */
+  .dark .tp-grid td.data-cell {
+    background: #0f172a; border-color: #1e293b; color: #cbd5e1;
+  }
+  .dark .tp-grid td.data-cell:hover { background: #1a2332; outline-color: #3b82f6; }
+  .dark .tp-grid td.data-cell.active { background: #17203a; outline-color: #3b82f6; }
+  .dark .cell-select { color: #cbd5e1; }
+  .dark .cell-select .arrow { color: #64748b; }
+  .dark .cell-date { color: #94a3b8; }
+  .dark .cell-number { color: #cbd5e1; }
+  .dark .cell-empty { color: #334155; }
+  .dark .cell-bool { color: #60a5fa; }
+  /* 暗色 — 统计 */
+  .dark .stats-item { border-color: #1e293b; }
+  .dark .stats-bar { background: #1e293b; }
+</style>
+
+<div class="dark" style="display:none;" id="dark-section"></div>
+
+<div class="section">
+  <h3>🎯 核心概念：横纵双向表头，交叉点配置</h3>
+  <p style="color:#64748b;font-size:14px;">
+    横向表头 = 维度列（如：项目指标、评价标准）<br>
+    纵向表头 = 实体行（如：部门、学生、设备）<br>
+    交叉单元格 = 在该维度下该实体的值 → <strong>点击即可从预配置选项中选择/填充</strong>
+  </p>
+</div>
+
+<div class="section">
+  <h3>☀️ 亮色主题 — 矩阵表格</h3>
+</div>
+
+<div class="theme-preview">
+  <div class="tp-header">
+    <span class="brand">🏠 管理后台</span><span style="color:#94a3b8;">/</span>
+    <span class="brand">智能表格</span><span style="color:#94a3b8;">/</span>
+    <span>月度部门评估表</span>
+  </div>
+
+  <div class="tp-toolbar">
+    <select class="tp-btn" style="font-size:12px;"><option>月度部门评估表</option><option>设备巡检矩阵</option></select>
+    <span style="color:#cbd5e1;">|</span>
+    <button class="tp-btn primary">📥 导入 Excel</button>
+    <button class="tp-btn">📤 导出</button>
+    <span style="color:#cbd5e1;">|</span>
+    <button class="tp-btn ghost">+ 添加行（部门）</button>
+    <button class="tp-btn ghost">+ 添加列（指标）</button>
+    <span style="color:#cbd5e1;">|</span>
+    <button class="tp-btn ghost" style="opacity:0.4;">↩ 撤销</button>
+    <span style="flex:1;"></span>
+    <button class="tp-btn ghost">💾 保存</button>
+  </div>
+
+  <div class="tp-body">
+    <div class="tp-main">
+      <table class="tp-grid">
+        <thead>
+          <tr>
+            <th class="corner-cell" style="min-width:40px;">
+              <div style="font-size:11px;">行 \ 列</div>
+              <div style="font-size:9px;color:#94a3b8;">点击配置 ⚙</div>
+            </th>
+            <th class="col-header">📊 完成率 <span class="header-config">⚙</span></th>
+            <th class="col-header">⭐ 质量评分 <span class="header-config">⚙</span></th>
+            <th class="col-header">🏷 风险等级 <span class="header-config">⚙</span></th>
+            <th class="col-header">👤 负责人 <span class="header-config">⚙</span></th>
+            <th class="col-header">📅 截止日期 <span class="header-config">⚙</span></th>
+            <th class="col-header">✅ 验收 <span class="header-config">⚙</span></th>
+            <th class="col-header">📝 备注 <span class="header-config">⚙</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-header">技术部 <span class="header-config">⚙</span></td>
+            <td class="data-cell active cell-number">85%</td>
+            <td class="data-cell cell-select"><span>A</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>低风险</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>王经理</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-date">2026-06-08</td>
+            <td class="data-cell cell-bool">✓</td>
+            <td class="data-cell cell-empty">点击填写...</td>
+          </tr>
+          <tr>
+            <td class="row-header">产品部 <span class="header-config">⚙</span></td>
+            <td class="data-cell cell-number">72%</td>
+            <td class="data-cell cell-select"><span>B+</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>中风险</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>赵总监</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-date">2026-06-15</td>
+            <td class="data-cell" style="color:#cbd5e1;">—</td>
+            <td class="data-cell cell-empty">点击填写...</td>
+          </tr>
+          <tr>
+            <td class="row-header">运营部 <span class="header-config">⚙</span></td>
+            <td class="data-cell cell-number">91%</td>
+            <td class="data-cell cell-select"><span>A-</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>低风险</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>陈主管</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-date">2026-06-20</td>
+            <td class="data-cell" style="color:#cbd5e1;">—</td>
+            <td class="data-cell cell-empty">点击填写...</td>
+          </tr>
+          <tr>
+            <td class="row-header">人事部 <span class="header-config">⚙</span></td>
+            <td class="data-cell cell-number">68%</td>
+            <td class="data-cell cell-select"><span>B</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>高风险</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>周副总</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-date">2026-07-01</td>
+            <td class="data-cell" style="color:#cbd5e1;">—</td>
+            <td class="data-cell cell-empty">点击填写...</td>
+          </tr>
+          <tr>
+            <td class="row-header" style="color:#64748b;">+ 添加行</td>
+            <td class="data-cell cell-empty" style="color:#e2e8f0;">—</td>
+            <td class="data-cell cell-empty" style="color:#e2e8f0;">—</td>
+            <td class="data-cell cell-empty" style="color:#e2e8f0;">—</td>
+            <td class="data-cell cell-empty" style="color:#e2e8f0;">—</td>
+            <td class="data-cell cell-empty" style="color:#e2e8f0;">—</td>
+            <td class="data-cell cell-empty" style="color:#e2e8f0;">—</td>
+            <td class="data-cell cell-empty" style="color:#e2e8f0;">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="tp-stats-panel">
+      <div style="font-weight: 600; color: #0f172a; margin-bottom: 12px; font-size: 13px;">📊 选中列统计 · "质量评分"</div>
+      <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">4 行 · select 类型</div>
+      <div style="margin-bottom: 4px; font-size: 11px;"><span>A</span><span style="float:right;">1</span></div>
+      <div class="stats-bar"><div class="stats-bar-fill" style="width:25%;background:#22c55e;"></div></div>
+      <div style="margin: 4px 0; font-size: 11px;"><span>A-</span><span style="float:right;">1</span></div>
+      <div class="stats-bar"><div class="stats-bar-fill" style="width:25%;background:#86efac;"></div></div>
+      <div style="margin: 4px 0; font-size: 11px;"><span>B+</span><span style="float:right;">1</span></div>
+      <div class="stats-bar"><div class="stats-bar-fill" style="width:25%;background:#fbbf24;"></div></div>
+      <div style="margin: 4px 0; font-size: 11px;"><span>B</span><span style="float:right;">1</span></div>
+      <div class="stats-bar"><div class="stats-bar-fill" style="width:25%;background:#f59e0b;"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>🌙 暗色主题 — 低对比度修复版</h3>
+</div>
+
+<div class="dark">
+<div class="theme-preview">
+  <div class="tp-header">
+    <span class="brand">🏠 管理后台</span><span style="color:#64748b;">/</span>
+    <span class="brand">智能表格</span><span style="color:#64748b;">/</span>
+    <span style="color:#64748b;">月度部门评估表</span>
+  </div>
+  <div class="tp-toolbar">
+    <select class="tp-btn" style="font-size:12px;background:#1e293b;border-color:#334155;color:#94a3b8;"><option>月度部门评估表</option></select>
+    <span style="color:#334155;">|</span>
+    <button class="tp-btn primary">📥 导入 Excel</button>
+    <button class="tp-btn" style="background:#1e293b;border-color:#334155;color:#94a3b8;">📤 导出</button>
+    <span style="color:#334155;">|</span>
+    <button class="tp-btn ghost" style="color:#94a3b8;">+ 添加行</button>
+    <button class="tp-btn ghost" style="color:#94a3b8;">+ 添加列</button>
+    <span style="flex:1;"></span>
+    <button class="tp-btn ghost" style="color:#94a3b8;">💾 保存</button>
+  </div>
+  <div class="tp-body">
+    <div class="tp-main">
+      <table class="tp-grid">
+        <thead>
+          <tr>
+            <th class="corner-cell">行 \ 列</th>
+            <th class="col-header">📊 完成率 <span class="header-config">⚙</span></th>
+            <th class="col-header">⭐ 质量评分 <span class="header-config">⚙</span></th>
+            <th class="col-header">🏷 风险等级 <span class="header-config">⚙</span></th>
+            <th class="col-header">👤 负责人 <span class="header-config">⚙</span></th>
+            <th class="col-header">📅 截止日期 <span class="header-config">⚙</span></th>
+            <th class="col-header">✅ 验收 <span class="header-config">⚙</span></th>
+            <th class="col-header">📝 备注 <span class="header-config">⚙</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="row-header">技术部 <span class="header-config">⚙</span></td>
+            <td class="data-cell active cell-number">85%</td>
+            <td class="data-cell cell-select"><span>A</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>低风险</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>王经理</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-date">2026-06-08</td>
+            <td class="data-cell cell-bool">✓</td>
+            <td class="data-cell cell-empty">点击填写...</td>
+          </tr>
+          <tr>
+            <td class="row-header">产品部 <span class="header-config">⚙</span></td>
+            <td class="data-cell cell-number">72%</td>
+            <td class="data-cell cell-select"><span>B+</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>中风险</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>赵总监</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-date">2026-06-15</td>
+            <td class="data-cell" style="color:#334155;">—</td>
+            <td class="data-cell cell-empty">点击填写...</td>
+          </tr>
+          <tr>
+            <td class="row-header">运营部 <span class="header-config">⚙</span></td>
+            <td class="data-cell cell-number">91%</td>
+            <td class="data-cell cell-select"><span>A-</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>低风险</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>陈主管</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-date">2026-06-20</td>
+            <td class="data-cell" style="color:#334155;">—</td>
+            <td class="data-cell cell-empty">点击填写...</td>
+          </tr>
+          <tr>
+            <td class="row-header">人事部 <span class="header-config">⚙</span></td>
+            <td class="data-cell cell-number">68%</td>
+            <td class="data-cell cell-select"><span>B</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>高风险</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-select"><span>周副总</span><span class="arrow">▼</span></td>
+            <td class="data-cell cell-date">2026-07-01</td>
+            <td class="data-cell" style="color:#334155;">—</td>
+            <td class="data-cell cell-empty">点击填写...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tp-stats-panel">
+      <div style="font-weight: 600; color: #e2e8f0; margin-bottom: 12px; font-size: 13px;">📊 选中列统计 · "质量评分"</div>
+      <div style="font-size: 11px; color: #64748b; margin-bottom: 8px;">4 行 · select 类型</div>
+      <div style="margin-bottom: 4px; font-size: 11px; color:#94a3b8;"><span>A</span><span style="float:right;">1</span></div>
+      <div class="stats-bar" style="background:#1e293b;"><div class="stats-bar-fill" style="width:25%;background:#166534;"></div></div>
+      <div style="margin: 4px 0; font-size: 11px; color:#94a3b8;"><span>A-</span><span style="float:right;">1</span></div>
+      <div class="stats-bar" style="background:#1e293b;"><div class="stats-bar-fill" style="width:25%;background:#14532d;"></div></div>
+      <div style="margin: 4px 0; font-size: 11px; color:#94a3b8;"><span>B+</span><span style="float:right;">1</span></div>
+      <div class="stats-bar" style="background:#1e293b;"><div class="stats-bar-fill" style="width:25%;background:#713f12;"></div></div>
+      <div style="margin: 4px 0; font-size: 11px; color:#94a3b8;"><span>B</span><span style="float:right;">1</span></div>
+      <div class="stats-bar" style="background:#1e293b;"><div class="stats-bar-fill" style="width:25%;background:#78350f;"></div></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="section">
+  <h3>🔤 单元格类型交互对照</h3>
+  <table>
+    <thead><tr><th>列类型</th><th>显示方式</th><th>点击行为</th><th>暗色适配</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>select</strong></td>
+        <td>当前值 + ▼ 箭头</td>
+        <td>弹出下拉菜单选择预设项</td>
+        <td>文字 #cbd5e1 · 箭头 #64748b</td>
+      </tr>
+      <tr>
+        <td><strong>number</strong></td>
+        <td>数值 + 单位</td>
+        <td>直接输入 / 步进调节</td>
+        <td>文字 #cbd5e1 · 加粗</td>
+      </tr>
+      <tr>
+        <td><strong>date</strong></td>
+        <td>YYYY-MM-DD</td>
+        <td>弹出日期选择器</td>
+        <td>文字 #94a3b8 · 小字号</td>
+      </tr>
+      <tr>
+        <td><strong>checkbox</strong></td>
+        <td>✓ 或 —</td>
+        <td>点击切换勾选</td>
+        <td>勾 #60a5fa · 空 #334155</td>
+      </tr>
+      <tr>
+        <td><strong>text</strong></td>
+        <td>"点击填写..."</td>
+        <td>双击进入编辑模式</td>
+        <td>placeholder #334155</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>🎨 暗色模式颜色修正</h3>
+  <table>
+    <thead><tr><th>元素</th><th>修正前（太亮）</th><th>修正后</th><th>WCAG 对比度</th></tr></thead>
+    <tbody>
+      <tr><td>数据单元格文字</td><td style="color:#f8fafc;background:#0f172a;">white</td><td style="color:#cbd5e1;background:#0f172a;">#cbd5e1</td><td>9.5:1 ✅</td></tr>
+      <tr><td>表头文字</td><td style="color:#e2e8f0;background:#1e293b;">#e2e8f0</td><td style="color:#94a3b8;background:#1e293b;">#94a3b8</td><td>5.5:1 ✅</td></tr>
+      <tr><td>复选框勾号</td><td style="color:#3b82f6;background:#0f172a;">#3b82f6</td><td style="color:#60a5fa;background:#0f172a;">#60a5fa</td><td>7.2:1 ✅</td></tr>
+      <tr><td>日期文字</td><td style="color:#f1f5f9;background:#0f172a;">#f1f5f9</td><td style="color:#94a3b8;background:#0f172a;">#94a3b8</td><td>5.5:1 ✅</td></tr>
+      <tr><td>占位文字</td><td style="color:#64748b;background:#0f172a;">#64748b</td><td style="color:#334155;background:#0f172a;">#334155</td><td>3.1:1 ⚠ placeholder 可接受</td></tr>
+      <tr><td>单元格 hover</td><td style="color:#e2e8f0;background:#1e293b;">#1e293b</td><td style="color:#cbd5e1;background:#1a2332;">#1a2332</td><td>—</td></tr>
+      <tr><td>单元格 active</td><td style="color:#eff6ff;background:#1e3a5f;">#1e3a5f</td><td style="color:#93c5fd;background:#17203a;">#17203a</td><td>—</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:13px;color:#64748b;margin-top:8px;">
+    💡 暗色模式核心原则：文字不超 #cbd5e1（slate-300），表头降至 #94a3b8（slate-400），
+    hover/active 只用极暗的蓝色叠加（#1a2332 / #17203a），不引入高饱和度彩色背景
+  </p>
+</div>

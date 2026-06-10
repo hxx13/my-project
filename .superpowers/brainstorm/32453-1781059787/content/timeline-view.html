@@ -1,0 +1,126 @@
+<h2>第三节：生长记录时间线</h2>
+<p class="subtitle">点击顶栏 "🌱 生长记录" 切换 —— Git-log 风格的文档生长历史</p>
+
+<div class="mockup">
+  <div class="mockup-header">Timeline View — 垂直时间线，极客终端风</div>
+  <div class="mockup-body" style="display:flex; height:440px;">
+    <!-- 左侧筛选 -->
+    <div style="width:180px; min-width:0; border-right:1px solid var(--border-color); padding:10px; font-size:10px;">
+      <div style="font-weight:600; margin-bottom:8px;">📋 筛选</div>
+      <div style="padding:3px 0; cursor:pointer; font-weight:600; color:#11a8cd;">全部活动</div>
+      <div style="padding:3px 0; cursor:pointer;">🆕 新文档 (42)</div>
+      <div style="padding:3px 0; cursor:pointer;">✏️ 编辑 (156)</div>
+      <div style="padding:3px 0; cursor:pointer;">📥 导入 (326)</div>
+      <div style="padding:3px 0; cursor:pointer;">⏪ 回滚 (3)</div>
+      <div style="margin-top:12px; font-weight:600; margin-bottom:4px;">👤 作者</div>
+      <div style="padding:2px 0; cursor:pointer;">Claude (287)</div>
+      <div style="padding:2px 0; cursor:pointer;">admin (45)</div>
+      <div style="padding:2px 0; cursor:pointer;">hxx13 (12)</div>
+      <div style="margin-top:12px; font-weight:600; margin-bottom:4px;">📅 时间范围</div>
+      <div style="padding:2px 0; cursor:pointer; font-weight:600; color:#11a8cd;">全部</div>
+      <div style="padding:2px 0; cursor:pointer;">本周</div>
+      <div style="padding:2px 0; cursor:pointer;">本月</div>
+    </div>
+    <!-- 时间线主体 -->
+    <div style="flex:1; overflow-y:auto; padding:16px 24px; font-family:monospace; font-size:11px; background:var(--surface-color);">
+      <!-- 日期分组 -->
+      <div style="margin-bottom:16px;">
+        <div style="color:#11a8cd; font-weight:700; margin-bottom:8px; font-size:12px;">📅 2026-06-10 · 今天</div>
+        <!-- 条目 -->
+        <div style="display:flex; gap:10px; margin-bottom:6px; padding:6px 10px; border-radius:4px; border-left:2px solid #22c55e;">
+          <span style="color:#22c55e; width:16px;">🆕</span>
+          <span style="flex:1;"><b>Spring Cloud Gateway 配置</b></span>
+          <span style="opacity:0.4;">📁 中间件</span>
+          <span style="opacity:0.3;">Claude</span>
+          <span style="opacity:0.3; width:50px; text-align:right;">14:30</span>
+        </div>
+        <div style="display:flex; gap:10px; margin-bottom:6px; padding:6px 10px; border-radius:4px; border-left:2px solid #f59e0b;">
+          <span style="color:#f59e0b; width:16px;">✏️</span>
+          <span style="flex:1;"><b>MyBatis 配置</b> <span style="opacity:0.4; font-size:9px;">更新了"动态SQL"章节</span></span>
+          <span style="opacity:0.4;">📁 后端手册</span>
+          <span style="opacity:0.3;">admin</span>
+          <span style="opacity:0.3; width:50px; text-align:right;">10:15</span>
+        </div>
+        <div style="display:flex; gap:10px; margin-bottom:6px; padding:6px 10px; border-radius:4px; border-left:2px solid #f59e0b;">
+          <span style="color:#f59e0b; width:16px;">✏️</span>
+          <span style="flex:1;"><b>Redis 缓存策略</b> <span style="opacity:0.4; font-size:9px;">补充了哨兵模式说明</span></span>
+          <span style="opacity:0.4;">📁 后端手册</span>
+          <span style="opacity:0.3;">Claude</span>
+          <span style="opacity:0.3; width:50px; text-align:right;">09:42</span>
+        </div>
+      </div>
+      <!-- 昨天 -->
+      <div style="margin-bottom:16px;">
+        <div style="color:var(--text-color); font-weight:700; margin-bottom:8px; font-size:12px; opacity:0.6;">📅 2026-06-09 · 昨天</div>
+        <div style="display:flex; gap:10px; margin-bottom:6px; padding:6px 10px; border-radius:4px; border-left:2px solid #6366f1;">
+          <span style="color:#6366f1; width:16px;">📥</span>
+          <span style="flex:1;"><b>RabbitMQ 消息队列</b> <span style="opacity:0.4; font-size:9px;">YUDAO 批量导入 · 326 篇</span></span>
+          <span style="opacity:0.4;">📁 中间件</span>
+          <span style="opacity:0.3;">system</span>
+          <span style="opacity:0.3; width:50px; text-align:right;">16:20</span>
+        </div>
+        <div style="display:flex; gap:10px; margin-bottom:6px; padding:6px 10px; border-radius:4px; border-left:2px solid #22c55e;">
+          <span style="color:#22c55e; width:16px;">🆕</span>
+          <span style="flex:1;"><b>RAG 检索增强生成</b></span>
+          <span style="opacity:0.4;">📁 AI 大模型</span>
+          <span style="opacity:0.3;">Claude</span>
+          <span style="opacity:0.3; width:50px; text-align:right;">14:00</span>
+        </div>
+        <div style="display:flex; gap:10px; margin-bottom:6px; padding:6px 10px; border-radius:4px; border-left:2px solid #ef4444;">
+          <span style="color:#ef4444; width:16px;">⏪</span>
+          <span style="flex:1;"><b>安全框架配置</b> <span style="opacity:0.4; font-size:9px;">回滚到 v2</span></span>
+          <span style="opacity:0.4;">📁 后端手册</span>
+          <span style="opacity:0.3;">hxx13</span>
+          <span style="opacity:0.3; width:50px; text-align:right;">11:30</span>
+        </div>
+      </div>
+      <!-- 更早 -->
+      <div style="margin-bottom:16px;">
+        <div style="color:var(--text-color); font-weight:700; margin-bottom:8px; font-size:12px; opacity:0.4;">📅 2026-06-08 · 周日</div>
+        <div style="display:flex; gap:10px; margin-bottom:6px; padding:6px 10px; border-radius:4px; border-left:2px solid #22c55e; opacity:0.6;">
+          <span style="color:#22c55e; width:16px;">🆕</span>
+          <span style="flex:1;"><b>Elasticsearch 搜索引擎</b></span>
+          <span style="opacity:0.4;">📁 中间件</span>
+          <span style="opacity:0.3;">Claude</span>
+          <span style="opacity:0.3; width:50px; text-align:right;">20:15</span>
+        </div>
+        <div style="display:flex; gap:10px; margin-bottom:6px; padding:6px 10px; border-radius:4px; border-left:2px solid #f59e0b; opacity:0.6;">
+          <span style="color:#f59e0b; width:16px;">✏️</span>
+          <span style="flex:1;"><b>React 组件规范</b></span>
+          <span style="opacity:0.4;">📁 前端手册</span>
+          <span style="opacity:0.3;">admin</span>
+          <span style="opacity:0.3; width:50px; text-align:right;">15:00</span>
+        </div>
+        <div style="text-align:center; padding:8px; opacity:0.25; cursor:pointer; font-size:10px;">—— 加载更多 ——</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="split" style="margin-top:20px;">
+  <div>
+    <h3>数据来源</h3>
+    <div class="section" style="font-size:11px;">
+      <p>利用现有 <b>knowledge_history</b> 表，无需新建表：</p>
+      <ul>
+        <li>每个 INSERT 到 history 表 = 一条时间线条目</li>
+        <li>type 字段推断：version=1 → "新建"，summary 含"回滚" → "回滚"，source=imported → "导入"，其余 → "编辑"</li>
+      </ul>
+      <p style="margin-top:8px;">新增 API：</p>
+      <code style="font-size:10px; background:var(--surface-color); padding:4px 8px; display:block; border-radius:4px;">
+        GET /api/admin/knowledge/timeline?limit=50&type=all&author=&since=
+      </code>
+    </div>
+  </div>
+  <div>
+    <h3>交互行为</h3>
+    <div class="section" style="font-size:11px;">
+      <ul>
+        <li>点击条目 → 切换到文档浏览视图，打开对应文档</li>
+        <li>左侧筛选即时生效（前端过滤已加载数据，30条后重新请求）</li>
+        <li>滚动到底部自动加载更多（无限滚动）</li>
+        <li>可折叠日期分组</li>
+      </ul>
+    </div>
+  </div>
+</div>

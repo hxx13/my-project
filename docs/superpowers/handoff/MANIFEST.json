@@ -1,0 +1,7 @@
+{
+  "version": "1.0",
+  "updated": "2026-06-10T00:00:00+08:00",
+  "description": "手交任务总索引。active = 进行中的任务，recently_completed = 最近完成的任务",
+  "active": [],
+  "recently_completed": []
+}

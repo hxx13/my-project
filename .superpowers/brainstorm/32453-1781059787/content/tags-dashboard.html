@@ -1,0 +1,160 @@
+<h2>第五节：标签系统 & 仪表盘首页</h2>
+<p class="subtitle">未选中文档时，中间面板显示花园仪表盘；左侧常驻标签筛选</p>
+
+<h3>仪表盘视图 — 未选中任何文档时的中间面板</h3>
+<div class="mockup">
+  <div class="mockup-header">Dashboard — 卡片网格 + 标签云 + 统计概览</div>
+  <div class="mockup-body" style="padding:16px 20px; font-size:11px;">
+    <!-- 统计条 -->
+    <div style="display:flex; gap:16px; margin-bottom:16px;">
+      <div style="flex:1; padding:12px; border:1px solid var(--border-color); border-radius:6px; text-align:center;">
+        <div style="font-size:20px; font-weight:700; color:#11a8cd;">326</div>
+        <div style="opacity:0.4; font-size:9px;">📄 文档总数</div>
+      </div>
+      <div style="flex:1; padding:12px; border:1px solid var(--border-color); border-radius:6px; text-align:center;">
+        <div style="font-size:20px; font-weight:700; color:#6366f1;">23</div>
+        <div style="opacity:0.4; font-size:9px;">📁 分类数</div>
+      </div>
+      <div style="flex:1; padding:12px; border:1px solid var(--border-color); border-radius:6px; text-align:center;">
+        <div style="font-size:20px; font-weight:700; color:#22c55e;">58</div>
+        <div style="opacity:0.4; font-size:9px;">🏷️ 标签数</div>
+      </div>
+      <div style="flex:1; padding:12px; border:1px solid var(--border-color); border-radius:6px; text-align:center;">
+        <div style="font-size:20px; font-weight:700; color:#f59e0b;">2h</div>
+        <div style="opacity:0.4; font-size:9px;">🕐 最近更新</div>
+      </div>
+    </div>
+
+    <!-- 标签云 -->
+    <div style="margin-bottom:14px; padding:10px; border:1px solid var(--border-color); border-radius:6px; background:var(--surface-color);">
+      <div style="font-weight:600; margin-bottom:6px; font-size:10px; opacity:0.4;">🏷️ 标签云 · 点击筛选</div>
+      <div style="display:flex; flex-wrap:wrap; gap:4px;">
+        <span style="background:rgba(17,168,205,0.15); padding:2px 10px; border-radius:10px; font-size:14px; font-weight:700; color:#11a8cd; cursor:pointer;">Spring</span>
+        <span style="background:rgba(17,168,205,0.10); padding:2px 10px; border-radius:10px; font-size:12px; font-weight:600; cursor:pointer;">AI</span>
+        <span style="background:rgba(17,168,205,0.12); padding:2px 10px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer;">后端</span>
+        <span style="background:rgba(17,168,205,0.08); padding:2px 10px; border-radius:10px; font-size:11px; cursor:pointer;">React</span>
+        <span style="background:rgba(17,168,205,0.10); padding:2px 10px; border-radius:10px; font-size:12px; cursor:pointer;">数据库</span>
+        <span style="background:rgba(17,168,205,0.06); padding:2px 10px; border-radius:10px; font-size:10px; cursor:pointer;">安全</span>
+        <span style="background:rgba(17,168,205,0.14); padding:2px 10px; border-radius:10px; font-size:14px; font-weight:700; cursor:pointer;">中间件</span>
+        <span style="background:rgba(17,168,205,0.08); padding:2px 10px; border-radius:10px; font-size:11px; cursor:pointer;">ORM</span>
+        <span style="background:rgba(17,168,205,0.09); padding:2px 10px; border-radius:10px; font-size:11px; cursor:pointer;">Redis</span>
+        <span style="background:rgba(17,168,205,0.07); padding:2px 10px; border-radius:10px; font-size:11px; cursor:pointer;">前端</span>
+        <span style="background:rgba(17,168,205,0.06); padding:2px 10px; border-radius:10px; font-size:10px; cursor:pointer;">MQ</span>
+        <span style="background:rgba(17,168,205,0.05); padding:2px 10px; border-radius:10px; font-size:10px; cursor:pointer;">ES</span>
+      </div>
+    </div>
+
+    <!-- 卡片网格 -->
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px;">
+      <div style="border:1px solid var(--border-color); border-radius:8px; padding:12px; cursor:pointer; transition:all 0.15s;">
+        <div style="font-weight:600; font-size:12px; margin-bottom:4px;">MyBatis 配置指南</div>
+        <div style="font-size:9px; opacity:0.4; line-height:1.4; margin-bottom:8px;">持久层框架的完整配置说明，含 Maven 依赖、XML 映射、注解驱动...</div>
+        <div style="display:flex; gap:3px; flex-wrap:wrap; margin-bottom:6px;">
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#Spring</span>
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#ORM</span>
+        </div>
+        <div style="font-size:8px; opacity:0.3;">📁 后端手册 · v3 · 6天前</div>
+      </div>
+      <div style="border:1px solid var(--border-color); border-radius:8px; padding:12px; cursor:pointer;">
+        <div style="font-weight:600; font-size:12px; margin-bottom:4px;">RAG 检索增强生成</div>
+        <div style="font-size:9px; opacity:0.4; line-height:1.4; margin-bottom:8px;">基于向量数据库的检索增强生成方案，含嵌入模型选型对比...</div>
+        <div style="display:flex; gap:3px; flex-wrap:wrap; margin-bottom:6px;">
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#AI</span>
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#LLM</span>
+        </div>
+        <div style="font-size:8px; opacity:0.3;">📁 AI大模型 · v1 · 2天前</div>
+      </div>
+      <div style="border:1px solid var(--border-color); border-radius:8px; padding:12px; cursor:pointer;">
+        <div style="font-weight:600; font-size:12px; margin-bottom:4px;">RabbitMQ 消息队列</div>
+        <div style="font-size:9px; opacity:0.4; line-height:1.4; margin-bottom:8px;">消息队列核心概念、交换机类型、死信队列、集群部署方案...</div>
+        <div style="display:flex; gap:3px; flex-wrap:wrap; margin-bottom:6px;">
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#中间件</span>
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#MQ</span>
+        </div>
+        <div style="font-size:8px; opacity:0.3;">📁 中间件 · v2 · 3天前</div>
+      </div>
+      <div style="border:1px solid var(--border-color); border-radius:8px; padding:12px; cursor:pointer;">
+        <div style="font-weight:600; font-size:12px; margin-bottom:4px;">Spring Security 实战</div>
+        <div style="font-size:9px; opacity:0.4; line-height:1.4; margin-bottom:8px;">认证授权完整方案，JWT + OAuth2 + RBAC 权限模型...</div>
+        <div style="display:flex; gap:3px; flex-wrap:wrap; margin-bottom:6px;">
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#Spring</span>
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#安全</span>
+        </div>
+        <div style="font-size:8px; opacity:0.3;">📁 后端手册 · v5 · 一周前</div>
+      </div>
+      <div style="border:1px solid var(--border-color); border-radius:8px; padding:12px; cursor:pointer;">
+        <div style="font-weight:600; font-size:12px; margin-bottom:4px;">React 组件设计规范</div>
+        <div style="font-size:9px; opacity:0.4; line-height:1.4; margin-bottom:8px;">组件分层、Props 类型、状态管理、TanStack Query 使用指南...</div>
+        <div style="display:flex; gap:3px; flex-wrap:wrap; margin-bottom:6px;">
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#React</span>
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#前端</span>
+        </div>
+        <div style="font-size:8px; opacity:0.3;">📁 前端手册 · v2 · 一周前</div>
+      </div>
+      <div style="border:1px solid var(--border-color); border-radius:8px; padding:12px; cursor:pointer;">
+        <div style="font-weight:600; font-size:12px; margin-bottom:4px;">Redis 缓存策略</div>
+        <div style="font-size:9px; opacity:0.4; line-height:1.4; margin-bottom:8px;">缓存穿透/击穿/雪崩解决方案，哨兵 + Cluster 模式...</div>
+        <div style="display:flex; gap:3px; flex-wrap:wrap; margin-bottom:6px;">
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#Redis</span>
+          <span style="font-size:8px; background:var(--surface-color); padding:1px 6px; border-radius:6px; opacity:0.5;">#后端</span>
+        </div>
+        <div style="font-size:8px; opacity:0.3;">📁 后端手册 · v6 · 2周前</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin-top:24px;">状态切换逻辑</h3>
+<div class="mockup">
+  <div class="mockup-header">中间面板的三种状态 — 由有无选中文档 + 当前视图决定</div>
+  <div class="mockup-body" style="padding:16px; font-size:11px;">
+    <table style="width:100%;">
+      <tr style="background:var(--surface-color);">
+        <th style="text-align:left; padding:6px 10px;">条件</th>
+        <th style="text-align:left; padding:6px 10px;">中间面板显示</th>
+        <th style="text-align:left; padding:6px 10px;">典型场景</th>
+      </tr>
+      <tr>
+        <td style="padding:6px 10px;">无选中文档 + 浏览视图</td>
+        <td style="padding:6px 10px;"><b>仪表盘</b>（统计+标签云+卡片网格）</td>
+        <td style="padding:6px 10px; font-size:9px; opacity:0.5;">首次进入 /admin/knowledge</td>
+      </tr>
+      <tr style="background:var(--surface-color);">
+        <td style="padding:6px 10px;">选中文档 + 浏览视图</td>
+        <td style="padding:6px 10px;"><b>文档正文</b> + 大纲 + 反向链接</td>
+        <td style="padding:6px 10px; font-size:9px; opacity:0.5;">点击目录/卡片/搜索结果</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 10px;">任一状态 + 图谱视图</td>
+        <td style="padding:6px 10px;"><b>知识图谱</b>（左侧筛选+画布）</td>
+        <td style="padding:6px 10px; font-size:9px; opacity:0.5;">点击顶栏"知识图谱"</td>
+      </tr>
+      <tr style="background:var(--surface-color);">
+        <td style="padding:6px 10px;">任一状态 + 时间线视图</td>
+        <td style="padding:6px 10px;"><b>生长记录</b>（左侧筛选+时间线）</td>
+        <td style="padding:6px 10px; font-size:9px; opacity:0.5;">点击顶栏"生长记录"</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 10px;">进入编辑模式</td>
+        <td style="padding:6px 10px;"><b>编辑器</b>（中间切换，左右栏变）</td>
+        <td style="padding:6px 10px; font-size:9px; opacity:0.5;">新建/编辑文档</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<div style="margin-top:20px;">
+  <h3>标签数据模型</h3>
+  <div style="font-size:11px;">
+    <p>标签存为 <b>knowledge_pages.tags</b> JSON 数组字段，无需新建关联表（MVP 简洁方案）：</p>
+    <code style="font-size:10px; background:var(--surface-color); padding:4px 8px; display:block; border-radius:4px;">
+      ALTER TABLE knowledge_pages ADD COLUMN tags JSON DEFAULT '[]';<br>
+      -- 示例: ["Spring", "ORM", "后端"]
+    </code>
+    <p style="margin-top:10px;">标签统计 API：</p>
+    <code style="font-size:10px; background:var(--surface-color); padding:4px 8px; display:block; border-radius:4px;">
+      GET /api/admin/knowledge/tags → { tags: [{name:"Spring", count:42}, ...] }
+    </code>
+    <p style="margin-top:10px; font-size:9px; opacity:0.5;">后续可升级为独立 knowledge_tags 表 + 多对多关联，但 MVP 用 JSON 字段足够。</p>
+  </div>
+</div>

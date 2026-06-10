@@ -1,0 +1,188 @@
+<h2>第七节：极客风视觉语言 — 数字花园的设计灵魂</h2>
+<p class="subtitle">参考 doc.iocoder.cn 基础 + Obsidian 暗色极客精神 + 终端美学细节</p>
+
+<h3>Color Palette · 调色板</h3>
+<div class="mockup">
+  <div class="mockup-header">三套语义色板：文档区保持清爽可读，代码/终端/图谱走暗色极客风</div>
+  <div class="mockup-body" style="padding:16px; font-size:11px;">
+    <div class="split">
+      <!-- 文档区色板 -->
+      <div>
+        <div style="font-weight:600; margin-bottom:8px;">📄 文档阅读区 · 浅色为主</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <div style="width:60px; height:60px; background:#ffffff; border:1px solid #e5e7eb; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:8px;">#fff</div>
+          <div style="width:48px; height:48px; background:#f8f9fa; border:1px solid #e5e7eb; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:7px;">bg</div>
+          <div style="width:36px; height:36px; background:#11a8cd; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:7px; color:#fff;">accent</div>
+          <div style="width:30px; height:30px; background:#1e293b; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:7px; color:#fff;">text</div>
+        </div>
+        <div style="margin-top:8px; font-size:9px; opacity:0.5;">白底 + 青蓝(#11a8cd)强调色<br>正文 #1e293b · 辅助 #64748b</div>
+      </div>
+      <!-- 代码/终端色板 -->
+      <div>
+        <div style="font-weight:600; margin-bottom:8px;">💻 代码 & 终端区 · 暗色</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+          <div style="width:60px; height:60px; background:#0d1117; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:8px; color:#c9d1d9;">#0d1117</div>
+          <div style="width:48px; height:48px; background:#161b22; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:7px; color:#8b949e;">bg</div>
+          <div style="width:36px; height:36px; background:#58a6ff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:7px;">link</div>
+          <div style="width:30px; height:30px; background:#3fb950; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:7px; color:#0d1117;">term</div>
+        </div>
+        <div style="margin-top:8px; font-size:9px; opacity:0.5;">GitHub Dark 色板<br>终端绿 #3fb950 · 代码蓝 #58a6ff</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>Typography · 字体系统</h3>
+<div class="mockup" style="margin-top:16px;">
+  <div class="mockup-header">双字体栈：等宽用于技术感，无衬线用于可读性</div>
+  <div class="mockup-body" style="padding:16px; font-size:11px;">
+    <table style="width:100%;">
+      <tr style="background:var(--surface-color);">
+        <td style="padding:8px 12px; width:120px;"><b>正文阅读</b></td>
+        <td style="padding:8px 12px; font-family:sans-serif;">'Inter', 'Noto Sans SC', system-ui</td>
+        <td style="padding:8px 12px; font-size:9px; opacity:0.5;">标题 18-24px · 正文 14px · 辅助 12px</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 12px;"><b>代码块</b></td>
+        <td style="padding:8px 12px; font-family:monospace;">'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace</td>
+        <td style="padding:8px 12px; font-size:9px; opacity:0.5;">13px · 连字开启 · 行高 1.6</td>
+      </tr>
+      <tr style="background:var(--surface-color);">
+        <td style="padding:8px 12px;"><b>技术元数据</b></td>
+        <td style="padding:8px 12px; font-family:monospace;">'JetBrains Mono', monospace</td>
+        <td style="padding:8px 12px; font-size:9px; opacity:0.5;">slug · 版本号 · 时间戳 · 标签 · 分类名</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<h3>Special Touches · 极客细节</h3>
+
+<div class="mockup" style="margin-top:16px;">
+  <div class="mockup-header">散落在各处的极客元素 — 不过度，恰到好处</div>
+  <div class="mockup-body" style="padding:12px; font-size:11px;">
+
+    <div class="split">
+      <!-- 终端风格标题 -->
+      <div style="background:#0d1117; border-radius:8px; padding:12px 16px; font-family:monospace; color:#c9d1d9;">
+        <div style="font-size:9px; opacity:0.5; margin-bottom:4px;">
+          <span style="color:#3fb950;">user@knowledge</span>:<span style="color:#58a6ff;">~/backend-manual</span>$ cat mybatis.md
+        </div>
+        <div style="font-size:13px; color:#58a6ff; font-weight:700; margin-bottom:2px;"># MyBatis 配置指南</div>
+        <div style="font-size:9px; opacity:0.5;">version: v4 · author: Claude · updated: 2h ago</div>
+        <div style="margin-top:8px; font-size:9px; color:#3fb950;">▸ <span style="opacity:0.7;">构建中...</span><span class="mock-input" style="background:transparent; border:none; color:#3fb950; font-family:monospace; font-size:9px; animation:blink 1s step-end infinite;">|</span></div>
+      </div>
+
+      <!-- 标签系统细节 -->
+      <div style="border:1px solid var(--border-color); border-radius:8px; padding:12px;">
+        <div style="font-weight:600; margin-bottom:8px; font-size:10px;">🏷️ 标签系统 & 元数据</div>
+        <div style="font-family:monospace; font-size:10px;">
+          <div style="margin-bottom:4px;">
+            <span style="opacity:0.4;">slug:</span>
+            <span style="background:var(--surface-color); padding:1px 6px; border-radius:3px;">mybatis-config-guide</span>
+          </div>
+          <div style="margin-bottom:4px;">
+            <span style="opacity:0.4;">tags:</span>
+            <span style="background:rgba(17,168,205,0.1); padding:1px 6px; border-radius:10px;">Spring</span>
+            <span style="background:rgba(17,168,205,0.1); padding:1px 6px; border-radius:10px;">ORM</span>
+            <span style="background:rgba(17,168,205,0.1); padding:1px 6px; border-radius:10px;">后端</span>
+          </div>
+          <div style="margin-bottom:4px;">
+            <span style="opacity:0.4;">links:</span>
+            <span style="color:#58a6ff;">[[Spring Boot 配置]]</span>
+            <span style="color:#58a6ff;">[[Redis 缓存]]</span>
+          </div>
+          <div>
+            <span style="opacity:0.4;">backlinks:</span>
+            <span style="opacity:0.6;">3 篇文档引用了本文</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 代码块风格 -->
+    <div style="margin-top:12px; background:#0d1117; border-radius:8px; overflow:hidden;">
+      <div style="background:#161b22; padding:6px 12px; display:flex; gap:6px; align-items:center; font-size:9px;">
+        <span style="width:10px; height:10px; border-radius:50%; background:#ff5f56;"></span>
+        <span style="width:10px; height:10px; border-radius:50%; background:#ffbd2e;"></span>
+        <span style="width:10px; height:10px; border-radius:50%; background:#27c93f;"></span>
+        <span style="margin-left:8px; color:#8b949e; font-family:monospace;">mybatis-config.md</span>
+      </div>
+      <div style="padding:12px 16px; font-family:monospace; font-size:12px; line-height:1.6; color:#c9d1d9;">
+        <span style="color:#ff7b72;">&lt;dependency&gt;</span><br>
+        <span style="color:#ff7b72; margin-left:16px;">&lt;groupId&gt;</span><span style="color:#a5d6ff;">org.mybatis</span><span style="color:#ff7b72;">&lt;/groupId&gt;</span><br>
+        <span style="color:#ff7b72; margin-left:16px;">&lt;artifactId&gt;</span><span style="color:#a5d6ff;">mybatis-spring-boot-starter</span><span style="color:#ff7b72;">&lt;/artifactId&gt;</span><br>
+        <span style="color:#ff7b72;">&lt;/dependency&gt;</span><br>
+        <br>
+        <span style="color:#8b949e;">// 数据源配置</span><br>
+        <span style="color:#ff7b72;">@Configuration</span><br>
+        <span style="color:#ff7b72;">public class</span> <span style="color:#d2a8ff;">MyBatisConfig</span> {<br>
+        <span style="margin-left:16px; color:#8b949e;">...</span><br>
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>Animation & Motion · 动效规范</h3>
+<div style="font-size:11px;">
+  <table style="width:100%;">
+    <tr style="background:var(--surface-color);">
+      <th style="text-align:left; padding:6px 10px;">场景</th>
+      <th style="text-align:left; padding:6px 10px;">动效</th>
+      <th style="text-align:left; padding:6px 10px;">时长</th>
+    </tr>
+    <tr>
+      <td style="padding:6px 10px;">目录树展开/折叠</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">max-height + opacity 过渡</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">200ms ease-out</td>
+    </tr>
+    <tr style="background:var(--surface-color);">
+      <td style="padding:6px 10px;">文档内容切换</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">淡入淡出（cross-fade）</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">150ms</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 10px;">编辑器 ↔ 浏览切换</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">中间面板 scale(0.98→1) + opacity</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">200ms</td>
+    </tr>
+    <tr style="background:var(--surface-color);">
+      <td style="padding:6px 10px;">视图切换 tab</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">下划线 slide + 内容 cross-fade</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">200ms</td>
+    </tr>
+    <tr>
+      <td style="padding:6px 10px;">图谱节点悬停</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">D3 力导向实时 + 卡片 pop-in</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">实时 60fps</td>
+    </tr>
+    <tr style="background:var(--surface-color);">
+      <td style="padding:6px 10px;">历史时间线弹窗</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">从右侧滑入，backdrop 模糊</td>
+      <td style="padding:6px 10px; font-family:monospace; font-size:10px;">250ms cubic-bezier</td>
+    </tr>
+  </table>
+</div>
+
+<div class="pros-cons" style="margin-top:16px;">
+  <div class="pros"><h4>✅ 极客风设计原则</h4>
+    <ul>
+      <li>白底阅读 + 暗色代码 = 专业开发者文档的黄金组合</li>
+      <li>等宽字体用于所有"技术感"元素：slug、版本号、标签、时间戳</li>
+      <li>终端绿 #3fb950 点缀在状态指示、加载动画、提示文字</li>
+      <li>代码块用 GitHub Dark 主题（项目已有 highlight.js 兼容）</li>
+      <li>暗色图谱画布 = 夜空中的知识星系</li>
+      <li>动效克制：150-250ms，不花哨，不拖慢</li>
+    </ul>
+  </div>
+  <div class="cons"><h4>🎯 与现有项目的关系</h4>
+    <ul>
+      <li>复用项目现有 CSS 变量（--app-color-*），不建独立主题</li>
+      <li>代码高亮复用现有 highlight.js 配置</li>
+      <li>GSAP 动画复用 gsap-react / gsap-scrolltrigger</li>
+      <li>新增少量专用 CSS 变量：--knowledge-code-bg, --knowledge-graph-bg</li>
+      <li>仪表盘卡片网格用 Tailwind grid，不引入额外库</li>
+    </ul>
+  </div>
+</div>

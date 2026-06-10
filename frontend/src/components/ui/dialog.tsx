@@ -15,7 +15,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-[100] bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-[var(--z-overlay)] bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -44,7 +44,7 @@ const DialogContent = React.forwardRef<
       {showOverlay ? (
         <DialogOverlay
           className={cn(
-            sheet ? "z-[199]" : undefined,
+            sheet ? "z-[var(--z-overlay)]" : undefined,
             overlayClassName
           )}
         />
@@ -55,10 +55,10 @@ const DialogContent = React.forwardRef<
         className={cn(
           sheet && "overflow-hidden",
           leftSheet
-            ? "fixed inset-y-0 left-0 z-[200] flex h-full w-[min(24rem,92vw)] max-w-[min(24rem,92vw)] translate-x-0 translate-y-0 flex-col gap-0 border-y-0 border-l-0 border-r border-slate-200 bg-white p-0 text-slate-900 shadow-xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left duration-200"
+            ? "fixed inset-y-0 left-0 z-[var(--z-modal)] flex h-full w-[min(24rem,92vw)] max-w-[min(24rem,92vw)] translate-x-0 translate-y-0 flex-col gap-0 border-y-0 border-l-0 border-r border-slate-200 bg-white p-0 text-slate-900 shadow-xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left duration-200"
             : rightSheet
-              ? "fixed inset-y-0 right-0 z-[200] flex h-full w-[min(28rem,96vw)] max-w-[min(32rem,96vw)] translate-x-0 translate-y-0 flex-col gap-0 border-y-0 border-r-0 border-l border-slate-200 bg-white p-0 text-slate-900 shadow-xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right duration-200"
-            : "fixed left-[50%] top-[50%] z-[101] grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-slate-200 bg-white p-6 text-slate-900 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+              ? "fixed inset-y-0 right-0 z-[var(--z-modal)] flex h-full w-[min(28rem,96vw)] max-w-[min(32rem,96vw)] translate-x-0 translate-y-0 flex-col gap-0 border-y-0 border-r-0 border-l border-slate-200 bg-white p-0 text-slate-900 shadow-xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right duration-200"
+            : "fixed left-[50%] top-[50%] z-[var(--z-modal)] grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-slate-200 bg-white p-6 text-slate-900 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
           className
         )}
         {...props}

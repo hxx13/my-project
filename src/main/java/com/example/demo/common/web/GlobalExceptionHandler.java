@@ -3,6 +3,7 @@ package com.example.demo.common.web;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.knowledge.service.KnowledgeCategoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -42,6 +43,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(TwinBusinessException.class)
     public Result<Void> handleTwinBusiness(TwinBusinessException ex) {
+        return Result.fail(ex.getCode(), ex.getMessage());
+    }
+
+    @ExceptionHandler(KnowledgeCategoryService.KnowledgeException.class)
+    public Result<Void> handleKnowledge(KnowledgeCategoryService.KnowledgeException ex) {
         return Result.fail(ex.getCode(), ex.getMessage());
     }
 

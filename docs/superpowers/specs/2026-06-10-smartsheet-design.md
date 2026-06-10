@@ -29,7 +29,7 @@
 1. **JSON 驱动**：列定义、单元格数据、行实体来源全部用 JSON 存储，加列不改表结构
 2. **模板是快捷入口，不是限制**：四种预设模板（Matrix/Table/Checklist/Calendar）仅提供初始配置，用户可自由增删改列
 3. **融入而非替代**：复用 AdminPageShell、PersonnelSearchDropdown、ErrorCodeConstants、shadcn/ui 组件体系
-4. **暗色优先兼容**：所有 UI 必须同时适配亮色/暗色主题，暗色参考 Linear/Vercel 现代风格（`#09090b` 根底 + `#818cf8` 靛紫强调色）
+4. **亮暗并重**：所有 UI 同时适配亮色和暗色主题，同等重视不可偏废。暗色参考 Linear/Vercel 现代风格（`#09090b` 根底 + `#818cf8` 靛紫强调色），亮色沿用项目现有 Tailwind/shadcn 语义色体系
 
 ---
 

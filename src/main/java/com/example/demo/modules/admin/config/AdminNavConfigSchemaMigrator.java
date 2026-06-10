@@ -23,6 +23,12 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         try {
             createTable();
             seedIfEmpty();
+
+            // 确保知识库入口始终存在（即使 db 已有数据，seedIfEmpty 跳过了种子）
+            jdbcTemplate.update(
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-knowledge', 'system-security', 'ITEM', '知识库', '/admin/knowledge', 'BookOpen', 9)");
+
             log.info("[admin-nav-config] 表结构已就绪，种子数据已检查");
         } catch (Exception e) {
             log.error("[admin-nav-config] 迁移失败: {}", e.getMessage());
@@ -77,6 +83,7 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         seedItem("system-security", 6, "item-login-branding", "/admin/login-branding", "登录页轮播图", "Images", null);
         seedItem("system-security", 7, "item-registration-invites", "/admin/registration-invites", "注册推荐码", "Ticket", null);
         seedItem("system-security", 8, "item-file-templates", "/admin/file-templates", "文件模板库", "Download", null);
+        seedItem("system-security", 9, "item-knowledge", "/admin/knowledge", "知识库", "BookOpen", null);
 
         // 门禁、元数据与环境
         seedGroup(null, 2, "access-meta-env", "门禁、元数据与环境");

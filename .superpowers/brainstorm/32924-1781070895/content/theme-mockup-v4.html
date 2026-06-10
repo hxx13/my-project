@@ -1,0 +1,492 @@
+<h2>终版 — 全功能 + 行交错配色 + 集成式微控件</h2>
+<p class="subtitle">所有功能全部纳入，行斑马纹开关内置工具栏，小控件不散装</p>
+
+<style>
+  :root {
+    --bg-root: #09090b;
+    --bg-surface: #131316;
+    --bg-elevated: #1a1a1f;
+    --border-subtle: #23232a;
+    --border-default: #2e2e37;
+    --text-primary: #f4f4f6;
+    --text-secondary: #a1a1aa;
+    --text-tertiary: #71717a;
+    --text-disabled: #3f3f46;
+    --accent: #818cf8;
+    --accent-soft: #6366f1;
+    --accent-glow: rgba(99,102,241,0.15);
+    --success: #34d399;
+    --warning: #fbbf24;
+    --danger: #f87171;
+  }
+
+  .shell {
+    background: var(--bg-root);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+  .topbar {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .tbar {
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+  .btn:hover { background: #252530; color: var(--text-primary); border-color: #3f3f4a; }
+  .btn.accent { background: var(--accent-soft); color: #fff; border-color: var(--accent-soft); font-weight: 600; }
+  .btn.ghost { border-color: transparent; background: transparent; }
+  .btn.ghost:hover { background: var(--bg-elevated); }
+  .btn.toggle-on { background: rgba(99,102,241,0.12); border-color: rgba(99,102,241,0.3); color: var(--accent); }
+  .btn.toggle-off { color: var(--text-tertiary); }
+  .div { width: 1px; height: 22px; background: var(--border-subtle); }
+  .sep-label { font-size: 10px; color: var(--text-disabled); text-transform: uppercase; letter-spacing: 1px; padding: 0 4px; }
+
+  .body-wrap { display: flex; min-height: 440px; }
+  .main-area { flex: 1; overflow: auto; background: var(--bg-root); }
+  .side-panel { width: 278px; border-left: 1px solid var(--border-subtle); background: var(--bg-surface); padding: 14px; font-size: 12px; overflow-y: auto; }
+
+  /* grid */
+  .grid { border-collapse: collapse; width: max-content; min-width: 100%; }
+  .grid .corner {
+    background: var(--bg-elevated);
+    border-right: 1px solid var(--border-default);
+    border-bottom: 1px solid var(--border-default);
+    padding: 10px 14px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 600;
+    position: sticky; left: 0; top: 0; z-index: 3;
+  }
+  .grid .rh {
+    background: var(--bg-elevated);
+    border-right: 2px solid var(--border-default);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 16px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: left;
+    white-space: nowrap;
+    position: sticky; left: 0; z-index: 2;
+    min-width: 100px;
+  }
+  .grid .rh .cfg { color: var(--text-disabled); margin-left: 6px; font-size: 10px; cursor: pointer; }
+  .grid .rh .cfg:hover { color: var(--accent); }
+  .grid th.ch {
+    background: var(--bg-elevated);
+    border-bottom: 2px solid var(--border-default);
+    border-right: 1px solid var(--border-subtle);
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: center;
+    white-space: nowrap;
+    position: sticky; top: 0; z-index: 2;
+    min-width: 110px;
+  }
+  .grid th.ch .ch-type { font-size: 10px; color: var(--text-tertiary); font-weight: 400; display: block; }
+  .grid th.ch .cfg { color: var(--text-disabled); margin-left: 4px; font-size: 10px; cursor: pointer; }
+  .grid th.ch .cfg:hover { color: var(--accent); }
+  .grid th.ch .sort-icon { cursor: pointer; font-size: 10px; margin-left: 3px; }
+  .grid th.ch .filter-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: 4px; vertical-align: middle; }
+
+  /* data cells */
+  .grid td.dc {
+    border: 1px solid var(--border-subtle);
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--text-primary);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.12s;
+    min-width: 110px;
+    position: relative;
+  }
+  /* zebra striping — controlled by .striped class on table */
+  .grid.striped tbody tr:nth-child(even) td.dc { background: rgba(255,255,255,0.015); }
+  .grid.striped tbody tr:nth-child(even) td.rh { background: #1c1c22; }
+  /* hover */
+  .grid td.dc:hover { background: rgba(99,102,241,0.07) !important; border-color: rgba(99,102,241,0.22); }
+  /* selected */
+  .grid td.dc.sel {
+    background: rgba(99,102,241,0.1) !important;
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+    border-radius: 2px;
+    z-index: 1;
+    position: relative;
+    box-shadow: 0 0 0 4px var(--accent-glow);
+  }
+  /* cell comment indicator */
+  .grid td.dc .cmt-dot {
+    position: absolute;
+    top: 3px;
+    right: 5px;
+    width: 8px;
+    height: 8px;
+    background: var(--danger);
+    border-radius: 50%;
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
+    transform: scale(1.4);
+  }
+
+  .cv-sel { color: var(--text-primary); }
+  .cv-sel .arr { color: var(--text-tertiary); margin-left: 5px; font-size: 10px; }
+  .cv-num { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cv-date { color: var(--text-secondary); font-size: 12.5px; }
+  .cv-true { color: var(--success); font-weight: 700; font-size: 15px; }
+  .cv-false { color: var(--text-disabled); }
+  .cv-empty { color: var(--text-disabled); font-style: italic; font-size: 12px; }
+
+  /* conditional format highlights */
+  .cf-great { color: var(--success); }
+  .cf-warn { color: var(--warning); }
+  .cf-bad { color: var(--danger); }
+
+  /* side panel widgets */
+  .widget {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .widget h4 {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0 0 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .widget h4 .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .widget h4 .dot.on { background: var(--accent); }
+  .widget h4 .dot.off { background: var(--text-disabled); }
+  .stat-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin: 4px 0; font-size: 12px; color: var(--text-secondary);
+  }
+  .stat-row .val { color: var(--text-primary); font-weight: 600; }
+  .stat-bar-wrap { flex: 1; height: 4px; background: var(--border-subtle); border-radius: 2px; margin: 2px 8px; overflow: hidden; }
+  .stat-bar-fill { height: 100%; border-radius: 2px; }
+  .fill-indigo { background: var(--accent); }
+  .fill-emerald { background: var(--success); }
+  .fill-amber { background: var(--warning); }
+  .fill-rose { background: var(--danger); }
+
+  /* inline micro toggles */
+  .micro-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    color: var(--text-tertiary);
+    transition: all 0.15s;
+  }
+  .micro-toggle.on {
+    background: rgba(99,102,241,0.12);
+    border-color: rgba(99,102,241,0.3);
+    color: var(--accent);
+  }
+  .micro-toggle .sw {
+    width: 28px; height: 16px; border-radius: 8px; background: var(--border-default);
+    position: relative; transition: all 0.2s;
+  }
+  .micro-toggle .sw::after {
+    content: '';
+    position: absolute; top: 2px; left: 2px;
+    width: 12px; height: 12px; border-radius: 50%; background: #fff;
+    transition: all 0.2s;
+  }
+  .micro-toggle.on .sw { background: var(--accent-soft); }
+  .micro-toggle.on .sw::after { left: 14px; }
+
+  /* bottom sheet tabs */
+  .sheet-tabs {
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border-subtle);
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 36px;
+  }
+  .sheet-tab {
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-bottom: none;
+    font-weight: 500;
+  }
+  .sheet-tab.active {
+    background: var(--bg-root);
+    border-color: var(--border-subtle);
+    color: var(--text-primary);
+  }
+  .sheet-tab:hover:not(.active) { color: var(--text-secondary); }
+  .tab-add { color: var(--text-disabled); padding: 6px 10px; cursor: pointer; font-size: 14px; }
+
+  /* checklist */
+  .feat-list { display: flex; flex-direction: column; gap: 6px; }
+  .feat-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .feat-item .check {
+    width: 18px; height: 18px;
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .feat-item.done .check { background: rgba(52,211,153,0.15); color: var(--success); }
+  .feat-item .tag {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .tag-core { background: rgba(99,102,241,0.12); color: #a5b4fc; }
+  .tag-plus { background: rgba(52,211,153,0.1); color: #6ee7b7; }
+  .tag-maybe { background: rgba(251,191,36,0.1); color: #fcd34d; }
+</style>
+
+<div class="section">
+  <h3>🌙 最终效果 — 全功能集成 + 斑马纹开关</h3>
+  <p style="color:var(--text-tertiary);font-size:13px;">
+    工具栏内置微控件（斑马纹/条件格式/冻结等），不散装。右侧面板收拢统计+规则+功能清单。
+  </p>
+</div>
+
+<div class="shell">
+  <!-- top bar -->
+  <div class="topbar">
+    <span style="color:var(--text-primary);font-weight:700;">🏠 Codex</span>
+    <span style="color:var(--text-tertiary);">/ 智能表格 /</span>
+    <span style="color:var(--text-primary);">月度部门评估表</span>
+    <span style="flex:1;"></span>
+    <span style="font-size:10px;color:var(--success);background:rgba(52,211,153,0.08);padding:4px 8px;border-radius:6px;">💾 已保存</span>
+  </div>
+
+  <!-- toolbar with integrated micro-controls -->
+  <div class="tbar">
+    <select class="btn" style="font-size:12px;">📋 月度部门评估表 ▾</select>
+    <span class="div"></span>
+    <button class="btn accent">📥 导入</button>
+    <button class="btn">📤 导出 ▾</button>
+    <span class="div"></span>
+    <button class="btn ghost">＋ 行</button>
+    <button class="btn ghost">＋ 列</button>
+    <span class="div"></span>
+    <!-- integrated micro-toggles — not floating, part of toolbar -->
+    <span class="sep-label">视图</span>
+    <span class="micro-toggle on" title="行交错配色">
+      <span class="sw"></span> 斑马纹
+    </span>
+    <span class="micro-toggle on" title="冻结横纵表头">
+      <span class="sw"></span> 冻结
+    </span>
+    <span class="micro-toggle on" title="条件格式自动着色">
+      <span class="sw"></span> 条件格式
+    </span>
+    <span style="flex:1;"></span>
+    <span class="sep-label">编辑</span>
+    <button class="btn ghost" style="font-size:11px;">🔍 查找</button>
+    <button class="btn ghost" style="font-size:11px;">↩</button>
+    <button class="btn ghost" style="font-size:11px;">↪</button>
+    <span class="div"></span>
+    <button class="btn">💾 保存</button>
+  </div>
+
+  <!-- body -->
+  <div class="body-wrap">
+    <div class="main-area">
+      <table class="grid striped">
+        <thead>
+          <tr>
+            <th class="corner">
+              <div style="font-size:10px;">行 \ 列</div>
+              <div style="font-size:9px;color:var(--text-tertiary);">右键配置</div>
+            </th>
+            <th class="ch">📊 完成率<span class="cfg">⚙</span><span class="sort-icon">↕</span><span class="filter-dot"></span><span class="ch-type">number</span></th>
+            <th class="ch">⭐ 质量评分<span class="cfg">⚙</span><span class="sort-icon">↕</span><span class="ch-type">select</span></th>
+            <th class="ch">🏷 风险等级<span class="cfg">⚙</span><span class="sort-icon">↕</span><span class="ch-type">select</span></th>
+            <th class="ch">👤 负责人<span class="cfg">⚙</span><span class="sort-icon">↕</span><span class="ch-type">user</span></th>
+            <th class="ch">📅 截止日期<span class="cfg">⚙</span><span class="sort-icon">↕</span><span class="ch-type">date</span></th>
+            <th class="ch">✅ 验收<span class="cfg">⚙</span><span class="ch-type">checkbox</span></th>
+            <th class="ch">📝 备注<span class="cfg">⚙</span><span class="ch-type">text</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="rh">技术部<span class="cfg">⚙</span></td>
+            <td class="dc cv-num cf-great">85%</td>
+            <td class="dc cv-sel">A<span class="arr">▾</span></td>
+            <td class="dc cv-sel cf-great">低风险<span class="arr">▾</span></td>
+            <td class="dc cv-sel">王经理<span class="arr">▾</span></td>
+            <td class="dc cv-date">2026-06-08</td>
+            <td class="dc cv-true">✓</td>
+            <td class="dc" style="position:relative;">API 开发<span class="cmt-dot"></span></td>
+          </tr>
+          <tr>
+            <td class="rh">产品部<span class="cfg">⚙</span></td>
+            <td class="dc cv-num cf-bad">72%</td>
+            <td class="dc sel cv-sel">B+<span class="arr">▾</span></td>
+            <td class="dc cv-sel">中风险<span class="arr">▾</span></td>
+            <td class="dc cv-sel">赵总监<span class="arr">▾</span></td>
+            <td class="dc cv-date">2026-06-15</td>
+            <td class="dc cv-false">—</td>
+            <td class="dc cv-empty">点击填写…</td>
+          </tr>
+          <tr>
+            <td class="rh">运营部<span class="cfg">⚙</span></td>
+            <td class="dc cv-num cf-great">91%</td>
+            <td class="dc cv-sel">A-<span class="arr">▾</span></td>
+            <td class="dc cv-sel cf-great">低风险<span class="arr">▾</span></td>
+            <td class="dc cv-sel">陈主管<span class="arr">▾</span></td>
+            <td class="dc cv-date">2026-06-20</td>
+            <td class="dc cv-false">—</td>
+            <td class="dc cv-empty">点击填写…</td>
+          </tr>
+          <tr>
+            <td class="rh">人事部<span class="cfg">⚙</span></td>
+            <td class="dc cv-num cf-bad">68%</td>
+            <td class="dc cv-sel">B<span class="arr">▾</span></td>
+            <td class="dc cv-sel cf-bad">高风险<span class="arr">▾</span></td>
+            <td class="dc cv-sel">周副总<span class="arr">▾</span></td>
+            <td class="dc cv-date">2026-07-01</td>
+            <td class="dc cv-false">—</td>
+            <td class="dc" style="position:relative;">需加人<span class="cmt-dot"></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- side panel: unified widgets -->
+    <div class="side-panel">
+      <!-- stats widget -->
+      <div class="widget">
+        <h4><span class="dot on"></span> 列统计 · 质量评分</h4>
+        <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px;">4 行 · select · 去重 4</div>
+        <div class="stat-row"><span>A</span><span class="stat-bar-wrap"><span class="stat-bar-fill fill-indigo" style="width:25%;"></span></span><span class="val">1</span></div>
+        <div class="stat-row"><span>A-</span><span class="stat-bar-wrap"><span class="stat-bar-fill fill-indigo" style="width:25%;"></span></span><span class="val">1</span></div>
+        <div class="stat-row"><span>B+</span><span class="stat-bar-wrap"><span class="stat-bar-fill fill-indigo" style="width:25%;"></span></span><span class="val">1</span></div>
+        <div class="stat-row"><span>B</span><span class="stat-bar-wrap"><span class="stat-bar-fill fill-indigo" style="width:25%;"></span></span><span class="val">1</span></div>
+      </div>
+
+      <!-- conditional format rules widget -->
+      <div class="widget">
+        <h4><span class="dot on"></span> 条件格式规则</h4>
+        <div style="font-size:11px;color:var(--text-secondary);line-height:1.7;">
+          🟢 完成率 ≥ 85% → <span style="color:var(--success);">绿色</span><br>
+          🟡 70-84% → <span style="color:var(--text-secondary);">默认</span><br>
+          🔴 &lt; 70% → <span style="color:var(--danger);">红色</span>
+        </div>
+      </div>
+
+      <!-- all features checklist -->
+      <div class="widget">
+        <h4><span class="dot on"></span> 功能清单 (10/10)</h4>
+        <div class="feat-list">
+          <div class="feat-item done"><span class="check">✓</span> 冻结窗格<span class="tag tag-core">核心</span></div>
+          <div class="feat-item done"><span class="check">✓</span> 条件格式<span class="tag tag-plus">增强</span></div>
+          <div class="feat-item done"><span class="check">✓</span> 列筛选排序<span class="tag tag-core">核心</span></div>
+          <div class="feat-item done"><span class="check">✓</span> 全局查找替换<span class="tag tag-core">核心</span></div>
+          <div class="feat-item done"><span class="check">✓</span> 导出选项增强<span class="tag tag-core">核心</span></div>
+          <div class="feat-item done"><span class="check">✓</span> 拖拽排序填充<span class="tag tag-plus">增强</span></div>
+          <div class="feat-item done"><span class="check">✓</span> 表格模板<span class="tag tag-plus">增强</span></div>
+          <div class="feat-item done"><span class="check">✓</span> 单元格历史<span class="tag tag-maybe">可选</span></div>
+          <div class="feat-item done"><span class="check">✓</span> 多 Sheet 标签页<span class="tag tag-maybe">可选</span></div>
+          <div class="feat-item done"><span class="check">✓</span> 单元格批注<span class="tag tag-maybe">可选</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- bottom sheet tabs -->
+  <div class="sheet-tabs">
+    <span class="sheet-tab active">📊 月度部门评估表</span>
+    <span class="sheet-tab">🔧 设备巡检记录</span>
+    <span class="sheet-tab">📋 周报汇总</span>
+    <span class="tab-add">＋</span>
+  </div>
+</div>
+
+<div class="section">
+  <h3>📐 工具栏微控件布局说明</h3>
+  <table>
+    <thead><tr><th>区域</th><th>内容</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>左侧 — 数据操作</td><td>表格切换 / 导入 / 导出 / 添加行列</td><td>主功能入口</td></tr>
+      <tr><td>中间 — 视图微控件</td><td><strong>斑马纹</strong> · 冻结 · 条件格式 (三个 toggle)</td><td>集成在工具栏内，一键开关，不散装</td></tr>
+      <tr><td>右侧 — 编辑</td><td>查找 · 撤销 · 重做 · 保存</td><td>编辑辅助</td></tr>
+      <tr><td>右侧面板</td><td>列统计 · 条件格式规则 · 功能清单</td><td>信息密度高，不打断操作</td></tr>
+      <tr><td>底部标签页</td><td>多 Sheet 切换 + 新建</td><td>类似 Excel 底部 Tab</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>🦓 行交错配色对比</h3>
+  <div style="display:flex;gap:16px;">
+    <div style="flex:1;padding:12px;background:var(--bg-root);border-radius:8px;border:1px solid var(--border-subtle);">
+      <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px;">斑马纹 开</div>
+      <div style="background:rgba(255,255,255,0);padding:6px 10px;font-size:12px;color:var(--text-secondary);">技术部 · 85% · A · 低风险</div>
+      <div style="background:rgba(255,255,255,0.015);padding:6px 10px;font-size:12px;color:var(--text-secondary);">产品部 · 72% · B+ · 中风险</div>
+      <div style="padding:6px 10px;font-size:12px;color:var(--text-secondary);">运营部 · 91% · A- · 低风险</div>
+      <div style="background:rgba(255,255,255,0.015);padding:6px 10px;font-size:12px;color:var(--text-secondary);">人事部 · 68% · B · 高风险</div>
+    </div>
+    <div style="flex:1;padding:12px;background:var(--bg-root);border-radius:8px;border:1px solid var(--border-subtle);">
+      <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px;">斑马纹 关</div>
+      <div style="padding:6px 10px;font-size:12px;color:var(--text-secondary);">技术部 · 85% · A · 低风险</div>
+      <div style="padding:6px 10px;font-size:12px;color:var(--text-secondary);">产品部 · 72% · B+ · 中风险</div>
+      <div style="padding:6px 10px;font-size:12px;color:var(--text-secondary);">运营部 · 91% · A- · 低风险</div>
+      <div style="padding:6px 10px;font-size:12px;color:var(--text-secondary);">人事部 · 68% · B · 高风险</div>
+    </div>
+  </div>
+  <p style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">💡 斑马纹用极微弱的 1.5% 白色叠加，不刺眼但足够区分行边界。宽表场景下显著提升阅读效率</p>
+</div>

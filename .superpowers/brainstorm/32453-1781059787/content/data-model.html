@@ -1,0 +1,108 @@
+<h2>第六节：数据模型 & API 变更</h2>
+<p class="subtitle">相比现有设计文档的增量变更 — 只列本次新增/修改的部分</p>
+
+<h3>数据库变更（1 个 ALTER）</h3>
+<table style="font-size:11px; width:100%;">
+  <tr style="background:var(--surface-color);">
+    <th style="text-align:left; padding:6px 10px;">变更</th>
+    <th style="text-align:left; padding:6px 10px;">SQL</th>
+    <th style="text-align:left; padding:6px 10px;">说明</th>
+  </tr>
+  <tr>
+    <td style="padding:6px 10px; font-family:monospace; color:#22c55e;">ADD COLUMN</td>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">ALTER TABLE knowledge_pages<br>ADD COLUMN tags JSON DEFAULT '[]'</td>
+    <td style="padding:6px 10px; font-size:10px;">标签数组，如 ["Spring","ORM"]</td>
+  </tr>
+</table>
+<p style="font-size:10px; opacity:0.5; margin-top:4px;">knowledge_categories 和 knowledge_history 表不变，现有字段已满足所有需求。</p>
+
+<h3>新增 API（6 个端点）</h3>
+<table style="font-size:11px; width:100%;">
+  <tr style="background:var(--surface-color);">
+    <th style="text-align:left; padding:6px 10px;">方法</th>
+    <th style="text-align:left; padding:6px 10px;">路径</th>
+    <th style="text-align:left; padding:6px 10px;">用途</th>
+  </tr>
+  <tr>
+    <td style="padding:6px 10px; font-family:monospace;">GET</td>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">/knowledge/graph</td>
+    <td style="padding:6px 10px; font-size:10px;">图谱数据 {nodes, edges}，支持 categoryId/tag 筛选</td>
+  </tr>
+  <tr style="background:var(--surface-color);">
+    <td style="padding:6px 10px; font-family:monospace;">GET</td>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">/knowledge/pages/{id}/backlinks</td>
+    <td style="padding:6px 10px; font-size:10px;">反向链接列表（手动[[wikilink]]+自动扫描合并）</td>
+  </tr>
+  <tr>
+    <td style="padding:6px 10px; font-family:monospace;">POST</td>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">/knowledge/graph/rebuild</td>
+    <td style="padding:6px 10px; font-size:10px;">触发全量 wikilink 扫描 + 引用分析重建</td>
+  </tr>
+  <tr style="background:var(--surface-color);">
+    <td style="padding:6px 10px; font-family:monospace;">GET</td>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">/knowledge/timeline</td>
+    <td style="padding:6px 10px; font-size:10px;">时间线数据，支持 type/author/since 筛选，分页</td>
+  </tr>
+  <tr>
+    <td style="padding:6px 10px; font-family:monospace;">GET</td>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">/knowledge/tags</td>
+    <td style="padding:6px 10px; font-size:10px;">标签云 [{name, count}]，支持 categoryId 筛选</td>
+  </tr>
+  <tr style="background:var(--surface-color);">
+    <td style="padding:6px 10px; font-family:monospace;">GET</td>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">/knowledge/stats</td>
+    <td style="padding:6px 10px; font-size:10px;">仪表盘统计：文档总数/分类数/标签数/最近更新时间</td>
+  </tr>
+</table>
+
+<h3>修改现有 API（1 个）</h3>
+<table style="font-size:11px; width:100%;">
+  <tr style="background:var(--surface-color);">
+    <th style="text-align:left; padding:6px 10px;">端点</th>
+    <th style="text-align:left; padding:6px 10px;">变更</th>
+  </tr>
+  <tr>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">PUT /knowledge/pages/{id}</td>
+    <td style="padding:6px 10px; font-size:10px;">请求体新增 tags 字段；保存时自动扫描 content_md 中的 [[wikilink]] 并更新引用关系</td>
+  </tr>
+</table>
+
+<h3>前端路由变更</h3>
+<table style="font-size:11px; width:100%;">
+  <tr style="background:var(--surface-color);">
+    <th style="text-align:left; padding:6px 10px;">变更</th>
+    <th style="text-align:left; padding:6px 10px;">内容</th>
+  </tr>
+  <tr>
+    <td style="padding:6px 10px; color:#ef4444;">删除 5 条路由</td>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">/admin/knowledge/category/:categoryId<br>/admin/knowledge/page/:pageId<br>/admin/knowledge/page/:pageId/edit<br>/admin/knowledge/page/:pageId/history<br>/admin/knowledge/new</td>
+  </tr>
+  <tr style="background:var(--surface-color);">
+    <td style="padding:6px 10px; color:#22c55e;">保留 1 条路由</td>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">/admin/knowledge</td>
+  </tr>
+  <tr>
+    <td style="padding:6px 10px; color:#22c55e;">删除 4 个页面</td>
+    <td style="padding:6px 10px; font-size:10px;">AdminKnowledgePageDetail / EditorPage / HistoryPage — 并入 KnowledgeShell</td>
+  </tr>
+</table>
+
+<h3>新增后端 Service 逻辑</h3>
+<table style="font-size:11px; width:100%;">
+  <tr style="background:var(--surface-color);">
+    <th style="text-align:left; padding:6px 10px;">组件</th>
+    <th style="text-align:left; padding:6px 10px;">职责</th>
+  </tr>
+  <tr>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">WikilinkScanner</td>
+    <td style="padding:6px 10px; font-size:10px;">正则扫描 content_md 中的 [[title]]，返回引用列表</td>
+  </tr>
+  <tr style="background:var(--surface-color);">
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">ReferenceAnalyzer</td>
+    <td style="padding:6px 10px; font-size:10px;">全量分析：基于标题关键词共现 + 分类相似度自动发现潜在引用</td>
+  </tr>
+  <tr>
+    <td style="padding:6px 10px; font-family:monospace; font-size:10px;">GraphService</td>
+    <td style="padding:6px 10px; font-size:10px;">构建 nodes+edges，合并手动+自动引用，计算引用权重</td>
+  </tr>
+</table>

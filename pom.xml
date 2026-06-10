@@ -125,6 +125,12 @@
             <artifactId>jsoup</artifactId>
             <version>1.17.2</version>
         </dependency>
+        <!-- flexmark: Markdown → HTML 转换（知识库模块） -->
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-all</artifactId>
+            <version>0.64.8</version>
+        </dependency>
         <!-- ARO 出站连接池（替代 HttpURLConnection 冷连接，降低 analyze 并行双 GET 耗时） -->
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>
