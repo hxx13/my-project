@@ -331,7 +331,7 @@ export default function AdminLayout() {
   /** 与侧栏一级入口一致的路径集合（注册表 ∪ 权限 sidebar ENTRY），供顶栏「返回」判定；视觉规范见 `frontend/docs/ADMIN_UI_STYLE.md` */
   const permSidebarPaths = useMemo(() => collectSidebarEntryPathsFromPerm(permNodes), [permNodes]);
   const showAdminShellBack = useMemo(
-    () => shouldShowAdminShellBack(pathname, permSidebarPaths),
+    () => pathname !== "/admin" || shouldShowAdminShellBack(pathname, permSidebarPaths),
     [pathname, permSidebarPaths]
   );
   const adminHeaderTitle = useMemo(() => adminChromeTitle(pathname), [pathname]);
@@ -943,7 +943,9 @@ export default function AdminLayout() {
                 title="返回上一页"
                 aria-label="返回上一页"
                 onClick={() => {
-                  navigate(resolveAdminShellBackTo(pathname, location.state));
+                  // Go back to previous page in browser history, fallback to home
+                  if (window.history.length > 1) navigate(-1);
+                  else navigate("/admin");
                 }}
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)]"
               >
@@ -1097,16 +1099,6 @@ export default function AdminLayout() {
 
         <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[var(--twin-canvas-soft)]">
           <BackfillAutoGlobalBanner />
-          {pathname !== "/admin" && (
-            <div className="flex items-center gap-2 border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-4 py-2 text-sm">
-              <button onClick={() => navigate("/admin")} className="text-[var(--twin-link-deep)] hover:underline font-medium">← 返回工作台</button>
-              <span className="text-[var(--twin-mute)]">/</span>
-              <span className="text-[var(--twin-body)] truncate">{(() => {
-                const item = ADMIN_NAV_REGISTRY.flatMap(g => [...(g.items ?? []), ...(g.subgroups?.flatMap(sg => sg.items) ?? [])]).find(i => i.path === pathname);
-                return item?.label ?? pathname;
-              })()}</span>
-            </div>
-          )}
           <div className="admin-page-content mx-auto w-full max-w-[1600px] flex-1">
             <PageTransition key={location.pathname} variant="fadeUp" duration={0.3} className="h-full">
               <Outlet />
