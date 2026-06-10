@@ -3,7 +3,8 @@ import {
   fetchMaterialCategories, fetchMaterialItems, fetchMaterialCart, saveMaterialCart,
   createMaterialRequest, fetchMyMaterialRequests, fetchMaterialRequestDetail,
   withdrawMaterialRequest, confirmMaterialReceive, fetchMyMaterialStats,
-  fetchAdminMaterialCategories, fetchAdminMaterialItems, createAdminMaterialItem,
+  fetchAdminMaterialCategories, createAdminMaterialCategory, updateAdminMaterialCategory, deleteAdminMaterialCategory,
+  fetchAdminMaterialItems, createAdminMaterialItem,
   updateAdminMaterialItem, deleteAdminMaterialItem, fetchAdminMaterialRecycle,
   restoreAdminMaterialRecycle, purgeAdminMaterialRecycle, purgeAdminMaterialRecycleByIds,
   purgeAllAdminMaterialRecycle, adjustMaterialStock, inboundMaterialItem, fetchPendingMaterialRequests,
@@ -54,6 +55,18 @@ export function useMyMaterialStats() {
 // admin hooks
 export function useAdminMaterialCategories() {
   return useQuery({ queryKey: materialQueryKeys.adminCategories(), queryFn: fetchAdminMaterialCategories });
+}
+export function useCreateAdminMaterialCategory() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: createAdminMaterialCategory, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminCategories() }) });
+}
+export function useUpdateAdminMaterialCategory() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, body }: { id: number; body: Partial<{ name: string; sortOrder: number; status: number }> }) => updateAdminMaterialCategory(id, body), onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminCategories() }) });
+}
+export function useDeleteAdminMaterialCategory() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: deleteAdminMaterialCategory, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminCategories() }) });
 }
 export function useAdminMaterialItems(categoryId?: number) {
   return useQuery({ queryKey: materialQueryKeys.adminItems(categoryId), queryFn: () => fetchAdminMaterialItems(categoryId) });
