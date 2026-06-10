@@ -165,4 +165,7 @@ public interface DahuaSwingMapper {
 
     /** 列出所有当前处于 ACTIVATED 状态的用户（滞留检测用） */
     List<Map<String, Object>> listActivatedUsers();
+
+    /** 列出某用户所有待处理激活状态行（含 scheduled_exit_at 不为空的记录） */
+    List<DahuaActivationState> listActivationStatesByUserId(@Param("userId") String userId);
 }
