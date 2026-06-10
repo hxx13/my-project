@@ -1,9 +1,10 @@
 /** 学生物资商城 — 快捷入口路由：/student/material */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package, Lightbulb } from "lucide-react";
 import { useMaterialCategories, useMaterialItems, useMaterialCart, useSaveMaterialCart, useCreateMaterialRequest } from "@/api/hooks/useMaterial";
 import { createMaterialDemand } from "@/api/domains/material.api";
+import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import type { MaterialItem } from "@/api/domains/material.api";
 import { StudentCard, Skeleton, EmptyState, Badge } from "../components/ui";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,13 @@ export default function StudentMaterialPage() {
   const [demandText, setDemandText] = useState("");
   const [demandSubmitting, setDemandSubmitting] = useState(false);
   const [showDemandForm, setShowDemandForm] = useState(false);
+  const [demandEntryVisible, setDemandEntryVisible] = useState(true); // 默认显示
+
+  useEffect(() => {
+    fetchPublicRuntimeConfig().then(cfg => {
+      setDemandEntryVisible(cfg["material.demand_entry_visible"] !== "false");
+    }).catch(() => { /* 加载失败保持默认 */ });
+  }, []);
 
   const cartCount = useMemo(() => {
     if (!cart) return 0;
@@ -102,8 +110,8 @@ export default function StudentMaterialPage() {
           )}
         </div>
 
-        {/* 需求建议 */}
-        <div className="p-4 border-t border-[var(--student-hairline)]">
+        {/* 需求建议（受开关控制） */}
+        {demandEntryVisible && (<div className="p-4 border-t border-[var(--student-hairline)]">
           {!showDemandForm ? (
             <button onClick={() => setShowDemandForm(true)}
               className="flex items-center gap-2 text-[12px] text-[var(--student-mute)] hover:text-[var(--student-primary)] transition-colors">
@@ -130,6 +138,7 @@ export default function StudentMaterialPage() {
             </div>
           )}
         </div>
+        )}
       </main>
 
       {showCart && (

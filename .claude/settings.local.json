@@ -43,7 +43,9 @@
       "Bash(rm -f .git/index.lock)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(cd \"d:\\\\codex\\\\verson.1.2\\\\20260416\" && rm -f .git/index.lock && git add \"docs/UI设计规范与主题标准.md\" && git commit -m \"docs: formalize top-16 rule for all admin modals \\(systemic fix\\)\")"
+      "Bash(cd \"d:\\\\codex\\\\verson.1.2\\\\20260416\" && rm -f .git/index.lock && git add \"docs/UI设计规范与主题标准.md\" && git commit -m \"docs: formalize top-16 rule for all admin modals \\(systemic fix\\)\")",
+      "Skill(code-review)",
+      "Skill(code-review:*)"
     ],
     "additionalDirectories": [
       "d:\\codex\\verson.1.2\\20260416\\.claude",

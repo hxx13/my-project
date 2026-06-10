@@ -30,9 +30,9 @@
         UPDATE material_request SET status = #{status} WHERE id = #{id}
     </update>
     <update id="updateReview">
-        UPDATE material_request SET status = #{status},
-        <if test="status == 'FIRST_OK' or status == 'APPROVED'">first_reviewer_id = #{reviewerId}, first_review_time = NOW()</if>
-        <if test="status == 'APPROVED' and second_reviewer_id != null">second_reviewer_id = #{reviewerId}, second_review_time = NOW()</if>
+        UPDATE material_request SET status = #{status}
+        <if test="status == 'FIRST_OK'">, first_reviewer_id = #{reviewerId}, first_review_time = NOW()</if>
+        <if test="status == 'APPROVED'">, first_reviewer_id = COALESCE(first_reviewer_id, #{reviewerId}), first_review_time = COALESCE(first_review_time, NOW()), second_reviewer_id = #{reviewerId}, second_review_time = NOW()</if>
         WHERE id = #{id}
     </update>
     <update id="updateFulfill">
