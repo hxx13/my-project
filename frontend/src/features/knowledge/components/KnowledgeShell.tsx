@@ -28,7 +28,7 @@ export function KnowledgeShell() {
   if (shell.view === "graph") {
     return (
       <div className="h-full bg-[#0a0f1a] page-full-bleed">
-        <KnowledgeGraphView onSelectPage={shell.selectPage} onClose={() => shell.setView("browse")} />
+        <KnowledgeGraphView tree={tree ?? []} onSelectPage={shell.selectPage} onClose={() => shell.setView("browse")} />
         <KnowledgeHistoryDrawer open={shell.isHistoryOpen} pageId={shell.historyPageId} onClose={shell.closeHistory} onRollback={refetch} />
         <KnowledgeImportDialog open={showImport} onClose={() => setShowImport(false)} onImported={refetch} />
       </div>
