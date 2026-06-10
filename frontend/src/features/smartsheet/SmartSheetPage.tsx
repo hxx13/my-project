@@ -1,13 +1,14 @@
 // SmartSheetPage — 🍱 Bento 卡片布局（紧凑型：页眉工具栏 → 表格卡片 → 页脚状态栏 + 标签）
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import SmartSheetToolbar from './components/SmartSheetToolbar';
 import SmartSheetGrid from './components/SmartSheetGrid';
 import SmartSheetStatusBar from './components/SmartSheetStatusBar';
 import SmartSheetTabsRow from './components/SmartSheetTabsRow';
+import FindReplaceDialog from './components/FindReplaceDialog';
 import { useSmartSheet } from './hooks/useSmartSheet';
 import { DEFAULT_VIEW_OPTIONS } from './types';
-import type { ViewOptions, ColumnConfig } from './types';
+import type { ViewOptions, ColumnConfig, CellValue } from './types';
 import type { UndoRedoState } from './components/SmartSheetGrid';
 import toast from 'react-hot-toast';
 
@@ -19,6 +20,7 @@ export default function SmartSheetPage() {
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [undoRedo, setUndoRedo] = useState<{ canUndo: boolean; canRedo: boolean }>({ canUndo: false, canRedo: false });
   const [isDirty, setIsDirty] = useState(false);
+  const [showFind, setShowFind] = useState(false);
   const undoRef = useRef<() => void>(() => {});
   const redoRef = useRef<() => void>(() => {});
 
@@ -26,6 +28,18 @@ export default function SmartSheetPage() {
     setUndoRedo({ canUndo: state.canUndo, canRedo: state.canRedo });
     undoRef.current = state.undo;
     redoRef.current = state.redo;
+  }, []);
+
+  // Ctrl+F / Cmd+F keyboard shortcut
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowFind(true);
+      }
+    };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
   }, []);
 
   // Track dirty state on cell edits
@@ -73,7 +87,7 @@ export default function SmartSheetPage() {
         onSave={() => { toast.success('已保存'); setIsDirty(false); }}
         onUndo={() => undoRef.current()}
         onRedo={() => redoRef.current()}
-        onSearch={() => {}}
+        onSearch={() => setShowFind(true)}
         canUndo={undoRedo.canUndo}
         canRedo={undoRedo.canRedo}
         isDirty={isDirty}
@@ -113,6 +127,16 @@ export default function SmartSheetPage() {
 
       {/* 底部标签栏 */}
       <SmartSheetTabsRow sheets={sheetTabs} activeId={id || 'current'} onSelect={() => {}} />
+
+      {/* 查找替换弹窗 */}
+      {showFind && (
+        <FindReplaceDialog
+          open={showFind}
+          onClose={() => setShowFind(false)}
+          rows={rows}
+          onReplace={(rowId, colKey, newVal) => updateCell(rowId, colKey, JSON.stringify(newVal))}
+        />
+      )}
     </div>
   );
 }
