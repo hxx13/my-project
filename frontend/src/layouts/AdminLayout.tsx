@@ -1094,7 +1094,7 @@ export default function AdminLayout() {
 
         <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[var(--twin-canvas-soft)]">
           <BackfillAutoGlobalBanner />
-          <div className="admin-page-content mx-auto w-full max-w-[1600px] flex-1 p-6 sm:p-8">
+          <div className="admin-page-content mx-auto w-full max-w-[1600px] flex-1">
             <PageTransition key={location.pathname} variant="fadeUp" duration={0.3} className="h-full">
               <Outlet />
             </PageTransition>

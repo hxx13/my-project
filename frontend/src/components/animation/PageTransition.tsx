@@ -40,7 +40,11 @@ export function PageTransition({
     { scope: containerRef },
   );
 
-  return <div ref={containerRef} className={className}>{children}</div>;
+  return (
+    <div ref={containerRef} className={className} style={{ minHeight: "100%" }}>
+      {children}
+    </div>
+  );
 }
 
 /**

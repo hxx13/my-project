@@ -138,7 +138,13 @@ export function KnowledgeGraphView({ onSelectPage }: Props) {
       className="h-full w-full"
       style={{ background: "linear-gradient(135deg, #0a0f1a 0%, #111827 50%, #0d1520 100%)" }}
     >
-      <svg ref={svgRef} className="h-full w-full" />
+      <svg
+        ref={svgRef}
+        width={dims.width}
+        height={dims.height}
+        style={{ display: "block" }}
+        preserveAspectRatio="xMidYMid meet"
+      />
       {tooltip && (
         <div
           className="fixed z-50 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2.5 shadow-lg text-[11px] min-w-[140px]"

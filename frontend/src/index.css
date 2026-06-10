@@ -327,20 +327,25 @@ html[data-modal-scroll-lock] body {
    原则：AdminLayout 定义 CSS 变量，子页面引用变量而非硬编码值
    ═══════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════
+   .admin-page-content — SINGLE SOURCE OF TRUTH
+   for ALL admin page padding. Tailwind p-* classes
+   MUST NOT be used alongside this class.
+   ═══════════════════════════════════════════ */
 .admin-page-content {
-  /* These values are the SINGLE SOURCE OF TRUTH for admin page horizontal padding.
-     Pages that need full width use .page-full-bleed which references these variables.
-     Changing the padding here auto-updates all full-bleed pages. */
-  --page-pad-x: 1.5rem;           /* matches p-6 (24px) */
+  --page-pad-x: 1.5rem;
+  --page-pad-y: 1.5rem;
+  padding: var(--page-pad-y) var(--page-pad-x);
 }
 @media (min-width: 640px) {
   .admin-page-content {
-    --page-pad-x: 2rem;           /* matches sm:p-8 (32px) */
+    --page-pad-x: 2rem;
+    --page-pad-y: 2rem;
   }
 }
 
-/* Apply to pages that need edge-to-edge width.
-   Counteracts the parent .admin-page-content padding via the CSS variable. */
+/* Full-bleed: negate horizontal padding via the SAME CSS variable.
+   No hardcoded values — if --page-pad-x changes, this auto-updates. */
 .page-full-bleed {
   margin-left: calc(-1 * var(--page-pad-x));
   margin-right: calc(-1 * var(--page-pad-x));
