@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AnimatedRoomButton } from "@/components/scanner/AnimatedRoomButton";
 import { HamsterExitButton } from "@/components/scanner/HamsterExitButton";
@@ -11,7 +12,6 @@ interface ActionButtonsProps {
     targetRooms: RoomInfo[];
     onRoomClick: (room: RoomInfo, index: number) => void;
     isSuccess: boolean;
-    /** 仅离开动作成功时用于仓鼠减速，勿复用全局 ENTER 成功 */
     exitCelebrateRoomId: string | null;
     actedRoomId: string | null;
     finishedRooms: string[];
@@ -21,10 +21,21 @@ interface ActionButtonsProps {
     isExitLocked: (room: RoomInfo) => boolean;
     getKeepCardState: (index: number) => boolean;
     setKeepCardState: (index: number, checked: boolean) => void;
+    /** 自动签退剩余秒数（来自 analyze）；null 则不显示 */
+    autoSignoutSecondsRemaining?: number | null;
+    /** 自动签退计时器状态 */
+    autoSignoutState?: string | null;
+}
+
+function formatCountdown(totalSeconds: number): string {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 export const ActionButtons = (props: ActionButtonsProps) => {
-    const { action, targetRooms, onRoomClick, exitCelebrateRoomId, finishedRooms } = props;
+    const { action, targetRooms, onRoomClick, exitCelebrateRoomId, finishedRooms,
+        autoSignoutSecondsRemaining, autoSignoutState } = props;
     const safeRooms = Array.isArray(targetRooms) ? targetRooms : [];
     const density = resolveRoomActionDensity(safeRooms.length);
     const gapClass = density === "normal" ? "gap-4" : density === "compact" ? "gap-2.5" : "gap-1.5";
@@ -32,10 +43,58 @@ export const ActionButtons = (props: ActionButtonsProps) => {
     const enterRowH = density === "normal" ? "h-[55px]" : density === "compact" ? "h-[48px]" : "h-[40px]";
     const exitRowMinH = density === "normal" ? "min-h-[7.5rem]" : density === "compact" ? "min-h-[6.5rem]" : "min-h-[5.5rem]";
 
+    // 本地倒计时（仅在 EXIT 且有初始秒数时启用）
+    const [countdown, setCountdown] = useState<number | null>(
+        action === "EXIT" && autoSignoutSecondsRemaining != null && autoSignoutSecondsRemaining > 0
+            ? autoSignoutSecondsRemaining
+            : null
+    );
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    useEffect(() => {
+        if (action === "EXIT" && autoSignoutSecondsRemaining != null && autoSignoutSecondsRemaining > 0) {
+            setCountdown(autoSignoutSecondsRemaining);
+        } else {
+            setCountdown(null);
+        }
+    }, [autoSignoutSecondsRemaining, action]);
+
+    useEffect(() => {
+        if (countdown == null || countdown <= 0) {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+            return;
+        }
+        intervalRef.current = setInterval(() => {
+            setCountdown((prev) => {
+                if (prev == null || prev <= 1) {
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+        return () => {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+    }, [countdown != null]);
+
+    const showCountdown = action === "EXIT" && countdown != null && countdown > 0;
+
     return (
         <div
             className={`flex flex-col w-full mx-auto min-h-0 max-h-full overflow-y-auto overflow-x-visible ${gapClass} ${maxWClass} pl-1 pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}
         >
+            {/* 自动签退倒计时标签 */}
+            {showCountdown && (
+                <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-[11px] font-bold text-amber-400 shrink-0"
+                >
+                    <span>⏱</span>
+                    <span>自动签退 {formatCountdown(countdown!)}</span>
+                </motion.div>
+            )}
+
             <AnimatePresence>
                 {safeRooms.map((room, idx) => {
                     const roomId = room.officialRoomId || room.id;
