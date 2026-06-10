@@ -80,7 +80,7 @@ export async function createKnowledgeCategory(data: { name: string; slug: string
   return res.data.data;
 }
 
-export async function updateKnowledgeCategory(id: number, data: { name?: string; slug?: string; icon?: string }): Promise<KnowledgeTreeNode> {
+export async function updateKnowledgeCategory(id: number, data: { name?: string; slug?: string; icon?: string; parentId?: number | null }): Promise<KnowledgeTreeNode> {
   const res = await adminHttp.put<Result<KnowledgeTreeNode>>(`/knowledge/categories/${id}`, data);
   return res.data.data;
 }

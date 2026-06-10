@@ -86,6 +86,7 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
   const [editSlug, setEditSlug] = useState("");
   const [saving, setSaving] = useState(false);
   const [moveMenu, setMoveMenu] = useState<number | null>(null); // pageId being moved
+  const [moveCatMenu, setMoveCatMenu] = useState(false); // this category being moved
 
   function startEdit() { setEditName(node.categoryName); setEditSlug(node.categorySlug); setEditing(true); }
   async function handleSaveEdit() {
@@ -101,6 +102,13 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
     if (!confirm(`删除「${node.categoryName}」？`)) return;
     setDeleting(true);
     try { await deleteKnowledgeCategory(node.categoryId); onRefresh(); } catch { alert("删除失败"); } finally { setDeleting(false); }
+  }
+
+  async function handleMoveCategory(newParentId: number | null) {
+    try {
+      await updateKnowledgeCategory(node.categoryId, { parentId: newParentId });
+      setMoveCatMenu(false); onRefresh();
+    } catch { alert("移动失败"); }
   }
 
   async function handleMovePage(pageId: number, newCategoryId: number, pageSlug: string, pageTitle: string) {
@@ -134,10 +142,21 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
             <button onClick={() => setEditing(false)} className="rounded p-0.5 hover:bg-[var(--app-color-surface-hover)]"><X className="size-3" /></button>
           </div>
         ) : (
-          <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity relative">
+            <button onClick={(e) => { e.stopPropagation(); setMoveCatMenu(!moveCatMenu); }} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]" title="移动到…"><MoveHorizontal className="size-3" /></button>
             <button onClick={startEdit} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]" title="重命名"><Pencil className="size-3" /></button>
             {node.pages.length === 0 && node.children.length === 0 && (
               <button onClick={handleDelete} disabled={deleting} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-red-500 hover:bg-red-50" title="删除空文件夹"><Trash2 className="size-3" /></button>
+            )}
+            {/* Folder move dropdown */}
+            {moveCatMenu && (
+              <div className="absolute left-0 top-full mt-1 z-50 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-lg py-1 text-[11px] min-w-[160px]">
+                <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">移动到</div>
+                <button onClick={(e) => { e.stopPropagation(); handleMoveCategory(null); }} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">📁 顶层（无父级）</button>
+                {allCategories.filter(c => c.id !== node.categoryId).map(c => (
+                  <button key={c.id} onClick={(e) => { e.stopPropagation(); handleMoveCategory(c.id); }} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">📁 {c.name}</button>
+                ))}
+              </div>
             )}
           </div>
         )}
