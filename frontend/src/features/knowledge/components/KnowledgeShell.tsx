@@ -23,9 +23,22 @@ export function KnowledgeShell() {
   const [showImport, setShowImport] = useState(false);
   const { data: page } = useKnowledgePage(shell.selectedPageId);
 
+  // ── Graph view: 全屏沉浸式，不使用三栏布局 ──
+  if (shell.view === "graph") {
+    return (
+      <div className="flex h-full flex-col bg-[var(--app-color-surface-page)] page-full-bleed">
+        <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} onImport={() => setShowImport(true)} />
+        <div className="flex-1 min-h-0">
+          <KnowledgeGraphView onSelectPage={shell.selectPage} onClose={() => shell.setView("browse")} />
+        </div>
+        <KnowledgeHistoryDrawer open={shell.isHistoryOpen} pageId={shell.historyPageId} onClose={shell.closeHistory} onRollback={refetch} />
+        <KnowledgeImportDialog open={showImport} onClose={() => setShowImport(false)} onImported={refetch} />
+      </div>
+    );
+  }
+
   const renderCenter = () => {
     if (shell.isEditing) return <KnowledgeEditorPanel page={shell.editingPageId ? page ?? null : null} onSaved={p => { shell.selectPage(p.id); shell.stopEdit(); }} onCancel={() => shell.stopEdit()} />;
-    if (shell.view === "graph") return <KnowledgeGraphView onSelectPage={shell.selectPage} />;
     if (shell.view === "timeline") return <KnowledgeTimelineView onSelectPage={shell.selectPage} />;
     if (!shell.selectedPageId) return <div className="p-6"><KnowledgeDashboard stats={null} onSelectPage={shell.selectPage} /></div>;
     if (!page) return <div className="flex flex-col items-center justify-center py-16"><p className="text-lg font-semibold">文档不存在</p><button onClick={shell.deselectPage} className="mt-4 rounded border px-4 py-2 text-sm">返回首页</button></div>;

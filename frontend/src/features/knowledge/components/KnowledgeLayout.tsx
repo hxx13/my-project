@@ -1,3 +1,21 @@
+/**
+ * 知识库三栏布局 — 每个面板独立滚动
+ *
+ * ## 架构约束（AI 开发者必读）
+ *
+ * 1. 高度链：本组件依赖父级提供 `h-full`（确定高度）。
+ *    如果包裹本组件的容器没有确定高度，`overflow-y-auto` 无效——面板不会滚动。
+ *    高度链追溯：AdminLayout flex-1 → PageTransition min-h-full → Shell h-full → 本组件 h-full
+ *
+ * 2. 不要在此加 `max-w-*`：内容宽度由父级 AdminLayout 的 `max-w-[1600px]` 控制。
+ *    三栏已通过 flex 分区宽度，中间栏无需额外限制。文本可读性由 .docs-prose 的 per-element max-width 处理。
+ *
+ * 3. 独立滚动：左侧 `aside`、中间 `main`、右侧 `aside` 各有一个 `overflow-y-auto`。
+ *    不要把它们合并成单一滚动容器——那样目录和内容会一起滚，失去独立滚动的特性。
+ *
+ * 4. 图谱视图不使用本组件：图谱需要全屏沉浸式空间，Shell 在 graph 视图下直接渲染
+ *    KnowledgeGraphView 而不经过 KnowledgeLayout。
+ */
 import { type ReactNode, useState, useCallback } from "react";
 import { ResizeHandle } from "./ResizeHandle";
 

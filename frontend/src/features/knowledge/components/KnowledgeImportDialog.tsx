@@ -1,3 +1,15 @@
+/**
+ * 导入对话框
+ *
+ * ## 架构约束（AI 开发者必读）
+ *
+ * 1. 必须使用 shadcn/ui `<Dialog>` 组件，禁止裸 `fixed` 定位。
+ *    Dialog 组件自动处理：Portal 渲染、焦点管理、ESC 关闭、z-index（--z-modal 令牌）。
+ *    裸 fixed 会导致：脱离 AdminLayout 的层叠上下文、z-index 冲突、焦点陷阱缺失。
+ *    详见 docs/UI设计规范与主题标准.md § 6.3 对话框
+ *
+ * 2. 不要在此使用自建 overlay/backdrop。Dialog 组件已内置。
+ */
 import { useState } from "react";
 import { Upload, Loader2 } from "lucide-react";
 import { importKnowledgePage } from "@/api/domains/knowledge.api";
