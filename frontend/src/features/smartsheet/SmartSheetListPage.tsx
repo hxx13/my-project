@@ -17,10 +17,11 @@ export default function SmartSheetListPage() {
 
   return (
     <AdminPageShell title="智能表格" icon={Table2}>
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex gap-3">
         {PRESET_TEMPLATES.map((tpl) => (
           <button key={tpl.id}
-            className="px-3 py-2 rounded-app-element border border-app-border bg-app-surface-container hover:border-app-accent text-sm transition-colors text-app-text-primary"
+            className="px-4 py-3 rounded-[14px] border border-app-border bg-app-surface-container hover:border-app-accent text-sm transition-all text-app-text-primary"
+            style={{ boxShadow: 'var(--app-elevation-card)' }}
             onClick={async () => {
               try {
                 const sheet = await createSheet({
@@ -37,7 +38,8 @@ export default function SmartSheetListPage() {
           </button>
         ))}
         <button onClick={() => navigate('/admin/smartsheet/new')}
-          className="px-3 py-2 rounded-app-element bg-app-accent text-app-text-inverse hover:bg-app-accent-hover text-sm transition-colors flex items-center gap-1">
+          className="px-4 py-3 rounded-[14px] bg-app-accent-secondary text-white hover:opacity-90 text-sm transition-all flex items-center gap-1 font-semibold"
+          style={{ boxShadow: 'var(--app-elevation-card)' }}>
           <Plus className="w-4 h-4" /> 自定义
         </button>
       </div>

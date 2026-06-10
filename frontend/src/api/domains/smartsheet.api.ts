@@ -1,5 +1,5 @@
 // frontend/src/api/domains/smartsheet.api.ts
-import axios from 'axios';
+import { adminHttp } from '@/api/core/adminHttp';
 import type {
   SmartSheetDefinition,
   SmartSheetRow,
@@ -9,72 +9,99 @@ import type {
   ColumnStats,
 } from '@/features/smartsheet/types';
 
-const BASE = '/api/admin/smartsheet';
+const BASE = '/smartsheet';
+
+// ── JSON field normalization ──
+// Backend stores columnsConfig/rowEntitySource/cellData as JSON strings;
+// MyBatis returns them as strings — parse to objects for the frontend.
+
+function maybeParse(v: unknown): unknown {
+  if (typeof v === 'string') {
+    try { return JSON.parse(v); } catch { return v; }
+  }
+  return v;
+}
+
+function normalizeSheet(raw: any): SmartSheetDefinition {
+  return {
+    ...raw,
+    columnsConfig: (Array.isArray(raw.columnsConfig) ? raw.columnsConfig : maybeParse(raw.columnsConfig) ?? []) as SmartSheetDefinition['columnsConfig'],
+    rowEntitySource: maybeParse(raw.rowEntitySource) ?? undefined,
+  };
+}
+
+function normalizeRow(raw: any): SmartSheetRow {
+  return {
+    ...raw,
+    cellData: (typeof raw.cellData === 'object' && !Array.isArray(raw.cellData) ? raw.cellData : maybeParse(raw.cellData) ?? {}) as SmartSheetRow['cellData'],
+  };
+}
 
 // Sheet CRUD
 export async function fetchSheetPage(page = 1, pageSize = 20) {
-  const { data } = await axios.get(`${BASE}/sheet/page`, { params: { page, pageSize } });
-  return data.data as { list: SmartSheetDefinition[]; total: number };
+  const { data } = await adminHttp.get(`${BASE}/sheet/page`, { params: { page, pageSize } });
+  const raw = data.data as { list: any[]; total: number };
+  return { list: raw.list.map(normalizeSheet), total: raw.total };
 }
 
 export async function createSheet(req: SmartSheetCreateRequest) {
-  const { data } = await axios.post(`${BASE}/sheet`, req);
-  return data.data as SmartSheetDefinition;
+  const { data } = await adminHttp.post(`${BASE}/sheet`, req);
+  return normalizeSheet(data.data);
 }
 
 export async function getSheet(id: string) {
-  const { data } = await axios.get(`${BASE}/sheet/${id}`);
-  return data.data as SmartSheetDefinition;
+  const { data } = await adminHttp.get(`${BASE}/sheet/${id}`);
+  return normalizeSheet(data.data);
 }
 
 export async function updateSheet(id: string, req: SmartSheetUpdateRequest) {
-  const { data } = await axios.put(`${BASE}/sheet/${id}`, req);
-  return data.data as SmartSheetDefinition;
+  const { data } = await adminHttp.put(`${BASE}/sheet/${id}`, req);
+  return normalizeSheet(data.data);
 }
 
 export async function deleteSheet(id: string) {
-  await axios.delete(`${BASE}/sheet/${id}`);
+  await adminHttp.delete(`${BASE}/sheet/${id}`);
 }
 
 // Row CRUD
 export async function fetchRows(sheetId: string) {
-  const { data } = await axios.get(`${BASE}/${sheetId}/rows`);
-  return data.data as SmartSheetRow[];
+  const { data } = await adminHttp.get(`${BASE}/${sheetId}/rows`);
+  return (data.data as any[]).map(normalizeRow);
 }
 
 export async function addRow(sheetId: string, rowLabel = '', rowEntityId?: string) {
-  const { data } = await axios.post(`${BASE}/${sheetId}/row`, { rowLabel, rowEntityId });
-  return data.data as SmartSheetRow;
+  const { data } = await adminHttp.post(`${BASE}/${sheetId}/row`, { rowLabel, rowEntityId });
+  return normalizeRow(data.data);
 }
 
 export async function updateRow(sheetId: string, rowId: string, req: SmartSheetRowUpdateRequest) {
-  const { data } = await axios.put(`${BASE}/${sheetId}/row/${rowId}`, req);
-  return data.data as SmartSheetRow;
+  const { data } = await adminHttp.put(`${BASE}/${sheetId}/row/${rowId}`, req);
+  return normalizeRow(data.data);
 }
 
 export async function deleteRow(sheetId: string, rowId: string) {
-  await axios.delete(`${BASE}/${sheetId}/row/${rowId}`);
+  await adminHttp.delete(`${BASE}/${sheetId}/row/${rowId}`);
 }
 
 export async function batchRows(sheetId: string, rows: { rowLabel: string; cellData: Record<string, string> }[]) {
-  const { data } = await axios.post(`${BASE}/${sheetId}/rows/batch`, rows);
+  const { data } = await adminHttp.post(`${BASE}/${sheetId}/rows/batch`, rows);
   return data.data as { inserted: number };
 }
 
 // Export / Import
 export function getExportUrl(sheetId: string) {
-  return `${BASE}/${sheetId}/export`;
+  return `/api/admin/smartsheet/${sheetId}/export`;
 }
 
 export async function importFile(sheetId: string, file: File) {
   const form = new FormData();
   form.append('file', file);
-  const { data } = await axios.post(`${BASE}/${sheetId}/import`, form);
+  const { data } = await adminHttp.post(`${BASE}/${sheetId}/import`, form);
   return data.data;
 }
 
 // Stats
 export async function fetchColumnStats(sheetId: string, columnKey: string) {
-  const { data } = await axios.get(`${BASE}/${sheetId}/stats`, { params: { columnKey } });
+  const { data } = await adminHttp.get(`${BASE}/${sheetId}/stats`, { params: { columnKey } });
   return data.data as ColumnStats;
 }

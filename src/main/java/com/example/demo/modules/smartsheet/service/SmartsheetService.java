@@ -1,11 +1,11 @@
 package com.example.demo.modules.smartsheet.service;
 
-import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.modules.smartsheet.entity.SmartsheetDefinition;
 import com.example.demo.modules.smartsheet.mapper.SmartsheetDefinitionMapper;
 import com.example.demo.modules.smartsheet.mapper.SmartsheetChangeLogMapper;
 import com.example.demo.modules.smartsheet.mapper.SmartsheetRowMapper;
 import com.example.demo.modules.smartsheet.dto.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +19,6 @@ import java.util.Map;
 public class SmartsheetService {
     private static final Logger log = LoggerFactory.getLogger(SmartsheetService.class);
     private static final int MAX_COLUMNS = 100;
-    private static final int MAX_ROWS = 500;
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final SmartsheetDefinitionMapper definitionMapper;
@@ -47,13 +46,14 @@ public class SmartsheetService {
     }
 
     public SmartsheetDefinition create(SmartsheetCreateRequest req, Long userId) {
-        validateColumnsConfig(req.getColumnsConfig());
+        String columnsJson = toJson(req.getColumnsConfig());
+        validateColumnsConfig(columnsJson);
         SmartsheetDefinition def = new SmartsheetDefinition();
         def.setName(req.getName());
         def.setDescription(req.getDescription() != null ? req.getDescription() : "");
         def.setLayoutMode(req.getLayoutMode() != null ? req.getLayoutMode() : "table");
-        def.setColumnsConfig(req.getColumnsConfig());
-        def.setRowEntitySource(req.getRowEntitySource());
+        def.setColumnsConfig(columnsJson);
+        def.setRowEntitySource(toJson(req.getRowEntitySource()));
         def.setTemplateId(req.getTemplateId());
         def.setCreatedBy(userId);
         def.setUpdatedBy(userId);
@@ -65,13 +65,14 @@ public class SmartsheetService {
     public SmartsheetDefinition update(Long id, SmartsheetUpdateRequest req, Long userId) {
         SmartsheetDefinition def = getById(id);
         if (req.getColumnsConfig() != null) {
-            validateColumnsConfig(req.getColumnsConfig());
+            String columnsJson = toJson(req.getColumnsConfig());
+            validateColumnsConfig(columnsJson);
+            def.setColumnsConfig(columnsJson);
         }
         if (req.getName() != null) def.setName(req.getName());
         if (req.getDescription() != null) def.setDescription(req.getDescription());
         if (req.getLayoutMode() != null) def.setLayoutMode(req.getLayoutMode());
-        if (req.getColumnsConfig() != null) def.setColumnsConfig(req.getColumnsConfig());
-        if (req.getRowEntitySource() != null) def.setRowEntitySource(req.getRowEntitySource());
+        if (req.getRowEntitySource() != null) def.setRowEntitySource(toJson(req.getRowEntitySource()));
         def.setUpdatedBy(userId);
         int updated = definitionMapper.update(def);
         if (updated == 0) throw new RuntimeException("更新失败");
@@ -103,5 +104,15 @@ public class SmartsheetService {
             }
         } catch (RuntimeException e) { throw e; }
         catch (Exception e) { throw new RuntimeException("列定义 JSON 格式不合法"); }
+    }
+
+    private String toJson(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof String s) return s;
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("JSON 序列化失败", e);
+        }
     }
 }

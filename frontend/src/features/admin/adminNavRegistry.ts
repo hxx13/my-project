@@ -256,7 +256,7 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         icon: Table2,
         homeTone: "from-indigo-600 to-violet-700",
         fallbackMinRole: "STAFF",
-        sidebarVisible: (ctx: any) => true,
+        sidebarVisible: (ctx) => show(ctx, "/admin/smartsheet", "STAFF"),
       },
       {
         id: "login-branding",

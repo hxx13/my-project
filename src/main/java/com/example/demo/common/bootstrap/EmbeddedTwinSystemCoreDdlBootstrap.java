@@ -60,6 +60,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
         runScript("db/student-room-pin.sql", "student_room_pin（房间置顶）");
         runScript("db/bootstrap-twin-swipe-alert-rule.sql", "swipe_alert_rule（刷卡失败灵动岛告警规则）");
         runScript("db/bootstrap-twin-violation-text-template.sql", "twin_violation_text_template（违规文案模板预设）");
+        runScript("db/bootstrap-smartsheet.sql", "smartsheet_definition/row/change_log（智能表格三表）");
     }
 
     /** @return 是否执行成功 */

@@ -1,10 +1,11 @@
 /* smartsheet-theme.css — revo-grid theme bridge
    ═══════════════════════════════════════════
-   组件令牌层：--smartsheet-* 全部引用 --app-* 语义令牌
+   组件令牌层（第三层）：--smartsheet-* 全部引用 --app-* 语义令牌（第二层）
    遵守 docs/UI设计规范与主题标准.md §二 令牌分层架构
+   禁止在此文件定义独立颜色值（G04 门禁）
    ═══════════════════════════════════════════ */
 
-/* ═══════ 亮色主题：组件令牌 → 语义令牌 ═══════ */
+/* ═══════ 亮色主题 ═══════ */
 :root {
   --smartsheet-bg:              var(--app-color-surface-container);
   --smartsheet-surface:         var(--app-color-surface-page);
@@ -14,18 +15,18 @@
   --smartsheet-text-secondary:  var(--app-color-text-secondary);
   --smartsheet-text-tertiary:   var(--app-color-text-tertiary);
   --smartsheet-accent:          var(--app-color-accent);
-  --smartsheet-accent-glow:     rgba(250, 212, 192, 0.18); /* 🍱 Bento peach glow */
+  --smartsheet-accent-glow:     var(--app-glow-accent);
   --smartsheet-hover:           var(--app-color-surface-hover);
   --smartsheet-selected:        var(--app-color-surface-active);
   --smartsheet-zebra:           rgba(0, 0, 0, 0.02);
   --smartsheet-header-bg:       var(--app-color-surface-page);
-  --smartsheet-row-header-bg:   rgba(250, 212, 192, 0.10); /* 🍱 Bento warm peach tint */
+  --smartsheet-row-header-bg:   var(--app-row-header-tint);
   --smartsheet-success:         var(--app-color-feedback-success);
   --smartsheet-warning:         var(--app-color-feedback-warning);
   --smartsheet-danger:          var(--app-color-feedback-danger);
 }
 
-/* ═══════ 暗色主题：覆盖组件令牌映射 ═══════ */
+/* ═══════ 暗色主题 ═══════ */
 .dark {
   --smartsheet-bg:              var(--app-color-surface-container);
   --smartsheet-surface:         var(--app-color-surface-page);
@@ -34,13 +35,13 @@
   --smartsheet-text:            var(--app-color-text-primary);
   --smartsheet-text-secondary:  var(--app-color-text-secondary);
   --smartsheet-text-tertiary:   var(--app-color-text-tertiary);
-  --smartsheet-accent:          var(--color-steel-400);     /* 🍱 Bento steel blue #80A1C1 */
-  --smartsheet-accent-glow:     rgba(128, 161, 193, 0.15); /* 🍱 Bento steel glow */
+  --smartsheet-accent:          var(--app-color-accent-secondary);
+  --smartsheet-accent-glow:     var(--app-glow-selected);
   --smartsheet-hover:           var(--app-color-surface-hover);
   --smartsheet-selected:        var(--app-color-surface-active);
   --smartsheet-zebra:           rgba(255, 255, 255, 0.015);
   --smartsheet-header-bg:       var(--app-color-surface-elevated);
-  --smartsheet-row-header-bg:   rgba(250, 212, 192, 0.06);
+  --smartsheet-row-header-bg:   var(--app-row-header-tint);
   --smartsheet-success:         var(--app-color-feedback-success);
   --smartsheet-warning:         var(--app-color-feedback-warning);
   --smartsheet-danger:          var(--app-color-feedback-danger);
@@ -58,6 +59,49 @@ revo-grid {
   --cell-focus-outline-color: var(--smartsheet-accent);
 }
 
+/* ═══════ 🍱 Bento 表格单元格样式 ═══════ */
+
+/* 列头类型标签 */
+.ch-type {
+  display: block;
+  font-size: 9px;
+  color: var(--smartsheet-text-tertiary);
+  font-weight: 400;
+}
+
+/* 行头：暖桃色弱底 */
+.revo-grid .row-head {
+  background: var(--smartsheet-row-header-bg) !important;
+  border-right: 2px solid var(--smartsheet-accent-glow) !important;
+}
+
+/* 列头：钢蓝底线 */
+.revo-grid .col-head {
+  border-bottom: 2px solid var(--smartsheet-accent) !important;
+}
+
+/* 单元格 hover */
+.revo-grid .cell:hover {
+  outline: 1.5px solid var(--smartsheet-accent);
+  outline-offset: -1px;
+  border-radius: 6px;
+  z-index: 1;
+  position: relative;
+  background: var(--smartsheet-selected) !important;
+}
+
+/* 选中单元格 */
+.revo-grid .cell.focused,
+.revo-grid .cell.selected {
+  outline: 2px solid var(--smartsheet-accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+  z-index: 1;
+  position: relative;
+  background: var(--smartsheet-selected) !important;
+  box-shadow: 0 0 0 3px var(--smartsheet-accent-glow);
+}
+
 /* ═══════ 斑马纹 ═══════ */
 .smartsheet-zebra .revo-grid .row:nth-child(even) .cell {
   background-color: var(--smartsheet-zebra);
@@ -73,6 +117,39 @@ revo-grid {
 .smartsheet-cf-warn  { color: var(--smartsheet-warning); }
 .smartsheet-cf-bad   { color: var(--smartsheet-danger); font-weight: 600; }
 
+/* ═══════ 🍱 Bento 单元格值变体 ═══════ */
+.cv-num {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--smartsheet-text);
+}
+.cv-sel {
+  color: var(--smartsheet-text);
+  cursor: pointer;
+}
+.cv-sel .arr {
+  color: var(--smartsheet-text-tertiary);
+  margin-left: 4px;
+  font-size: 9px;
+}
+.cv-date {
+  color: var(--smartsheet-text-secondary);
+  font-size: 12px;
+}
+.cv-true {
+  color: var(--smartsheet-success);
+  font-weight: 700;
+  font-size: 14px;
+}
+.cv-false {
+  color: var(--smartsheet-text-tertiary);
+}
+.cv-empty {
+  color: var(--smartsheet-text-tertiary);
+  font-style: italic;
+  font-size: 11px;
+}
+
 /* ═══════ 单元格注释角标 ═══════ */
 .smartsheet-cell-comment {
   position: absolute;
@@ -83,3 +160,24 @@ revo-grid {
   background: var(--smartsheet-danger);
   clip-path: polygon(100% 0, 0 0, 100% 100%);
 }
+
+/* ═══════ 🍱 Bento 暗色 revo-grid 微调 ═══════ */
+.dark .revo-grid .row-head {
+  background: var(--smartsheet-row-header-bg) !important;
+  border-right-color: var(--smartsheet-accent-glow) !important;
+}
+.dark .smartsheet-zebra .revo-grid .row:nth-child(even) .cell {
+  background-color: var(--smartsheet-zebra);
+}
+.dark .revo-grid .cell:hover {
+  background: var(--smartsheet-selected) !important;
+}
+.dark .revo-grid .cell.focused,
+.dark .revo-grid .cell.selected {
+  background: var(--smartsheet-selected) !important;
+}
+
+/* ═══════ 暗色下单元格值变体微调 ═══════ */
+.dark .cv-date { color: var(--smartsheet-text-secondary); }
+.dark .cv-empty { color: var(--smartsheet-text-tertiary); }
+.dark .cv-false { color: var(--smartsheet-text-tertiary); }

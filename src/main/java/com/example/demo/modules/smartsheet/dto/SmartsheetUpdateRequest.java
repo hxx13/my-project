@@ -7,6 +7,6 @@ public class SmartsheetUpdateRequest {
     private String name;
     private String description;
     private String layoutMode;
-    private String columnsConfig;
-    private String rowEntitySource;
+    private Object columnsConfig;
+    private Object rowEntitySource;
 }

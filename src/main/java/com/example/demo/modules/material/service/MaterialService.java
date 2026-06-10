@@ -458,6 +458,29 @@ public class MaterialService {
         overview.setTotalFulfilledQty(totalFulfilled);
         overview.setTotalRequests(overview.getByStudent().stream()
                 .mapToLong(m -> ((Number) m.getOrDefault("total", 0)).longValue()).sum());
+
+        // 通过率
+        int approved = requestMapper.countAll("APPROVED") + requestMapper.countAll("FULFILLED") + requestMapper.countAll("RECEIVED");
+        int rejected = requestMapper.countAll("REJECTED");
+        overview.setRefuseCount((long) rejected);
+        overview.setPassRate((approved + rejected) > 0 ? (double) approved / (double) (approved + rejected) : 0.0);
+
+        // 库存预警：数量型物品库存 <= 5
+        List<MaterialItem> allItems = itemMapper.selectAll(null);
+        List<Map<String, Object>> warnings = new ArrayList<>();
+        for (MaterialItem it : allItems) {
+            if ("LIMITED".equals(it.getStockMode()) || "QUANTIFIED".equals(it.getStockMode())) {
+                int qty = it.getStockQty() != null ? it.getStockQty() : 0;
+                if (qty <= 5) {
+                    Map<String, Object> w = new HashMap<>();
+                    w.put("itemId", it.getId());
+                    w.put("name", it.getName());
+                    w.put("stockQty", qty);
+                    warnings.add(w);
+                }
+            }
+        }
+        overview.setStockWarnings(warnings);
         return Result.success(overview);
     }
 

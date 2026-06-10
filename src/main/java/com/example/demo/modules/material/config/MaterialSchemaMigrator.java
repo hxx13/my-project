@@ -138,6 +138,29 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='物资操作日志'
                 """);
 
+            // 学生需求建议表
+            jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS material_demand (
+                    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+                    user_id VARCHAR(64) NOT NULL COMMENT '学生ID',
+                    suggestion TEXT NOT NULL COMMENT '需求建议内容',
+                    status TINYINT NOT NULL DEFAULT 0 COMMENT '0=未处理 1=已处理',
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_md_user (user_id),
+                    INDEX idx_md_status (status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学生物资需求建议'
+                """);
+
+            // 需求建议入口可见性开关（sys_system_config）
+            jdbcTemplate.update("""
+                INSERT IGNORE INTO sys_system_config_def (module, config_key, label_zh, description, value_type, options_json, default_value, is_sensitive, requires_restart, is_public, update_time)
+                VALUES ('material', 'material.demand_entry_visible', '学生端显示需求建议入口', '控制学生端物资商城是否显示「需求建议」提交入口', 'BOOLEAN', '[{"label":"显示","value":"true"},{"label":"隐藏","value":"false"}]', 'true', 0, 0, 1, NOW())
+                """);
+            jdbcTemplate.update("""
+                INSERT IGNORE INTO sys_system_config (module, config_key, config_value, value_type, remark, update_time)
+                VALUES ('material', 'material.demand_entry_visible', 'true', 'BOOLEAN', '学生端需求建议入口开关', NOW())
+                """);
+
             log.info("[material-schema] 物资申领表结构已就绪");
         } catch (Exception e) {
             log.error("[material-schema] 表结构迁移失败: {}", e.getMessage());

@@ -337,7 +337,7 @@ Phase 3: 输出
 
 | ID | 触发条件 | 检查清单 | 确认方式 |
 |----|---------|---------|---------|
-| G04 | **任何 .css/.scss/.tsx/.jsx 文件新增或修改** | ① 是否定义了独立于项目令牌体系的新 CSS 变量（如 `--smartsheet-*` 而非引用 `--app-color-*`）？→ 必须重写为组件令牌（第三层），引用语义令牌（第二层） ② 是否出现硬编码颜色（`bg-white`、`bg-[#09090b]`、`dark:bg-[#131316]`、`text-slate-800`）？→ 必须替换为 `var(--app-color-*)` 或 Tailwind 语义类名 ③ z-index 是否使用了裸数字（`z-50`）而非项目令牌（`var(--z-dropdown)` = 200, `var(--z-modal)` = 800）？ ④ 新增 CSS 文件是否定义了独立主题变量而非组件令牌？→ 组件令牌 = `--<component>-<prop>` 引用 `var(--app-color-<semantic>)` ⑤ 暗色主题值是否与 `docs/UI令牌实施调教指南.md` 的官方映射一致？ | Grep 扫描新代码 → 检查每处颜色/z-index/变量定义 → 违规项逐条报告 → 人工确认后修复 |
+| G04 | **任何 .css/.scss/.tsx/.jsx 文件新增或修改** | ① 是否定义了独立于项目令牌体系的新 CSS 变量（如 `--smartsheet-*` 而非引用 `--app-color-*`）？→ 必须重写为组件令牌（第三层），引用语义令牌（第二层） ② 是否出现硬编码颜色（`bg-white`、`bg-[#09090b]`、`dark:bg-[#131316]`、`text-slate-800`、`bg-slate-50`、`bg-gray-*`、`bg-zinc-*`）？→ 必须替换为 `var(--app-color-*)` 或 Tailwind 语义类名 ③ z-index 是否使用了裸数字（`z-50`）而非项目令牌（`var(--z-dropdown)` = 200, `var(--z-modal)` = 800）？ ④ 新增 CSS 文件是否定义了独立主题变量而非组件令牌？→ 组件令牌 = `--<component>-<prop>` 引用 `var(--app-color-<semantic>)` ⑤ 暗色主题值是否与 `docs/UI设计规范与主题标准.md` §4.6 官方映射一致？ | **执行自查命令**: `grep -rn 'bg-\[#' frontend/src/` → 应无结果；`grep -rn 'bg-white\|bg-slate\|bg-gray\|bg-zinc' frontend/src/` → 应无结果（排除 node_modules）；`grep -rn 'z-\[[0-9]' frontend/src/` → 应有 var(--z-*) 而非裸数字 → 违规项逐条报告 → 人工确认后修复 |
 
 ### Post-Code 门禁（验证阶段触发）
 

@@ -4,30 +4,31 @@
    ═══════════════════════════════════════════════════════════ */
 
 @layer base {
-  /* ═══════ 亮色主题默认映射 ═══════ */
+  /* ═══════ 🍱 Bento 暖色主题（默认） ═══════ */
   :root, .theme-standard {
-    /* ── 表面色 ── */
-    --app-color-surface-page:      var(--color-slate-50);
+    /* ── 表面色 — Bento: warm cream #FFF5E6 ── */
+    --app-color-surface-page:      var(--color-warm-50);    /* #FFF5E6 */
     --app-color-surface-container: var(--color-white);
     --app-color-surface-elevated:  var(--color-white);
-    --app-color-surface-hover:     var(--color-slate-50);
-    --app-color-surface-active:    var(--color-blue-50);
+    --app-color-surface-hover:     var(--color-warm-100);
+    --app-color-surface-active:    var(--color-peach-100);
 
     /* ── 文字色 ── */
-    --app-color-text-primary:      var(--color-slate-950);
+    --app-color-text-primary:      var(--color-slate-900);
     --app-color-text-secondary:    var(--color-slate-600);
     --app-color-text-tertiary:     var(--color-slate-400);
     --app-color-text-inverse:      var(--color-white);
 
-    /* ── 交互色 ── */
-    --app-color-accent:            var(--color-blue-500);
-    --app-color-accent-hover:      var(--color-blue-600);
-    --app-color-accent-active:     var(--color-blue-700);
-    --app-color-accent-soft:       var(--color-blue-50);
+    /* ── 交互色 — Bento: peach #FAD4C0 + steel #80A1C1 ── */
+    --app-color-accent:            var(--color-peach-500);
+    --app-color-accent-hover:      var(--color-peach-600);
+    --app-color-accent-active:     var(--color-peach-700);
+    --app-color-accent-soft:       var(--color-peach-100);
+    --app-color-accent-secondary:  var(--color-steel-500);
 
     /* ── 边框色 ── */
-    --app-color-border-default:    var(--color-slate-200);
-    --app-color-border-strong:     var(--color-blue-500);
+    --app-color-border-default:    var(--color-warm-200);
+    --app-color-border-strong:     var(--color-peach-400);
 
     /* ── 反馈色 ── */
     --app-color-feedback-danger:        var(--color-red-500);
@@ -36,8 +37,13 @@
     --app-color-feedback-warning-soft:  var(--color-amber-50);
     --app-color-feedback-success:       var(--color-green-500);
     --app-color-feedback-success-soft:  var(--color-green-50);
-    --app-color-feedback-info:          var(--color-cyan-500);
-    --app-color-feedback-info-soft:     var(--color-cyan-50);
+    --app-color-feedback-info:          var(--color-steel-500);
+    --app-color-feedback-info-soft:     var(--color-steel-100);
+
+    /* ── 辉光效果 ── */
+    --app-glow-accent:       rgba(250, 212, 192, 0.18); /* peach glow */
+    --app-glow-selected:     rgba(128, 161, 193, 0.12); /* steel glow */
+    --app-row-header-tint:   rgba(250, 212, 192, 0.10); /* peach tint for row headers */
 
     /* ── 间距语义 ── */
     --app-space-container-padding: var(--space-6);
@@ -72,35 +78,46 @@
     --app-font-code:      var(--font-weight-normal) var(--font-size-sm) / var(--font-lineheight-sm) var(--font-family-mono);
   }
 
-  /* ═══════ 暗色主题映射 ═══════ */
+  /* ═══════ 🍱 Bento 暖黑暗色主题 ═══════ */
   .dark, .theme-standard-dark {
-    --app-color-surface-page:      var(--color-slate-950);
-    --app-color-surface-container: var(--color-slate-900);
-    --app-color-surface-elevated:  var(--color-slate-800);
-    --app-color-surface-hover:     var(--color-slate-800);
-    --app-color-surface-active:    var(--color-blue-900);
+    /* Surface — Bento warm dark tokens */
+    --app-color-surface-page:      var(--color-bento-dark-50);
+    --app-color-surface-container: var(--color-bento-dark-100);
+    --app-color-surface-elevated:  var(--color-bento-dark-200);
+    --app-color-surface-hover:     var(--color-bento-dark-200);
+    --app-color-surface-active:    var(--color-steel-900);
 
-    --app-color-text-primary:      var(--color-slate-50);
-    --app-color-text-secondary:    var(--color-slate-400);
-    --app-color-text-tertiary:     var(--color-slate-500);
-    --app-color-text-inverse:      var(--color-slate-950);
+    /* Text */
+    --app-color-text-primary:      var(--color-warm-50);
+    --app-color-text-secondary:    var(--color-warm-200);
+    --app-color-text-tertiary:     var(--color-warm-300);
+    --app-color-text-inverse:      var(--color-bento-dark-50);
 
-    --app-color-accent:            var(--color-blue-400);
-    --app-color-accent-hover:      var(--color-blue-300);
-    --app-color-accent-active:     var(--color-blue-200);
-    --app-color-accent-soft:       var(--color-blue-950);
+    /* Accent — steel blue */
+    --app-color-accent:            var(--color-steel-400);
+    --app-color-accent-hover:      var(--color-steel-300);
+    --app-color-accent-active:     var(--color-steel-200);
+    --app-color-accent-soft:       var(--color-steel-950);
+    --app-color-accent-secondary:  var(--color-steel-500);
 
-    --app-color-border-default:    var(--color-slate-800);
-    --app-color-border-strong:     var(--color-blue-400);
+    /* Border */
+    --app-color-border-default:    var(--color-bento-dark-300);
+    --app-color-border-strong:     var(--color-steel-400);
 
+    /* Feedback */
     --app-color-feedback-danger:        var(--color-red-400);
     --app-color-feedback-danger-soft:   var(--color-red-950);
     --app-color-feedback-warning:       var(--color-amber-400);
     --app-color-feedback-warning-soft:  var(--color-amber-950);
     --app-color-feedback-success:       var(--color-green-400);
     --app-color-feedback-success-soft:  var(--color-green-950);
-    --app-color-feedback-info:          var(--color-cyan-400);
-    --app-color-feedback-info-soft:     var(--color-cyan-950);
+    --app-color-feedback-info:          var(--color-steel-400);
+    --app-color-feedback-info-soft:     var(--color-steel-950);
+
+    /* Glow — dark mode variants */
+    --app-glow-accent:       rgba(240, 192, 160, 0.12);
+    --app-glow-selected:     rgba(128, 161, 193, 0.15);
+    --app-row-header-tint:   rgba(240, 192, 160, 0.06);
   }
 
   /* ═══════ 科幻流光主题映射 ═══════ */
@@ -135,5 +152,35 @@
 
     --app-radius-container: var(--radius-xl);
     --app-radius-element:   var(--radius-md);
+  }
+
+  /* ═══════ 经典 Slate-Blue 主题（回退） ═══════ */
+  .theme-classic {
+    --app-color-surface-page:      var(--color-slate-50);
+    --app-color-surface-container: var(--color-white);
+    --app-color-surface-elevated:  var(--color-white);
+    --app-color-surface-hover:     var(--color-slate-50);
+    --app-color-surface-active:    var(--color-blue-50);
+
+    --app-color-text-primary:      var(--color-slate-950);
+    --app-color-text-secondary:    var(--color-slate-600);
+    --app-color-text-tertiary:     var(--color-slate-400);
+    --app-color-text-inverse:      var(--color-white);
+
+    --app-color-accent:            var(--color-blue-500);
+    --app-color-accent-hover:      var(--color-blue-600);
+    --app-color-accent-active:     var(--color-blue-700);
+    --app-color-accent-soft:       var(--color-blue-50);
+    --app-color-accent-secondary:  var(--color-blue-400);
+
+    --app-color-border-default:    var(--color-slate-200);
+    --app-color-border-strong:     var(--color-blue-500);
+
+    --app-color-feedback-info:         var(--color-cyan-500);
+    --app-color-feedback-info-soft:    var(--color-cyan-50);
+
+    --app-glow-accent:       rgba(59, 130, 246, 0.12);
+    --app-glow-selected:     rgba(59, 130, 246, 0.10);
+    --app-row-header-tint:   rgba(59, 130, 246, 0.04);
   }
 }

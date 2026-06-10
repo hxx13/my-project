@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.material.mapper.MaterialDemandMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO material_demand (user_id, suggestion, status) VALUES (#{userId}, #{suggestion}, 0)
+    </insert>
+    <select id="selectByUserId" resultType="com.example.demo.modules.material.entity.MaterialDemand">
+        SELECT * FROM material_demand WHERE user_id = #{userId} ORDER BY created_at DESC
+    </select>
+    <select id="selectAll" resultType="com.example.demo.modules.material.entity.MaterialDemand">
+        SELECT * FROM material_demand ORDER BY created_at DESC LIMIT #{offset}, #{size}
+    </select>
+    <select id="countAll" resultType="int">
+        SELECT COUNT(1) FROM material_demand
+    </select>
+    <update id="updateStatus">
+        UPDATE material_demand SET status = #{status} WHERE id = #{id}
+    </update>
+</mapper>

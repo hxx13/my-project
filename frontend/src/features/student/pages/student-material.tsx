@@ -1,11 +1,13 @@
 /** 学生物资商城 — 快捷入口路由：/student/material */
 import { useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package } from "lucide-react";
+import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package, Lightbulb } from "lucide-react";
 import { useMaterialCategories, useMaterialItems, useMaterialCart, useSaveMaterialCart, useCreateMaterialRequest } from "@/api/hooks/useMaterial";
+import { createMaterialDemand } from "@/api/domains/material.api";
 import type { MaterialItem } from "@/api/domains/material.api";
 import { StudentCard, Skeleton, EmptyState, Badge } from "../components/ui";
 import { cn } from "@/lib/utils";
+import toast from "react-hot-toast";
 
 export const STUDENT_MATERIAL_ROUTE = "/student/material";
 
@@ -22,6 +24,9 @@ export default function StudentMaterialPage() {
   const saveCart = useSaveMaterialCart();
   const createRequest = useCreateMaterialRequest();
   const [showCart, setShowCart] = useState(false);
+  const [demandText, setDemandText] = useState("");
+  const [demandSubmitting, setDemandSubmitting] = useState(false);
+  const [showDemandForm, setShowDemandForm] = useState(false);
 
   const cartCount = useMemo(() => {
     if (!cart) return 0;
@@ -92,6 +97,35 @@ export default function StudentMaterialPage() {
               {items.map((item) => (
                 <MaterialItemCard key={item.id} item={item} cartQty={cart?.[item.id] || 0} onQtyChange={(d) => updateCartQty(item.id, d)} />
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* 需求建议 */}
+        <div className="p-4 border-t border-[var(--student-hairline)]">
+          {!showDemandForm ? (
+            <button onClick={() => setShowDemandForm(true)}
+              className="flex items-center gap-2 text-[12px] text-[var(--student-mute)] hover:text-[var(--student-primary)] transition-colors">
+              <Lightbulb className="size-3.5" /> 找不到想要的？提个建议
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <textarea className="w-full rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-2 text-[13px] text-[var(--student-ink)] resize-none"
+                rows={2} placeholder="描述你需要的物品..." value={demandText} onChange={e => setDemandText(e.target.value)} />
+              <div className="flex gap-2">
+                <button onClick={async () => {
+                  if (!demandText.trim()) return;
+                  setDemandSubmitting(true);
+                  try { await createMaterialDemand(demandText.trim()); toast.success("建议已提交"); setDemandText(""); setShowDemandForm(false); }
+                  catch { toast.error("提交失败"); }
+                  finally { setDemandSubmitting(false); }
+                }} disabled={demandSubmitting || !demandText.trim()}
+                  className="rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50">
+                  {demandSubmitting ? "提交中..." : "提交建议"}
+                </button>
+                <button onClick={() => { setShowDemandForm(false); setDemandText(""); }}
+                  className="rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] px-3 py-1.5 text-[12px] text-[var(--student-mute)]">取消</button>
+              </div>
             </div>
           )}
         </div>

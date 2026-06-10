@@ -59,10 +59,11 @@ export default {
                         inverse:   "var(--app-color-text-inverse)",
                     },
                     accent: {
-                        DEFAULT: "var(--app-color-accent)",
-                        hover:   "var(--app-color-accent-hover)",
-                        active:  "var(--app-color-accent-active)",
-                        soft:    "var(--app-color-accent-soft)",
+                        DEFAULT:   "var(--app-color-accent)",
+                        hover:     "var(--app-color-accent-hover)",
+                        active:    "var(--app-color-accent-active)",
+                        soft:      "var(--app-color-accent-soft)",
+                        secondary: "var(--app-color-accent-secondary)",
                     },
                     border: {
                         DEFAULT: "var(--app-color-border-default)",

@@ -5,6 +5,6 @@ import lombok.Data;
 @Data
 public class SmartsheetRowUpdateRequest {
     private String rowLabel;
-    private String cellData;   // JSON string of cell values
+    private Object cellData;     // JSON object, deserialized by Jackson
     private Integer version;
 }

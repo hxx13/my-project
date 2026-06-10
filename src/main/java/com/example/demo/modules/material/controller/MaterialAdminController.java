@@ -5,6 +5,8 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.material.dto.*;
+import com.example.demo.modules.material.entity.MaterialDemand;
+import com.example.demo.modules.material.mapper.MaterialDemandMapper;
 import com.example.demo.modules.material.service.MaterialExcelExportService;
 import com.example.demo.modules.material.service.MaterialService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -15,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -26,12 +29,15 @@ public class MaterialAdminController {
     private final MaterialService materialService;
 
     private final MaterialExcelExportService excelExportService;
+    private final MaterialDemandMapper demandMapper;
 
     public MaterialAdminController(AuthContextService authContextService, MaterialService materialService,
-                                    MaterialExcelExportService excelExportService) {
+                                    MaterialExcelExportService excelExportService,
+                                    MaterialDemandMapper demandMapper) {
         this.authContextService = authContextService;
         this.materialService = materialService;
         this.excelExportService = excelExportService;
+        this.demandMapper = demandMapper;
     }
 
     @GetMapping("/categories")
@@ -188,6 +194,27 @@ public class MaterialAdminController {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
         return materialService.fulfill(user, id, body);
+    }
+
+    @GetMapping("/demands")
+    @Operation(summary = "全部需求建议")
+    public Result<Map<String, Object>> allDemands(@RequestParam(defaultValue = "1") int page,
+                                                   @RequestParam(defaultValue = "50") int size) {
+        int offset = (page - 1) * size;
+        List<MaterialDemand> list = demandMapper.selectAll(offset, size);
+        int total = demandMapper.countAll();
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", list);
+        result.put("total", total);
+        return Result.success(result);
+    }
+
+    @PatchMapping("/demands/{id}")
+    @Operation(summary = "更新需求建议状态")
+    public Result<?> updateDemandStatus(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        int status = body.get("status") instanceof Number ? ((Number) body.get("status")).intValue() : 1;
+        demandMapper.updateStatus(id, status);
+        return Result.success(null);
     }
 
     @GetMapping("/stats/overview")

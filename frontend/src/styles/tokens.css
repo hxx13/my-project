@@ -91,6 +91,51 @@
     --color-white:      oklch(1 0 0);
     --color-black:      oklch(0 0 0);
 
+    /* ── 🍱 Bento Warm (warm cream #FFF5E6 → oklch) ── */
+    --color-warm-50:    oklch(0.98 0.01 82);
+    --color-warm-100:   oklch(0.96 0.02 82);
+    --color-warm-200:   oklch(0.92 0.03 80);
+    --color-warm-300:   oklch(0.85 0.04 78);
+    --color-warm-400:   oklch(0.78 0.05 76);
+    --color-warm-500:   oklch(0.70 0.06 74);
+    --color-warm-600:   oklch(0.60 0.06 72);
+    --color-warm-700:   oklch(0.50 0.05 70);
+    --color-warm-800:   oklch(0.40 0.04 68);
+    --color-warm-900:   oklch(0.30 0.03 66);
+    --color-warm-950:   oklch(0.20 0.02 64);
+
+    /* ── 🍱 Bento Peach (warm peach #FAD4C0 → oklch) ── */
+    --color-peach-50:   oklch(0.97 0.03 65);
+    --color-peach-100:  oklch(0.94 0.05 63);
+    --color-peach-200:  oklch(0.89 0.08 59);
+    --color-peach-300:  oklch(0.84 0.10 55);
+    --color-peach-400:  oklch(0.79 0.12 51);
+    --color-peach-500:  oklch(0.74 0.14 47);
+    --color-peach-600:  oklch(0.66 0.14 43);
+    --color-peach-700:  oklch(0.58 0.13 39);
+    --color-peach-800:  oklch(0.50 0.11 35);
+    --color-peach-900:  oklch(0.42 0.09 33);
+    --color-peach-950:  oklch(0.32 0.06 30);
+
+    /* ── 🍱 Bento Steel (steel blue #80A1C1 → oklch) ── */
+    --color-steel-50:   oklch(0.97 0.01 250);
+    --color-steel-100:  oklch(0.93 0.03 248);
+    --color-steel-200:  oklch(0.88 0.05 246);
+    --color-steel-300:  oklch(0.82 0.08 244);
+    --color-steel-400:  oklch(0.76 0.10 242);
+    --color-steel-500:  oklch(0.70 0.12 240);
+    --color-steel-600:  oklch(0.62 0.12 238);
+    --color-steel-700:  oklch(0.54 0.10 236);
+    --color-steel-800:  oklch(0.46 0.08 234);
+    --color-steel-900:  oklch(0.38 0.06 232);
+    --color-steel-950:  oklch(0.28 0.04 230);
+
+    /* ── 🍱 Bento Dark Surface (warm dark #12100E / #1A1816 / #22201D / #2A2723) ── */
+    --color-bento-dark-50:  oklch(0.12 0.005 60);
+    --color-bento-dark-100: oklch(0.16 0.005 60);
+    --color-bento-dark-200: oklch(0.20 0.005 60);
+    --color-bento-dark-300: oklch(0.24 0.005 60);
+
     /* ═════════════════════════════════════════
        间距阶梯
        ═════════════════════════════════════════ */

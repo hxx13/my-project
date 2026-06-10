@@ -4,6 +4,8 @@ import com.example.demo.modules.smartsheet.entity.SmartsheetChangeLog;
 import com.example.demo.modules.smartsheet.entity.SmartsheetRow;
 import com.example.demo.modules.smartsheet.mapper.SmartsheetChangeLogMapper;
 import com.example.demo.modules.smartsheet.mapper.SmartsheetRowMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -15,6 +17,7 @@ import java.util.List;
 public class SmartsheetRowService {
     private static final Logger log = LoggerFactory.getLogger(SmartsheetRowService.class);
     private static final int MAX_ROWS = 500;
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final SmartsheetRowMapper rowMapper;
     private final SmartsheetChangeLogMapper changeLogMapper;
@@ -51,7 +54,7 @@ public class SmartsheetRowService {
     }
 
     @Transactional
-    public SmartsheetRow updateRow(Long id, String cellData, String rowLabel, Integer version, Long userId, Long sheetId) {
+    public SmartsheetRow updateRow(Long id, Object cellData, String rowLabel, Integer version, Long userId, Long sheetId) {
         SmartsheetRow existing = getById(id);
         // Optimistic lock check
         if (version != null && !version.equals(existing.getVersion())) {
@@ -61,13 +64,14 @@ public class SmartsheetRowService {
         }
         // Log changes
         String oldData = existing.getCellData();
-        existing.setCellData(cellData != null ? cellData : oldData);
+        String cellDataJson = toJson(cellData);
+        existing.setCellData(cellDataJson != null ? cellDataJson : oldData);
         if (rowLabel != null) existing.setRowLabel(rowLabel);
         int updated = rowMapper.update(existing);
         if (updated == 0) throw new RuntimeException("数据已被他人修改，请刷新");
         // Insert change log for each changed cell
-        if (cellData != null && userId != null) {
-            logCellChanges(sheetId, id, oldData, cellData, userId);
+        if (cellDataJson != null && userId != null) {
+            logCellChanges(sheetId, id, oldData, cellDataJson, userId);
         }
         return getById(id);
     }
@@ -102,5 +106,15 @@ public class SmartsheetRowService {
         logEntry.setNewValue(newJson);
         logEntry.setChangedBy(userId);
         changeLogMapper.insert(logEntry);
+    }
+
+    private String toJson(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof String s) return s;
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("JSON 序列化失败", e);
+        }
     }
 }

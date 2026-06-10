@@ -10,8 +10,14 @@ public class MaterialStatsOverview {
     private Long totalRequests;
     /** 时间区间内总出库数量 */
     private Long totalFulfilledQty;
-    /** 按学生维度聚合：userId, applicantName, applicantGroup, total, activeDays */
+    /** 审核通过率 (APPROVED+FULFILLED+RECEIVED) / (APPROVED+FULFILLED+RECEIVED+REJECTED) */
+    private Double passRate;
+    /** 拒绝数量 */
+    private Long refuseCount;
+    /** 库存预警：stockQty <= 5 的数量型物品 */
+    private List<Map<String, Object>> stockWarnings;
+    /** 按学生维度聚合 */
     private List<Map<String, Object>> byStudent;
-    /** 按物品维度聚合：itemId, snapshotName, totalQty, requestCount */
+    /** 按物品维度聚合 */
     private List<Map<String, Object>> byItem;
 }

@@ -275,3 +275,31 @@ export async function exportMaterialAuditTrail(params: {
   });
   return res.data as Blob;
 }
+
+// ---- demand API ----
+
+export interface MaterialDemand {
+  id: number;
+  userId: string;
+  suggestion: string;
+  status: number;
+  createdAt: string;
+}
+
+export async function createMaterialDemand(suggestion: string) {
+  await authHttp.post("/material/demands", { suggestion });
+}
+
+export async function fetchMyMaterialDemands() {
+  const res = await authHttp.get<Result<MaterialDemand[]>>("/material/demands/mine");
+  return res.data.data;
+}
+
+export async function fetchAllMaterialDemands(params: { page: number; size: number }) {
+  const res = await authHttp.get<Result<{ data: MaterialDemand[]; total: number }>>("/material/admin/demands", { params });
+  return res.data.data;
+}
+
+export async function resolveMaterialDemand(id: number) {
+  await authHttp.patch(`/material/admin/demands/${id}`, { status: 1 });
+}

@@ -1,9 +1,10 @@
-// frontend/src/features/smartsheet/SmartSheetPage.tsx
-import React, { useState, useCallback } from 'react';
+// SmartSheetPage — 🍱 Bento 卡片布局（紧凑型：页眉工具栏 → 表格卡片 → 页脚状态栏 + 标签）
+import React, { useState, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import SmartSheetToolbar from './components/SmartSheetToolbar';
 import SmartSheetGrid from './components/SmartSheetGrid';
 import SmartSheetStatusBar from './components/SmartSheetStatusBar';
+import SmartSheetTabsRow from './components/SmartSheetTabsRow';
 import { useSmartSheet } from './hooks/useSmartSheet';
 import { DEFAULT_VIEW_OPTIONS } from './types';
 import type { ViewOptions, ColumnConfig } from './types';
@@ -22,35 +23,35 @@ export default function SmartSheetPage() {
 
   const handleExport = useCallback(() => {
     if (!id) return;
-    const url = `/api/admin/smartsheet/${id}/export`;
     const a = document.createElement('a');
-    a.href = url;
+    a.href = `/api/admin/smartsheet/${id}/export`;
     a.download = `${sheet?.name || 'export'}.csv`;
     a.click();
   }, [id, sheet]);
 
-  const handleImport = useCallback(() => {
-    toast('导入功能将在下一步实现');
-  }, []);
+  const sheetTabs = useMemo(() => [
+    { id: id || 'current', name: sheet?.name || '当前表格' },
+  ], [id, sheet]);
 
-  if (isLoading) return <div className="flex items-center justify-center h-full text-app-text-secondary text-sm">加载中...</div>;
-  if (!sheet) return <div className="flex items-center justify-center h-full text-app-feedback-danger text-sm">表格不存在</div>;
+  if (isLoading) return (
+    <div className="flex items-center justify-center h-full text-app-text-secondary text-sm">加载中...</div>
+  );
+  if (!sheet) return (
+    <div className="flex items-center justify-center h-full text-app-feedback-danger text-sm">表格不存在</div>
+  );
 
   return (
-    <div className="flex flex-col h-full bg-app-surface-page">
-      {/* 页眉：工具栏 */}
+    <div className="flex flex-col h-full gap-3 p-4 sm:p-5 bg-app-surface-page">
+      {/* 页眉：工具栏卡片（含表格名称 + 操作按钮 + 视图开关） */}
       <SmartSheetToolbar
         sheetName={sheet.name}
         viewOptions={viewOptions}
         onViewOptionChange={handleViewOptionChange}
         onAddRow={() => addRow()}
         onAddColumn={() => {
-          const newKey = `col_${Date.now()}`;
-          updateColumn(newKey, {
-            key: newKey, label: '新列', type: 'text', width: 110,
-          });
+          updateColumn(`col_${Date.now()}`, { key: `col_${Date.now()}`, label: '新列', type: 'text', width: 110 });
         }}
-        onImport={handleImport}
+        onImport={() => toast('导入功能将在下一步实现')}
         onExport={handleExport}
         onSave={() => toast.success('已保存')}
         onUndo={() => {}}
@@ -58,8 +59,8 @@ export default function SmartSheetPage() {
         onSearch={() => {}}
       />
 
-      {/* 主体：表格 */}
-      <div className="flex-1 min-h-0 overflow-hidden">
+      {/* 主体：表格卡片（填满剩余高度） */}
+      <div className="flex-1 min-h-0 rounded-[14px] border border-app-border bg-app-surface-container overflow-hidden shadow-app-card">
         <SmartSheetGrid
           columns={sheet.columnsConfig}
           rows={rows}
@@ -72,22 +73,21 @@ export default function SmartSheetPage() {
             if (col) setSelectedColumn(col);
           }}
           onRowSelect={(rowId, selected) => {
-            setSelectedRowIds((prev) => {
-              const next = new Set(prev);
-              selected ? next.add(rowId) : next.delete(rowId);
-              return next;
-            });
+            setSelectedRowIds((prev) => { const n = new Set(prev); selected ? n.add(rowId) : n.delete(rowId); return n; });
           }}
         />
       </div>
 
-      {/* 页脚：紧凑状态栏 */}
+      {/* 页脚：紧凑状态指示器 */}
       <SmartSheetStatusBar
         rows={rows}
         columns={sheet.columnsConfig}
         selectedColumn={selectedColumn}
         onColumnClick={(col) => setSelectedColumn(col)}
       />
+
+      {/* 底部标签栏 */}
+      <SmartSheetTabsRow sheets={sheetTabs} activeId={id || 'current'} onSelect={() => {}} />
     </div>
   );
 }

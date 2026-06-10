@@ -15,6 +15,8 @@ public class AnalyticsReportRegistry {
     public static final String REPORT_CAGE_OCCUPANCY = "cage_occupancy";
     public static final String REPORT_STUDENT_ACTIVITY = "student_activity";
     public static final String REPORT_CAGE_SPECIAL_STATUS = "cage_special_status";
+    public static final String REPORT_MATERIAL_STATS = "material_stats";
+    public static final String REPORT_MATERIAL_AUDIT = "material_audit";
 
     public List<AnalyticsReportDescriptorDto> listReports() {
         return List.of(
@@ -44,6 +46,20 @@ public class AnalyticsReportRegistry {
                         "笼位特殊状态统计",
                         "汇总合笼/繁殖、特殊饲养、请分笼、健康异常、动物转移等特殊状态笼位，支持按校区/房间/课题组筛选。",
                         "笼架与预约",
+                        true
+                ),
+                new AnalyticsReportDescriptorDto(
+                        REPORT_MATERIAL_STATS,
+                        "物资申领统计",
+                        "申领通过率/拒绝率、库存预警、按学生与物品维度聚合。支持时间区间与课题组筛选。",
+                        "物资",
+                        true
+                ),
+                new AnalyticsReportDescriptorDto(
+                        REPORT_MATERIAL_AUDIT,
+                        "物资审计流水",
+                        "完整的申领审计轨迹：申请-审核-出库全链路。支持按物品、学生、课题组筛选与 Excel 导出。",
+                        "物资",
                         true
                 )
         );

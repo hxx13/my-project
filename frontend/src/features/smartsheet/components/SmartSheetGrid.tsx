@@ -1,10 +1,9 @@
-// frontend/src/features/smartsheet/components/SmartSheetGrid.tsx
+// SmartSheetGrid — revo-grid 封装 + 🍱 Bento 单元格文字效果
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { defineCustomElements } from '@revolist/revogrid/loader';
-import type { ColumnConfig, SmartSheetRow, LayoutMode } from '@/features/smartsheet/types';
+import type { ColumnConfig, SmartSheetRow, LayoutMode, ColumnType } from '@/features/smartsheet/types';
 import type { ViewOptions } from '@/features/smartsheet/types';
 
-// Register revo-grid custom elements once
 defineCustomElements();
 
 interface SmartSheetGridProps {
@@ -18,9 +17,52 @@ interface SmartSheetGridProps {
   onRowSelect: (rowId: string, selected: boolean) => void;
 }
 
+// ── Cell value formatter ──
+function makeCellTemplate(colType: ColumnType) {
+  return (_h: any, column: any) => {
+    const val = column.model;
+    const span = document.createElement('span');
+
+    if (val == null || val === '') {
+      span.className = 'cv-empty';
+      span.textContent = '点击填写…';
+      return span;
+    }
+
+    const s = String(val);
+
+    switch (colType) {
+      case 'checkbox':
+        span.className = s === 'true' ? 'cv-true' : 'cv-false';
+        span.textContent = s === 'true' ? '✓' : '—';
+        break;
+      case 'number':
+        span.className = 'cv-num';
+        span.textContent = s;
+        break;
+      case 'select':
+      case 'multi-select':
+        span.className = 'cv-sel';
+        span.innerHTML = `${s}<span class="arr">▾</span>`;
+        break;
+      case 'date':
+        span.className = 'cv-date';
+        span.textContent = s;
+        break;
+      case 'user':
+        span.className = 'cv-sel';
+        span.innerHTML = `${s}<span class="arr">▾</span>`;
+        break;
+      default:
+        span.className = '';
+        span.textContent = s;
+    }
+    return span;
+  };
+}
+
 function toRevoColumns(cols: ColumnConfig[], layoutMode: LayoutMode) {
   const revoCols: any[] = [];
-  // Row header column for matrix/checklist/calendar modes
   if (layoutMode !== 'table') {
     revoCols.push({
       name: '',
@@ -40,6 +82,14 @@ function toRevoColumns(cols: ColumnConfig[], layoutMode: LayoutMode) {
       filter: true,
       columnType: col.type === 'checkbox' ? 'boolean' : 'string',
       editor: col.type === 'select' ? 'select' : col.type === 'number' ? 'number' : 'text',
+      cellTemplate: makeCellTemplate(col.type),
+      // Column header with type label
+      columnTemplate: (_h: any, column: any) => {
+        const div = document.createElement('div');
+        div.style.textAlign = 'center';
+        div.innerHTML = `${column.name}<span class="ch-type">${col.type}</span>`;
+        return div;
+      },
     });
   }
   return revoCols;
@@ -56,18 +106,13 @@ function toRevoRows(rows: SmartSheetRow[], layoutMode: LayoutMode) {
 }
 
 export default function SmartSheetGrid({
-  columns,
-  rows,
-  layoutMode,
-  viewOptions,
-  onCellEdit,
+  columns, rows, layoutMode, viewOptions, onCellEdit,
 }: SmartSheetGridProps) {
   const gridRef = useRef<HTMLRevoGridElement | null>(null);
 
   const revoColumns = useMemo(() => toRevoColumns(columns, layoutMode), [columns, layoutMode]);
   const revoRows = useMemo(() => toRevoRows(rows, layoutMode), [rows, layoutMode]);
 
-  // Update grid data when rows/columns change
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
@@ -75,7 +120,6 @@ export default function SmartSheetGrid({
     grid.source = revoRows;
   }, [revoColumns, revoRows]);
 
-  // Listen to afteredit event
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
@@ -107,28 +151,21 @@ export default function SmartSheetGrid({
         range={true}
         readonly={false}
         editable={true}
-        row-class={'row'}
+        row-class="row"
         theme="default"
       />
     </div>
   );
 }
 
-// TypeScript declaration for the web component
 declare global {
   namespace JSX {
     interface IntrinsicElements {
       'revo-grid': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement> & {
         ref?: React.Ref<HTMLRevoGridElement>;
-        source?: any[];
-        columns?: any[];
-        resize?: boolean;
-        filter?: boolean;
-        range?: boolean;
-        readonly?: boolean;
-        editable?: boolean;
-        'row-class'?: string;
-        theme?: string;
+        source?: any[]; columns?: any[]; resize?: boolean; filter?: boolean;
+        range?: boolean; readonly?: boolean; editable?: boolean;
+        'row-class'?: string; theme?: string;
       }, HTMLElement>;
     }
   }

@@ -5,6 +5,8 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.material.dto.*;
+import com.example.demo.modules.material.entity.MaterialDemand;
+import com.example.demo.modules.material.mapper.MaterialDemandMapper;
 import com.example.demo.modules.material.service.MaterialService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,10 +21,13 @@ import java.util.Map;
 public class MaterialController {
     private final AuthContextService authContextService;
     private final MaterialService materialService;
+    private final MaterialDemandMapper demandMapper;
 
-    public MaterialController(AuthContextService authContextService, MaterialService materialService) {
+    public MaterialController(AuthContextService authContextService, MaterialService materialService,
+                               MaterialDemandMapper demandMapper) {
         this.authContextService = authContextService;
         this.materialService = materialService;
+        this.demandMapper = demandMapper;
     }
 
     @GetMapping("/categories")
@@ -111,6 +116,29 @@ public class MaterialController {
     @Operation(summary = "个人领用统计")
     public Result<MaterialStatsOverview> myStats() {
         return materialService.getStatsOverview("2000-01-01", "2099-12-31");
+    }
+
+    @PostMapping("/demands")
+    @Operation(summary = "提交需求建议")
+    public Result<?> createDemand(@RequestHeader(value = "Authorization", required = false) String auth,
+                                   @RequestBody Map<String, String> body) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        String suggestion = body.get("suggestion");
+        if (suggestion == null || suggestion.trim().isEmpty()) return Result.error("建议不能为空");
+        MaterialDemand demand = new MaterialDemand();
+        demand.setUserId(user.getId());
+        demand.setSuggestion(suggestion.trim());
+        demandMapper.insert(demand);
+        return Result.success(null);
+    }
+
+    @GetMapping("/demands/mine")
+    @Operation(summary = "我的需求建议")
+    public Result<List<MaterialDemand>> myDemands(@RequestHeader(value = "Authorization", required = false) String auth) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        return Result.success(demandMapper.selectByUserId(user.getId()));
     }
 
     private User resolveUser(String auth) {

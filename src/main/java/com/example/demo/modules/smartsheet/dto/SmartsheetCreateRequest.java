@@ -7,7 +7,7 @@ public class SmartsheetCreateRequest {
     private String name;
     private String description;
     private String layoutMode = "table";
-    private String columnsConfig;  // JSON string
-    private String rowEntitySource; // JSON string, nullable
+    private Object columnsConfig;    // JSON array, deserialized by Jackson
+    private Object rowEntitySource;  // JSON object, nullable
     private Long templateId;
 }
