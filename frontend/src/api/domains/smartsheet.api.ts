@@ -7,6 +7,7 @@ import type {
   SmartSheetUpdateRequest,
   SmartSheetRowUpdateRequest,
   ColumnStats,
+  CellValue,
 } from '@/features/smartsheet/types';
 
 const BASE = '/smartsheet';
@@ -22,6 +23,20 @@ function maybeParse(v: unknown): unknown {
   return v;
 }
 
+function normalizeCellValue(raw: unknown): CellValue {
+  if (raw == null || raw === '') return { v: '' };
+  if (typeof raw === 'string') return { v: raw };
+  if (typeof raw === 'object' && 'v' in (raw as any)) return raw as CellValue;
+  return { v: String(raw) };
+}
+
+function denormalizeCellValue(cv: CellValue): CellValue {
+  // Strip undefined fmt to minimize JSON size
+  const out: CellValue = { v: cv.v };
+  if (cv.fmt && Object.keys(cv.fmt).length > 0) out.fmt = cv.fmt;
+  return out;
+}
+
 function normalizeSheet(raw: any): SmartSheetDefinition {
   return {
     ...raw,
@@ -33,7 +48,12 @@ function normalizeSheet(raw: any): SmartSheetDefinition {
 function normalizeRow(raw: any): SmartSheetRow {
   return {
     ...raw,
-    cellData: (typeof raw.cellData === 'object' && !Array.isArray(raw.cellData) ? raw.cellData : maybeParse(raw.cellData) ?? {}) as SmartSheetRow['cellData'],
+    cellData: (() => {
+      const rawCd = (typeof raw.cellData === 'object' && !Array.isArray(raw.cellData) ? raw.cellData : maybeParse(raw.cellData) ?? {}) as Record<string, unknown>;
+      const out: Record<string, CellValue> = {};
+      for (const [k, v] of Object.entries(rawCd)) { out[k] = normalizeCellValue(v); }
+      return out;
+    })() as Record<string, CellValue>,
   };
 }
 
