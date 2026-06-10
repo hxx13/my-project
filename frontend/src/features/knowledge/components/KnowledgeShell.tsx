@@ -29,9 +29,11 @@ export function KnowledgeShell() {
   // ── Loading ──
   if (treeLoading) {
     return (
-      <div className="flex h-[calc(100vh-6.5rem)] flex-col bg-[var(--app-color-surface-page)]">
+      <div className="flex h-full flex-col bg-[var(--app-color-surface-page)]">
         <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} />
-        <KnowledgeLayoutSkeleton />
+        <div className="flex-1 min-h-0">
+          <KnowledgeLayoutSkeleton />
+        </div>
       </div>
     );
   }
@@ -39,32 +41,34 @@ export function KnowledgeShell() {
   // ── Error ──
   if (isError) {
     return (
-      <div className="flex h-[calc(100vh-6.5rem)] flex-col bg-[var(--app-color-surface-page)]">
+      <div className="flex h-full flex-col bg-[var(--app-color-surface-page)]">
         <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} />
-        <KnowledgeLayout
-          sidebar={null}
-          content={
-            <div className="flex flex-col items-center justify-center py-16">
-              <AlertTriangle className="size-12 text-[var(--app-color-feedback-warning)]" />
-              <h2 className="mt-4 text-lg font-semibold text-[var(--app-color-text-primary)]">加载失败</h2>
-              <p className="mt-1 text-sm text-[var(--app-color-text-secondary)]">
-                {error instanceof Error ? error.message : "无法获取知识库数据，请检查网络后重试"}
-              </p>
-              <button
-                onClick={() => refetch()}
-                className="mt-4 inline-flex items-center gap-1.5 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] px-4 py-2 text-sm font-medium text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]"
-              >
-                <RefreshCw className="size-3.5" />
-                重新加载
-              </button>
-            </div>
-          }
-        />
+        <div className="flex-1 min-h-0">
+          <KnowledgeLayout
+            sidebar={null}
+            content={
+              <div className="flex flex-col items-center justify-center py-16">
+                <AlertTriangle className="size-12 text-[var(--app-color-feedback-warning)]" />
+                <h2 className="mt-4 text-lg font-semibold text-[var(--app-color-text-primary)]">加载失败</h2>
+                <p className="mt-1 text-sm text-[var(--app-color-text-secondary)]">
+                  {error instanceof Error ? error.message : "无法获取知识库数据，请检查网络后重试"}
+                </p>
+                <button
+                  onClick={() => refetch()}
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] px-4 py-2 text-sm font-medium text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]"
+                >
+                  <RefreshCw className="size-3.5" />
+                  重新加载
+                </button>
+              </div>
+            }
+          />
+        </div>
       </div>
     );
   }
 
-  // ── Center panel renderer ──
+  // ── Center panel renderer — each branch must fill its container ──
   const renderCenter = () => {
     // Edit mode
     if (shell.isEditing) {
@@ -80,34 +84,36 @@ export function KnowledgeShell() {
       );
     }
 
-    // Graph view
+    // Graph view — fills center, no padding needed
     if (shell.view === "graph") {
       return <KnowledgeGraphView onSelectPage={shell.selectPage} />;
     }
 
-    // Timeline view
+    // Timeline view — fills center
     if (shell.view === "timeline") {
       return <KnowledgeTimelineView onSelectPage={shell.selectPage} />;
     }
 
-    // Browse: no page selected → dashboard
+    // Browse: no page selected → dashboard (scrolls naturally via parent)
     if (!shell.selectedPageId) {
       return (
-        <KnowledgeDashboard
-          stats={null}
-          tags={[]}
-          recentPages={[]}
-          onSelectPage={shell.selectPage}
-          onSelectTag={() => {}}
-          activeTag={null}
-        />
+        <div className="p-6">
+          <KnowledgeDashboard
+            stats={null}
+            tags={[]}
+            recentPages={[]}
+            onSelectPage={shell.selectPage}
+            onSelectTag={() => {}}
+            activeTag={null}
+          />
+        </div>
       );
     }
 
     // Browse: page selected but loading
     if (pageLoading) {
       return (
-        <div className="space-y-4">
+        <div className="p-6 space-y-4">
           <div className="h-8 w-3/4 animate-skeleton-pulse rounded bg-[var(--app-color-surface-hover)]" />
           <div className="h-4 w-1/3 animate-skeleton-pulse rounded bg-[var(--app-color-surface-hover)]" />
           <div className="h-px bg-[var(--app-color-border-default)]" />
@@ -138,11 +144,11 @@ export function KnowledgeShell() {
       );
     }
 
-    // Browse: page displayed
+    // Browse: page displayed — padding on content, scrolls via parent <main>
     return (
-      <div>
+      <div className="p-6">
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <button
               onClick={shell.deselectPage}
               className="mb-2 flex items-center gap-1 text-xs text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)]"
@@ -150,7 +156,7 @@ export function KnowledgeShell() {
               <ArrowLeft className="size-3" />
               返回知识库
             </button>
-            <h1 className="text-xl font-bold text-[var(--app-color-text-primary)]">{page.title}</h1>
+            <h1 className="text-xl font-bold text-[var(--app-color-text-primary)] truncate">{page.title}</h1>
           </div>
           <div className="flex gap-1.5 shrink-0">
             <button
@@ -181,16 +187,20 @@ export function KnowledgeShell() {
   const renderOutline = () => {
     if (shell.isEditing || shell.view !== "browse" || !page) return null;
     return (
-      <>
+      <div className="p-4">
         <KnowledgePageOutline contentMd={page.contentMd} contentHtml={page.contentHtml} />
         <BacklinksList pageId={page.id} onSelectPage={shell.selectPage} />
-      </>
+      </div>
     );
   };
 
+  // ── Shell height: AdminLayout's <Outlet /> provides full height.
+  //     We deduct nothing here — parent AdminLayout already accounts for top nav.
+  //     TabBar (36px) + flex-1 Layout + StatusBar (20px) = full height.
   return (
-    <div className="flex h-[calc(100vh-6.5rem)] flex-col bg-[var(--app-color-surface-page)]">
+    <div className="flex h-full flex-col bg-[var(--app-color-surface-page)]">
       <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} />
+
       <div className="flex-1 min-h-0">
         <KnowledgeLayout
           sidebar={
@@ -212,7 +222,16 @@ export function KnowledgeShell() {
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
         <span>{tree?.length ?? 0} 分类</span>
         <span className="opacity-40">·</span>
-        <span>{tree?.reduce((sum, n) => sum + n.pages.length + n.children.reduce((s, c) => s + c.pages.length, 0), 0) ?? 0} 篇</span>
+        <span>
+          {tree?.reduce(
+            (sum, n) =>
+              sum +
+              n.pages.length +
+              n.children.reduce((s, c) => s + c.pages.length, 0),
+            0
+          ) ?? 0}{" "}
+          篇
+        </span>
       </div>
 
       <KnowledgeHistoryDrawer

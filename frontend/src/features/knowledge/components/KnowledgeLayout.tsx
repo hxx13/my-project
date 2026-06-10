@@ -39,8 +39,8 @@ export function KnowledgeLayout({ sidebar, content, outline }: KnowledgeLayoutPr
   }, []);
 
   return (
-    <div className="flex h-[calc(100vh-6.5rem)] bg-[var(--app-color-surface-page)]">
-      {/* Left sidebar — draggable width */}
+    <div className="flex h-full bg-[var(--app-color-surface-page)]">
+      {/* Left sidebar — draggable width, independent scroll */}
       <aside
         style={{ width: sidebarWidth }}
         className="shrink-0 overflow-y-auto border-r border-[var(--app-color-border-default)] bg-[var(--sidebar)]"
@@ -50,17 +50,15 @@ export function KnowledgeLayout({ sidebar, content, outline }: KnowledgeLayoutPr
 
       <ResizeHandle onResize={handleResize} />
 
-      {/* Center content */}
+      {/* Center content — fills remaining space, scrolls when overflow */}
       <main className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[var(--container-content)] px-[var(--app-space-container-padding)] py-[var(--app-space-container-padding)]">
-          {content}
-        </div>
+        {content}
       </main>
 
-      {/* Right outline — 200px, hidden below 1280px */}
+      {/* Right outline — 240px, hidden below 1280px */}
       {outline && (
         <aside className="hidden w-[240px] shrink-0 overflow-y-auto border-l border-[var(--app-color-border-default)] bg-[var(--sidebar)] xl:block">
-          <div className="p-[var(--app-space-container-padding)]">{outline}</div>
+          {outline}
         </aside>
       )}
     </div>
@@ -69,16 +67,16 @@ export function KnowledgeLayout({ sidebar, content, outline }: KnowledgeLayoutPr
 
 export function KnowledgeLayoutSkeleton() {
   return (
-    <div className="flex h-[calc(100vh-6.5rem)] bg-[var(--app-color-surface-page)]">
-      <aside className="w-[260px] shrink-0 border-r border-[var(--app-color-border-default)] bg-[var(--sidebar)] p-[var(--app-space-container-padding)]">
+    <div className="flex h-full bg-[var(--app-color-surface-page)]">
+      <aside className="w-[260px] shrink-0 border-r border-[var(--app-color-border-default)] bg-[var(--sidebar)] p-4">
         <div className="space-y-3">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="h-5 animate-skeleton-pulse rounded bg-[var(--app-color-surface-hover)]" style={{ width: `${60 + Math.random() * 40}%` }} />
           ))}
         </div>
       </aside>
-      <main className="flex-1 p-[var(--app-space-container-padding)]">
-        <div className="mx-auto max-w-[var(--container-content)] space-y-4">
+      <main className="flex-1 p-6">
+        <div className="space-y-4">
           <div className="h-8 w-3/4 animate-skeleton-pulse rounded bg-[var(--app-color-surface-hover)]" />
           <div className="h-4 w-1/3 animate-skeleton-pulse rounded bg-[var(--app-color-surface-hover)]" />
           <div className="h-px bg-[var(--app-color-border-default)]" />
