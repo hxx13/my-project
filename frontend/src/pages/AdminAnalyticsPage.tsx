@@ -164,6 +164,7 @@ export default function AdminAnalyticsPage() {
         </div>
       </div>
     </AdminPageShell>
+      </AdminFullWidthPage>
   );
 }
 
@@ -209,6 +210,5 @@ function ReportNavCard({
         <Star className={cn("h-3.5 w-3.5", isFavorite ? "fill-amber-400" : "")} />
       </button>
     </div>
-      </AdminFullWidthPage>
   );
 }
