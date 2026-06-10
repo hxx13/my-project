@@ -1,0 +1,1 @@
+function e(e){let t=e.createElement(`div`);t.style.overflow=`scroll`,t.style.visibility=`hidden`,t.style.position=`absolute`,t.style.top=`-9999px`,t.style.width=`50px`,t.style.height=`50px`,e.body.appendChild(t);let n=t.offsetWidth-t.clientWidth;return e.body.removeChild(t),n}async function t(e=0){await new Promise(t=>{setTimeout(()=>t(),e)})}export{t as n,e as t};
