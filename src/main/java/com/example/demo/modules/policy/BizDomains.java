@@ -13,4 +13,6 @@ public final class BizDomains {
     public static final String SUPPLIES_CLAIM = "SUPPLIES_CLAIM";
     /** 物资后台（分类、库存、管理员出库接口） */
     public static final String SUPPLIES_ADMIN = "SUPPLIES_ADMIN";
+    /** 学生物资申领（申请 / 审核 / 出库） */
+    public static final String MATERIAL_REQUEST = "MATERIAL_REQUEST";
 }

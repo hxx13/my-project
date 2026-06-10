@@ -5,12 +5,15 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.material.dto.*;
 import com.example.demo.modules.material.entity.*;
 import com.example.demo.modules.material.mapper.*;
+import com.example.demo.modules.notification.dto.PublishNotificationEvent;
+import com.example.demo.modules.notification.service.NotificationService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -27,12 +30,14 @@ public class MaterialService {
     private final MaterialRequestLineMapper requestLineMapper;
     private final MaterialStockMovementMapper stockMovementMapper;
     private final MaterialOperationLogMapper operationLogMapper;
+    private final NotificationService notificationService;
 
     public MaterialService(MaterialCategoryMapper categoryMapper, MaterialItemMapper itemMapper,
                            MaterialCartMapper cartMapper, MaterialRequestMapper requestMapper,
                            MaterialRequestLineMapper requestLineMapper,
                            MaterialStockMovementMapper stockMovementMapper,
-                           MaterialOperationLogMapper operationLogMapper) {
+                           MaterialOperationLogMapper operationLogMapper,
+                           NotificationService notificationService) {
         this.categoryMapper = categoryMapper;
         this.itemMapper = itemMapper;
         this.cartMapper = cartMapper;
@@ -40,6 +45,7 @@ public class MaterialService {
         this.requestLineMapper = requestLineMapper;
         this.stockMovementMapper = stockMovementMapper;
         this.operationLogMapper = operationLogMapper;
+        this.notificationService = notificationService;
     }
 
     // ==================== 分类 ====================
@@ -269,6 +275,7 @@ public class MaterialService {
         }
         requestLineMapper.insertBatch(lines);
         logOp("REQUEST", id, "SUBMIT", Map.of("lines", req.getLines().size()));
+        publishMaterialEvent("CREATED", id, user.getId(), user.getId(), "共 " + req.getLines().size() + " 项物资");
         return Result.success(toRequestView(requestMapper.selectById(id)));
     }
 
@@ -365,9 +372,11 @@ public class MaterialService {
         MaterialRequest request = requestMapper.selectById(id);
         if (request == null) return Result.error("申领单不存在");
         if (!canReview(request, reviewer)) return Result.error("无权审核此申领单");
+        boolean finalApproved = false;
         if ("SIMPLE".equals(request.getWorkflowType())) {
             requestMapper.updateReview(id, reviewer.getId(), "APPROVED");
             logOp("REQUEST", id, "APPROVE", Map.of("reviewer", reviewer.getId()));
+            finalApproved = true;
         } else if ("DUAL_REVIEW".equals(request.getWorkflowType())) {
             if ("PENDING".equals(request.getStatus())) {
                 requestMapper.updateReview(id, reviewer.getId(), "FIRST_OK");
@@ -375,7 +384,11 @@ public class MaterialService {
             } else if ("FIRST_OK".equals(request.getStatus())) {
                 requestMapper.updateReview(id, reviewer.getId(), "APPROVED");
                 logOp("REQUEST", id, "APPROVE", Map.of("reviewer", reviewer.getId()));
+                finalApproved = true;
             }
+        }
+        if (finalApproved) {
+            publishMaterialEvent("APPROVED", id, reviewer.getId(), request.getUserId(), "审核已通过，等待出库");
         }
         return Result.success(toRequestView(requestMapper.selectById(id)));
     }
@@ -387,6 +400,7 @@ public class MaterialService {
         if (!canReview(request, reviewer)) return Result.error("无权审核此申领单");
         requestMapper.updateStatus(id, "REJECTED");
         logOp("REQUEST", id, "REJECT", Map.of("reviewer", reviewer.getId()));
+        publishMaterialEvent("COMPLETED", id, reviewer.getId(), request.getUserId(), "审核已拒绝");
         return Result.success(null);
     }
 
@@ -421,6 +435,8 @@ public class MaterialService {
         }
         requestMapper.updateFulfill(id, operator.getId());
         logOp("REQUEST", id, "FULFILL", Map.of("operator", operator.getId()));
+        publishMaterialEvent("COMPLETED", id, operator.getId(), request.getUserId(),
+                "已出库 " + req.getLines().stream().filter(l -> Boolean.TRUE.equals(l.getGrant())).count() + " 类物资");
         return Result.success(toRequestView(requestMapper.selectById(id)));
     }
 
@@ -547,6 +563,25 @@ public class MaterialService {
             return lv;
         }).collect(Collectors.toList()));
         return v;
+    }
+
+    private void publishMaterialEvent(String eventType, String requestId, String senderId, String applicantId, String summary) {
+        try {
+            PublishNotificationEvent event = new PublishNotificationEvent();
+            event.setEventType(eventType);
+            event.setBizType("MATERIAL_REQUEST");
+            event.setBizId(requestId);
+            event.setSenderId(senderId);
+            event.setApplicantId(applicantId);
+            Map<String, String> vars = new HashMap<>();
+            vars.put("requestId", requestId);
+            vars.put("bizId", requestId);
+            vars.put("summary", summary);
+            event.setVariables(vars);
+            notificationService.publish(event);
+        } catch (Exception e) {
+            log.warn("发布物资申领通知失败: {}", e.getMessage());
+        }
     }
 
     private void logOp(String targetType, String targetId, String action, Object detail) {

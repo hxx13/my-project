@@ -308,7 +308,7 @@ public class NotificationService {
      */
     public int countUnreadForSidebarBadge(String userId, RoleEnum role) {
         boolean staffPlus = role != null && role.getLevel() >= RoleEnum.STAFF.getLevel();
-        List<String> ex = staffPlus ? List.of("REPAIR", "PURCHASE", "SUPPLIES_CLAIM") : null;
+        List<String> ex = staffPlus ? List.of("REPAIR", "PURCHASE", "SUPPLIES_CLAIM", "MATERIAL_REQUEST") : null;
         return notificationMapper.countUnreadForSidebarBadge(userId, ex);
     }
 
@@ -386,6 +386,7 @@ public class NotificationService {
             case "REPAIR" -> BizDomains.REPAIR;
             case "PURCHASE" -> BizDomains.PURCHASE;
             case "SUPPLIES_CLAIM" -> BizDomains.SUPPLIES_CLAIM;
+            case "MATERIAL_REQUEST" -> BizDomains.MATERIAL_REQUEST;
             default -> null;
         };
     }
@@ -427,6 +428,7 @@ public class NotificationService {
             case "REPAIR" -> "报修";
             case "PURCHASE" -> "采购";
             case "SUPPLIES_CLAIM" -> "物资领用";
+            case "MATERIAL_REQUEST" -> "物资申领";
             default -> bizType.trim();
         };
     }
