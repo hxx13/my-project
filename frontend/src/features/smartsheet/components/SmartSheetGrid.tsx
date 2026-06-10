@@ -231,6 +231,7 @@ export default function SmartSheetGrid({
 
   return (
     <div className={`table-scroll ${viewOptions.freeze ? 'smartsheet-frozen' : ''}`} style={{ flex: 1, overflow: 'auto' }}
+         data-admin-chrome-ctx-surface="true"
          onContextMenu={(e) => { e.preventDefault(); }}>
       <table className={`bt-grid ${viewOptions.zebra ? 'striped' : ''}`}>
         <thead>

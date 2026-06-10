@@ -78,7 +78,7 @@ export default function SmartSheetPage() {
   );
 
   return (
-    <div className="flex flex-col h-full gap-3 p-4 sm:p-5 bg-app-surface-page">
+    <div className="flex flex-col h-full gap-3 p-4 sm:p-5 bg-app-surface-page" data-admin-chrome-ctx-surface="true">
       <FormatContext.Provider value={{
         format: currentFormat,
         setFormat: (f) => setCurrentFormat(prev => ({ ...prev, ...f })),
