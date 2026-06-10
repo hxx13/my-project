@@ -148,19 +148,20 @@ function HomeCard({ entry, navigate, starred }: { entry: any; navigate: (p: stri
       onClick={() => entry.enabled && navigate(entry.path)}
       disabled={!entry.enabled}
       className={cn(
-        "group relative flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-colors",
+        "group relative flex flex-col items-center justify-center gap-1.5 rounded-xl border p-2.5 text-center transition-colors",
+        "w-full min-h-[80px]",
         entry.enabled
           ? "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] hover:border-[var(--twin-hairline-strong)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer"
           : "border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] opacity-50 cursor-not-allowed"
       )}
     >
-      <div className={cn("inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br text-white shadow-sm", entry.tone)}>
+      <div className={cn("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-sm", entry.tone)}>
         {entry.icon}
       </div>
       <span className="text-[11px] font-medium text-[var(--twin-ink)] leading-tight line-clamp-2">{entry.title}</span>
       <button
         onClick={(e) => { e.stopPropagation(); toggleAdminNavStar(entry.path); setIsStarred(!isStarred); }}
-        className={cn("absolute top-1 right-1 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity", isStarred ? "opacity-100 text-amber-500" : "text-[var(--twin-mute)] hover:text-amber-500")}
+        className={cn("absolute top-0.5 right-0.5 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity", isStarred ? "opacity-100 text-amber-500" : "text-[var(--twin-mute)] hover:text-amber-500")}
       >
         <Star className={cn("h-3 w-3", isStarred && "fill-amber-400")} />
       </button>
