@@ -24,12 +24,12 @@ export function KnowledgeShell() {
   const { data: page } = useKnowledgePage(shell.selectedPageId);
 
   // ── Graph view: 全屏沉浸式，不使用三栏布局 ──
-  // ── Graph: immersive full-screen, no page-full-bleed (dark bg fills edge to edge naturally) ──
+  // ── Graph: CSS Grid (not flexbox) for reliable height distribution ──
   if (shell.view === "graph") {
     return (
-      <div className="flex h-full flex-col bg-[#0a0f1a] page-full-bleed">
+      <div className="h-full grid bg-[#0a0f1a] page-full-bleed" style={{ gridTemplateRows: "auto 1fr" }}>
         <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} onImport={() => setShowImport(true)} />
-        <div className="flex-1 min-h-0 relative">
+        <div className="min-h-0">
           <KnowledgeGraphView onSelectPage={shell.selectPage} onClose={() => shell.setView("browse")} />
         </div>
         <KnowledgeHistoryDrawer open={shell.isHistoryOpen} pageId={shell.historyPageId} onClose={shell.closeHistory} onRollback={refetch} />
@@ -74,9 +74,9 @@ export function KnowledgeShell() {
   );
 
   return (
-    <div className="flex h-full flex-col bg-[var(--app-color-surface-page)] page-full-bleed">
+    <div className="h-full grid bg-[var(--app-color-surface-page)] page-full-bleed" style={{ gridTemplateRows: "auto 1fr" }}>
       <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} onImport={() => setShowImport(true)} />
-      <div className="flex-1 min-h-0">
+      <div className="min-h-0">
         <KnowledgeLayout
           sidebar={<KnowledgeCategoryTree tree={tree ?? []} onSelectPage={shell.selectPage} activePageId={shell.selectedPageId} onRefresh={refetch} />}
           content={renderCenter()}

@@ -162,7 +162,7 @@ export function KnowledgeGraphView({ onSelectPage, onClose }: Props) {
 
   // ── 渲染 ──
   return (
-    <div ref={containerRef} className="absolute inset-0" style={{ background: "radial-gradient(ellipse at center, #111827 0%, #0a0f1a 100%)" }}>
+    <div ref={containerRef} className="h-full w-full" style={{ background: "radial-gradient(ellipse at center, #111827 0%, #0a0f1a 100%)" }}>
       {/* 浮动工具栏 */}
       <div className="absolute top-3 left-3 z-10 flex items-center gap-1">
         <button onClick={onClose} className="flex items-center gap-1 rounded-lg bg-black/60 px-3 py-1.5 text-xs text-white/80 hover:bg-black/80 hover:text-white backdrop-blur">
