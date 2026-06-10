@@ -35,7 +35,7 @@ public class KnowledgeStatsController {
         // Count distinct tags
         int totalTags = 0;
         List<String> tagRows = jdbcTemplate.queryForList(
-            "SELECT tags FROM knowledge_pages WHERE tags IS NOT NULL AND tags != '[]'",
+            "SELECT tags FROM knowledge_pages WHERE tags IS NOT NULL AND JSON_LENGTH(tags) > 0",
             String.class);
         for (String row : tagRows) {
             String cleaned = row.replaceAll("[\\[\\]\"]", "");

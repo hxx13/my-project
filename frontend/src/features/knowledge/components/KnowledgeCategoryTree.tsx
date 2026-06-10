@@ -21,7 +21,7 @@ function Dropdown({ anchor, open, onClose, children }: { anchor: HTMLElement | n
 
   if (!open) return null;
   return createPortal(
-    <div ref={elRef} className="fixed z-[99999] rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-[var(--app-elevation-modal)] py-1 text-[11px] min-w-[160px]" style={{ left: pos.left, top: pos.top }}>
+    <div ref={elRef} className="fixed rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-[var(--app-elevation-modal)] py-1 text-[11px] min-w-[160px]" style={{ left: pos.left, top: pos.top, zIndex: "var(--z-modal)" }}>
       {children}
     </div>,
     document.body
@@ -112,8 +112,8 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
   const [moveMenu, setMoveMenu] = useState(false);
   const [moveCatMenu, setMoveCatMenu] = useState(false);
   const [movingPage, setMovingPage] = useState<{ id: number; slug: string; title: string } | null>(null);
-  const moveBtnRef = useRef<HTMLButtonElement>(null);
-  const moveCatBtnRef = useRef<HTMLButtonElement>(null);
+  const [moveAnchor, setMoveAnchor] = useState<HTMLElement | null>(null);
+  const [moveCatAnchor, setMoveCatAnchor] = useState<HTMLElement | null>(null);
 
   function startEdit() { setEditName(node.categoryName); setEditSlug(node.categorySlug); setEditing(true); }
   async function handleSaveEdit() {
@@ -165,7 +165,7 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
           </div>
         ) : (
           <div className="flex gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button ref={moveCatBtnRef} onClick={(e) => { e.stopPropagation(); setMoveCatMenu(!moveCatMenu); }} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]" title="移动文件夹"><MoveHorizontal className="size-3" /></button>
+            <button onClick={(e) => { e.stopPropagation(); setMoveCatAnchor(e.currentTarget); setMoveCatMenu(!moveCatMenu); }} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]" title="移动文件夹"><MoveHorizontal className="size-3" /></button>
             <button onClick={startEdit} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]" title="重命名"><Pencil className="size-3" /></button>
             {node.pages.length === 0 && node.children.length === 0 && (
               <button onClick={handleDelete} disabled={deleting} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-red-500 hover:bg-red-50" title="删除空文件夹"><Trash2 className="size-3" /></button>
@@ -175,7 +175,7 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
       </div>
 
       {/* Folder move dropdown (portal) */}
-      <Dropdown anchor={moveCatBtnRef.current} open={moveCatMenu} onClose={() => setMoveCatMenu(false)}>
+      <Dropdown anchor={moveCatAnchor} open={moveCatMenu} onClose={() => { setMoveCatMenu(false); setMoveCatAnchor(null); }}>
         <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">移动到</div>
         <button onClick={() => handleMoveCategory(null)} className="block w-full text-left px-3 py-1.5 hover:bg-[var(--app-color-surface-hover)]">📁 顶层（无父级）</button>
         {allCategories.filter(c => c.id !== node.categoryId).map(c => (
@@ -192,13 +192,13 @@ function TreeNode({ node, depth, expanded, toggle, activePageId, onSelectPage, o
               <button onClick={() => onSelectPage(p.id)} className={cn("flex flex-1 items-center gap-1.5 rounded-[var(--app-radius-element)] px-2 py-1 text-left text-xs", p.id === activePageId ? "bg-[var(--app-color-accent-soft)] font-medium text-[var(--app-color-accent)]" : "text-[var(--app-color-text-secondary)]")}>
                 <FileText className="size-3 shrink-0 opacity-50" /><span className="truncate">{p.title}</span>
               </button>
-              <button ref={moveBtnRef} onClick={(e) => { e.stopPropagation(); setMovingPage({ id: p.id, slug: p.slug, title: p.title }); setMoveMenu(!moveMenu); }} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="移动到其他分类">
+              <button onClick={(e) => { e.stopPropagation(); setMovingPage({ id: p.id, slug: p.slug, title: p.title }); setMoveAnchor(e.currentTarget); setMoveMenu(!moveMenu); }} className="rounded p-0.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" title="移动到其他分类">
                 <MoveHorizontal className="size-3" />
               </button>
             </div>
           ))}
           {/* Doc move dropdown (portal) */}
-          <Dropdown anchor={moveBtnRef.current} open={moveMenu} onClose={() => { setMoveMenu(false); setMovingPage(null); }}>
+          <Dropdown anchor={moveAnchor} open={moveMenu} onClose={() => { setMoveMenu(false); setMovingPage(null); setMoveAnchor(null); }}>
             <div className="px-2 py-1 text-[var(--app-color-text-tertiary)] text-[10px] uppercase">移动到</div>
             {allCategories.filter(c => c.id !== node.categoryId).map(c => (
               <button key={c.id} onClick={() => { if (movingPage) handleMovePage(movingPage.id, c.id, movingPage.slug, movingPage.title); }}>
