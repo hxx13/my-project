@@ -129,6 +129,64 @@ public class MaterialService {
         return Result.success(toItemView(itemMapper.selectById(id)));
     }
 
+    public Result<?> softDeleteItem(User operator, Long id) {
+        MaterialItem item = itemMapper.selectById(id);
+        if (item == null) return Result.error("物品不存在");
+        itemMapper.softDelete(id, operator != null ? operator.getId() : null, java.time.LocalDateTime.now().plusDays(7));
+        logOp("ITEM", String.valueOf(id), "DELETE", null);
+        return Result.success(null);
+    }
+
+    public Result<Map<String, Object>> listItemRecycle(int page, int size) {
+        int offset = (page - 1) * size;
+        List<MaterialItem> items = itemMapper.selectRecycle(offset, size);
+        int total = itemMapper.countRecycle();
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", items);
+        result.put("total", total);
+        return Result.success(result);
+    }
+
+    public Result<?> restoreItem(Long id) {
+        itemMapper.restore(id);
+        return Result.success(null);
+    }
+
+    public Result<?> purgeItem(Long id) {
+        itemMapper.purge(id);
+        return Result.success(null);
+    }
+
+    public Result<?> purgeItems(List<Long> ids) {
+        for (Long id : ids) itemMapper.purge(id);
+        return Result.success(Map.of("deleted", ids.size()));
+    }
+
+    public Result<?> purgeAllItems() {
+        List<MaterialItem> all = itemMapper.selectRecycle(0, 10000);
+        int count = 0;
+        for (MaterialItem it : all) { itemMapper.purge(it.getId()); count++; }
+        return Result.success(Map.of("deleted", count));
+    }
+
+    @Transactional
+    public Result<?> adjustStock(User operator, Long id, int newQty) {
+        MaterialItem item = itemMapper.selectById(id);
+        if (item == null) return Result.error("物品不存在");
+        int oldQty = item.getStockQty() != null ? item.getStockQty() : 0;
+        itemMapper.updateStock(id, newQty - oldQty);
+        MaterialStockMovement m = new MaterialStockMovement();
+        m.setItemId(id);
+        m.setMovementType("ADJUST");
+        m.setQty(newQty - oldQty);
+        m.setStockAfter(newQty);
+        m.setOperatorUserId(operator != null ? operator.getId() : null);
+        m.setRemark("库存纠偏 " + oldQty + " → " + newQty);
+        stockMovementMapper.insert(m);
+        logOp("ITEM", String.valueOf(id), "ADJUST", Map.of("old", oldQty, "new", newQty));
+        return Result.success(null);
+    }
+
     @Transactional
     public Result<?> inbound(User operator, InboundMaterialReq req) {
         MaterialItem item = itemMapper.selectById(req.getItemId());

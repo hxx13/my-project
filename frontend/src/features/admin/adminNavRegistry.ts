@@ -607,6 +607,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         fallbackMinRole: "STAFF",
         sidebarVisible: () => true,
       },
+      {
+        id: "material-manage",
+        path: "/admin/material/manage",
+        label: "物品管理",
+        icon: Package,
+        homeTone: "from-emerald-600 to-green-700",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: () => true,
+      },
     ],
   },
 ];

@@ -195,6 +195,35 @@ export async function updateAdminMaterialItem(id: number, body: Partial<Material
   return res.data.data;
 }
 
+export async function deleteAdminMaterialItem(id: number) {
+  await authHttp.delete(`/material/admin/items/${id}`);
+}
+
+export async function fetchAdminMaterialRecycle(params: { page: number; size: number }) {
+  const res = await authHttp.get<Result<{ data: MaterialItem[]; total: number }>>("/material/admin/items/recycle", { params });
+  return res.data.data;
+}
+
+export async function restoreAdminMaterialRecycle(id: number) {
+  await authHttp.post(`/material/admin/items/recycle/${id}/restore`);
+}
+
+export async function purgeAdminMaterialRecycle(id: number) {
+  await authHttp.delete(`/material/admin/items/recycle/${id}`);
+}
+
+export async function purgeAdminMaterialRecycleByIds(ids: number[]) {
+  await authHttp.post("/material/admin/items/recycle/purge", { ids });
+}
+
+export async function purgeAllAdminMaterialRecycle() {
+  await authHttp.delete("/material/admin/items/recycle");
+}
+
+export async function adjustMaterialStock(id: number, newQty: number) {
+  await authHttp.patch(`/material/admin/items/${id}/stock`, { newQty });
+}
+
 export async function inboundMaterialItem(body: { itemId: number; qty: number }) {
   await authHttp.post("/material/admin/inbound", body);
 }

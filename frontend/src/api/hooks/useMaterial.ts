@@ -4,7 +4,9 @@ import {
   createMaterialRequest, fetchMyMaterialRequests, fetchMaterialRequestDetail,
   withdrawMaterialRequest, confirmMaterialReceive, fetchMyMaterialStats,
   fetchAdminMaterialCategories, fetchAdminMaterialItems, createAdminMaterialItem,
-  updateAdminMaterialItem, inboundMaterialItem, fetchPendingMaterialRequests,
+  updateAdminMaterialItem, deleteAdminMaterialItem, fetchAdminMaterialRecycle,
+  restoreAdminMaterialRecycle, purgeAdminMaterialRecycle, purgeAdminMaterialRecycleByIds,
+  purgeAllAdminMaterialRecycle, adjustMaterialStock, inboundMaterialItem, fetchPendingMaterialRequests,
   fetchAllMaterialRequests, approveMaterialRequest, rejectMaterialRequest,
   fulfillMaterialRequest, fetchMaterialStatsOverview, fetchMaterialAuditTrail,
 } from "@/api/domains/material.api";
@@ -66,6 +68,29 @@ export function useUpdateAdminMaterialItem() {
     mutationFn: ({ id, body }: { id: number; body: Partial<Record<string, unknown>> }) => updateAdminMaterialItem(id, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }),
   });
+}
+export function useDeleteAdminMaterialItem() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: deleteAdminMaterialItem, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+}
+export function useAdminMaterialRecycle(params: { page: number; size: number }) {
+  return useQuery({ queryKey: [...materialQueryKeys.adminItems(), "recycle", params], queryFn: () => fetchAdminMaterialRecycle(params) });
+}
+export function useRestoreAdminMaterialRecycle() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: restoreAdminMaterialRecycle, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+}
+export function usePurgeAdminMaterialRecycle() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (ids: number[]) => purgeAdminMaterialRecycleByIds(ids), onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+}
+export function usePurgeAllAdminMaterialRecycle() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: purgeAllAdminMaterialRecycle, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
+}
+export function useAdjustMaterialStock() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: ({ id, newQty }: { id: number; newQty: number }) => adjustMaterialStock(id, newQty), onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.adminItems() }) });
 }
 export function useInboundMaterialItem() {
   const qc = useQueryClient();

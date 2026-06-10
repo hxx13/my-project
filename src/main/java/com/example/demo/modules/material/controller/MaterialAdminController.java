@@ -72,6 +72,55 @@ public class MaterialAdminController {
         return materialService.updateItem(id, body);
     }
 
+    @DeleteMapping("/items/{id}")
+    @Operation(summary = "删除物品（软删除进回收站）")
+    public Result<?> deleteItem(@RequestHeader(value = "Authorization", required = false) String auth,
+                                @PathVariable Long id) {
+        User user = resolveUser(auth);
+        return materialService.softDeleteItem(user, id);
+    }
+
+    @GetMapping("/items/recycle")
+    @Operation(summary = "物品回收站")
+    public Result<Map<String, Object>> itemRecycle(@RequestParam(defaultValue = "1") int page,
+                                                    @RequestParam(defaultValue = "20") int size) {
+        return materialService.listItemRecycle(page, size);
+    }
+
+    @PostMapping("/items/recycle/{id}/restore")
+    @Operation(summary = "恢复回收站物品")
+    public Result<?> restoreItem(@PathVariable Long id) {
+        return materialService.restoreItem(id);
+    }
+
+    @DeleteMapping("/items/recycle/{id}")
+    @Operation(summary = "彻底删除回收站物品")
+    public Result<?> purgeItem(@PathVariable Long id) {
+        return materialService.purgeItem(id);
+    }
+
+    @PostMapping("/items/recycle/purge")
+    @Operation(summary = "批量彻底删除回收站物品")
+    public Result<?> purgeItems(@RequestBody Map<String, List<Long>> payload) {
+        List<Long> ids = payload != null ? payload.getOrDefault("ids", List.of()) : List.of();
+        return materialService.purgeItems(ids);
+    }
+
+    @DeleteMapping("/items/recycle")
+    @Operation(summary = "一键清空回收站")
+    public Result<?> purgeAllItems() {
+        return materialService.purgeAllItems();
+    }
+
+    @PatchMapping("/items/{id}/stock")
+    @Operation(summary = "库存数字纠偏")
+    public Result<?> adjustStock(@RequestHeader(value = "Authorization", required = false) String auth,
+                                 @PathVariable Long id, @RequestBody Map<String, Object> body) {
+        User user = resolveUser(auth);
+        int newQty = body.get("newQty") instanceof Number ? ((Number) body.get("newQty")).intValue() : 0;
+        return materialService.adjustStock(user, id, newQty);
+    }
+
     @PostMapping("/inbound")
     @Operation(summary = "入库")
     public Result<?> inbound(@RequestHeader(value = "Authorization", required = false) String auth,
