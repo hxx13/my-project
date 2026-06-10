@@ -3,7 +3,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from "react";
 import toast from "react-hot-toast";
-import { Eye, EyeOff, ChevronDown, ChevronRight, X, ZoomIn, Settings, ToggleLeft, ToggleRight } from "lucide-react";
+import { Eye, EyeOff, X, ZoomIn } from "lucide-react";
 import {
   useAdminMaterialCategories, useAdminMaterialItems, useAdminMaterialRecycle,
   useCreateAdminMaterialCategory, useUpdateAdminMaterialCategory, useDeleteAdminMaterialCategory,
@@ -14,7 +14,6 @@ import {
 import type { MaterialItem } from "@/api/domains/material.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { webImageSrc } from "@/utils/mediaUrl";
-import { authHttp } from "@/api/core/authHttp";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
 import StaffReviewerPicker from "@/components/admin/StaffReviewerPicker";
 import DataSkeleton from "@/components/ui/DataSkeleton";
@@ -56,25 +55,6 @@ export default function MaterialManagePage() {
   const [panelNewStock, setPanelNewStock] = useState("");
   const [editingItem, setEditingItem] = useState<MaterialItem | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [demandVisible, setDemandVisible] = useState(true);
-  const [demandToggleLoading, setDemandToggleLoading] = useState(false);
-
-  // 读取需求建议入口开关
-  useEffect(() => {
-    authHttp.get<{ success: boolean; data: { visible: boolean } }>("/material/admin/config/demand-entry-visible")
-      .then(r => { if (r.data?.success) setDemandVisible(r.data.data.visible); })
-      .catch(() => {});
-  }, []);
-
-  const toggleDemandEntry = async () => {
-    setDemandToggleLoading(true);
-    try {
-      const r = await authHttp.post<{ success: boolean; data: { visible: boolean } }>("/material/admin/config/toggle-demand-entry");
-      if (r.data?.success) setDemandVisible(r.data.data.visible);
-      toast.success(r.data?.data?.visible ? "需求建议入口已开启" : "需求建议入口已关闭");
-    } catch { toast.error("切换失败"); }
-    finally { setDemandToggleLoading(false); }
-  };
 
   /* ── 数据 ── */
   const { data: categories = [] } = useAdminMaterialCategories();
@@ -151,16 +131,6 @@ export default function MaterialManagePage() {
     <div className="space-y-8">
       <AdminSubPageHeader fallbackTo="/admin/material/review" backLabel="返回申领审核" title="物品管理"
         description="管理分类与物品上架。支持审核流程逐物品配置、审核人从人员库选择、图片拖拽粘贴上传。" />
-      {/* 需求建议开关 */}
-      <div className="flex items-center gap-3 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-4 py-2.5 shadow-twin-level-1">
-        <span className="text-sm text-[var(--twin-ink)]">学生端需求建议入口</span>
-        <button onClick={toggleDemandEntry} disabled={demandToggleLoading}
-          className={`flex items-center gap-1.5 rounded-twin-sm px-3 py-1 text-xs font-medium transition-colors ${demandVisible ? "bg-green-50 text-green-700 border border-green-200" : "bg-gray-100 text-gray-500 border border-gray-200"}`}>
-          {demandVisible ? <ToggleRight className="size-4" /> : <ToggleLeft className="size-4" />}
-          {demandVisible ? "已开启" : "已关闭"}
-        </button>
-        <a href="/admin/settings" className="ml-auto text-xs text-[var(--twin-link-deep)] hover:underline flex items-center gap-1"><Settings className="size-3" />更多设置</a>
-      </div>
 
       {/* ═══════════ 分类 + 创建（融合区） ═══════════ */}
       <section className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 space-y-4 shadow-twin-level-1">

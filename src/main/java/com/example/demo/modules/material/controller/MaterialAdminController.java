@@ -6,6 +6,7 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.material.dto.*;
 import com.example.demo.modules.material.entity.MaterialDemand;
 import com.example.demo.modules.material.mapper.MaterialDemandMapper;
@@ -36,18 +37,21 @@ public class MaterialAdminController {
     private final MaterialDemandMapper demandMapper;
     private final UserMapper userMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final UserDisplayNameService userDisplayNameService;
 
     public MaterialAdminController(AuthContextService authContextService, MaterialService materialService,
                                     MaterialExcelExportService excelExportService,
                                     MaterialDemandMapper demandMapper,
                                     UserMapper userMapper,
-                                    JdbcTemplate jdbcTemplate) {
+                                    JdbcTemplate jdbcTemplate,
+                                    UserDisplayNameService userDisplayNameService) {
         this.authContextService = authContextService;
         this.materialService = materialService;
         this.excelExportService = excelExportService;
         this.demandMapper = demandMapper;
         this.userMapper = userMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     @GetMapping("/categories")
@@ -291,6 +295,10 @@ public class MaterialAdminController {
                                                    @RequestParam(defaultValue = "50") int size) {
         int offset = (page - 1) * size;
         List<MaterialDemand> list = demandMapper.selectAll(offset, size);
+        // 解析显示名
+        for (MaterialDemand d : list) {
+            d.setUserName(userDisplayNameService.resolveDisplayName(d.getUserId()));
+        }
         int total = demandMapper.countAll();
         Map<String, Object> result = new HashMap<>();
         result.put("data", list);

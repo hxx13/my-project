@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 public class MaterialDemand {
     private Long id;
     private String userId;
+    /** 解析后的用户显示名（非DB字段） */
+    private transient String userName;
     /** 学生需求建议文本 */
     private String suggestion;
     /** 0=未处理 1=已处理 */

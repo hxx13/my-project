@@ -4,6 +4,20 @@ export type LayoutMode = 'matrix' | 'table' | 'checklist' | 'calendar';
 
 export type ColumnType = 'select' | 'multi-select' | 'date' | 'checkbox' | 'number' | 'text' | 'user';
 
+// Cell formatting
+export interface CellFormat {
+  b?: boolean;       // bold
+  i?: boolean;       // italic
+  bg?: string;       // background token ref
+  color?: string;    // font color token ref
+  size?: number;     // 12 | 14 | 16
+}
+
+export interface CellValue {
+  v: string;
+  fmt?: CellFormat;
+}
+
 export interface ColumnConfig {
   key: string;
   label: string;
@@ -45,7 +59,7 @@ export interface SmartSheetRow {
   rowIndex: number;
   rowLabel: string;
   rowEntityId?: string;
-  cellData: Record<string, string>;
+  cellData: Record<string, CellValue>;
   version: number;
   createdAt: string;
   updatedAt: string;
