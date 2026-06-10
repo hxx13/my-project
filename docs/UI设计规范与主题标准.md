@@ -6,7 +6,7 @@
 >
 > **设计日期**：2026-06-09
 >
-> **版本**：v1.3（新增响应式宽度分级体系）
+> **版本**：v1.4（新增 CSS 变量解耦 + 高度链完整性护栏）
 >
 > **实验落地模块**：知识库（`/admin/knowledge`），验证通过后推广至全站。
 
@@ -276,6 +276,54 @@ export default function MyPage() {
 ```
 页面是表单/设置/简单列表？→ 保持 AdminLayout 默认 padding
 页面是多栏/仪表盘/宽表格/图表？→ 使用 AdminFullWidthPage
+```
+
+#### 解耦机制：CSS 变量替代硬编码
+
+`AdminFullWidthPage` 的 margin 值**不硬编码**。父级 `AdminLayout` 通过 CSS 变量定义 padding，子级通过变量引用：
+
+```css
+/* 父级 AdminLayout wrapper（单点真理） */
+.admin-page-content {
+  --page-pad-x: 1.5rem;
+}
+@media (min-width: 640px) {
+  .admin-page-content { --page-pad-x: 2rem; }
+}
+
+/* 子级全宽页面（引用变量，不硬编码值） */
+.page-full-bleed {
+  margin-left: calc(-1 * var(--page-pad-x));
+  margin-right: calc(-1 * var(--page-pad-x));
+}
+```
+
+修改变量值自动同步所有全宽页面。**禁止**在子组件中硬编码 `-mx-6 sm:-mx-8`——那是打补丁。
+
+#### 架构护栏：高度链完整性（Height Chain Integrity）
+
+包装组件渲染 DOM wrapper 时必须传递高度，否则 `h-full` 在包装层断裂：
+
+```
+❌ 违规：
+  function Wrapper({ children }) {
+    return <div>{children}</div>;  ← 纯 div，h-full 断链
+  }
+  // 后果：所有子组件的 h-full → height: auto → 独立滚动失效 → SVG 尺寸 0
+
+✅ 正确：
+  function Wrapper({ children, className }) {
+    return <div className={className}>{children}</div>;
+  }
+  <Wrapper className="h-full"><Outlet /></Wrapper>
+```
+
+**高度链验证清单**（写完后逐层检查）：
+```
+□ 每一层 DOM wrapper 是否有 h-full / flex-1 / min-h-0？
+□ PageTransition / AnimatePresence / Suspense 是否传递了高度？
+□ 每一层 flex 容器是否加了 min-h-0？（flex 子项默认 min-height: auto 会撑破父级）
+□ SVG 是否有 viewBox + ResizeObserver？（纯 CSS h-full 对 SVG 不可靠）
 ```
 
 ### 原则九：响应式宽度分级（Responsive Width Hierarchy）
