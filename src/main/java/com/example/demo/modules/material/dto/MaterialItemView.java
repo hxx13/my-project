@@ -13,6 +13,8 @@ public class MaterialItemView {
     private String shelfStatus;
     private String stockMode;
     private Integer stockQty;
+    private Integer lockedQty;
+    private Integer showStockQty;
     private String workflowType;
     private String reviewerIds;
     private String secondReviewerIds;

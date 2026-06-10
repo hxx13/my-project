@@ -5,6 +5,7 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.material.dto.*;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.material.entity.MaterialDemand;
 import com.example.demo.modules.material.mapper.MaterialDemandMapper;
 import com.example.demo.modules.material.service.MaterialService;
@@ -22,12 +23,15 @@ public class MaterialController {
     private final AuthContextService authContextService;
     private final MaterialService materialService;
     private final MaterialDemandMapper demandMapper;
+    private final UserDisplayNameService userDisplayNameService;
 
     public MaterialController(AuthContextService authContextService, MaterialService materialService,
-                               MaterialDemandMapper demandMapper) {
+                               MaterialDemandMapper demandMapper,
+                               UserDisplayNameService userDisplayNameService) {
         this.authContextService = authContextService;
         this.materialService = materialService;
         this.demandMapper = demandMapper;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     @GetMapping("/categories")
@@ -138,7 +142,9 @@ public class MaterialController {
     public Result<List<MaterialDemand>> myDemands(@RequestHeader(value = "Authorization", required = false) String auth) {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
-        return Result.success(demandMapper.selectByUserId(user.getId()));
+        List<MaterialDemand> list = demandMapper.selectByUserId(user.getId());
+        for (MaterialDemand d : list) d.setUserName(userDisplayNameService.resolveDisplayName(d.getUserId()));
+        return Result.success(list);
     }
 
     private User resolveUser(String auth) {

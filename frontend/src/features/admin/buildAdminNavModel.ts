@@ -72,6 +72,17 @@ export type AdminCommandPaletteItem = {
   telemetryReturnStorageKey?: string;
 };
 
+/** Look up the homeTone gradient from the registry for a given path */
+function lookupRegistryTone(path: string): string {
+  const norm = normalizeAdminPath(path);
+  for (const g of ADMIN_NAV_REGISTRY) {
+    for (const it of collectRegistryGroupItems(g)) {
+      if (normalizeAdminPath(it.path) === norm) return it.homeTone;
+    }
+  }
+  return "from-sky-400 to-blue-500"; // fallback
+}
+
 export function normalizeAdminPath(path: string): string {
   if (!path) return "";
   const withSlash = path.startsWith("/") ? path : `/${path}`;
@@ -223,7 +234,7 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
       path: n.pathOrRoute,
       minRole,
       icon: Layers,
-      tone: "from-cyan-500 to-blue-600",
+      tone: lookupRegistryTone(n.pathOrRoute),
       enabled: roleOk && permOk,
       groupTitle: inferHomeSectionTitleForUnknownPath(p),
     });
@@ -377,7 +388,7 @@ function convertServerConfigToModel(
         path,
         minRole: effectiveMinRole,
         icon: resolveIconByName(child.itemIcon),
-        tone: "from-sky-500 to-blue-600",
+        tone: lookupRegistryTone(path),
         enabled: roleOk && permOk,
       });
     }
@@ -461,7 +472,7 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
       path: n.pathOrRoute,
       minRole,
       icon: Layers,
-      tone: "from-cyan-500 to-blue-600",
+      tone: lookupRegistryTone(n.pathOrRoute),
       enabled: roleOk && permOk,
       groupTitle: inferHomeSectionTitleForUnknownPath(p),
     });

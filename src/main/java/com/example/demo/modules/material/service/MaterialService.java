@@ -259,7 +259,7 @@ public class MaterialService {
         MaterialRequest request = new MaterialRequest();
         request.setId(id);
         request.setUserId(user.getId());
-        request.setApplicantName(user.getDisplayNickname() != null ? user.getDisplayNickname() : user.getUsername());
+        request.setApplicantName(userDisplayNameService.resolveDisplayName(user.getId()));
         request.setApplicantGroup(null);
         request.setStatus("PENDING");
         MaterialItem firstItem = itemMapper.selectById(req.getLines().get(0).getItemId());
@@ -328,6 +328,14 @@ public class MaterialService {
         if (!"PENDING".equals(request.getStatus()) && !"FIRST_OK".equals(request.getStatus()))
             return Result.error("当前状态不可撤回");
         requestMapper.updateStatus(id, "DRAFT");
+        // 释放预占库存
+        List<MaterialRequestLine> withdrawLines = requestLineMapper.selectByRequestId(id);
+        for (MaterialRequestLine line : withdrawLines) {
+            MaterialItem item = itemMapper.selectById(line.getItemId());
+            if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
+                itemMapper.releaseLock(line.getItemId(), line.getQty());
+            }
+        }
         logOp("REQUEST", id, "WITHDRAW", null);
         return Result.success(null);
     }
@@ -473,6 +481,16 @@ public class MaterialService {
     public Result<?> softDeleteRequest(User operator, String id) {
         MaterialRequest req = requestMapper.selectById(id);
         if (req == null) return Result.error("申领单不存在");
+        // 未完成的申领需释放锁定库存
+        if ("PENDING".equals(req.getStatus()) || "FIRST_OK".equals(req.getStatus())) {
+            List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(id);
+            for (MaterialRequestLine line : lines) {
+                MaterialItem item = itemMapper.selectById(line.getItemId());
+                if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
+                    itemMapper.releaseLock(line.getItemId(), line.getQty());
+                }
+            }
+        }
         requestMapper.softDelete(id, operator != null ? operator.getId() : null, java.time.LocalDateTime.now().plusDays(7));
         logOp("REQUEST", id, "DELETE", null);
         return Result.success(null);
@@ -620,6 +638,8 @@ public class MaterialService {
         v.setShelfStatus(item.getShelfStatus());
         v.setStockMode(item.getStockMode());
         v.setStockQty(item.getStockQty());
+        v.setLockedQty(item.getLockedQty() != null ? item.getLockedQty() : 0);
+        v.setShowStockQty(item.getShowStockQty() != null ? item.getShowStockQty() : 1);
         v.setWorkflowType(item.getWorkflowType());
         v.setReviewerIds(item.getReviewerIds());
         v.setSecondReviewerIds(item.getSecondReviewerIds());

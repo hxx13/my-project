@@ -36,8 +36,8 @@
 ```
 👋 今天想做什么？
 
-  ① 新功能开发      ④ 后端接口       ⑦ 部署/运维
-  ② Bug修复         ⑤ 代码审查       ⑧ 重构优化
+  ① 新功能开发      ④ 后端接口       ⑦ 部署/运维      ⑩ 数据库变更
+  ② Bug修复         ⑤ 代码审查       ⑧ 重构优化      ⑪ 后端排错
   ③ UI/前端调整     ⑥ 文档编写       ⑨ 学习/调研
 
 或者直接说你想做的事，我自动归类 👇
@@ -48,14 +48,16 @@
 | 用户说了什么（关键词） | 归类到 | 示例 |
 |------------------------|--------|------|
 | 新增/添加/实现/开发 + 功能/模块/页面 | ① 新功能开发 | "加一个导出Excel功能" |
-| 报错/有问题/不工作/不对/修一下/bug | ② Bug修复 | "弹窗关不掉了" |
+| 报错/有问题/不工作/不对/修一下/bug/调试 | ② Bug修复 | "弹窗关不掉了" |
 | 改样式/动画/布局/颜色/间距/响应式 | ③ UI/前端调整 | "按钮换个颜色" |
-| 接口/API/数据库/加字段/改SQL | ④ 后端接口 | "加一个查询参数" |
+| 接口/API/Controller/Service/Mapper/加端点/REST | ④ 后端接口 | "加一个查询参数" |
 | 帮我看下/审查/review/检查一下 | ⑤ 代码审查 | "帮我看下这段代码" |
 | 写文档/记录/说明/整理 | ⑥ 文档编写 | "写个接口文档" |
 | 部署/上线/发布/打包 | ⑦ 部署/运维 | "部署到测试环境" |
 | 优化/重构/整理/简化/性能 | ⑧ 重构优化 | "这个组件太长了" |
 | 查一下/调研/对比/分析/了解 | ⑨ 学习/调研 | "React 19 有什么新特性" |
+| 建表/加字段/改字段/DDL/迁移/SQL/数据库变更 | ⑩ 数据库变更 | "加一个字段" |
+| 后端报错/日志/接口超时/慢查询/500/空指针/NPE | ⑪ 后端排错 | "这个接口返回500" |
 
 ---
 
@@ -63,9 +65,11 @@
 
 <!--
   AI 执行规则：
+  - 共 11 个工作流（①-⑨ 通用 + ⑩-⑪ 后端专项）
   - 每个工作流按 Phase 顺序执行，不可跳过标记为 [强制] 的 Phase
   - 每个 Phase 完成后检查：是否需要写 handoff 文档？（见 @handoff）
   - gates 为 auto 的：verification 阶段自动扫描改动文件匹配 @gates 注册表
+  - 后端工作流 (④⑩⑪) 遵循 docs/后端架构规范.md
   - 所有工作流结束后：更新 handoff/MANIFEST.json
 -->
 
@@ -183,25 +187,164 @@ Phase 3: 验证
 
 ---
 
-### ④ 后端接口 (@workflow:backend-api)
+### ④ 后端接口开发 (@workflow:backend-api)
 
 ```
-Phase 1: TDD
+Phase 1: 需求与契约定义 [强制]
+  ⚠️ AI 必须先确认以下信息才能开始编码：
+    1. 属于哪个业务模块？（modules/{module}/）→ 检查已有模块结构
+    2. API 路径和方法？（GET/POST/PUT/DELETE + /api/{module}/{endpoint}）
+    3. 入参/出参结构？→ 定义 DTO
+    4. 是否涉及新数据库表/字段？→ 是则触发 ⑩ 数据库变更工作流
+    5. 需要什么权限？（检查 RoleEnum 和 AuthContextService）
+  skill: superpowers:brainstorming（如需求不清晰）
+  产出: API 契约文档（路径 + 入参 + 出参 + 错误码 + 权限）
+
+Phase 2: TDD [强制]
   skill: superpowers:test-driven-development
-  产出: 接口测试用例（覆盖正常+异常路径）
+  产出: 接口测试用例
+    覆盖: 正常路径 / 参数校验失败 / 权限不足 / 资源不存在 /
+          重复提交 / 并发冲突 / 数据库异常 / 网络超时（至少8种）
 
-Phase 2: 编码
+Phase 3: 编码（自上而下）
   遵循: docs/后端架构规范.md
-  全链路: Controller → Service → Mapper（接口驱动，自上而下）
-  涉及数据库变更: 必须写 SQL 迁移文件
-  错误码: 遵循 src/main/java/.../ErrorCodeConstants.java 规范
+  步骤:
+    ① DTO 定义（dto/）
+      - 请求 DTO: @Valid 校验注解
+      - 响应 DTO: 不含敏感字段
+    ② Mapper 接口 + XML（mapper/）
+      - 接口: @Mapper 注解
+      - XML: 参数映射、结果映射、动态 SQL
+      - 所有 SQL 必须用 #{} 参数绑定（禁止 ${} 拼接防注入）
+    ③ Service 层（service/）
+      - 构造函数注入 Mapper + AuthContextService
+      - 事务: @Transactional（需要原子性操作时）
+      - 异常: throw TwinBusinessException(ErrorCodeConstants.XXX)
+      - 返回值: Result<T> 统一包装
+    ④ Controller 层（controller/）
+      - @RestController + @RequestMapping("/api/{module}")
+      - 构造函数注入 Service + AuthContextService
+      - 参数校验: @Valid + BindingResult 或全局异常处理
+      - 权限检查: authContextService.getCurrentUserRole()
+      - 响应: Result.success(data) / Result.error(code, msg)
+  错误码: 遵循 common/exception/ErrorCodeConstants.java
+    - 新错误码必须在该文件中定义
+    - 格式: int code + String msg
+    - HTTP 状态码通过 TwinBusinessException 映射
 
-Phase 3: 验证
+Phase 4: 验证 [强制]
   skill: superpowers:verification-before-completion
+  browser_check: false（后端纯 API）
   check_items:
-    - API 响应格式是否符合项目约定
-    - 异常处理是否完整（至少8种异常路径）
-    - 数据库变更是否兼容（无锁表/无数据丢失）
+    - ✅ 所有测试通过（Phase 2 的 TDD 用例）
+    - ✅ API 响应格式: Result<T> { code, msg, data }
+    - ✅ 异常处理完整: 至少8种异常路径都有对应错误码
+    - ✅ SQL 参数绑定: 无 ${} 拼接
+    - ✅ 权限校验: Controller 层调用了 authContextService
+    - ✅ 数据库兼容: 无锁表 DDL、无不兼容字段类型变更
+    - ✅ Mapper XML: 参数映射正确、结果映射完整
+  security: 自动触发 security-review（检查注入/越权/敏感数据泄露）
+```
+
+---
+
+### ⑩ 数据库变更 (@workflow:db-migration)
+
+```
+Phase 1: 变更分析 [强制]
+  ⚠️ AI 必须确认:
+    1. 新增表 or 修改表 or 删除表？
+    2. 涉及哪些模块？
+    3. 是否有现有数据需要迁移？
+    4. 索引是否合理？（高频查询字段 + 联合索引）
+  rule: 变更前先读 common/schema/ 下的已有 DDL，确保风格一致
+
+Phase 2: 编写 SQL 迁移文件 [强制]
+  位置: common/schema/ 或模块的 schema/ 目录
+  命名: V{YYYYMMDDHHmmss}__{描述}.sql
+  内容要求:
+    - 每个变更写在单独文件中（不上直接修改旧文件）
+    - DDL 必须包含 IF NOT EXISTS / IF EXISTS（幂等）
+    - 新字段必须有 DEFAULT 值或允许 NULL（避免锁表）
+    - 字段注释: COMMENT '中文说明'
+    - 索引: CREATE INDEX IF NOT EXISTS
+    - 表引擎: ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  示例:
+    CREATE TABLE IF NOT EXISTS `xxx` (
+      `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+      ...
+      PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='表说明';
+
+Phase 3: 兼容性验证 [强制]
+  check_items:
+    - ✅ MySQL 8.0 语法兼容
+    - ✅ 无锁表操作（不阻塞现有业务）
+    - ✅ 字段类型与 Entity 定义一致
+    - ✅ 默认值合理
+    - ✅ 索引不冗余
+  rule: DDL 执行前必须输出变更摘要给用户确认
+
+Phase 4: Entity 同步
+  遵循: docs/后端架构规范.md §五 模块内部结构
+  步骤:
+    ① 更新或新建 entity/XxxEntity.java（@Data POJO）
+    ② 字段类型与 DDL 一致
+    ③ 添加 @TableName 或 MyBatis 映射注解
+    ④ 如涉及已有数据 → 确认兼容性（新字段允许 null）
+```
+
+---
+
+### ⑪ 后端排错与调试 (@workflow:backend-debug)
+
+```
+Phase 1: 信息收集 [强制关卡]
+  ⚠️ AI 必须问完以下全部问题后才能开始排查：
+    1. "哪个接口/哪个操作报错？"（URL + HTTP 方法）
+    2. "完整的错误信息是什么？"（后端日志/前端显示的错误）
+    3. "什么时候开始的？最近改了什么相关代码？"
+    4. "能稳定复现吗？还是偶发？"
+    5. "影响范围？所有用户还是特定用户/角色？"
+  rule: 信息不足 → 继续追问，不准猜，不准假设
+
+Phase 2: 系统溯源
+  skill: superpowers:systematic-debugging
+  后端追溯链:
+    Controller 层 → 参数是否正确接收？权限是否通过？
+    Service 层 → 业务逻辑哪里抛了异常？
+    Mapper 层 → SQL 是否正确执行？参数绑定是否正确？
+    数据库层 → 数据是否存在？字段类型是否匹配？
+  工具:
+    - 查看日志: 后端控制台 / log 文件
+    - 检查 SQL: MyBatis 日志输出（debug 级别可看到实际 SQL）
+    - 检查数据: 直接用 SQL 查询验证假设
+  产出: 根因报告（精确到代码行 + 触发条件 + 堆栈分析）
+
+Phase 3: 同源扫描 [强制]
+  ⚠️ 从根因提炼 bad pattern → grep 全仓库 → 分级标记
+  扫描范围:
+    - 类似的 SQL 注入风险
+    - 类似的空指针/未判空模式
+    - 类似的异常处理缺失
+    - 类似的权限校验缺失
+  分级:
+    🔴 会触发bug: 相同模式且触发条件满足
+    🟡 有风险: 相同模式但触发条件不满足
+    🟢 安全: 类似代码但写法正确
+  rule: 呈现扫描结果给用户 → 用户决定修哪些
+
+Phase 4: 修复 + TDD
+  skill: superpowers:test-driven-development
+  步骤:
+    ① 先写复现测试（证明 bug 存在）
+    ② 修复所有用户确认要修的位置
+    ③ 运行相关模块的全部测试
+    ④ 确认复现测试通过（证明 bug 修复）
+
+Phase 5: 注册表回写
+  action: AI 问用户"要把这个 bug 模式加到门禁注册表吗？"
+  if_yes: 在 @gates 注册表新增一行（如 G05 后端空指针防护）
 ```
 
 ---
