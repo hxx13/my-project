@@ -88,13 +88,16 @@ export function KnowledgeGraphView({ tree, onSelectPage, onClose }: Props) {
     });
   };
 
-  // ── 节点单击 → 浮动弹窗 ──
+  // ── 节点单击 → 浮动弹窗（约束在视口内）──
   const handleNodeClick = useCallback((e: any, d: any) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    // 弹窗出现在节点附近，相对于视口
-    const px = e.clientX + 20;
-    const py = e.clientY - 20;
+    const pw = 480, ph = 400; // 弹窗预估尺寸
+    let px = e.clientX + 20;
+    let py = e.clientY - 20;
+    // 约束在视口内
+    if (px + pw > window.innerWidth - 20) px = window.innerWidth - pw - 20;
+    if (py + ph > window.innerHeight - 20) py = window.innerHeight - ph - 20;
+    if (px < 20) px = 20;
+    if (py < 60) py = 60;
     setPopup({ nodeId: d.id, x: px, y: py });
     setPopupPos({ x: px, y: py });
   }, []);
@@ -225,26 +228,26 @@ export function KnowledgeGraphView({ tree, onSelectPage, onClose }: Props) {
         </div>
       )}
 
-      {/* ── 浮动弹窗（可拖动标题栏）── */}
+      {/* ── 浮动弹窗（可拖动标题栏，浅色背景匹配 docs-prose）── */}
       {popup && popupPage && (
         <div
           ref={popupRef}
-          className="fixed z-[9999] rounded-[var(--app-radius-container)] border border-white/10 bg-[#111827] shadow-2xl flex flex-col"
-          style={{ left: popupPos.x, top: popupPos.y, width: "480px", maxHeight: "70vh" }}
+          className="fixed z-[9999] rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-[var(--app-elevation-modal)] flex flex-col"
+          style={{ left: popupPos.x, top: popupPos.y, width: "480px", maxHeight: "65vh" }}
         >
           {/* 标题栏 — 可拖拽 */}
           <div
-            className="flex items-center justify-between px-4 py-2 border-b border-white/10 shrink-0 cursor-move select-none"
+            className="flex items-center justify-between px-4 py-2.5 border-b border-[var(--app-color-border-default)] shrink-0 cursor-move select-none bg-[var(--app-color-surface-container)] rounded-t-[var(--app-radius-container)]"
             onMouseDown={startDragPopup}
           >
-            <h3 className="text-sm font-semibold text-white truncate flex-1 mr-2">{popupPage.title}</h3>
+            <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)] truncate flex-1 mr-2">{popupPage.title}</h3>
             <div className="flex items-center gap-1">
-              <button onClick={() => onSelectPage(popup.nodeId)} className="rounded p-1 text-white/40 hover:text-white hover:bg-white/10" title="在浏览视图中打开"><ExternalLink className="size-3.5" /></button>
-              <button onClick={() => setPopup(null)} className="rounded p-1 text-white/40 hover:text-white hover:bg-white/10"><X className="size-3.5" /></button>
+              <button onClick={() => { setPopup(null); onSelectPage(popup.nodeId); }} className="rounded-[var(--app-radius-element)] p-1.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-accent)] hover:bg-[var(--app-color-surface-hover)]" title="在浏览视图中打开"><ExternalLink className="size-3.5" /></button>
+              <button onClick={() => setPopup(null)} className="rounded-[var(--app-radius-element)] p-1.5 text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)]"><X className="size-3.5" /></button>
             </div>
           </div>
-          {/* 内容 — 使用 MD 渲染器 */}
-          <div className="flex-1 overflow-y-auto px-4 py-3 text-sm text-white/85">
+          {/* 内容 — docs-prose 样式，匹配浅色背景 */}
+          <div className="flex-1 overflow-y-auto px-5 py-4">
             <KnowledgePageRenderer contentMd={popupPage.contentMd} contentHtml={popupPage.contentHtml} />
           </div>
         </div>
