@@ -44,6 +44,9 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
             jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
                 "VALUES ('item-material-manage', 'material-review', 'ITEM', '物品管理', '/admin/material/manage', 'Package', 1)");
+            jdbcTemplate.update(
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-material-audit-export', 'material-review', 'ITEM', '申领审计导出', '/admin/material/audit-export', 'Download', 2)");
 
             log.info("[admin-nav-config] 表结构已就绪，种子数据已检查");
         } catch (Exception e) {

@@ -32,6 +32,7 @@ const DEFAULT_BACK_PARENT: Record<string, string> = {
   "/admin/material/review": "/admin",
   "/admin/material/manage": "/admin/material/review",
   "/admin/material/audit": "/admin/material/review",
+  "/admin/material/audit-export": "/admin/material/review",
 };
 
 export function collectSidebarEntryPathsFromPerm(permNodes: PublicPagePermissionNode[]): Set<string> {

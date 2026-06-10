@@ -622,6 +622,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         fallbackMinRole: "STAFF",
         sidebarVisible: () => true,
       },
+      {
+        id: "material-audit-export",
+        path: "/admin/material/audit-export",
+        label: "申领审计导出",
+        icon: Download,
+        homeTone: "from-teal-500 to-cyan-600",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: () => true,
+      },
     ],
   },
 ];
