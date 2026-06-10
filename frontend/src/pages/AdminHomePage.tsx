@@ -55,7 +55,10 @@ export default function AdminHomePage() {
       g.entries.map((e) => {
         const roleOk = hasMinRole(role, e.minRole);
         const permOk = canShowWebEntry(permNodes, e.path, "sidebar", role, e.minRole);
-        return { ...e, enabled: roleOk && permOk, groupTitle: g.title, icon: createElement(e.icon, { className: "h-5 w-5" }) };
+        // Convert Tailwind gradient class to inline CSS gradient
+        // (Tailwind JIT can't scan registry data files for dynamic classes)
+        const toneGradient = toneToGradient((e as any).tone);
+        return { ...e, enabled: roleOk && permOk, groupTitle: g.title, icon: createElement(e.icon, { className: "h-5 w-5" }), _toneGradient: toneGradient };
       })
     );
   }, [navModel, permNodes, role]);
@@ -144,6 +147,16 @@ export default function AdminHomePage() {
   );
 }
 
+/** Convert Tailwind gradient class to CSS gradient using project color tokens */
+function toneToGradient(tone?: string): string | undefined {
+  if (!tone) return undefined;
+  // Parse "from-X-N to-Y-M" → linear-gradient using CSS variables
+  const m = tone.match(/from-(\w+)-(\d+)\s+to-(\w+)-(\d+)/);
+  if (!m) return undefined;
+  const [, c1, n1, c2, n2] = m;
+  return `linear-gradient(135deg, var(--color-${c1}-${n1}), var(--color-${c2}-${n2}))`;
+}
+
 /** Bento-style compact card — white bg, rounded-2xl, subtle shadow, colored icon circle */
 function HomeCard({ entry, navigate, starred }: { entry: any; navigate: (p: string) => void; starred?: boolean }) {
   const [isStarred, setIsStarred] = useState(starred ?? isAdminNavStarred(entry.path));
@@ -159,11 +172,11 @@ function HomeCard({ entry, navigate, starred }: { entry: any; navigate: (p: stri
           : "bg-[var(--color-warm-100)] border border-[var(--twin-hairline)] opacity-50 cursor-not-allowed"
       )}
     >
-      {/* Icon circle — Bento gradient */}
-      <div className={cn(
-        "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm",
-        entry.tone
-      )}>
+      {/* Icon circle — gradient via inline style (Tailwind JIT can't scan data files for dynamic classes) */}
+      <div
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm"
+        style={entry._toneGradient ? { background: entry._toneGradient } : undefined}
+      >
         {entry.icon}
       </div>
       <span className="text-[11px] font-medium text-[var(--color-slate-800)] leading-tight line-clamp-2">{entry.title}</span>
