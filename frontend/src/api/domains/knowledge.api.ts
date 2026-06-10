@@ -68,6 +68,12 @@ export async function fetchKnowledgeStats(): Promise<KnowledgeStats> {
   return res.data.data ?? { totalPages: 0, totalCategories: 0, totalTags: 0, lastUpdated: null };
 }
 
+// ── Import ──
+export async function importKnowledgePage(data: { categoryId: number; title: string; content: string; format: "markdown" | "html"; author: string }): Promise<KnowledgePage> {
+  const res = await adminHttp.post<Result<KnowledgePage>>("/knowledge/pages/import", data);
+  return res.data.data;
+}
+
 // ── Category CRUD ──
 export async function createKnowledgeCategory(data: { name: string; slug: string; icon?: string }): Promise<KnowledgeTreeNode> {
   const res = await adminHttp.post<Result<KnowledgeTreeNode>>("/knowledge/categories", data);

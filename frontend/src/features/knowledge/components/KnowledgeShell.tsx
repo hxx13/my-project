@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useKnowledgeShell } from "@/features/knowledge/hooks/useKnowledgeShell";
 import { useKnowledgeCategories } from "@/features/knowledge/hooks/useKnowledgeCategories";
 import { useKnowledgePage } from "@/features/knowledge/hooks/useKnowledgePage";
@@ -12,12 +13,14 @@ import { KnowledgeEditorPanel } from "./KnowledgeEditorPanel";
 import { KnowledgeGraphView } from "./KnowledgeGraphView";
 import { KnowledgeTimelineView } from "./KnowledgeTimelineView";
 import { KnowledgeHistoryDrawer } from "./KnowledgeHistoryDrawer";
+import { KnowledgeImportDialog } from "./KnowledgeImportDialog";
 import { BacklinksList } from "./BacklinksList";
-import { AlertTriangle, RefreshCw, Pencil, Clock } from "lucide-react";
+import { AlertTriangle, RefreshCw, Pencil, Clock, Upload } from "lucide-react";
 
 export function KnowledgeShell() {
   const shell = useKnowledgeShell();
   const { data: tree, isLoading, isError, error, refetch } = useKnowledgeCategories();
+  const [showImport, setShowImport] = useState(false);
   const { data: page } = useKnowledgePage(shell.selectedPageId);
 
   const renderCenter = () => {
@@ -42,11 +45,11 @@ export function KnowledgeShell() {
     );
   };
 
-  if (isLoading) return <div className="flex h-full flex-col bg-[var(--app-color-surface-page)]"><TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} /><div className="flex-1 flex items-center justify-center"><div className="text-sm text-[var(--app-color-text-tertiary)]">加载中…</div></div></div>;
+  if (isLoading) return <div className="flex h-full flex-col bg-[var(--app-color-surface-page)]"><TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} onImport={() => setShowImport(true)} /><div className="flex-1 flex items-center justify-center"><div className="text-sm text-[var(--app-color-text-tertiary)]">加载中…</div></div></div>;
 
   if (isError) return (
     <div className="flex h-full flex-col bg-[var(--app-color-surface-page)]">
-      <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} />
+      <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} onImport={() => setShowImport(true)} />
       <div className="flex-1 flex flex-col items-center justify-center">
         <AlertTriangle className="size-12 text-[var(--app-color-feedback-warning)]" />
         <h2 className="mt-4 text-lg font-semibold">加载失败</h2>
@@ -58,7 +61,7 @@ export function KnowledgeShell() {
 
   return (
     <div className="flex h-full flex-col bg-[var(--app-color-surface-page)] page-full-bleed">
-      <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} />
+      <TabBar view={shell.view} onViewChange={shell.setView} onNewDocument={() => shell.startEdit()} onImport={() => setShowImport(true)} />
       <div className="flex-1 min-h-0">
         <KnowledgeLayout
           sidebar={<KnowledgeCategoryTree tree={tree ?? []} onSelectPage={shell.selectPage} activePageId={shell.selectedPageId} onRefresh={refetch} />}
@@ -67,6 +70,7 @@ export function KnowledgeShell() {
         />
       </div>
       <KnowledgeHistoryDrawer open={shell.isHistoryOpen} pageId={shell.historyPageId} onClose={shell.closeHistory} onRollback={refetch} />
+      <KnowledgeImportDialog open={showImport} onClose={() => setShowImport(false)} onImported={refetch} />
     </div>
   );
 }

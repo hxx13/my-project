@@ -74,7 +74,7 @@ export function KnowledgeGraphView({ onSelectPage }: Props) {
   }, [graph, dims, handleClick]);
 
   return (
-    <div ref={containerRef} className="h-full w-full" style={{ background: "linear-gradient(135deg, #0a0f1a, #111827, #0d1520)" }}>
+    <div ref={containerRef} className="h-full w-full" style={{ background: "linear-gradient(135deg, #0a0f1a, #111827, #0d1520)", touchAction: "none" }}>
       <svg ref={svgRef} width={dims.w} height={dims.h} style={{ display: "block" }} />
       {tip && (
         <div className="fixed z-50 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2.5 shadow-lg text-[11px]" style={{ left: tip.x + 12, top: tip.y - 10, pointerEvents: "none" }}>

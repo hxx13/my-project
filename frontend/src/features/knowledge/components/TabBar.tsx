@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ShellView } from "@/features/knowledge/types";
 
@@ -12,9 +12,10 @@ interface Props {
   view: ShellView;
   onViewChange: (v: ShellView) => void;
   onNewDocument: () => void;
+  onImport: () => void;
 }
 
-export function TabBar({ view, onViewChange, onNewDocument }: Props) {
+export function TabBar({ view, onViewChange, onNewDocument, onImport }: Props) {
   return (
     <div className="flex items-center border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-2 h-9 shrink-0">
       {TABS.map(tab => (
@@ -31,7 +32,10 @@ export function TabBar({ view, onViewChange, onNewDocument }: Props) {
           {tab.label}
         </button>
       ))}
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1.5">
+        <button onClick={onImport} className="flex items-center gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] px-3 py-1 text-[11px] font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
+          <Upload className="size-3" />导入
+        </button>
         <button
           onClick={onNewDocument}
           className="flex items-center gap-1 rounded-[var(--app-radius-element)] bg-[var(--app-color-accent)] px-3 py-1 text-[11px] font-medium text-white hover:opacity-90"
