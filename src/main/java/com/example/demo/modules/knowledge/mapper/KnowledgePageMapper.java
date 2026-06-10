@@ -37,4 +37,15 @@ public interface KnowledgePageMapper {
 
     @Select("SELECT COUNT(*) FROM knowledge_pages WHERE category_id=#{categoryId} AND slug=#{slug}")
     int countByCategoryAndSlug(@Param("categoryId") Long categoryId, @Param("slug") String slug);
+
+    @Select("SELECT * FROM knowledge_pages ORDER BY updated_at DESC")
+    List<KnowledgePage> findAll();
+
+    @Select("SELECT * FROM knowledge_pages WHERE title=#{title} LIMIT 1")
+    KnowledgePage findByTitle(String title);
+
+    // findByCategoryId is a convenience alias for findByCategory
+    default List<KnowledgePage> findByCategoryId(Long categoryId) {
+        return findByCategory(categoryId);
+    }
 }

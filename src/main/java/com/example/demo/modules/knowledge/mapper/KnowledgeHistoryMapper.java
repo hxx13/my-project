@@ -21,4 +21,7 @@ public interface KnowledgeHistoryMapper {
 
     @Delete("DELETE FROM knowledge_history WHERE page_id = #{pageId}")
     int deleteByPageId(Long pageId);
+
+    @Select("SELECT * FROM knowledge_history ORDER BY created_at DESC LIMIT #{limit} OFFSET #{offset}")
+    List<KnowledgeHistory> findAll(@Param("limit") int limit, @Param("offset") int offset);
 }
