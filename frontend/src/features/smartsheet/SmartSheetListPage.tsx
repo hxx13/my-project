@@ -169,12 +169,19 @@ function SheetRow({ sheet, selected, onToggleSel, onOpen, onDelete, onRename, on
   onImportJson: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuDir, setMenuDir] = useState<'down' | 'up'>('down');
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(sheet.name);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
+    // Measure available space below the button; flip up if < 340px
+    if (menuBtnRef.current) {
+      const rect = menuBtnRef.current.getBoundingClientRect();
+      setMenuDir(window.innerHeight - rect.bottom < 340 ? 'up' : 'down');
+    }
     const h = (e: MouseEvent) => { if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false); };
     document.addEventListener('click', h);
     return () => document.removeEventListener('click', h);
@@ -205,12 +212,12 @@ function SheetRow({ sheet, selected, onToggleSel, onOpen, onDelete, onRename, on
 
       {/* ⋮ Dropdown */}
       <div className="relative shrink-0" ref={menuRef}>
-        <button onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+        <button ref={menuBtnRef} onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
           className="p-1.5 rounded-[8px] hover:bg-app-surface-hover transition-colors opacity-0 group-hover:opacity-100">
           <MoreVertical className="w-4 h-4 text-app-text-secondary" />
         </button>
         {menuOpen && (
-          <div className="absolute right-0 top-full mt-1 w-[200px] rounded-[12px] border border-app-border bg-app-surface-elevated shadow-lg py-1.5 z-[var(--z-dropdown)]">
+          <div className={`absolute right-0 w-[200px] rounded-[12px] border border-app-border bg-app-surface-elevated shadow-lg py-1.5 z-[var(--z-dropdown)] ${menuDir === 'down' ? 'top-full mt-1' : 'bottom-full mb-1'}`}>
             <MenuItem icon={Eye} label="打开" onClick={() => { onOpen(); setMenuOpen(false); }} />
             <MenuItem icon={Pencil} label="重命名" onClick={() => { setRenaming(true); setNameDraft(sheet.name); setMenuOpen(false); }} />
             <MenuItem icon={Copy} label="复制（空结构）" onClick={() => { onDuplicate(false); setMenuOpen(false); }} />

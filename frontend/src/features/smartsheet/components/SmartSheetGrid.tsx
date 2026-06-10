@@ -3,9 +3,9 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import type { ColumnDef, Row } from '@tanstack/react-table';
-import { Plus, Trash2, ArrowUp, ArrowDown, Copy } from 'lucide-react';
 import type { ColumnConfig, SmartSheetRow, LayoutMode, ColumnType } from '@/features/smartsheet/types';
 import type { ViewOptions } from '@/features/smartsheet/types';
+import SmartSheetContextMenu from './SmartSheetContextMenu';
 
 interface Props {
   columns: ColumnConfig[];
@@ -196,16 +196,17 @@ export default function SmartSheetGrid({
 
       {/* ── 右键菜单 ── */}
       {contextMenu && (
-        <div className="fixed z-[var(--z-dropdown)] rounded-[12px] border border-app-border bg-app-surface-elevated shadow-lg py-1.5 min-w-[160px]"
-             style={{ left: contextMenu.x, top: contextMenu.y }}>
-          <CtxItem icon={Plus} label="上方插入行" onClick={() => { onAddRow?.(contextMenu.rowId); setContextMenu(null); }} />
-          <CtxItem icon={Plus} label="下方插入行" onClick={() => { onAddRow?.(contextMenu.rowId); setContextMenu(null); }} />
-          <CtxItem icon={Copy} label="复制行" onClick={() => { onDuplicateRow?.(contextMenu.rowId); setContextMenu(null); }} />
-          <CtxItem icon={ArrowUp} label="上移" onClick={() => { onMoveRow?.(contextMenu.rowId, 'up'); setContextMenu(null); }} />
-          <CtxItem icon={ArrowDown} label="下移" onClick={() => { onMoveRow?.(contextMenu.rowId, 'down'); setContextMenu(null); }} />
-          <div className="h-px bg-app-border my-1" />
-          <CtxItem icon={Trash2} label="删除行" danger onClick={() => { onDeleteRows?.([contextMenu.rowId]); setContextMenu(null); }} />
-        </div>
+        <SmartSheetContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onInsertAbove={() => onAddRow?.(contextMenu.rowId)}
+          onInsertBelow={() => onAddRow?.(contextMenu.rowId)}
+          onDuplicate={() => onDuplicateRow?.(contextMenu.rowId)}
+          onMoveUp={() => onMoveRow?.(contextMenu.rowId, 'up')}
+          onMoveDown={() => onMoveRow?.(contextMenu.rowId, 'down')}
+          onDelete={() => onDeleteRows?.([contextMenu.rowId])}
+          onClose={() => setContextMenu(null)}
+        />
       )}
 
       {/* ── 撤销/重做 快捷键提示 ── */}
@@ -220,16 +221,6 @@ export default function SmartSheetGrid({
       {/* ── Keyboard undo/redo ── */}
       <UndoRedoHandler undoRedo={undoRedo} onCellEdit={onCellEdit} />
     </div>
-  );
-}
-
-function CtxItem({ icon: Icon, label, danger, onClick }: { icon: typeof Plus; label: string; danger?: boolean; onClick: () => void }) {
-  return (
-    <button onClick={onClick}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-[12px] transition-colors text-left
-        ${danger ? 'text-app-feedback-danger hover:bg-app-feedback-danger-soft' : 'text-app-text-secondary hover:bg-app-surface-hover'}`}>
-      <Icon className="w-3.5 h-3.5 shrink-0" /> {label}
-    </button>
   );
 }
 
