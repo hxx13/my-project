@@ -1,4 +1,6 @@
 // SmartSheetContextMenu — row-only context menu (insert/duplicate/move/delete)
+// Rendered via Portal to document.body to avoid parent transform issues with position:fixed
+import { createPortal } from 'react-dom';
 import { Plus, Copy, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 
 interface Props {
@@ -19,7 +21,7 @@ export default function SmartSheetContextMenu({
   onDuplicate, onMoveUp, onMoveDown,
   onDelete, onClose,
 }: Props) {
-  return (
+  return createPortal(
     <div
       className="fixed z-[var(--z-dropdown)] rounded-[12px] border border-app-border bg-app-surface-elevated shadow-lg py-1.5 min-w-[160px]"
       style={{
@@ -35,7 +37,8 @@ export default function SmartSheetContextMenu({
       <ContextItem icon={ArrowDown} label="下移" onClick={() => { onMoveDown(); onClose(); }} />
       <div className="h-px bg-app-border my-1" />
       <ContextItem icon={Trash2} label="删除行" danger onClick={() => { onDelete(); onClose(); }} />
-    </div>
+    </div>,
+    document.body
   );
 }
 
