@@ -195,14 +195,17 @@ function HomeCard({ entry, navigate, starred }: { entry: any; navigate: (p: stri
         {entry.icon}
       </div>
       <span className="text-[11px] font-medium text-[var(--color-slate-800)] leading-tight line-clamp-2">{entry.title}</span>
-      {/* Star toggle */}
-      <button
+      {/* Star toggle — div to avoid nested <button> error */}
+      <span
+        role="button"
+        tabIndex={0}
         onClick={(e) => { e.stopPropagation(); toggleAdminNavStar(entry.path); setIsStarred(!isStarred); }}
-        className={cn("absolute top-1 right-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity",
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); toggleAdminNavStar(entry.path); setIsStarred(!isStarred); } }}
+        className={cn("absolute top-1 right-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer",
           isStarred ? "opacity-100 text-[var(--color-peach-600)]" : "text-[var(--color-steel-400)] hover:text-[var(--color-peach-500)]")}
       >
         <Star className={cn("h-3.5 w-3.5", isStarred && "fill-[var(--color-peach-500)]")} />
-      </button>
+      </span>
     </button>
   );
 }
