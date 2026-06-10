@@ -1,27 +1,53 @@
 import { useState } from "react";
 import { useMaterialStatsOverview, useMaterialAuditTrail } from "@/api/hooks/useMaterial";
+import { exportMaterialAuditTrail } from "@/api/domains/material.api";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
 import DataSkeleton from "@/components/ui/DataSkeleton";
+import toast from "react-hot-toast";
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function MaterialAuditPage() {
   const [from, setFrom] = useState("2024-01-01");
   const [to, setTo] = useState("2099-12-31");
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
   const { data: overview, isLoading: overviewLoading } = useMaterialStatsOverview(from, to);
   const { data: trail, isLoading: trailLoading } = useMaterialAuditTrail({ from, to, page, size: 20 });
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const blob = await exportMaterialAuditTrail({ from, to });
+      downloadBlob(blob, `material-audit-${from}_${to}.xlsx`);
+      toast.success("导出成功");
+    } catch { toast.error("导出失败"); }
+    finally { setExporting(false); }
+  };
 
   return (
     <div className="space-y-6">
       <AdminSubPageHeader title="物资统计与审计" backTo="/admin/material/review" description="按学生与物品维度查看申领统计，审计流水支持时间区间筛选。" />
 
-      {/* 日期筛选 */}
-      <div className="flex gap-2 items-center text-sm">
+      {/* 日期筛选 + 导出 */}
+      <div className="flex gap-2 items-center text-sm flex-wrap">
         <label className="text-[var(--twin-mute)] text-xs">时间区间</label>
         <input type="date" value={from} onChange={e => setFrom(e.target.value)}
           className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" />
         <span className="text-[var(--twin-mute)]">至</span>
         <input type="date" value={to} onChange={e => setTo(e.target.value)}
           className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" />
+        <button type="button" onClick={handleExport} disabled={exporting}
+          className="ml-auto rounded-twin-sm bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
+          {exporting ? "导出中..." : "导出 Excel"}
+        </button>
       </div>
 
       {/* 概览卡片 */}

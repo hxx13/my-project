@@ -5,11 +5,16 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.material.dto.*;
+import com.example.demo.modules.material.service.MaterialExcelExportService;
 import com.example.demo.modules.material.service.MaterialService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -20,9 +25,13 @@ public class MaterialAdminController {
     private final AuthContextService authContextService;
     private final MaterialService materialService;
 
-    public MaterialAdminController(AuthContextService authContextService, MaterialService materialService) {
+    private final MaterialExcelExportService excelExportService;
+
+    public MaterialAdminController(AuthContextService authContextService, MaterialService materialService,
+                                    MaterialExcelExportService excelExportService) {
         this.authContextService = authContextService;
         this.materialService = materialService;
+        this.excelExportService = excelExportService;
     }
 
     @GetMapping("/categories")
@@ -197,6 +206,33 @@ public class MaterialAdminController {
                                                    @RequestParam(defaultValue = "1") int page,
                                                    @RequestParam(defaultValue = "20") int size) {
         return materialService.getAuditTrail(from, to, categoryId, groupId, page, size);
+    }
+
+    @GetMapping("/stats/export")
+    @Operation(summary = "导出审计流水Excel")
+    public ResponseEntity<byte[]> exportAuditTrailExcel(@RequestParam(defaultValue = "2000-01-01") String from,
+                                                         @RequestParam(defaultValue = "2099-12-31") String to,
+                                                         @RequestParam(required = false) Long categoryId,
+                                                         @RequestParam(required = false) String groupId) {
+        try {
+            Result<Map<String, Object>> result = materialService.getAuditTrail(from, to, categoryId, groupId, 1, 100000);
+            if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
+                return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN)
+                        .body("导出失败".getBytes(StandardCharsets.UTF_8));
+            }
+            @SuppressWarnings("unchecked")
+            List<MaterialAuditTrailView> rows = (List<MaterialAuditTrailView>) result.getData().get("data");
+            if (rows == null) rows = List.of();
+            byte[] body = excelExportService.buildAuditTrailSheet(rows);
+            String fn = "material-audit-" + from + "_" + to + ".xlsx";
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fn + "\"")
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .body(body);
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN)
+                    .body(("导出失败: " + ex.getMessage()).getBytes(StandardCharsets.UTF_8));
+        }
     }
 
     private User resolveUser(String auth) {

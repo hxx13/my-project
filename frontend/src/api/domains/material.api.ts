@@ -265,3 +265,13 @@ export async function fetchMaterialAuditTrail(params: {
   const res = await authHttp.get<Result<{ data: MaterialAuditTrailRow[]; total: number }>>("/material/admin/stats/audit", { params });
   return res.data.data;
 }
+
+export async function exportMaterialAuditTrail(params: {
+  from?: string; to?: string; categoryId?: number; groupId?: string;
+}): Promise<Blob> {
+  const res = await authHttp.get("/material/admin/stats/export", {
+    params,
+    responseType: "blob",
+  });
+  return res.data as Blob;
+}
