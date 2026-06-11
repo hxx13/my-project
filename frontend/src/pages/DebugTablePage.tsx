@@ -135,22 +135,22 @@ export default function DebugTablePage() {
     return (
         <div
             data-twin-debug-pipeline
-            className="box-border flex h-full flex-col overflow-y-auto bg-slate-50/50 p-8"
+            className="box-border flex h-full flex-col overflow-y-auto bg-[var(--app-color-surface-page)] p-8"
         >
 
-            <AdminToolbar className="mb-4 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto border-b border-slate-200 pb-4">
+            <AdminToolbar className="mb-4 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto border-b border-[var(--app-color-border-default)] pb-4">
                 <div className="min-w-0 max-w-[min(42vw,22rem)] shrink">
-                    <h1 className="flex items-center gap-2 truncate text-xl font-bold text-slate-800 sm:text-2xl sm:font-black">
+                    <h1 className="flex items-center gap-2 truncate text-xl font-bold text-[var(--app-color-text-primary)] sm:text-2xl sm:font-black">
                         <Filter className="h-6 w-6 shrink-0 text-indigo-500" />
                         进出流水
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 sm:text-xs">
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-0.5 text-[10px] font-bold text-[var(--app-color-text-secondary)] sm:text-xs">
                             条数 {statsData?.totalLogs ?? 0}
                         </span>
                         <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 sm:text-xs">
                             进入 {statsData?.totalEnter ?? 0}
                         </span>
                     </h1>
-                    <p className="truncate text-xs text-slate-500 sm:text-sm">
+                    <p className="truncate text-xs text-[var(--app-color-text-tertiary)] sm:text-sm">
                         数据源：过滤后的门禁流水。当前列表共 <span className="font-semibold text-indigo-600">{listData?.total || 0}</span> 条。
                     </p>
                 </div>
@@ -178,10 +178,10 @@ export default function DebugTablePage() {
                         }}
                         onSubmit={submitKeywordSearch}
                     />
-                    <div className="flex shrink-0 flex-nowrap items-center gap-1 rounded-xl border border-slate-200 bg-white px-2 py-1 shadow-sm sm:gap-2 sm:px-3">
-                        <button type="button" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2">◀</button>
-                        <span className="shrink-0 whitespace-nowrap text-xs font-bold text-slate-700 sm:text-sm">第 {page} / {totalPages || 1} 页</span>
-                        <button type="button" disabled={page === totalPages || totalPages === 0} onClick={() => setPage((p) => p + 1)} className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2">▶</button>
+                    <div className="flex shrink-0 flex-nowrap items-center gap-1 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 shadow-[var(--app-elevation-card)] sm:gap-2 sm:px-3">
+                        <button type="button" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="shrink-0 px-1 font-black text-[var(--app-color-accent)] disabled:text-[var(--app-color-text-tertiary)] sm:px-2">◀</button>
+                        <span className="shrink-0 whitespace-nowrap text-xs font-bold text-[var(--app-color-text-secondary)] sm:text-sm">第 {page} / {totalPages || 1} 页</span>
+                        <button type="button" disabled={page === totalPages || totalPages === 0} onClick={() => setPage((p) => p + 1)} className="shrink-0 px-1 font-black text-[var(--app-color-accent)] disabled:text-[var(--app-color-text-tertiary)] sm:px-2">▶</button>
                     </div>
                 </AdminToolbarActions>
             </AdminToolbar>
@@ -191,34 +191,34 @@ export default function DebugTablePage() {
                 onChange={setFilters}
                 onClear={clearFilters}
                 invalidateKeys={[["filteredDebugLogs"], ["filteredDebugStats"]]}
-                className="mb-4 shrink-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm !items-stretch"
+                className="mb-4 shrink-0 flex-col gap-3 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-4 shadow-[var(--app-elevation-card)] !items-stretch"
             />
 
             {/* 模块三：数据表格与分页 (保持不变) */}
             <div
                 data-twin-debug-pipeline-table
-                className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-md"
+                className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-card)]"
             >
                 <div className="flex-1 overflow-auto relative">
                     <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse relative">
-                        <thead className="bg-slate-100 text-slate-600 font-bold border-b-2 border-slate-300 sticky top-0 z-20 shadow-sm">
+                        <thead className="bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold border-b-2 border-[var(--app-color-border-strong)] sticky top-0 z-20 shadow-sm">
                         <tr>
                             <th className="p-4">时间</th>
                             <th className="p-4">姓名</th>
                             <th className="p-4">身份 / 课题组</th>
                             <th className="p-4">动作</th>
                             <th className="p-4">位置</th>
-                            <th className="p-4 min-w-[9rem] max-w-[12rem] whitespace-normal text-xs font-bold text-slate-700">操作来源</th>
+                            <th className="p-4 min-w-[9rem] max-w-[12rem] whitespace-normal text-xs font-bold text-[var(--app-color-text-secondary)]">操作来源</th>
                             <th className="p-4 min-w-[10rem] max-w-[14rem] whitespace-normal text-xs font-bold text-amber-900">离开触发原因</th>
-                            <th className="p-4 min-w-[7rem] whitespace-normal text-xs font-bold text-slate-700">领卡状态</th>
+                            <th className="p-4 min-w-[7rem] whitespace-normal text-xs font-bold text-[var(--app-color-text-secondary)]">领卡状态</th>
                             <th className="p-4 text-rose-600">延迟还卡</th>
                         </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="divide-y divide-[var(--app-color-border-default)]">
                         {isListLoading ? (
-                            <tr><td colSpan={9} className="p-10 text-center font-bold text-slate-400">正在按条件极速检索引擎...</td></tr>
+                            <tr><td colSpan={9} className="p-10 text-center font-bold text-[var(--app-color-text-tertiary)]">正在按条件极速检索引擎...</td></tr>
                         ) : displayData.length === 0 ? (
-                            <tr><td colSpan={9} className="p-10 text-center font-bold text-slate-400">未找到符合当前条件的流水。</td></tr>
+                            <tr><td colSpan={9} className="p-10 text-center font-bold text-[var(--app-color-text-tertiary)]">未找到符合当前条件的流水。</td></tr>
                         ) : (
                             displayData.map((log: any, index: number) => (
                                 (() => {
@@ -238,23 +238,23 @@ export default function DebugTablePage() {
                                     const rowKey = String(log.id ?? index);
                                     const exitExpanded = exitTriggerExpandedKeys.has(rowKey);
                                     return (
-                                <tr key={log.id || index} className="hover:bg-blue-50/40 transition-colors">
-                                    <td className="p-4 font-mono text-[11px] text-slate-500">{log.create_time}</td>
-                                    <td className="p-4 font-bold text-slate-800 text-base">{log.name}</td>
+                                <tr key={log.id || index} className="hover:bg-[var(--app-color-surface-hover)] transition-colors">
+                                    <td className="p-4 font-mono text-[11px] text-[var(--app-color-text-tertiary)]">{log.create_time}</td>
+                                    <td className="p-4 font-bold text-[var(--app-color-text-primary)] text-base">{log.name}</td>
                                     <td className="p-4">
                                         <div className="flex flex-col">
-                                            <span className="text-[10px] text-slate-400">{log.user_type_names}</span>
-                                            <span className="text-xs text-slate-700">{log.project_group_names}</span>
+                                            <span className="text-[10px] text-[var(--app-color-text-tertiary)]">{log.user_type_names}</span>
+                                            <span className="text-xs text-[var(--app-color-text-secondary)]">{log.project_group_names}</span>
                                         </div>
                                     </td>
                                     <td className="p-4">
                                         {log.accessType === 1 ? <span className="text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded text-xs border border-green-200">进入</span> :
                                             log.accessType === 2 ? <span className="text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded text-xs border border-rose-200">离开</span> :
-                                                <span className="text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded text-xs">未知</span>}
+                                                <span className="text-[var(--app-color-text-tertiary)] font-bold bg-[var(--app-color-surface-hover)] px-2 py-0.5 rounded text-xs">未知</span>}
                                     </td>
-                                    <td className="p-4 font-bold text-slate-700 text-xs">{log.area_name} - {log.room_name}</td>
-                                    <td className="p-4 align-top text-xs text-slate-700 max-w-[12rem] whitespace-normal break-words" title={opSrc}>{opSrc}</td>
-                                    <td className="p-4 align-top text-xs text-slate-600 max-w-[14rem] whitespace-normal break-words">
+                                    <td className="p-4 font-bold text-[var(--app-color-text-secondary)] text-xs">{log.area_name} - {log.room_name}</td>
+                                    <td className="p-4 align-top text-xs text-[var(--app-color-text-secondary)] max-w-[12rem] whitespace-normal break-words" title={opSrc}>{opSrc}</td>
+                                    <td className="p-4 align-top text-xs text-[var(--app-color-text-secondary)] max-w-[14rem] whitespace-normal break-words">
                                         <div className="break-words">{exitExpanded ? exitFull : exitPrev}</div>
                                         {exitMore && (
                                             <button
@@ -288,7 +288,7 @@ export default function DebugTablePage() {
                                         </div>
                                     </td>
                                     <td className="p-4">
-                                        {keepForExit ? <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded font-bold text-[10px] shadow-sm">延迟还卡</span> : <span className="text-slate-200">-</span>}
+                                        {keepForExit ? <span className="bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)] px-2 py-0.5 rounded font-bold text-[10px] shadow-sm">延迟还卡</span> : <span className="text-[var(--app-color-text-tertiary)]">-</span>}
                                     </td>
                                 </tr>
                                     );
