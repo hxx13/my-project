@@ -19,7 +19,8 @@ import { Z_INDEX } from "@/constants/zIndex";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { BizOverlayShell } from "./BizOverlayShell";
 import { checkPinStatus } from "./specialChannel.api";
-import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP } from "./scanPopupTheme";
+import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP, CHART_CARD } from "./scanPopupTheme";
+import { ScanLevelBadge } from "./ScanLevelBadge";
 
 const WeeklyRoutineMatrixChart = ({ predictions, gender }: { predictions: any[]; gender?: string | number | null }) => {
     const accent = resolveScanAccentCss(resolveScanAccentVariant(gender));
@@ -63,7 +64,7 @@ const WeeklyRoutineMatrixChart = ({ predictions, gender }: { predictions: any[];
     const entryPath = entryCurve.map((v, i) => `${getX(i)},${mapY(v)}`).join(" L ");
     const exitPath = exitCurve.map((v, i) => `${getX(i)},${mapY(v)}`).join(" L ");
     return (
-        <div className="w-full rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] p-4 shadow-[var(--app-elevation-modal)]">
+        <div className={`w-full ${CHART_CARD} p-4`}>
             <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-[var(--app-color-text-primary)] tracking-wider">预期核心在馆时间带</span>
                 <span
@@ -103,6 +104,7 @@ export function UiverseProfilePopup(props: PopupProps) {
     const { state, actions } = useProfilePopup(props);
     const canOperateRiskState = hasMinRole(authStorage.getRole(), "STAFF");
     const accentVariant = resolveScanAccentVariant(state.user?.gender);
+    const badgeAccent = resolveScanAccentCss(accentVariant);
     const popupMessage = (state.inlineMessage || executeErrorMessage || "").trim();
 
     // ============================================================
@@ -209,29 +211,12 @@ export function UiverseProfilePopup(props: PopupProps) {
                     <div className="grid min-h-0 w-full max-w-[1920px] flex-1 min-h-0 grid-cols-[25fr_50fr_25fr] gap-8 overflow-hidden">
                     <div className="flex flex-col h-full min-h-0 pt-6 pb-6 gap-4">
                         <div className="w-full h-[60px] mb-1">
-                            <div className="relative w-[280px] h-[52px] z-[200] flex items-center">
-                                <div className="relative w-12 h-12 rounded-full bg-[var(--app-color-surface-container)] border-2 border-[var(--app-color-accent)]/40 shadow-lg flex items-center justify-center z-20 shrink-0">
-                                    <div className="flex flex-col items-center justify-center -space-y-1">
-                                        <span className="text-[8px] font-bold text-[var(--app-color-text-tertiary)]">LV</span>
-                                        <span className="text-[var(--app-color-text-primary)] font-black text-base">{state.user?.rpg?.level ?? 0}</span>
-                                    </div>
-                                </div>
-                                <div className="relative flex-1 h-[40px] flex flex-col justify-between -ml-3 z-10 pt-0.5">
-                                    <div className="pl-5 z-30 flex items-center">
-                                        <span className="font-bold text-[var(--app-color-text-primary)] text-[12px] truncate">{state.user?.name || "未知人员"}</span>
-                                    </div>
-                                    <div className="relative flex h-[20px] items-center overflow-hidden rounded-r-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] pl-5 pr-2">
-                                        <div
-                                            className="absolute left-0 top-0 bottom-0 transition-all duration-500 z-0 opacity-40 bg-gradient-to-r from-[var(--app-color-accent)]/10 to-[var(--app-color-accent)]/30"
-                                            style={{ width: `${Math.max(0, Math.min(100, (((state.user?.rpg?.exp ?? 0) / Math.max(1, state.user?.rpg?.nextLevelExp ?? 100)) * 100)))}%` }}
-                                        />
-                                        <div className="relative z-20 flex w-full items-center justify-between">
-                                            <span className="text-[8px] font-black text-[var(--app-color-text-tertiary)] tracking-widest">EXP</span>
-                                            <span className="text-[9px] font-black font-mono text-[var(--app-color-text-primary)]">{state.user?.rpg?.exp ?? 0} <span className="text-[var(--app-color-text-tertiary)]">/ {state.user?.rpg?.nextLevelExp ?? 100}</span></span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            <ScanLevelBadge
+                                level={state.user?.rpg?.level ?? 0}
+                                exp={state.user?.rpg?.exp ?? 0}
+                                nextLevelExp={state.user?.rpg?.nextLevelExp ?? 100}
+                                name={state.user?.name || "未知人员"}
+                            />
                         </div>
                         <div className="basis-1/2 min-h-0">
                             <ProfileHeader user={state.user} isAvatarLoaded={state.isAvatarLoaded} globalUserState={state.globalUserState} onAvatarError={() => actions.setAvatarLoaded(false)} onOpenRiskModal={() => actions.setShowRiskModal(true)} />
