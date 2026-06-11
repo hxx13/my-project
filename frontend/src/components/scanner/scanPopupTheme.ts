@@ -1,4 +1,3 @@
-/** 扫码弹窗性别差异化强调色（暖桃 / 钢蓝），均引用设计令牌 */
 export type ScanAccentVariant = "warm" | "cool";
 
 export function resolveScanAccentVariant(gender?: string | number | null): ScanAccentVariant {
@@ -9,32 +8,94 @@ export function resolveScanAccentCss(variant: ScanAccentVariant) {
   const isWarm = variant === "warm";
   return {
     isWarm,
-    accent: isWarm ? "var(--color-peach-400)" : "var(--app-color-accent)",
-    accentStrong: isWarm ? "var(--color-peach-500)" : "var(--app-color-accent-hover)",
-    accentSoft: isWarm ? "var(--color-peach-950)" : "var(--app-color-accent-soft)",
-    strokeEntry: isWarm ? "var(--color-peach-400)" : "var(--color-steel-400)",
-    strokeExit: isWarm ? "var(--color-peach-600)" : "var(--color-steel-500)",
-    fillArea: isWarm ? "color-mix(in srgb, var(--color-peach-400) 16%, transparent)" : "color-mix(in srgb, var(--color-steel-400) 16%, transparent)",
-    gridStroke: "color-mix(in srgb, var(--app-color-border-default) 60%, transparent)",
+    accent: isWarm ? "#fbb9b6" : "#60a5fa",
+    accentStrong: isWarm ? "#fb7185" : "#3b82f6",
+    accentOnDark: isWarm ? "#fca5a5" : "#93c5fd",
+    strokeEntry: isWarm ? "#fb7185" : "#60a5fa",
+    strokeExit: isWarm ? "#f87171" : "#a78bfa",
+    fillArea: isWarm ? "rgba(251,113,133,0.18)" : "rgba(96,165,250,0.16)",
+    gridStroke: "rgba(255,255,255,0.06)",
   };
 }
 
-/** 弹窗遮罩：实色底 + 轻模糊，避免透出下层页面 */
+// ═══ 遮罩 ═══
 export const SCAN_POPUP_BACKDROP =
-  "bg-[var(--app-color-surface-page)] backdrop-blur-sm";
-
-/** 子弹窗遮罩：叠在扫码弹窗之上 */
+  "bg-[var(--app-color-surface-page)]/92 backdrop-blur-lg";
 export const SCAN_NESTED_BACKDROP =
-  "bg-[color-mix(in_srgb,var(--app-color-surface-page)_88%,transparent)] backdrop-blur-md";
+  "bg-black/30 backdrop-blur-md";
 
-/** 主面板卡片：最高 elevation，用于 ProfileHeader / StudentEntryCard / AIPredictionCard */
-export const SCAN_PANEL_CARD =
-  "rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] shadow-[var(--app-elevation-modal)]";
+// ═══ 组件专属暖色卡片 ═══
 
-/** 内部子卡片：嵌在面板内的次级容器 */
-export const SCAN_INNER_CARD =
-  "rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]";
+/** ProfileHeader — 白底 + 顶部桃色渐变装饰条 */
+export const PROFILE_CARD =
+  "rounded-[var(--app-radius-container)] bg-white dark:bg-[#1e1b18] shadow-[0_8px_32px_rgba(0,0,0,0.10)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.5)] border border-[var(--app-color-border-default)] relative overflow-hidden";
+/** ProfileHeader 顶部桃色装饰条 */
+export const PROFILE_TOP_BAR =
+  "absolute top-0 left-0 right-0 h-[3px] rounded-t-[var(--app-radius-container)]";
+export const PROFILE_TOP_BAR_STYLE = {
+  background: "linear-gradient(90deg, #FAD4C0, #f8b8a0, #fbb9b6)",
+};
 
-/** 玻璃态按钮底托：半透明 + 模糊 */
-export const SCAN_GLASS_TRAY =
-  "rounded-xl border border-white/[0.06] bg-[var(--app-color-surface-container)]/60 backdrop-blur-md";
+/** StudentEntryCard — 蜜色淡黄底 */
+export const STUDENT_CARD =
+  "rounded-[var(--app-radius-container)] bg-[#fffbeb] dark:bg-[#1c1814] shadow-[0_8px_32px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.5)] border border-amber-100 dark:border-amber-900/20";
+
+/** AIPredictionCard — 珊瑚橙色淡底 */
+export const AI_CARD =
+  "rounded-[var(--app-radius-container)] bg-[#fff7ed] dark:bg-[#1c1814] shadow-[0_8px_32px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.55)] border border-orange-100 dark:border-orange-900/20";
+
+/** 周曲线图卡 — 始终深暖棕底 */
+export const CHART_CARD =
+  "rounded-[var(--app-radius-container)] bg-[#1c1410] dark:bg-[#0f0b09] shadow-[0_8px_32px_rgba(0,0,0,0.35)] border border-amber-900/20";
+
+// ═══ 公告灵动岛 — 按类型着色 ═══
+
+export type NoticeKind = "announcement" | "violation" | "unbound";
+
+const NOTICE_COLORS: Record<NoticeKind, { border: string; badge: string; iconBg: string; iconText: string; tag: string }> = {
+  announcement: {
+    border: "border-rose-400/50 dark:border-rose-400/40",
+    badge: "text-rose-600 dark:text-rose-400",
+    iconBg: "bg-rose-400/15",
+    iconText: "text-rose-500 dark:text-rose-400",
+    tag: "text-rose-400/80",
+  },
+  violation: {
+    border: "border-amber-400/50 dark:border-amber-400/40",
+    badge: "text-amber-600 dark:text-amber-400",
+    iconBg: "bg-amber-400/15",
+    iconText: "text-amber-500 dark:text-amber-400",
+    tag: "text-amber-400/80",
+  },
+  unbound: {
+    border: "border-orange-400/50 dark:border-orange-400/40",
+    badge: "text-orange-600 dark:text-orange-400",
+    iconBg: "bg-orange-400/15",
+    iconText: "text-orange-500 dark:text-orange-400",
+    tag: "text-orange-400/80",
+  },
+};
+
+export function resolveNoticeColors(kind: NoticeKind) {
+  return NOTICE_COLORS[kind];
+}
+
+/** 公告 Island 按钮基类 */
+export const NOTICE_ISLAND_BASE =
+  "rounded-full bg-white/85 dark:bg-[#1e1b18]/90 backdrop-blur-md shadow-lg dark:shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all hover:shadow-xl active:scale-[0.98]";
+
+/** 公告弹窗面板 */
+export const NOTICE_PANEL =
+  "rounded-[var(--app-radius-container)] bg-white dark:bg-[#1e1b18] shadow-[0_16px_48px_rgba(0,0,0,0.15)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.6)] border border-[var(--app-color-border-default)]";
+
+/** 通行成功浮层 */
+export const ACCESS_NOTICE_CARD_BASE =
+  "rounded-[var(--app-radius-container)] bg-white dark:bg-[#1e1b18] shadow-[0_24px_80px_rgba(0,0,0,0.15)] dark:shadow-[0_24px_80px_rgba(0,0,0,0.7)]";
+
+/** 内部子元素行 */
+export const INNER_ROW =
+  "rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-page)] dark:bg-[var(--app-color-surface-page)] border border-[var(--app-color-border-default)]";
+
+/** 模式切换底托 */
+export const TOGGLE_TRAY =
+  "rounded-xl bg-[var(--app-color-surface-page)] border border-[var(--app-color-border-default)]";
