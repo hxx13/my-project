@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useModalOverlayOpen } from "@/lib/useModalOverlayOpen";
 import { fetchRetentionWarnings } from "@/api/twinApi";
 import { Activity, Clock, AlertTriangle, ShieldCheck } from "lucide-react";
 import { resolveLedgerIsOwnCard } from "@/utils/cardLedgerBadges";
@@ -26,6 +27,7 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
     const exactScrollTop = useRef(0);
     const scrollDirection = useRef<1 | -1>(1);
     const isScrollPaused = useRef(false);
+    const modalOverlayOpen = useModalOverlayOpen();
 
     useEffect(() => {
         const loadWarnings = async () => {
@@ -54,7 +56,7 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
 
     useEffect(() => {
         const container = scrollRef.current;
-        if (!container || warnings.length <= 4) {
+        if (!container || warnings.length <= 4 || modalOverlayOpen) {
             if (container) container.scrollTop = 0;
             return;
         }
@@ -69,7 +71,7 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
                 exactScrollTop.current = maxScroll;
             }
 
-            if (!isHovered && !isScrollPaused.current) {
+            if (!isHovered && !isScrollPaused.current && !modalOverlayOpen) {
                 exactScrollTop.current += 0.5 * scrollDirection.current;
 
                 if (exactScrollTop.current >= maxScroll) {
@@ -96,7 +98,7 @@ export function RetentionRadarStream({activeTab, setActiveTab}: {
 
         animationId = requestAnimationFrame(autoScroll);
         return () => cancelAnimationFrame(animationId);
-    }, [warnings, isHovered]);
+    }, [warnings, isHovered, modalOverlayOpen]);
 
     const displayList = warnings;
     const sf = useDashboardSciFiVisual();

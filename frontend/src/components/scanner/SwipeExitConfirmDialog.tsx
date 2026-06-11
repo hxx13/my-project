@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut } from "lucide-react";
 import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
 import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
+import { useTheme } from "@/features/theme/ThemeProvider";
 
 interface SwipeExitConfirmDialogProps {
     open: boolean;
@@ -29,6 +30,8 @@ export function SwipeExitConfirmDialog({
     autoSignoutState,
     onCountdownEnd,
 }: SwipeExitConfirmDialogProps) {
+    const { theme } = useTheme();
+    const isDark = theme.mode === 'dark';
     const [countdown, setCountdown] = useState<number | null>(null);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const hasEndedRef = useRef(false);
@@ -78,6 +81,7 @@ export function SwipeExitConfirmDialog({
     const countdownCopy = resolveAutoSignoutCountdownCopy(autoSignoutState);
 
     return createPortal(
+        <div className={`${theme.className} ${isDark ? 'dark' : ''}`}>
         <AnimatePresence>
             {open && (
                 <motion.div
@@ -181,7 +185,8 @@ export function SwipeExitConfirmDialog({
                     </motion.div>
                 </motion.div>
             )}
-        </AnimatePresence>,
+        </AnimatePresence>
+        </div>,
         document.body
     );
 }

@@ -6,6 +6,7 @@ import DebugNav from "@/features/dev-tools/DebugNav";
 import { TwinChromeContextMenu, type TwinChromeContextMenuPayload } from "@/features/twin-chrome/TwinChromeContextMenu";
 import { twinChromeGlobalPointerShouldBypass } from "@/features/twin-chrome/twinChromeGlobalPointerBypass";
 import { useTwinChromeTheme } from "@/features/twin-chrome/TwinChromeThemeContext";
+import { useTheme } from "@/features/theme/ThemeProvider";
 import "@/features/twin-chrome/twinChromeDebugOutlet.css";
 import "@/features/twin-chrome/twinChromeDebugPipeline.css";
 import "@/features/twin-chrome/twinChromeDebugNeonGlobal.css";
@@ -36,6 +37,8 @@ export default function TwinLayoutInner() {
     const { pathname } = useLocation();
     const showDock = !hideDockPath(pathname);
     const { themeId } = useTwinChromeTheme();
+    const { theme } = useTheme();
+    const isDark = theme.mode === 'dark';
     const [ctxMenu, setCtxMenu] = useState<TwinChromeContextMenuPayload | null>(null);
     const debugShell = isDebugShellPath(pathname);
     /** 驾驶舱页固定科幻壳；动物房页仍随 Twin 主题 dashboardSciFi 切换 */
@@ -82,7 +85,7 @@ export default function TwinLayoutInner() {
     }, [animalSciFiShell]);
 
     return (
-        <div className={cn("fixed inset-0 w-screen m-0 p-0 overflow-x-hidden", isPreview ? "min-h-screen overflow-y-auto" : "h-screen overflow-y-auto")} style={{ backgroundColor: isPreview ? "#0A0014" : "#f8f9fa" }}>
+        <div className={cn("fixed inset-0 w-screen m-0 p-0 overflow-x-hidden", theme.className, isDark && 'dark', isPreview ? "min-h-screen overflow-y-auto" : "h-screen overflow-y-auto")} style={{ backgroundColor: isPreview ? "#0A0014" : "#f8f9fa" }}>
             <style>{`
                 .nebula-bg {
                     overflow: clip;

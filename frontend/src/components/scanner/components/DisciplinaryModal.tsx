@@ -4,6 +4,7 @@ import { Loader2, PowerOff, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { DisciplinaryRecord } from "@/api/types/scanner";
 import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "../scanPopupTheme";
+import { useTheme } from "@/features/theme/ThemeProvider";
 
 interface DisciplinaryModalProps {
     isOpen: boolean;
@@ -23,6 +24,8 @@ export const DisciplinaryModal = ({
     onToggle,
     showStateToggle = true,
 }: DisciplinaryModalProps) => {
+    const { theme, } = useTheme();
+    const isDark = theme.mode === 'dark';
     const [isToggling, setIsToggling] = useState(false);
     const isBlocked = currentState === 3;
     if (!isOpen) return null;
@@ -35,6 +38,7 @@ export const DisciplinaryModal = ({
         }
     };
     return createPortal(
+        <div className={`${theme.className} ${isDark ? 'dark' : ''}`}>
         <motion.div {...SCAN_MODAL_LAYER_PROPS} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center ${SCAN_NESTED_BACKDROP}`}>
             <motion.div
                 initial={{ scale: 0.9, y: 20 }}
@@ -106,7 +110,8 @@ export const DisciplinaryModal = ({
                     </div>
                 ) : null}
             </motion.div>
-        </motion.div>,
+        </motion.div>
+        </div>,
         document.body
     );
 };

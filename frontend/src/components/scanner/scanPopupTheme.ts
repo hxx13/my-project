@@ -22,6 +22,7 @@ export function resolveScanAccentCss(variant: ScanAccentVariant) {
 /** 全屏遮罩：暖色渐变 + 强模糊，让白色组件立体凸起 */
 export const SCAN_POPUP_BACKDROP =
   "bg-[linear-gradient(135deg,rgba(255,245,230,0.94),rgba(254,243,199,0.92),rgba(255,247,237,0.93))] dark:bg-[linear-gradient(135deg,rgba(18,16,14,0.96),rgba(28,20,16,0.94),rgba(18,16,14,0.96))] backdrop-blur-lg [contain:paint]";
+/** 业务操作类弹窗（绑卡、disciplinary 等）用实色底；公告/违规/未绑卡详情见 ScanPopupNoticeBanner，无全屏遮罩 */
 export const SCAN_NESTED_BACKDROP =
   "bg-[var(--app-color-surface-page)] isolate [contain:paint]";
 
@@ -61,33 +62,83 @@ export type NoticeKind = "announcement" | "violation" | "unbound";
 
 const NOTICE_COLORS: Record<NoticeKind, { bg: string; border: string; badge: string; iconBg: string; iconText: string; tag: string }> = {
   announcement: {
-    bg: "bg-rose-50 dark:bg-rose-950/30",
-    border: "border-rose-400/50 dark:border-rose-400/40",
-    badge: "text-rose-600 dark:text-rose-400",
-    iconBg: "bg-rose-400/15",
-    iconText: "text-rose-500 dark:text-rose-400",
-    tag: "text-rose-400/80 dark:text-rose-300/70",
+    bg: "bg-rose-50 dark:bg-rose-950/40",
+    border: "border-rose-300 dark:border-rose-400/30",
+    badge: "text-rose-600 dark:text-rose-300",
+    iconBg: "bg-rose-100 dark:bg-rose-400/15",
+    iconText: "text-rose-500 dark:text-rose-300",
+    tag: "text-rose-400 dark:text-rose-300/70",
   },
   violation: {
-    bg: "bg-amber-50 dark:bg-amber-950/30",
-    border: "border-amber-400/50 dark:border-amber-400/40",
-    badge: "text-amber-600 dark:text-amber-400",
-    iconBg: "bg-amber-400/15",
-    iconText: "text-amber-500 dark:text-amber-400",
-    tag: "text-amber-400/80 dark:text-amber-300/70",
+    bg: "bg-amber-50 dark:bg-amber-950/40",
+    border: "border-amber-300 dark:border-amber-400/30",
+    badge: "text-amber-600 dark:text-amber-300",
+    iconBg: "bg-amber-100 dark:bg-amber-400/15",
+    iconText: "text-amber-500 dark:text-amber-300",
+    tag: "text-amber-400 dark:text-amber-300/70",
   },
   unbound: {
-    bg: "bg-orange-50 dark:bg-orange-950/30",
-    border: "border-orange-400/50 dark:border-orange-400/40",
-    badge: "text-orange-600 dark:text-orange-400",
-    iconBg: "bg-orange-400/15",
-    iconText: "text-orange-500 dark:text-orange-400",
-    tag: "text-orange-400/80 dark:text-orange-300/70",
+    bg: "bg-orange-50 dark:bg-orange-950/40",
+    border: "border-orange-300 dark:border-orange-400/30",
+    badge: "text-orange-600 dark:text-orange-300",
+    iconBg: "bg-orange-100 dark:bg-orange-400/15",
+    iconText: "text-orange-500 dark:text-orange-300",
+    tag: "text-orange-400 dark:text-orange-300/70",
   },
 };
 
 export function resolveNoticeColors(kind: NoticeKind) {
   return NOTICE_COLORS[kind];
+}
+
+/** 弹窗顶栏装饰条渐变 */
+export const NOTICE_ACCENT_GRADIENT: Record<NoticeKind, string> = {
+  announcement: "linear-gradient(90deg,#fb7185,#f43f5e)",
+  violation: "linear-gradient(90deg,#fbbf24,#f59e0b)",
+  unbound: "linear-gradient(90deg,#fb923c,#f97316)",
+};
+
+/** 弹窗底栏分隔线（按公告类型着色） */
+export const NOTICE_FOOTER_BORDER: Record<NoticeKind, string> = {
+  announcement: "border-rose-200/80 dark:border-rose-800/30",
+  violation: "border-amber-200 dark:border-amber-800/30",
+  unbound: "border-orange-200 dark:border-orange-800/30",
+};
+
+export type ScanPopupNoticeMeta = {
+  islandTag: string;
+  dialogCategory: string;
+  titleId: string;
+  emptyBodyHint: string;
+  imageAlt: string;
+};
+
+export function resolveScanPopupNoticeMeta(kind: NoticeKind): ScanPopupNoticeMeta {
+  if (kind === "announcement") {
+    return {
+      islandTag: "Notice",
+      dialogCategory: "系统公告",
+      titleId: "scan-announcement-title",
+      emptyBodyHint: "暂无正文内容。",
+      imageAlt: "公告附图",
+    };
+  }
+  if (kind === "unbound") {
+    return {
+      islandTag: "Unbound",
+      dialogCategory: "未绑卡提示",
+      titleId: "unbound-notice-title",
+      emptyBodyHint: "未填写文字说明，请查看附图或联系管理员。",
+      imageAlt: "未绑卡提示附图",
+    };
+  }
+  return {
+    islandTag: "Alert",
+    dialogCategory: "违规通告",
+    titleId: "violation-notice-title",
+    emptyBodyHint: "未填写文字说明，请查看附图或联系管理员。",
+    imageAlt: "违规附图",
+  };
 }
 
 /** 公告 Island 按钮基类（不含背景色——各类型自带 nc.bg） */
@@ -108,8 +159,8 @@ export const ACCESS_NOTICE_CARD_BASE =
 
 /** 内部子元素行 */
 export const INNER_ROW =
-  "rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-page)] dark:bg-[var(--app-color-surface-page)] border border-[var(--app-color-border-default)]";
+  "rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-page)] dark:bg-[#12100e] border border-[var(--app-color-border-default)] dark:border-white/5";
 
 /** 模式切换底托 */
 export const TOGGLE_TRAY =
-  "rounded-xl bg-[var(--app-color-surface-page)] border border-[var(--app-color-border-default)]";
+  "rounded-xl bg-slate-50 dark:bg-[#12100e] border border-slate-200 dark:border-white/10";

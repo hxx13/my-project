@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
 import { Z_INDEX } from "@/constants/zIndex";
 import { type ScanAccentVariant, SCAN_NESTED_BACKDROP, ACCESS_NOTICE_CARD_BASE } from "./scanPopupTheme";
+import { useTheme } from "@/features/theme/ThemeProvider";
 
 type Props = {
     open: boolean;
@@ -26,6 +27,8 @@ function resolveNoticeTheme(variant: ScanAccentVariant) {
 }
 
 export function ScanAccessNoticeOverlay({ open, message, durationMs, onDismiss, accentVariant = "cool" }: Props) {
+    const { theme: appTheme } = useTheme();
+    const isDark = appTheme.mode === 'dark';
     const theme = useMemo(() => resolveNoticeTheme(accentVariant), [accentVariant]);
 
     useEffect(() => {
@@ -37,6 +40,7 @@ export function ScanAccessNoticeOverlay({ open, message, durationMs, onDismiss, 
     if (typeof document === "undefined") return null;
 
     return createPortal(
+        <div className={`${appTheme.className} ${isDark ? 'dark' : ''}`}>
         <AnimatePresence>
             {open && message.trim() ? (
                 <motion.div
@@ -75,7 +79,8 @@ export function ScanAccessNoticeOverlay({ open, message, durationMs, onDismiss, 
                     </motion.div>
                 </motion.div>
             ) : null}
-        </AnimatePresence>,
+        </AnimatePresence>
+        </div>,
         document.body
     );
 }

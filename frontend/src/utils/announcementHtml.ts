@@ -1,7 +1,20 @@
 import DOMPurify from "dompurify";
 import { looksLikeMarkdown, renderMarkdownToSafeHtml, stripSimpleHtml } from "@/utils/markdownHtml";
 
-export { looksLikeMarkdown } from "@/utils/markdownHtml";
+export { looksLikeMarkdown, stripSimpleHtml } from "@/utils/markdownHtml";
+
+/** 富文本是否无实质内容（空标签、仅空白） */
+export function isRichTextEmpty(raw: string): boolean {
+  return stripSimpleHtml((raw || "").trim()).length === 0;
+}
+
+/** 列表/模板预览：剥离标签后的纯文本摘要 */
+export function richTextPlainPreview(raw: string, maxLen = 40): string {
+  const plain = stripSimpleHtml((raw || "").trim());
+  if (!plain) return "";
+  if (plain.length <= maxLen) return plain;
+  return `${plain.slice(0, maxLen)}…`;
+}
 
 export function prepareAnnouncementHtml(raw: string): string {
   const trimmed = (raw || "").trim();
@@ -19,6 +32,7 @@ export function prepareAnnouncementHtml(raw: string): string {
  * 不在内容层强制剥离边框/阴影，让公告 HTML 自带的元素
  * 可以保留视觉层次。彩色强调统一通过 --app-color-accent。
  */
+/** 扫码弹窗正文排版（公告、违规说明等共用） */
 export const SCAN_ANNOUNCEMENT_BODY_CLASS =
   "scan-announcement-body text-sm leading-relaxed text-[var(--app-color-text-primary)] " +
   /* 保留 pre/code 无背景适配暗色卡片 */

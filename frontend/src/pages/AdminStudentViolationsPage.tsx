@@ -43,6 +43,8 @@ import { AdminFilePickButton } from "@/components/admin/AdminFilePickButton";
 import { AdminPageTabs, AdminTabPanel } from "@/components/admin/AdminPageTabs";
 import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
+import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { isRichTextEmpty, richTextPlainPreview } from "@/utils/announcementHtml";
 import { Portal } from "@/components/Portal";
 import { cn } from "@/lib/utils";
 import { ScanPopupAnnouncementSection } from "@/features/admin/ScanPopupAnnouncementSection";
@@ -131,7 +133,7 @@ function ViolationTemplateQuickSelect({
   });
 
   const handleSave = async () => {
-    if (!currentText.trim()) return;
+    if (isRichTextEmpty(currentText)) return;
     setSaving(true);
     try {
       const { createViolationTextTemplate } = await import("@/api/domains/violationTextTemplate.api");
@@ -180,11 +182,13 @@ function ViolationTemplateQuickSelect({
                 <button
                   type="button"
                   className="flex-1 text-left text-xs truncate font-medium text-neutral-700"
-                  title={t.violationText}
+                  title={richTextPlainPreview(t.violationText, 120)}
                   onClick={() => { onSelect(t.violationText); setOpen(false); }}
                 >
                   {t.name}
-                  <span className="block text-[10px] text-neutral-400 truncate">{t.violationText.slice(0, 40)}{t.violationText.length > 40 ? "…" : ""}</span>
+                  <span className="block text-[10px] text-neutral-400 truncate">
+                    {richTextPlainPreview(t.violationText) || "（空）"}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -206,7 +210,7 @@ function ViolationTemplateQuickSelect({
             />
             <button
               type="button"
-              disabled={saving || !currentText.trim()}
+              disabled={saving || isRichTextEmpty(currentText)}
               className="shrink-0 text-[11px] font-bold px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
               onClick={handleSave}
             >
@@ -786,7 +790,7 @@ export default function AdminStudentViolationsPage() {
       // Save stranded violation config (keys must be snake_case for backend Map.get())
       await adminHttp.put("/twin/student-violations/stranded-config", {
         auto_signout_enabled: strandedAutoSignout,
-        violation_text_tpl: strandedViolationTpl,
+        violation_text_tpl: isRichTextEmpty(strandedViolationTpl) ? "" : strandedViolationTpl.trim(),
         forbid_enter: interactiveChallengeEnabled ? 1 : (strandedForbidEnter ? 1 : 0),
         expire_after_days: Number(strandedExpireDays) || 1,
         whitelist_depts: JSON.stringify(strandedWhitelistDepts),
@@ -942,14 +946,17 @@ export default function AdminStudentViolationsPage() {
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-[var(--twin-body)]">提示文案</label>
-            <textarea
-              className={cn(inputBase, "mt-1.5 min-h-[88px] resize-y")}
-              value={unboundText}
-              disabled={unboundLoading}
-              onChange={(e) => setUnboundText(e.target.value)}
-              placeholder="例如：您尚未绑定校园卡，请先完成绑卡…"
-            />
+            <label className="text-xs font-medium text-[var(--twin-body)]">提示文案（富文本）</label>
+            <div className="mt-1.5">
+              <RichTextEditor
+                value={unboundText}
+                onChange={setUnboundText}
+                disabled={unboundLoading || !unboundEnabled}
+              />
+            </div>
+            <p className="mt-1.5 text-[11px] text-[var(--twin-mute)]">
+              展示效果与「扫码弹窗公告」一致，支持插图与排版；历史纯文本配置仍可正常显示。
+            </p>
           </div>
           <div>
             <label className="text-xs font-medium text-[var(--twin-body)]">提示附图（可选）</label>
@@ -1251,12 +1258,12 @@ export default function AdminStudentViolationsPage() {
                 currentText={violationText}
               />
             </div>
-            <textarea
-              className={cn(inputBase, "mt-1.5 min-h-[100px] resize-y")}
-              value={violationText}
-              onChange={(e) => setViolationText(e.target.value)}
-              placeholder="违规内容，将展示在扫码弹窗"
-            />
+            <div className="mt-1.5">
+              <RichTextEditor value={violationText} onChange={setViolationText} />
+            </div>
+            <p className="mt-1.5 text-[11px] text-[var(--twin-mute)]">
+              支持富文本与插图，展示效果与「扫码弹窗公告」一致；历史纯文本记录仍可正常显示。
+            </p>
           </div>
 
           <div>
@@ -1400,21 +1407,22 @@ export default function AdminStudentViolationsPage() {
               <div>
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-medium text-[var(--twin-body)]">
-                    违规文案模板
+                    违规文案模板（富文本）
                   </label>
                   <ViolationTemplateQuickSelect
                     onSelect={(text) => setStrandedViolationTpl(text)}
                     currentText={strandedViolationTpl}
                   />
                 </div>
-                <textarea
-                  className={cn(inputBase, "mt-1.5 min-h-[60px] resize-y")}
-                  value={strandedViolationTpl}
-                  onChange={(e) => setStrandedViolationTpl(e.target.value)}
-                  placeholder={"${name}(${dept})滞留未签退，系统自动登记"}
-                />
-                <p className="mt-0.5 text-[10px] text-neutral-400">
-                  可用变量：{'${name}'} {'${dept}'} {'${date}'}
+                <div className="mt-1.5">
+                  <RichTextEditor
+                    value={strandedViolationTpl}
+                    onChange={setStrandedViolationTpl}
+                    disabled={strandedConfigLoading}
+                  />
+                </div>
+                <p className="mt-1.5 text-[11px] text-[var(--twin-mute)]">
+                  支持富文本与插图，展示效果与「扫码弹窗公告」一致；可用变量：{'${name}'}、{'${dept}'}、{'${date}'}（留空则使用系统默认文案）。
                 </p>
               </div>
 
@@ -1623,7 +1631,9 @@ export default function AdminStudentViolationsPage() {
                       <td className="px-3 py-2 font-mono text-xs text-[var(--twin-body)]">{r.id}</td>
                       <td className="px-3 py-2">
                         <div className="font-medium text-[var(--twin-ink)]">{personDisplayName(r)}</div>
-                        <div className="mt-1 line-clamp-2 max-w-[240px] text-xs text-[var(--twin-body)]">{r.violationText || "—"}</div>
+                        <div className="mt-1 line-clamp-2 max-w-[240px] text-xs text-[var(--twin-body)]">
+                          {richTextPlainPreview(r.violationText || "", 120) || "—"}
+                        </div>
                         {imgs.length ? (
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {imgs.slice(0, 3).map((u) => (
@@ -1748,11 +1758,9 @@ export default function AdminStudentViolationsPage() {
                     currentText={editText}
                   />
                 </div>
-                <textarea
-                  className={cn(inputBase, "mt-1.5 min-h-[88px] resize-y")}
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                />
+                <div className="mt-1.5">
+                  <RichTextEditor value={editText} onChange={setEditText} />
+                </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[var(--twin-body)]">图片</label>

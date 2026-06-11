@@ -38,20 +38,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [themeId, setThemeId]);
 
   useEffect(() => {
-    const root = document.documentElement;
-
-    // 清除所有主题 class
-    THEME_REGISTRY.forEach(t => root.classList.remove(t.className));
-
-    // 挂载当前主题 class
-    root.classList.add(theme.className);
-
-    // 同步 Tailwind darkMode
-    if (theme.mode === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
+    // Theme classes are now applied locally by consumers (TwinLayout, scanner portal)
+    // to avoid affecting admin pages. State is managed via context + localStorage.
   }, [theme]);
 
   return (

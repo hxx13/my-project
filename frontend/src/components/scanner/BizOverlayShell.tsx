@@ -8,6 +8,7 @@ import { useBizRegistry } from "./useBizRegistry";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import type { BizOverlayShellProps } from "./BizOverlayShell.types";
 import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
+import { useTheme } from "@/features/theme/ThemeProvider";
 
 /** Per-item error boundary — one biz item crash doesn't take down the overlay */
 class BizItemErrorBoundary extends Component<
@@ -31,6 +32,8 @@ class BizItemErrorBoundary extends Component<
 }
 
 export function BizOverlayShell({ userId, title, onCancel, className = "" }: BizOverlayShellProps) {
+  const { theme } = useTheme();
+  const isDark = theme.mode === 'dark';
   const { showKeypad, close, confirm, handlePinSuccess, setShowKeypad } =
     useBizOverlayShell(userId, onCancel);
   const { getItems } = useBizRegistry();
@@ -49,6 +52,7 @@ export function BizOverlayShell({ userId, title, onCancel, className = "" }: Biz
       )}
 
       {createPortal(
+        <div className={`${theme.className} ${isDark ? 'dark' : ''}`}>
         <AnimatePresence>
           <motion.div
             initial={{ opacity: 0 }}
@@ -101,7 +105,8 @@ export function BizOverlayShell({ userId, title, onCancel, className = "" }: Biz
               </div>
             </motion.div>
           </motion.div>
-        </AnimatePresence>,
+        </AnimatePresence>
+        </div>,
         document.body
       )}
     </>

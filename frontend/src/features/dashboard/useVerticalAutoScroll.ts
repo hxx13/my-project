@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useModalOverlayOpen } from "@/lib/useModalOverlayOpen";
 
 export type VerticalAutoScrollOptions = {
   pauseStartMs?: number;
@@ -56,9 +57,10 @@ export function useVerticalAutoScroll(
   } = opts;
   const onCycleCompleteRef = useRef(onCycleComplete);
   onCycleCompleteRef.current = onCycleComplete;
+  const modalOverlayOpen = useModalOverlayOpen();
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || modalOverlayOpen) return;
     const box = ref.current;
     if (!box) return;
 
@@ -158,5 +160,5 @@ export function useVerticalAutoScroll(
       alive = false;
       clearTimers();
     };
-  }, [ref, enabled, pauseStartMs, pauseEndMs, msPerPx, fallbackTimeoutMs, resetKey, mode, roundTrips]);
+  }, [ref, enabled, modalOverlayOpen, pauseStartMs, pauseEndMs, msPerPx, fallbackTimeoutMs, resetKey, mode, roundTrips]);
 }

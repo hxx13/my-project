@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useModalOverlayOpen } from "@/lib/useModalOverlayOpen";
 import { useQuery } from "@tanstack/react-query";
 import { fetchGroupRanking, fetchAnimalOrderRanking, fetchRankingPollConfig, ensureRankingSnapshot } from "@/api/twinApi";
 import { Trophy } from "lucide-react";
@@ -60,6 +61,7 @@ export function UnifiedRankingCard() {
   /** 自动滚动动画写入 scrollTop 时为 true，避免误判为用户手动滚动 */
   const isAutoScrollingRef = useRef(false);
   const AUTO_PLAY_RESUME_MS = 8000;
+  const modalOverlayOpen = useModalOverlayOpen();
 
   const pauseAutoPlay = useCallback(() => {
     setIsAutoPlaying(false);
@@ -236,7 +238,7 @@ export function UnifiedRankingCard() {
 
   useEffect(() => {
     const displayCount = activeTab === "activity" ? rest.length : rankedList.length;
-    if (!isAutoPlaying || displayCount <= 3) return;
+    if (!isAutoPlaying || modalOverlayOpen || displayCount <= 3) return;
     let active = true;
     let raf: number;
     let timeout: ReturnType<typeof setTimeout>;
@@ -282,7 +284,7 @@ export function UnifiedRankingCard() {
       clearTimeout(timeout);
       cancelAnimationFrame(raf);
     };
-  }, [isAutoPlaying, rest.length, rankedList.length, region, activeTab, advanceCycle]);
+  }, [isAutoPlaying, modalOverlayOpen, rest.length, rankedList.length, region, activeTab, advanceCycle]);
 
   const handleTabClick = useCallback((tab: TabKey) => {
     setActiveTab(tab);

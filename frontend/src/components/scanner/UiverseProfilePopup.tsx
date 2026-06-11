@@ -21,6 +21,7 @@ import { BizOverlayShell } from "./BizOverlayShell";
 import { checkPinStatus } from "./specialChannel.api";
 import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP, SCAN_MODAL_LAYER_PROPS, CHART_CARD } from "./scanPopupTheme";
 import { ScanLevelBadge } from "./ScanLevelBadge";
+import { useTheme } from "@/features/theme/ThemeProvider";
 
 const WeeklyRoutineMatrixChart = ({ predictions, gender }: { predictions: any[]; gender?: string | number | null }) => {
     const accent = resolveScanAccentCss(resolveScanAccentVariant(gender));
@@ -96,6 +97,8 @@ export function UiverseProfilePopup(props: PopupProps) {
     const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind, onViolationInteractiveVerified } = props;
     const { state, actions } = useProfilePopup(props);
     const canOperateRiskState = hasMinRole(authStorage.getRole(), "STAFF");
+    const { theme } = useTheme();
+    const isDark = theme.mode === 'dark';
     const accentVariant = resolveScanAccentVariant(state.user?.gender);
     const badgeAccent = resolveScanAccentCss(accentVariant);
     const popupMessage = (state.inlineMessage || executeErrorMessage || "").trim();
@@ -158,7 +161,7 @@ export function UiverseProfilePopup(props: PopupProps) {
         Boolean(onOpenStudentBind) && result.success !== false && result.hasPhysicalCardMapping !== true;
 
     return createPortal(
-        <>
+        <div className={`${theme.className} ${isDark ? 'dark' : ''}`}>
             <ScanAccessNoticeOverlay
                 open={Boolean(state.accessNotice?.message)}
                 message={state.accessNotice?.message ?? ""}
@@ -323,7 +326,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                     onCancel={() => setShowQuickActions(false)}
                 />
             )}
-        </>,
+        </div>,
         document.body
     );
 }

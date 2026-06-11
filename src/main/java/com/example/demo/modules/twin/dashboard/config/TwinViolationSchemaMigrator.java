@@ -48,6 +48,8 @@ public class TwinViolationSchemaMigrator {
                 "stranded_violation_config", "interactive_unlock_on_verify",
                 "ALTER TABLE stranded_violation_config ADD COLUMN interactive_unlock_on_verify TINYINT(1) NOT NULL DEFAULT 1 COMMENT '自动违规:交互验证完成后是否自动解除禁入'");
 
+        widenStrandedViolationTextTpl();
+
         System.out.println("[violation-schema] === 表结构检查完毕 ===");
     }
 
@@ -75,6 +77,48 @@ public class TwinViolationSchemaMigrator {
             jdbcTemplate.execute(sql);
         } catch (Exception e) {
             System.err.println("[violation-schema] DDL执行失败: " + e.getMessage());
+        }
+    }
+
+    /** 滞留违规文案模板支持富文本：VARCHAR(500) -> TEXT */
+    private void widenStrandedViolationTextTpl() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM information_schema.COLUMNS" +
+                            " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+                    Integer.class, "stranded_violation_config", "violation_text_tpl"
+            );
+            if (exists == null || exists <= 0) {
+                return;
+            }
+            String dataType = jdbcTemplate.queryForObject(
+                    "SELECT DATA_TYPE FROM information_schema.COLUMNS" +
+                            " WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+                    String.class, "stranded_violation_config", "violation_text_tpl"
+            );
+            if (!"varchar".equalsIgnoreCase(dataType)) {
+                System.out.println("[violation-schema] violation_text_tpl 已是非 VARCHAR，跳过加宽");
+                return;
+            }
+            Long maxLen = jdbcTemplate.queryForObject(
+                    """
+                    SELECT COALESCE(CHARACTER_MAXIMUM_LENGTH, 0)
+                    FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = 'stranded_violation_config'
+                      AND COLUMN_NAME = 'violation_text_tpl'
+                    """,
+                    Long.class
+            );
+            if (maxLen != null && maxLen > 0 && maxLen < 65535) {
+                safeExecute(
+                        "ALTER TABLE stranded_violation_config MODIFY COLUMN violation_text_tpl TEXT "
+                                + "DEFAULT '${name}(${dept})滞留未签退，系统自动登记' "
+                                + "COMMENT '违规文案模板（富文本 HTML，支持 ${name}/${dept}/${date} 变量）'");
+                System.out.println("[violation-schema] violation_text_tpl 已加宽至 TEXT");
+            }
+        } catch (Exception e) {
+            System.err.println("[violation-schema] violation_text_tpl 加宽失败: " + e.getMessage());
         }
     }
 }

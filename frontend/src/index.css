@@ -320,6 +320,12 @@ html[data-modal-scroll-lock] body {
   overscroll-behavior: none;
 }
 
+/* 全屏弹窗层：独立合成层，避免背后内容每帧穿透重绘 */
+[data-modal-layer="true"] {
+  isolation: isolate;
+  contain: paint;
+}
+
 [data-modal-scroll] {
   overscroll-behavior: contain;
 }

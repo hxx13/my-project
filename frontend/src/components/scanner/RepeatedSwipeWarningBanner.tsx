@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
 import { Z_INDEX } from "@/constants/zIndex";
 import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
+import { useTheme } from "@/features/theme/ThemeProvider";
 
 type Props = {
   message: string | null;
@@ -18,6 +19,8 @@ type Props = {
  * 居中警告窗，与违规通告/公告弹窗同级 (z-[100130])，显示倒计时秒数。
  */
 export function RepeatedSwipeWarningBanner({ message, triggerKey, blockedUntil }: Props) {
+  const { theme } = useTheme();
+  const isDark = theme.mode === 'dark';
   const [panelOpen, setPanelOpen] = useState(false);
   const lastKeyRef = useRef(triggerKey);
   const [remaining, setRemaining] = useState(0);
@@ -47,6 +50,7 @@ export function RepeatedSwipeWarningBanner({ message, triggerKey, blockedUntil }
   if (!message) return null;
 
   return createPortal(
+    <div className={`${theme.className} ${isDark ? 'dark' : ''}`}>
     <AnimatePresence>
       {panelOpen ? (
         <motion.div
@@ -96,7 +100,8 @@ export function RepeatedSwipeWarningBanner({ message, triggerKey, blockedUntil }
           </motion.div>
         </motion.div>
       ) : null}
-    </AnimatePresence>,
+    </AnimatePresence>
+    </div>,
     document.body,
   );
 }
