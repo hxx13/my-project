@@ -171,11 +171,13 @@ public class MaterialAdminController {
     }
 
     @GetMapping("/requests/all")
-    @Operation(summary = "全部申领记录")
+    @Operation(summary = "全部申领记录（支持按人员/课题组筛选）")
     public Result<Map<String, Object>> allRequests(@RequestParam(required = false) String status,
+                                                    @RequestParam(required = false) String applicantUserId,
+                                                    @RequestParam(required = false) String applicantGroup,
                                                     @RequestParam(defaultValue = "1") int page,
                                                     @RequestParam(defaultValue = "20") int size) {
-        return materialService.listAll(status, page, size);
+        return materialService.listAll(status, applicantUserId, applicantGroup, page, size);
     }
 
     @GetMapping("/requests/{id}")

@@ -16,11 +16,15 @@
     <select id="selectAll" resultType="com.example.demo.modules.material.entity.MaterialRequest">
         SELECT * FROM material_request WHERE deleted = 0
         <if test="status != null and status != ''">AND status = #{status}</if>
+        <if test="applicantUserId != null and applicantUserId != ''">AND user_id = #{applicantUserId}</if>
+        <if test="applicantGroup != null and applicantGroup != ''">AND applicant_group = #{applicantGroup}</if>
         ORDER BY created_at DESC LIMIT #{offset}, #{size}
     </select>
     <select id="countAll" resultType="int">
         SELECT COUNT(1) FROM material_request WHERE deleted = 0
         <if test="status != null and status != ''">AND status = #{status}</if>
+        <if test="applicantUserId != null and applicantUserId != ''">AND user_id = #{applicantUserId}</if>
+        <if test="applicantGroup != null and applicantGroup != ''">AND applicant_group = #{applicantGroup}</if>
     </select>
     <insert id="insert">
         INSERT INTO material_request (id, user_id, applicant_name, applicant_group, status, workflow_type)

@@ -12,8 +12,11 @@ public interface MaterialRequestMapper {
     List<MaterialRequest> selectByUserId(@Param("userId") String userId, @Param("status") String status,
                                           @Param("offset") int offset, @Param("size") int size);
     int countByUserId(@Param("userId") String userId, @Param("status") String status);
-    List<MaterialRequest> selectAll(@Param("status") String status, @Param("offset") int offset, @Param("size") int size);
-    int countAll(@Param("status") String status);
+    List<MaterialRequest> selectAll(@Param("status") String status, @Param("applicantUserId") String applicantUserId,
+                                     @Param("applicantGroup") String applicantGroup,
+                                     @Param("offset") int offset, @Param("size") int size);
+    int countAll(@Param("status") String status, @Param("applicantUserId") String applicantUserId,
+                  @Param("applicantGroup") String applicantGroup);
     int insert(MaterialRequest request);
     int updateStatus(@Param("id") String id, @Param("status") String status);
     int updateReview(@Param("id") String id, @Param("reviewerId") String reviewerId, @Param("status") String status);

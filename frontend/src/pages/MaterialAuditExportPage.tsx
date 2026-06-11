@@ -60,34 +60,31 @@ export default function MaterialAuditExportPage() {
   const [selectedItemId, setSelectedItemId] = useState<number | "">("");
   const [auditPage, setAuditPage] = useState(1);
 
-  // 数据加载
-  const { data: myData } = useQuery({
+  // 数据加载 — 个人审计：按 selectedUserId 服务端筛选
+  const queryUserId = tab === "personal" ? (isStaff ? selectedUserId : selfUserId) : undefined;
+  const queryGroup = tab === "group" ? selectedGroup : undefined;
+  const { data: queryData } = useQuery({
+    queryKey: ["material", "requests", "audit", { tab, applicantUserId: queryUserId, applicantGroup: queryGroup }],
+    queryFn: () => tab === "personal" && !isStaff
+      ? fetchMyMaterialRequests({ page: 1, size: 500 })
+      : fetchAllMaterialRequests({ page: 1, size: 500, applicantUserId: queryUserId, applicantGroup: queryGroup }),
+    enabled: tab !== "item",
+  });
+  const auditRequests: MaterialRequest[] = useMemo(() => {
+    const raw = queryData?.data ?? [];
+    return raw.filter(r => { const d = (r.createdAt || "").slice(0, 10); return d >= from && d <= to; });
+  }, [queryData, from, to]);
+
+  const currentRows = useMemo(() => {
+    return auditRequests.flatMap(r => (r.lines || []).map(l => ({ ...l, requestId: r.id, createdAt: r.createdAt, status: r.status, applicantName: r.applicantName, applicantGroup: r.applicantGroup })));
+  }, [auditRequests]);
+
+  // For dropdown lists — load all for selectors
+  const { data: myListData } = useQuery({
     queryKey: ["material", "requests", "mine", { page: 1, size: 500 }],
     queryFn: () => fetchMyMaterialRequests({ page: 1, size: 500 }),
+    enabled: !isStaff,
   });
-  const { data: allData } = useQuery({
-    queryKey: ["material", "requests", "all", { page: 1, size: 9999 }],
-    queryFn: () => fetchAllMaterialRequests({ page: 1, size: 9999 }),
-    enabled: isStaff,
-  });
-  const allRequests: MaterialRequest[] = useMemo(() => {
-    const raw = isStaff ? (allData?.data ?? []) : (myData?.data ?? []);
-    return raw.filter(r => { const d = (r.createdAt || "").slice(0, 10); return d >= from && d <= to; });
-  }, [allData, myData, isStaff, from, to]);
-
-  // 按个人筛选
-  const personalRows = useMemo(() => {
-    if (tab !== "personal") return [];
-    const source = selectedUserId && isStaff ? allRequests.filter(r => r.userId === selectedUserId) : allRequests.filter(r => r.userId === selfUserId);
-    return source.flatMap(r => (r.lines || []).map(l => ({ ...l, requestId: r.id, createdAt: r.createdAt, status: r.status, applicantName: r.applicantName, applicantGroup: r.applicantGroup })));
-  }, [tab, allRequests, selectedUserId, selfUserId, isStaff]);
-
-  // 按课题组筛选
-  const groupRows = useMemo(() => {
-    if (tab !== "group") return [];
-    const source = allRequests.filter(r => r.applicantGroup === selectedGroup);
-    return source.flatMap(r => (r.lines || []).map(l => ({ ...l, requestId: r.id, createdAt: r.createdAt, status: r.status, applicantName: r.applicantName, applicantGroup: r.applicantGroup })));
-  }, [tab, allRequests, selectedGroup]);
 
   // 按物品审计
   const { data: categories = [] } = useQuery({
@@ -110,9 +107,8 @@ export default function MaterialAuditExportPage() {
     return !k ? items : items.filter(it => String(it.name || "").toLowerCase().includes(k));
   }, [items, itemKeyword]);
 
-  const currentRows = tab === "personal" ? personalRows : tab === "group" ? groupRows : [];
   const currentLabel = tab === "personal"
-    ? (selectedUserId && isStaff ? (applicantList.find(a => a.userId === selectedUserId)?.applicantName || selectedUserId) : "本人")
+    ? (isStaff && selectedUserId ? (applicantList.find((a: any) => a.userId === selectedUserId)?.applicantName || selectedUserId) : "本人")
     : (selectedGroup || "未分配");
 
   const handleExport = async () => {

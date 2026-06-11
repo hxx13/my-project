@@ -34,7 +34,7 @@ public class MaterialPendingBadgeContributor implements PendingBadgeContributor 
         badgeCounters.put("materialRequest", mine);
 
         if (capabilityPolicyService.canProcess(user, BizDomains.MATERIAL_REQUEST)) {
-            int proc = requestMapper.countAll("PENDING");
+            int proc = requestMapper.countAll("PENDING", null, null);
             badgeCounters.put(BizDomains.MATERIAL_REQUEST + "_PROCESS", proc);
             badgeCounters.put("processMaterialRequest", proc);
         }

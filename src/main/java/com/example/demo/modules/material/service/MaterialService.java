@@ -314,10 +314,10 @@ public class MaterialService {
         return Result.success(result);
     }
 
-    public Result<Map<String, Object>> listAll(String status, int page, int size) {
+    public Result<Map<String, Object>> listAll(String status, String applicantUserId, String applicantGroup, int page, int size) {
         int offset = (page - 1) * size;
-        List<MaterialRequest> requests = requestMapper.selectAll(status, offset, size);
-        int total = requestMapper.countAll(status);
+        List<MaterialRequest> requests = requestMapper.selectAll(status, applicantUserId, applicantGroup, offset, size);
+        int total = requestMapper.countAll(status, applicantUserId, applicantGroup);
         Map<String, Object> result = new HashMap<>();
         result.put("data", requests.stream().map(this::toRequestView).collect(Collectors.toList()));
         result.put("total", total);
@@ -573,8 +573,8 @@ public class MaterialService {
                 .mapToLong(m -> ((Number) m.getOrDefault("total", 0)).longValue()).sum());
 
         // 通过率
-        int approved = requestMapper.countAll("APPROVED") + requestMapper.countAll("FULFILLED") + requestMapper.countAll("RECEIVED");
-        int rejected = requestMapper.countAll("REJECTED");
+        int approved = requestMapper.countAll("APPROVED", null, null) + requestMapper.countAll("FULFILLED", null, null) + requestMapper.countAll("RECEIVED", null, null);
+        int rejected = requestMapper.countAll("REJECTED", null, null);
         overview.setRefuseCount((long) rejected);
         overview.setPassRate((approved + rejected) > 0 ? (double) approved / (double) (approved + rejected) : 0.0);
 

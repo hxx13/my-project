@@ -254,7 +254,7 @@ export async function fetchPendingMaterialRequests() {
   return res.data.data;
 }
 
-export async function fetchAllMaterialRequests(params: { page: number; size: number; status?: string }) {
+export async function fetchAllMaterialRequests(params: { page: number; size: number; status?: string; applicantUserId?: string; applicantGroup?: string }) {
   const res = await authHttp.get<Result<{ data: MaterialRequest[]; total: number }>>("/material/admin/requests/all", { params });
   return res.data.data;
 }
