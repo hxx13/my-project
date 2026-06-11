@@ -15,23 +15,16 @@ type Props = {
 
 function resolveNoticeTheme(themeColor?: string) {
     const isPink = themeColor === "#fbb9b6";
-    if (isPink) {
-        return {
-            backdrop: "bg-[#050A15]/75 backdrop-blur-md",
-            card: "border-[#fbb9b6]/45 bg-gradient-to-b from-[#1a0a12]/98 via-[#0a0510]/98 to-[#050A15]/98 shadow-[0_24px_80px_rgba(0,0,0,0.7),0_0_48px_rgba(251,185,182,0.18)]",
-            iconWrap: "border-[#fbb9b6]/50 bg-[#fbb9b6]/12 shadow-[0_0_24px_rgba(251,185,182,0.25)]",
-            icon: "text-[#fbb9b6]",
-            text: "text-[#ffe8e6]",
-            label: "text-[#fbb9b6]/80",
-        };
-    }
+    const accentVar = isPink
+        ? "var(--app-color-feedback-danger)"
+        : "var(--app-color-accent)";
     return {
-        backdrop: "bg-[#050A15]/75 backdrop-blur-md",
-        card: "border-cyan-400/40 bg-gradient-to-b from-[#0a1228]/98 via-[#060d1c]/98 to-[#050A15]/98 shadow-[0_24px_80px_rgba(0,0,0,0.7),0_0_48px_rgba(45,92,247,0.22)]",
-        iconWrap: "border-cyan-400/45 bg-cyan-400/10 shadow-[0_0_24px_rgba(56,189,248,0.22)]",
-        icon: "text-cyan-300",
-        text: "text-slate-100",
-        label: "text-cyan-300/80",
+        backdrop: "bg-[var(--app-color-surface-page)]/75 backdrop-blur-md",
+        card: `border-[${accentVar}]/30 bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)]`,
+        iconWrap: `border-[${accentVar}]/30 bg-[${accentVar}]/8`,
+        icon: `text-[${accentVar}]`,
+        text: "text-[var(--app-color-text-primary)]",
+        label: `text-[${accentVar}]/70`,
     };
 }
 
@@ -65,7 +58,7 @@ export function ScanAccessNoticeOverlay({ open, message, durationMs, onDismiss, 
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.94, y: 8 }}
                         transition={{ type: "spring", stiffness: 420, damping: 26 }}
-                        className={`pointer-events-auto w-[min(92vw,520px)] rounded-3xl border px-10 py-9 text-center backdrop-blur-xl ${theme.card}`}
+                        className={`pointer-events-auto w-[min(92vw,520px)] rounded-[var(--app-radius-container)] border px-10 py-9 text-center backdrop-blur-xl ${theme.card}`}
                     >
                         <motion.div className="flex flex-col items-center gap-5">
                             <span
