@@ -676,14 +676,14 @@ export default function DebugCardMappingPage() {
                                     <DropdownMenuTrigger asChild>
                                         <button
                                             type="button"
-                                            className="inline-flex h-[var(--admin-control-height,2.25rem)] shrink-0 items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50"
+                                            className="inline-flex h-[var(--admin-control-height,2.25rem)] shrink-0 items-center gap-1 rounded-lg border border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-container)] px-3 text-xs font-bold text-[var(--app-color-text-secondary)] shadow-[var(--app-elevation-card)] hover:bg-[var(--app-color-surface-page)]"
                                         >
                                             <MoreHorizontal className="h-4 w-4" aria-hidden />
                                             本页操作
                                         </button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="min-w-[12rem]">
-                                        <DropdownMenuLabel className="text-xs text-slate-500">大华与风控</DropdownMenuLabel>
+                                        <DropdownMenuLabel className="text-xs text-[var(--app-color-text-tertiary)]">大华与风控</DropdownMenuLabel>
                                         {canCardIssue ? (
                                             <DropdownMenuItem onSelect={() => setIsAddModalOpen(true)}>大华发卡</DropdownMenuItem>
                                         ) : null}
@@ -703,7 +703,7 @@ export default function DebugCardMappingPage() {
                                         {canFreezeCfg ? (
                                             <>
                                                 <DropdownMenuSeparator />
-                                                <DropdownMenuLabel className="text-xs text-slate-500">冻结定时</DropdownMenuLabel>
+                                                <DropdownMenuLabel className="text-xs text-[var(--app-color-text-tertiary)]">冻结定时</DropdownMenuLabel>
                                                 <DropdownMenuItem disabled={freezeLoading} onSelect={() => setFreezeSlotModal(1)}>
                                                     定时一
                                                 </DropdownMenuItem>
@@ -724,7 +724,7 @@ export default function DebugCardMappingPage() {
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             ) : null}
-                            {freezeLoading ? <span className="hidden shrink-0 text-xs text-slate-400 sm:inline">配置加载中…</span> : null}
+                            {freezeLoading ? <span className="hidden shrink-0 text-xs text-[var(--app-color-text-tertiary)] sm:inline">配置加载中…</span> : null}
                             <AdminToolbarSearchField
                                 className="w-[min(42vw,14rem)] shrink-0 sm:w-56"
                                 placeholder="搜姓名、物理卡号或大华序号..."
@@ -735,22 +735,22 @@ export default function DebugCardMappingPage() {
                                 }}
                                 onSubmit={submitMappingSearch}
                             />
-                            <div className="flex shrink-0 flex-nowrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 shadow-sm sm:gap-3 sm:px-4">
-                                <button type="button" disabled={page === 1 || isSearching} onClick={() => setPage(p => p - 1)} className="font-black text-indigo-600 disabled:text-slate-300">◀</button>
-                                <span className="whitespace-nowrap text-xs font-bold text-slate-700 sm:text-sm">第 {isSearching ? '-' : page} / {isSearching ? '-' : totalPages || 1} 页</span>
-                                <button type="button" disabled={page === totalPages || totalPages === 0 || isSearching} onClick={() => setPage(p => p + 1)} className="font-black text-indigo-600 disabled:text-slate-300">▶</button>
+                            <div className="flex shrink-0 flex-nowrap items-center gap-2 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-1.5 shadow-[var(--app-elevation-card)] sm:gap-3 sm:px-4">
+                                <button type="button" disabled={page === 1 || isSearching} onClick={() => setPage(p => p - 1)} className="font-black text-indigo-600 disabled:text-[var(--app-color-text-tertiary)]">◀</button>
+                                <span className="whitespace-nowrap text-xs font-bold text-[var(--app-color-text-secondary)] sm:text-sm">第 {isSearching ? '-' : page} / {isSearching ? '-' : totalPages || 1} 页</span>
+                                <button type="button" disabled={page === totalPages || totalPages === 0 || isSearching} onClick={() => setPage(p => p + 1)} className="font-black text-indigo-600 disabled:text-[var(--app-color-text-tertiary)]">▶</button>
                             </div>
                         </AdminToolbarActions>
                     </AdminToolbar>
 
                     {isLoading && !isSearching ? (
-                        <div className="flex-1 flex justify-center items-center gap-3 text-xl font-bold text-slate-500">
+                        <div className="flex-1 flex justify-center items-center gap-3 text-xl font-bold text-[var(--app-color-text-tertiary)]">
                             <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" /> 正在加载映射矩阵...
                         </div>
                     ) : (
-                        <div className="flex-1 bg-white border border-slate-200 rounded-xl shadow-md overflow-auto relative pb-24">
+                        <div className="flex-1 bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] rounded-xl shadow-[var(--app-elevation-card)] overflow-auto relative pb-24">
                     <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
-                        <thead className="bg-slate-100 text-slate-700 font-bold border-b-2 border-slate-300 sticky top-0 z-20 shadow-sm">
+                        <thead className="bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold border-b-2 border-[var(--app-color-border-strong)] sticky top-0 z-20 shadow-[var(--app-elevation-card)]">
                         <tr>
                             <th className="p-4 w-16 text-center">状态</th>
                             <th className="p-4">绑定人员 (ARO)</th>
@@ -762,7 +762,7 @@ export default function DebugCardMappingPage() {
                             <th className="p-4 text-center w-20">操作</th>
                         </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
+                        <tbody className="divide-y divide-[var(--app-color-border-default)]">
                         {displayData.map((row, idx: number) => {
                             const isFrozen = row.cardStatus === 'FROZEN';
                             const isExempt =
@@ -785,22 +785,22 @@ export default function DebugCardMappingPage() {
                                         </button>
                                     </td>
                                     <td className="p-3">
-                                        <div className="font-black text-slate-800 text-base">{row.userName || '（人员库未匹配）'}</div>
-                                        <div className="font-mono text-xs text-slate-500 mt-1">ARO ID：{row.aroUserId || '—'}</div>
-                                        <div className="font-mono text-xs text-slate-400 mt-0.5">工号：{row.jobNumber || '—'}</div>
+                                        <div className="font-black text-[var(--app-color-text-primary)] text-base">{row.userName || '（人员库未匹配）'}</div>
+                                        <div className="font-mono text-xs text-[var(--app-color-text-tertiary)] mt-1">ARO ID：{row.aroUserId || '—'}</div>
+                                        <div className="font-mono text-xs text-[var(--app-color-text-tertiary)] mt-0.5">工号：{row.jobNumber || '—'}</div>
                                     </td>
-                                    <td className="p-3 text-sm text-slate-700 max-w-[200px] whitespace-normal">
+                                    <td className="p-3 text-sm text-[var(--app-color-text-secondary)] max-w-[200px] whitespace-normal">
                                         {row.projectGroupName || '—'}
                                     </td>
                                     <td className="p-3 font-mono font-bold text-indigo-600">
                                         {row.cardNo}
                                     </td>
                                     <td className="p-3">
-                                        <div className="flex items-center gap-2 bg-slate-100 text-slate-600 px-2 py-1 rounded w-fit font-mono text-xs border border-slate-200">
+                                        <div className="flex items-center gap-2 bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] px-2 py-1 rounded w-fit font-mono text-xs border border-[var(--app-color-border-default)]">
                                             <Link className="w-3 h-3" />
                                             {row.dahuaSeq}
                                         </div>
-                                        <div className="font-mono text-xs text-slate-500 mt-1">
+                                        <div className="font-mono text-xs text-[var(--app-color-text-tertiary)] mt-1">
                                             大华人员编码：{row.dahuaPersonCode || '—'}
                                         </div>
                                     </td>
@@ -818,23 +818,23 @@ export default function DebugCardMappingPage() {
                                                 setExemptModal({ cardNo: row.cardNo, userName: row.userName });
                                             }}
                                             disabled={toggleExemptMutation.isPending}
-                                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${isExempt ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'}`}
+                                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${isExempt ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] border border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)]'}`}
                                         >
                                             {isExempt ? '👑 已豁免' : '受控'}
                                         </button>
                                         ) : (
-                                            <span className="text-xs text-slate-400">{isExempt ? '已豁免' : '受控'}</span>
+                                            <span className="text-xs text-[var(--app-color-text-tertiary)]">{isExempt ? '已豁免' : '受控'}</span>
                                         )}
                                         {isExempt && exemptRemain ? (
                                             <div className="mt-1 text-[10px] text-amber-600 font-mono">{exemptRemain}</div>
                                         ) : null}
                                         {isExempt && row.freezeExemptExpireAt ? (
-                                            <div className="mt-0.5 text-[10px] text-slate-400 font-mono">
+                                            <div className="mt-0.5 text-[10px] text-[var(--app-color-text-tertiary)] font-mono">
                                                 至 {formatExemptExpireAt(row.freezeExemptExpireAt)}
                                             </div>
                                         ) : null}
                                     </td>
-                                    <td className="p-3 text-right font-mono text-xs text-slate-500">
+                                    <td className="p-3 text-right font-mono text-xs text-[var(--app-color-text-tertiary)]">
                                         {row.lastModifiedTime || '-'}
                                     </td>
                                     {/* 💥 新增：删除操作单元格 */}
@@ -847,7 +847,7 @@ export default function DebugCardMappingPage() {
                                                 }
                                             }}
                                             disabled={deleteMappingMutation.isPending}
-                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all active:scale-95 disabled:opacity-50"
+                                            className="p-2 text-[var(--app-color-text-tertiary)] hover:text-red-600 hover:bg-red-50 rounded-lg transition-all active:scale-95 disabled:opacity-50"
                                             title="解除物理映射"
                                         >
                                             {deleteMappingMutation.isPending && deleteMappingMutation.variables === row.cardNo ? (
@@ -862,7 +862,7 @@ export default function DebugCardMappingPage() {
                         })}
                         </tbody>
                     </table>
-                    {isSearching && displayData.length === 0 && <div className="p-10 text-center font-bold text-slate-500">未在映射矩阵中找到关联记录...</div>}
+                    {isSearching && displayData.length === 0 && <div className="p-10 text-center font-bold text-[var(--app-color-text-tertiary)]">未在映射矩阵中找到关联记录...</div>}
                         </div>
                     )}
 
@@ -872,27 +872,27 @@ export default function DebugCardMappingPage() {
                     role="presentation"
                 >
                     <div
-                        className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6"
+                        className="bg-[var(--app-color-surface-container)] rounded-2xl shadow-xl border border-[var(--app-color-border-default)] w-full max-w-md p-6"
                         onClick={(e) => e.stopPropagation()}
                         role="dialog"
                         aria-modal="true"
                     >
                         <div className="flex justify-between items-start mb-3">
-                            <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                            <h3 className="text-lg font-black text-[var(--app-color-text-primary)] flex items-center gap-2">
                                 <Clock className={`w-5 h-5 shrink-0 ${freezeSlotModal === 1 ? "text-indigo-600" : "text-violet-600"}`} />
                                 {freezeSlotModal === 1 ? "第一次定时冻结" : "第二次定时冻结"}
                             </h3>
-                            <button type="button" onClick={() => setFreezeSlotModal(null)} className="p-1 rounded-full hover:bg-slate-100" aria-label="关闭">
-                                <X className="w-5 h-5 text-slate-500" />
+                            <button type="button" onClick={() => setFreezeSlotModal(null)} className="p-1 rounded-full hover:bg-[var(--app-color-surface-hover)]" aria-label="关闭">
+                                <X className="w-5 h-5 text-[var(--app-color-text-tertiary)]" />
                             </button>
                         </div>
-                        <p className="text-xs text-slate-500 mb-4">
+                        <p className="text-xs text-[var(--app-color-text-tertiary)] mb-4">
                             时区固定为 {FREEZE_TIMEZONE_CN}（中国），与服务器解释一致。
                         </p>
 
                         {freezeSlotModal === 1 && (
                             <>
-                                <label className="flex items-center gap-2 text-sm text-slate-700 mb-3 cursor-pointer">
+                                <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] mb-3 cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={freezeForm.enabled}
@@ -900,7 +900,7 @@ export default function DebugCardMappingPage() {
                                     />
                                     启用每日自动冻结
                                 </label>
-                                <label className="flex items-center gap-2 text-sm text-slate-700 mb-4 cursor-pointer">
+                                <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] mb-4 cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={freezeForm.dailyExemptRevokeAutoSignoutEnabled}
@@ -917,7 +917,7 @@ export default function DebugCardMappingPage() {
                         )}
 
                         {freezeSlotModal === 2 && (
-                            <label className="flex items-center gap-2 text-sm text-slate-700 mb-4 cursor-pointer">
+                            <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] mb-4 cursor-pointer">
                                 <input
                                     type="checkbox"
                                     checked={freezeForm.secondFreezeAutoSignoutEnabled}
@@ -929,11 +929,11 @@ export default function DebugCardMappingPage() {
                             </label>
                         )}
 
-                        <label className="block text-xs font-bold text-slate-600 mb-2">
+                        <label className="block text-xs font-bold text-[var(--app-color-text-secondary)] mb-2">
                             {freezeSlotModal === 1 ? "第一次触发时刻" : "第二次触发时刻"}
                         </label>
                         <select
-                            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono mb-4 bg-white"
+                            className="w-full border border-[var(--app-color-border-default)] rounded-xl px-3 py-2.5 text-sm font-mono mb-4 bg-[var(--app-color-surface-container)]"
                             value={freezeSlotModal === 1 ? (freezeForm.freezeTime || "18:00") : (freezeForm.secondFreezeTime || "")}
                             onChange={(e) => {
                                 const v = e.target.value;
@@ -952,10 +952,10 @@ export default function DebugCardMappingPage() {
                             ))}
                         </select>
 
-                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                        <div className="flex justify-end gap-2 pt-2 border-t border-[var(--app-color-border-default)]">
                             <button
                                 type="button"
-                                className="px-4 py-2 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200"
+                                className="px-4 py-2 rounded-xl text-sm font-bold text-[var(--app-color-text-secondary)] bg-[var(--app-color-surface-hover)] hover:bg-[var(--app-color-surface-hover)]"
                                 onClick={() => setFreezeSlotModal(null)}
                             >
                                 取消
@@ -981,32 +981,32 @@ export default function DebugCardMappingPage() {
                     role="presentation"
                 >
                     <div
-                        className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm p-6"
+                        className="bg-[var(--app-color-surface-container)] rounded-2xl shadow-xl border border-[var(--app-color-border-default)] w-full max-w-sm p-6"
                         onClick={(e) => e.stopPropagation()}
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="exempt-duration-title"
                     >
                         <div className="flex justify-between items-start mb-4">
-                            <h3 id="exempt-duration-title" className="text-lg font-black text-slate-800">
+                            <h3 id="exempt-duration-title" className="text-lg font-black text-[var(--app-color-text-primary)]">
                                 选择豁免时效
                             </h3>
-                            <button type="button" onClick={() => setExemptModal(null)} className="p-1 rounded-full hover:bg-slate-100" aria-label="关闭">
-                                <X className="w-5 h-5 text-slate-400" />
+                            <button type="button" onClick={() => setExemptModal(null)} className="p-1 rounded-full hover:bg-[var(--app-color-surface-hover)]" aria-label="关闭">
+                                <X className="w-5 h-5 text-[var(--app-color-text-tertiary)]" />
                             </button>
                         </div>
-                        <p className="text-sm text-slate-600 mb-4">
+                        <p className="text-sm text-[var(--app-color-text-secondary)] mb-4">
                             卡号 <span className="font-mono font-bold text-indigo-600">{exemptModal.cardNo}</span>
                             {exemptModal.userName ? ` · ${exemptModal.userName}` : ""}
                         </p>
-                        <p className="text-xs text-slate-500 mb-3">到期后将自动取消豁免。</p>
+                        <p className="text-xs text-[var(--app-color-text-tertiary)] mb-3">到期后将自动取消豁免。</p>
                         <div className="flex flex-col gap-2">
                             {EXEMPT_DURATION_PRESETS.map((preset) => (
                                 <button
                                     key={preset.durationMinutes}
                                     type="button"
                                     disabled={toggleExemptMutation.isPending}
-                                    className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800 disabled:opacity-50 transition-colors"
+                                    className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-[var(--app-color-text-secondary)] bg-[var(--app-color-surface-page)] border border-[var(--app-color-border-default)] hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800 disabled:opacity-50 transition-colors"
                                     onClick={() =>
                                         toggleExemptMutation.mutate({
                                             cardNo: exemptModal.cardNo,
@@ -1028,33 +1028,33 @@ export default function DebugCardMappingPage() {
                     role="presentation"
                 >
                     <div
-                        className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-6"
+                        className="bg-[var(--app-color-surface-container)] rounded-2xl shadow-xl border border-[var(--app-color-border-default)] w-full max-w-md p-6"
                         onClick={(e) => e.stopPropagation()}
                         role="dialog"
                         aria-modal="true"
                     >
                         <div className="flex justify-between items-start mb-3">
-                            <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                            <h3 className="text-lg font-black text-[var(--app-color-text-primary)] flex items-center gap-2">
                                 <ShieldAlert className="w-5 h-5 shrink-0 text-amber-600" />
                                 扫码门禁联动
                             </h3>
-                            <button type="button" onClick={() => setLinkageModalOpen(false)} className="p-1 rounded-full hover:bg-slate-100" aria-label="关闭">
-                                <X className="w-5 h-5 text-slate-500" />
+                            <button type="button" onClick={() => setLinkageModalOpen(false)} className="p-1 rounded-full hover:bg-[var(--app-color-surface-hover)]" aria-label="关闭">
+                                <X className="w-5 h-5 text-[var(--app-color-text-tertiary)]" />
                             </button>
                         </div>
-                        <p className="text-xs text-slate-500 mb-4">
+                        <p className="text-xs text-[var(--app-color-text-tertiary)] mb-4">
                             权限类开关控制大华 batch 下发/回收；冻融类开关控制物理卡解冻/冻结（与权限开关正交）。关闭离开冻结不影响定时跑批冻结任务。
                         </p>
                         {linkageLoading ? (
-                            <div className="text-sm text-slate-500 flex items-center gap-2 py-4">
+                            <div className="text-sm text-[var(--app-color-text-tertiary)] flex items-center gap-2 py-4">
                                 <Loader2 className="w-4 h-4 animate-spin" /> 加载中…
                             </div>
                         ) : (
                             <div className="space-y-4 mb-4">
                                 <div>
-                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">确认弹窗</p>
+                                    <p className="text-[11px] font-bold text-[var(--app-color-text-tertiary)] uppercase tracking-wide mb-2">确认弹窗</p>
                                     <div className="space-y-2 bg-amber-50/60 border border-amber-200 rounded-lg p-3">
-                                        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                        <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
                                             <input
                                                 type="checkbox"
                                                 checked={linkageForm.swipeExitSkipConfirm}
@@ -1062,15 +1062,15 @@ export default function DebugCardMappingPage() {
                                             />
                                             二次刷卡离开跳过确认
                                         </label>
-                                        <p className="text-[11px] text-slate-500 leading-snug ml-6">
+                                        <p className="text-[11px] text-[var(--app-color-text-tertiary)] leading-snug ml-6">
                                             开启后，已进入状态再次扫码将直接执行离开，不弹出确认对话框。
                                         </p>
                                     </div>
                                 </div>
                                 <div>
-                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">权限（大华门禁规则）</p>
+                                    <p className="text-[11px] font-bold text-[var(--app-color-text-tertiary)] uppercase tracking-wide mb-2">权限（大华门禁规则）</p>
                                     <div className="space-y-2">
-                                        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                        <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
                                             <input
                                                 type="checkbox"
                                                 checked={linkageForm.enterDispatchEnabled}
@@ -1078,7 +1078,7 @@ export default function DebugCardMappingPage() {
                                             />
                                             进入时执行门禁规则（大华权限下发）
                                         </label>
-                                        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                        <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
                                             <input
                                                 type="checkbox"
                                                 checked={linkageForm.exitDispatchEnabled}
@@ -1089,9 +1089,9 @@ export default function DebugCardMappingPage() {
                                     </div>
                                 </div>
                                 <div>
-                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">冻融（物理卡 / 大华人员状态）</p>
+                                    <p className="text-[11px] font-bold text-[var(--app-color-text-tertiary)] uppercase tracking-wide mb-2">冻融（物理卡 / 大华人员状态）</p>
                                     <div className="space-y-2">
-                                        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                        <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
                                             <input
                                                 type="checkbox"
                                                 checked={linkageForm.enterUnfreezeEnabled}
@@ -1099,7 +1099,7 @@ export default function DebugCardMappingPage() {
                                             />
                                             进入时解冻物理卡（大华人员解冻）
                                         </label>
-                                        <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                                        <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
                                             <input
                                                 type="checkbox"
                                                 checked={linkageForm.exitFreezeEnabled}
@@ -1114,10 +1114,10 @@ export default function DebugCardMappingPage() {
                                 </p>
                             </div>
                         )}
-                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                        <div className="flex justify-end gap-2 pt-2 border-t border-[var(--app-color-border-default)]">
                             <button
                                 type="button"
-                                className="px-4 py-2 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200"
+                                className="px-4 py-2 rounded-xl text-sm font-bold text-[var(--app-color-text-secondary)] bg-[var(--app-color-surface-hover)] hover:bg-[var(--app-color-surface-hover)]"
                                 onClick={() => setLinkageModalOpen(false)}
                             >
                                 取消
@@ -1139,7 +1139,7 @@ export default function DebugCardMappingPage() {
                     role="presentation"
                 >
                     <div
-                        className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-black/[0.06]"
+                        className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-[var(--app-color-surface-container)] shadow-xl ring-1 ring-black/[0.06]"
                         onClick={(e) => e.stopPropagation()}
                         role="dialog"
                         aria-modal="true"
@@ -1193,7 +1193,7 @@ export default function DebugCardMappingPage() {
 
                             {/* 豪华预检悬浮框 (悬浮在表单上方，不撑开原有高度) */}
                             {searchUserResult.length > 0 && (
-                                <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[220px] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-1 shadow-lg">
+                                <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[220px] overflow-y-auto rounded-lg border border-neutral-200 bg-[var(--app-color-surface-container)] p-1 shadow-lg">
                                     {searchUserResult.map((rawPerson: any) => {
                                         // 融合你的暴力提取逻辑，确保绝不报错
                                         const safeId = rawPerson.userid || rawPerson.user_id || rawPerson.id || '';
@@ -1214,12 +1214,12 @@ export default function DebugCardMappingPage() {
                                                 }}
                                             >
                                                 <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-neutral-200 bg-neutral-100">
-                                                    {headSrc ? <img src={headSrc} className="w-full h-full object-cover" /> : <User className="w-4 h-4 text-slate-400" />}
+                                                    {headSrc ? <img src={headSrc} className="w-full h-full object-cover" /> : <User className="w-4 h-4 text-[var(--app-color-text-tertiary)]" />}
                                                 </div>
                                                 <div className="flex-1 overflow-hidden flex flex-col justify-center">
                                                     <div className="flex justify-between items-center">
                                                         <span className="truncate text-sm font-medium text-neutral-900">{safeName}</span>
-                                                        <span className="text-[10px] font-mono text-slate-400">{safeId}</span>
+                                                        <span className="text-[10px] font-mono text-[var(--app-color-text-tertiary)]">{safeId}</span>
                                                     </div>
                                                     <span className="mt-0.5 truncate text-xs text-neutral-500">{safeGroup}</span>
                                                 </div>
@@ -1286,12 +1286,12 @@ export default function DebugCardMappingPage() {
                         <AdminFormCard title="3. 所属部门" description="结构树选择部门，departmentType 固定传 1。">
                         <label className={adminLabelClass}>部门树</label>
                         <div className="flex items-center gap-2 mb-2">
-                            <div className="flex-1 text-xs text-slate-500">
+                            <div className="flex-1 text-xs text-[var(--app-color-text-tertiary)]">
                                 已选部门ID：{bindForm.departmentId || ""}
                             </div>
                             <button
                                 type="button"
-                                className="px-2 py-1 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100"
+                                className="px-2 py-1 text-xs rounded-lg border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
                                 onClick={async () => {
                                     await refreshDahuaDepartments();
                                     const deptRes = await fetchDahuaDepartments(1, 500, "");
@@ -1303,7 +1303,7 @@ export default function DebugCardMappingPage() {
                                 刷新
                             </button>
                         </div>
-                        <div className="border-2 border-slate-200 rounded-xl p-2 mb-4 max-h-[220px] overflow-auto bg-white">
+                        <div className="border-2 border-[var(--app-color-border-default)] rounded-xl p-2 mb-4 max-h-[220px] overflow-auto bg-[var(--app-color-surface-container)]">
                             {departmentTreeGrouped.roots.map((root) => {
                                 const renderNode = (node: DahuaDepartmentRow, depth: number) => {
                                     const nodeId = Number(node.id);
@@ -1313,13 +1313,13 @@ export default function DebugCardMappingPage() {
                                     return (
                                         <div key={node.id} className="mb-1">
                                             <div
-                                                className={`flex items-center gap-2 py-1 px-1 rounded text-sm ${checked ? "bg-indigo-50 text-indigo-700" : "text-slate-700 hover:bg-slate-50"}`}
+                                                className={`flex items-center gap-2 py-1 px-1 rounded text-sm ${checked ? "bg-indigo-50 text-indigo-700" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-page)]"}`}
                                                 style={{ marginLeft: `${depth * 18}px` }}
                                             >
                                                 {children.length > 0 ? (
                                                     <button
                                                         type="button"
-                                                        className="w-5 h-5 text-xs rounded border border-slate-200 hover:bg-slate-100"
+                                                        className="w-5 h-5 text-xs rounded border border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)]"
                                                         onClick={() => toggleDeptExpanded(nodeId)}
                                                     >
                                                         {open ? "▾" : "▸"}
@@ -1334,7 +1334,7 @@ export default function DebugCardMappingPage() {
                                                     onChange={() => setBindForm({ ...bindForm, departmentId: String(node.id) })}
                                                 />
                                                 <span>{depth > 0 ? "└ " : ""}{node.name || `部门${node.id}`}</span>
-                                                <span className="text-xs text-slate-400">#{node.id}</span>
+                                                <span className="text-xs text-[var(--app-color-text-tertiary)]">#{node.id}</span>
                                             </div>
                                             {open && children.length > 0 && (
                                                 <div className="mt-1">
@@ -1346,34 +1346,34 @@ export default function DebugCardMappingPage() {
                                 };
                                 return renderNode(root, 0);
                             })}
-                            {departmentTreeGrouped.roots.length === 0 && <div className="text-xs text-slate-400">暂无部门缓存，请先刷新</div>}
+                            {departmentTreeGrouped.roots.length === 0 && <div className="text-xs text-[var(--app-color-text-tertiary)]">暂无部门缓存，请先刷新</div>}
                         </div>
                         </AdminFormCard>
 
                         <AdminFormCard title="4. 门禁规则预填" description="按 ARO 官方可进房间自动匹配；勾选结果合并到步骤 5 通道/门组。">
                         <div className="mb-4 rounded-xl border border-neutral-200 bg-neutral-50/80 p-3">
                             {!bindForm.aroUserId ? (
-                                <div className="text-xs text-slate-500">请先检索并选择人员后，将自动拉取官方可进房间并匹配门禁规则。</div>
+                                <div className="text-xs text-[var(--app-color-text-tertiary)]">请先检索并选择人员后，将自动拉取官方可进房间并匹配门禁规则。</div>
                             ) : issuePrefillLoading ? (
-                                <div className="text-xs text-slate-500 flex items-center gap-2">
+                                <div className="text-xs text-[var(--app-color-text-tertiary)] flex items-center gap-2">
                                     <Loader2 className="w-4 h-4 animate-spin" /> 正在匹配门禁规则…
                                 </div>
                             ) : !issueAccessPrefill?.ruleMatches?.length ? (
-                                <div className="text-xs text-slate-500">
+                                <div className="text-xs text-[var(--app-color-text-tertiary)]">
                                     未匹配到门禁子项（该人员在官方无可进房间，或房间未配置规则/无通道门组）。
                                     {issueAccessPrefill?.officialRoomsNormalized && issueAccessPrefill.officialRoomsNormalized.length > 0 ? (
-                                        <span className="block mt-1 text-slate-600">
+                                        <span className="block mt-1 text-[var(--app-color-text-secondary)]">
                                             官方房间数：{issueAccessPrefill.officialRoomsNormalized.length}
                                         </span>
                                     ) : null}
                                 </div>
                             ) : (
                                 <div className="space-y-2">
-                                    <div className="text-[11px] text-slate-500">
+                                    <div className="text-[11px] text-[var(--app-color-text-tertiary)]">
                                         取消勾选会按当前勾选重算步骤 5 的通道与门组并集。
                                     </div>
                                     {issueAccessPrefill.ruleMatches.map((m) => (
-                                        <label key={m.matchKey} className="flex items-start gap-2 text-xs text-slate-800 cursor-pointer">
+                                        <label key={m.matchKey} className="flex items-start gap-2 text-xs text-[var(--app-color-text-primary)] cursor-pointer">
                                             <input
                                                 type="checkbox"
                                                 className="mt-0.5"
@@ -1404,7 +1404,7 @@ export default function DebugCardMappingPage() {
                         </AdminFormCard>
 
                         <AdminFormCard title="5. 通道与门组" description="均可不选：将跳过下发大华权限，仅执行建人/绑卡等前置步骤。">
-                        <div className="mb-3 rounded-xl border-2 border-slate-200 p-3 space-y-3">
+                        <div className="mb-3 rounded-xl border-2 border-[var(--app-color-border-default)] p-3 space-y-3">
                             <div className="flex flex-wrap gap-2 items-end">
                                 <AdminToolbarSearchField
                                     className="min-w-0 flex-1 basis-[12rem]"
@@ -1414,7 +1414,7 @@ export default function DebugCardMappingPage() {
                                     onSubmit={() => void loadChannelPicker(1, false)}
                                 />
                                 <select
-                                    className="border border-slate-200 rounded-lg px-2 py-1.5 text-sm"
+                                    className="border border-[var(--app-color-border-default)] rounded-lg px-2 py-1.5 text-sm"
                                     value={channelRemarkId}
                                     onChange={(e) => setChannelRemarkId(e.target.value === "" ? "" : Number(e.target.value))}
                                 >
@@ -1433,7 +1433,7 @@ export default function DebugCardMappingPage() {
                             </div>
                             <div className="max-h-[160px] overflow-y-auto space-y-1">
                                 {channelLoading && (
-                                    <div className="text-xs text-slate-500 flex items-center gap-2">
+                                    <div className="text-xs text-[var(--app-color-text-tertiary)] flex items-center gap-2">
                                         <Loader2 className="w-4 h-4 animate-spin" /> 加载通道…
                                     </div>
                                 )}
@@ -1449,12 +1449,12 @@ export default function DebugCardMappingPage() {
                                                 checked={checked}
                                                 onChange={(e) => toggleIssueChannel(code, e.target.checked, ch)}
                                             />
-                                            <span className="break-all text-slate-800">
+                                            <span className="break-all text-[var(--app-color-text-primary)]">
                                                 <span className="font-medium">{labelForChannelRow(ch)}</span>
-                                                {code && <span className="ml-1 text-[10px] text-slate-400">#{code}</span>}
+                                                {code && <span className="ml-1 text-[10px] text-[var(--app-color-text-tertiary)]">#{code}</span>}
                                             </span>
                                             {ch.remarkCategoryName && (
-                                                <span className="text-slate-400 shrink-0">[{ch.remarkCategoryName}]</span>
+                                                <span className="text-[var(--app-color-text-tertiary)] shrink-0">[{ch.remarkCategoryName}]</span>
                                             )}
                                         </label>
                                     );
@@ -1470,7 +1470,7 @@ export default function DebugCardMappingPage() {
                                 </button>
                             )}
                             {bindForm.channelCodes.length > 0 && (
-                                <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-100">
+                                <div className="flex flex-wrap gap-1 pt-1 border-t border-[var(--app-color-border-default)]">
                                     {bindForm.channelCodes.map((c) => (
                                         <span
                                             key={c}
@@ -1490,7 +1490,7 @@ export default function DebugCardMappingPage() {
                             )}
                             <button
                                 type="button"
-                                className="text-xs text-slate-500 hover:text-slate-800 underline"
+                                className="text-xs text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)] underline"
                                 onClick={() => setShowPasteChannels((v) => !v)}
                             >
                                 {showPasteChannels ? "收起「粘贴通道」" : "高级：粘贴通道编码"}
@@ -1498,14 +1498,14 @@ export default function DebugCardMappingPage() {
                             {showPasteChannels && (
                                 <div className="space-y-1">
                                     <textarea
-                                        className="w-full min-h-[72px] rounded border border-slate-200 p-2 font-mono text-xs"
+                                        className="w-full min-h-[72px] rounded border border-[var(--app-color-border-default)] p-2 font-mono text-xs"
                                         placeholder="每行一个，或逗号/分号分隔"
                                         value={pasteChannelRaw}
                                         onChange={(e) => setPasteChannelRaw(e.target.value)}
                                     />
                                     <button
                                         type="button"
-                                        className="text-xs rounded bg-slate-100 px-2 py-1 hover:bg-slate-200"
+                                        className="text-xs rounded bg-[var(--app-color-surface-hover)] px-2 py-1 hover:bg-[var(--app-color-surface-hover)]"
                                         onClick={() => mergePasteChannels()}
                                     >
                                         合并到已选
@@ -1514,11 +1514,11 @@ export default function DebugCardMappingPage() {
                             )}
                         </div>
 
-                        <div className="border-2 border-slate-200 rounded-xl p-2 mb-4 max-h-[220px] overflow-auto">
+                        <div className="border-2 border-[var(--app-color-border-default)] rounded-xl p-2 mb-4 max-h-[220px] overflow-auto">
                             {sortedDoorGroups.map((g) => {
                                 const checked = bindForm.doorGroupIds.includes(g.id);
                                 return (
-                                    <label key={g.id} className="flex items-center gap-2 py-1 px-1 rounded text-sm text-slate-700 hover:bg-slate-50">
+                                    <label key={g.id} className="flex items-center gap-2 py-1 px-1 rounded text-sm text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-page)]">
                                         <input
                                             type="checkbox"
                                             checked={checked}
@@ -1530,16 +1530,16 @@ export default function DebugCardMappingPage() {
                                             }}
                                         />
                                         <span>{g.name || `门组${g.id}`}</span>
-                                        <span className="text-xs text-slate-400">#{g.id}</span>
+                                        <span className="text-xs text-[var(--app-color-text-tertiary)]">#{g.id}</span>
                                     </label>
                                 );
                             })}
-                            {sortedDoorGroups.length === 0 && <div className="text-xs text-slate-400">暂无门组缓存，请先刷新</div>}
+                            {sortedDoorGroups.length === 0 && <div className="text-xs text-[var(--app-color-text-tertiary)]">暂无门组缓存，请先刷新</div>}
                         </div>
                         <div className="mb-4 flex justify-end">
                             <button
                                 type="button"
-                                className="px-2 py-1 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100"
+                                className="px-2 py-1 text-xs rounded-lg border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
                                 onClick={async () => {
                                     await refreshDahuaDoorGroups();
                                     const dgRes = await fetchDahuaDoorGroups(1, 500, "");
@@ -1559,13 +1559,13 @@ export default function DebugCardMappingPage() {
                                         const isDone = idx < issuingPhase;
                                         const isCurrent = idx === issuingPhase;
                                         return (
-                                            <div key={label} className={`text-xs flex items-center gap-2 ${isDone ? "text-emerald-700" : isCurrent ? "text-indigo-700" : "text-slate-500"}`}>
+                                            <div key={label} className={`text-xs flex items-center gap-2 ${isDone ? "text-emerald-700" : isCurrent ? "text-indigo-700" : "text-[var(--app-color-text-tertiary)]"}`}>
                                                 {isDone ? (
                                                     <Check className="w-3.5 h-3.5" />
                                                 ) : isCurrent ? (
                                                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                                 ) : (
-                                                    <span className="inline-block w-3.5 h-3.5 rounded-full border border-slate-300" />
+                                                    <span className="inline-block w-3.5 h-3.5 rounded-full border border-[var(--app-color-border-strong)]" />
                                                 )}
                                                 <span>{label}</span>
                                             </div>
@@ -1576,8 +1576,8 @@ export default function DebugCardMappingPage() {
                         )}
 
                         {issueSteps.length > 0 && (
-                            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                <div className="text-xs font-bold text-slate-600 mb-2">执行步骤回显</div>
+                            <div className="mb-4 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-3">
+                                <div className="text-xs font-bold text-[var(--app-color-text-secondary)] mb-2">执行步骤回显</div>
                                 <div className="space-y-1 max-h-[120px] overflow-auto">
                                     {issueSteps.map((step, idx) => (
                                         <div key={`${step.stepName}-${idx}`} className={`text-xs ${step.success ? "text-emerald-700" : "text-rose-700"}`}>
