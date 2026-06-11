@@ -11,9 +11,9 @@ interface ProfileHeaderProps {
 }
 
 const Field = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between text-xs border-b border-white/10 py-1">
-        <span className="text-white/60">{label}</span>
-        <span className="text-white font-semibold">{value || "【无数据】"}</span>
+    <div className="flex items-center justify-between text-xs border-b border-[var(--app-color-border-default)] py-1">
+        <span className="text-[var(--app-color-text-tertiary)]">{label}</span>
+        <span className="text-[var(--app-color-text-primary)] font-semibold">{value || "【无数据】"}</span>
     </div>
 );
 
@@ -26,27 +26,27 @@ export const ProfileHeader = ({
 }: ProfileHeaderProps) => {
     const avatarSrc = resolvePersonnelAvatarUrl(user.head);
     return (
-    <div className="w-full bg-[#050A15]/60 backdrop-blur-sm border border-white/5 p-5 rounded-3xl shadow-2xl">
-        <div className="flex items-center gap-4 border-b border-white/10 pb-4">
-            <div className="w-16 h-16 rounded-full overflow-hidden bg-[#1e293b] border-2 border-blue-400/50">
+    <div className="w-full bg-[var(--app-color-surface-container)]/60 backdrop-blur-sm border border-[var(--app-color-border-default)] p-5 rounded-[var(--app-radius-container)] shadow-[var(--app-elevation-card)]">
+        <div className="flex items-center gap-4 border-b border-[var(--app-color-border-default)] pb-4">
+            <div className="w-16 h-16 rounded-full overflow-hidden bg-[var(--app-color-surface-page)] border-2 border-[var(--app-color-accent)]/40">
                 {avatarSrc && isAvatarLoaded ? (
                     <img src={avatarSrc} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt="avatar" onError={onAvatarError} />
                 ) : (
-                    <span className="w-full h-full flex items-center justify-center text-2xl font-black text-white">
+                    <span className="w-full h-full flex items-center justify-center text-2xl font-black text-[var(--app-color-text-primary)]">
                         {(user.name || "未").charAt(0)}
                     </span>
                 )}
             </div>
             <div className="flex flex-col">
-                <span className="text-2xl font-black text-white flex items-center gap-2">
+                <span className="text-2xl font-black text-[var(--app-color-text-primary)] flex items-center gap-2">
                     {user.name || "未知人员"}
                     <button
                         onClick={onOpenRiskModal}
                         title="查看风控档案"
                         className={`p-1 rounded-full border ${
                             globalUserState === 3
-                                ? "bg-red-500/20 border-red-500/50 text-red-500"
-                                : "bg-green-500/10 border-green-500/30 text-green-500"
+                                ? "bg-[var(--app-color-feedback-danger)]/10 border-[var(--app-color-feedback-danger)]/30 text-[var(--app-color-feedback-danger)]"
+                                : "bg-[var(--app-color-feedback-success)]/10 border-[var(--app-color-feedback-success)]/20 text-[var(--app-color-feedback-success)]"
                         }`}
                     >
                         {globalUserState === 3 ? <AlertOctagon className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
