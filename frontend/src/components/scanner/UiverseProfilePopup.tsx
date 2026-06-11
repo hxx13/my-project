@@ -62,10 +62,10 @@ const WeeklyRoutineMatrixChart = ({ predictions, themeColor }: { predictions: an
     const entryPath = entryCurve.map((v, i) => `${getX(i)},${mapY(v)}`).join(" L ");
     const exitPath = exitCurve.map((v, i) => `${getX(i)},${mapY(v)}`).join(" L ");
     return (
-        <div className="w-full p-4 rounded-2xl shadow-2xl border backdrop-blur-md bg-[#0a0f1d]/90 border-white/10">
+        <div className="w-full p-4 rounded-2xl shadow-2xl border backdrop-blur-md bg-[var(--app-color-surface-container)] border-[var(--app-color-border-default)]">
             <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-slate-200 tracking-wider">预期核心在馆时间带</span>
-                <span className="text-[9px] text-[#ffb86c] bg-[#ffb86c]/10 px-2 py-0.5 rounded-full border border-[#ffb86c]/30">Time Band</span>
+                <span className="text-xs font-bold text-[var(--app-color-text-primary)] tracking-wider">预期核心在馆时间带</span>
+                <span className="text-[9px] text-[var(--app-color-accent)] bg-[var(--app-color-accent)]/10 px-2 py-0.5 rounded-full border border-[var(--app-color-accent)]/20">Time Band</span>
             </div>
             <div className="relative border-l border-b border-white/10 pb-1 pl-8 pr-1 w-full">
                 <div className="absolute left-1 top-0 text-[8px] text-white/40">{maxVal.toFixed(2)}</div>
@@ -80,7 +80,7 @@ const WeeklyRoutineMatrixChart = ({ predictions, themeColor }: { predictions: an
                 </svg>
                 <div className="flex justify-between w-full mt-1.5">
                     {["一", "二", "三", "四", "五", "六", "日"].map((day) => (
-                        <span key={day} className="text-[9px] font-bold text-slate-500">{day}</span>
+                        <span key={day} className="text-[9px] font-bold text-[var(--app-color-text-tertiary)]">{day}</span>
                     ))}
                 </div>
             </div>
@@ -128,6 +128,7 @@ export function UiverseProfilePopup(props: PopupProps) {
       // 进入学生中心前保存当前终端操作员的登录态，
       // 以便学生点击"返回扫码页"时恢复教职工身份，避免角色泄露或被迫重新登录。
       authStorage.savePreviousSession();
+      authStorage.markStudentEntryFromScan();
       authStorage.setAuth(authData.token, authData.role, authData.userInfo as Parameters<typeof authStorage.setAuth>[2]);
       setShowKeypad(null);
       onClose();
@@ -173,16 +174,16 @@ export function UiverseProfilePopup(props: PopupProps) {
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="fixed inset-0 flex flex-col bg-[#050A15]/85 backdrop-blur-sm"
+                className="fixed inset-0 flex flex-col bg-[var(--app-color-surface-page)]/90 backdrop-blur-sm"
                 style={{ zIndex: Z_INDEX.scannerPopup }}
             >
-                <button className="absolute top-6 right-6 z-[10000] flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white hover:border-red-500 hover:bg-red-500/80" onClick={onClose} title="关闭 Esc">
+                <button className="absolute top-6 right-6 z-[10000] flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 text-[var(--app-color-text-primary)] hover:border-[var(--app-color-feedback-danger)] hover:bg-[var(--app-color-feedback-danger)]/50" onClick={onClose} title="关闭 Esc">
                     <X className="w-5 h-5" />
                 </button>
                 {showUnboundBindHint ? (
                     <button
                         type="button"
-                        className="absolute bottom-8 left-1/2 z-[10001] -translate-x-1/2 max-w-[min(320px,90vw)] rounded-xl border border-cyan-400/60 bg-cyan-500/20 px-4 py-2.5 text-center text-[12px] font-bold text-cyan-50 shadow-lg shadow-cyan-900/40 hover:bg-cyan-500/35 transition-colors"
+                        className="absolute bottom-8 left-1/2 z-[10001] -translate-x-1/2 max-w-[min(320px,90vw)] rounded-xl border border-[var(--app-color-accent)]/40 bg-[var(--app-color-accent)]/10 px-4 py-2.5 text-center text-[12px] font-bold text-[var(--app-color-text-primary)] shadow-lg hover:bg-[var(--app-color-accent)]/20 transition-colors"
                         onClick={onOpenStudentBind}
                     >
                         当前未绑卡，点我绑定卡
@@ -199,24 +200,24 @@ export function UiverseProfilePopup(props: PopupProps) {
                     <div className="flex flex-col h-full min-h-0 pt-6 pb-6 gap-4">
                         <div className="w-full h-[60px] mb-1">
                             <div className="relative w-[280px] h-[52px] z-[200] flex items-center">
-                                <div className="relative w-12 h-12 rounded-full bg-[#1e293b] border-[2px] border-cyan-400/70 shadow-lg flex items-center justify-center z-20 shrink-0">
+                                <div className="relative w-12 h-12 rounded-full bg-[var(--app-color-surface-container)] border-2 border-[var(--app-color-accent)]/40 shadow-lg flex items-center justify-center z-20 shrink-0">
                                     <div className="flex flex-col items-center justify-center -space-y-1">
-                                        <span className="text-[8px] font-bold text-white/70">LV</span>
-                                        <span className="text-white font-black text-base">{state.user?.rpg?.level ?? 0}</span>
+                                        <span className="text-[8px] font-bold text-[var(--app-color-text-tertiary)]">LV</span>
+                                        <span className="text-[var(--app-color-text-primary)] font-black text-base">{state.user?.rpg?.level ?? 0}</span>
                                     </div>
                                 </div>
                                 <div className="relative flex-1 h-[40px] flex flex-col justify-between -ml-3 z-10 pt-0.5">
                                     <div className="pl-5 z-30 flex items-center">
-                                        <span className="font-bold text-white text-[12px] truncate">{state.user?.name || "未知人员"}</span>
+                                        <span className="font-bold text-[var(--app-color-text-primary)] text-[12px] truncate">{state.user?.name || "未知人员"}</span>
                                     </div>
-                                    <div className="relative h-[20px] bg-[#050A15]/90 rounded-r-full border border-white/10 overflow-hidden pl-5 pr-2 flex items-center">
+                                    <div className="relative h-[20px] bg-[var(--app-color-surface-page)]/90 rounded-r-full border border-[var(--app-color-border-default)] overflow-hidden pl-5 pr-2 flex items-center">
                                         <div
-                                            className="absolute left-0 top-0 bottom-0 transition-all duration-500 z-0 opacity-40 bg-gradient-to-r from-cyan-400/20 to-cyan-400"
+                                            className="absolute left-0 top-0 bottom-0 transition-all duration-500 z-0 opacity-40 bg-gradient-to-r from-[var(--app-color-accent)]/10 to-[var(--app-color-accent)]/30"
                                             style={{ width: `${Math.max(0, Math.min(100, (((state.user?.rpg?.exp ?? 0) / Math.max(1, state.user?.rpg?.nextLevelExp ?? 100)) * 100)))}%` }}
                                         />
                                         <div className="relative z-20 w-full flex justify-between items-center text-white">
-                                            <span className="text-[8px] font-black text-white/60 tracking-widest">EXP</span>
-                                            <span className="text-[9px] font-black font-mono">{state.user?.rpg?.exp ?? 0} <span className="text-white/40">/ {state.user?.rpg?.nextLevelExp ?? 100}</span></span>
+                                            <span className="text-[8px] font-black text-[var(--app-color-text-tertiary)] tracking-widest">EXP</span>
+                                            <span className="text-[9px] font-black font-mono text-[var(--app-color-text-primary)]">{state.user?.rpg?.exp ?? 0} <span className="text-[var(--app-color-text-tertiary)]">/ {state.user?.rpg?.nextLevelExp ?? 100}</span></span>
                                         </div>
                                     </div>
                                 </div>
@@ -249,12 +250,12 @@ export function UiverseProfilePopup(props: PopupProps) {
                     <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
                         {popupMessage && (
                             <div className="w-full max-w-[340px] mx-auto shrink-0 flex justify-end pr-0">
-                                <div className="max-w-[min(260px,100%)] rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] leading-snug text-red-200/95 shadow-md flex items-start gap-1.5">
+                                <div className="max-w-[min(260px,100%)] rounded-md border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-feedback-danger-soft)] px-2 py-1 text-[10px] leading-snug text-[var(--app-color-text-primary)] shadow-md flex items-start gap-1.5">
                                     <span className="flex-1 min-w-0 break-words text-right">{popupMessage}</span>
                                     <button
                                         type="button"
                                         onClick={actions.clearInlineMessage}
-                                        className="text-red-300/90 hover:text-red-200 shrink-0 text-[10px] font-semibold"
+                                        className="text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)] shrink-0 text-[10px] font-semibold"
                                     >
                                         关闭
                                     </button>
@@ -262,31 +263,31 @@ export function UiverseProfilePopup(props: PopupProps) {
                             </div>
                         )}
                         {/* 上 2/5：面包机区缩小并贴底；下 3/5 较原 50% 多约 20% 给操作按钮 */}
-                        <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-white/5 pb-0.5">
+                        <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] pb-0.5">
                             <div className="pointer-events-none flex h-[200px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">
                                 <ExpToaster key={state.toastData.nonce} expAdded={state.toastData.exp} play={state.toastData.play} />
                             </div>
                         </div>
                         <div className="flex min-h-0 flex-[3] flex-col overflow-hidden">
                             <div className="w-full max-w-[340px] mx-auto mb-2 space-y-1 shrink-0">
-                                <div className="bg-black/40 p-1.5 rounded-xl border border-white/10 flex gap-1" title="由 twin_card_mapping 自动判定，打卡将写入流水">
+                                <div className="bg-[var(--app-color-surface-container)]/40 p-1.5 rounded-xl border border-[var(--app-color-border-default)] flex gap-1" title="由 twin_card_mapping 自动判定，打卡将写入流水">
                                     <div
                                         className={`flex-1 py-2 text-[11px] font-black rounded-lg text-center pointer-events-none select-none ${
-                                            state.entryMode === "OWN" ? "bg-indigo-600 text-white" : "text-slate-500"
+                                            state.entryMode === "OWN" ? "bg-[var(--app-color-accent)] text-[var(--app-color-text-inverse)]" : "text-[var(--app-color-text-tertiary)]"
                                         }`}
                                     >
                                         💳 自带校园卡
                                     </div>
                                     <div
                                         className={`flex-1 py-2 text-[11px] font-black rounded-lg text-center pointer-events-none select-none ${
-                                            state.entryMode === "BORROWED" ? "bg-rose-600 text-white" : "text-slate-500"
+                                            state.entryMode === "BORROWED" ? "bg-[var(--app-color-feedback-danger)] text-white" : "text-[var(--app-color-text-tertiary)]"
                                         }`}
                                     >
                                         💳 领用公卡
                                     </div>
                                 </div>
                                 {result.hasPhysicalCardMapping !== undefined && (
-                                    <p className="text-[10px] text-slate-500 text-center leading-snug">
+                                    <p className="text-[10px] text-[var(--app-color-text-tertiary)] text-center leading-snug">
                                         状态已根据物理卡映射自动判定；进入时将同步至流水「卡片领用状态」
                                     </p>
                                 )}
@@ -307,6 +308,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                                     getKeepCardState={actions.getKeepCardState}
                                     setKeepCardState={actions.setKeepCardState}
                                     autoSignoutSecondsRemaining={state.autoSignoutSecondsRemaining}
+                                    autoSignoutState={state.autoSignoutState}
                                 />
                             </div>
                         </div>
