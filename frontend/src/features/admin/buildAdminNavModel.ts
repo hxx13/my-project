@@ -255,9 +255,7 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
       unknown.push(entry);
     }
   }
-  if (unknown.length > 0) {
-    mergedHome = [...mergedHome, { title: "自动发现", entries: unknown }];
-  }
+  // Auto-discover disabled — only registry entries appear
 
   const registryLookup = new Map(ADMIN_NAV_REGISTRY.flatMap(g =>
     collectRegistryGroupItems(g).map(it => [it.id, it])
@@ -493,9 +491,6 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
       unknown.push(entry);
     }
   }
-  if (unknown.length > 0) {
-    mergedHome = [...mergedHome, { title: "自动发现", entries: unknown }];
-  }
-
+  // Auto-discover disabled — only registry entries appear
   return { sidebarGroups, homeSections: mergedHome, flatNavigableItems };
 }

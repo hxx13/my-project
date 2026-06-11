@@ -29,7 +29,7 @@ const colors: Record<string, string> = {
 };
 for (const g of ADMIN_NAV_REGISTRY) {
   for (const it of collectRegistryGroupItems(g)) {
-    const key = it.path.replace(/\/+/g, "/");
+    const key = cleanPath(it.path);
     LABEL_MAP[key] = it.label;
     if (it.homeTone) {
       const m = it.homeTone.match(/from-(\w+)-(\d+)\s+to-(\w+)-(\d+)/);
@@ -40,14 +40,18 @@ for (const g of ADMIN_NAV_REGISTRY) {
   }
 }
 
+/** Strip query/hash from path for registry lookup */
+function cleanPath(path: string): string {
+  return (path || "").replace(/[?#].*$/, "").replace(/\/+/g, "/");
+}
+
 /** If title has no Chinese characters, try registry label as fallback */
 function chineseLabel(path: string, fallback: string): string {
-  const key = path.replace(/\/+/g, "/");
+  const key = cleanPath(path);
   const reg = LABEL_MAP[key];
   if (reg) return reg;
-  // If fallback has Chinese, use it; otherwise generate from path
   if (/[一-鿿]/.test(fallback)) return fallback;
-  const seg = path.split("/").filter(Boolean).pop() || "";
+  const seg = path.replace(/[?#].*$/, "").split("/").filter(Boolean).pop() || "";
   return seg.replace(/-/g, " ");
 }
 
@@ -91,7 +95,7 @@ export default function AdminHomePage() {
       g.entries.map((e) => {
         const roleOk = hasMinRole(role, e.minRole);
         const permOk = canShowWebEntry(permNodes, e.path, "sidebar", role, e.minRole);
-        const pathKey = (e.path || "").replace(/\/+/g, "/");
+        const pathKey = cleanPath(e.path);
         return {
           ...e,
           title: chineseLabel(e.path, e.title),
