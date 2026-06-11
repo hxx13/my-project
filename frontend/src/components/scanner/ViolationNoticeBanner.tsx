@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { prepareAnnouncementHtml, SCAN_ANNOUNCEMENT_BODY_CLASS } from "@/utils/announcementHtml";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, Megaphone, X } from "lucide-react";
@@ -140,7 +141,10 @@ export function ViolationNoticeBanner({
 
   if (notice?.id == null) return null;
 
-  const text = (notice.violationText || "").trim();
+  const safeHtml = useMemo(
+    () => prepareAnnouncementHtml(notice.violationText || ""),
+    [notice.violationText]
+  );
   const locked = Boolean(notice.enterLocked);
   const t = resolveLegacyTheme(kind, locked);
   const nc = resolveNoticeColors(kind === "violation" ? "violation" : "unbound");
@@ -174,7 +178,7 @@ export function ViolationNoticeBanner({
         <button
           type="button"
           onClick={() => (panelOpen ? closePanel() : openPanel())}
-          className={`group flex w-full min-w-0 items-center gap-2 ${NOTICE_ISLAND_BASE} ${nc.border} px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-2.5`}
+          className={`group flex w-full min-w-0 items-center gap-2 ${NOTICE_ISLAND_BASE} ${nc.bg} ${nc.border} px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-2.5`}
         >
           <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${nc.iconBg}`}>
             <Megaphone className={`h-4 w-4 ${nc.iconText}`} />
@@ -255,10 +259,11 @@ export function ViolationNoticeBanner({
                 {/* 正文区：留白优先，文字为视觉重心 */}
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8 pt-4 sm:px-10 sm:pb-10 sm:pt-6">
                   <div className="mx-auto flex w-full max-w-[34rem] flex-col items-center gap-8 sm:gap-10">
-                    {text ? (
-                      <p className="w-full whitespace-pre-wrap break-words text-center text-[1.05rem] font-medium leading-[1.85] tracking-[0.01em] text-[var(--app-color-text-primary)] sm:text-[1.2rem] sm:leading-[1.9]">
-                        {text}
-                      </p>
+                    {safeHtml ? (
+                      <div
+                        className={`${SCAN_ANNOUNCEMENT_BODY_CLASS} w-full text-left text-[1.02rem] sm:text-[1.08rem] [&_p]:text-center [&_p]:text-[1.05rem] [&_p]:sm:text-[1.15rem]`}
+                        dangerouslySetInnerHTML={{ __html: safeHtml }}
+                      />
                     ) : imgCount === 0 && !(interactivePhrase && !interactiveDone) ? (
                       <p className="text-center text-sm leading-relaxed text-[var(--app-color-text-tertiary)]">
                         未填写文字说明，请查看附图或联系管理员。

@@ -59,27 +59,30 @@ export const CHART_CARD =
 
 export type NoticeKind = "announcement" | "violation" | "unbound";
 
-const NOTICE_COLORS: Record<NoticeKind, { border: string; badge: string; iconBg: string; iconText: string; tag: string }> = {
+const NOTICE_COLORS: Record<NoticeKind, { bg: string; border: string; badge: string; iconBg: string; iconText: string; tag: string }> = {
   announcement: {
+    bg: "bg-rose-50 dark:bg-rose-950/30",
     border: "border-rose-400/50 dark:border-rose-400/40",
     badge: "text-rose-600 dark:text-rose-400",
     iconBg: "bg-rose-400/15",
     iconText: "text-rose-500 dark:text-rose-400",
-    tag: "text-rose-400/80",
+    tag: "text-rose-400/80 dark:text-rose-300/70",
   },
   violation: {
+    bg: "bg-amber-50 dark:bg-amber-950/30",
     border: "border-amber-400/50 dark:border-amber-400/40",
     badge: "text-amber-600 dark:text-amber-400",
     iconBg: "bg-amber-400/15",
     iconText: "text-amber-500 dark:text-amber-400",
-    tag: "text-amber-400/80",
+    tag: "text-amber-400/80 dark:text-amber-300/70",
   },
   unbound: {
+    bg: "bg-orange-50 dark:bg-orange-950/30",
     border: "border-orange-400/50 dark:border-orange-400/40",
     badge: "text-orange-600 dark:text-orange-400",
     iconBg: "bg-orange-400/15",
     iconText: "text-orange-500 dark:text-orange-400",
-    tag: "text-orange-400/80",
+    tag: "text-orange-400/80 dark:text-orange-300/70",
   },
 };
 
@@ -87,9 +90,9 @@ export function resolveNoticeColors(kind: NoticeKind) {
   return NOTICE_COLORS[kind];
 }
 
-/** 公告 Island 按钮基类 */
+/** 公告 Island 按钮基类（不含背景色——各类型自带 nc.bg） */
 export const NOTICE_ISLAND_BASE =
-  "rounded-full bg-white/85 dark:bg-[#1e1b18]/90 backdrop-blur-md shadow-lg dark:shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all hover:shadow-xl active:scale-[0.98]";
+  "rounded-full backdrop-blur-md shadow-lg dark:shadow-[0_8px_24px_rgba(0,0,0,0.4)] transition-all hover:shadow-xl active:scale-[0.98]";
 
 /** 公告弹窗面板 */
 export const NOTICE_PANEL =
