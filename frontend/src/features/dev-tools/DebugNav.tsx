@@ -138,6 +138,12 @@ export default function DebugNav() {
                 }
             }
 
+            // 💥 ENTER 的 runExecute 会清掉 needsExitConfirmRef，导致后续 EXIT 跳过确认弹窗。
+            // 在馆内时重设：确保用户点「离开」按钮时走确认弹窗（含倒计时）。
+            if (data.currentState === 'INSIDE') {
+                needsExitConfirmRef.current = true;
+            }
+
             isHardwareScanRef.current = false;
         },
         onError: (error) => {
