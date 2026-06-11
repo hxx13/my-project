@@ -64,6 +64,15 @@
         FROM material_request WHERE deleted = 0 AND applicant_name IS NOT NULL AND applicant_name != ''
         GROUP BY user_id ORDER BY applicantName
     </select>
+    <select id="statsByGroup" resultType="java.util.HashMap">
+        SELECT applicant_group AS groupName, COUNT(*) AS requestCount,
+               COUNT(DISTINCT user_id) AS memberCount,
+               SUM((SELECT SUM(l.qty) FROM material_request_line l WHERE l.request_id = r.id)) AS totalQty
+        FROM material_request r
+        WHERE deleted = 0 AND applicant_group IS NOT NULL AND applicant_group != ''
+          AND created_at BETWEEN #{from} AND #{to}
+        GROUP BY applicant_group ORDER BY requestCount DESC
+    </select>
     <select id="selectPendingByReviewer" resultType="com.example.demo.modules.material.entity.MaterialRequest">
         SELECT * FROM material_request WHERE status IN ('PENDING', 'FIRST_OK') AND deleted = 0 ORDER BY created_at ASC
     </select>

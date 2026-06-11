@@ -338,6 +338,13 @@ public class MaterialAdminController {
         return materialService.listItemStockMovements(itemId, page, size);
     }
 
+    @GetMapping("/stats/by-group")
+    @Operation(summary = "按课题组统计")
+    public Result<List<Map<String, Object>>> statsByGroup(@RequestParam(defaultValue = "2000-01-01") String from,
+                                                            @RequestParam(defaultValue = "2099-12-31") String to) {
+        return materialService.getStatsByGroup(from, to);
+    }
+
     @GetMapping("/stats/overview")
     @Operation(summary = "统计概览")
     public Result<MaterialStatsOverview> statsOverview(@RequestParam(defaultValue = "2000-01-01") String from,

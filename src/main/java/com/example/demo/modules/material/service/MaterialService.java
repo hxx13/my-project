@@ -597,6 +597,11 @@ public class MaterialService {
         return Result.success(overview);
     }
 
+    /** 按课题组聚合统计 */
+    public Result<List<Map<String, Object>>> getStatsByGroup(String from, String to) {
+        return Result.success(requestMapper.statsByGroup(from, to));
+    }
+
     /**
      * 审计流水：分页查询，支持按时间区间 + 课题组筛选。
      * 供审计面板和外部 agent 调用。

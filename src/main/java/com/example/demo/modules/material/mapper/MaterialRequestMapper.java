@@ -29,6 +29,8 @@ public interface MaterialRequestMapper {
     List<String> selectDistinctGroups();
     /** 有申领记录的人员列表（userId + applicantName） */
     List<Map<String, Object>> selectDistinctApplicants();
+    /** 按课题组聚合统计 */
+    List<Map<String, Object>> statsByGroup(@Param("from") String from, @Param("to") String to);
     List<Map<String, Object>> statsByStudent(@Param("from") String from, @Param("to") String to);
     List<Map<String, Object>> statsByItem(@Param("from") String from, @Param("to") String to);
     List<MaterialRequest> selectAuditTrail(@Param("from") String from, @Param("to") String to,

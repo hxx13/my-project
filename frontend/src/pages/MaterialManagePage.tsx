@@ -339,7 +339,7 @@ export default function MaterialManagePage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-[11px] font-medium truncate text-[var(--twin-ink)]">{it.name}</div>
-                  <div className="text-[10px] text-[var(--twin-mute)]">库存 {it.stockQty}{it.lockedQty ? <span className="text-amber-600"> · 锁定{it.lockedQty}</span> : ""}</div>
+                  <div className="text-[10px] text-[var(--twin-mute)]">{it.showStockQty === 0 ? "有货" : `库存 ${it.stockQty}`}</div>
                   <div className="text-[9px] text-[var(--twin-mute)]">{it.workflowType === "DUAL_REVIEW" ? "复核" : "简单"}{it.shelfStatus !== "PUBLISHED" ? <span className="text-amber-500"> · {it.shelfStatus}</span> : ""}</div>
                 </div>
               </div>
