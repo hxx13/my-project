@@ -8,25 +8,34 @@ import { fetchPublicPagePermissions, WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, type M
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { buildAdminNavModel, createAdminNavContext, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 import { ADMIN_NAV_PERSONALIZATION_EVENT, isAdminNavStarred, readAdminNavRecent, toggleAdminNavStar } from "@/features/admin/adminNavPersonalization";
-import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems, type AdminNavRegistryItem } from "@/features/admin/adminNavRegistry";
-
-/** Direct registry lookup — bypasses model to avoid hardcoded fallback tones */
-function getHomeToneForPath(path: string): string | undefined {
-  const norm = (path || "").replace(/\/+/g, "/");
-  const allItems: AdminNavRegistryItem[] = [];
-  for (const g of ADMIN_NAV_REGISTRY) {
-    for (const it of collectRegistryGroupItems(g)) {
-      if (it.path.replace(/\/+/g, "/") === norm) return it.homeTone;
-    }
-  }
-  return undefined;
-}
+import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems } from "@/features/admin/adminNavRegistry";
 import { cn } from "@/lib/utils";
 import { Sparkles, Star, ChevronDown, ChevronRight } from "lucide-react";
 
 const ROLE_LABEL: Record<MinRole, string> = {
   STUDENT: "学生", STAFF: "教职工", SENIOR: "高级职工", ADMIN: "管理员", SUPER_ADMIN: "超级管理员", PLATFORM_OWNER: "平台所有者",
 };
+
+/** Hardcoded color map: path → CSS gradient. Built once at module load from registry. */
+const COLOR_MAP: Record<string, string> = {};
+const colors: Record<string, string> = {
+  slate: "#64748b", zinc: "#71717a", gray: "#6b7280", neutral: "#737373", stone: "#78716c",
+  red: "#f87171", rose: "#fb7185", pink: "#f472b6", fuchsia: "#e879f9", purple: "#c084fc",
+  violet: "#a78bfa", indigo: "#818cf8", blue: "#60a5fa", sky: "#7dd3fc", cyan: "#67e8f9",
+  teal: "#5eead4", emerald: "#6ee7b7", green: "#86efac", lime: "#bef264", yellow: "#fde047",
+  amber: "#fbbf24", orange: "#fb923c",
+};
+for (const g of ADMIN_NAV_REGISTRY) {
+  for (const it of collectRegistryGroupItems(g)) {
+    const key = it.path.replace(/\/+/g, "/");
+    if (it.homeTone) {
+      const m = it.homeTone.match(/from-(\w+)-(\d+)\s+to-(\w+)-(\d+)/);
+      if (m) {
+        COLOR_MAP[key] = `linear-gradient(135deg, ${colors[m[1]] || "#818cf8"}, ${colors[m[3]] || "#a78bfa"})`;
+      }
+    }
+  }
+}
 
 export default function AdminHomePage() {
   const navigate = useNavigate();
@@ -62,33 +71,24 @@ export default function AdminHomePage() {
     return () => { cancelled = true; };
   }, [navCtx]);
 
-  // Path → Chinese label lookup from registry
-  const pathLabelMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const g of ADMIN_NAV_REGISTRY) {
-      for (const it of collectRegistryGroupItems(g)) {
-        m.set(it.path.replace(/\/+/g, "/"), it.label);
-      }
-    }
-    return m;
-  }, []);
-
   const allCards = useMemo(() => {
     const homeSections = navModel?.homeSections ?? [];
     return homeSections.flatMap((g) =>
       g.entries.map((e) => {
         const roleOk = hasMinRole(role, e.minRole);
         const permOk = canShowWebEntry(permNodes, e.path, "sidebar", role, e.minRole);
-        // Get gradient directly from registry (bypasses model which has hardcoded fallback)
-        const homeTone = getHomeToneForPath(e.path);
-        const toneGradient = homeTone ? toneToGradient(homeTone) : undefined;
-        // Override English titles with Chinese registry labels
         const pathKey = (e.path || "").replace(/\/+/g, "/");
-        const chineseTitle = pathLabelMap.get(pathKey) || e.title;
-        return { ...e, title: chineseTitle, enabled: roleOk && permOk, groupTitle: g.title, icon: createElement(e.icon, { className: "h-5 w-5" }), _toneGradient: toneGradient };
+        return {
+          ...e,
+          title: e.title,
+          enabled: roleOk && permOk,
+          groupTitle: g.title,
+          icon: createElement(e.icon, { className: "h-5 w-5" }),
+          _bg: COLOR_MAP[pathKey] || "linear-gradient(135deg, #818cf8, #a78bfa)",
+        };
       })
     );
-  }, [navModel, permNodes, role, pathLabelMap]);
+  }, [navModel, permNodes, role]);
 
   const groups = useMemo(() => {
     const m = new Map<string, typeof allCards>();
@@ -114,7 +114,6 @@ export default function AdminHomePage() {
   return (
     <AdminFullWidthPage>
       <div className="min-h-full bg-[var(--color-warm-50)] p-4 sm:p-6 space-y-6">
-        {/* Header — Bento warm surface */}
         <section className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-steel-500)]">
@@ -127,7 +126,6 @@ export default function AdminHomePage() {
           </div>
         </section>
 
-        {/* ── Starred ── */}
         {starred.length > 0 && (
           <section>
             <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-steel-400)]">
@@ -139,7 +137,6 @@ export default function AdminHomePage() {
           </section>
         )}
 
-        {/* ── Recent ── */}
         {recent.length > 0 && (
           <section>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-steel-400)]">最近访问</h2>
@@ -149,7 +146,6 @@ export default function AdminHomePage() {
           </section>
         )}
 
-        {/* ── Groups ── */}
         {groups.map(([title, entries]) => {
           const enabled = entries.filter(e => e.enabled);
           if (enabled.length === 0) return null;
@@ -174,17 +170,6 @@ export default function AdminHomePage() {
   );
 }
 
-/** Convert Tailwind gradient class to CSS gradient using project color tokens */
-function toneToGradient(tone?: string): string | undefined {
-  if (!tone) return undefined;
-  // Parse "from-X-N to-Y-M" → linear-gradient using CSS variables
-  const m = tone.match(/from-(\w+)-(\d+)\s+to-(\w+)-(\d+)/);
-  if (!m) return undefined;
-  const [, c1, n1, c2, n2] = m;
-  return `linear-gradient(135deg, var(--color-${c1}-${n1}), var(--color-${c2}-${n2}))`;
-}
-
-/** Bento-style compact card — white bg, rounded-2xl, subtle shadow, colored icon circle */
 function HomeCard({ entry, navigate, starred }: { entry: any; navigate: (p: string) => void; starred?: boolean }) {
   const [isStarred, setIsStarred] = useState(starred ?? isAdminNavStarred(entry.path));
   return (
@@ -199,24 +184,21 @@ function HomeCard({ entry, navigate, starred }: { entry: any; navigate: (p: stri
           : "bg-[var(--color-warm-100)] border border-[var(--twin-hairline)] opacity-50 cursor-not-allowed"
       )}
     >
-      {/* Icon circle — gradient via inline style (Tailwind JIT can't scan data files for dynamic classes) */}
       <div
         className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm"
-        style={entry._toneGradient ? { background: entry._toneGradient } : undefined}
+        style={{ background: entry._bg || "#818cf8" }}
       >
         {entry.icon}
       </div>
       <span className="text-[11px] font-medium text-[var(--color-slate-800)] leading-tight line-clamp-2">{entry.title}</span>
-      {/* Star toggle — div to avoid nested <button> error */}
       <span
-        role="button"
-        tabIndex={0}
+        role="button" tabIndex={0}
         onClick={(e) => { e.stopPropagation(); toggleAdminNavStar(entry.path); setIsStarred(!isStarred); }}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); toggleAdminNavStar(entry.path); setIsStarred(!isStarred); } }}
         className={cn("absolute top-1 right-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer",
-          isStarred ? "opacity-100 text-[var(--color-peach-600)]" : "text-[var(--color-steel-400)] hover:text-[var(--color-peach-500)]")}
+          isStarred ? "opacity-100 text-amber-500" : "text-gray-400 hover:text-amber-500")}
       >
-        <Star className={cn("h-3.5 w-3.5", isStarred && "fill-[var(--color-peach-500)]")} />
+        <Star className={cn("h-3.5 w-3.5", isStarred && "fill-amber-400")} />
       </span>
     </button>
   );
