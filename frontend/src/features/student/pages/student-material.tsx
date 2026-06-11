@@ -193,7 +193,6 @@ function MaterialItemCard({ item, cartQty, maxStock, onQtyChange }: { item: Mate
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <h4 className="text-[13px] font-semibold truncate">{item.name}</h4>
-          {item.workflowType === "DUAL_REVIEW" && <Badge variant="warning">需复核</Badge>}
         </div>
         {item.subtitle && <p className="text-[11px] text-[var(--student-mute)] mt-0.5 line-clamp-2">{item.subtitle}</p>}
         <div className="flex items-center justify-between mt-2">
