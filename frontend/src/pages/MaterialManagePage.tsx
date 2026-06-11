@@ -9,7 +9,7 @@ import {
   useCreateAdminMaterialCategory, useUpdateAdminMaterialCategory, useDeleteAdminMaterialCategory,
   useCreateAdminMaterialItem, useUpdateAdminMaterialItem, useDeleteAdminMaterialItem,
   useRestoreAdminMaterialRecycle, usePurgeAdminMaterialRecycle, usePurgeAllAdminMaterialRecycle,
-  useInboundMaterialItem, useAdjustMaterialStock, useMaterialCategories, useMaterialItems,
+  useInboundMaterialItem, useAdjustMaterialStock,
 } from "@/api/hooks/useMaterial";
 import type { MaterialItem } from "@/api/domains/material.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
@@ -65,10 +65,7 @@ export default function MaterialManagePage() {
   const recycleRows = recycleData?.data ?? [];
   const recycleTotal = recycleData?.total ?? 0;
 
-  /* ── 学生预览数据 ── */
-  const { data: previewCategories = [] } = useMaterialCategories();
   const [previewCatId, setPreviewCatId] = useState<number | undefined>();
-  const { data: previewItems = [] } = useMaterialItems(previewCatId);
 
   /* ── mutations ── */
   const createCatMut = useCreateAdminMaterialCategory();
@@ -326,16 +323,16 @@ export default function MaterialManagePage() {
         </div>
       )}
 
-      {/* ═══════════ 学生预览 ═══════════ */}
+      {/* ═══════════ 学生视角预览（使用同一数据源） ═══════════ */}
       {previewOpen && (
         <section className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 space-y-3 shadow-twin-level-1">
-          <h3 className="font-medium text-[var(--twin-ink)] flex items-center gap-2"><Eye className="size-4" />学生视角预览</h3>
+          <h3 className="font-medium text-[var(--twin-ink)] flex items-center gap-2"><Eye className="size-4" />学生视角预览（与上方物品列表同源）</h3>
           <div className="flex gap-2 flex-wrap">
             <button onClick={() => setPreviewCatId(undefined)} className={`rounded-twin-sm px-3 py-1 text-xs ${!previewCatId ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] text-[var(--twin-body)]"}`}>全部</button>
-            {previewCategories.map(c => <button key={c.id} onClick={() => setPreviewCatId(c.id)} className={`rounded-twin-sm px-3 py-1 text-xs ${previewCatId === c.id ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] text-[var(--twin-body)]"}`}>{c.name}</button>)}
+            {categories.map(c => <button key={c.id} onClick={() => setPreviewCatId(c.id)} className={`rounded-twin-sm px-3 py-1 text-xs ${previewCatId === c.id ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] text-[var(--twin-body)]"}`}>{c.name}</button>)}
           </div>
           <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-            {previewItems.map(it => (
+            {(previewCatId ? items.filter(i => i.categoryId === previewCatId) : items).map(it => (
               <div key={it.id} className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2 flex items-center gap-2">
                 <div className="size-10 rounded bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
                   {webImageSrc(it.coverUrl) ? <img src={webImageSrc(it.coverUrl)} alt="" className="size-full object-cover" /> : <span className="text-[9px] text-[var(--twin-mute)]">无图</span>}
@@ -343,7 +340,7 @@ export default function MaterialManagePage() {
                 <div className="min-w-0 flex-1">
                   <div className="text-[11px] font-medium truncate text-[var(--twin-ink)]">{it.name}</div>
                   <div className="text-[10px] text-[var(--twin-mute)]">库存 {it.stockQty}{it.lockedQty ? <span className="text-amber-600"> · 锁定{it.lockedQty}</span> : ""}</div>
-                  <div className="text-[9px] text-[var(--twin-mute)]">{it.workflowType === "DUAL_REVIEW" ? "复核" : "简单"}</div>
+                  <div className="text-[9px] text-[var(--twin-mute)]">{it.workflowType === "DUAL_REVIEW" ? "复核" : "简单"}{it.shelfStatus !== "PUBLISHED" ? <span className="text-amber-500"> · {it.shelfStatus}</span> : ""}</div>
                 </div>
               </div>
             ))}
