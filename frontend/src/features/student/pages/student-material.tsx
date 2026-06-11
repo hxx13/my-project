@@ -47,11 +47,12 @@ export default function StudentMaterialPage() {
     return items.filter((item) => cart[item.id] && cart[item.id] > 0).map((item) => ({ ...item, cartQty: cart[item.id] }));
   }, [cart, items]);
 
-  function updateCartQty(itemId: number, delta: number) {
+  function updateCartQty(itemId: number, delta: number, maxStock?: number) {
     if (!cart) return;
     const next = { ...cart };
     const cur = next[itemId] || 0;
-    const nv = Math.max(0, Math.min(999, cur + delta));
+    const cap = maxStock != null ? Math.min(999, maxStock) : 999;
+    const nv = Math.max(0, Math.min(cap, cur + delta));
     if (nv === 0) delete next[itemId];
     else next[itemId] = nv;
     saveCart.mutate(next);
@@ -106,7 +107,7 @@ export default function StudentMaterialPage() {
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
               {items.map((item) => (
-                <MaterialItemCard key={item.id} item={item} cartQty={cart?.[item.id] || 0} onQtyChange={(d) => updateCartQty(item.id, d)} />
+                <MaterialItemCard key={item.id} item={item} cartQty={cart?.[item.id] || 0} maxStock={item.stockMode === "UNLIMITED" ? undefined : (item.stockQty || 0)} onQtyChange={(d) => updateCartQty(item.id, d, item.stockMode === "UNLIMITED" ? undefined : (item.stockQty || 0))} />
               ))}
             </div>
           )}
@@ -157,7 +158,7 @@ export default function StudentMaterialPage() {
                 <div key={item.id} className="flex items-center justify-between p-2 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)]">
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-medium truncate">{item.name}</p>
-                    <p className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : Math.max(0, (item.stockQty||0) - (item.lockedQty||0))}</p>
+                    <p className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : (item.stockQty||0)}</p>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => updateCartQty(item.id, -1)} className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center"><Minus className="size-3" /></button>
@@ -182,7 +183,8 @@ export default function StudentMaterialPage() {
   );
 }
 
-function MaterialItemCard({ item, cartQty, onQtyChange }: { item: MaterialItem; cartQty: number; onQtyChange: (d: number) => void }) {
+function MaterialItemCard({ item, cartQty, maxStock, onQtyChange }: { item: MaterialItem; cartQty: number; maxStock?: number; onQtyChange: (d: number) => void }) {
+  const atCap = maxStock != null && cartQty >= maxStock;
   return (
     <StudentCard className="flex items-start gap-3 p-3">
       <div className="size-16 shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] flex items-center justify-center text-[var(--student-mute)] text-[11px] overflow-hidden">
@@ -195,11 +197,11 @@ function MaterialItemCard({ item, cartQty, onQtyChange }: { item: MaterialItem; 
         </div>
         {item.subtitle && <p className="text-[11px] text-[var(--student-mute)] mt-0.5 line-clamp-2">{item.subtitle}</p>}
         <div className="flex items-center justify-between mt-2">
-          <span className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : Math.max(0, (item.stockQty||0) - (item.lockedQty||0))}</span>
+          <span className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : (item.stockQty||0)}</span>
           <div className="flex items-center gap-1">
             {cartQty > 0 && <button onClick={() => onQtyChange(-1)} className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center"><Minus className="size-3" /></button>}
             {cartQty > 0 && <span className="text-[13px] w-5 text-center font-medium">{cartQty}</span>}
-            <button onClick={() => onQtyChange(1)} className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center"><Plus className="size-3" /></button>
+            <button onClick={() => onQtyChange(1)} disabled={atCap} className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"><Plus className="size-3" /></button>
           </div>
         </div>
       </div>
