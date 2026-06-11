@@ -66,21 +66,14 @@ const WeeklyRoutineMatrixChart = ({ predictions, gender }: { predictions: any[];
     return (
         <div className={`w-full ${CHART_CARD} p-4`}>
             <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-[var(--app-color-text-primary)] tracking-wider">预期核心在馆时间带</span>
-                <span
-                    className="rounded-full border px-2 py-0.5 text-[9px]"
-                    style={{
-                        color: accent.accent,
-                        backgroundColor: `color-mix(in srgb, ${accent.accent} 10%, transparent)`,
-                        borderColor: `color-mix(in srgb, ${accent.accent} 20%, transparent)`,
-                    }}
-                >
+                <span className="text-xs font-bold text-amber-100 tracking-wider">预期核心在馆时间带</span>
+                <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9px] font-bold text-amber-300">
                     Time Band
                 </span>
             </div>
-            <div className="relative w-full border-b border-l border-[var(--app-color-border-default)] pb-1 pl-8 pr-1">
-                <div className="absolute left-1 top-0 text-[8px] text-[var(--app-color-text-tertiary)]">{maxVal.toFixed(2)}</div>
-                <div className="absolute left-1 bottom-1 text-[8px] text-[var(--app-color-text-tertiary)]">0</div>
+            <div className="relative w-full border-b border-l border-amber-800/40 pb-1 pl-8 pr-1">
+                <div className="absolute left-1 top-0 text-[8px] text-amber-200/50">{maxVal.toFixed(2)}</div>
+                <div className="absolute left-1 bottom-1 text-[8px] text-amber-200/50">0</div>
                 <svg className="w-full h-[60px]" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
                     {[0, 1, 2, 3, 4, 5, 6].map((i) => (
                         <line key={i} x1={getX(i)} y1={0} x2={getX(i)} y2={height} stroke={accent.gridStroke} strokeDasharray="2" />
@@ -91,7 +84,7 @@ const WeeklyRoutineMatrixChart = ({ predictions, gender }: { predictions: any[];
                 </svg>
                 <div className="flex justify-between w-full mt-1.5">
                     {["一", "二", "三", "四", "五", "六", "日"].map((day) => (
-                        <span key={day} className="text-[9px] font-bold text-[var(--app-color-text-tertiary)]">{day}</span>
+                        <span key={day} className="text-[9px] font-bold text-amber-200/60">{day}</span>
                     ))}
                 </div>
             </div>

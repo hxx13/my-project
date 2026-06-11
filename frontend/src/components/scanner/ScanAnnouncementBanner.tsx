@@ -169,10 +169,13 @@ export function ScanAnnouncementBanner({
                 className={`relative flex max-h-[min(88vh,720px)] w-full max-w-[min(96vw,680px)] flex-col overflow-hidden ${NOTICE_PANEL}`}
                 onClick={(e) => e.stopPropagation()}
               >
+                {/* 顶部玫瑰色装饰条 */}
+                <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[var(--app-radius-container)]" style={{background:"linear-gradient(90deg,#fb7185,#f43f5e)"}} />
+
                 {/* ── Header ── */}
-                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--app-color-border-default)] px-4 py-3">
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-rose-200 dark:border-rose-800/30 px-4 py-3">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Megaphone className="h-5 w-5 shrink-0 text-[var(--app-color-accent)]" />
+                    <Megaphone className="h-5 w-5 shrink-0 text-rose-500 dark:text-rose-400" />
                     <div className="min-w-0">
                       <div
                         id="scan-announcement-title"
@@ -192,7 +195,7 @@ export function ScanAnnouncementBanner({
                       <button
                         type="button"
                         onClick={acknowledge}
-                        className="rounded-full border border-[var(--app-color-border-default)] px-3 py-1 text-[11px] font-bold text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors"
+                        className="rounded-full border border-rose-200 dark:border-rose-800/30 px-3 py-1 text-[11px] font-bold text-[var(--app-color-text-secondary)] hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
                       >
                         已知悉
                       </button>
@@ -200,7 +203,7 @@ export function ScanAnnouncementBanner({
                     <button
                       type="button"
                       onClick={() => setPanelOpen(false)}
-                      className="rounded-full p-2 text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)] transition-colors"
+                      className="rounded-full p-2 text-[var(--app-color-text-tertiary)] hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
                       aria-label="关闭"
                     >
                       <X className="h-4 w-4" />
@@ -212,7 +215,7 @@ export function ScanAnnouncementBanner({
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                   {safeHtml ? (
                     <div
-                      className={`${SCAN_ANNOUNCEMENT_BODY_CLASS} rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-5`}
+                      className={`${SCAN_ANNOUNCEMENT_BODY_CLASS} rounded-[var(--app-radius-element)] border border-rose-200 dark:border-rose-800/30 bg-[var(--app-color-surface-page)] p-5`}
                       dangerouslySetInnerHTML={{ __html: safeHtml }}
                     />
                   ) : (
@@ -224,7 +227,7 @@ export function ScanAnnouncementBanner({
 
                 {/* ── Footer：翻页导航 ── */}
                 {total > 1 ? (
-                  <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--app-color-border-default)] px-4 py-3">
+                  <div className="flex shrink-0 items-center justify-between gap-2 border-t border-rose-200 dark:border-rose-800/30 px-4 py-3">
                     <button
                       type="button"
                       className="inline-flex items-center gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] px-3 py-1.5 text-xs font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors"

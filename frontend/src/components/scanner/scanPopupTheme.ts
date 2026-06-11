@@ -18,9 +18,10 @@ export function resolveScanAccentCss(variant: ScanAccentVariant) {
   };
 }
 
-// ═══ 遮罩：实色底，禁止 backdrop-blur（避免背后自动滚动穿透闪烁）═══
+// ═══ 遮罩：暖色渐变 + 强模糊，让白色组件立体凸起 ═══
+/** 全屏遮罩：暖色渐变 + 强模糊，让白色组件立体凸起 */
 export const SCAN_POPUP_BACKDROP =
-  "bg-[var(--app-color-surface-page)] isolate [contain:paint]";
+  "bg-[linear-gradient(135deg,rgba(255,245,230,0.94),rgba(254,243,199,0.92),rgba(255,247,237,0.93))] dark:bg-[linear-gradient(135deg,rgba(18,16,14,0.96),rgba(28,20,16,0.94),rgba(18,16,14,0.96))] backdrop-blur-lg [contain:paint]";
 export const SCAN_NESTED_BACKDROP =
   "bg-[var(--app-color-surface-page)] isolate [contain:paint]";
 
@@ -93,6 +94,10 @@ export const NOTICE_ISLAND_BASE =
 /** 公告弹窗面板 */
 export const NOTICE_PANEL =
   "rounded-[var(--app-radius-container)] bg-white dark:bg-[#1e1b18] shadow-[0_16px_48px_rgba(0,0,0,0.15)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.6)] border border-[var(--app-color-border-default)]";
+
+/** 违规/未绑卡详情弹窗：无边框轻阴影，框架退后、正文居前 */
+export const VIOLATION_NOTICE_PANEL =
+  "rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] ring-1 ring-[var(--app-color-border-default)]/40";
 
 /** 通行成功浮层 */
 export const ACCESS_NOTICE_CARD_BASE =

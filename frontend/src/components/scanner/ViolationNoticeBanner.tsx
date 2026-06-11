@@ -5,7 +5,11 @@ import { ChevronRight, Megaphone, X } from "lucide-react";
 import type { StudentViolationNotice } from "@/api/types/scanner";
 import { InteractiveChallenge } from "./InteractiveChallenge";
 import { ackViolationInteractivePermanent } from "./twinViolationInteractive";
-import { SCAN_NESTED_BACKDROP, NOTICE_ISLAND_BASE, NOTICE_PANEL, resolveNoticeColors, type NoticeKind } from "./scanPopupTheme";
+import {
+  NOTICE_ISLAND_BASE,
+  VIOLATION_NOTICE_PANEL,
+  resolveNoticeColors,
+} from "./scanPopupTheme";
 
 export type ViolationNoticeKind = "violation" | "unbound";
 
@@ -180,7 +184,7 @@ export function ViolationNoticeBanner({
           </span>
           <span className="min-w-0 flex-1 text-left">
             <span className={`block text-[11px] font-black uppercase tracking-[0.2em] ${nc.tag}`}>{t.alertTag}</span>
-            <span className="block truncate text-sm font-bold text-slate-800 dark:text-warm-50">{islandLabel}</span>
+            <span className="block truncate text-sm font-bold text-[var(--app-color-text-primary)]">{islandLabel}</span>
           </span>
           {remaining != null ? (
             <span className={`hidden shrink-0 rounded-full bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[10px] font-bold sm:inline ${nc.badge}`}>
@@ -203,91 +207,84 @@ export function ViolationNoticeBanner({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4 ${SCAN_NESTED_BACKDROP}`}
+              className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4"
               onClick={closePanel}
             >
               <motion.div
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
-                initial={{ opacity: 0, scale: 0.94, y: 12 }}
+                initial={{ opacity: 0, scale: 0.97, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.96, y: 8 }}
-                transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                className={`relative flex max-h-[min(88vh,720px)] w-full max-w-[min(96vw,640px)] flex-col overflow-hidden ${NOTICE_PANEL}`}
+                exit={{ opacity: 0, scale: 0.98, y: 6 }}
+                transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                className={`relative flex max-h-[min(90vh,780px)] w-full max-w-[min(92vw,36rem)] flex-col overflow-hidden ${VIOLATION_NOTICE_PANEL}`}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--app-color-border-default)] px-4 py-3">
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Megaphone className={`h-5 w-5 shrink-0 ${nc.iconText}`} />
-                    <div className="min-w-0">
-                      <div id={titleId} className="text-sm font-black tracking-wide text-slate-800 dark:text-warm-50">
-                        {t.dialogTitle}
+                {/* 顶部按类型着色装饰条 */}
+                <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[var(--app-radius-container)]"
+                     style={{background: kind === "violation" ? "linear-gradient(90deg,#fbbf24,#f59e0b)" : "linear-gradient(90deg,#fb923c,#f97316)"}} />
+
+                {/* 顶栏：极轻量，不抢正文 */}
+                <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 sm:px-8 sm:pt-6">
+                  <div className="min-w-0 pt-0.5">
+                    <p id={titleId} className={`text-[10px] font-semibold uppercase tracking-[0.22em] ${nc.tag}`}>
+                      {t.dialogTitle}
+                    </p>
+                    {locked || (isViolation && remaining != null) ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {isViolation && remaining != null ? (
+                          <span className="text-[11px] text-[var(--app-color-text-tertiary)]">剩余进入 {remaining} 次</span>
+                        ) : null}
+                        {locked ? (
+                          <span className="text-[11px] font-medium text-[var(--app-color-feedback-danger)]">禁止进入</span>
+                        ) : null}
                       </div>
-                      {locked || (isViolation && remaining != null) ? (
-                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--app-color-text-tertiary)]">
-                          {isViolation && remaining != null ? <span>剩余进入次数：{remaining}</span> : null}
-                          {locked ? <span className="font-bold text-[var(--app-color-feedback-danger)]">禁止进入</span> : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {!notice.showNoticeEveryScan ? (
-                      <button
-                        type="button"
-                        disabled={Boolean(interactivePhrase && !interactiveDone)}
-                        onClick={acknowledge}
-                        className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-opacity ${
-                          interactivePhrase && !interactiveDone
-                            ? "cursor-not-allowed border-[var(--app-color-border-default)] text-[var(--app-color-text-tertiary)]"
-                            : "hover:bg-[var(--app-color-surface-hover)] border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]"
-                        }`}
-                      >
-                        {interactivePhrase && !interactiveDone ? "请先完成验证" : "已知悉"}
-                      </button>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={closePanel}
-                      className="rounded-full p-2 hover:bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]"
-                      aria-label="关闭"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={closePanel}
+                    className="-mr-1 shrink-0 rounded-full p-1.5 text-[var(--app-color-text-tertiary)] transition-colors hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-secondary)]"
+                    aria-label="关闭"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-                  <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4">
+                {/* 正文区：留白优先，文字为视觉重心 */}
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8 pt-4 sm:px-10 sm:pb-10 sm:pt-6">
+                  <div className="mx-auto flex w-full max-w-[34rem] flex-col items-center gap-8 sm:gap-10">
+                    {text ? (
+                      <p className="w-full whitespace-pre-wrap break-words text-center text-[1.05rem] font-medium leading-[1.85] tracking-[0.01em] text-[var(--app-color-text-primary)] sm:text-[1.2rem] sm:leading-[1.9]">
+                        {text}
+                      </p>
+                    ) : imgCount === 0 && !(interactivePhrase && !interactiveDone) ? (
+                      <p className="text-center text-sm leading-relaxed text-[var(--app-color-text-tertiary)]">
+                        未填写文字说明，请查看附图或联系管理员。
+                      </p>
+                    ) : null}
+
                     {imgCount > 0 ? (
                       <div className={`w-full ${imageGridClass(imgCount)}`}>
                         {images.map((src) => (
                           <div
                             key={src}
-                            className="flex max-h-[min(38vh,320px)] items-center justify-center overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-1"
+                            className="flex max-h-[min(32vh,280px)] items-center justify-center overflow-hidden rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-page)]/60 p-2"
                           >
                             <img
                               src={src}
                               alt={isViolation ? "违规附图" : "未绑卡提示附图"}
-                              className="max-h-[min(38vh,320px)] w-full object-contain"
+                              className="max-h-[min(32vh,280px)] w-full object-contain"
                               referrerPolicy="no-referrer"
                             />
                           </div>
                         ))}
                       </div>
                     ) : null}
-                    {text ? (
-                      <p
-                        className="w-full max-w-2xl rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-4 text-center text-sm leading-relaxed whitespace-pre-wrap break-words text-slate-800 dark:text-warm-50"
-                      >
-                        {text}
-                      </p>
-                    ) : imgCount === 0 && !(interactivePhrase && !interactiveDone) ? (
-                      <p className="text-center text-xs text-[var(--app-color-text-tertiary)]">未填写文字说明，请查看附图或联系管理员。</p>
-                    ) : null}
+
                     {interactivePhrase && !interactiveDone ? (
-                      <div className="w-full max-w-2xl rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-5">
+                      <div className="w-full rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-page)]/50 px-4 py-6 sm:px-6">
                         <InteractiveChallenge
                           phrase={interactivePhrase}
                           onComplete={() => {
@@ -313,6 +310,23 @@ export function ViolationNoticeBanner({
                     ) : null}
                   </div>
                 </div>
+
+                {!notice.showNoticeEveryScan ? (
+                  <div className={`flex shrink-0 justify-center ${kind === "violation" ? "border-amber-200 dark:border-amber-800/30" : "border-orange-200 dark:border-orange-800/30"} border-t px-6 py-4 sm:px-8`}>
+                    <button
+                      type="button"
+                      disabled={Boolean(interactivePhrase && !interactiveDone)}
+                      onClick={acknowledge}
+                      className={`text-[13px] font-medium transition-colors ${
+                        interactivePhrase && !interactiveDone
+                          ? "cursor-not-allowed text-[var(--app-color-text-tertiary)]"
+                          : "text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-text-primary)]"
+                      }`}
+                    >
+                      {interactivePhrase && !interactiveDone ? "请先完成上方验证" : "已知悉，关闭"}
+                    </button>
+                  </div>
+                ) : null}
               </motion.div>
             </motion.div>
           ) : null}
