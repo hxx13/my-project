@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, Megaphone, X } from "lucide-react";
 import type { ScanPopupAnnouncementBundle } from "@/api/types/scanner";
 import { prepareAnnouncementHtml, SCAN_ANNOUNCEMENT_BODY_CLASS } from "@/utils/announcementHtml";
-import { SCAN_NESTED_BACKDROP } from "./scanPopupTheme";
+import { SCAN_NESTED_BACKDROP, NOTICE_ISLAND_BASE, NOTICE_PANEL, resolveNoticeColors, type NoticeKind } from "./scanPopupTheme";
 
 const ackKey = (id: number) => `twin_scan_announcement_ack_${id}`;
 
@@ -114,6 +114,8 @@ export function ScanAnnouncementBanner({
 
   const safeHtml = prepareAnnouncementHtml(current.contentHtml || "");
 
+  const nc = resolveNoticeColors("announcement");
+
   return (
     <>
       {/* ── Island 触发按钮 ── */}
@@ -121,21 +123,21 @@ export function ScanAnnouncementBanner({
         <button
           type="button"
           onClick={() => setPanelOpen(!panelOpen)}
-          className="group flex w-full min-w-0 max-w-[420px] items-center gap-2 rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)]/95 px-3 py-2 shadow-lg ring-1 ring-white/[0.04] backdrop-blur-md transition-all hover:bg-[var(--app-color-surface-hover)] hover:shadow-xl active:scale-[0.98] sm:gap-2.5 sm:px-4 sm:py-2.5"
+          className={`group flex w-full min-w-0 max-w-[420px] items-center gap-2 ${NOTICE_ISLAND_BASE} ${nc.border} px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-2.5`}
         >
-          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--app-color-accent)]/10 ring-1 ring-[var(--app-color-accent)]/20">
-            <Megaphone className="h-4 w-4 text-[var(--app-color-accent)]" />
+          <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${nc.iconBg}`}>
+            <Megaphone className={`h-4 w-4 ${nc.iconText}`} />
           </span>
           <span className="min-w-0 flex-1 text-left">
-            <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-[var(--app-color-text-tertiary)]">
+            <span className={`block text-[11px] font-black uppercase tracking-[0.2em] ${nc.tag}`}>
               Notice
             </span>
-            <span className="block truncate text-sm font-bold text-[var(--app-color-text-primary)]">
+            <span className="block truncate text-sm font-bold text-slate-800 dark:text-warm-50">
               {islandLabel}
             </span>
           </span>
           <ChevronRight
-            className={`h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)] transition-transform ${
+            className={`h-4 w-4 shrink-0 ${nc.tag} transition-transform ${
               panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"
             }`}
           />
@@ -164,7 +166,7 @@ export function ScanAnnouncementBanner({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: 8 }}
                 transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                className="relative flex max-h-[min(88vh,720px)] w-full max-w-[min(96vw,680px)] flex-col overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)]"
+                className={`relative flex max-h-[min(88vh,720px)] w-full max-w-[min(96vw,680px)] flex-col overflow-hidden ${NOTICE_PANEL}`}
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* ── Header ── */}
