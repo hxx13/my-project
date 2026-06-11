@@ -75,7 +75,7 @@ export function BizOverlayShell({ userId, title, onCancel, className = "" }: Biz
                 </button>
               </div>
 
-              <div className="flex-1 space-y-3 overflow-y-auto p-4">
+              <div className="app-themed-scrollbar flex-1 space-y-3 overflow-y-auto p-4">
                 {items.length === 0 ? (
                   <p className="py-8 text-center text-sm text-[var(--app-color-text-tertiary)]">
                     暂无可用的快捷业务

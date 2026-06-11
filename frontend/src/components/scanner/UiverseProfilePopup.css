@@ -186,20 +186,29 @@
     transition: all 0.5s ease-in-out;
 }
 
-/* 隐藏右侧列表的默认滚动条，保持 WebKit 下的美观 */
+/* 与全站 app-themed-scrollbar 对齐；保留类名以兼容旧引用 */
+.custom-scrollbar {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--app-color-text-tertiary) 70%, transparent)
+      color-mix(in srgb, var(--app-color-surface-hover) 85%, transparent);
+}
 .custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
+    width: 6px;
+    height: 6px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
+    border-radius: var(--app-radius-pill);
+    background: color-mix(in srgb, var(--app-color-surface-hover) 70%, transparent);
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
+    border-radius: var(--app-radius-pill);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    background: color-mix(in srgb, var(--app-color-text-tertiary) 55%, var(--app-color-border-strong));
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.4);
+    background: color-mix(in srgb, var(--app-color-text-secondary) 65%, var(--app-color-border-strong));
 }
 
 /* 按钮的扫光特效 */

@@ -19,16 +19,11 @@ import { Z_INDEX } from "@/constants/zIndex";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { BizOverlayShell } from "./BizOverlayShell";
 import { checkPinStatus } from "./specialChannel.api";
-import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP, SCAN_MODAL_LAYER_PROPS, CHART_CARD, getActiveScheme, setActiveScheme, SCAN_COLOR_SCHEMES } from "./scanPopupTheme";
+import { resolveScanAccentCss, resolveScanAccentVariant, schemeBackdrop, SCAN_MODAL_LAYER_PROPS, CHART_CARD, getActiveScheme, setActiveScheme, SCAN_COLOR_SCHEMES } from "./scanPopupTheme";
 import { ScanLevelBadge } from "./ScanLevelBadge";
 import { useTheme } from "@/features/theme/ThemeProvider";
 
-/**
- * 预期核心在馆时间带 — 周曲线图。
- * 配色说明见 docs/weekly-routine-chart-theming.md：
- * 仅 SVG 曲线与 Time Band 徽章接入了 --scan-chart-* / --scan-accent；
- * 标题、坐标、CHART_CARD 底仍为硬编码 amber/#1c1410，故切换左上角色系时视觉变化有限。
- */
+/** 预期核心在馆时间带 — 背景/边框/曲线均消费父级 schemeCssVars（--scan-card-tint 等） */
 const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
     const days = 7;
     const width = 300;
@@ -70,18 +65,17 @@ const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
     return (
         <div className={`w-full ${CHART_CARD} p-4`}>
             <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-amber-100 tracking-wider">预期核心在馆时间带</span>
-                <span className="rounded-full px-2 py-0.5 text-[9px] font-bold"
-                      style={{ border: `1px solid var(--scan-accent)`, color: 'var(--scan-accent)', backgroundColor: 'var(--scan-badge-bg)' }}>
+                <span className="text-xs font-bold tracking-wider text-[var(--app-color-text-primary)]">预期核心在馆时间带</span>
+                <span className="scan-weekly-chart-badge rounded-full px-2 py-0.5 text-[9px] font-bold">
                     Time Band
                 </span>
             </div>
-            <div className="relative w-full border-b border-l border-amber-800/40 pb-1 pl-8 pr-1">
-                <div className="absolute left-1 top-0 text-[8px] text-amber-200/50">{maxVal.toFixed(2)}</div>
-                <div className="absolute left-1 bottom-1 text-[8px] text-amber-200/50">0</div>
+            <div className="scan-weekly-chart-plot relative w-full pb-1 pl-8 pr-1">
+                <div className="absolute left-1 top-0 text-[8px] text-[var(--app-color-text-tertiary)]">{maxVal.toFixed(2)}</div>
+                <div className="absolute left-1 bottom-1 text-[8px] text-[var(--app-color-text-tertiary)]">0</div>
                 <svg className="w-full h-[60px]" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
                     {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-                        <line key={i} x1={getX(i)} y1={0} x2={getX(i)} y2={height} stroke="rgba(255,255,255,0.06)" strokeDasharray="2" />
+                        <line key={i} x1={getX(i)} y1={0} x2={getX(i)} y2={height} stroke="var(--scan-chart-grid)" strokeDasharray="2" />
                     ))}
                     <path d={`M ${entryPath} L ${exitPath.split(" L ").reverse().join(" L ")} Z`} fill="var(--scan-chart-fill)" stroke="none" />
                     <path d={`M ${exitPath}`} fill="none" stroke="var(--scan-chart-exit)" strokeWidth="1.5" strokeDasharray="3 3" />
@@ -89,7 +83,7 @@ const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
                 </svg>
                 <div className="flex justify-between w-full mt-1.5">
                     {["一", "二", "三", "四", "五", "六", "日"].map((day) => (
-                        <span key={day} className="text-[9px] font-bold text-amber-200/60">{day}</span>
+                        <span key={day} className="text-[9px] font-bold text-[var(--app-color-text-secondary)]">{day}</span>
                     ))}
                 </div>
             </div>
@@ -176,6 +170,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                '--scan-chart-entry': scheme.chartStrokeEntry,
                '--scan-chart-exit': scheme.chartStrokeExit,
                '--scan-chart-fill': scheme.chartFill,
+               '--scan-chart-grid': `color-mix(in srgb, ${scheme.accent} 22%, var(--app-color-border-default))`,
                '--scan-badge-bg': scheme.badgeBg,
                '--scan-badge-border': scheme.badgeBorder,
                '--scan-exp-gradient': scheme.expGradient,
@@ -208,7 +203,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                 {...SCAN_MODAL_LAYER_PROPS}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className={`fixed inset-0 flex flex-col ${SCAN_POPUP_BACKDROP}`}
+                className={`fixed inset-0 flex flex-col ${schemeBackdrop(scheme)}`}
                 style={{ zIndex: Z_INDEX.scannerPopup }}
             >
                 {/* 左上角色系指示器（可点击切换） */}

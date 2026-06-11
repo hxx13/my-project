@@ -238,7 +238,7 @@ export function StudentDahuaBindPanel({
         <DahuaCardMappingStatusPanel mapping={mapping} loading={mappingLoading} compact />
 
         {issueResult && !issueResult.success && issueResult.steps && issueResult.steps.length > 0 ? (
-          <div className="mt-2 max-h-24 overflow-auto rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-2 text-[10px] text-[var(--app-color-feedback-danger)]">
+          <div className="app-themed-scrollbar mt-2 max-h-24 overflow-auto rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-2 text-[10px] text-[var(--app-color-feedback-danger)]">
             {issueResult.steps.map((step, idx) => (
               <div key={`${step.stepName}-${idx}`}>
                 [{step.success ? "成功" : "失败"}] {step.stepName} {step.upstreamErrMsg || step.message || ""}

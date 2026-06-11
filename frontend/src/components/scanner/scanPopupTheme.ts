@@ -18,10 +18,11 @@ export function resolveScanAccentCss(variant: ScanAccentVariant) {
   };
 }
 
-// ═══ 遮罩：暖色渐变 + 强模糊，让白色组件立体凸起 ═══
-/** 全屏遮罩：暖色渐变 + 强模糊，让白色组件立体凸起 */
-export const SCAN_POPUP_BACKDROP =
-  "bg-[linear-gradient(135deg,rgba(255,245,230,0.94),rgba(254,243,199,0.92),rgba(255,247,237,0.93))] dark:bg-[linear-gradient(135deg,rgba(18,16,14,0.96),rgba(28,20,16,0.94),rgba(18,16,14,0.96))] backdrop-blur-lg [contain:paint]";
+// ═══ 遮罩：随色系变色，让组件立体凸起 ═══
+/** 全屏遮罩：方案强调色渐变 + 强模糊。每个色系的遮罩都不同，组件在彩色底上自然凸起 */
+export function schemeBackdrop(scheme: ScanColorScheme): string {
+  return `bg-[linear-gradient(135deg,color-mix(in_srgb,${scheme.accent}_18%,#fff5f5),color-mix(in_srgb,${scheme.accent}_12%,#fffaf5),color-mix(in_srgb,${scheme.accentStrong}_15%,#fff7f0))] dark:bg-[linear-gradient(135deg,color-mix(in_srgb,${scheme.accent}_22%,#120e0c),color-mix(in_srgb,${scheme.accentStrong}_18%,#14100e),color-mix(in_srgb,${scheme.accent}_25%,#100e0d))] backdrop-blur-lg [contain:paint]`;
+}
 /** 业务操作类弹窗（绑卡、disciplinary 等）用实色底；公告/违规/未绑卡详情见 ScanPopupNoticeBanner，无全屏遮罩 */
 export const SCAN_NESTED_BACKDROP =
   "bg-[var(--app-color-surface-page)] isolate [contain:paint]";
@@ -46,12 +47,8 @@ export const STUDENT_CARD =
 export const AI_CARD =
   "rounded-[var(--app-radius-container)] bg-[var(--scan-ai-bg)] dark:bg-[var(--scan-ai-bg-dark)] shadow-[0_8px_32px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.55)] border border-orange-100/50 dark:border-orange-900/20";
 
-/**
- * 周曲线图卡（预期核心在馆时间带）— 固定深暖棕底，未绑定 SCAN_COLOR_SCHEMES。
- * 详见 frontend/src/components/scanner/docs/weekly-routine-chart-theming.md
- */
-export const CHART_CARD =
-  "rounded-[var(--app-radius-container)] bg-[#1c1410] dark:bg-[#0f0b09] shadow-[0_8px_32px_rgba(0,0,0,0.35)] border border-amber-900/20";
+/** 周曲线图卡（预期核心在馆时间带）— 背景见 scanPopupNotice.css `.scan-weekly-chart-card` */
+export const CHART_CARD = "scan-weekly-chart-card";
 
 // ═══ 公告灵动岛 — 按类型着色 ═══
 
@@ -209,192 +206,161 @@ export const TOGGLE_TRAY =
 export type ScanColorScheme = {
   id: number;
   name: string;
+  /** 主强调色 400 级别（参考后台入口图标） */
   accent: string;
+  /** 强强调色 500 级别 */
+  accentStrong: string;
   accentGradient: string;
-  cardTint: string;
-  cardTintDark: string;
   glow: string;
   chartStrokeEntry: string;
   chartStrokeExit: string;
   chartFill: string;
-  islandBg: string;
-  islandBgDark: string;
-  islandBorder: string;
   badgeBg: string;
   badgeBorder: string;
   expGradient: string;
-  /** ProfileHeader full card bg (most saturated shade) */
+  /** ProfileHeader 整卡底色 300 级别（最深/最饱和） */
   profileBg: string;
   profileBgDark: string;
   profileBorder: string;
-  /** StudentEntryCard full card bg (medium saturation) */
+  /** StudentEntryCard 整卡底色 200 级别（中等） */
   studentBg: string;
   studentBgDark: string;
-  /** AIPredictionCard full card bg (lightest shade) */
+  /** AIPredictionCard 整卡底色 100 级别（最浅） */
   aiBg: string;
   aiBgDark: string;
 };
 
+/** 10 套高饱和暖色方案。色值参考后台入口图标渐变（400→500 级别）。遮罩、卡片、图表全部跟色系变色。 */
 export const SCAN_COLOR_SCHEMES: ScanColorScheme[] = [
+  // ── 1. 琥珀金 ──
   {
-    id: 1, name: "桃色",
-    accent: "#FAD4C0",
-    accentGradient: "linear-gradient(90deg, #FAD4C0, #f8b8a0, #fbb9b6)",
-    cardTint: "#fff5f3", cardTintDark: "#1c1816",
-    glow: "rgba(250,212,192,0.22)",
-    chartStrokeEntry: "#f8b8a0", chartStrokeExit: "#fbb9b6", chartFill: "rgba(250,212,192,0.18)",
-    islandBg: "bg-rose-50", islandBgDark: "dark:bg-rose-950/40",
-    islandBorder: "border-rose-300 dark:border-rose-400/30",
-    badgeBg: "#2d1b18", badgeBorder: "#FAD4C0",
-    expGradient: "linear-gradient(90deg, rgba(250,212,192,0.25), rgba(248,184,160,0.55))",
-    profileBg: "#fff0ed", profileBgDark: "#1e1816",
-    profileBorder: "#f8b8a0",
-    studentBg: "#fff5f3", studentBgDark: "#1c1816",
-    aiBg: "#fffaf8", aiBgDark: "#1b1817",
-  },
-  {
-    id: 2, name: "琥珀",
-    accent: "#fbbf24",
-    accentGradient: "linear-gradient(90deg, #fbbf24, #f59e0b, #d97706)",
-    cardTint: "#fffbf0", cardTintDark: "#1c1810",
-    glow: "rgba(251,191,36,0.22)",
-    chartStrokeEntry: "#fbbf24", chartStrokeExit: "#f59e0b", chartFill: "rgba(251,191,36,0.18)",
-    islandBg: "bg-amber-50", islandBgDark: "dark:bg-amber-950/40",
-    islandBorder: "border-amber-300 dark:border-amber-400/30",
+    id: 1, name: "琥珀金",
+    accent: "#fbbf24", accentStrong: "#f59e0b",
+    accentGradient: "linear-gradient(135deg, #fbbf24, #f59e0b, #d97706)",
+    glow: "rgba(251,191,36,0.30)",
+    chartStrokeEntry: "#fbbf24", chartStrokeExit: "#f59e0b", chartFill: "rgba(251,191,36,0.22)",
     badgeBg: "#1c1610", badgeBorder: "#fbbf24",
-    expGradient: "linear-gradient(90deg, rgba(251,191,36,0.25), rgba(245,158,11,0.55))",
-    profileBg: "#fef9e7", profileBgDark: "#1e1a10",
-    profileBorder: "#fde68a",
-    studentBg: "#fffdf5", studentBgDark: "#1c1910",
-    aiBg: "#fffefa", aiBgDark: "#1b1911",
+    expGradient: "linear-gradient(90deg, rgba(251,191,36,0.35), rgba(245,158,11,0.70))",
+    profileBg: "#fef3c7", profileBgDark: "#1e180e", profileBorder: "#fbbf24",
+    studentBg: "#fef9e7", studentBgDark: "#1c1910",
+    aiBg: "#fffdf0", aiBgDark: "#1b1911",
   },
+  // ── 2. 珊瑚橙 ──
   {
-    id: 3, name: "珊瑚",
-    accent: "#fb923c",
-    accentGradient: "linear-gradient(90deg, #fb923c, #f97316, #ea580c)",
-    cardTint: "#fff7f0", cardTintDark: "#1c1814",
-    glow: "rgba(251,146,60,0.22)",
-    chartStrokeEntry: "#fb923c", chartStrokeExit: "#f97316", chartFill: "rgba(251,146,60,0.18)",
-    islandBg: "bg-orange-50", islandBgDark: "dark:bg-orange-950/40",
-    islandBorder: "border-orange-300 dark:border-orange-400/30",
+    id: 2, name: "珊瑚橙",
+    accent: "#fb923c", accentStrong: "#f97316",
+    accentGradient: "linear-gradient(135deg, #fb923c, #f97316, #ea580c)",
+    glow: "rgba(251,146,60,0.28)",
+    chartStrokeEntry: "#fb923c", chartStrokeExit: "#f97316", chartFill: "rgba(251,146,60,0.22)",
     badgeBg: "#1c1410", badgeBorder: "#fb923c",
-    expGradient: "linear-gradient(90deg, rgba(251,146,60,0.25), rgba(249,115,22,0.55))",
-    profileBg: "#ffedd5", profileBgDark: "#1e1810",
-    profileBorder: "#fdba74",
-    studentBg: "#fff7f0", studentBgDark: "#1c1814",
-    aiBg: "#fffaf5", aiBgDark: "#1b1815",
+    expGradient: "linear-gradient(90deg, rgba(251,146,60,0.35), rgba(249,115,22,0.70))",
+    profileBg: "#ffedd5", profileBgDark: "#1e1810", profileBorder: "#fb923c",
+    studentBg: "#fef2e0", studentBgDark: "#1c1812",
+    aiBg: "#fff7ed", aiBgDark: "#1b1814",
   },
+  // ── 3. 玫瑰粉 ──
   {
-    id: 4, name: "蜜色",
-    accent: "#fcd34d",
-    accentGradient: "linear-gradient(90deg, #fde68a, #fcd34d, #fbbf24)",
-    cardTint: "#fffef5", cardTintDark: "#1c1a10",
-    glow: "rgba(253,224,71,0.22)",
-    chartStrokeEntry: "#fcd34d", chartStrokeExit: "#fbbf24", chartFill: "rgba(252,211,77,0.18)",
-    islandBg: "bg-yellow-50", islandBgDark: "dark:bg-yellow-950/40",
-    islandBorder: "border-yellow-300 dark:border-yellow-400/30",
-    badgeBg: "#1c180c", badgeBorder: "#fcd34d",
-    expGradient: "linear-gradient(90deg, rgba(252,211,77,0.25), rgba(251,191,36,0.55))",
-    profileBg: "#fefce8", profileBgDark: "#1e1c0e",
-    profileBorder: "#fde68a",
-    studentBg: "#fffef7", studentBgDark: "#1c1b10",
-    aiBg: "#fffffa", aiBgDark: "#1b1a11",
+    id: 3, name: "玫瑰粉",
+    accent: "#fb7185", accentStrong: "#f43f5e",
+    accentGradient: "linear-gradient(135deg, #fb7185, #f43f5e, #e11d48)",
+    glow: "rgba(251,113,133,0.28)",
+    chartStrokeEntry: "#fb7185", chartStrokeExit: "#f43f5e", chartFill: "rgba(251,113,133,0.20)",
+    badgeBg: "#1c1416", badgeBorder: "#fb7185",
+    expGradient: "linear-gradient(90deg, rgba(251,113,133,0.35), rgba(244,63,94,0.70))",
+    profileBg: "#ffe4e6", profileBgDark: "#1e1416", profileBorder: "#fb7185",
+    studentBg: "#ffeef0", studentBgDark: "#1c1416",
+    aiBg: "#fff5f6", aiBgDark: "#1b1416",
   },
+  // ── 4. 紫罗兰 ──
   {
-    id: 5, name: "绯红",
-    accent: "#f472b6",
-    accentGradient: "linear-gradient(90deg, #f9a8d4, #f472b6, #ec4899)",
-    cardTint: "#fff5fa", cardTintDark: "#1c141a",
-    glow: "rgba(244,114,182,0.22)",
-    chartStrokeEntry: "#f472b6", chartStrokeExit: "#ec4899", chartFill: "rgba(244,114,182,0.18)",
-    islandBg: "bg-pink-50", islandBgDark: "dark:bg-pink-950/40",
-    islandBorder: "border-pink-300 dark:border-pink-400/30",
+    id: 4, name: "紫罗兰",
+    accent: "#a78bfa", accentStrong: "#8b5cf6",
+    accentGradient: "linear-gradient(135deg, #c084fc, #a78bfa, #8b5cf6)",
+    glow: "rgba(167,139,250,0.28)",
+    chartStrokeEntry: "#a78bfa", chartStrokeExit: "#8b5cf6", chartFill: "rgba(167,139,250,0.20)",
+    badgeBg: "#1a1620", badgeBorder: "#a78bfa",
+    expGradient: "linear-gradient(90deg, rgba(167,139,250,0.35), rgba(139,92,246,0.70))",
+    profileBg: "#ede9fe", profileBgDark: "#1c1820", profileBorder: "#a78bfa",
+    studentBg: "#f3f0ff", studentBgDark: "#1b1820",
+    aiBg: "#faf8ff", aiBgDark: "#1a1820",
+  },
+  // ── 5. 天青蓝 ──
+  {
+    id: 5, name: "天青蓝",
+    accent: "#38bdf8", accentStrong: "#0ea5e9",
+    accentGradient: "linear-gradient(135deg, #7dd3fc, #38bdf8, #0ea5e9)",
+    glow: "rgba(56,189,248,0.28)",
+    chartStrokeEntry: "#38bdf8", chartStrokeExit: "#0ea5e9", chartFill: "rgba(56,189,248,0.20)",
+    badgeBg: "#101820", badgeBorder: "#38bdf8",
+    expGradient: "linear-gradient(90deg, rgba(56,189,248,0.35), rgba(14,165,233,0.70))",
+    profileBg: "#e0f2fe", profileBgDark: "#161e24", profileBorder: "#38bdf8",
+    studentBg: "#ecf9ff", studentBgDark: "#151e24",
+    aiBg: "#f5fcff", aiBgDark: "#141e24",
+  },
+  // ── 6. 祖母绿 ──
+  {
+    id: 6, name: "祖母绿",
+    accent: "#34d399", accentStrong: "#10b981",
+    accentGradient: "linear-gradient(135deg, #6ee7b7, #34d399, #10b981)",
+    glow: "rgba(52,211,153,0.28)",
+    chartStrokeEntry: "#34d399", chartStrokeExit: "#10b981", chartFill: "rgba(52,211,153,0.20)",
+    badgeBg: "#101c16", badgeBorder: "#34d399",
+    expGradient: "linear-gradient(90deg, rgba(52,211,153,0.35), rgba(16,185,129,0.70))",
+    profileBg: "#d1fae5", profileBgDark: "#161e18", profileBorder: "#34d399",
+    studentBg: "#e0fded", studentBgDark: "#151e18",
+    aiBg: "#edfdf5", aiBgDark: "#141e18",
+  },
+  // ── 7. 桃红 ──
+  {
+    id: 7, name: "桃红",
+    accent: "#f472b6", accentStrong: "#ec4899",
+    accentGradient: "linear-gradient(135deg, #f9a8d4, #f472b6, #ec4899)",
+    glow: "rgba(244,114,182,0.28)",
+    chartStrokeEntry: "#f472b6", chartStrokeExit: "#ec4899", chartFill: "rgba(244,114,182,0.20)",
     badgeBg: "#1c141a", badgeBorder: "#f472b6",
-    expGradient: "linear-gradient(90deg, rgba(244,114,182,0.25), rgba(236,72,153,0.55))",
-    profileBg: "#fce7f3", profileBgDark: "#1e141a",
-    profileBorder: "#f9a8d4",
+    expGradient: "linear-gradient(90deg, rgba(244,114,182,0.35), rgba(236,72,153,0.70))",
+    profileBg: "#fce7f3", profileBgDark: "#1e141a", profileBorder: "#f472b6",
     studentBg: "#fff0f7", studentBgDark: "#1c141a",
     aiBg: "#fff5fb", aiBgDark: "#1b1419",
   },
+  // ── 8. 赤陶红 ──
   {
-    id: 6, name: "铜色",
-    accent: "#d97706",
-    accentGradient: "linear-gradient(90deg, #f59e0b, #d97706, #b45309)",
-    cardTint: "#fffaf0", cardTintDark: "#1c1610",
-    glow: "rgba(217,119,6,0.20)",
-    chartStrokeEntry: "#d97706", chartStrokeExit: "#b45309", chartFill: "rgba(217,119,6,0.18)",
-    islandBg: "bg-amber-50", islandBgDark: "dark:bg-amber-950/40",
-    islandBorder: "border-amber-400 dark:border-amber-500/30",
-    badgeBg: "#1c1208", badgeBorder: "#d97706",
-    expGradient: "linear-gradient(90deg, rgba(217,119,6,0.25), rgba(180,83,9,0.55))",
-    profileBg: "#fef3c7", profileBgDark: "#1e180e",
-    profileBorder: "#fbbf24",
-    studentBg: "#fffdf0", studentBgDark: "#1c1710",
-    aiBg: "#fffefa", aiBgDark: "#1b180f",
+    id: 8, name: "赤陶红",
+    accent: "#f87171", accentStrong: "#ef4444",
+    accentGradient: "linear-gradient(135deg, #fca5a5, #f87171, #ef4444)",
+    glow: "rgba(248,113,113,0.28)",
+    chartStrokeEntry: "#f87171", chartStrokeExit: "#ef4444", chartFill: "rgba(248,113,113,0.20)",
+    badgeBg: "#1c1010", badgeBorder: "#f87171",
+    expGradient: "linear-gradient(90deg, rgba(248,113,113,0.35), rgba(239,68,68,0.70))",
+    profileBg: "#fee2e2", profileBgDark: "#1e1414", profileBorder: "#f87171",
+    studentBg: "#fef0f0", studentBgDark: "#1c1414",
+    aiBg: "#fff7f7", aiBgDark: "#1b1414",
   },
+  // ── 9. 靛蓝紫 ──
   {
-    id: 7, name: "肉桂",
-    accent: "#c2410c",
-    accentGradient: "linear-gradient(90deg, #ea580c, #c2410c, #9a3412)",
-    cardTint: "#fff8f0", cardTintDark: "#1c1410",
-    glow: "rgba(194,65,12,0.18)",
-    chartStrokeEntry: "#c2410c", chartStrokeExit: "#9a3412", chartFill: "rgba(194,65,12,0.16)",
-    islandBg: "bg-orange-50", islandBgDark: "dark:bg-orange-950/40",
-    islandBorder: "border-orange-400 dark:border-orange-500/30",
-    badgeBg: "#1c0e08", badgeBorder: "#c2410c",
-    expGradient: "linear-gradient(90deg, rgba(194,65,12,0.25), rgba(154,52,18,0.55))",
-    profileBg: "#ffedd5", profileBgDark: "#1e1810",
-    profileBorder: "#ea580c",
-    studentBg: "#fffbf0", studentBgDark: "#1c1810",
-    aiBg: "#fffdf8", aiBgDark: "#1b1811",
+    id: 9, name: "靛蓝紫",
+    accent: "#818cf8", accentStrong: "#6366f1",
+    accentGradient: "linear-gradient(135deg, #a5b4fc, #818cf8, #6366f1)",
+    glow: "rgba(129,140,248,0.28)",
+    chartStrokeEntry: "#818cf8", chartStrokeExit: "#6366f1", chartFill: "rgba(129,140,248,0.20)",
+    badgeBg: "#141820", badgeBorder: "#818cf8",
+    expGradient: "linear-gradient(90deg, rgba(129,140,248,0.35), rgba(99,102,241,0.70))",
+    profileBg: "#e0e7ff", profileBgDark: "#181c26", profileBorder: "#818cf8",
+    studentBg: "#eef0ff", studentBgDark: "#171c24",
+    aiBg: "#f5f6ff", aiBgDark: "#161c24",
   },
+  // ── 10. 暖桃橘 ──
   {
-    id: 8, name: "杏色",
-    accent: "#fdba74",
-    accentGradient: "linear-gradient(90deg, #fed7aa, #fdba74, #fb923c)",
-    cardTint: "#fffaf5", cardTintDark: "#1c1814",
-    glow: "rgba(253,186,116,0.22)",
-    chartStrokeEntry: "#fdba74", chartStrokeExit: "#fb923c", chartFill: "rgba(253,186,116,0.18)",
-    islandBg: "bg-orange-50", islandBgDark: "dark:bg-orange-950/40",
-    islandBorder: "border-orange-200 dark:border-orange-400/30",
-    badgeBg: "#1c1410", badgeBorder: "#fdba74",
-    expGradient: "linear-gradient(90deg, rgba(253,186,116,0.25), rgba(251,146,60,0.55))",
-    profileBg: "#ffedd5", profileBgDark: "#1e1812",
-    profileBorder: "#fdba74",
-    studentBg: "#fffaf5", studentBgDark: "#1c1814",
-    aiBg: "#fffdfa", aiBgDark: "#1b1815",
-  },
-  {
-    id: 9, name: "樱色",
-    accent: "#fda4af",
-    accentGradient: "linear-gradient(90deg, #fecdd3, #fda4af, #fb7185)",
-    cardTint: "#fff5f5", cardTintDark: "#1c1416",
-    glow: "rgba(253,164,175,0.22)",
-    chartStrokeEntry: "#fda4af", chartStrokeExit: "#fb7185", chartFill: "rgba(253,164,175,0.18)",
-    islandBg: "bg-rose-50", islandBgDark: "dark:bg-rose-950/40",
-    islandBorder: "border-rose-200 dark:border-rose-400/30",
-    badgeBg: "#1c1416", badgeBorder: "#fda4af",
-    expGradient: "linear-gradient(90deg, rgba(253,164,175,0.25), rgba(251,113,133,0.55))",
-    profileBg: "#ffe4e6", profileBgDark: "#1e1416",
-    profileBorder: "#fda4af",
-    studentBg: "#fff0f3", studentBgDark: "#1c1416",
-    aiBg: "#fff5f7", aiBgDark: "#1b1416",
-  },
-  {
-    id: 10, name: "赤陶",
-    accent: "#e8795e",
-    accentGradient: "linear-gradient(90deg, #f0987a, #e8795e, #d4654a)",
-    cardTint: "#fff7f3", cardTintDark: "#1c1614",
-    glow: "rgba(232,121,94,0.20)",
-    chartStrokeEntry: "#e8795e", chartStrokeExit: "#d4654a", chartFill: "rgba(232,121,94,0.16)",
-    islandBg: "bg-red-50", islandBgDark: "dark:bg-red-950/40",
-    islandBorder: "border-red-300 dark:border-red-400/30",
-    badgeBg: "#1c100c", badgeBorder: "#e8795e",
-    expGradient: "linear-gradient(90deg, rgba(232,121,94,0.25), rgba(212,101,74,0.55))",
-    profileBg: "#fef2ee", profileBgDark: "#1e1614",
-    profileBorder: "#e8795e",
-    studentBg: "#fff7f5", studentBgDark: "#1c1614",
-    aiBg: "#fffaf9", aiBgDark: "#1b1615",
+    id: 10, name: "暖桃橘",
+    accent: "#FAD4C0", accentStrong: "#f8b8a0",
+    accentGradient: "linear-gradient(135deg, #FAD4C0, #fbb9b6, #fb923c)",
+    glow: "rgba(250,212,192,0.30)",
+    chartStrokeEntry: "#FAD4C0", chartStrokeExit: "#fbb9b6", chartFill: "rgba(250,212,192,0.22)",
+    badgeBg: "#1c1816", badgeBorder: "#FAD4C0",
+    expGradient: "linear-gradient(90deg, rgba(250,212,192,0.35), rgba(251,185,182,0.70))",
+    profileBg: "#fff0ed", profileBgDark: "#1e1816", profileBorder: "#FAD4C0",
+    studentBg: "#fff5f3", studentBgDark: "#1c1816",
+    aiBg: "#fffaf8", aiBgDark: "#1b1817",
   },
 ];
 
@@ -442,8 +408,6 @@ export function schemeCssVars(scheme: ScanColorScheme): Record<string, string> {
   return {
     '--scan-accent': scheme.accent,
     '--scan-accent-gradient': scheme.accentGradient,
-    '--scan-card-tint': scheme.cardTint,
-    '--scan-card-tint-dark': scheme.cardTintDark,
     '--scan-glow': scheme.glow,
     '--scan-chart-entry': scheme.chartStrokeEntry,
     '--scan-chart-exit': scheme.chartStrokeExit,
@@ -451,10 +415,7 @@ export function schemeCssVars(scheme: ScanColorScheme): Record<string, string> {
     '--scan-badge-bg': scheme.badgeBg,
     '--scan-badge-border': scheme.badgeBorder,
     '--scan-exp-gradient': scheme.expGradient,
-    '--scan-island-bg': scheme.islandBg,
-    '--scan-island-bg-dark': scheme.islandBgDark,
-    '--scan-island-border': scheme.islandBorder,
-    // Card full backgrounds (profile = most saturated, student = medium, ai = lightest)
+    // Card full backgrounds (profile = 300-level most saturated, student = 200, ai = 100 lightest)
     '--scan-profile-bg': scheme.profileBg,
     '--scan-profile-bg-dark': scheme.profileBgDark,
     '--scan-profile-border': scheme.profileBorder,

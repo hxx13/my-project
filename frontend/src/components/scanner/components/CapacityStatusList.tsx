@@ -13,7 +13,7 @@ export const CapacityStatusList = ({
 }) => (
     <div className="w-full flex flex-col items-center mt-4 flex-1 min-h-0">
         <div className="text-[10px] font-black text-cyan-400 uppercase tracking-[0.2em] mb-3">实时空间负载</div>
-        <div className="w-full max-w-[280px] flex flex-col gap-2.5 overflow-y-auto pb-4 [&::-webkit-scrollbar]:hidden">
+        <div className="app-themed-scrollbar w-full max-w-[280px] flex flex-col gap-2.5 overflow-y-auto pb-4">
             {roomOverviewFetching && items.length === 0 && roomOverviewSourceCount === 0 ? (
                 <div className="h-12 w-full rounded-lg bg-white/[0.02] border border-white/5 animate-pulse" aria-busy="true" title="正在同步空间负载" />
             ) : items.length === 0 ? (

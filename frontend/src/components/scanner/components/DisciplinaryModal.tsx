@@ -60,7 +60,7 @@ export const DisciplinaryModal = ({
                         <X className="h-5 w-5" />
                     </button>
                 </div>
-                <div className="max-h-[260px] overflow-y-auto p-6 [&::-webkit-scrollbar]:hidden">
+                <div className="app-themed-scrollbar max-h-[260px] overflow-y-auto p-6">
                     {records.length === 0 ? (
                         <div className="py-4 text-center text-sm text-[var(--app-color-text-tertiary)]">无历史违规记录</div>
                     ) : (
