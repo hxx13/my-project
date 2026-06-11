@@ -1,5 +1,5 @@
 import React from "react";
-import { SCAN_POPUP_BACKDROP } from "./scanPopupTheme";
+import { SCAN_POPUP_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
 
 type PopupErrorBoundaryProps = {
     onClose: () => void;
@@ -25,7 +25,7 @@ export class PopupErrorBoundary extends React.Component<PopupErrorBoundaryProps,
         if (!this.state.hasError) return this.props.children;
 
         return (
-            <div className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center ${SCAN_POPUP_BACKDROP}`}>
+            <div {...SCAN_MODAL_LAYER_PROPS} className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center ${SCAN_POPUP_BACKDROP}`}>
                 <div className="w-[520px] max-w-[90vw] rounded-[var(--app-radius-container)] border border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-surface-container)] p-6 text-[var(--app-color-text-primary)] shadow-[var(--app-elevation-modal)]">
                     <h3 className="mb-2 text-lg font-bold">弹窗渲染异常</h3>
                     <p className="mb-4 text-sm text-[var(--app-color-text-secondary)]">

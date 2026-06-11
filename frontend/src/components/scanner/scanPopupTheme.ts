@@ -18,11 +18,17 @@ export function resolveScanAccentCss(variant: ScanAccentVariant) {
   };
 }
 
-// ═══ 遮罩 ═══
+// ═══ 遮罩：实色底，禁止 backdrop-blur（避免背后自动滚动穿透闪烁）═══
 export const SCAN_POPUP_BACKDROP =
-  "bg-[var(--app-color-surface-page)]/92 backdrop-blur-lg";
+  "bg-[var(--app-color-surface-page)] isolate [contain:paint]";
 export const SCAN_NESTED_BACKDROP =
-  "bg-black/30 backdrop-blur-md";
+  "bg-[var(--app-color-surface-page)] isolate [contain:paint]";
+
+/** Portal 根节点属性：接入 modalScrollGuard + useModalOverlayOpen */
+export const SCAN_MODAL_LAYER_PROPS = {
+  "data-modal-layer": "true",
+  "data-scan-overlay": "true",
+} as const;
 
 // ═══ 组件专属暖色卡片 ═══
 

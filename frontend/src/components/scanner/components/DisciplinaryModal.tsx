@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Loader2, PowerOff, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { DisciplinaryRecord } from "@/api/types/scanner";
-import { SCAN_NESTED_BACKDROP } from "../scanPopupTheme";
+import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "../scanPopupTheme";
 
 interface DisciplinaryModalProps {
     isOpen: boolean;
@@ -35,7 +35,7 @@ export const DisciplinaryModal = ({
         }
     };
     return createPortal(
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center ${SCAN_NESTED_BACKDROP}`}>
+        <motion.div {...SCAN_MODAL_LAYER_PROPS} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center ${SCAN_NESTED_BACKDROP}`}>
             <motion.div
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}

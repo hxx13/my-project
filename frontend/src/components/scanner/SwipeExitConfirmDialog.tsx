@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut } from "lucide-react";
 import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
-import { SCAN_NESTED_BACKDROP } from "./scanPopupTheme";
+import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
 
 interface SwipeExitConfirmDialogProps {
     open: boolean;
@@ -85,6 +85,7 @@ export function SwipeExitConfirmDialog({
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
+                    {...SCAN_MODAL_LAYER_PROPS}
                     className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center ${SCAN_NESTED_BACKDROP}`}
                     onKeyDown={(e) => {
                         if (e.key === "Escape") onCancel();

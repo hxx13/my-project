@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
 import { Z_INDEX } from "@/constants/zIndex";
+import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
 
 type Props = {
   message: string | null;
@@ -55,7 +56,8 @@ export function RepeatedSwipeWarningBanner({ message, triggerKey, blockedUntil }
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 flex items-center justify-center bg-black/65 p-4 backdrop-blur-md"
+          {...SCAN_MODAL_LAYER_PROPS}
+          className={`fixed inset-0 flex items-center justify-center p-4 ${SCAN_NESTED_BACKDROP}`}
           style={{ zIndex: Z_INDEX.popupModal }}
           onClick={dismiss}
         >

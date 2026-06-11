@@ -19,7 +19,7 @@ import { Z_INDEX } from "@/constants/zIndex";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { BizOverlayShell } from "./BizOverlayShell";
 import { checkPinStatus } from "./specialChannel.api";
-import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP, CHART_CARD } from "./scanPopupTheme";
+import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP, SCAN_MODAL_LAYER_PROPS, CHART_CARD } from "./scanPopupTheme";
 import { ScanLevelBadge } from "./ScanLevelBadge";
 
 const WeeklyRoutineMatrixChart = ({ predictions, gender }: { predictions: any[]; gender?: string | number | null }) => {
@@ -184,6 +184,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                 />
             </AnimatePresence>
             <motion.div
+                {...SCAN_MODAL_LAYER_PROPS}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className={`fixed inset-0 flex flex-col ${SCAN_POPUP_BACKDROP}`}

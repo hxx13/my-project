@@ -7,7 +7,7 @@ import { useBizOverlayShell } from "./useBizOverlayShell";
 import { useBizRegistry } from "./useBizRegistry";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import type { BizOverlayShellProps } from "./BizOverlayShell.types";
-import { SCAN_NESTED_BACKDROP } from "./scanPopupTheme";
+import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
 
 /** Per-item error boundary — one biz item crash doesn't take down the overlay */
 class BizItemErrorBoundary extends Component<
@@ -54,6 +54,7 @@ export function BizOverlayShell({ userId, title, onCancel, className = "" }: Biz
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            {...SCAN_MODAL_LAYER_PROPS}
             className={`fixed inset-0 flex items-center justify-center p-4 ${SCAN_NESTED_BACKDROP}`}
             style={{ zIndex: Z_INDEX.bizOverlay }}
           >

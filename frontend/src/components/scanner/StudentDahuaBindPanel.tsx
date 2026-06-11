@@ -13,7 +13,7 @@ import {
   STUDENT_DAHUA_CARD_DEBOUNCE_MS,
   STUDENT_DAHUA_CARD_LEN,
 } from "./studentDahuaCardInput";
-import { SCAN_NESTED_BACKDROP } from "./scanPopupTheme";
+import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
 
 export function StudentDahuaBindPanel({
   userId,
@@ -158,7 +158,7 @@ export function StudentDahuaBindPanel({
   const cardReady = isValidStudentDahuaCardNo(cardNo);
 
   return (
-    <div className={`fixed inset-0 top-16 z-[var(--z-modal)] flex items-center justify-center p-4 ${SCAN_NESTED_BACKDROP}`}>
+    <div {...SCAN_MODAL_LAYER_PROPS} className={`fixed inset-0 top-16 z-[var(--z-modal)] flex items-center justify-center p-4 ${SCAN_NESTED_BACKDROP}`}>
       <div className="w-full max-w-md rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-[var(--app-elevation-modal)] text-[var(--app-color-text-primary)]">
         <h3 className="mb-1 text-base font-black">绑定校园卡</h3>
         <p className="mb-4 text-[11px] text-[var(--app-color-text-tertiary)]">
