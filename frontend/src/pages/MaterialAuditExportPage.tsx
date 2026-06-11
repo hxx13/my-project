@@ -146,7 +146,7 @@ export default function MaterialAuditExportPage() {
             {tab === "personal" && isStaff && applicantList.length > 0 && (
               <div><label className="mb-1 block text-xs text-[var(--twin-body)]">申领人</label>
                 <select className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[180px]" value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}>
-                  {applicantList.map(a => <option key={a.userId} value={a.userId}>{a.applicantName || a.userId}</option>)}
+                  {applicantList.filter(a => a.applicantName).map(a => <option key={a.userId} value={a.userId}>{a.applicantName}</option>)}
                 </select>
               </div>
             )}

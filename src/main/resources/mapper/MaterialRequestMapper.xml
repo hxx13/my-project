@@ -60,7 +60,9 @@
         SELECT DISTINCT applicant_group FROM material_request WHERE applicant_group IS NOT NULL AND applicant_group != '' AND deleted = 0 ORDER BY applicant_group
     </select>
     <select id="selectDistinctApplicants" resultType="java.util.HashMap">
-        SELECT DISTINCT user_id AS userId, applicant_name AS applicantName FROM material_request WHERE deleted = 0 ORDER BY applicant_name
+        SELECT DISTINCT user_id AS userId, MAX(applicant_name) AS applicantName
+        FROM material_request WHERE deleted = 0 AND applicant_name IS NOT NULL AND applicant_name != ''
+        GROUP BY user_id ORDER BY applicantName
     </select>
     <select id="selectPendingByReviewer" resultType="com.example.demo.modules.material.entity.MaterialRequest">
         SELECT * FROM material_request WHERE status IN ('PENDING', 'FIRST_OK') AND deleted = 0 ORDER BY created_at ASC

@@ -57,7 +57,7 @@ public class MaterialRequestInboxFeedContributor implements InboxFeedContributor
         String applicant = InboxDisplayHelper.applicantLine(r.getApplicantName(), r.getUserId(), resolvedName);
         String stZh = statusZh(r.getStatus());
         String timePart = InboxDisplayHelper.formatShort(r.getCreatedAt());
-        it.setTitle("物资申领");
+        it.setTitle("申领审核");
         it.setSubtitle(applicant + " · " + stZh + " · " + timePart);
         if (r.getCreatedAt() != null) {
             it.setSortAtMillis(r.getCreatedAt().atZone(z).toInstant().toEpochMilli());

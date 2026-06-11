@@ -112,11 +112,23 @@ public class MaterialService {
         item.setCoverUrl(req.getCoverUrl());
         item.setShelfStatus(req.getShelfStatus() != null ? req.getShelfStatus() : "DRAFT");
         item.setStockMode(req.getStockMode() != null ? req.getStockMode() : "LIMITED");
-        item.setStockQty(0);
+        int initQty = req.getStockQty() != null ? req.getStockQty() : 0;
+        item.setStockQty(initQty);
+        item.setShowStockQty(req.getShowStockQty() != null ? req.getShowStockQty() : 1);
         item.setWorkflowType(req.getWorkflowType() != null ? req.getWorkflowType() : "SIMPLE");
         item.setReviewerIds(req.getReviewerIds());
         item.setSecondReviewerIds(req.getSecondReviewerIds());
         itemMapper.insert(item);
+        // 初始入库创建库存流水
+        if (initQty > 0) {
+            MaterialStockMovement m = new MaterialStockMovement();
+            m.setItemId(item.getId());
+            m.setMovementType("INBOUND");
+            m.setQty(initQty);
+            m.setStockAfter(initQty);
+            m.setRemark("初始入库");
+            stockMovementMapper.insert(m);
+        }
         logOp("ITEM", String.valueOf(item.getId()), "CREATE", null);
         return Result.success(toItemView(itemMapper.selectById(item.getId())));
     }
@@ -134,6 +146,7 @@ public class MaterialService {
         if (req.getWorkflowType() != null) item.setWorkflowType(req.getWorkflowType());
         if (req.getReviewerIds() != null) item.setReviewerIds(req.getReviewerIds());
         if (req.getSecondReviewerIds() != null) item.setSecondReviewerIds(req.getSecondReviewerIds());
+        if (req.getShowStockQty() != null) item.setShowStockQty(req.getShowStockQty());
         itemMapper.updateById(item);
         logOp("ITEM", String.valueOf(id), "UPDATE", null);
         return Result.success(toItemView(itemMapper.selectById(id)));

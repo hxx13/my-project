@@ -13,4 +13,6 @@ public class MaterialItemUpsertReq {
     private String workflowType;
     private String reviewerIds;
     private String secondReviewerIds;
+    private Integer stockQty;
+    private Integer showStockQty;
 }
