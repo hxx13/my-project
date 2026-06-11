@@ -1,7 +1,7 @@
 import { AlertOctagon, Briefcase, Phone, ShieldCheck, Users } from "lucide-react";
 import type { AnalyzeUserInfo } from "@/api/types/scanner";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
-import { PROFILE_CARD, PROFILE_TOP_BAR } from "../scanPopupTheme";
+import { PROFILE_CARD } from "../scanPopupTheme";
 
 interface ProfileHeaderProps {
     user: AnalyzeUserInfo;
@@ -28,7 +28,6 @@ export const ProfileHeader = ({
     const avatarSrc = resolvePersonnelAvatarUrl(user.head);
     return (
     <div className={`w-full ${PROFILE_CARD} p-5`}>
-        <div className={PROFILE_TOP_BAR} style={{ background: "var(--scan-accent-gradient)" }} />
         <div className="flex items-center gap-4 border-b border-[var(--app-color-border-default)] pb-4">
             <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-800 border-2 shadow-lg"
                  style={{ borderColor: "var(--scan-accent)" }}>

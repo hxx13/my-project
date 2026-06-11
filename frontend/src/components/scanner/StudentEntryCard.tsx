@@ -70,8 +70,7 @@ export function StudentEntryCard({
   ];
 
   return (
-    <div className={`relative flex min-h-0 w-full flex-1 flex-col ${STUDENT_CARD}`}
-         style={{ backgroundColor: "var(--scan-card-tint)" }}>
+    <div className={`relative flex min-h-0 w-full flex-1 flex-col ${STUDENT_CARD}`}>
       <div
         className="pointer-events-none absolute top-1/2 -left-10 h-1/2 w-16 -translate-y-1/2 opacity-20 blur-[60px]"
         style={{ backgroundColor: "var(--scan-glow)", opacity: 0.20 }}

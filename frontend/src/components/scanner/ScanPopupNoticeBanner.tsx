@@ -8,11 +8,8 @@ import { useTheme } from "@/features/theme/ThemeProvider";
 import { InteractiveChallenge } from "./InteractiveChallenge";
 import { ackViolationInteractivePermanent } from "./twinViolationInteractive";
 import {
-  NOTICE_ACCENT_GRADIENT,
-  NOTICE_FOOTER_BORDER,
-  NOTICE_ISLAND_BASE,
-  VIOLATION_NOTICE_PANEL,
-  resolveNoticeColors,
+  noticeThemeClass,
+  noticeThemeCssVars,
   resolveScanPopupNoticeMeta,
   type NoticeKind,
 } from "./scanPopupTheme";
@@ -135,15 +132,15 @@ function buildIslandLabel(args: {
 
 /**
  * 扫码弹窗公告统一组件：违规 / 未绑卡 / 扫码公告共用同一套 Island + 详情弹窗。
- * 无全屏遮罩；违规与未绑卡支持交互拼图验证。
+ * 无全屏遮罩；扫码公告仅顶栏 ✕ 可关闭；违规/未绑卡支持外侧点击关闭与交互拼图验证。
  */
 export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
   const { kind, panelOpen: panelOpenProp, onPanelOpenChange, suppressAutoOpen = false } = props;
   const { theme } = useTheme();
   const isDark = theme.mode === "dark";
   const meta = resolveScanPopupNoticeMeta(kind);
-  const nc = resolveNoticeColors(kind);
-  const footerBorder = NOTICE_FOOTER_BORDER[kind];
+  const themeClass = noticeThemeClass(kind);
+  const noticeVars = noticeThemeCssVars(kind);
 
   const { panelOpen, setPanelOpen, controlled, setPanelOpenInternal } = useControlledPanel(
     panelOpenProp,
@@ -223,10 +220,13 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
     }
   }, [kind, notice?.id, notice?.interactiveChallengeVerified]);
 
+  const announcementCloseViaButtonOnly = kind === "announcement";
+
   useEffect(() => {
     if (!panelOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (announcementCloseViaButtonOnly) return;
         e.preventDefault();
         e.stopPropagation();
         setPanelOpen(false);
@@ -245,7 +245,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [panelOpen, kind, announcementTotal, setPanelOpen]);
+  }, [panelOpen, kind, announcementTotal, setPanelOpen, announcementCloseViaButtonOnly]);
 
   const acknowledge = useCallback(() => {
     if (recordId == null || showEveryScan) return;
@@ -260,6 +260,18 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
 
   const closePanel = useCallback(() => setPanelOpen(false), [setPanelOpen]);
   const openPanel = useCallback(() => setPanelOpen(true), [setPanelOpen]);
+
+  /** 扫码公告：仅顶栏 ✕ 可关闭；关闭时仍写入 session 已读（与原先「已知悉」一致） */
+  const closeAnnouncementViaHeader = useCallback(() => {
+    if (recordId != null && !showEveryScan) {
+      try {
+        sessionStorage.setItem(noticeAckKey("announcement", recordId), "1");
+      } catch {
+        /* ignore */
+      }
+    }
+    setPanelOpen(false);
+  }, [recordId, showEveryScan, setPanelOpen]);
 
   const bodyHtmlSource =
     kind === "announcement"
@@ -295,14 +307,18 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
 
   return (
     <>
-      <div className="flex min-w-[min(148px,30vw)] max-w-[420px] flex-1 basis-0 justify-center">
+      <div className={`flex min-w-[min(148px,30vw)] max-w-[420px] flex-1 basis-0 justify-center ${themeClass}`}>
         <button
           type="button"
-          onClick={() => (panelOpen ? closePanel() : openPanel())}
-          className={`group flex w-full min-w-0 items-center gap-2 ${NOTICE_ISLAND_BASE} ${nc.bg} ${nc.border} px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-2.5`}
+          onClick={() => {
+            if (announcementCloseViaButtonOnly && panelOpen) return;
+            if (panelOpen) closePanel();
+            else openPanel();
+          }}
+          className={`group scan-notice-island flex w-full min-w-0 items-center gap-2 px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-2.5 ${panelOpen ? "scan-notice-island--open" : ""}`}
         >
-          <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${nc.iconBg}`}>
-            <Megaphone className={`h-4 w-4 ${nc.iconText}`} />
+          <span className="scan-notice-island-icon relative shrink-0">
+            <Megaphone className="h-4 w-4" />
             {locked ? (
               <span
                 className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[var(--app-color-feedback-danger)] ring-2 ring-[var(--app-color-surface-page)]"
@@ -311,28 +327,27 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
             ) : null}
           </span>
           <span className="min-w-0 flex-1 text-left">
-            <span className={`block text-[11px] font-black uppercase tracking-[0.2em] ${nc.tag}`}>
-              {meta.islandTag}
-            </span>
+            <span className="scan-notice-island-tag mb-1 block w-fit">{meta.islandTag}</span>
             <span className="block truncate text-sm font-bold text-[var(--app-color-text-primary)]">
               {islandLabel}
             </span>
           </span>
           {remaining != null ? (
-            <span
-              className={`hidden shrink-0 rounded-full bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[10px] font-bold sm:inline ${nc.badge}`}
-            >
+            <span className="scan-notice-island-badge hidden shrink-0 px-2 py-0.5 text-[10px] sm:inline">
               余 {remaining}
             </span>
           ) : null}
           <ChevronRight
-            className={`h-4 w-4 shrink-0 ${nc.tag} transition-transform ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
+            className={`h-4 w-4 shrink-0 text-[var(--scan-notice-accent-ink)] transition-transform ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
           />
         </button>
       </div>
 
       {createPortal(
-        <div className={`${theme.className} ${isDark ? "dark" : ""}`}>
+        <div
+          className={`${theme.className} ${isDark ? "dark" : ""} ${themeClass}`}
+          style={noticeVars as React.CSSProperties}
+        >
           <AnimatePresence>
             {panelOpen ? (
               <motion.div
@@ -342,50 +357,43 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4"
-                onClick={closePanel}
+                className={`scan-notice-scrim fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4 sm:p-6 ${announcementCloseViaButtonOnly ? "" : "scan-notice-scrim--dismissible"}`}
+                onClick={announcementCloseViaButtonOnly ? undefined : closePanel}
               >
                 <motion.div
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby={meta.titleId}
-                  initial={{ opacity: 0, scale: 0.97, y: 10 }}
+                  initial={{ opacity: 0, scale: 0.96, y: 14 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.98, y: 6 }}
+                  exit={{ opacity: 0, scale: 0.98, y: 8 }}
                   transition={{ type: "spring", stiffness: 380, damping: 32 }}
-                  className={`relative flex max-h-[min(90vh,780px)] w-full max-w-[min(92vw,36rem)] flex-col overflow-hidden ${VIOLATION_NOTICE_PANEL}`}
+                  className="scan-notice-panel pointer-events-auto relative flex max-h-[min(90vh,780px)] w-full max-w-[min(92vw,36rem)] flex-col overflow-hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div
-                    className="absolute top-0 left-0 right-0 h-[3px] rounded-t-[var(--app-radius-container)]"
-                    style={{ background: NOTICE_ACCENT_GRADIENT[kind] }}
-                  />
+                  <div className="scan-notice-panel-accent" aria-hidden />
 
-                  <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 sm:px-8 sm:pt-6">
-                    <div className="min-w-0 pt-0.5">
-                      <p className={`text-[10px] font-semibold uppercase tracking-[0.22em] ${nc.tag}`}>
-                        {meta.dialogCategory}
-                      </p>
+                  <div className="scan-notice-header flex shrink-0 items-start justify-between gap-3 px-6 py-4 sm:px-8 sm:py-5">
+                    <div className="min-w-0 space-y-2">
+                      <span className="scan-notice-category-pill">{meta.dialogCategory}</span>
                       <p
                         id={meta.titleId}
-                        className="mt-1 truncate text-sm font-semibold text-[var(--app-color-text-primary)]"
+                        className="truncate text-base font-semibold text-[var(--app-color-text-primary)] sm:text-lg"
                       >
                         {dialogHeadline}
                       </p>
                       {kind === "announcement" && announcementTotal > 1 ? (
-                        <p className="mt-1 text-[11px] text-[var(--app-color-text-tertiary)]">
+                        <span className="scan-notice-status-pill">
                           第 {pageIndex + 1} 条 / 共 {announcementTotal} 条
-                        </p>
+                        </span>
                       ) : null}
                       {kind !== "announcement" && (locked || (isViolation && remaining != null)) ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           {isViolation && remaining != null ? (
-                            <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
-                              剩余进入 {remaining} 次
-                            </span>
+                            <span className="scan-notice-status-pill">剩余进入 {remaining} 次</span>
                           ) : null}
                           {locked ? (
-                            <span className="text-[11px] font-medium text-[var(--app-color-feedback-danger)]">
+                            <span className="scan-notice-status-pill scan-notice-status-pill--danger">
                               禁止进入
                             </span>
                           ) : null}
@@ -394,21 +402,23 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                     </div>
                     <button
                       type="button"
-                      onClick={closePanel}
-                      className="-mr-1 shrink-0 rounded-full p-1.5 text-[var(--app-color-text-tertiary)] transition-colors hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-secondary)]"
+                      onClick={announcementCloseViaButtonOnly ? closeAnnouncementViaHeader : closePanel}
+                      className="scan-notice-close-btn -mr-1 shrink-0 p-1.5"
                       aria-label="关闭"
                     >
                       <X className="h-4 w-4" />
                     </button>
                   </div>
 
-                  <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8 pt-4 sm:px-10 sm:pb-10 sm:pt-6">
-                    <div className="mx-auto flex w-full max-w-[34rem] flex-col items-center gap-8 sm:gap-10">
+                  <div className="app-themed-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8 sm:py-6">
+                    <div className="mx-auto flex w-full max-w-[34rem] flex-col items-center gap-6 sm:gap-8">
                       {safeHtml ? (
-                        <div
-                          className={`${SCAN_ANNOUNCEMENT_BODY_CLASS} w-full text-left text-[1.02rem] sm:text-[1.08rem] [&_p]:text-center [&_p]:text-[1.05rem] [&_p]:sm:text-[1.15rem]`}
-                          dangerouslySetInnerHTML={{ __html: safeHtml }}
-                        />
+                        <div className="scan-notice-body-card w-full p-5 sm:p-6">
+                          <div
+                            className={`${SCAN_ANNOUNCEMENT_BODY_CLASS} w-full text-left text-[1.02rem] sm:text-[1.08rem] [&_p]:text-center [&_p]:text-[1.05rem] [&_p]:sm:text-[1.15rem]`}
+                            dangerouslySetInnerHTML={{ __html: safeHtml }}
+                          />
+                        </div>
                       ) : imgCount === 0 && !(interactivePhrase && !interactiveDone) ? (
                         <p className="text-center text-sm leading-relaxed text-[var(--app-color-text-tertiary)]">
                           {meta.emptyBodyHint}
@@ -420,7 +430,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                           {images.map((src) => (
                             <div
                               key={src}
-                              className="flex max-h-[min(32vh,280px)] items-center justify-center overflow-hidden rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-page)]/60 p-2"
+                              className="scan-notice-body-card flex max-h-[min(32vh,280px)] items-center justify-center overflow-hidden p-2"
                             >
                               <img
                                 src={src}
@@ -434,7 +444,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                       ) : null}
 
                       {interactivePhrase && !interactiveDone ? (
-                        <div className="w-full rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-page)]/50 px-4 py-6 sm:px-6">
+                        <div className="scan-notice-body-card w-full px-4 py-6 sm:px-6">
                           <InteractiveChallenge
                             phrase={interactivePhrase}
                             onComplete={() => {
@@ -470,12 +480,10 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                   </div>
 
                   {kind === "announcement" && announcementTotal > 1 ? (
-                    <div
-                      className={`flex shrink-0 items-center justify-between gap-2 border-t px-6 py-4 sm:px-8 ${footerBorder}`}
-                    >
+                    <div className="scan-notice-footer flex shrink-0 items-center justify-between gap-2 px-6 py-4 sm:px-8">
                       <button
                         type="button"
-                        className="inline-flex items-center gap-1 text-[13px] font-medium text-[var(--app-color-text-secondary)] transition-colors hover:text-[var(--app-color-text-primary)]"
+                        className="scan-notice-btn"
                         onClick={() =>
                           setPageIndex((i) => (i - 1 + announcementTotal) % announcementTotal)
                         }
@@ -483,12 +491,12 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                         <ChevronLeft className="h-4 w-4" />
                         上一条
                       </button>
-                      <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
+                      <span className="scan-notice-status-pill">
                         {pageIndex + 1} / {announcementTotal}
                       </span>
                       <button
                         type="button"
-                        className="inline-flex items-center gap-1 text-[13px] font-medium text-[var(--app-color-text-secondary)] transition-colors hover:text-[var(--app-color-text-primary)]"
+                        className="scan-notice-btn"
                         onClick={() => setPageIndex((i) => (i + 1) % announcementTotal)}
                       >
                         下一条
@@ -497,17 +505,13 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                     </div>
                   ) : null}
 
-                  {!showEveryScan ? (
-                    <div className={`flex shrink-0 justify-center border-t px-6 py-4 sm:px-8 ${footerBorder}`}>
+                  {!showEveryScan && !announcementCloseViaButtonOnly ? (
+                    <div className="scan-notice-footer flex shrink-0 justify-center px-6 py-4 sm:px-8">
                       <button
                         type="button"
                         disabled={Boolean(interactivePhrase && !interactiveDone)}
                         onClick={acknowledge}
-                        className={`text-[13px] font-medium transition-colors ${
-                          interactivePhrase && !interactiveDone
-                            ? "cursor-not-allowed text-[var(--app-color-text-tertiary)]"
-                            : "text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-text-primary)]"
-                        }`}
+                        className="scan-notice-btn scan-notice-btn--primary min-w-[9.5rem]"
                       >
                         {interactivePhrase && !interactiveDone ? "请先完成上方验证" : "已知悉，关闭"}
                       </button>

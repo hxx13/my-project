@@ -34,6 +34,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                                                            }) => {
     const accent = resolveScanAccentCss(accentVariant);
     const isWarm = accent.isWarm;
+    const visiblePredictions = predictions.filter((p) => !p.isPlaceholder);
 
     // 💥 视觉重构 3：升级翻译器，将名字和概率在数据结构上彻底分离，方便独立上色！
     const parseTrajectory = (trajectoryData?: any) => {
@@ -71,8 +72,8 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
         let exitSeg = new Array(seg).fill(0);
         let validCount = 0;
 
-        if (predictions && predictions.length > 0) {
-            predictions.forEach((p) => {
+        if (visiblePredictions.length > 0) {
+            visiblePredictions.forEach((p) => {
                 const ec = (p as RoomPrediction & { entryCurve?: number[] }).entryCurve;
                 const xc = (p as RoomPrediction & { exitCurve?: number[] }).exitCurve;
                 if (ec?.length === 24 && xc?.length === 24) {
@@ -106,8 +107,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
     const trackData = generate24HTrackData();
     return (
         <div
-            className={`group relative w-full overflow-hidden ${AI_CARD} p-5 font-sans`}
-            style={{ backgroundColor: "var(--scan-card-tint)" }}>
+            className={`group relative w-full overflow-hidden ${AI_CARD} p-5 font-sans`}>
             <AutoGenerateBadge />
             <div
                 className="absolute -top-1/2 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full blur-3xl transition-all duration-700"
@@ -142,8 +142,12 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                 </div>
 
                 {/* 💥 终极 4 列排版：包含全景东方明珠、极度压缩纵向体积、智能折行 */}
-                {predictions.map((pred) => {
-                    const opacityClass = pred.isPlaceholder ? 'opacity-40 grayscale' : 'opacity-100';
+                {visiblePredictions.length === 0 ? (
+                    <p className="py-2 text-center text-[10px] font-medium text-[var(--app-color-text-tertiary)]">
+                        暂无已完成推演的房间数据
+                    </p>
+                ) : null}
+                {visiblePredictions.map((pred) => {
 
                     // 智能拆解拼接房间名
                     const nameParts = pred.roomName.split(' - ');
@@ -152,7 +156,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
 
                     return (
                         <div key={pred.roomId}
-                             className={`flex items-center justify-between ${INNER_ROW} py-1.5 px-2 transition-opacity duration-300 ${opacityClass}`}>
+                             className={`flex items-center justify-between ${INNER_ROW} py-1.5 px-2 transition-opacity duration-300 opacity-100`}>
 
                             {/* 💥 列 1: 东方明珠 & 双行房间名 (flex-[1.2]) */}
                             <div
@@ -228,7 +232,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                                     {pred.focusTime}
                                 </p>
                                 <p className="mt-1.5 whitespace-nowrap text-[7px] font-medium leading-none text-[var(--app-color-text-tertiary)]">
-                                    入场 <span className={pred.isPlaceholder ? 'text-[var(--app-color-text-tertiary)]' : iconColor}>{pred.entryTime}</span>
+                                    入场 <span className={iconColor}>{pred.entryTime}</span>
                                 </p>
                             </div>
 
@@ -236,9 +240,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                             <div
                                 className="flex flex-[0.7] flex-col items-center justify-center border-r border-[var(--app-color-border-default)] px-1.5">
                                 <p className="text-[14px] font-black leading-none tracking-tight text-[var(--app-color-text-primary)]">{pred.exitTime}</p>
-                                {pred.isPlaceholder ? (
-                                    <p className="mt-1.5 text-[7px] font-medium leading-none text-[var(--app-color-text-tertiary)]">积累中</p>
-                                ) : pred.isHighRisk ? (
+                                {pred.isHighRisk ? (
                                     <p className="mt-1.5 flex items-center gap-1 text-[7px] font-bold leading-none text-[var(--app-color-feedback-danger)]">
                                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--app-color-feedback-danger)]"></span> 预警
                                     </p>
@@ -249,22 +251,16 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
 
                             {/* 💥 视觉重构 4：去向列表，分离房间名(弱色)和概率(强主题色) */}
                             <div className="flex min-w-0 flex-[1.5] flex-col items-center justify-center border-l border-[var(--app-color-border-default)] px-2">
-                                {pred.isPlaceholder ? (
-                                    <p className="w-full text-center text-[10px] font-bold leading-tight text-[var(--app-color-text-tertiary)]">
-                                        等待推演...
-                                    </p>
-                                ) : (
-                                    <div className="flex flex-col gap-0.5 items-start justify-center w-fit max-w-full">
-                                        {parseTrajectory(pred.nextTrajectory).map((item, i) => (
-                                            <p key={i} className="text-[10px] font-bold leading-tight truncate max-w-full" title={`${item.name}(${item.prob})`}>
-                                                <span className="text-[var(--app-color-text-tertiary)]">➔ {item.name}</span>
-                                                <span className={`ml-0.5 ${i === 0 ? iconColor : 'text-[var(--app-color-text-tertiary)]'} font-black`}>
-                                                    ({item.prob})
-                                                </span>
-                                            </p>
-                                        ))}
-                                    </div>
-                                )}
+                                <div className="flex flex-col gap-0.5 items-start justify-center w-fit max-w-full">
+                                    {parseTrajectory(pred.nextTrajectory).map((item, i) => (
+                                        <p key={i} className="text-[10px] font-bold leading-tight truncate max-w-full" title={`${item.name}(${item.prob})`}>
+                                            <span className="text-[var(--app-color-text-tertiary)]">➔ {item.name}</span>
+                                            <span className={`ml-0.5 ${i === 0 ? iconColor : 'text-[var(--app-color-text-tertiary)]'} font-black`}>
+                                                ({item.prob})
+                                            </span>
+                                        </p>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     );

@@ -19,10 +19,16 @@ import { Z_INDEX } from "@/constants/zIndex";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { BizOverlayShell } from "./BizOverlayShell";
 import { checkPinStatus } from "./specialChannel.api";
-import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP, SCAN_MODAL_LAYER_PROPS, CHART_CARD, pickRandomScheme, SCAN_COLOR_SCHEMES } from "./scanPopupTheme";
+import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP, SCAN_MODAL_LAYER_PROPS, CHART_CARD, getActiveScheme, setActiveScheme, SCAN_COLOR_SCHEMES } from "./scanPopupTheme";
 import { ScanLevelBadge } from "./ScanLevelBadge";
 import { useTheme } from "@/features/theme/ThemeProvider";
 
+/**
+ * 预期核心在馆时间带 — 周曲线图。
+ * 配色说明见 docs/weekly-routine-chart-theming.md：
+ * 仅 SVG 曲线与 Time Band 徽章接入了 --scan-chart-* / --scan-accent；
+ * 标题、坐标、CHART_CARD 底仍为硬编码 amber/#1c1410，故切换左上角色系时视觉变化有限。
+ */
 const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
     const days = 7;
     const width = 300;
@@ -99,7 +105,7 @@ export function UiverseProfilePopup(props: PopupProps) {
     const isDark = theme.mode === 'dark';
     const accentVariant = resolveScanAccentVariant(state.user?.gender);
     const badgeAccent = resolveScanAccentCss(accentVariant);
-    const [scheme] = useState(() => pickRandomScheme());
+    const [scheme, setScheme] = useState(() => getActiveScheme());
     const popupMessage = (state.inlineMessage || executeErrorMessage || "").trim();
 
     // ============================================================
@@ -173,6 +179,13 @@ export function UiverseProfilePopup(props: PopupProps) {
                '--scan-badge-bg': scheme.badgeBg,
                '--scan-badge-border': scheme.badgeBorder,
                '--scan-exp-gradient': scheme.expGradient,
+               '--scan-profile-bg': scheme.profileBg,
+               '--scan-profile-bg-dark': scheme.profileBgDark,
+               '--scan-profile-border': scheme.profileBorder,
+               '--scan-student-bg': scheme.studentBg,
+               '--scan-student-bg-dark': scheme.studentBgDark,
+               '--scan-ai-bg': scheme.aiBg,
+               '--scan-ai-bg-dark': scheme.aiBgDark,
              } as React.CSSProperties}>
             <ScanAccessNoticeOverlay
                 open={Boolean(state.accessNotice?.message)}
@@ -198,18 +211,27 @@ export function UiverseProfilePopup(props: PopupProps) {
                 className={`fixed inset-0 flex flex-col ${SCAN_POPUP_BACKDROP}`}
                 style={{ zIndex: Z_INDEX.scannerPopup }}
             >
-                {/* 左上角色系指示器 */}
+                {/* 左上角色系指示器（可点击切换） */}
                 <div className="absolute top-6 left-6 z-10 flex items-center gap-1.5">
                   {SCAN_COLOR_SCHEMES.map((s) => (
-                    <div
+                    <button
                       key={s.id}
-                      className="h-2 w-2 rounded-full transition-all duration-300"
+                      type="button"
+                      className="h-2.5 w-2.5 rounded-full transition-all duration-300 hover:scale-150 cursor-pointer border-0 p-0"
                       style={{
-                        backgroundColor: s.id === scheme.id ? scheme.accent : 'rgba(255,255,255,0.15)',
-                        boxShadow: s.id === scheme.id ? `0 0 6px ${scheme.accent}` : 'none',
-                        transform: s.id === scheme.id ? 'scale(1.4)' : 'scale(1)',
+                        backgroundColor: s.id === scheme.id ? scheme.accent : 'rgba(255,255,255,0.2)',
+                        boxShadow: s.id === scheme.id ? `0 0 8px ${scheme.accent}` : 'none',
+                        transform: s.id === scheme.id ? 'scale(1.5)' : 'scale(1)',
                       }}
-                      title={s.name}
+                      title={`切换至「${s.name}」色系`}
+                      onClick={() => {
+                        const next = SCAN_COLOR_SCHEMES.find(x => x.id === s.id);
+                        if (next && next.id !== scheme.id) {
+                          setScheme(next);
+                          setActiveScheme(next.id);
+                        }
+                      }}
+                      aria-label={`${s.name}色系${s.id === scheme.id ? '（当前）' : ''}`}
                     />
                   ))}
                 </div>
