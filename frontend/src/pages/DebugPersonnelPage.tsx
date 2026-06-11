@@ -209,16 +209,16 @@ export default function DebugPersonnelPage() {
   };
 
   return (
-    <div className="box-border flex h-full flex-col overflow-y-auto bg-slate-50/50 p-6 md:p-8">
+    <div className="box-border flex h-full flex-col overflow-y-auto bg-[var(--app-color-surface-page)] p-6 md:p-8">
       <AdminToolbar className="mb-4 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
         <div className="min-w-0 max-w-[min(42vw,20rem)] shrink">
-          <h1 className="flex items-center gap-2 truncate text-lg font-bold text-slate-800 sm:text-xl">
+          <h1 className="flex items-center gap-2 truncate text-lg font-bold text-[var(--app-color-text-primary)] sm:text-xl">
             人员数据库
-            <span className="shrink-0 rounded-full bg-slate-200 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-600">
+            <span className="shrink-0 rounded-full bg-[var(--app-color-surface-hover)] px-2 py-0.5 font-mono text-[10px] font-semibold text-[var(--app-color-text-secondary)]">
               aro_personnel
             </span>
           </h1>
-          <p className="truncate text-[11px] text-slate-500 sm:text-xs">
+          <p className="truncate text-[11px] text-[var(--app-color-text-tertiary)] sm:text-xs">
             共 {data?.total || 0} 条 · 官方可进优先 / 经验降序 / 姓名
           </p>
         </div>
@@ -238,25 +238,25 @@ export default function DebugPersonnelPage() {
             onSubmit={() => void handleSearch(searchDraft)}
             disabled={isLoading}
           />
-          <div className="flex shrink-0 flex-nowrap items-center gap-1 rounded-xl border border-slate-200 bg-white px-2 py-1 shadow-sm sm:gap-2 sm:px-3">
+          <div className="flex shrink-0 flex-nowrap items-center gap-1 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2 py-1 shadow-[var(--app-elevation-card)] sm:gap-2 sm:px-3">
             {isSearching ? (
               <>
                 <button
                   type="button"
                   disabled={searchPage <= 1}
                   onClick={() => handleSearchPageChange(searchPage - 1)}
-                  className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2"
+                  className="shrink-0 px-1 font-black text-[var(--app-color-accent)] disabled:text-[var(--app-color-text-tertiary)] sm:px-2"
                 >
                   ◀
                 </button>
-                <span className="shrink-0 whitespace-nowrap text-xs font-bold text-slate-700 sm:text-sm">
+                <span className="shrink-0 whitespace-nowrap text-xs font-bold text-[var(--app-color-text-secondary)] sm:text-sm">
                   第 {searchPage} / {searchTotalPages || 1} 页
                 </span>
                 <button
                   type="button"
                   disabled={searchPage >= searchTotalPages || searchTotalPages === 0}
                   onClick={() => handleSearchPageChange(searchPage + 1)}
-                  className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2"
+                  className="shrink-0 px-1 font-black text-[var(--app-color-accent)] disabled:text-[var(--app-color-text-tertiary)] sm:px-2"
                 >
                   ▶
                 </button>
@@ -267,18 +267,18 @@ export default function DebugPersonnelPage() {
                   type="button"
                   disabled={page === 1}
                   onClick={() => setPage((p) => p - 1)}
-                  className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2"
+                  className="shrink-0 px-1 font-black text-[var(--app-color-accent)] disabled:text-[var(--app-color-text-tertiary)] sm:px-2"
                 >
                   ◀
                 </button>
-                <span className="shrink-0 whitespace-nowrap text-xs font-bold text-slate-700 sm:text-sm">
+                <span className="shrink-0 whitespace-nowrap text-xs font-bold text-[var(--app-color-text-secondary)] sm:text-sm">
                   第 {page} / {totalPages || 1} 页
                 </span>
                 <button
                   type="button"
                   disabled={page === totalPages || totalPages === 0}
                   onClick={() => setPage((p) => p + 1)}
-                  className="shrink-0 px-1 font-black text-blue-600 disabled:text-slate-300 sm:px-2"
+                  className="shrink-0 px-1 font-black text-[var(--app-color-accent)] disabled:text-[var(--app-color-text-tertiary)] sm:px-2"
                 >
                   ▶
                 </button>
@@ -289,13 +289,13 @@ export default function DebugPersonnelPage() {
       </AdminToolbar>
 
       {isLoading && !isSearching ? (
-        <div className="flex flex-1 items-center justify-center gap-3 text-xl font-bold text-slate-500">
+        <div className="flex flex-1 items-center justify-center gap-3 text-xl font-bold text-[var(--app-color-text-tertiary)]">
           <RefreshCw className="h-6 w-6 animate-spin text-blue-500" /> 正在读取档案矩阵...
         </div>
       ) : (
         <div className="flex-1 overflow-auto pb-16">
           {isSearching && displayData.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center font-bold text-slate-500">
+            <div className="rounded-xl border border-dashed border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-container)] p-12 text-center font-bold text-[var(--app-color-text-tertiary)]">
               未找到人员记录
             </div>
           ) : (
