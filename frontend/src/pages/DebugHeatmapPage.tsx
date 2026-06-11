@@ -39,7 +39,7 @@ function RoomNativeMatrix({ heatmapData, hours, capacity, isRelative = false }: 
 
     // 💥 严谨的颜色与词汇映射字典
     const getHeatColor = (totalPeople: number) => {
-        if (totalPeople <= 0.1) return 'bg-slate-50 border-slate-200'; // 空闲 (灰白)
+        if (totalPeople <= 0.1) return 'bg-[var(--app-color-surface-page)] border-[var(--app-color-border-default)]'; // 空闲 (灰白)
 
         const safeCap = Math.max(1, Number(capacity) || 1);
         const ratio = totalPeople / safeCap;
@@ -101,8 +101,8 @@ function RoomNativeMatrix({ heatmapData, hours, capacity, isRelative = false }: 
     return (
         <div className="w-full flex flex-col gap-6">
             {/* 💥 顶级交互：可点击的课题组标签栏 */}
-            <div className="flex flex-wrap gap-2 px-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <span className="text-xs font-bold text-slate-500 mt-1 mr-2">课题组开关:</span>
+            <div className="flex flex-wrap gap-2 px-2 bg-[var(--app-color-surface-page)] p-4 rounded-xl border border-[var(--app-color-border-default)]">
+                <span className="text-xs font-bold text-[var(--app-color-text-tertiary)] mt-1 mr-2">课题组开关:</span>
                 {allGroups.map((group, idx) => {
                     const isActive = activeGroups.includes(group);
                     return (
@@ -111,8 +111,8 @@ function RoomNativeMatrix({ heatmapData, hours, capacity, isRelative = false }: 
                             onClick={() => toggleGroup(group)}
                             className={`px-3 py-1 text-xs font-bold rounded-full border transition-all duration-200 
                                 ${isActive
-                                ? 'bg-white text-emerald-600 border-emerald-300 shadow-sm'
-                                : 'bg-slate-100 text-slate-400 border-slate-200 opacity-60 hover:opacity-100'}`}
+                                ? 'bg-[var(--app-color-surface-container)] text-emerald-600 border-emerald-300 shadow-sm'
+                                : 'bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] border-[var(--app-color-border-default)] opacity-60 hover:opacity-100'}`}
                         >
                             {group}
                         </button>
@@ -122,13 +122,13 @@ function RoomNativeMatrix({ heatmapData, hours, capacity, isRelative = false }: 
 
             {/* 💥 你原汁原味的 7x13 交通灯矩阵图 */}
             <div className="p-6">
-                <div className="flex text-xs font-bold text-slate-400 mb-2 ml-10 justify-between">
+                <div className="flex text-xs font-bold text-[var(--app-color-text-tertiary)] mb-2 ml-10 justify-between">
                     {hours.map(h => <span key={h} className="w-6 text-center">{h}h</span>)}
                 </div>
                 <div className="flex flex-col gap-2">
                     {DAYS.map((day, dayIdx) => (
                         <div key={day} className="flex items-center gap-3">
-                            <span className="text-xs font-bold text-slate-500 w-8">{day}</span>
+                            <span className="text-xs font-bold text-[var(--app-color-text-tertiary)] w-8">{day}</span>
                             <div className="flex gap-2 flex-1 justify-between">
                                 {hours.map((hour) => {
                                     // 计算该格子的真实总人数
@@ -153,8 +153,8 @@ function RoomNativeMatrix({ heatmapData, hours, capacity, isRelative = false }: 
                 </div>
 
                 {/* 底部词汇图例：动态根据当前传入的 capacity 计算真实人数上限 */}
-                <div className="mt-8 flex items-center justify-end gap-5 text-[10px] font-bold text-slate-500">
-                    <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-slate-50 border border-slate-200"></div>空闲</div>
+                <div className="mt-8 flex items-center justify-end gap-5 text-[10px] font-bold text-[var(--app-color-text-tertiary)]">
+                    <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-[var(--app-color-surface-page)] border border-[var(--app-color-border-default)]"></div>空闲</div>
                     <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-emerald-200 border border-emerald-300"></div>低频 {isRelative ? '' : `(<${Math.round(Math.max(1, Number(capacity) || 1) * 0.4)}人)`}</div>
                     <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-amber-300 border border-amber-400"></div>适中 {isRelative ? '' : `(<${Math.round(Math.max(1, Number(capacity) || 1) * 0.7)}人)`}</div>
                     <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-orange-500 border border-orange-600"></div>拥挤 {isRelative ? '' : `(<${Math.round(Math.max(1, Number(capacity) || 1) * 0.95)}人)`}</div>
@@ -266,23 +266,23 @@ export default function DebugHeatmapPage() {
 
     // 给底下单独的小组卡片用的颜色映射函数
     const getHeatColor = (value: number) => {
-        if (value === 0) return 'bg-slate-100/50 border-slate-200/50';
+        if (value === 0) return 'bg-[var(--app-color-surface-hover)] border-[var(--app-color-border-default)]';
         if (value < 0.3) return 'bg-emerald-200 border-emerald-300';
         if (value < 0.6) return 'bg-amber-300 border-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)]';
         if (value < 0.85) return 'bg-orange-500 border-orange-600 shadow-[0_0_12px_rgba(249,115,22,0.5)]';
         return 'bg-red-600 border-red-700 shadow-[0_0_15px_rgba(220,38,38,0.6)] animate-pulse';
     };
 
-    if (isLoadingRooms) return <div className="p-10 text-xl font-bold text-slate-500">正在扫描全校物理空间坐标...</div>;
+    if (isLoadingRooms) return <div className="p-10 text-xl font-bold text-[var(--app-color-text-tertiary)]">正在扫描全校物理空间坐标...</div>;
 
     return (
-        <div className="p-8 bg-slate-50 h-full flex flex-col box-border relative overflow-y-auto">
+        <div className="p-8 bg-[var(--app-color-surface-page)] h-full flex flex-col box-border relative overflow-y-auto">
             <AdminToolbar className="mb-6 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
                 <div className="min-w-0 max-w-[min(38vw,20rem)] shrink">
-                    <h1 className="flex items-center gap-2 truncate text-xl font-black text-slate-800 sm:text-2xl">
+                    <h1 className="flex items-center gap-2 truncate text-xl font-black text-[var(--app-color-text-primary)] sm:text-2xl">
                         <MapIcon className="h-7 w-7 shrink-0 text-emerald-600"/> 房间热力调试
                     </h1>
-                    <p className="truncate text-xs text-slate-500 sm:text-sm">7×13 时间格：按套间容量与历史聚合展示拥挤度；重算会刷新服务端缓存。</p>
+                    <p className="truncate text-xs text-[var(--app-color-text-tertiary)] sm:text-sm">7×13 时间格：按套间容量与历史聚合展示拥挤度；重算会刷新服务端缓存。</p>
                 </div>
                 <AdminToolbarActions className="ml-auto flex min-w-0 shrink-0 flex-nowrap items-center gap-2">
                     <DebugDangerousOpsMenu
@@ -311,13 +311,13 @@ export default function DebugHeatmapPage() {
                         }}
                         onSubmit={submitRoomSearch}
                     />
-                    <div className="flex shrink-0 flex-nowrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <span className="shrink-0 text-xs font-bold text-slate-600 sm:text-sm">套间限载</span>
+                    <div className="flex shrink-0 flex-nowrap items-center gap-2 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-2 py-1.5">
+                        <span className="shrink-0 text-xs font-bold text-[var(--app-color-text-secondary)] sm:text-sm">套间限载</span>
                         <input
                             type="number"
                             value={localCapacity}
                             onChange={(e) => setLocalCapacity(Math.max(1, Number(e.target.value) || 1))}
-                            className="h-[var(--admin-control-height,2.25rem)] w-14 shrink-0 rounded border border-slate-300 text-center font-bold text-indigo-600 outline-none sm:w-16"
+                            className="h-[var(--admin-control-height,2.25rem)] w-14 shrink-0 rounded border border-[var(--app-color-border-strong)] text-center font-bold text-indigo-600 outline-none sm:w-16"
                         />
                         <button
                             type="button"
@@ -328,17 +328,17 @@ export default function DebugHeatmapPage() {
                             保存
                         </button>
                     </div>
-                    <div className="flex min-w-0 max-w-[min(52vw,18rem)] shrink-0 flex-nowrap items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm sm:gap-3 sm:px-4">
+                    <div className="flex min-w-0 max-w-[min(52vw,18rem)] shrink-0 flex-nowrap items-center justify-center gap-2 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-2 shadow-[var(--app-elevation-card)] sm:gap-3 sm:px-4">
                         <button type="button" disabled={currentRoomIndex === 0} onClick={() => setCurrentRoomIndex(p => p - 1)}
-                                className="shrink-0 text-lg font-black text-emerald-600 transition-transform hover:opacity-90 disabled:text-slate-300 active:scale-75 sm:text-xl">◀
+                                className="shrink-0 text-lg font-black text-emerald-600 transition-transform hover:opacity-90 disabled:text-[var(--app-color-text-tertiary)] active:scale-75 sm:text-xl">◀
                         </button>
                         <div className="flex min-w-0 flex-col items-center px-0.5">
-                            <span className="truncate text-sm font-black tracking-wider text-slate-800 sm:text-base">{currentRoom?.room_name || '无匹配房间'}</span>
-                            <span className="whitespace-nowrap text-[10px] font-bold text-slate-400">第 {filteredRooms.length > 0 ? currentRoomIndex + 1 : 0} / {filteredRooms.length} 间</span>
+                            <span className="truncate text-sm font-black tracking-wider text-[var(--app-color-text-primary)] sm:text-base">{currentRoom?.room_name || '无匹配房间'}</span>
+                            <span className="whitespace-nowrap text-[10px] font-bold text-[var(--app-color-text-tertiary)]">第 {filteredRooms.length > 0 ? currentRoomIndex + 1 : 0} / {filteredRooms.length} 间</span>
                         </div>
                         <button type="button" disabled={currentRoomIndex === filteredRooms.length - 1 || filteredRooms.length === 0}
                                 onClick={() => setCurrentRoomIndex(p => p + 1)}
-                                className="shrink-0 text-lg font-black text-emerald-600 transition-transform hover:opacity-90 disabled:text-slate-300 active:scale-75 sm:text-xl">▶
+                                className="shrink-0 text-lg font-black text-emerald-600 transition-transform hover:opacity-90 disabled:text-[var(--app-color-text-tertiary)] active:scale-75 sm:text-xl">▶
                         </button>
                     </div>
                 </AdminToolbarActions>
@@ -347,7 +347,7 @@ export default function DebugHeatmapPage() {
             {/* 核心视觉区：课题组情报卡片瀑布流 */}
             <div className="flex-1 overflow-y-auto pb-24 pr-2">
                 {filteredRooms.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-400 opacity-60">
+                    <div className="flex flex-col items-center justify-center h-full text-[var(--app-color-text-tertiary)] opacity-60">
                         <MapIcon className="w-16 h-16 mb-4"/>
                         <span className="text-xl font-bold">未找到符合条件的物理空间</span>
                     </div>
@@ -356,21 +356,21 @@ export default function DebugHeatmapPage() {
                         读取空间概率张量中...
                     </div>
                 ) : (roomData.length === 0 && suiteData.length === 0) ? (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                    <div className="flex flex-col items-center justify-center h-full text-[var(--app-color-text-tertiary)]">
                         <span className="text-xl font-bold">该房间暂无任何活动轨迹</span>
                     </div>
                 ) : (
                     <div className="flex flex-col gap-8">
 
                         {/* 💥 视图 1：母套间总量控制视图 (看整体容量) */}
-                        <div className="w-full bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col gap-4 relative overflow-hidden">
+                        <div className="w-full bg-[var(--app-color-surface-container)] rounded-2xl shadow-[var(--app-elevation-card)] border border-[var(--app-color-border-default)] p-6 flex flex-col gap-4 relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500"></div>
-                            <div className="flex items-center gap-2 border-b border-slate-100 pb-3 pl-3">
+                            <div className="flex items-center gap-2 border-b border-[var(--app-color-border-default)] pb-3 pl-3">
                                 <Activity className="w-5 h-5 text-indigo-500"/>
-                                <h2 className="text-xl font-black text-slate-700 tracking-wide">
+                                <h2 className="text-xl font-black text-[var(--app-color-text-secondary)] tracking-wide">
                                     {suiteName || '套间总控视图'}
                                 </h2>
-                                <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold ml-2">三合一聚合计算 (单间/套间/课题组)</span>
+                                <span className="text-xs bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] px-2 py-0.5 rounded font-bold ml-2">三合一聚合计算 (单间/套间/课题组)</span>
                             </div>
                             <div className="w-full">
                                 {/* 绑定的数据是 suiteData，容量是你填写的 localCapacity */}
@@ -379,11 +379,11 @@ export default function DebugHeatmapPage() {
                         </div>
 
                         {/* 💥 视图 2：子房间微观透视视图 (看本房间的课题组) */}
-                        <div className="w-full bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col gap-4 relative overflow-hidden">
+                        <div className="w-full bg-[var(--app-color-surface-container)] rounded-2xl shadow-[var(--app-elevation-card)] border border-[var(--app-color-border-default)] p-6 flex flex-col gap-4 relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-400"></div>
-                            <div className="flex items-center gap-2 border-b border-slate-100 pb-3 pl-3">
+                            <div className="flex items-center gap-2 border-b border-[var(--app-color-border-default)] pb-3 pl-3">
                                 <MapIcon className="w-5 h-5 text-emerald-500"/>
-                                <h2 className="text-xl font-black text-slate-700 tracking-wide">
+                                <h2 className="text-xl font-black text-[var(--app-color-text-secondary)] tracking-wide">
                                     {currentRoom?.room_name} · 单间内部活跃度矩阵
                                 </h2>
                                 <span className="text-xs bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold ml-2">相对极限自适应变色</span>
@@ -398,7 +398,7 @@ export default function DebugHeatmapPage() {
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start mt-4">
                             {roomData.map((group: any, idx: number) => (
                                 <div key={idx}
-                                     className="bg-white rounded-2xl shadow-lg border border-slate-200/60 overflow-hidden hover:shadow-xl transition-shadow">
+                                     className="bg-[var(--app-color-surface-container)] rounded-2xl shadow-lg border border-[var(--app-color-border-default)] overflow-hidden hover:shadow-xl transition-shadow">
                                     {/* 卡片头部：课题组身份与高峰 */}
                                     <div
                                         className="bg-gradient-to-r from-emerald-50 to-teal-50/30 px-6 py-4 border-b border-emerald-100 flex items-center justify-between">
@@ -408,12 +408,12 @@ export default function DebugHeatmapPage() {
                                                 <Users className="w-5 h-5 text-emerald-600"/>
                                             </div>
                                             <span
-                                                className="text-xl font-black text-slate-800">{group.group_name}</span>
+                                                className="text-xl font-black text-[var(--app-color-text-primary)]">{group.group_name}</span>
                                         </div>
                                         <div className="flex gap-4">
                                             <div className="flex flex-col items-end">
                                                 <span
-                                                    className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">进场高峰</span>
+                                                    className="text-[10px] font-bold text-[var(--app-color-text-tertiary)] uppercase tracking-widest">进场高峰</span>
                                                 <span
                                                     className="text-sm font-black text-emerald-600 flex items-center gap-1"><Clock
                                                     className="w-3 h-3"/> {group.peak_entry_time}</span>
@@ -421,7 +421,7 @@ export default function DebugHeatmapPage() {
                                             <div className="w-[1px] h-8 bg-emerald-200/50"></div>
                                             <div className="flex flex-col items-start">
                                                 <span
-                                                    className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">离场高峰</span>
+                                                    className="text-[10px] font-bold text-[var(--app-color-text-tertiary)] uppercase tracking-widest">离场高峰</span>
                                                 <span
                                                     className="text-sm font-black text-orange-500 flex items-center gap-1"><Clock
                                                     className="w-3 h-3"/> {group.peak_exit_time}</span>
@@ -432,13 +432,13 @@ export default function DebugHeatmapPage() {
                                     {/* 卡片腹部：7x13 交通灯矩阵图 */}
                                     <div className="p-6">
                                         <div
-                                            className="flex text-xs font-bold text-slate-400 mb-2 ml-10 justify-between">
+                                            className="flex text-xs font-bold text-[var(--app-color-text-tertiary)] mb-2 ml-10 justify-between">
                                             {HOURS.map(h => <span key={h} className="w-6 text-center">{h}h</span>)}
                                         </div>
                                         <div className="flex flex-col gap-2">
                                             {DAYS.map((day, dayIdx) => (
                                                 <div key={day} className="flex items-center gap-3">
-                                                    <span className="text-xs font-bold text-slate-500 w-8">{day}</span>
+                                                    <span className="text-xs font-bold text-[var(--app-color-text-tertiary)] w-8">{day}</span>
                                                     <div className="flex gap-2 flex-1 justify-between">
                                                         {HOURS.map((hour) => {
                                                             const val = group.heatmapMatrix?.[dayIdx]?.[hour] || 0;
@@ -460,7 +460,7 @@ export default function DebugHeatmapPage() {
                                             ))}
                                         </div>
                                         <div
-                                            className="mt-5 flex items-center justify-end gap-3 text-[10px] font-bold text-slate-400">
+                                            className="mt-5 flex items-center justify-end gap-3 text-[10px] font-bold text-[var(--app-color-text-tertiary)]">
                                             <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-slate-100 border border-slate-200"></div>空闲</div>
                                             <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-emerald-200 border border-emerald-300"></div>低频</div>
                                             <div className="flex items-center gap-1"><div className="w-3 h-3 rounded bg-amber-300 border border-amber-400"></div>适中</div>
