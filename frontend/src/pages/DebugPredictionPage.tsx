@@ -46,20 +46,20 @@ export default function DebugPredictionPage() {
 
     if (isLoading) {
         return (
-            <div data-twin-debug-prediction className="p-10 text-xl font-bold text-slate-500">
+            <div data-twin-debug-prediction className="p-10 text-xl font-bold text-[var(--app-color-text-tertiary)]">
                 正在加载 AI 行为预测库…
             </div>
         );
     }
 
     return (
-        <div data-twin-debug-prediction className="box-border flex h-full flex-col overflow-y-auto bg-slate-50/50 p-6 md:p-8">
+        <div data-twin-debug-prediction className="box-border flex h-full flex-col overflow-y-auto bg-[var(--app-color-surface-page)] p-6 md:p-8">
             <AdminToolbar className="mb-4 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
                 <div className="min-w-0 max-w-[min(40vw,22rem)] shrink">
-                    <h1 className="flex items-center gap-2 truncate text-xl font-black text-slate-800 sm:text-2xl">
-                        <BrainCircuit className="h-7 w-7 shrink-0 text-blue-600"/> AI行为预测库
+                    <h1 className="flex items-center gap-2 truncate text-xl font-black text-[var(--app-color-text-primary)] sm:text-2xl">
+                        <BrainCircuit className="h-7 w-7 shrink-0 text-[var(--app-color-accent)]"/> AI行为预测库
                     </h1>
-                    <p className="truncate text-xs text-slate-500">共 {data?.total ?? 0} 人 · 排序与人员资料库一致</p>
+                    <p className="truncate text-xs text-[var(--app-color-text-tertiary)]">共 {data?.total ?? 0} 人 · 排序与人员资料库一致</p>
                 </div>
                 <AdminToolbarActions className="ml-auto flex min-w-0 shrink-0 flex-nowrap items-center gap-2">
                     <DebugDangerousOpsMenu
@@ -88,17 +88,17 @@ export default function DebugPredictionPage() {
                         }}
                         onSubmit={submitSearch}
                     />
-                    <div className="flex shrink-0 flex-nowrap items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 shadow-sm sm:gap-2 sm:px-4">
-                        <button type="button" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="text-lg font-black text-blue-600 disabled:text-slate-300">◀</button>
-                        <span className="whitespace-nowrap text-sm font-bold text-slate-700 sm:text-base">第 {page} / {totalPages || 1} 页</span>
-                        <button type="button" disabled={page === totalPages || totalPages === 0} onClick={() => setPage((p) => p + 1)} className="text-lg font-black text-blue-600 disabled:text-slate-300">▶</button>
+                    <div className="flex shrink-0 flex-nowrap items-center gap-1 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-1.5 shadow-[var(--app-elevation-card)] sm:gap-2 sm:px-4">
+                        <button type="button" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="text-lg font-black text-[var(--app-color-accent)] disabled:text-[var(--app-color-text-tertiary)]">◀</button>
+                        <span className="whitespace-nowrap text-sm font-bold text-[var(--app-color-text-secondary)] sm:text-base">第 {page} / {totalPages || 1} 页</span>
+                        <button type="button" disabled={page === totalPages || totalPages === 0} onClick={() => setPage((p) => p + 1)} className="text-lg font-black text-[var(--app-color-accent)] disabled:text-[var(--app-color-text-tertiary)]">▶</button>
                     </div>
                 </AdminToolbarActions>
             </AdminToolbar>
 
             <div className="flex-1 overflow-auto pb-16">
                 {users.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center font-bold text-slate-500">
+                    <div className="rounded-xl border border-dashed border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-container)] p-12 text-center font-bold text-[var(--app-color-text-tertiary)]">
                         暂无预测数据
                     </div>
                 ) : (
