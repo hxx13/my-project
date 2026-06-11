@@ -122,25 +122,31 @@
 
   /* ═══════ 科幻流光主题映射 ═══════ */
   .theme-scifi {
+    /* Surface */
     --app-color-surface-page:      var(--color-slate-950);
     --app-color-surface-container: oklch(0.17 0.01 260);
     --app-color-surface-elevated:  oklch(0.21 0.01 260);
     --app-color-surface-hover:     oklch(0.22 0.02 260);
     --app-color-surface-active:    oklch(0.25 0.04 240);
 
+    /* Text */
     --app-color-text-primary:      var(--color-slate-50);
     --app-color-text-secondary:    var(--color-slate-300);
     --app-color-text-tertiary:     var(--color-slate-500);
     --app-color-text-inverse:      var(--color-slate-950);
 
+    /* Accent — cyan neon */
     --app-color-accent:            var(--color-cyan-400);
     --app-color-accent-hover:      var(--color-cyan-300);
     --app-color-accent-active:     var(--color-cyan-200);
     --app-color-accent-soft:       oklch(0.18 0.04 220);
+    --app-color-accent-secondary:  var(--color-cyan-300);
 
+    /* Border */
     --app-color-border-default:    oklch(0.25 0.01 260);
     --app-color-border-strong:     var(--color-cyan-400);
 
+    /* Feedback */
     --app-color-feedback-danger:        var(--color-red-400);
     --app-color-feedback-danger-soft:   var(--color-red-950);
     --app-color-feedback-warning:       var(--color-amber-400);
@@ -150,6 +156,12 @@
     --app-color-feedback-info:          var(--color-cyan-400);
     --app-color-feedback-info-soft:     var(--color-cyan-950);
 
+    /* Glow — scifi variants */
+    --app-glow-accent:       rgba(34, 211, 238, 0.08);
+    --app-glow-selected:     rgba(34, 211, 238, 0.12);
+    --app-row-header-tint:   rgba(34, 211, 238, 0.04);
+
+    /* Radius */
     --app-radius-container: var(--radius-xl);
     --app-radius-element:   var(--radius-md);
   }
