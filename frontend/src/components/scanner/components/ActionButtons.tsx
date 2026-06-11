@@ -4,7 +4,7 @@ import { AnimatedRoomButton } from "@/components/scanner/AnimatedRoomButton";
 import { HamsterExitButton } from "@/components/scanner/HamsterExitButton";
 import type { RoomInfo } from "@/api/types/scanner";
 import { resolveRoomActionDensity } from "@/components/scanner/roomActionDensity";
-import { formatCountdown } from "@/utils/formatCountdown";
+import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
 
 export type { RoomActionDensity } from "@/components/scanner/roomActionDensity";
 
@@ -24,12 +24,14 @@ interface ActionButtonsProps {
     setKeepCardState: (index: number, checked: boolean) => void;
     /** 自动签退剩余秒数（来自 analyze）；null 则不显示 */
     autoSignoutSecondsRemaining?: number | null;
+    /** PENDING_ACTIVATION / AUTO_EXIT_SCHEDULED */
+    autoSignoutState?: string | null;
 }
 
 
 export const ActionButtons = (props: ActionButtonsProps) => {
     const { action, targetRooms, onRoomClick, exitCelebrateRoomId, finishedRooms,
-        autoSignoutSecondsRemaining } = props;
+        autoSignoutSecondsRemaining, autoSignoutState } = props;
     const safeRooms = Array.isArray(targetRooms) ? targetRooms : [];
     const density = resolveRoomActionDensity(safeRooms.length);
     const gapClass = density === "normal" ? "gap-4" : density === "compact" ? "gap-2.5" : "gap-1.5";
@@ -72,6 +74,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
     }, [countdown]);
 
     const showCountdown = action === "EXIT" && countdown != null && countdown > 0;
+    const countdownCopy = resolveAutoSignoutCountdownCopy(autoSignoutState);
 
     return (
         <div
@@ -82,10 +85,10 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                 <motion.div
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-[11px] font-bold text-amber-400 shrink-0"
+                    className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-warning-soft)] border border-[var(--app-color-feedback-warning)]/25 text-[11px] font-bold text-[var(--app-color-feedback-warning)] shrink-0"
                 >
                     <span>⏱</span>
-                    <span>自动签退 {formatCountdown(countdown!)}</span>
+                    <span>{countdownCopy.badge} {formatCountdown(countdown!)}</span>
                 </motion.div>
             )}
 
@@ -102,7 +105,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                                 className={`relative w-full shrink-0 ${enterRowH} group flex items-center justify-center`}
                             >
                                 <div className="absolute top-1/2 -translate-y-1/2 right-full mr-2 w-[88px] opacity-0 group-hover:opacity-100 transition-all duration-300 z-10">
-                                    <label className="flex items-center gap-1.5 text-[10px] text-slate-400 whitespace-nowrap">
+                                    <label className="flex items-center gap-1.5 text-[10px] text-[var(--app-color-text-tertiary)] whitespace-nowrap">
                                         <input type="checkbox" checked={props.getKeepCardState(idx)} onChange={(e) => props.setKeepCardState(idx, e.target.checked)} className="accent-rose-500 w-3.5 h-3.5" />
                                         长期占有
                                     </label>
@@ -124,7 +127,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                             className={`relative w-full shrink-0 ${exitRowMinH} group flex items-center justify-center`}
                         >
                             <div className="absolute top-1/2 -translate-y-1/2 right-full mr-2 w-[88px] opacity-0 group-hover:opacity-100 transition-all duration-300 z-10">
-                                <label className="flex items-center gap-1.5 text-[10px] text-slate-400 whitespace-nowrap">
+                                <label className="flex items-center gap-1.5 text-[10px] text-[var(--app-color-text-tertiary)] whitespace-nowrap">
                                     <input type="checkbox" checked={props.getKeepCardState(idx)} onChange={(e) => props.setKeepCardState(idx, e.target.checked)} className="accent-rose-500 w-3.5 h-3.5" />
                                     不还卡出
                                 </label>
