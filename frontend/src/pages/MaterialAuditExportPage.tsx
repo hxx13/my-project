@@ -315,7 +315,7 @@ export default function MaterialAuditExportPage() {
 
   return (
     <div className="space-y-4 p-6">
-      <AdminSubPageHeader title="申领审计导出" backTo="/admin/material/review" description="按人员、课题组或物品维度查看与导出申领明细。" />
+      <AdminSubPageHeader title="申领审计导出" fallbackTo="/admin/material/review" description="按人员、课题组或物品维度查看与导出申领明细。" />
 
       <div className="flex gap-2">{tabBtn("personal", "个人审计")}{tabBtn("group", "课题组审计")}{isStaff && tabBtn("item", "按物品审计")}</div>
 

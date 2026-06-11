@@ -9,6 +9,7 @@ import { authStorage } from "@/features/auth/authStorage";
 import type { MaterialItem } from "@/api/domains/material.api";
 import { StudentCard, Skeleton, EmptyState, Badge } from "../components/ui";
 import { cn } from "@/lib/utils";
+import { webImageSrc } from "@/utils/mediaUrl";
 import toast from "react-hot-toast";
 
 export const STUDENT_MATERIAL_ROUTE = "/student/material";
@@ -61,7 +62,7 @@ export default function StudentMaterialPage() {
   async function handleSubmit() {
     if (!cart || cartCount === 0) return;
     const lines = Object.entries(cart).filter(([, qty]) => qty > 0).map(([itemId, qty]) => ({ itemId: Number(itemId), qty }));
-    const group = authStorage.getUserInfo()?.departmentName?.trim() || undefined;
+    const group = (authStorage.getUserInfo() as any)?.departmentName?.trim() || undefined;
     await createRequest.mutateAsync({ lines, applicantGroup: group });
     saveCart.mutate({}); // 清空申领物品栏
     navigate("/student/material/requests");
@@ -188,7 +189,7 @@ function MaterialItemCard({ item, cartQty, maxStock, onQtyChange }: { item: Mate
   return (
     <StudentCard className="flex items-start gap-3 p-3">
       <div className="size-16 shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] flex items-center justify-center text-[var(--student-mute)] text-[11px] overflow-hidden">
-        {item.coverUrl ? <img src={item.coverUrl} alt={item.name} className="size-full object-cover" /> : "暂无图片"}
+        {item.coverUrl ? <img src={webImageSrc(item.coverUrl) || item.coverUrl} alt={item.name} className="size-full object-cover" /> : "暂无图片"}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">

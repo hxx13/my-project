@@ -11,6 +11,20 @@ import {
   type MaterialStatsAnalytics,
 } from "@/api/domains/material.api";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
+import {
+  analyticsChartGridStroke,
+  analyticsChartTooltip,
+  analyticsEmptyShell,
+  analyticsFilterShell,
+  analyticsInput,
+  analyticsKpiDanger,
+  analyticsKpiInfo,
+  analyticsKpiMuted,
+  analyticsKpiSuccess,
+  analyticsKpiViolet,
+  analyticsKpiWarning,
+} from "@/features/analytics/analyticsUiTokens";
+import { cn } from "@/lib/utils";
 import { ActivityHeatmapChart } from "./ActivityHeatmapChart";
 import type { HeatmapCell } from "@/api/domains/analytics.api";
 
@@ -91,72 +105,72 @@ export function MaterialStatsReportPanel() {
     [data],
   );
 
-  const heatmap = useMemo(() => toHeatmapCells(data?.outboundHeatmap), [data]);
+  const heatmap = useMemo(() => toHeatmapCells(data?.outboundHeatmap || []), [data]);
 
   const timeLabel = `${from} ～ ${to}`;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-violet-200/60 bg-white px-4 py-3">
+      <div className={cn("flex flex-wrap items-end gap-3 px-4 py-3", analyticsFilterShell)}>
         <div>
-          <label className="mb-1 block text-xs text-neutral-500">开始日期</label>
-          <input type="date" className="rounded-lg border border-neutral-200 px-3 py-2 text-sm" value={from}
+          <label className="mb-1 block text-xs text-[var(--app-color-text-tertiary)]">开始日期</label>
+          <input type="date" className={cn("px-3 py-2 text-sm", analyticsInput)} value={from}
             onChange={(e) => setFrom(e.target.value)} />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-neutral-500">结束日期</label>
-          <input type="date" className="rounded-lg border border-neutral-200 px-3 py-2 text-sm" value={to}
+          <label className="mb-1 block text-xs text-[var(--app-color-text-tertiary)]">结束日期</label>
+          <input type="date" className={cn("px-3 py-2 text-sm", analyticsInput)} value={to}
             onChange={(e) => setTo(e.target.value)} />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-neutral-500">课题组（可选）</label>
-          <select className="min-w-[160px] rounded-lg border border-neutral-200 px-3 py-2 text-sm" value={groupId}
+          <label className="mb-1 block text-xs text-[var(--app-color-text-tertiary)]">课题组（可选）</label>
+          <select className={cn("min-w-[160px] px-3 py-2 text-sm", analyticsInput)} value={groupId}
             onChange={(e) => setGroupId(e.target.value)}>
             <option value="">全部课题组</option>
             {groups.map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
         </div>
-        <p className="pb-2 text-xs text-neutral-400">数据与「申领审计导出」同源，按记录时间戳聚合</p>
+        <p className="pb-2 text-xs text-[var(--app-color-text-tertiary)]">数据与「申领审计导出」同源，按记录时间戳聚合</p>
       </div>
 
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-neutral-300 bg-white py-16">
-          <Loader2 className="h-10 w-10 animate-spin text-violet-400" />
-          <p className="text-sm text-neutral-500">正在加载统计数据…</p>
+        <div className={analyticsEmptyShell}>
+          <Loader2 className="h-10 w-10 animate-spin text-[var(--app-color-accent)]" />
+          <p className="text-sm text-[var(--app-color-text-tertiary)]">正在加载统计数据…</p>
         </div>
       ) : !data ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-neutral-300 bg-white py-16">
-          <Package className="h-10 w-10 text-neutral-300" />
-          <p className="text-sm text-neutral-500">暂无统计数据</p>
+        <div className={analyticsEmptyShell}>
+          <Package className="h-10 w-10 text-[var(--app-color-text-tertiary)]" />
+          <p className="text-sm text-[var(--app-color-text-tertiary)]">暂无统计数据</p>
         </div>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <AdminFormCard title={`申领单数（${timeLabel}）`}>
-              <p className="text-2xl font-extrabold text-violet-600">{data.totalRequests}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiViolet)}>{data.totalRequests}</p>
             </AdminFormCard>
             <AdminFormCard title={`申领数量（${timeLabel}）`}>
-              <p className="text-2xl font-extrabold text-emerald-600">{data.totalRequestQty}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiSuccess)}>{data.totalRequestQty}</p>
             </AdminFormCard>
             <AdminFormCard title={`出库数量（${timeLabel}）`}>
-              <p className="text-2xl font-extrabold text-amber-600">{data.totalOutboundQty}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiWarning)}>{data.totalOutboundQty}</p>
             </AdminFormCard>
             <AdminFormCard title={`入库数量（${timeLabel}）`}>
-              <p className="text-2xl font-extrabold text-blue-600">{data.totalInboundQty}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiInfo)}>{data.totalInboundQty}</p>
             </AdminFormCard>
             <AdminFormCard title="审核通过率">
-              <p className="text-2xl font-extrabold text-indigo-600">
+              <p className={cn("text-2xl font-extrabold", analyticsKpiViolet)}>
                 {data.passRate != null ? `${Math.round(data.passRate * 100)}%` : "—"}
               </p>
             </AdminFormCard>
             <AdminFormCard title="拒绝单数">
-              <p className="text-2xl font-extrabold text-red-600">{data.refuseCount ?? 0}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiDanger)}>{data.refuseCount ?? 0}</p>
             </AdminFormCard>
             <AdminFormCard title="活跃申领人">
-              <p className="text-2xl font-extrabold text-slate-700">{data.activeStudents}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiMuted)}>{data.activeStudents}</p>
             </AdminFormCard>
             <AdminFormCard title="涉及课题组">
-              <p className="text-2xl font-extrabold text-slate-700">{data.activeGroups}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiMuted)}>{data.activeGroups}</p>
             </AdminFormCard>
           </div>
 
@@ -164,9 +178,9 @@ export function MaterialStatsReportPanel() {
             <AdminFormCard title="库存预警（≤ 5）">
               <div className="flex flex-wrap gap-2">
                 {data.stockWarnings.map((w) => (
-                  <span key={w.itemId} className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs">
-                    <span className="font-medium text-amber-800">{w.name}</span>
-                    <span className="text-amber-600">库存 {w.stockQty}</span>
+                  <span key={w.itemId} className="inline-flex items-center gap-1 rounded-full border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_40%,var(--app-color-border-default))] bg-[var(--app-color-feedback-warning-soft)] px-3 py-1 text-xs">
+                    <span className="font-medium text-[var(--app-color-feedback-warning)]">{w.name}</span>
+                    <span className="text-[var(--app-color-text-secondary)]">库存 {w.stockQty}</span>
                   </span>
                 ))}
               </div>
@@ -176,19 +190,19 @@ export function MaterialStatsReportPanel() {
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <AdminFormCard title="日趋势：申领与出入库" className="min-w-0">
               {dailyChart.length === 0 ? (
-                <p className="py-12 text-center text-xs text-neutral-400">该区间暂无趋势数据</p>
+                <p className="py-12 text-center text-xs text-[var(--app-color-text-tertiary)]">该区间暂无趋势数据</p>
               ) : (
                 <div style={{ width: "100%", height: 280 }}>
                   <ResponsiveContainer>
                     <LineChart data={dailyChart} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={analyticsChartGridStroke} />
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--app-color-text-tertiary)" }} />
+                      <YAxis tick={{ fontSize: 10, fill: "var(--app-color-text-tertiary)" }} allowDecimals={false} />
+                      <Tooltip contentStyle={analyticsChartTooltip} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Line type="monotone" dataKey="requestCount" name="申领单" stroke="#6366f1" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="outboundQty" name="出库量" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                      <Line type="monotone" dataKey="inboundQty" name="入库量" stroke="#10b981" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="requestCount" name="申领单" stroke="var(--app-color-accent)" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="outboundQty" name="出库量" stroke="var(--app-color-feedback-warning)" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="inboundQty" name="入库量" stroke="var(--app-color-feedback-success)" strokeWidth={2} dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -197,15 +211,15 @@ export function MaterialStatsReportPanel() {
 
             <AdminFormCard title="申领状态分布" className="min-w-0">
               {statusChart.length === 0 ? (
-                <p className="py-12 text-center text-xs text-neutral-400">暂无状态数据</p>
+                <p className="py-12 text-center text-xs text-[var(--app-color-text-tertiary)]">暂无状态数据</p>
               ) : (
                 <div style={{ width: "100%", height: 280 }}>
                   <ResponsiveContainer>
                     <BarChart data={statusChart} margin={{ top: 8, right: 8, left: -10, bottom: 24 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={48} />
-                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={analyticsChartGridStroke} />
+                      <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--app-color-text-tertiary)" }} interval={0} angle={-20} textAnchor="end" height={48} />
+                      <YAxis tick={{ fontSize: 10, fill: "var(--app-color-text-tertiary)" }} allowDecimals={false} />
+                      <Tooltip contentStyle={analyticsChartTooltip} />
                       <Bar dataKey="count" name="单数" maxBarSize={36} radius={[4, 4, 0, 0]}>
                         {statusChart.map((_, i) => (
                           <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
@@ -219,18 +233,18 @@ export function MaterialStatsReportPanel() {
 
             <AdminFormCard title="课题组申领排名" className="min-w-0">
               {groupChart.length === 0 ? (
-                <p className="py-12 text-center text-xs text-neutral-400">暂无课题组数据</p>
+                <p className="py-12 text-center text-xs text-[var(--app-color-text-tertiary)]">暂无课题组数据</p>
               ) : (
                 <div style={{ width: "100%", height: 280 }}>
                   <ResponsiveContainer>
                     <BarChart data={groupChart} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                      <XAxis type="number" tick={{ fontSize: 10 }} allowDecimals={false} />
-                      <YAxis type="category" dataKey="name" width={88} tick={{ fontSize: 9 }} />
-                      <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={analyticsChartGridStroke} />
+                      <XAxis type="number" tick={{ fontSize: 10, fill: "var(--app-color-text-tertiary)" }} allowDecimals={false} />
+                      <YAxis type="category" dataKey="name" width={88} tick={{ fontSize: 9, fill: "var(--app-color-text-tertiary)" }} />
+                      <Tooltip contentStyle={analyticsChartTooltip} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Bar dataKey="requestCount" name="申领单" fill="#6366f1" maxBarSize={14} radius={[0, 4, 4, 0]} />
-                      <Bar dataKey="totalQty" name="申领量" fill="#06b6d4" maxBarSize={14} radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="requestCount" name="申领单" fill="var(--app-color-accent)" maxBarSize={14} radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="totalQty" name="申领量" fill="var(--app-color-accent-secondary)" maxBarSize={14} radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -239,15 +253,15 @@ export function MaterialStatsReportPanel() {
 
             <AdminFormCard title="热门申领物品" className="min-w-0">
               {itemChart.length === 0 ? (
-                <p className="py-12 text-center text-xs text-neutral-400">暂无物品数据</p>
+                <p className="py-12 text-center text-xs text-[var(--app-color-text-tertiary)]">暂无物品数据</p>
               ) : (
                 <div style={{ width: "100%", height: 280 }}>
                   <ResponsiveContainer>
                     <BarChart data={itemChart} margin={{ top: 8, right: 8, left: -10, bottom: 32 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="name" tick={{ fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={56} />
-                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={analyticsChartGridStroke} />
+                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: "var(--app-color-text-tertiary)" }} interval={0} angle={-30} textAnchor="end" height={56} />
+                      <YAxis tick={{ fontSize: 10, fill: "var(--app-color-text-tertiary)" }} allowDecimals={false} />
+                      <Tooltip contentStyle={analyticsChartTooltip} />
                       <Bar dataKey="totalQty" name="申领数量" maxBarSize={32} radius={[4, 4, 0, 0]}>
                         {itemChart.map((_, i) => (
                           <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />

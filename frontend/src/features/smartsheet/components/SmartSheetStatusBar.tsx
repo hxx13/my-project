@@ -12,12 +12,12 @@ interface StatusBarProps {
 export default function SmartSheetStatusBar({ rows, columns, selectedColumn, onColumnClick }: StatusBarProps) {
   const fillRate = columns.length > 0 && rows.length > 0
     ? Math.round((rows.reduce((acc, r) =>
-        acc + Object.values(r.cellData || {}).filter(v => v && v.trim()).length, 0
+        acc + Object.values(r.cellData || {}).filter(v => v && String(v).trim()).length, 0
       ) / (rows.length * columns.length)) * 100)
     : 0;
 
   const emptyCols = columns.filter(c =>
-    rows.every(r => !(r.cellData || {})[c.key]?.trim())
+    rows.every(r => !String((r.cellData || {})[c.key] ?? "").trim())
   ).length;
 
   return (

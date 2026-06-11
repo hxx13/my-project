@@ -62,7 +62,7 @@ export default function MaterialReviewPage() {
 
   return (
     <div className="space-y-6">
-      <AdminSubPageHeader title="申领审核" backTo="/admin" description="审核学生物资申领请求，查看需求建议。" />
+      <AdminSubPageHeader title="申领审核" fallbackTo="/admin" description="审核学生物资申领请求，查看需求建议。" />
       <div className="flex gap-1">
         {([["pending", `待审核${pendingData ? ` (${pendingData.length})` : ""}`], ["all", "全部记录"], ["demands", `需求建议${demands.length ? ` (${demands.filter((d: MaterialDemand) => d.status === 0).length})` : ""}`]] as [TabKey, string][]).map(([k, v]) => (
           <button key={k} onClick={() => setTab(k)} className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${tab === k ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}>{v}</button>

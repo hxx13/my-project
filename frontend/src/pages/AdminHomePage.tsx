@@ -130,7 +130,7 @@ export default function AdminHomePage() {
           title: displayEntryLabel(e.path, e.title),
           enabled: roleOk && permOk,
           groupTitle: g.title,
-          icon: createElement(e.icon, { className: "h-5 w-5" }),
+          icon: createElement(e.icon, { className: "h-5 w-5" }) as any,
           _bg: COLOR_MAP[pathKey] || "linear-gradient(135deg, #818cf8, #a78bfa)",
         } satisfies HomeCardModel;
       })
@@ -163,23 +163,23 @@ export default function AdminHomePage() {
 
   return (
     <AdminFullWidthPage>
-      <div className="min-h-full bg-[var(--color-warm-50)] p-4 sm:p-6 space-y-6">
+      <div className="min-h-full space-y-6 bg-transparent p-4 sm:p-6">
         <section className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-steel-500)]">
-              <Sparkles className="h-3.5 w-3.5 text-[var(--color-peach-500)]" />工作台
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--app-color-accent-secondary)]">
+              <Sparkles className="h-3.5 w-3.5 text-[var(--app-color-accent)]" />工作台
             </p>
-            <h1 className="text-xl font-semibold tracking-tight text-[var(--color-slate-900)]">欢迎回来</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-[var(--app-color-text-primary)]">欢迎回来</h1>
           </div>
-          <div className="flex items-center gap-2 text-xs text-[var(--color-steel-500)]">
+          <div className="flex items-center gap-2 text-xs text-[var(--app-color-text-secondary)]">
             <span>{roleLabel}</span><span>·</span><span>{enabledCount} 入口</span>
           </div>
         </section>
 
         {starred.length > 0 && (
           <section>
-            <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-steel-400)]">
-              <Star className="h-3 w-3 fill-[var(--color-peach-500)] text-[var(--color-peach-500)]" />收藏
+            <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--app-color-text-tertiary)]">
+              <Star className="h-3 w-3 fill-[var(--app-color-accent)] text-[var(--app-color-accent)]" />收藏
             </h2>
             <HomeCardGrid>
               {starred.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} starred />)}
@@ -189,7 +189,7 @@ export default function AdminHomePage() {
 
         {recent.length > 0 && (
           <section>
-            <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-steel-400)]">最近访问</h2>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--app-color-text-tertiary)]">最近访问</h2>
             <HomeCardGrid>
               {recent.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} />)}
             </HomeCardGrid>
@@ -202,7 +202,11 @@ export default function AdminHomePage() {
           const isCollapsed = collapsed.has(title);
           return (
             <section key={title}>
-              <button onClick={() => toggleGroup(title)} className="mb-2 flex w-full items-center gap-1 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-steel-400)] hover:text-[var(--color-slate-700)]">
+              <button
+                type="button"
+                onClick={() => toggleGroup(title)}
+                className="mb-2 flex w-full items-center gap-1 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-secondary)]"
+              >
                 {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                 {title}
                 <span className="ml-1 text-[10px] opacity-50">({enabled.length})</span>
@@ -229,7 +233,7 @@ function HomePendingBadge({ text }: { text?: string }) {
   if (!t) return null;
   return (
     <span
-      className="absolute left-1 top-1 z-[1] min-w-[1.25rem] rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white shadow-sm tabular-nums"
+      className="absolute left-1 top-1 z-[1] min-w-[1.25rem] rounded-full bg-[var(--app-color-feedback-error)] px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-[var(--app-color-text-inverse)] shadow-sm tabular-nums"
       aria-label={`待处理 ${t}`}
     >
       {t}
@@ -253,20 +257,20 @@ function HomeCard({
       onClick={() => entry.enabled && navigate(entry.path)}
       disabled={!entry.enabled}
       className={cn(
-        "group relative box-border flex h-[6.25rem] w-[5.75rem] shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl p-2 text-center transition-all duration-200",
+        "admin-home-entry-card group relative box-border flex h-[6.25rem] w-[5.75rem] shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl border p-2 text-center transition-all duration-200",
         entry.enabled
-          ? "cursor-pointer border border-[var(--twin-hairline)] bg-white shadow-sm hover:-translate-y-0.5 hover:shadow-md"
-          : "cursor-not-allowed border border-[var(--twin-hairline)] bg-[var(--color-warm-100)] opacity-50",
+          ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"
+          : "cursor-not-allowed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] opacity-50",
       )}
     >
       <HomePendingBadge text={entry.badgeText} />
       <div
-        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm"
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm [&_svg]:text-white"
         style={{ background: entry._bg || "#818cf8" }}
       >
         {entry.icon}
       </div>
-      <span className="line-clamp-2 w-full text-[11px] font-medium leading-tight text-[var(--color-slate-800)]">
+      <span className="admin-home-entry-card__label line-clamp-2 w-full text-[11px] font-medium leading-tight">
         {entry.title}
       </span>
       <span
@@ -282,11 +286,11 @@ function HomeCard({
         }}
         className={cn(
           "absolute right-1 top-1 z-[1] rounded-lg p-1 opacity-0 transition-opacity group-hover:opacity-100",
-          isStarred ? "opacity-100 text-amber-500" : "text-gray-400 hover:text-amber-500",
+          isStarred ? "opacity-100 text-[var(--app-color-feedback-warning)]" : "text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-feedback-warning)]",
         )}
         aria-label={isStarred ? "取消收藏" : "收藏"}
       >
-        <Star className={cn("h-3.5 w-3.5", isStarred && "fill-amber-400")} />
+        <Star className={cn("h-3.5 w-3.5", isStarred && "fill-[var(--app-color-feedback-warning)]")} />
       </span>
     </button>
   );

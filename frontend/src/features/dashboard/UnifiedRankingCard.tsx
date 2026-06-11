@@ -3,6 +3,8 @@ import { useModalOverlayOpen } from "@/lib/useModalOverlayOpen";
 import { useQuery } from "@tanstack/react-query";
 import { fetchGroupRanking, fetchAnimalOrderRanking, fetchRankingPollConfig, ensureRankingSnapshot } from "@/api/twinApi";
 import { Trophy } from "lucide-react";
+import { useDashboardNightVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 
 type Region = "TOTAL" | "PUDONG" | "PUXI";
 type TabKey = "activity" | "animal";
@@ -53,6 +55,7 @@ const podiumOrder = [1, 0, 2]; // 2nd, 1st, 3rd
 const podiumWidths = [72, 82, 66];
 
 export function UnifiedRankingCard() {
+  const night = useDashboardNightVisual();
   const [activeTab, setActiveTab] = useState<TabKey>("activity");
   const [region, setRegion] = useState<Region>("TOTAL");
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
@@ -165,7 +168,7 @@ export function UnifiedRankingCard() {
     const src = activeTab === "activity" ? rawActivityList : displayAnimalData;
     const items: RankItem[] = src.slice(0, MAX_ITEMS).map((item, idx) => {
       const name = normGroupName(item.name);
-      const value = item.value ?? item.count ?? 0;
+      const value = item.value ?? (item as any).count ?? 0;
       let trend: RankItem["trend"] = "same";
       let trendValue = 0;
 
@@ -321,29 +324,44 @@ export function UnifiedRankingCard() {
   return (
     <div className="w-full h-full flex flex-col gap-1 overflow-hidden bg-transparent">
       {/* Header */}
-      <div className="flex justify-between items-center pb-2 border-b border-amber-100 shrink-0">
+      <div
+        className={`flex justify-between items-center pb-2 shrink-0 border-b ${
+          night ? DASH_NIGHT_CLASS.header : "border-amber-100"
+        }`}
+      >
         <div className="flex items-center gap-1.5">
           <div
-            className="w-[24px] h-[24px] rounded-md flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg, #fbbf24, #f59e0b)",
-              boxShadow: "0 0 12px rgba(245,158,11,0.4)",
-            }}
+            className={`w-[24px] h-[24px] rounded-md flex items-center justify-center ${night ? DASH_NIGHT_CLASS.iconBadgeSteel : ""}`}
+            style={
+              night
+                ? undefined
+                : {
+                      background: "linear-gradient(135deg, #fbbf24, #f59e0b)",
+                      boxShadow: "0 0 12px rgba(245,158,11,0.4)",
+                  }
+            }
           >
             <Trophy className="w-4 h-4 text-white" />
           </div>
           <span
-            className="text-[16px] font-black tracking-wider"
-            style={{
-              background: "linear-gradient(90deg, #b45309, #d97706)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-            }}
+            className={`text-[16px] font-black tracking-wider ${night ? DASH_NIGHT_CLASS.title : ""}`}
+            style={
+              night
+                ? undefined
+                : {
+                      background: "linear-gradient(90deg, #b45309, #d97706)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                  }
+            }
           >
             排行榜
           </span>
         </div>
-        <div className="flex p-0.5 rounded-md" style={{ background: "#fef3c7" }}>
+        <div
+          className={`flex p-0.5 rounded-md ${night ? DASH_NIGHT_CLASS.tabGroup : ""}`}
+          style={night ? undefined : { background: "#fef3c7" }}
+        >
           <button
             type="button"
             onClick={() => handleTabClick("activity")}
@@ -352,10 +370,23 @@ export function UnifiedRankingCard() {
               borderRadius: 5,
               fontWeight: 800,
               fontSize: 10,
-              background: activeTab === "activity" ? "#fbbf24" : "transparent",
-              color: activeTab === "activity" ? "#fff" : "#b45309",
-              boxShadow:
+              background:
                 activeTab === "activity"
+                  ? night
+                    ? "rgba(255,255,255,0.16)"
+                    : "#fbbf24"
+                  : "transparent",
+              color:
+                activeTab === "activity"
+                  ? night
+                    ? "rgba(255,255,255,0.95)"
+                    : "#fff"
+                  : night
+                    ? "rgba(255,255,255,0.5)"
+                    : "#b45309",
+              boxShadow: night
+                ? "none"
+                : activeTab === "activity"
                   ? "0 2px 6px rgba(245,158,11,0.35)"
                   : "none",
               transition: "all 0.2s",
@@ -371,10 +402,23 @@ export function UnifiedRankingCard() {
               borderRadius: 5,
               fontWeight: 800,
               fontSize: 10,
-              background: activeTab === "animal" ? "#fbbf24" : "transparent",
-              color: activeTab === "animal" ? "#fff" : "#b45309",
-              boxShadow:
+              background:
                 activeTab === "animal"
+                  ? night
+                    ? "rgba(255,255,255,0.16)"
+                    : "#fbbf24"
+                  : "transparent",
+              color:
+                activeTab === "animal"
+                  ? night
+                    ? "rgba(255,255,255,0.95)"
+                    : "#fff"
+                  : night
+                    ? "rgba(255,255,255,0.5)"
+                    : "#b45309",
+              boxShadow: night
+                ? "none"
+                : activeTab === "animal"
                   ? "0 1px 3px rgba(245,158,11,0.3)"
                   : "none",
               transition: "all 0.2s",
@@ -397,10 +441,22 @@ export function UnifiedRankingCard() {
               borderRadius: 4,
               fontWeight: 800,
               fontSize: 10,
-              background: region === reg ? "#3b82f6" : "transparent",
-              color: region === reg ? "#fff" : "#94a3b8",
+              background:
+                region === reg
+                  ? night
+                    ? "rgba(128,161,193,0.45)"
+                    : "#3b82f6"
+                  : "transparent",
+              color:
+                region === reg
+                  ? "#fff"
+                  : night
+                    ? "rgba(255,255,255,0.45)"
+                    : "#94a3b8",
               boxShadow:
-                region === reg ? "0 2px 6px rgba(59,130,246,0.35)" : "none",
+                night || region !== reg
+                  ? "none"
+                  : "0 2px 6px rgba(59,130,246,0.35)",
               transition: "all 0.15s",
             }}
           >
@@ -449,7 +505,11 @@ export function UnifiedRankingCard() {
                       style={{
                         fontWeight: 600,
                         fontSize,
-                        color: podiumIdx === 0 ? "#b45309" : "#475569",
+                        color: night
+                          ? "rgba(255,255,255,0.85)"
+                          : podiumIdx === 0
+                            ? "#b45309"
+                            : "#475569",
                         lineHeight: 1.2,
                       }}
                     >
@@ -467,9 +527,9 @@ export function UnifiedRankingCard() {
                         animation: colors.anim,
                         position: "relative",
                         boxShadow:
-                          podiumIdx === 0
-                            ? "0 0 18px rgba(251,191,36,0.4)"
-                            : undefined,
+                          night || podiumIdx !== 0
+                            ? undefined
+                            : "0 0 18px rgba(251,191,36,0.4)",
                       }}
                     >
                       <span
@@ -513,10 +573,15 @@ export function UnifiedRankingCard() {
                 return (
                   <div
                     key={`rank-${activeTab}-${rank}`}
-                    className="flex items-center px-[1%] py-[3px] rounded-sm"
+                    className={`flex items-center px-[1%] py-[3px] rounded-sm ${night ? DASH_NIGHT_CLASS.listRow : ""}`}
                     style={{
                       gap: 6,
-                      background: i % 2 === 0 ? "#f8fafc" : "transparent",
+                      background:
+                        night
+                          ? undefined
+                          : i % 2 === 0
+                            ? "#f8fafc"
+                            : "transparent",
                       minHeight: 22,
                     }}
                   >
@@ -526,7 +591,7 @@ export function UnifiedRankingCard() {
                         textAlign: "center",
                         fontWeight: 900,
                         fontSize: 11,
-                        color: "#cbd5e1",
+                        color: night ? "var(--dash-night-text-muted)" : "#cbd5e1",
                         flexShrink: 0,
                       }}
                     >
@@ -536,7 +601,7 @@ export function UnifiedRankingCard() {
                       style={{
                         width: 120,
                         fontSize: 11,
-                        color: "#334155",
+                        color: night ? "var(--dash-night-text)" : "#334155",
                         textAlign: "left",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -549,21 +614,24 @@ export function UnifiedRankingCard() {
                       {item.name}
                     </span>
                     <div
+                      className={night ? DASH_NIGHT_CLASS.progressTrack : undefined}
                       style={{
                         flex: 1,
                         height: 10,
-                        background: "#f1f5f9",
+                        background: night ? undefined : "#f1f5f9",
                         borderRadius: 5,
                         overflow: "hidden",
                         minWidth: 10,
                       }}
                     >
                       <div
+                        className={night ? DASH_NIGHT_CLASS.progressFill : undefined}
                         style={{
                           width: `${pct}%`,
                           height: "100%",
-                          background:
-                            "linear-gradient(90deg, #6366f1, #8b5cf6)",
+                          background: night
+                            ? undefined
+                            : "linear-gradient(90deg, #6366f1, #8b5cf6)",
                           borderRadius: 5,
                           position: "relative",
                           overflow: "hidden",
