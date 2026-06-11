@@ -1,6 +1,6 @@
 import React from 'react';
 import AutoGenerateBadge from './AutoGenerateBadge';
-import { resolveScanAccentCss, type ScanAccentVariant, SCAN_PANEL_CARD, SCAN_INNER_CARD } from './scanPopupTheme';
+import { resolveScanAccentCss, type ScanAccentVariant, AI_CARD, INNER_ROW } from './scanPopupTheme';
 // 💥 1. 扩展接口定义
 export interface RoomPrediction {
     roomId: string;
@@ -55,8 +55,8 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
         }
     };
 
-    const iconColor = 'text-[var(--app-color-accent)]';
-    const iconBg = 'border-[var(--app-color-accent)]/20 bg-[var(--app-color-accent-soft)]';
+    const iconColor = 'text-orange-500 dark:text-orange-400';
+    const iconBg = 'border-orange-400/30 bg-orange-100 dark:bg-orange-900/30';
 // ==========================================
     // 💥 绝杀引擎：24H出入场概率双轨聚合计算 (真实数据驱动)
     // ==========================================
@@ -106,11 +106,11 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
     const trackData = generate24HTrackData();
     return (
         <div
-            className={`group relative w-full overflow-hidden ${SCAN_PANEL_CARD} p-5 font-sans ring-1 ring-white/[0.03]`}>
+            className={`group relative w-full overflow-hidden ${AI_CARD} p-5 font-sans`}>
             <AutoGenerateBadge />
             <div
                 className="absolute -top-1/2 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full blur-3xl transition-all duration-700"
-                style={{ backgroundColor: 'var(--app-glow-accent)' }}
+                style={{ backgroundColor: "#fb923c", opacity: 0.12 }}
             />
 
             <div className="relative flex flex-col gap-3">
@@ -151,7 +151,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
 
                     return (
                         <div key={pred.roomId}
-                             className={`flex items-center justify-between ${SCAN_INNER_CARD} py-1.5 px-2 shadow-sm transition-opacity duration-300 ${opacityClass}`}>
+                             className={`flex items-center justify-between ${INNER_ROW} py-1.5 px-2 transition-opacity duration-300 ${opacityClass}`}>
 
                             {/* 💥 列 1: 东方明珠 & 双行房间名 (flex-[1.2]) */}
                             <div
