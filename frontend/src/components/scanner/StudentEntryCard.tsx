@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CapacityStat } from "./components/types";
-import { SCAN_PANEL_CARD, SCAN_INNER_CARD } from "./scanPopupTheme";
+import { STUDENT_CARD, INNER_ROW } from "./scanPopupTheme";
 
 interface StudentEntryCardProps {
   capacityStats: CapacityStat[];
@@ -70,10 +70,10 @@ export function StudentEntryCard({
   ];
 
   return (
-    <div className={`relative flex min-h-0 w-full flex-1 flex-col ${SCAN_PANEL_CARD} ring-1 ring-white/[0.03]`}>
+    <div className={`relative flex min-h-0 w-full flex-1 flex-col ${STUDENT_CARD}`}>
       <div
         className="pointer-events-none absolute top-1/2 -left-10 h-1/2 w-16 -translate-y-1/2 opacity-20 blur-[60px]"
-        style={{ backgroundColor: "var(--app-color-accent)", opacity: 0.25 }}
+        style={{ backgroundColor: "#fbbf24", opacity: 0.20 }}
       />
 
       <div className="relative z-10 flex shrink-0 flex-col items-center gap-1.5 px-3 pb-1 pt-3">
@@ -83,7 +83,7 @@ export function StudentEntryCard({
               key={p}
               className={`h-1 w-5 rounded-full transition-all duration-300 ${
                 p === page
-                  ? "bg-[var(--app-color-accent)] shadow-[var(--app-glow-accent)]"
+                  ? "bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.5)]"
                   : "bg-[var(--app-color-border-default)]"
               }`}
             />
@@ -115,7 +115,7 @@ export function StudentEntryCard({
                 return (
                   <div
                     key={`${stat.name}-${i}`}
-                    className={`mx-auto flex w-4/5 items-center gap-2 ${SCAN_INNER_CARD} px-3 py-2 shadow-sm`}
+                    className={`mx-auto flex w-4/5 items-center gap-2 ${INNER_ROW} px-3 py-2`}
                   >
                     <span className="w-12 shrink-0 truncate text-left text-[10px] text-[var(--app-color-text-secondary)]">
                       {stat.name}
@@ -126,8 +126,8 @@ export function StudentEntryCard({
                         <div
                           className={`h-full rounded-full transition-all ${
                             isFull
-                              ? "bg-[var(--app-color-feedback-danger)]"
-                              : "bg-[var(--app-color-accent)]"
+                              ? "bg-red-400"
+                              : "bg-amber-500"
                           }`}
                           style={{ width: `${pct}%` }}
                         />
@@ -136,7 +136,7 @@ export function StudentEntryCard({
 
                     <span
                       className={`w-9 shrink-0 text-right text-[10px] font-bold ${
-                        isFull ? "text-[var(--app-color-feedback-danger)]" : "text-[var(--app-color-accent)]"
+                        isFull ? "text-red-500" : "text-amber-600"
                       }`}
                     >
                       {isFull ? "满载" : stat.count}
@@ -152,9 +152,9 @@ export function StudentEntryCard({
               <button
                 key={i}
                 onClick={action.onClick}
-                className={`group flex items-center gap-2 ${SCAN_INNER_CARD} px-2.5 py-2 text-left shadow-sm transition-all hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)] hover:shadow-md active:scale-[0.98]`}
+                className={`group flex items-center gap-2 ${INNER_ROW} px-2.5 py-2 text-left shadow-sm transition-all hover:shadow-md hover:border-slate-300 dark:hover:border-white/15 active:scale-[0.98]`}
               >
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--app-radius-element)] bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--app-radius-element)] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
                   {action.icon}
                 </div>
                 <div className="min-w-0 flex-1">
