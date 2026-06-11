@@ -19,6 +19,7 @@ import { authStorage } from '@/features/auth/authStorage';
 import { hasMinRole } from '@/features/auth/roleAccess';
 import { TwinThemePickerPanel } from '@/features/twin-chrome/TwinThemePickerPanel';
 import { useTwinChromeTheme } from '@/features/twin-chrome/TwinChromeThemeContext';
+import { ThemeSwitcher } from '@/features/theme/ThemeSwitcher';
 import type { ExecutePayload } from '@/api/types/scanner';
 import {
     cancelScheduledAutoExit,
@@ -429,6 +430,9 @@ export default function DebugNav() {
                             <Sparkles className="w-4 h-4 text-white"/>
                         </div>
                     </button>
+
+                    {/* 🍱 Bento 主题切换：亮色 / 暗色 / 科幻 */}
+                    <ThemeSwitcher className="ml-0.5 h-9 rounded-full px-2.5 text-[11px] font-medium text-[var(--app-color-text-tertiary)] hover:bg-white/5 hover:text-[var(--app-color-text-primary)] transition-colors" />
 
                     <div ref={themeDockWrapRef} className="relative flex items-center justify-center" data-twin-chrome-ctx-surface>
                         <motion.button

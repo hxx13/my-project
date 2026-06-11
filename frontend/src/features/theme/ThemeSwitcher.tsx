@@ -16,8 +16,8 @@ export function ThemeSwitcher({ className }: { className?: string }) {
     <button
       onClick={cycleTheme}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-app-element px-2 py-1.5 text-app-text-secondary',
-        'hover:bg-app-surface-hover hover:text-app-text-primary',
+        'inline-flex items-center gap-1.5 rounded-[var(--app-radius-element)] px-2 py-1.5 text-[var(--app-color-text-secondary)]',
+        'hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]',
         'transition-all duration-150',
         className
       )}

@@ -100,6 +100,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
 
 const SIDEBAR_COLLAPSED_KEY = "aro-admin-sidebar-collapsed";
 
@@ -957,6 +958,7 @@ export default function AdminLayout() {
               <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-[var(--twin-ink)] sm:max-w-[12rem] md:max-w-none">
                 {adminHeaderTitle}
               </h1>
+              <ThemeSwitcher className="h-8 shrink-0 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 text-[11px] font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" />
               <button
                 type="button"
                 onClick={() => setPageHelpOpen(true)}
