@@ -75,7 +75,7 @@ export function InteractiveChallenge({ phrase, onComplete }: Props) {
       : "var(--app-color-feedback-warning)";
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-4">
+    <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-4">
       <div className="flex flex-col items-center gap-1.5 text-center">
         <AlertTriangle className="h-5 w-5 text-[var(--app-color-feedback-warning)]" />
         <p className="text-sm font-bold text-[var(--app-color-text-primary)]">
@@ -86,7 +86,7 @@ export function InteractiveChallenge({ phrase, onComplete }: Props) {
         </p>
       </div>
 
-      <div className="flex w-full max-w-[280px] items-center gap-2">
+      <div className="flex w-full max-w-[360px] items-center gap-2">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--app-color-feedback-warning-soft)]">
           <div
             className="h-full rounded-full transition-all duration-300"

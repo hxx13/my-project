@@ -1,0 +1,337 @@
+/* scan-notice-theme.css — 扫码灵动岛 / 公告弹窗组件令牌（第三层）
+   全部引用 semantic.css 的 --app-color-notice-* / --app-color-*
+   对标 smartsheet-theme.css，禁止硬编码色值 */
+
+/* ── 按公告类型绑定组件令牌（多角色令牌，每类 8 个独立色值） ── */
+.scan-notice-theme-announcement {
+  --scan-notice-accent:            var(--app-color-notice-announcement-accent);
+  --scan-notice-accent-soft:       var(--app-color-notice-announcement-pill);
+  --scan-notice-accent-ink:        var(--app-color-notice-announcement-text);
+  --scan-notice-border:            var(--app-color-notice-announcement-border);
+  --scan-notice-surface-top:       var(--app-color-notice-announcement-bg);
+  --scan-notice-surface-bottom:    var(--app-color-notice-announcement-bg-end);
+  --scan-notice-glow:              var(--app-color-notice-announcement-pill);
+  --scan-notice-soft:              var(--app-color-notice-announcement-bg);
+  --scan-notice-ink:               var(--app-color-notice-announcement-text);
+  --scan-notice-island-body:       var(--app-color-notice-announcement-text-soft);
+  --scan-notice-surface:           var(--app-color-notice-announcement-icon-bg);
+}
+
+.scan-notice-theme-violation {
+  --scan-notice-accent:            var(--app-color-notice-violation-accent);
+  --scan-notice-accent-soft:       var(--app-color-notice-violation-pill);
+  --scan-notice-accent-ink:        var(--app-color-notice-violation-text);
+  --scan-notice-border:            var(--app-color-notice-violation-border);
+  --scan-notice-surface-top:       var(--app-color-notice-violation-bg);
+  --scan-notice-surface-bottom:    var(--app-color-notice-violation-bg-end);
+  --scan-notice-glow:              var(--app-color-notice-violation-pill);
+  --scan-notice-soft:              var(--app-color-notice-violation-bg);
+  --scan-notice-ink:               var(--app-color-notice-violation-text);
+  --scan-notice-island-body:       var(--app-color-notice-violation-text-soft);
+  --scan-notice-surface:           var(--app-color-notice-violation-icon-bg);
+}
+
+.scan-notice-theme-unbound {
+  --scan-notice-accent:            var(--app-color-notice-unbound-accent);
+  --scan-notice-accent-soft:       var(--app-color-notice-unbound-pill);
+  --scan-notice-accent-ink:        var(--app-color-notice-unbound-text);
+  --scan-notice-border:            var(--app-color-notice-unbound-border);
+  --scan-notice-surface-top:       var(--app-color-notice-unbound-bg);
+  --scan-notice-surface-bottom:    var(--app-color-notice-unbound-bg-end);
+  --scan-notice-glow:              var(--app-color-notice-unbound-pill);
+  --scan-notice-soft:              var(--app-color-notice-unbound-bg);
+  --scan-notice-ink:               var(--app-color-notice-unbound-text);
+  --scan-notice-island-body:       var(--app-color-notice-unbound-text-soft);
+  --scan-notice-surface:           var(--app-color-notice-unbound-icon-bg);
+}
+
+/* ── Island 灵动岛：马卡龙柔渐变 + 双层描边立体 ── */
+.scan-notice-island {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1.5px solid var(--scan-notice-border);
+  border-radius: var(--app-radius-pill);
+  background-color: var(--scan-notice-surface-top);
+  background-image: linear-gradient(
+    135deg,
+    var(--scan-notice-surface-top) 0%,
+    var(--scan-notice-surface-bottom) 58%,
+    color-mix(in srgb, var(--scan-notice-accent) 14%, var(--scan-notice-surface-bottom)) 100%
+  );
+  padding: 0.35rem 0.625rem;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--app-color-text-inverse) 22%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, var(--scan-notice-accent) 10%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--scan-notice-accent) 18%, var(--app-color-border-default)),
+    0 2px 0 color-mix(in srgb, var(--scan-notice-border) 55%, transparent),
+    var(--app-elevation-dropdown),
+    0 6px 18px color-mix(in srgb, var(--scan-notice-accent) 12%, transparent);
+  transition:
+    border-color var(--app-motion-hover),
+    box-shadow var(--app-motion-hover);
+}
+
+@media (min-width: 640px) {
+  .scan-notice-island {
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+  }
+}
+
+.scan-notice-island:hover {
+  border-color: color-mix(in srgb, var(--scan-notice-accent) 48%, var(--scan-notice-border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--app-color-text-inverse) 26%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--scan-notice-accent) 28%, var(--app-color-border-default)),
+    0 3px 0 color-mix(in srgb, var(--scan-notice-border) 60%, transparent),
+    var(--app-elevation-card),
+    0 8px 22px color-mix(in srgb, var(--scan-notice-accent) 16%, transparent);
+}
+
+.scan-notice-island--open {
+  border-color: color-mix(in srgb, var(--scan-notice-accent) 55%, var(--scan-notice-border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--app-color-text-inverse) 28%, transparent),
+    0 0 0 1.5px color-mix(in srgb, var(--scan-notice-accent) 32%, var(--app-color-border-default)),
+    0 3px 0 color-mix(in srgb, var(--scan-notice-border) 65%, transparent),
+    var(--app-elevation-modal),
+    0 10px 26px color-mix(in srgb, var(--scan-notice-accent) 18%, transparent);
+}
+
+.scan-notice-island-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--scan-notice-island-body, var(--app-color-text-primary));
+}
+
+.scan-notice-island-icon {
+  display: flex;
+  height: 1.625rem;
+  width: 1.625rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--app-radius-pill);
+  border: 1px solid var(--scan-notice-border);
+  background: var(--scan-notice-surface);
+  color: var(--scan-notice-ink);
+}
+
+.scan-notice-island-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--app-radius-pill);
+  border: 1px solid var(--scan-notice-border);
+  background: var(--scan-notice-surface);
+  padding: 0.1rem 0.45rem;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--scan-notice-ink);
+}
+
+.scan-notice-island-badge {
+  border-radius: var(--app-radius-pill);
+  border: 1px solid var(--scan-notice-border);
+  background: var(--scan-notice-surface);
+  color: var(--scan-notice-ink);
+  font-weight: 700;
+}
+
+/* ── 弹窗：渐变遮罩 + 辉光球 ── */
+.scan-notice-scrim {
+  isolation: isolate;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 35%, var(--scan-notice-glow) 0%, transparent 70%),
+    linear-gradient(160deg, var(--scan-notice-surface-top) 0%, var(--app-color-surface-container) 40%, var(--scan-notice-surface-bottom) 100%);
+  pointer-events: none;
+}
+
+.scan-notice-scrim--dismissible {
+  pointer-events: auto;
+}
+
+.scan-notice-panel {
+  position: relative;
+  display: flex;
+  max-height: min(90vh, 780px);
+  width: 100%;
+  max-width: min(92vw, 44rem);
+  flex-direction: column;
+  overflow: hidden;
+  border: none;
+  border-radius: var(--app-radius-container);
+  background: var(--app-color-surface-container);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--scan-notice-accent) 22%, transparent),
+    0 8px 40px rgba(0,0,0,0.12),
+    0 2px 8px rgba(0,0,0,0.06);
+}
+
+.scan-notice-panel-accent {
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--scan-notice-accent);
+}
+
+.scan-notice-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: var(--scan-notice-surface-top);
+  box-shadow: 0 1px 0 0 color-mix(in srgb, var(--scan-notice-accent) 20%, transparent);
+  padding: 0.625rem 1rem;
+}
+
+@media (min-width: 640px) {
+  .scan-notice-header {
+    padding: 0.75rem 1.25rem;
+  }
+}
+
+.scan-notice-header-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.scan-notice-dialog-title {
+  min-width: 0;
+  flex: 1 1 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  color: var(--app-color-text-primary);
+}
+
+@media (min-width: 640px) {
+  .scan-notice-dialog-title {
+    font-size: 0.9375rem;
+  }
+}
+
+.scan-notice-category-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--app-radius-pill);
+  border: 1px solid var(--scan-notice-border);
+  background: var(--scan-notice-surface);
+  padding: 0.2rem 0.65rem;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--scan-notice-ink);
+}
+
+.scan-notice-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--app-radius-pill);
+  border: 1px solid var(--scan-notice-border);
+  background: var(--scan-notice-surface);
+  padding: 0.15rem 0.55rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-notice-status-pill--danger {
+  border-color: var(--app-color-feedback-danger);
+  background: var(--app-color-feedback-danger-soft);
+  color: var(--app-color-feedback-danger);
+}
+
+.scan-notice-body-card {
+  border-radius: var(--app-radius-element);
+  border: 1px solid var(--scan-notice-border);
+  background: var(--app-color-surface-page);
+}
+
+.scan-notice-footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  border-top: 1px solid var(--scan-notice-border);
+  background: var(--scan-notice-soft);
+  padding: 0.625rem 1rem;
+}
+
+@media (min-width: 640px) {
+  .scan-notice-footer {
+    padding: 0.75rem 1.25rem;
+  }
+}
+
+.scan-notice-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: var(--app-radius-pill);
+  border: 1px solid var(--scan-notice-border);
+  background: var(--scan-notice-surface);
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--scan-notice-ink);
+  transition:
+    background var(--app-motion-hover),
+    border-color var(--app-motion-hover);
+}
+
+.scan-notice-btn:hover:not(:disabled) {
+  border-color: var(--scan-notice-accent);
+  background: var(--scan-notice-soft);
+}
+
+.scan-notice-btn--primary {
+  border-color: var(--scan-notice-accent);
+  background: var(--scan-notice-accent);
+  color: var(--app-color-text-inverse);
+}
+
+.scan-notice-btn--primary:hover:not(:disabled) {
+  background: var(--scan-notice-accent);
+  border-color: var(--scan-notice-accent);
+  opacity: 0.92;
+}
+
+.scan-notice-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.scan-notice-close-btn {
+  border-radius: var(--app-radius-pill);
+  border: 1px solid var(--scan-notice-border);
+  background: var(--scan-notice-surface);
+  color: var(--app-color-text-tertiary);
+  transition:
+    background var(--app-motion-hover),
+    border-color var(--app-motion-hover),
+    color var(--app-motion-hover);
+}
+
+.scan-notice-close-btn:hover {
+  border-color: var(--scan-notice-accent);
+  background: var(--scan-notice-soft);
+  color: var(--scan-notice-ink);
+}

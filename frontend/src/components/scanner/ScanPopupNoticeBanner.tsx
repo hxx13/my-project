@@ -9,7 +9,6 @@ import { InteractiveChallenge } from "./InteractiveChallenge";
 import { ackViolationInteractivePermanent } from "./twinViolationInteractive";
 import {
   noticeThemeClass,
-  noticeThemeCssVars,
   resolveScanPopupNoticeMeta,
   type NoticeKind,
 } from "./scanPopupTheme";
@@ -140,7 +139,8 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
   const isDark = theme.mode === "dark";
   const meta = resolveScanPopupNoticeMeta(kind);
   const themeClass = noticeThemeClass(kind);
-  const noticeVars = noticeThemeCssVars(kind);
+  /** Portal / Island 需挂主题根 + 公告类型 class，语义令牌才能正确解析 */
+  const noticeThemeShell = `${theme.className} ${isDark ? "dark" : ""} ${themeClass}`;
 
   const { panelOpen, setPanelOpen, controlled, setPanelOpenInternal } = useControlledPanel(
     panelOpenProp,
@@ -280,7 +280,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
   const safeHtml = useMemo(() => prepareAnnouncementHtml(bodyHtmlSource), [bodyHtmlSource]);
 
   const dialogHeadline =
-    kind === "announcement" ? announcementCurrent?.title || "扫码公告" : meta.dialogCategory;
+    kind === "announcement" ? announcementCurrent?.title || "扫码公告" : undefined;
 
   const sessionAcked = recordId != null && !showEveryScan && readAcked(kind, recordId);
 
@@ -307,7 +307,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
 
   return (
     <>
-      <div className={`flex min-w-[min(148px,30vw)] max-w-[420px] flex-1 basis-0 justify-center ${themeClass}`}>
+      <div className={`flex min-w-[min(128px,28vw)] max-w-[360px] flex-1 basis-0 justify-center ${noticeThemeShell}`}>
         <button
           type="button"
           onClick={() => {
@@ -315,7 +315,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
             if (panelOpen) closePanel();
             else openPanel();
           }}
-          className={`group scan-notice-island flex w-full min-w-0 items-center gap-2 px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-2.5 ${panelOpen ? "scan-notice-island--open" : ""}`}
+          className={`group scan-notice-island w-full ${panelOpen ? "scan-notice-island--open" : ""}`}
         >
           <span className="scan-notice-island-icon relative shrink-0">
             <Megaphone className="h-4 w-4" />
@@ -328,9 +328,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
           </span>
           <span className="min-w-0 flex-1 text-left">
             <span className="scan-notice-island-tag mb-1 block w-fit">{meta.islandTag}</span>
-            <span className="block truncate text-sm font-bold text-[var(--app-color-text-primary)]">
-              {islandLabel}
-            </span>
+            <span className="scan-notice-island-label">{islandLabel}</span>
           </span>
           {remaining != null ? (
             <span className="scan-notice-island-badge hidden shrink-0 px-2 py-0.5 text-[10px] sm:inline">
@@ -338,16 +336,13 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
             </span>
           ) : null}
           <ChevronRight
-            className={`h-4 w-4 shrink-0 text-[var(--scan-notice-accent-ink)] transition-transform ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
+            className={`h-4 w-4 shrink-0 text-[var(--scan-notice-ink)] transition-transform ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
           />
         </button>
       </div>
 
       {createPortal(
-        <div
-          className={`${theme.className} ${isDark ? "dark" : ""} ${themeClass}`}
-          style={noticeVars as React.CSSProperties}
-        >
+        <div className={noticeThemeShell}>
           <AnimatePresence>
             {panelOpen ? (
               <motion.div
@@ -368,42 +363,37 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.98, y: 8 }}
                   transition={{ type: "spring", stiffness: 380, damping: 32 }}
-                  className="scan-notice-panel pointer-events-auto relative flex max-h-[min(90vh,780px)] w-full max-w-[min(92vw,36rem)] flex-col overflow-hidden"
+                  className="scan-notice-panel pointer-events-auto relative flex flex-col overflow-hidden"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="scan-notice-panel-accent" aria-hidden />
 
-                  <div className="scan-notice-header flex shrink-0 items-start justify-between gap-3 px-6 py-4 sm:px-8 sm:py-5">
-                    <div className="min-w-0 space-y-2">
-                      <span className="scan-notice-category-pill">{meta.dialogCategory}</span>
-                      <p
-                        id={meta.titleId}
-                        className="truncate text-base font-semibold text-[var(--app-color-text-primary)] sm:text-lg"
-                      >
-                        {dialogHeadline}
-                      </p>
+                  <div className="scan-notice-header">
+                    <div className="scan-notice-header-main">
+                      <span id={meta.titleId} className="scan-notice-category-pill shrink-0">
+                        {meta.dialogCategory}
+                      </span>
+                      {dialogHeadline ? (
+                        <p className="scan-notice-dialog-title">{dialogHeadline}</p>
+                      ) : null}
                       {kind === "announcement" && announcementTotal > 1 ? (
-                        <span className="scan-notice-status-pill">
+                        <span className="scan-notice-status-pill shrink-0">
                           第 {pageIndex + 1} 条 / 共 {announcementTotal} 条
                         </span>
                       ) : null}
-                      {kind !== "announcement" && (locked || (isViolation && remaining != null)) ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          {isViolation && remaining != null ? (
-                            <span className="scan-notice-status-pill">剩余进入 {remaining} 次</span>
-                          ) : null}
-                          {locked ? (
-                            <span className="scan-notice-status-pill scan-notice-status-pill--danger">
-                              禁止进入
-                            </span>
-                          ) : null}
-                        </div>
+                      {kind !== "announcement" && isViolation && remaining != null ? (
+                        <span className="scan-notice-status-pill shrink-0">剩余进入 {remaining} 次</span>
+                      ) : null}
+                      {kind !== "announcement" && locked ? (
+                        <span className="scan-notice-status-pill scan-notice-status-pill--danger shrink-0">
+                          禁止进入
+                        </span>
                       ) : null}
                     </div>
                     <button
                       type="button"
                       onClick={announcementCloseViaButtonOnly ? closeAnnouncementViaHeader : closePanel}
-                      className="scan-notice-close-btn -mr-1 shrink-0 p-1.5"
+                      className="scan-notice-close-btn shrink-0 p-1.5"
                       aria-label="关闭"
                     >
                       <X className="h-4 w-4" />
@@ -411,7 +401,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                   </div>
 
                   <div className="app-themed-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8 sm:py-6">
-                    <div className="mx-auto flex w-full max-w-[34rem] flex-col items-center gap-6 sm:gap-8">
+                    <div className="mx-auto flex w-full max-w-[42rem] flex-col items-center gap-6 sm:gap-8">
                       {safeHtml ? (
                         <div className="scan-notice-body-card w-full p-5 sm:p-6">
                           <div
@@ -480,7 +470,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                   </div>
 
                   {kind === "announcement" && announcementTotal > 1 ? (
-                    <div className="scan-notice-footer flex shrink-0 items-center justify-between gap-2 px-6 py-4 sm:px-8">
+                    <div className="scan-notice-footer justify-between gap-2">
                       <button
                         type="button"
                         className="scan-notice-btn"
@@ -506,7 +496,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                   ) : null}
 
                   {!showEveryScan && !announcementCloseViaButtonOnly ? (
-                    <div className="scan-notice-footer flex shrink-0 justify-center px-6 py-4 sm:px-8">
+                    <div className="scan-notice-footer justify-center">
                       <button
                         type="button"
                         disabled={Boolean(interactivePhrase && !interactiveDone)}
