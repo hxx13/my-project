@@ -11,4 +11,19 @@
     <select id="countByItemId" resultType="int">
         SELECT COUNT(1) FROM material_stock_movement WHERE item_id = #{itemId}
     </select>
+    <select id="selectViewsByItemId" resultType="com.example.demo.modules.material.dto.MaterialStockMovementView">
+        SELECT m.id, m.item_id AS itemId, COALESCE(i.name, '未知物品') AS itemName,
+               m.movement_type AS movementType, m.qty, m.stock_after AS stockAfter,
+               m.request_id AS requestId, m.operator_user_id AS operatorUserId,
+               m.applicant_user_id AS applicantUserId, m.remark,
+               m.created_at AS createdAt
+        FROM material_stock_movement m
+        LEFT JOIN material_item i ON m.item_id = i.id
+        WHERE m.item_id = #{itemId}
+        ORDER BY m.created_at DESC
+        LIMIT #{offset}, #{size}
+    </select>
+    <select id="countViewsByItemId" resultType="int">
+        SELECT COUNT(1) FROM material_stock_movement WHERE item_id = #{itemId}
+    </select>
 </mapper>

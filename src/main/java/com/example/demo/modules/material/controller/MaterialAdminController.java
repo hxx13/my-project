@@ -330,6 +330,14 @@ public class MaterialAdminController {
         return Result.success(null);
     }
 
+    @GetMapping("/audit/item/{itemId}/movements")
+    @Operation(summary = "按物品查询库存流水")
+    public Result<Map<String, Object>> itemStockMovements(@PathVariable Long itemId,
+                                                           @RequestParam(defaultValue = "1") int page,
+                                                           @RequestParam(defaultValue = "20") int size) {
+        return materialService.listItemStockMovements(itemId, page, size);
+    }
+
     @GetMapping("/stats/overview")
     @Operation(summary = "统计概览")
     public Result<MaterialStatsOverview> statsOverview(@RequestParam(defaultValue = "2000-01-01") String from,

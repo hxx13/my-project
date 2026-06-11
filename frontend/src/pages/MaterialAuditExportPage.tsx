@@ -9,8 +9,8 @@ import { useQuery } from "@tanstack/react-query";
 import {
   fetchMyMaterialRequests, fetchAllMaterialRequests,
   fetchAdminMaterialCategories, fetchAdminMaterialItems,
-  fetchMaterialAuditTrail, exportMaterialAuditTrail,
-  type MaterialRequest, type MaterialAuditTrailRow,
+  fetchItemStockMovements, exportMaterialAuditTrail,
+  type MaterialRequest, type MaterialAuditTrailRow, type MaterialStockMovementRow,
 } from "@/api/domains/material.api";
 import { authHttp } from "@/api/core/authHttp";
 import { authStorage } from "@/features/auth/authStorage";
@@ -100,9 +100,9 @@ export default function MaterialAuditExportPage() {
     queryFn: () => fetchAdminMaterialItems(categoryId === "" ? undefined : categoryId),
     enabled: canAudit && tab === "item",
   });
-  const { data: auditData } = useQuery({
-    queryKey: ["material", "audit", selectedItemId, auditPage],
-    queryFn: () => fetchMaterialAuditTrail({ page: auditPage, size: 20 }),
+  const { data: movementData } = useQuery({
+    queryKey: ["material", "movements", selectedItemId, auditPage],
+    queryFn: () => fetchItemStockMovements(Number(selectedItemId), { page: auditPage, size: 20 }),
     enabled: tab === "item" && !!selectedItemId,
   });
   const filteredItems = useMemo(() => {
@@ -200,15 +200,18 @@ export default function MaterialAuditExportPage() {
           </div>
           <button onClick={handleExportAudit} disabled={exporting || selectedItemId === ""} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">导出审计 Excel</button>
           <div className="overflow-x-auto rounded-twin-lg border border-[var(--twin-hairline)]">
-            <table className="min-w-full text-xs"><thead className="bg-[var(--twin-canvas-soft)]"><tr><th className="px-2 py-2 text-left">时间</th><th className="px-2 py-2 text-left">申领人</th><th className="px-2 py-2 text-left">课题组</th><th className="px-2 py-2 text-left">物品</th><th className="px-2 py-2">数量</th><th className="px-2 py-2">出库</th><th className="px-2 py-2 text-left">状态</th></tr></thead>
-              <tbody>{(auditData?.data||[]).map((row: MaterialAuditTrailRow, i: number) => <tr key={i}><td className="px-2 py-2 whitespace-nowrap">{toTime(row.createdAt)}</td><td className="px-2 py-2">{row.applicantName||"-"}</td><td className="px-2 py-2">{row.applicantGroup||"-"}</td><td className="px-2 py-2">{row.itemName||"-"}</td><td className="px-2 py-2 text-center">{row.qty}</td><td className="px-2 py-2 text-center">{row.fulfilledQty}</td><td className="px-2 py-2">{row.status}</td></tr>)}</tbody></table>
-            {(!auditData?.data || auditData.data.length === 0) && <p className="p-4 text-center text-xs text-[var(--twin-mute)]">请选择物品查看流水</p>}
+            <table className="min-w-full text-xs"><thead className="bg-[var(--twin-canvas-soft)]"><tr><th className="px-2 py-2 text-left">时间</th><th className="px-2 py-2 text-left">物品</th><th className="px-2 py-2 text-left">类型</th><th className="px-2 py-2">变动数量</th><th className="px-2 py-2">变动后库存</th><th className="px-2 py-2 text-left">关联单号</th><th className="px-2 py-2 text-left">备注</th></tr></thead>
+              <tbody>{(movementData?.data||[]).map((row: MaterialStockMovementRow, i: number) => {
+                const typeLabel = row.movementType === "INBOUND" ? "入库" : row.movementType === "OUTBOUND" ? "出库" : row.movementType === "ADJUST" ? "调整" : row.movementType;
+                return <tr key={i}><td className="px-2 py-2 whitespace-nowrap">{toTime(row.createdAt)}</td><td className="px-2 py-2">{row.itemName||"-"}</td><td className="px-2 py-2">{typeLabel}</td><td className="px-2 py-2 text-center">{row.qty}</td><td className="px-2 py-2 text-center">{row.stockAfter != null ? row.stockAfter : "-"}</td><td className="px-2 py-2 font-mono text-[10px]">{row.requestId||"-"}</td><td className="px-2 py-2">{row.remark||"-"}</td></tr>;
+              })}</tbody></table>
+            {(!movementData?.data || movementData.data.length === 0) && <p className="p-4 text-center text-xs text-[var(--twin-mute)]">请选择物品查看库存流水</p>}
           </div>
-          {auditData && auditData.total > 20 && (
+          {movementData && movementData.total > 20 && (
             <div className="flex items-center gap-2 text-xs">
               <button className="rounded-twin-sm border px-2 py-1 disabled:opacity-40" disabled={auditPage<=1} onClick={() => setAuditPage(p=>p-1)}>上一页</button>
-              <span>第 {auditPage} 页 / 共 {Math.ceil(auditData.total/20)} 页</span>
-              <button className="rounded-twin-sm border px-2 py-1 disabled:opacity-40" disabled={auditPage>=Math.ceil(auditData.total/20)} onClick={() => setAuditPage(p=>p+1)}>下一页</button>
+              <span>第 {auditPage} 页 / 共 {Math.ceil(movementData.total/20)} 页</span>
+              <button className="rounded-twin-sm border px-2 py-1 disabled:opacity-40" disabled={auditPage>=Math.ceil(movementData.total/20)} onClick={() => setAuditPage(p=>p+1)}>下一页</button>
             </div>
           )}
         </section>

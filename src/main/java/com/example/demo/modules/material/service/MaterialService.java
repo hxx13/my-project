@@ -541,6 +541,18 @@ public class MaterialService {
         return Result.success(Map.of("deleted", count));
     }
 
+    // ==================== 库存流水审计 ====================
+
+    public Result<Map<String, Object>> listItemStockMovements(Long itemId, int page, int size) {
+        int offset = (page - 1) * size;
+        List<MaterialStockMovementView> views = stockMovementMapper.selectViewsByItemId(itemId, offset, size);
+        int total = stockMovementMapper.countViewsByItemId(itemId);
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", views);
+        result.put("total", total);
+        return Result.success(result);
+    }
+
     // ==================== 统计审计 ====================
 
     /**

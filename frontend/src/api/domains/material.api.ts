@@ -61,6 +61,25 @@ export interface MaterialRequest {
   lines?: MaterialRequestLine[];
 }
 
+export interface MaterialStockMovementRow {
+  id: number;
+  itemId: number;
+  itemName?: string;
+  movementType: string;
+  qty: number;
+  stockAfter?: number;
+  requestId?: string;
+  operatorUserId?: string;
+  applicantUserId?: string;
+  remark?: string;
+  createdAt?: string;
+}
+
+export async function fetchItemStockMovements(itemId: number, params: { page: number; size: number }) {
+  const res = await authHttp.get<Result<{ data: MaterialStockMovementRow[]; total: number }>>(`/material/admin/audit/item/${itemId}/movements`, { params });
+  return res.data.data;
+}
+
 export interface MaterialAuditTrailRow {
   requestId: string;
   userId: string;
