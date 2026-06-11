@@ -5,7 +5,7 @@ import {motion, AnimatePresence} from 'framer-motion';
 // 💥 加上 Map as MapIcon
 import {
     LayoutDashboard, ScrollText, Users, BrainCircuit, Sparkles, ScanFace, Loader2, X, ShoppingCart, Map as MapIcon,
-    LogOut, Palette
+    LogOut
 } from 'lucide-react';
 import { useAnalyzeScanMutation, useExecuteAccessMutation } from '@/api/hooks/useScanner';
 import type { AnalyzeResponse, RoomInfo } from '@/api/types/scanner';
@@ -17,8 +17,8 @@ import { fetchAccessRuleScanLinkageConfig } from '@/api/twinApi';
 import {CreditCard } from 'lucide-react';
 import { authStorage } from '@/features/auth/authStorage';
 import { hasMinRole } from '@/features/auth/roleAccess';
-import { TwinThemePickerPanel } from '@/features/twin-chrome/TwinThemePickerPanel';
 import { useTwinChromeTheme } from '@/features/twin-chrome/TwinChromeThemeContext';
+import { useTheme } from '@/features/theme/ThemeProvider';
 import { ThemeSwitcher } from '@/features/theme/ThemeSwitcher';
 import type { ExecutePayload } from '@/api/types/scanner';
 import {
@@ -36,8 +36,17 @@ export default function DebugNav() {
     const navigate = useNavigate();
     const location = useLocation();
     const { themeId, setThemeId } = useTwinChromeTheme();
-    const [themeDockOpen, setThemeDockOpen] = useState(false);
-    const themeDockWrapRef = useRef<HTMLDivElement>(null);
+    const { themeId: bentoThemeId } = useTheme();
+
+    // 🍱 System A → System B 桥接：Bento 主题切换时同步 Twin Chrome 霓虹效果
+    useEffect(() => {
+        if (bentoThemeId === 'scifi') {
+            setThemeId('dashboardSciFi');
+        } else {
+            setThemeId('standard');
+        }
+    }, [bentoThemeId, setThemeId]);
+
     const [hoveredPath, setHoveredPath] = useState<string | null>(null);
 
     const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -82,16 +91,6 @@ export default function DebugNav() {
         hasLoggedStampRef.current = true;
         console.info("[RuntimeStamp] DebugNav", DEBUG_NAV_RUNTIME_STAMP);
     }, []);
-
-    useEffect(() => {
-        if (!themeDockOpen) return;
-        const onDown = (e: MouseEvent) => {
-            const el = themeDockWrapRef.current;
-            if (el && !el.contains(e.target as Node)) setThemeDockOpen(false);
-        };
-        document.addEventListener('mousedown', onDown, true);
-        return () => document.removeEventListener('mousedown', onDown, true);
-    }, [themeDockOpen]);
 
     const analyzeMutation = useAnalyzeScanMutation({
         onSuccess: (data) => {
@@ -433,41 +432,6 @@ export default function DebugNav() {
 
                     {/* 🍱 Bento 主题切换：亮色 / 暗色 / 科幻 */}
                     <ThemeSwitcher className="ml-0.5 h-9 rounded-full px-2.5 text-[11px] font-medium text-[var(--app-color-text-tertiary)] hover:bg-white/5 hover:text-[var(--app-color-text-primary)] transition-colors" />
-
-                    <div ref={themeDockWrapRef} className="relative flex items-center justify-center" data-twin-chrome-ctx-surface>
-                        <motion.button
-                            type="button"
-                            title="Twin 外观主题（与空白处右键菜单一致）"
-                            aria-label="打开 Twin 主题选择"
-                            aria-expanded={themeDockOpen}
-                            onClick={() => setThemeDockOpen((v) => !v)}
-                            whileHover={{ scale: 1.12, y: -2 }}
-                            whileTap={{ scale: 0.95 }}
-                            className="relative ml-0.5 flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-white/5 hover:text-slate-200"
-                        >
-                            <Palette className="h-4 w-4" aria-hidden />
-                        </motion.button>
-                        {themeDockOpen ? (
-                            <div
-                                className="absolute bottom-[calc(100%+12px)] left-1/2 z-[220] w-[13.75rem] max-w-[min(92vw,14rem)] -translate-x-1/2 overflow-hidden rounded-lg border border-cyan-500/35 bg-slate-900 text-left shadow-2xl"
-                                data-twin-chrome-ctx-surface
-                                role="dialog"
-                                aria-label="Twin 主题"
-                            >
-                                <div className="border-b border-cyan-500/25 bg-slate-950/80 px-2.5 py-1.5">
-                                    <div className="text-[11px] font-semibold text-cyan-100">主题风格</div>
-                                </div>
-                                <TwinThemePickerPanel
-                                    themeId={themeId}
-                                    dense
-                                    onPick={(id) => {
-                                        setThemeId(id);
-                                        setThemeDockOpen(false);
-                                    }}
-                                />
-                            </div>
-                        ) : null}
-                    </div>
 
                     {links.map((link) => {
                         const isActive = location.pathname === link.path;

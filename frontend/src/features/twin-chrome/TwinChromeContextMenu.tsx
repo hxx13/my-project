@@ -4,10 +4,12 @@ import {
     ExternalLink,
     LayoutDashboard,
     Link2,
+    Moon,
     MousePointerClick,
-    Palette,
     RefreshCw,
     Search,
+    Sparkles,
+    Sun,
     TextSelect,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -20,10 +22,8 @@ import {
     adminChromeSelectAllInContext,
 } from "@/features/admin/adminChromeClipboard";
 import { cn } from "@/lib/utils";
-import { fitMenuAtPoint, fitSubPanelNextToRoot, TWIN_CHROME_MENU_Z } from "./twinChromeMenuGeometry";
-import { TwinThemePickerPanel } from "./TwinThemePickerPanel";
-import { useTwinChromeTheme } from "./TwinChromeThemeContext";
-import type { TwinWebChromeThemeId } from "@/api/domains/me.api";
+import { fitMenuAtPoint, TWIN_CHROME_MENU_Z } from "./twinChromeMenuGeometry";
+import { useTheme } from "@/features/theme/ThemeProvider";
 
 const CTX_SCROLL_NONE =
     "[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden overflow-y-auto overscroll-contain";
@@ -65,11 +65,8 @@ export function TwinChromeContextMenu({
     onClose: () => void;
 }) {
     const rootRef = useRef<HTMLDivElement>(null);
-    const subRef = useRef<HTMLDivElement>(null);
-    const [themeSubOpen, setThemeSubOpen] = useState(false);
     const [rootPos, setRootPos] = useState<{ left: number; top: number } | null>(null);
-    const [subPos, setSubPos] = useState<{ left: number; top: number } | null>(null);
-    const { themeId, setThemeId } = useTwinChromeTheme();
+    const { themeId: bentoThemeId, setThemeId: setBentoThemeId, themes: bentoThemes } = useTheme();
     const navigate = useNavigate();
 
     /* 菜单定位：layout 阶段读取 getBoundingClientRect 后写锚点，与 AdminChromeContextMenu 同模式 */
@@ -77,29 +74,11 @@ export function TwinChromeContextMenu({
     useLayoutEffect(() => {
         if (!open || !payload || !rootRef.current) {
             setRootPos(null);
-            setSubPos(null);
             return;
         }
         const rr = rootRef.current.getBoundingClientRect();
         setRootPos(fitMenuAtPoint(payload.x, payload.y, rr.width, rr.height));
-        if (!themeSubOpen) {
-            setSubPos(null);
-            return;
-        }
-        const placeSub = () => {
-            if (!rootRef.current || !subRef.current) return;
-            const r2 = rootRef.current.getBoundingClientRect();
-            const sr = subRef.current.getBoundingClientRect();
-            setSubPos(fitSubPanelNextToRoot(r2, sr.width, sr.height));
-        };
-        requestAnimationFrame(placeSub);
-    }, [open, payload, themeSubOpen]);
-
-    useLayoutEffect(() => {
-        if (!open) {
-            setThemeSubOpen(false);
-        }
-    }, [open]);
+    }, [open, payload]);
     /* eslint-enable react-hooks/set-state-in-effect */
 
     useEffect(() => {
@@ -114,12 +93,6 @@ export function TwinChromeContextMenu({
     if (!open || !payload) return null;
 
     const rootStylePos = rootPos ?? { left: payload.x, top: payload.y };
-
-    const onPickTheme = (id: TwinWebChromeThemeId) => {
-        setThemeId(id);
-        setThemeSubOpen(false);
-        onClose();
-    };
 
     return (
         <>
@@ -245,47 +218,31 @@ export function TwinChromeContextMenu({
                     />
 
                     <SectionLabel>外观</SectionLabel>
-                    <button
-                        type="button"
-                        className={cn(
-                            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-100 hover:bg-white/10",
-                            themeSubOpen && "bg-white/10"
-                        )}
-                        onClick={() => setThemeSubOpen((v) => !v)}
-                    >
-                        <Palette className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
-                        <span className="min-w-0 flex-1 font-medium">切换主题</span>
-                        <span className="text-[10px] text-slate-500">›</span>
-                    </button>
+                    {bentoThemes.map((t) => {
+                        const Icon = t.id === 'standard' ? Sun : t.id === 'standard-dark' ? Moon : Sparkles;
+                        return (
+                            <button
+                                key={t.id}
+                                type="button"
+                                className={cn(
+                                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-white/10",
+                                    bentoThemeId === t.id ? "text-cyan-300 font-semibold" : "text-slate-300"
+                                )}
+                                onClick={() => {
+                                    setBentoThemeId(t.id);
+                                    onClose();
+                                }}
+                            >
+                                <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
+                                <span className="min-w-0 flex-1 font-medium">{t.label}</span>
+                                {bentoThemeId === t.id ? (
+                                    <span className="text-[10px] text-cyan-400">✓</span>
+                                ) : null}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
-
-            {themeSubOpen ? (
-                <div
-                    ref={subRef}
-                    data-twin-chrome-ctx-surface
-                    role="menu"
-                    aria-label="选择主题"
-                    className={cn(
-                        "fixed flex w-[13.75rem] max-w-[min(100vw-1rem,14rem)] flex-col overflow-hidden rounded-lg border border-cyan-500/35 bg-slate-900 text-sm shadow-2xl",
-                        CTX_SCROLL_NONE,
-                        !subPos && "pointer-events-none opacity-0"
-                    )}
-                    style={{
-                        left: subPos?.left ?? 0,
-                        top: subPos?.top ?? 0,
-                        zIndex: TWIN_CHROME_MENU_Z.sub,
-                        ...(subPos ? {} : { visibility: "hidden" as const }),
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    onContextMenu={(e) => e.preventDefault()}
-                >
-                    <div className="shrink-0 border-b border-cyan-500/25 bg-slate-950/80 px-2.5 py-1.5">
-                        <div className="text-xs font-semibold text-cyan-100">主题风格</div>
-                    </div>
-                    <TwinThemePickerPanel themeId={themeId} onPick={onPickTheme} dense />
-                </div>
-            ) : null}
         </>
     );
 }
