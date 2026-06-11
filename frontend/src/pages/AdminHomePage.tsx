@@ -17,6 +17,8 @@ const ROLE_LABEL: Record<MinRole, string> = {
 };
 
 /** Hardcoded color map: path → CSS gradient. Built once at module load from registry. */
+/** Registry label lookup: path → Chinese label */
+const LABEL_MAP: Record<string, string> = {};
 const COLOR_MAP: Record<string, string> = {};
 const colors: Record<string, string> = {
   slate: "#64748b", zinc: "#71717a", gray: "#6b7280", neutral: "#737373", stone: "#78716c",
@@ -28,6 +30,7 @@ const colors: Record<string, string> = {
 for (const g of ADMIN_NAV_REGISTRY) {
   for (const it of collectRegistryGroupItems(g)) {
     const key = it.path.replace(/\/+/g, "/");
+    LABEL_MAP[key] = it.label;
     if (it.homeTone) {
       const m = it.homeTone.match(/from-(\w+)-(\d+)\s+to-(\w+)-(\d+)/);
       if (m) {
@@ -35,6 +38,17 @@ for (const g of ADMIN_NAV_REGISTRY) {
       }
     }
   }
+}
+
+/** If title has no Chinese characters, try registry label as fallback */
+function chineseLabel(path: string, fallback: string): string {
+  const key = path.replace(/\/+/g, "/");
+  const reg = LABEL_MAP[key];
+  if (reg) return reg;
+  // If fallback has Chinese, use it; otherwise generate from path
+  if (/[一-鿿]/.test(fallback)) return fallback;
+  const seg = path.split("/").filter(Boolean).pop() || "";
+  return seg.replace(/-/g, " ");
 }
 
 export default function AdminHomePage() {
@@ -80,7 +94,7 @@ export default function AdminHomePage() {
         const pathKey = (e.path || "").replace(/\/+/g, "/");
         return {
           ...e,
-          title: e.title,
+          title: chineseLabel(e.path, e.title),
           enabled: roleOk && permOk,
           groupTitle: g.title,
           icon: createElement(e.icon, { className: "h-5 w-5" }),
