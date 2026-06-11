@@ -16,9 +16,11 @@
                m.movement_type AS movementType, m.qty, m.stock_after AS stockAfter,
                m.request_id AS requestId, m.operator_user_id AS operatorUserId,
                m.applicant_user_id AS applicantUserId, m.remark,
-               m.created_at AS createdAt
+               m.created_at AS createdAt,
+               r.applicant_name AS applicantName, r.applicant_group AS applicantGroup
         FROM material_stock_movement m
         LEFT JOIN material_item i ON m.item_id = i.id
+        LEFT JOIN material_request r ON m.request_id = r.id
         WHERE m.item_id = #{itemId}
         ORDER BY m.created_at DESC
         LIMIT #{offset}, #{size}

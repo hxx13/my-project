@@ -71,6 +71,8 @@ export interface MaterialStockMovementRow {
   requestId?: string;
   operatorUserId?: string;
   applicantUserId?: string;
+  applicantName?: string;
+  applicantGroup?: string;
   remark?: string;
   createdAt?: string;
 }

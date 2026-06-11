@@ -16,4 +16,6 @@ public class MaterialStockMovementView {
     private String applicantUserId;
     private String remark;
     private String createdAt;
+    private String applicantName;
+    private String applicantGroup;
 }
