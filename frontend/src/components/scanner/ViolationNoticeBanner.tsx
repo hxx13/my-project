@@ -29,58 +29,39 @@ type Props = {
   suppressAutoOpen?: boolean;
 };
 
-const THEME = {
-  violation: {
-    islandBorder: (locked: boolean) =>
-      locked
-        ? "border-red-500/50 bg-gradient-to-r from-black/80 via-red-950/50 to-black/80"
-        : "border-amber-500/45 bg-gradient-to-r from-black/75 via-amber-950/40 to-black/75",
-    iconRing: "bg-amber-500/20 ring-1 ring-amber-400/40",
-    icon: "text-amber-300",
-    chevron: "text-amber-200/80",
-    badge: "text-amber-100",
-    tag: "text-amber-200/90",
-    panelBorder: "border-amber-500/35",
-    panelBg: "from-[#1a0a05]/98",
-    headerBorder: "border-amber-500/25",
-    title: "text-amber-100",
-    meta: "text-amber-200/80",
-    btnBorder: "border-amber-500/40",
-    btnText: "text-amber-100",
-    closeBtn: "text-amber-200/90",
-    textBorder: "border-amber-500/20",
-    textBody: "text-amber-50/95",
-    emptyHint: "text-amber-200/65",
-    dialogTitle: "违规通告",
-    alertTag: "Alert",
-    imgAlt: "违规附图",
-  },
-  unbound: {
-    islandBorder: (locked: boolean) =>
-      locked
-        ? "border-red-500/50 bg-gradient-to-r from-black/80 via-red-950/50 to-black/80"
-        : "border-cyan-500/45 bg-gradient-to-r from-black/75 via-cyan-950/40 to-black/75",
-    iconRing: "bg-cyan-500/20 ring-1 ring-cyan-400/40",
-    icon: "text-cyan-300",
-    chevron: "text-cyan-200/80",
-    badge: "text-cyan-100",
-    tag: "text-cyan-200/90",
-    panelBorder: "border-cyan-500/35",
-    panelBg: "from-[#051018]/98",
-    headerBorder: "border-cyan-500/25",
-    title: "text-cyan-100",
-    meta: "text-cyan-200/80",
-    btnBorder: "border-cyan-500/40",
-    btnText: "text-cyan-100",
-    closeBtn: "text-cyan-200/90",
-    textBorder: "border-cyan-500/20",
-    textBody: "text-cyan-50/95",
-    emptyHint: "text-cyan-200/65",
-    dialogTitle: "未绑卡提示",
-    alertTag: "Unbound",
-    imgAlt: "未绑卡提示附图",
-  },
-} as const;
+function resolveTheme(kind: ViolationNoticeKind, locked: boolean) {
+  const accentVar = kind === "violation"
+    ? "var(--app-color-feedback-warning)"
+    : "var(--app-color-feedback-info)";
+  const panelAccent = kind === "violation"
+    ? "var(--app-color-feedback-warning)"
+    : "var(--app-color-feedback-info)";
+  return {
+    islandBorder: locked
+      ? "border-[var(--app-color-feedback-danger)]/50 bg-[var(--app-color-feedback-danger)]/5"
+      : `border-[${panelAccent}]/30 bg-[var(--app-color-surface-container)]/90`,
+    iconRing: `bg-[${accentVar}]/10 ring-1 ring-[${accentVar}]/20`,
+    icon: `text-[${accentVar}]`,
+    chevron: "text-[var(--app-color-text-tertiary)]",
+    badge: "text-[var(--app-color-text-primary)]",
+    tag: "text-[var(--app-color-text-tertiary)]",
+    panelBorder: "border-[var(--app-color-border-default)]",
+    panelBg: "bg-[var(--app-color-surface-container)]",
+    headerBorder: "border-[var(--app-color-border-default)]",
+    title: "text-[var(--app-color-text-primary)]",
+    meta: "text-[var(--app-color-text-tertiary)]",
+    btnBorder: "border-[var(--app-color-border-default)]",
+    btnText: "text-[var(--app-color-text-secondary)]",
+    closeBtn: "text-[var(--app-color-text-tertiary)]",
+    textBorder: "border-[var(--app-color-border-default)]",
+    textBody: "text-[var(--app-color-text-primary)]",
+    emptyHint: "text-[var(--app-color-text-tertiary)]",
+    dialogTitle: kind === "violation" ? "违规通告" : "未绑卡提示",
+    alertTag: kind === "violation" ? "Alert" : "Unbound",
+    imgAlt: kind === "violation" ? "违规附图" : "未绑卡提示附图",
+    lockedDot: "bg-[var(--app-color-feedback-danger)] ring-2 ring-black/80",
+  };
+}
 
 /** 根据张数选择列数，保证单张居中、多张均匀 */
 function imageGridClass(count: number): string {
@@ -118,7 +99,6 @@ export function ViolationNoticeBanner({
     },
     [controlled, onPanelOpenChange]
   );
-  const theme = THEME[kind];
   const isViolation = kind === "violation";
 
   useEffect(() => {
@@ -179,6 +159,7 @@ export function ViolationNoticeBanner({
 
   const text = (notice.violationText || "").trim();
   const locked = Boolean(notice.enterLocked);
+  const t = resolveTheme(kind, locked);
   const remaining = isViolation ? notice.remainingEnterAllowance : undefined;
   const imgCount = images.length;
 
@@ -209,25 +190,25 @@ export function ViolationNoticeBanner({
         <button
           type="button"
           onClick={() => (panelOpen ? closePanel() : openPanel())}
-          className={`group flex w-full min-w-0 items-center gap-2 rounded-[999px] border px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-transform active:scale-[0.98] sm:gap-2.5 sm:px-4 sm:py-2.5 ${theme.islandBorder(locked)}`}
+          className={`group flex w-full min-w-0 items-center gap-2 rounded-[999px] border px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-transform active:scale-[0.98] sm:gap-2.5 sm:px-4 sm:py-2.5 ${t.islandBorder}`}
         >
-          <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${theme.iconRing}`}>
-            <Megaphone className={`h-4 w-4 ${theme.icon}`} />
+          <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${t.iconRing}`}>
+            <Megaphone className={`h-4 w-4 ${t.icon}`} />
             {locked ? (
-              <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-black/80" aria-hidden />
+              <span className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ${t.lockedDot}`} aria-hidden />
             ) : null}
           </span>
           <span className="min-w-0 flex-1 text-left">
-            <span className={`block text-[11px] font-black uppercase tracking-[0.2em] ${theme.tag}`}>{theme.alertTag}</span>
-            <span className="block truncate text-sm font-bold text-white">{islandLabel}</span>
+            <span className={`block text-[11px] font-black uppercase tracking-[0.2em] ${t.tag}`}>{t.alertTag}</span>
+            <span className="block truncate text-sm font-bold text-[var(--app-color-text-primary)]">{islandLabel}</span>
           </span>
           {remaining != null ? (
-            <span className={`hidden shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold sm:inline ${theme.badge}`}>
+            <span className={`hidden shrink-0 rounded-full bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[10px] font-bold sm:inline ${t.badge}`}>
               余 {remaining}
             </span>
           ) : null}
           <ChevronRight
-            className={`h-4 w-4 shrink-0 transition-transform ${theme.chevron} ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
+            className={`h-4 w-4 shrink-0 transition-transform ${t.chevron} ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
           />
         </button>
       </div>
@@ -242,7 +223,7 @@ export function ViolationNoticeBanner({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-[100130] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md"
+              className="fixed inset-0 z-[100130] flex items-center justify-center bg-black/40 p-4 backdrop-blur-md"
               onClick={closePanel}
             >
               <motion.div
@@ -253,20 +234,20 @@ export function ViolationNoticeBanner({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: 8 }}
                 transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                className={`relative flex max-h-[min(88vh,720px)] w-full max-w-[min(96vw,640px)] flex-col overflow-hidden rounded-3xl border ${theme.panelBorder} bg-gradient-to-b ${theme.panelBg} to-black/95 shadow-2xl`}
+                className={`relative flex max-h-[min(88vh,720px)] w-full max-w-[min(96vw,640px)] flex-col overflow-hidden rounded-[var(--app-radius-container)] border ${t.panelBorder} ${t.panelBg} shadow-[var(--app-elevation-modal)]`}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className={`flex shrink-0 items-center justify-between gap-3 border-b ${theme.headerBorder} bg-black/40 px-4 py-3`}>
+                <div className={`flex shrink-0 items-center justify-between gap-3 border-b ${t.headerBorder} px-4 py-3`}>
                   <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Megaphone className={`h-5 w-5 shrink-0 ${theme.icon}`} />
+                    <Megaphone className={`h-5 w-5 shrink-0 ${t.icon}`} />
                     <div className="min-w-0">
-                      <div id={titleId} className={`text-sm font-black tracking-wide ${theme.title}`}>
-                        {theme.dialogTitle}
+                      <div id={titleId} className={`text-sm font-black tracking-wide ${t.title}`}>
+                        {t.dialogTitle}
                       </div>
                       {locked || (isViolation && remaining != null) ? (
-                        <div className={`mt-0.5 flex flex-wrap items-center gap-2 text-[11px] ${theme.meta}`}>
+                        <div className={`mt-0.5 flex flex-wrap items-center gap-2 text-[11px] ${t.meta}`}>
                           {isViolation && remaining != null ? <span>剩余进入次数：{remaining}</span> : null}
-                          {locked ? <span className="font-bold text-red-300">禁止进入</span> : null}
+                          {locked ? <span className="font-bold text-[var(--app-color-feedback-danger)]">禁止进入</span> : null}
                         </div>
                       ) : null}
                     </div>
@@ -279,8 +260,8 @@ export function ViolationNoticeBanner({
                         onClick={acknowledge}
                         className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-opacity ${
                           interactivePhrase && !interactiveDone
-                            ? "border-amber-500/20 text-amber-200/30 cursor-not-allowed"
-                            : `hover:bg-white/10 ${theme.btnBorder} ${theme.btnText}`
+                            ? "border-[var(--app-color-border-default)] text-amber-200/30 cursor-not-allowed"
+                            : `hover:bg-[var(--app-color-surface-hover)] ${t.btnBorder} ${t.btnText}`
                         }`}
                       >
                         {interactivePhrase && !interactiveDone ? "请先完成验证" : "已知悉"}
@@ -289,7 +270,7 @@ export function ViolationNoticeBanner({
                     <button
                       type="button"
                       onClick={closePanel}
-                      className={`rounded-full p-2 hover:bg-white/10 ${theme.closeBtn}`}
+                      className={`rounded-full p-2 hover:bg-[var(--app-color-surface-hover)] ${t.closeBtn}`}
                       aria-label="关闭"
                     >
                       <X className="h-4 w-4" />
@@ -304,11 +285,11 @@ export function ViolationNoticeBanner({
                         {images.map((src) => (
                           <div
                             key={src}
-                            className="flex max-h-[min(38vh,320px)] items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/50 p-1"
+                            className="flex max-h-[min(38vh,320px)] items-center justify-center overflow-hidden rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)]/50 p-1"
                           >
                             <img
                               src={src}
-                              alt={theme.imgAlt}
+                              alt={t.imgAlt}
                               className="max-h-[min(38vh,320px)] w-full object-contain"
                               referrerPolicy="no-referrer"
                             />
@@ -318,15 +299,15 @@ export function ViolationNoticeBanner({
                     ) : null}
                     {text ? (
                       <p
-                        className={`w-full max-w-2xl rounded-2xl border bg-black/30 p-4 text-center text-sm leading-relaxed whitespace-pre-wrap break-words ${theme.textBorder} ${theme.textBody}`}
+                        className={`w-full max-w-2xl rounded-2xl border bg-[var(--app-color-surface-page)] p-4 text-center text-sm leading-relaxed whitespace-pre-wrap break-words ${t.textBorder} ${t.textBody}`}
                       >
                         {text}
                       </p>
                     ) : imgCount === 0 && !(interactivePhrase && !interactiveDone) ? (
-                      <p className={`text-center text-xs ${theme.emptyHint}`}>未填写文字说明，请查看附图或联系管理员。</p>
+                      <p className={`text-center text-xs ${t.emptyHint}`}>未填写文字说明，请查看附图或联系管理员。</p>
                     ) : null}
                     {interactivePhrase && !interactiveDone ? (
-                      <div className={`w-full max-w-2xl rounded-2xl border bg-black/30 p-5 ${theme.textBorder}`}>
+                      <div className={`w-full max-w-2xl rounded-2xl border bg-[var(--app-color-surface-page)] p-5 ${t.textBorder}`}>
                         <InteractiveChallenge
                           phrase={interactivePhrase}
                           onComplete={() => {
