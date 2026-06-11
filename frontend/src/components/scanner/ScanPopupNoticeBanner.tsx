@@ -318,7 +318,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
           className={`group scan-notice-island w-full ${panelOpen ? "scan-notice-island--open" : ""}`}
         >
           <span className="scan-notice-island-icon relative shrink-0">
-            <Megaphone className="h-4 w-4" />
+            <Megaphone className="h-3.5 w-3.5" />
             {locked ? (
               <span
                 className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[var(--app-color-feedback-danger)] ring-2 ring-[var(--app-color-surface-page)]"
@@ -327,7 +327,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
             ) : null}
           </span>
           <span className="min-w-0 flex-1 text-left">
-            <span className="scan-notice-island-tag mb-1 block w-fit">{meta.islandTag}</span>
+            <span className="scan-notice-island-tag mb-0.5 block w-fit">{meta.islandTag}</span>
             <span className="scan-notice-island-label">{islandLabel}</span>
           </span>
           {remaining != null ? (
@@ -336,7 +336,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
             </span>
           ) : null}
           <ChevronRight
-            className={`h-4 w-4 shrink-0 text-[var(--scan-notice-ink)] transition-transform ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
+            className={`h-3.5 w-3.5 shrink-0 text-[var(--scan-notice-ink)] transition-transform ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
           />
         </button>
       </div>
@@ -346,26 +346,17 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
           <AnimatePresence>
             {panelOpen ? (
               <motion.div
-                key={`${kind}-notice-backdrop`}
-                role="presentation"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className={`scan-notice-scrim fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4 sm:p-6 ${announcementCloseViaButtonOnly ? "" : "scan-notice-scrim--dismissible"}`}
-                onClick={announcementCloseViaButtonOnly ? undefined : closePanel}
+                key={`${kind}-notice-panel`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={meta.titleId}
+                initial={{ opacity: 0, scale: 0.96, y: 14 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.98, y: 8 }}
+                transition={{ type: "spring", stiffness: 380, damping: 32 }}
+                className="scan-notice-panel fixed inset-0 z-[var(--z-modal)] m-auto flex flex-col overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
               >
-                <motion.div
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby={meta.titleId}
-                  initial={{ opacity: 0, scale: 0.96, y: 14 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.98, y: 8 }}
-                  transition={{ type: "spring", stiffness: 380, damping: 32 }}
-                  className="scan-notice-panel pointer-events-auto relative flex flex-col overflow-hidden"
-                  onClick={(e) => e.stopPropagation()}
-                >
                   <div className="scan-notice-panel-accent" aria-hidden />
 
                   <div className="scan-notice-header">
@@ -508,7 +499,6 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                     </div>
                   ) : null}
                 </motion.div>
-              </motion.div>
             ) : null}
           </AnimatePresence>
         </div>,
