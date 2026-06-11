@@ -5,7 +5,7 @@ import { ChevronRight, Megaphone, X } from "lucide-react";
 import type { StudentViolationNotice } from "@/api/types/scanner";
 import { InteractiveChallenge } from "./InteractiveChallenge";
 import { ackViolationInteractivePermanent } from "./twinViolationInteractive";
-import { SCAN_NESTED_BACKDROP } from "./scanPopupTheme";
+import { SCAN_NESTED_BACKDROP, NOTICE_ISLAND_BASE, NOTICE_PANEL, resolveNoticeColors, type NoticeKind } from "./scanPopupTheme";
 
 export type ViolationNoticeKind = "violation" | "unbound";
 
@@ -30,38 +30,15 @@ type Props = {
   suppressAutoOpen?: boolean;
 };
 
-function resolveTheme(kind: ViolationNoticeKind, locked: boolean) {
+function resolveLegacyTheme(kind: ViolationNoticeKind, locked: boolean) {
   const isViolation = kind === "violation";
   return {
-    islandBorder: locked
-      ? "border-[var(--app-color-feedback-danger)]/50 bg-[var(--app-color-feedback-danger-soft)]"
-      : isViolation
-        ? "border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-surface-elevated)]/95"
-        : "border-[var(--app-color-feedback-info)]/30 bg-[var(--app-color-surface-elevated)]/95",
-    iconRing: isViolation
-      ? "bg-[var(--app-color-feedback-warning)]/10 ring-1 ring-[var(--app-color-feedback-warning)]/20"
-      : "bg-[var(--app-color-feedback-info)]/10 ring-1 ring-[var(--app-color-feedback-info)]/20",
-    icon: isViolation
-      ? "text-[var(--app-color-feedback-warning)]"
-      : "text-[var(--app-color-feedback-info)]",
-    chevron: "text-[var(--app-color-text-tertiary)]",
-    badge: "text-[var(--app-color-text-primary)]",
-    tag: "text-[var(--app-color-text-tertiary)]",
-    panelBorder: "border-[var(--app-color-border-default)]",
-    panelBg: "bg-[var(--app-color-surface-container)]",
-    headerBorder: "border-[var(--app-color-border-default)]",
-    title: "text-[var(--app-color-text-primary)]",
-    meta: "text-[var(--app-color-text-tertiary)]",
-    btnBorder: "border-[var(--app-color-border-default)]",
-    btnText: "text-[var(--app-color-text-secondary)]",
-    closeBtn: "text-[var(--app-color-text-tertiary)]",
-    textBorder: "border-[var(--app-color-border-default)]",
-    textBody: "text-[var(--app-color-text-primary)]",
-    emptyHint: "text-[var(--app-color-text-tertiary)]",
+    locked,
     dialogTitle: isViolation ? "违规通告" : "未绑卡提示",
     alertTag: isViolation ? "Alert" : "Unbound",
     imgAlt: isViolation ? "违规附图" : "未绑卡提示附图",
     lockedDot: "bg-[var(--app-color-feedback-danger)] ring-2 ring-[var(--app-color-surface-page)]",
+    isViolation,
   };
 }
 
@@ -161,7 +138,8 @@ export function ViolationNoticeBanner({
 
   const text = (notice.violationText || "").trim();
   const locked = Boolean(notice.enterLocked);
-  const t = resolveTheme(kind, locked);
+  const t = resolveLegacyTheme(kind, locked);
+  const nc = resolveNoticeColors(kind === "violation" ? "violation" : "unbound");
   const remaining = isViolation ? notice.remainingEnterAllowance : undefined;
   const imgCount = images.length;
 
@@ -192,25 +170,25 @@ export function ViolationNoticeBanner({
         <button
           type="button"
           onClick={() => (panelOpen ? closePanel() : openPanel())}
-          className={`group flex w-full min-w-0 items-center gap-2 rounded-[999px] border px-3 py-2 shadow-lg ring-1 ring-white/[0.04] backdrop-blur-md transition-all active:scale-[0.98] hover:shadow-xl sm:gap-2.5 sm:px-4 sm:py-2.5 ${t.islandBorder}`}
+          className={`group flex w-full min-w-0 items-center gap-2 ${NOTICE_ISLAND_BASE} ${nc.border} px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-2.5`}
         >
-          <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${t.iconRing}`}>
-            <Megaphone className={`h-4 w-4 ${t.icon}`} />
+          <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${nc.iconBg}`}>
+            <Megaphone className={`h-4 w-4 ${nc.iconText}`} />
             {locked ? (
               <span className={`absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ${t.lockedDot}`} aria-hidden />
             ) : null}
           </span>
           <span className="min-w-0 flex-1 text-left">
-            <span className={`block text-[11px] font-black uppercase tracking-[0.2em] ${t.tag}`}>{t.alertTag}</span>
-            <span className="block truncate text-sm font-bold text-[var(--app-color-text-primary)]">{islandLabel}</span>
+            <span className={`block text-[11px] font-black uppercase tracking-[0.2em] ${nc.tag}`}>{t.alertTag}</span>
+            <span className="block truncate text-sm font-bold text-slate-800 dark:text-warm-50">{islandLabel}</span>
           </span>
           {remaining != null ? (
-            <span className={`hidden shrink-0 rounded-full bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[10px] font-bold sm:inline ${t.badge}`}>
+            <span className={`hidden shrink-0 rounded-full bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[10px] font-bold sm:inline ${nc.badge}`}>
               余 {remaining}
             </span>
           ) : null}
           <ChevronRight
-            className={`h-4 w-4 shrink-0 transition-transform ${t.chevron} ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
+            className={`h-4 w-4 shrink-0 ${nc.tag} transition-transform ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
           />
         </button>
       </div>
@@ -236,18 +214,18 @@ export function ViolationNoticeBanner({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: 8 }}
                 transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                className={`relative flex max-h-[min(88vh,720px)] w-full max-w-[min(96vw,640px)] flex-col overflow-hidden rounded-[var(--app-radius-container)] border ${t.panelBorder} ${t.panelBg} shadow-[var(--app-elevation-modal)]`}
+                className={`relative flex max-h-[min(88vh,720px)] w-full max-w-[min(96vw,640px)] flex-col overflow-hidden ${NOTICE_PANEL}`}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className={`flex shrink-0 items-center justify-between gap-3 border-b ${t.headerBorder} px-4 py-3`}>
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--app-color-border-default)] px-4 py-3">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Megaphone className={`h-5 w-5 shrink-0 ${t.icon}`} />
+                    <Megaphone className={`h-5 w-5 shrink-0 ${nc.iconText}`} />
                     <div className="min-w-0">
-                      <div id={titleId} className={`text-sm font-black tracking-wide ${t.title}`}>
+                      <div id={titleId} className="text-sm font-black tracking-wide text-slate-800 dark:text-warm-50">
                         {t.dialogTitle}
                       </div>
                       {locked || (isViolation && remaining != null) ? (
-                        <div className={`mt-0.5 flex flex-wrap items-center gap-2 text-[11px] ${t.meta}`}>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-[var(--app-color-text-tertiary)]">
                           {isViolation && remaining != null ? <span>剩余进入次数：{remaining}</span> : null}
                           {locked ? <span className="font-bold text-[var(--app-color-feedback-danger)]">禁止进入</span> : null}
                         </div>
@@ -263,7 +241,7 @@ export function ViolationNoticeBanner({
                         className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-opacity ${
                           interactivePhrase && !interactiveDone
                             ? "cursor-not-allowed border-[var(--app-color-border-default)] text-[var(--app-color-text-tertiary)]"
-                            : `hover:bg-[var(--app-color-surface-hover)] ${t.btnBorder} ${t.btnText}`
+                            : "hover:bg-[var(--app-color-surface-hover)] border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]"
                         }`}
                       >
                         {interactivePhrase && !interactiveDone ? "请先完成验证" : "已知悉"}
@@ -272,7 +250,7 @@ export function ViolationNoticeBanner({
                     <button
                       type="button"
                       onClick={closePanel}
-                      className={`rounded-full p-2 hover:bg-[var(--app-color-surface-hover)] ${t.closeBtn}`}
+                      className="rounded-full p-2 hover:bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]"
                       aria-label="关闭"
                     >
                       <X className="h-4 w-4" />
@@ -291,7 +269,7 @@ export function ViolationNoticeBanner({
                           >
                             <img
                               src={src}
-                              alt={t.imgAlt}
+                              alt={isViolation ? "违规附图" : "未绑卡提示附图"}
                               className="max-h-[min(38vh,320px)] w-full object-contain"
                               referrerPolicy="no-referrer"
                             />
@@ -301,15 +279,15 @@ export function ViolationNoticeBanner({
                     ) : null}
                     {text ? (
                       <p
-                        className={`w-full max-w-2xl rounded-2xl border bg-[var(--app-color-surface-page)] p-4 text-center text-sm leading-relaxed whitespace-pre-wrap break-words ${t.textBorder} ${t.textBody}`}
+                        className="w-full max-w-2xl rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-4 text-center text-sm leading-relaxed whitespace-pre-wrap break-words text-slate-800 dark:text-warm-50"
                       >
                         {text}
                       </p>
                     ) : imgCount === 0 && !(interactivePhrase && !interactiveDone) ? (
-                      <p className={`text-center text-xs ${t.emptyHint}`}>未填写文字说明，请查看附图或联系管理员。</p>
+                      <p className="text-center text-xs text-[var(--app-color-text-tertiary)]">未填写文字说明，请查看附图或联系管理员。</p>
                     ) : null}
                     {interactivePhrase && !interactiveDone ? (
-                      <div className={`w-full max-w-2xl rounded-2xl border bg-[var(--app-color-surface-page)] p-5 ${t.textBorder}`}>
+                      <div className="w-full max-w-2xl rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-5">
                         <InteractiveChallenge
                           phrase={interactivePhrase}
                           onComplete={() => {
