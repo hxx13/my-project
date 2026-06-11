@@ -13,6 +13,7 @@ import {
   STUDENT_DAHUA_CARD_DEBOUNCE_MS,
   STUDENT_DAHUA_CARD_LEN,
 } from "./studentDahuaCardInput";
+import { SCAN_NESTED_BACKDROP } from "./scanPopupTheme";
 
 export function StudentDahuaBindPanel({
   userId,
@@ -157,26 +158,26 @@ export function StudentDahuaBindPanel({
   const cardReady = isValidStudentDahuaCardNo(cardNo);
 
   return (
-    <div className="fixed inset-0 top-16 z-[100001] flex items-center justify-center bg-[#050A15]/90 backdrop-blur-md p-4">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0a0f1d] shadow-2xl p-5 text-white">
-        <h3 className="text-base font-black mb-1">绑定校园卡</h3>
-        <p className="text-[11px] text-slate-400 mb-4">
+    <div className={`fixed inset-0 top-16 z-[var(--z-modal)] flex items-center justify-center p-4 ${SCAN_NESTED_BACKDROP}`}>
+      <div className="w-full max-w-md rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-[var(--app-elevation-modal)] text-[var(--app-color-text-primary)]">
+        <h3 className="mb-1 text-base font-black">绑定校园卡</h3>
+        <p className="mb-4 text-[11px] text-[var(--app-color-text-tertiary)]">
           部门与门组已由系统预设，仅需刷卡完成绑卡。卡号为 {STUDENT_DAHUA_CARD_LEN} 位字母或数字。
         </p>
 
-        <div className="mb-3 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-3 py-2">
-          <p className="text-[10px] text-indigo-300 font-bold mb-0.5">已锁定人员</p>
-          <p className="text-sm font-black text-white">
+        <div className="mb-3 rounded-[var(--app-radius-element)] border border-[var(--app-color-accent)]/30 bg-[var(--app-color-accent-soft)] px-3 py-2">
+          <p className="mb-0.5 text-[10px] font-bold text-[var(--app-color-accent)]">已锁定人员</p>
+          <p className="text-sm font-black text-[var(--app-color-text-primary)]">
             {userName || "未知"}{" "}
-            <span className="font-mono text-xs text-indigo-300 ml-1">{userId}</span>
+            <span className="ml-1 font-mono text-xs text-[var(--app-color-accent)]">{userId}</span>
           </p>
         </div>
 
         <div className="mb-1 flex items-center justify-between gap-2">
-          <label className="block text-[11px] font-bold text-slate-400">绑定卡号（请刷卡）</label>
+          <label className="block text-[11px] font-bold text-[var(--app-color-text-tertiary)]">绑定卡号（请刷卡）</label>
           <button
             type="button"
-            className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-bold text-slate-300 hover:bg-white/10"
+            className="inline-flex items-center gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[10px] font-bold text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-active)]"
             onClick={focusCardInput}
             title="网页无法直接切换系统输入法，请手动切到英文后刷卡"
           >
@@ -185,7 +186,7 @@ export function StudentDahuaBindPanel({
           </button>
         </div>
         {showImeTip ? (
-          <p className="mb-2 text-[10px] leading-relaxed text-amber-200/90 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1.5">
+          <p className="mb-2 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] px-2 py-1.5 text-[10px] leading-relaxed text-[var(--app-color-text-secondary)]">
             请先在系统任务栏将输入法切换为<strong className="font-bold">英文</strong>（Windows：Win+空格；Mac：Control+空格），再刷卡。
             浏览器无法代您切换输入法；本框已尽量关闭中文联想。
           </p>
@@ -223,21 +224,21 @@ export function StudentDahuaBindPanel({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !confirmOpen && cardReady) handleRequestConfirm();
           }}
-          className="w-full rounded-xl border-2 border-white/15 bg-black/40 px-3 py-2.5 font-mono text-sm tracking-widest text-cyan-300 outline-none focus:border-cyan-400 mb-1"
+          className="mb-1 w-full rounded-[var(--app-radius-element)] border-2 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2.5 font-mono text-sm tracking-widest text-[var(--app-color-accent)] outline-none focus:border-[var(--app-color-accent)]"
           placeholder={`${STUDENT_DAHUA_CARD_LEN} 位字母或数字`}
           disabled={submitting}
           aria-invalid={cardNo.length > 0 && !cardReady}
         />
-        <p className="mb-2 text-[10px] text-slate-500">
+        <p className="mb-2 text-[10px] text-[var(--app-color-text-tertiary)]">
           已输入 {cardNo.length}/{STUDENT_DAHUA_CARD_LEN} 位
-          {cardReady ? <span className="text-emerald-400 ml-1">· 格式正确</span> : null}
+          {cardReady ? <span className="ml-1 text-[var(--app-color-feedback-success)]">· 格式正确</span> : null}
         </p>
-        {inputHint ? <p className="mb-2 text-[11px] text-amber-300">{inputHint}</p> : null}
+        {inputHint ? <p className="mb-2 text-[11px] text-[var(--app-color-feedback-warning)]">{inputHint}</p> : null}
 
         <DahuaCardMappingStatusPanel mapping={mapping} loading={mappingLoading} compact />
 
         {issueResult && !issueResult.success && issueResult.steps && issueResult.steps.length > 0 ? (
-          <div className="mt-2 max-h-24 overflow-auto rounded-lg border border-white/10 bg-black/30 p-2 text-[10px] text-rose-300">
+          <div className="mt-2 max-h-24 overflow-auto rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-2 text-[10px] text-[var(--app-color-feedback-danger)]">
             {issueResult.steps.map((step, idx) => (
               <div key={`${step.stepName}-${idx}`}>
                 [{step.success ? "成功" : "失败"}] {step.stepName} {step.upstreamErrMsg || step.message || ""}
@@ -246,13 +247,13 @@ export function StudentDahuaBindPanel({
           </div>
         ) : null}
 
-        {error ? <p className="mt-2 text-[11px] text-rose-300">{error}</p> : null}
+        {error ? <p className="mt-2 text-[11px] text-[var(--app-color-feedback-danger)]">{error}</p> : null}
 
         {!confirmOpen ? (
           <div className="mt-4 flex justify-end gap-2">
             <button
               type="button"
-              className="px-4 py-2 rounded-xl text-sm font-bold text-slate-300 bg-white/10 hover:bg-white/15"
+              className="rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-hover)] px-4 py-2 text-sm font-bold text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-active)]"
               onClick={onCancel}
               disabled={submitting}
             >
@@ -260,7 +261,7 @@ export function StudentDahuaBindPanel({
             </button>
             <button
               type="button"
-              className="px-4 py-2 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50"
+              className="rounded-[var(--app-radius-element)] bg-[var(--app-color-accent)] px-4 py-2 text-sm font-bold text-[var(--app-color-text-inverse)] hover:bg-[var(--app-color-accent-hover)] disabled:opacity-50"
               onClick={handleRequestConfirm}
               disabled={submitting || !cardReady}
             >
@@ -268,14 +269,14 @@ export function StudentDahuaBindPanel({
             </button>
           </div>
         ) : (
-          <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 space-y-3">
-            <p className="text-[12px] font-bold text-amber-100">请再次确认是否绑定以下卡号？</p>
-            <p className="font-mono text-sm text-white break-all">{sanitizeStudentDahuaCardNo(cardNo)}</p>
+          <div className="mt-4 space-y-3 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/40 bg-[var(--app-color-feedback-warning-soft)] p-3">
+            <p className="text-[12px] font-bold text-[var(--app-color-text-primary)]">请再次确认是否绑定以下卡号？</p>
+            <p className="break-all font-mono text-sm text-[var(--app-color-text-primary)]">{sanitizeStudentDahuaCardNo(cardNo)}</p>
             <DahuaCardMappingStatusPanel mapping={mapping} loading={false} compact />
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-300 bg-white/10"
+                className="rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-hover)] px-3 py-1.5 text-xs font-bold text-[var(--app-color-text-secondary)]"
                 onClick={() => setConfirmOpen(false)}
                 disabled={submitting}
               >
@@ -283,7 +284,7 @@ export function StudentDahuaBindPanel({
               </button>
               <button
                 type="button"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-success)] px-3 py-1.5 text-xs font-bold text-[var(--app-color-text-inverse)] hover:opacity-90 disabled:opacity-50"
                 onClick={() => void handleConfirmBind()}
                 disabled={submitting}
               >

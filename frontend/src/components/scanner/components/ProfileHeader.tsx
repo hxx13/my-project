@@ -1,6 +1,7 @@
 import { AlertOctagon, Briefcase, Phone, ShieldCheck, Users } from "lucide-react";
 import type { AnalyzeUserInfo } from "@/api/types/scanner";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
+import { SCAN_PANEL_CARD } from "../scanPopupTheme";
 
 interface ProfileHeaderProps {
     user: AnalyzeUserInfo;
@@ -11,7 +12,7 @@ interface ProfileHeaderProps {
 }
 
 const Field = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between text-xs border-b border-[var(--app-color-border-default)] py-1">
+    <div className="flex items-center justify-between text-xs border-b border-[var(--app-color-border-default)] py-1.5 last:border-b-0">
         <span className="text-[var(--app-color-text-tertiary)]">{label}</span>
         <span className="text-[var(--app-color-text-primary)] font-semibold">{value || "【无数据】"}</span>
     </div>
@@ -26,9 +27,9 @@ export const ProfileHeader = ({
 }: ProfileHeaderProps) => {
     const avatarSrc = resolvePersonnelAvatarUrl(user.head);
     return (
-    <div className="w-full bg-[var(--app-color-surface-container)]/60 backdrop-blur-sm border border-[var(--app-color-border-default)] p-5 rounded-[var(--app-radius-container)] shadow-[var(--app-elevation-card)]">
+    <div className={`w-full ${SCAN_PANEL_CARD} p-5 ring-1 ring-white/[0.03]`}>
         <div className="flex items-center gap-4 border-b border-[var(--app-color-border-default)] pb-4">
-            <div className="w-16 h-16 rounded-full overflow-hidden bg-[var(--app-color-surface-page)] border-2 border-[var(--app-color-accent)]/40">
+            <div className="w-16 h-16 rounded-full overflow-hidden bg-[var(--app-color-surface-page)] border-2 border-[var(--app-color-accent)]/60 ring-2 ring-[var(--app-color-accent)]/10 shadow-lg">
                 {avatarSrc && isAvatarLoaded ? (
                     <img src={avatarSrc} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt="avatar" onError={onAvatarError} />
                 ) : (

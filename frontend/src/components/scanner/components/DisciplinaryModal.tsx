@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Loader2, PowerOff, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { DisciplinaryRecord } from "@/api/types/scanner";
+import { SCAN_NESTED_BACKDROP } from "../scanPopupTheme";
 
 interface DisciplinaryModalProps {
     isOpen: boolean;
@@ -34,48 +35,72 @@ export const DisciplinaryModal = ({
         }
     };
     return createPortal(
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[1000000] flex items-center justify-center bg-black/70 backdrop-blur-md">
-            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} className="w-[500px] bg-gradient-to-br from-[#180a0a] to-[#0a0505] border border-red-900/50 rounded-2xl overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-red-900/30">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center ${SCAN_NESTED_BACKDROP}`}>
+            <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                className="w-[500px] overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)]"
+            >
+                <div className="flex items-center justify-between border-b border-[var(--app-color-border-default)] px-6 py-4">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20">
-                            {currentState === 3 ? <ShieldAlert className="w-5 h-5 text-red-500" /> : <ShieldCheck className="w-5 h-5 text-green-500" />}
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-color-feedback-danger)]/20 bg-[var(--app-color-feedback-danger-soft)]">
+                            {currentState === 3 ? (
+                                <ShieldAlert className="h-5 w-5 text-[var(--app-color-feedback-danger)]" />
+                            ) : (
+                                <ShieldCheck className="h-5 w-5 text-[var(--app-color-feedback-success)]" />
+                            )}
                         </div>
-                        <h2 className="text-lg font-black tracking-wider text-red-50">人员违规拦截触发</h2>
+                        <h2 className="text-lg font-black tracking-wider text-[var(--app-color-text-primary)]">人员违规拦截触发</h2>
                     </div>
-                    <button onClick={onClose} className="p-2 text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
+                    <button onClick={onClose} className="p-2 text-[var(--app-color-text-tertiary)] transition-colors hover:text-[var(--app-color-text-primary)]">
+                        <X className="h-5 w-5" />
+                    </button>
                 </div>
-                <div className="p-6 max-h-[260px] overflow-y-auto [&::-webkit-scrollbar]:hidden">
-                    {records.length === 0 ? <div className="text-center text-slate-500 text-sm py-4">无历史违规记录</div> : records.map((rec) => (
-                        <div key={rec.id} className="mb-3">
-                            <div className="text-xs font-bold text-red-300">{rec.createTime} · {rec.operateName}</div>
-                            <p className="text-sm text-slate-300 bg-red-500/5 p-2 rounded-md mt-1">{rec.record || "【无具体记录描述】"}</p>
-                        </div>
-                    ))}
+                <div className="max-h-[260px] overflow-y-auto p-6 [&::-webkit-scrollbar]:hidden">
+                    {records.length === 0 ? (
+                        <div className="py-4 text-center text-sm text-[var(--app-color-text-tertiary)]">无历史违规记录</div>
+                    ) : (
+                        records.map((rec) => (
+                            <div key={rec.id} className="mb-3">
+                                <div className="text-xs font-bold text-[var(--app-color-feedback-danger)]">
+                                    {rec.createTime} · {rec.operateName}
+                                </div>
+                                <p className="mt-1 rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-danger-soft)] p-2 text-sm text-[var(--app-color-text-primary)]">
+                                    {rec.record || "【无具体记录描述】"}
+                                </p>
+                            </div>
+                        ))
+                    )}
                 </div>
                 {showStateToggle ? (
-                    <div className="px-6 py-5 border-t border-red-900/30 flex items-center justify-between">
-                        <span className="text-sm font-bold text-white">
+                    <div className="flex items-center justify-between border-t border-[var(--app-color-border-default)] px-6 py-5">
+                        <span className="text-sm font-bold text-[var(--app-color-text-primary)]">
                             强制接管 ARO 底层状态
-                            <span className={`ml-2 text-xs ${isBlocked ? "text-red-300" : "text-emerald-300"}`}>
+                            <span className={`ml-2 text-xs ${isBlocked ? "text-[var(--app-color-feedback-danger)]" : "text-[var(--app-color-feedback-success)]"}`}>
                                 {isBlocked ? "当前：已封禁" : "当前：正常"}
                             </span>
                         </span>
                         <button
                             disabled={isToggling}
                             onClick={handleToggle}
-                            className={`relative flex items-center w-16 h-8 rounded-full border transition-colors ${
+                            className={`relative flex h-8 w-16 items-center rounded-full border transition-colors ${
                                 isBlocked
-                                    ? "bg-red-500/20 border-red-500/50"
-                                    : "bg-emerald-500/20 border-emerald-500/50"
+                                    ? "border-[var(--app-color-feedback-danger)]/50 bg-[var(--app-color-feedback-danger-soft)]"
+                                    : "border-[var(--app-color-feedback-success)]/50 bg-[var(--app-color-feedback-success-soft)]"
                             }`}
                         >
                             <div
-                                className={`absolute w-6 h-6 rounded-full flex items-center justify-center transition-transform ${
-                                    isBlocked ? "bg-red-500 translate-x-1" : "bg-emerald-500 translate-x-9"
+                                className={`absolute flex h-6 w-6 items-center justify-center rounded-full transition-transform ${
+                                    isBlocked
+                                        ? "translate-x-1 bg-[var(--app-color-feedback-danger)]"
+                                        : "translate-x-9 bg-[var(--app-color-feedback-success)]"
                                 }`}
                             >
-                                {isToggling ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" /> : <PowerOff className="w-3 h-3 text-white" />}
+                                {isToggling ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--app-color-text-inverse)]" />
+                                ) : (
+                                    <PowerOff className="h-3 w-3 text-[var(--app-color-text-inverse)]" />
+                                )}
                             </div>
                         </button>
                     </div>

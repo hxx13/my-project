@@ -1,5 +1,6 @@
 import React from 'react';
 import AutoGenerateBadge from './AutoGenerateBadge';
+import { resolveScanAccentCss, type ScanAccentVariant, SCAN_PANEL_CARD, SCAN_INNER_CARD } from './scanPopupTheme';
 // 💥 1. 扩展接口定义
 export interface RoomPrediction {
     roomId: string;
@@ -20,18 +21,19 @@ export interface RoomPrediction {
 interface AIPredictionCardProps {
     predictions?: RoomPrediction[];
     isLoading?: boolean;
-    themeColor?: string;
+    accentVariant?: ScanAccentVariant;
     onQuickActions?: () => void;
     onEnterStudentCenter?: () => void;
 }
 
 const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                                                                predictions = [],
-                                                               themeColor = "#2d5cf7",
+                                                               accentVariant = "cool",
                                                                onQuickActions,
                                                                onEnterStudentCenter,
                                                            }) => {
-    const isPink = themeColor === '#fbb9b6';
+    const accent = resolveScanAccentCss(accentVariant);
+    const isWarm = accent.isWarm;
 
     // 💥 视觉重构 3：升级翻译器，将名字和概率在数据结构上彻底分离，方便独立上色！
     const parseTrajectory = (trajectoryData?: any) => {
@@ -53,9 +55,8 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
         }
     };
 
-    const glowColor = isPink ? 'bg-rose-500/10 group-hover:bg-pink-500/20' : 'bg-blue-500/10 group-hover:bg-indigo-500/20';
-    const iconColor = isPink ? 'text-rose-400' : 'text-blue-400';
-    const iconBg = isPink ? 'bg-rose-500/10 border-rose-500/20' : 'bg-blue-500/10 border-blue-500/20';
+    const iconColor = 'text-[var(--app-color-accent)]';
+    const iconBg = 'border-[var(--app-color-accent)]/20 bg-[var(--app-color-accent-soft)]';
 // ==========================================
     // 💥 绝杀引擎：24H出入场概率双轨聚合计算 (真实数据驱动)
     // ==========================================
@@ -105,14 +106,16 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
     const trackData = generate24HTrackData();
     return (
         <div
-            className="group relative w-full overflow-hidden rounded-2xl bg-[#0a0f1d] p-5 font-sans shadow-2xl border border-white/5">
+            className={`group relative w-full overflow-hidden ${SCAN_PANEL_CARD} p-5 font-sans ring-1 ring-white/[0.03]`}>
             <AutoGenerateBadge />
             <div
-                className={`absolute -top-1/2 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full blur-3xl transition-all duration-700 ${glowColor}`}/>
+                className="absolute -top-1/2 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full blur-3xl transition-all duration-700"
+                style={{ backgroundColor: 'var(--app-glow-accent)' }}
+            />
 
             <div className="relative flex flex-col gap-3">
                 {/* 💥 1. 缩小后的 Header */}
-                <div className="flex items-start justify-between border-b border-white/5 pb-2">
+                <div className="flex items-start justify-between border-b border-[var(--app-color-border-default)] pb-2">
                     <div className="flex items-center gap-2.5">
                         <div className={`flex h-7 w-7 items-center justify-center rounded-lg border ${iconBg}`}>
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
@@ -124,10 +127,13 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                         </div>
                         <div>
                             {/* 💥 视觉重构 1：模块大标题采用主题渐变色，文字修改为 AI行为预测 */}
-                            <p className={`text-base font-black bg-gradient-to-r ${isPink ? 'from-rose-400 to-orange-300' : 'from-blue-400 to-cyan-300'} bg-clip-text text-transparent leading-none drop-shadow-sm tracking-widest`}>
+                            <p
+                                className="text-base font-black leading-none tracking-widest"
+                                style={{ color: accent.accent }}
+                            >
                                 AI行为预测
                             </p>
-                            <p className="text-[10px] text-slate-400 mt-1.5 leading-none font-medium">
+                            <p className="mt-1.5 text-[10px] font-medium leading-none text-[var(--app-color-text-tertiary)]">
                                 基于历史数据大模型测算
                             </p>
                         </div>
@@ -145,11 +151,11 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
 
                     return (
                         <div key={pred.roomId}
-                             className={`flex items-center justify-between rounded-xl bg-white/[0.03] py-1.5 px-2 border border-white/5 transition-opacity duration-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)] ${opacityClass}`}>
+                             className={`flex items-center justify-between ${SCAN_INNER_CARD} py-1.5 px-2 shadow-sm transition-opacity duration-300 ${opacityClass}`}>
 
                             {/* 💥 列 1: 东方明珠 & 双行房间名 (flex-[1.2]) */}
                             <div
-                                className="flex-[1.2] min-w-0 pr-2 border-r border-slate-700/50 flex items-center gap-1.5">
+                                className="flex min-w-0 flex-[1.2] items-center gap-1.5 border-r border-[var(--app-color-border-default)] pr-2">
                                 {/* 💥 手术刀：更换为最经典、最具辨识度的极简赛博老鼠图标 */}
                                 <div
                                     className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border ${iconBg} shadow-md`}>
@@ -201,58 +207,57 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                                 <div className="flex flex-col min-w-0 w-full pt-1 pb-0.5">
                                     {prefix && (
                                         <span
-                                            className="text-[9px] font-medium text-slate-400 truncate w-full leading-tight"
+                                            className="w-full truncate text-[9px] font-medium leading-tight text-[var(--app-color-text-tertiary)]"
                                             title={prefix}>
                                             {prefix}
                                         </span>
                                     )}
                                     <span
-                                        className="text-[12px] font-extrabold text-slate-100 truncate w-full tracking-wide mt-0.5 leading-tight"
+                                        className="mt-0.5 w-full truncate text-[12px] font-extrabold leading-tight tracking-wide text-[var(--app-color-text-primary)]"
                                         title={suffix}
-                                        style={{'filter': 'drop-shadow(0 0 1px rgba(255,255,255,0.4))'} as any}>
+                                    >
                                         {suffix}
                                     </span>
                                 </div>
                             </div>
 
                             {/* 💥 视觉重构 2：核心驻留时长，采用高饱和度琥珀色 + 强发光，瞬间抓住眼球 */}
-                            <div className="flex-[0.7] flex flex-col items-center justify-center px-1.5 border-r border-slate-700/50">
-                                <p className="text-[16px] font-black text-[#ffb86c] leading-none drop-shadow-[0_0_8px_rgba(255,184,108,0.5)] tracking-tight">
+                            <div className="flex flex-[0.7] flex-col items-center justify-center border-r border-[var(--app-color-border-default)] px-1.5">
+                                <p className="text-[16px] font-black leading-none tracking-tight text-[var(--app-color-feedback-warning)]">
                                     {pred.focusTime}
                                 </p>
-                                <p className="mt-1.5 text-[7px] font-medium text-slate-400 leading-none whitespace-nowrap">
-                                    入场 <span className={pred.isPlaceholder ? 'text-slate-500' : iconColor}>{pred.entryTime}</span>
+                                <p className="mt-1.5 whitespace-nowrap text-[7px] font-medium leading-none text-[var(--app-color-text-tertiary)]">
+                                    入场 <span className={pred.isPlaceholder ? 'text-[var(--app-color-text-tertiary)]' : iconColor}>{pred.entryTime}</span>
                                 </p>
                             </div>
 
                             {/* 💥 列 3: 离场预警 (flex-[0.7]) */}
                             <div
-                                className="flex-[0.7] flex flex-col items-center justify-center px-1.5 border-r border-slate-700/50">
-                                <p className="text-[14px] font-black text-slate-100 leading-none drop-shadow-lg tracking-tight">{pred.exitTime}</p>
+                                className="flex flex-[0.7] flex-col items-center justify-center border-r border-[var(--app-color-border-default)] px-1.5">
+                                <p className="text-[14px] font-black leading-none tracking-tight text-[var(--app-color-text-primary)]">{pred.exitTime}</p>
                                 {pred.isPlaceholder ? (
-                                    <p className="mt-1.5 text-[7px] font-medium text-slate-500 leading-none">积累中</p>
+                                    <p className="mt-1.5 text-[7px] font-medium leading-none text-[var(--app-color-text-tertiary)]">积累中</p>
                                 ) : pred.isHighRisk ? (
-                                    <p className="mt-1.5 text-[7px] font-bold text-red-400 flex items-center gap-1 leading-none">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> 预警
+                                    <p className="mt-1.5 flex items-center gap-1 text-[7px] font-bold leading-none text-[var(--app-color-feedback-danger)]">
+                                        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--app-color-feedback-danger)]"></span> 预警
                                     </p>
                                 ) : (
-                                    <p className="mt-1.5 text-[7px] font-bold text-emerald-400 leading-none">平稳</p>
+                                    <p className="mt-1.5 text-[7px] font-bold leading-none text-[var(--app-color-feedback-success)]">平稳</p>
                                 )}
                             </div>
 
                             {/* 💥 视觉重构 4：去向列表，分离房间名(弱色)和概率(强主题色) */}
-                            <div className="flex-[1.5] flex flex-col items-center justify-center px-2 border-l border-slate-700/50 min-w-0">
+                            <div className="flex min-w-0 flex-[1.5] flex-col items-center justify-center border-l border-[var(--app-color-border-default)] px-2">
                                 {pred.isPlaceholder ? (
-                                    <p className="text-[10px] font-bold text-slate-500 leading-tight text-center w-full">
+                                    <p className="w-full text-center text-[10px] font-bold leading-tight text-[var(--app-color-text-tertiary)]">
                                         等待推演...
                                     </p>
                                 ) : (
                                     <div className="flex flex-col gap-0.5 items-start justify-center w-fit max-w-full">
                                         {parseTrajectory(pred.nextTrajectory).map((item, i) => (
                                             <p key={i} className="text-[10px] font-bold leading-tight truncate max-w-full" title={`${item.name}(${item.prob})`}>
-                                                <span className="text-slate-400">➔ {item.name}</span>
-                                                {/* 排名第一的概率赋予高亮主题色，其他的置灰 */}
-                                                <span className={`ml-0.5 ${i === 0 ? iconColor : 'text-slate-500'} font-black drop-shadow-sm`}>
+                                                <span className="text-[var(--app-color-text-tertiary)]">➔ {item.name}</span>
+                                                <span className={`ml-0.5 ${i === 0 ? iconColor : 'text-[var(--app-color-text-tertiary)]'} font-black`}>
                                                     ({item.prob})
                                                 </span>
                                             </p>
@@ -265,14 +270,18 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                 })}
 
                 {/* 💥 底部图表重构：基于真实大数据的 24H 聚合双轨概率图 */}
-                <div className="relative h-[75px] w-full mt-2 border-t border-white/5 pt-2 shrink-0 flex flex-col">
+                <div className="relative mt-2 flex h-[75px] w-full shrink-0 flex-col border-t border-[var(--app-color-border-default)] pt-2">
 
                     {/* 图例区：明确告知使用者两条线的含义 */}
                     <div className="flex justify-between items-end px-1 mb-1.5 z-10">
-                        <span className="text-[9px] font-bold text-slate-400 tracking-wider">07:00–22:00 出入条件分布（多房间均值）</span>
+                        <span className="text-[9px] font-bold tracking-wider text-[var(--app-color-text-tertiary)]">07:00–22:00 出入条件分布（多房间均值）</span>
                         <div className="flex gap-2">
-                            <span className="text-[8px] flex items-center gap-1 text-slate-400"><span className={`w-1.5 h-1.5 rounded-full ${isPink ? 'bg-rose-400' : 'bg-blue-400'}`}></span> 入场</span>
-                            <span className="text-[8px] flex items-center gap-1 text-slate-500"><span className={`w-1.5 h-1.5 rounded-full border border-dashed ${isPink ? 'border-rose-400' : 'border-blue-400'}`}></span> 离场</span>
+                            <span className="flex items-center gap-1 text-[8px] text-[var(--app-color-text-tertiary)]">
+                                <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: accent.strokeEntry }}></span> 入场
+                            </span>
+                            <span className="flex items-center gap-1 text-[8px] text-[var(--app-color-text-tertiary)]">
+                                <span className="h-1.5 w-1.5 rounded-full border border-dashed" style={{ borderColor: accent.strokeExit }}></span> 离场
+                            </span>
                         </div>
                     </div>
 
@@ -280,48 +289,46 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                     <div className="relative flex-1 w-full">
                         <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 300 45" preserveAspectRatio="none">
                             <defs>
-                                <linearGradient id={isPink ? "area-pink" : "area-blue"} x1={0} y1={0} x2={0} y2={1}>
-                                    <stop offset="0%" stopColor={isPink ? "#f43f5e" : "#3b82f6"} stopOpacity="0.25" />
-                                    <stop offset="100%" stopColor={isPink ? "#e11d48" : "#8b5cf6"} stopOpacity="0.02" />
+                                <linearGradient id={isWarm ? "area-warm" : "area-cool"} x1={0} y1={0} x2={0} y2={1}>
+                                    <stop offset="0%" stopColor={accent.strokeEntry} stopOpacity="0.25" />
+                                    <stop offset="100%" stopColor={accent.strokeExit} stopOpacity="0.02" />
                                 </linearGradient>
                             </defs>
 
                             {/* 纵向对齐虚线网格 (0点, 6点, 12点, 18点, 24点) */}
                             {[0, 75, 150, 225, 300].map((x) => (
-                                <line key={x} x1={x} y1="0" x2={x} y2="45" stroke="rgba(255,255,255,0.05)" strokeDasharray="2" />
+                                <line key={x} x1={x} y1="0" x2={x} y2="45" stroke={accent.gridStroke} strokeDasharray="2" />
                             ))}
 
                             {/* 💥 精准修复：用两座触底的山峰面积叠加，替代原本悬浮的飘带 */}
-                            <polygon points={trackData.entryAreaPoints} fill={`url(#${isPink ? 'area-pink' : 'area-blue'})`} opacity="0.8" />
-                            <polygon points={trackData.exitAreaPoints} fill={`url(#${isPink ? 'area-pink' : 'area-blue'})`} opacity="0.4" />
+                            <polygon points={trackData.entryAreaPoints} fill={`url(#${isWarm ? 'area-warm' : 'area-cool'})`} opacity="0.8" />
+                            <polygon points={trackData.exitAreaPoints} fill={`url(#${isWarm ? 'area-warm' : 'area-cool'})`} opacity="0.4" />
 
-                            {/* 入场概率实线 */}
-                            <polyline points={trackData.entryPoints} fill="none" stroke={isPink ? '#fb7185' : '#60a5fa'} strokeWidth="1.5" style={{ filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.5))' } as any} />
-                            {/* 离场概率虚线 */}
-                            <polyline points={trackData.exitPoints} fill="none" stroke={isPink ? '#fb7185' : '#60a5fa'} strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+                            <polyline points={trackData.entryPoints} fill="none" stroke={accent.strokeEntry} strokeWidth="1.5" />
+                            <polyline points={trackData.exitPoints} fill="none" stroke={accent.strokeExit} strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
                         </svg>
                     </div>
 
                     {/* 底部时间刻度标尺 (使用绝对原生的 HTML，绝对不会被拉伸) */}
                     <div className="flex justify-between w-full mt-1 px-1">
-                        <span className="text-[8px] font-bold text-slate-600">07:00</span>
-                        <span className="text-[8px] font-bold text-slate-600">11:00</span>
-                        <span className="text-[8px] font-bold text-slate-600">15:00</span>
-                        <span className="text-[8px] font-bold text-slate-600">19:00</span>
-                        <span className="text-[8px] font-bold text-slate-600">22:00</span>
+                        <span className="text-[8px] font-bold text-[var(--app-color-text-tertiary)]">07:00</span>
+                        <span className="text-[8px] font-bold text-[var(--app-color-text-tertiary)]">11:00</span>
+                        <span className="text-[8px] font-bold text-[var(--app-color-text-tertiary)]">15:00</span>
+                        <span className="text-[8px] font-bold text-[var(--app-color-text-tertiary)]">19:00</span>
+                        <span className="text-[8px] font-bold text-[var(--app-color-text-tertiary)]">22:00</span>
                     </div>
                 </div>
 
-                <div className="border-t border-white/5 pt-3 flex gap-3">
+                <div className="flex gap-3 border-t border-[var(--app-color-border-default)] pt-3">
                     <button
                         onClick={onQuickActions}
-                        className="flex-1 rounded-lg border border-emerald-500/30 bg-emerald-500/8 px-2.5 py-2 text-xs font-semibold text-emerald-300/90 transition-all duration-300 hover:border-emerald-400/60 hover:bg-emerald-500/16 hover:text-emerald-200"
+                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-success)]/30 bg-[var(--app-color-feedback-success-soft)] px-2.5 py-2 text-xs font-semibold text-[var(--app-color-feedback-success)] transition-all duration-300 hover:border-[var(--app-color-feedback-success)]/60 hover:bg-[var(--app-color-feedback-success-soft)]"
                     >
                         <span className="mr-1.5 text-sm">📋</span>快捷业务
                     </button>
                     <button
                         onClick={onEnterStudentCenter}
-                        className={`flex-1 rounded-lg border px-2.5 py-2 text-xs font-semibold transition-all duration-300 ${isPink ? 'border-rose-500/30 bg-rose-500/8 text-rose-300/90 hover:border-rose-400/60 hover:bg-rose-500/16 hover:text-rose-200' : 'border-blue-500/30 bg-blue-500/8 text-blue-300/90 hover:border-blue-400/60 hover:bg-blue-500/16 hover:text-blue-200'}`}
+                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-accent)]/30 bg-[var(--app-color-accent-soft)] px-2.5 py-2 text-xs font-semibold text-[var(--app-color-accent)] transition-all duration-300 hover:border-[var(--app-color-accent)]/60 hover:bg-[var(--app-color-accent-soft)]"
                     >
                         <span className="mr-1.5 text-sm">🎓</span>个人中心
                     </button>

@@ -1,4 +1,5 @@
 import React from "react";
+import { SCAN_POPUP_BACKDROP } from "./scanPopupTheme";
 
 type PopupErrorBoundaryProps = {
     onClose: () => void;
@@ -24,14 +25,14 @@ export class PopupErrorBoundary extends React.Component<PopupErrorBoundaryProps,
         if (!this.state.hasError) return this.props.children;
 
         return (
-            <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-[#050A15]/85 backdrop-blur-sm">
-                <div className="w-[520px] max-w-[90vw] rounded-xl border border-red-500/40 bg-[#0B1020] p-6 text-slate-200">
-                    <h3 className="text-lg font-bold mb-2">弹窗渲染异常</h3>
-                    <p className="text-sm text-slate-300 mb-4">
+            <div className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center ${SCAN_POPUP_BACKDROP}`}>
+                <div className="w-[520px] max-w-[90vw] rounded-[var(--app-radius-container)] border border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-surface-container)] p-6 text-[var(--app-color-text-primary)] shadow-[var(--app-elevation-modal)]">
+                    <h3 className="mb-2 text-lg font-bold">弹窗渲染异常</h3>
+                    <p className="mb-4 text-sm text-[var(--app-color-text-secondary)]">
                         已拦截本次异常，页面不会崩溃。请关闭弹窗后重试扫码。
                     </p>
                     <button
-                        className="px-4 py-2 rounded bg-red-600 hover:bg-red-500 text-white text-sm font-semibold"
+                        className="rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-danger)] px-4 py-2 text-sm font-semibold text-[var(--app-color-text-inverse)] hover:opacity-90"
                         onClick={this.props.onClose}
                     >
                         关闭弹窗

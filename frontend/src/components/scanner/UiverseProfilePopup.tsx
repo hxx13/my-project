@@ -19,11 +19,12 @@ import { Z_INDEX } from "@/constants/zIndex";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { BizOverlayShell } from "./BizOverlayShell";
 import { checkPinStatus } from "./specialChannel.api";
+import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP } from "./scanPopupTheme";
 
-const WeeklyRoutineMatrixChart = ({ predictions, themeColor }: { predictions: any[]; themeColor: string }) => {
-    const isPink = themeColor === "#fbb9b6";
-    const strokeEntry = isPink ? "#fb7185" : "#60a5fa";
-    const strokeExit = isPink ? "#f87171" : "#a78bfa";
+const WeeklyRoutineMatrixChart = ({ predictions, gender }: { predictions: any[]; gender?: string | number | null }) => {
+    const accent = resolveScanAccentCss(resolveScanAccentVariant(gender));
+    const strokeEntry = accent.strokeEntry;
+    const strokeExit = accent.strokeExit;
     const days = 7;
     const width = 300;
     const height = 60;
@@ -62,19 +63,28 @@ const WeeklyRoutineMatrixChart = ({ predictions, themeColor }: { predictions: an
     const entryPath = entryCurve.map((v, i) => `${getX(i)},${mapY(v)}`).join(" L ");
     const exitPath = exitCurve.map((v, i) => `${getX(i)},${mapY(v)}`).join(" L ");
     return (
-        <div className="w-full p-4 rounded-2xl shadow-2xl border backdrop-blur-md bg-[var(--app-color-surface-container)] border-[var(--app-color-border-default)]">
+        <div className="w-full rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] p-4 shadow-[var(--app-elevation-modal)]">
             <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-[var(--app-color-text-primary)] tracking-wider">预期核心在馆时间带</span>
-                <span className="text-[9px] text-[var(--app-color-accent)] bg-[var(--app-color-accent)]/10 px-2 py-0.5 rounded-full border border-[var(--app-color-accent)]/20">Time Band</span>
+                <span
+                    className="rounded-full border px-2 py-0.5 text-[9px]"
+                    style={{
+                        color: accent.accent,
+                        backgroundColor: `color-mix(in srgb, ${accent.accent} 10%, transparent)`,
+                        borderColor: `color-mix(in srgb, ${accent.accent} 20%, transparent)`,
+                    }}
+                >
+                    Time Band
+                </span>
             </div>
-            <div className="relative border-l border-b border-white/10 pb-1 pl-8 pr-1 w-full">
-                <div className="absolute left-1 top-0 text-[8px] text-white/40">{maxVal.toFixed(2)}</div>
-                <div className="absolute left-1 bottom-1 text-[8px] text-white/30">0</div>
+            <div className="relative w-full border-b border-l border-[var(--app-color-border-default)] pb-1 pl-8 pr-1">
+                <div className="absolute left-1 top-0 text-[8px] text-[var(--app-color-text-tertiary)]">{maxVal.toFixed(2)}</div>
+                <div className="absolute left-1 bottom-1 text-[8px] text-[var(--app-color-text-tertiary)]">0</div>
                 <svg className="w-full h-[60px]" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
                     {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-                        <line key={i} x1={getX(i)} y1={0} x2={getX(i)} y2={height} stroke="rgba(255,255,255,0.05)" strokeDasharray="2" />
+                        <line key={i} x1={getX(i)} y1={0} x2={getX(i)} y2={height} stroke={accent.gridStroke} strokeDasharray="2" />
                     ))}
-                    <path d={`M ${entryPath} L ${exitPath.split(" L ").reverse().join(" L ")} Z`} fill="rgba(96,165,250,0.16)" stroke="none" />
+                    <path d={`M ${entryPath} L ${exitPath.split(" L ").reverse().join(" L ")} Z`} fill={accent.fillArea} stroke="none" />
                     <path d={`M ${exitPath}`} fill="none" stroke={strokeExit} strokeWidth="1.5" strokeDasharray="3 3" />
                     <path d={`M ${entryPath}`} fill="none" stroke={strokeEntry} strokeWidth="1.5" />
                 </svg>
@@ -92,7 +102,7 @@ export function UiverseProfilePopup(props: PopupProps) {
     const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind, onViolationInteractiveVerified } = props;
     const { state, actions } = useProfilePopup(props);
     const canOperateRiskState = hasMinRole(authStorage.getRole(), "STAFF");
-    const themeColor = String(state.user?.gender) === "2" ? "#fbb9b6" : "#2d5cf7";
+    const accentVariant = resolveScanAccentVariant(state.user?.gender);
     const popupMessage = (state.inlineMessage || executeErrorMessage || "").trim();
 
     // ============================================================
@@ -158,7 +168,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                 open={Boolean(state.accessNotice?.message)}
                 message={state.accessNotice?.message ?? ""}
                 durationMs={state.accessNoticeDurationMs}
-                themeColor={themeColor}
+                accentVariant={accentVariant}
                 onDismiss={actions.dismissAccessNotice}
             />
             <AnimatePresence>
@@ -174,10 +184,10 @@ export function UiverseProfilePopup(props: PopupProps) {
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="fixed inset-0 flex flex-col bg-[var(--app-color-surface-page)]/90 backdrop-blur-sm"
+                className={`fixed inset-0 flex flex-col ${SCAN_POPUP_BACKDROP}`}
                 style={{ zIndex: Z_INDEX.scannerPopup }}
             >
-                <button className="absolute top-6 right-6 z-[10000] flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 text-[var(--app-color-text-primary)] hover:border-[var(--app-color-feedback-danger)] hover:bg-[var(--app-color-feedback-danger)]/50" onClick={onClose} title="关闭 Esc">
+                <button className="absolute top-6 right-6 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-[var(--app-elevation-card)] transition-colors hover:border-[var(--app-color-feedback-danger)] hover:bg-[var(--app-color-feedback-danger-soft)] hover:text-[var(--app-color-feedback-danger)]" onClick={onClose} title="关闭 Esc">
                     <X className="w-5 h-5" />
                 </button>
                 {showUnboundBindHint ? (
@@ -210,12 +220,12 @@ export function UiverseProfilePopup(props: PopupProps) {
                                     <div className="pl-5 z-30 flex items-center">
                                         <span className="font-bold text-[var(--app-color-text-primary)] text-[12px] truncate">{state.user?.name || "未知人员"}</span>
                                     </div>
-                                    <div className="relative h-[20px] bg-[var(--app-color-surface-page)]/90 rounded-r-full border border-[var(--app-color-border-default)] overflow-hidden pl-5 pr-2 flex items-center">
+                                    <div className="relative flex h-[20px] items-center overflow-hidden rounded-r-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] pl-5 pr-2">
                                         <div
                                             className="absolute left-0 top-0 bottom-0 transition-all duration-500 z-0 opacity-40 bg-gradient-to-r from-[var(--app-color-accent)]/10 to-[var(--app-color-accent)]/30"
                                             style={{ width: `${Math.max(0, Math.min(100, (((state.user?.rpg?.exp ?? 0) / Math.max(1, state.user?.rpg?.nextLevelExp ?? 100)) * 100)))}%` }}
                                         />
-                                        <div className="relative z-20 w-full flex justify-between items-center text-white">
+                                        <div className="relative z-20 flex w-full items-center justify-between">
                                             <span className="text-[8px] font-black text-[var(--app-color-text-tertiary)] tracking-widest">EXP</span>
                                             <span className="text-[9px] font-black font-mono text-[var(--app-color-text-primary)]">{state.user?.rpg?.exp ?? 0} <span className="text-[var(--app-color-text-tertiary)]">/ {state.user?.rpg?.nextLevelExp ?? 100}</span></span>
                                         </div>
@@ -241,10 +251,10 @@ export function UiverseProfilePopup(props: PopupProps) {
                     </div>
                     <div className="flex flex-col items-center justify-center gap-14">
                         <div style={{ transform: "scale(1.1)", transformOrigin: "center center" }} className="w-[500px] mb-6">
-                            <WeeklyRoutineMatrixChart predictions={state.predictionList} themeColor={themeColor} />
+                            <WeeklyRoutineMatrixChart predictions={state.predictionList} gender={state.user?.gender} />
                         </div>
                         <div style={{ transform: "scale(1.1)", transformOrigin: "center center" }} className="w-[500px]">
-                            <AIPredictionCard predictions={state.predictionList} isLoading={state.isPredLoading} themeColor={themeColor} onQuickActions={() => setShowQuickActions(true)} onEnterStudentCenter={handleEnterStudentCenter} />
+                            <AIPredictionCard predictions={state.predictionList} isLoading={state.isPredLoading} accentVariant={accentVariant} onQuickActions={() => setShowQuickActions(true)} onEnterStudentCenter={handleEnterStudentCenter} />
                         </div>
                     </div>
                     <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
@@ -263,14 +273,14 @@ export function UiverseProfilePopup(props: PopupProps) {
                             </div>
                         )}
                         {/* 上 2/5：面包机区缩小并贴底；下 3/5 较原 50% 多约 20% 给操作按钮 */}
-                        <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] pb-0.5">
+                        <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 pb-0.5">
                             <div className="pointer-events-none flex h-[200px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">
                                 <ExpToaster key={state.toastData.nonce} expAdded={state.toastData.exp} play={state.toastData.play} />
                             </div>
                         </div>
                         <div className="flex min-h-0 flex-[3] flex-col overflow-hidden">
                             <div className="w-full max-w-[340px] mx-auto mb-2 space-y-1 shrink-0">
-                                <div className="bg-[var(--app-color-surface-container)]/40 p-1.5 rounded-xl border border-[var(--app-color-border-default)] flex gap-1" title="由 twin_card_mapping 自动判定，打卡将写入流水">
+                                <div className="flex gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1.5" title="由 twin_card_mapping 自动判定，打卡将写入流水">
                                     <div
                                         className={`flex-1 py-2 text-[11px] font-black rounded-lg text-center pointer-events-none select-none ${
                                             state.entryMode === "OWN" ? "bg-[var(--app-color-accent)] text-[var(--app-color-text-inverse)]" : "text-[var(--app-color-text-tertiary)]"
@@ -280,7 +290,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                                     </div>
                                     <div
                                         className={`flex-1 py-2 text-[11px] font-black rounded-lg text-center pointer-events-none select-none ${
-                                            state.entryMode === "BORROWED" ? "bg-[var(--app-color-feedback-danger)] text-white" : "text-[var(--app-color-text-tertiary)]"
+                                            state.entryMode === "BORROWED" ? "bg-[var(--app-color-feedback-danger)] text-[var(--app-color-text-inverse)]" : "text-[var(--app-color-text-tertiary)]"
                                         }`}
                                     >
                                         💳 领用公卡

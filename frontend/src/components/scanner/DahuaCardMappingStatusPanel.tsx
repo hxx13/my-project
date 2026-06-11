@@ -17,7 +17,7 @@ export function DahuaCardMappingStatusPanel({
 }) {
   if (loading) {
     return (
-      <div className={`rounded-xl border border-white/10 bg-black/30 ${compact ? "p-2" : "p-3"} text-[10px] text-slate-400`}>
+      <div className={`rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] ${compact ? "p-2" : "p-3"} text-[10px] text-[var(--app-color-text-tertiary)]`}>
         正在查询发卡状态…
       </div>
     );
@@ -25,9 +25,9 @@ export function DahuaCardMappingStatusPanel({
 
   if (!mapping?.bound) {
     return (
-      <div className={`rounded-xl border border-amber-500/30 bg-amber-500/10 ${compact ? "p-2" : "p-3"}`}>
-        <p className="text-[11px] font-bold text-amber-200">当前未绑卡</p>
-        <p className="text-[10px] text-amber-200/80 mt-0.5">绑卡后可使用自带校园卡进入门禁。</p>
+      <div className={`rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] ${compact ? "p-2" : "p-3"}`}>
+        <p className="text-[11px] font-bold text-[var(--app-color-feedback-warning)]">当前未绑卡</p>
+        <p className="mt-0.5 text-[10px] text-[var(--app-color-text-secondary)]">绑卡后可使用自带校园卡进入门禁。</p>
       </div>
     );
   }
@@ -40,30 +40,30 @@ export function DahuaCardMappingStatusPanel({
   const exemptRemain = exempt ? formatExemptRemaining(mapping.freezeExemptExpireAt) : "";
 
   return (
-    <div className={`rounded-xl border border-white/10 bg-black/40 ${compact ? "p-2 space-y-1" : "p-3 space-y-2"}`}>
-      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">发卡当前状态</p>
+    <div className={`rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] ${compact ? "space-y-1 p-2" : "space-y-2 p-3"}`}>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--app-color-text-tertiary)]">发卡当前状态</p>
       <div className="flex flex-wrap gap-1.5">
         <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+          className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${
             cardStatus === "FROZEN"
-              ? "bg-red-500/20 text-red-200 border border-red-500/40"
-              : "bg-emerald-500/20 text-emerald-200 border border-emerald-500/40"
+              ? "border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-feedback-danger-soft)] text-[var(--app-color-feedback-danger)]"
+              : "border-[var(--app-color-feedback-success)]/40 bg-[var(--app-color-feedback-success-soft)] text-[var(--app-color-feedback-success)]"
           }`}
         >
           卡片：{cardStatus === "FROZEN" ? "冻结" : "正常"}
         </span>
         <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
+          className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${
             exempt
-              ? "bg-amber-500/20 text-amber-200 border border-amber-500/40"
-              : "bg-slate-500/20 text-slate-300 border border-slate-500/40"
+              ? "border-[var(--app-color-feedback-warning)]/40 bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)]"
+              : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)]"
           }`}
         >
           风控：{exempt ? "豁免" : "受控"}
           {exemptRemain ? ` · ${exemptRemain}` : ""}
         </span>
       </div>
-      <p className="font-mono text-[10px] text-slate-400 break-all">
+      <p className="break-all font-mono text-[10px] text-[var(--app-color-text-tertiary)]">
         物理卡号：{mapping.cardNo || "—"}
         {mapping.dahuaSeq ? ` · 序号 ${mapping.dahuaSeq}` : ""}
       </p>

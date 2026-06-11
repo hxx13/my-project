@@ -7,6 +7,7 @@ import { useBizOverlayShell } from "./useBizOverlayShell";
 import { useBizRegistry } from "./useBizRegistry";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import type { BizOverlayShellProps } from "./BizOverlayShell.types";
+import { SCAN_NESTED_BACKDROP } from "./scanPopupTheme";
 
 /** Per-item error boundary — one biz item crash doesn't take down the overlay */
 class BizItemErrorBoundary extends Component<
@@ -20,7 +21,7 @@ class BizItemErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-xs">
+        <div className="rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-feedback-danger-soft)] p-3 text-xs text-[var(--app-color-feedback-danger)]">
           ⚠️「{this.props.label}」加载失败
         </div>
       );
@@ -53,27 +54,25 @@ export function BizOverlayShell({ userId, title, onCancel, className = "" }: Biz
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            className={`fixed inset-0 flex items-center justify-center p-4 ${SCAN_NESTED_BACKDROP}`}
             style={{ zIndex: Z_INDEX.bizOverlay }}
           >
             <motion.div
               initial={{ scale: 0.95, y: 24, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.95, y: 24, opacity: 0 }}
-              className={`w-full max-w-lg max-h-[80vh] rounded-2xl bg-[#0f172a] border border-white/10 shadow-2xl flex flex-col ${className}`}
+              className={`flex max-h-[80vh] w-full max-w-lg flex-col rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] ${className}`}
             >
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-white/5 shrink-0">
-                <h2 className="text-white text-lg font-bold">{title}</h2>
-                <button onClick={close} className="text-white/60 hover:text-white transition-colors">
-                  <X className="w-5 h-5" />
+              <div className="flex shrink-0 items-center justify-between border-b border-[var(--app-color-border-default)] p-4">
+                <h2 className="text-lg font-bold text-[var(--app-color-text-primary)]">{title}</h2>
+                <button onClick={close} className="text-[var(--app-color-text-tertiary)] transition-colors hover:text-[var(--app-color-text-primary)]">
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
-              {/* Body */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex-1 space-y-3 overflow-y-auto p-4">
                 {items.length === 0 ? (
-                  <p className="text-slate-500 text-sm text-center py-8">
+                  <p className="py-8 text-center text-sm text-[var(--app-color-text-tertiary)]">
                     暂无可用的快捷业务
                   </p>
                 ) : (
@@ -90,13 +89,11 @@ export function BizOverlayShell({ userId, title, onCancel, className = "" }: Biz
                 )}
               </div>
 
-              {/* Footer */}
-              <div className="p-4 border-t border-white/5 shrink-0">
+              <div className="shrink-0 border-t border-[var(--app-color-border-default)] p-4">
                 <button
                   onClick={confirm}
                   disabled={items.length === 0}
-                  className="w-full h-11 rounded-xl bg-cyan-500 text-white font-bold
-                             hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="h-11 w-full rounded-[var(--app-radius-element)] bg-[var(--app-color-accent)] font-bold text-[var(--app-color-text-inverse)] transition-colors hover:bg-[var(--app-color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   提交
                 </button>

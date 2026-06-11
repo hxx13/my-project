@@ -5,6 +5,7 @@ import { ChevronRight, Megaphone, X } from "lucide-react";
 import type { StudentViolationNotice } from "@/api/types/scanner";
 import { InteractiveChallenge } from "./InteractiveChallenge";
 import { ackViolationInteractivePermanent } from "./twinViolationInteractive";
+import { SCAN_NESTED_BACKDROP } from "./scanPopupTheme";
 
 export type ViolationNoticeKind = "violation" | "unbound";
 
@@ -30,18 +31,19 @@ type Props = {
 };
 
 function resolveTheme(kind: ViolationNoticeKind, locked: boolean) {
-  const accentVar = kind === "violation"
-    ? "var(--app-color-feedback-warning)"
-    : "var(--app-color-feedback-info)";
-  const panelAccent = kind === "violation"
-    ? "var(--app-color-feedback-warning)"
-    : "var(--app-color-feedback-info)";
+  const isViolation = kind === "violation";
   return {
     islandBorder: locked
-      ? "border-[var(--app-color-feedback-danger)]/50 bg-[var(--app-color-feedback-danger)]/5"
-      : `border-[${panelAccent}]/30 bg-[var(--app-color-surface-container)]/90`,
-    iconRing: `bg-[${accentVar}]/10 ring-1 ring-[${accentVar}]/20`,
-    icon: `text-[${accentVar}]`,
+      ? "border-[var(--app-color-feedback-danger)]/50 bg-[var(--app-color-feedback-danger-soft)]"
+      : isViolation
+        ? "border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-surface-elevated)]/95"
+        : "border-[var(--app-color-feedback-info)]/30 bg-[var(--app-color-surface-elevated)]/95",
+    iconRing: isViolation
+      ? "bg-[var(--app-color-feedback-warning)]/10 ring-1 ring-[var(--app-color-feedback-warning)]/20"
+      : "bg-[var(--app-color-feedback-info)]/10 ring-1 ring-[var(--app-color-feedback-info)]/20",
+    icon: isViolation
+      ? "text-[var(--app-color-feedback-warning)]"
+      : "text-[var(--app-color-feedback-info)]",
     chevron: "text-[var(--app-color-text-tertiary)]",
     badge: "text-[var(--app-color-text-primary)]",
     tag: "text-[var(--app-color-text-tertiary)]",
@@ -56,10 +58,10 @@ function resolveTheme(kind: ViolationNoticeKind, locked: boolean) {
     textBorder: "border-[var(--app-color-border-default)]",
     textBody: "text-[var(--app-color-text-primary)]",
     emptyHint: "text-[var(--app-color-text-tertiary)]",
-    dialogTitle: kind === "violation" ? "违规通告" : "未绑卡提示",
-    alertTag: kind === "violation" ? "Alert" : "Unbound",
-    imgAlt: kind === "violation" ? "违规附图" : "未绑卡提示附图",
-    lockedDot: "bg-[var(--app-color-feedback-danger)] ring-2 ring-black/80",
+    dialogTitle: isViolation ? "违规通告" : "未绑卡提示",
+    alertTag: isViolation ? "Alert" : "Unbound",
+    imgAlt: isViolation ? "违规附图" : "未绑卡提示附图",
+    lockedDot: "bg-[var(--app-color-feedback-danger)] ring-2 ring-[var(--app-color-surface-page)]",
   };
 }
 
@@ -190,7 +192,7 @@ export function ViolationNoticeBanner({
         <button
           type="button"
           onClick={() => (panelOpen ? closePanel() : openPanel())}
-          className={`group flex w-full min-w-0 items-center gap-2 rounded-[999px] border px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-transform active:scale-[0.98] sm:gap-2.5 sm:px-4 sm:py-2.5 ${t.islandBorder}`}
+          className={`group flex w-full min-w-0 items-center gap-2 rounded-[999px] border px-3 py-2 shadow-lg ring-1 ring-white/[0.04] backdrop-blur-md transition-all active:scale-[0.98] hover:shadow-xl sm:gap-2.5 sm:px-4 sm:py-2.5 ${t.islandBorder}`}
         >
           <span className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${t.iconRing}`}>
             <Megaphone className={`h-4 w-4 ${t.icon}`} />
@@ -223,7 +225,7 @@ export function ViolationNoticeBanner({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-[100130] flex items-center justify-center bg-black/40 p-4 backdrop-blur-md"
+              className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4 ${SCAN_NESTED_BACKDROP}`}
               onClick={closePanel}
             >
               <motion.div
@@ -260,7 +262,7 @@ export function ViolationNoticeBanner({
                         onClick={acknowledge}
                         className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-opacity ${
                           interactivePhrase && !interactiveDone
-                            ? "border-[var(--app-color-border-default)] text-amber-200/30 cursor-not-allowed"
+                            ? "cursor-not-allowed border-[var(--app-color-border-default)] text-[var(--app-color-text-tertiary)]"
                             : `hover:bg-[var(--app-color-surface-hover)] ${t.btnBorder} ${t.btnText}`
                         }`}
                       >
@@ -285,7 +287,7 @@ export function ViolationNoticeBanner({
                         {images.map((src) => (
                           <div
                             key={src}
-                            className="flex max-h-[min(38vh,320px)] items-center justify-center overflow-hidden rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)]/50 p-1"
+                            className="flex max-h-[min(38vh,320px)] items-center justify-center overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-1"
                           >
                             <img
                               src={src}

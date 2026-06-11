@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut } from "lucide-react";
 import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
+import { SCAN_NESTED_BACKDROP } from "./scanPopupTheme";
 
 interface SwipeExitConfirmDialogProps {
     open: boolean;
@@ -84,7 +85,7 @@ export function SwipeExitConfirmDialog({
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="fixed inset-0 z-[100000] flex items-center justify-center bg-[#020617]/90 backdrop-blur-md"
+                    className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center ${SCAN_NESTED_BACKDROP}`}
                     onKeyDown={(e) => {
                         if (e.key === "Escape") onCancel();
                     }}
@@ -98,12 +99,12 @@ export function SwipeExitConfirmDialog({
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.92, y: 20 }}
                         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                        className="relative z-10 w-full max-w-[400px] mx-4 rounded-2xl border border-white/15 bg-[#0f172a]/95 backdrop-blur-xl shadow-2xl shadow-black/60 overflow-hidden"
+                        className="relative z-10 mx-4 w-full max-w-[400px] overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)]"
                     >
                         {/* Close button */}
                         <button
                             onClick={onCancel}
-                            className="absolute top-4 right-4 flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] transition-colors hover:bg-[var(--app-color-surface-active)] hover:text-[var(--app-color-text-primary)]"
                             title="取消 Esc"
                         >
                             <X className="w-4 h-4" />
@@ -112,28 +113,28 @@ export function SwipeExitConfirmDialog({
                         <div className="p-8 pt-10">
                             {/* Icon */}
                             <div className="flex justify-center mb-5">
-                                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500/15 border border-red-400/30">
-                                    <LogOut className="w-6 h-6 text-red-400" />
+                                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-feedback-danger-soft)]">
+                                    <LogOut className="h-6 w-6 text-[var(--app-color-feedback-danger)]" />
                                 </div>
                             </div>
 
                             {/* Title */}
-                            <h2 className="text-center text-lg font-bold text-white mb-2">
+                            <h2 className="mb-2 text-center text-lg font-bold text-[var(--app-color-text-primary)]">
                                 确认离开
                             </h2>
 
                             {/* Auto-Signout Countdown Section */}
                             {showCountdown && (
-                                <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                                    <div className="flex items-center justify-center gap-2 mb-1.5">
-                                        <span className="text-[11px] font-bold text-amber-300/90 uppercase tracking-wide">
+                                <div className="mb-4 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/25 bg-[var(--app-color-feedback-warning-soft)] p-3">
+                                    <div className="mb-1.5 flex items-center justify-center gap-2">
+                                        <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--app-color-feedback-warning)]">
                                             {countdownCopy.badge}
                                         </span>
-                                        <span className="text-2xl font-mono font-bold text-amber-400 tracking-wider">
+                                        <span className="font-mono text-2xl font-bold tracking-wider text-[var(--app-color-feedback-warning)]">
                                             {formatCountdown(countdown!)}
                                         </span>
                                     </div>
-                                    <p className="text-[11px] text-amber-300/80 text-center leading-snug">
+                                    <p className="text-center text-[11px] leading-snug text-[var(--app-color-text-secondary)]">
                                         {countdownCopy.hint}
                                     </p>
                                 </div>
@@ -141,20 +142,20 @@ export function SwipeExitConfirmDialog({
 
                             {/* User & Room Info */}
                             <div className="text-center mb-5 space-y-1">
-                                <p className="text-sm text-white/80">
-                                    <span className="font-semibold text-white">{userName || "未知人员"}</span>
+                                <p className="text-sm text-[var(--app-color-text-secondary)]">
+                                    <span className="font-semibold text-[var(--app-color-text-primary)]">{userName || "未知人员"}</span>
                                 </p>
-                                <p className="text-[13px] text-slate-400">
-                                    当前处于<span className="text-amber-400 font-semibold">进入</span>状态，将离开{" "}
-                                    <span className="text-white font-semibold">{roomName || "当前房间"}</span>
+                                <p className="text-[13px] text-[var(--app-color-text-tertiary)]">
+                                    当前处于<span className="font-semibold text-[var(--app-color-feedback-warning)]">进入</span>状态，将离开{" "}
+                                    <span className="font-semibold text-[var(--app-color-text-primary)]">{roomName || "当前房间"}</span>
                                 </p>
                             </div>
 
                             {/* Divider */}
-                            <div className="border-t border-white/8 mb-6" />
+                            <div className="mb-6 border-t border-[var(--app-color-border-default)]" />
 
                             {/* Warning */}
-                            <p className="text-[11px] text-slate-500 text-center mb-6 leading-snug">
+                            <p className="mb-6 text-center text-[11px] leading-snug text-[var(--app-color-text-tertiary)]">
                                 离开后门禁权限将被回收，如需再次进入请重新扫码
                             </p>
 
@@ -163,14 +164,14 @@ export function SwipeExitConfirmDialog({
                                 <button
                                     type="button"
                                     onClick={onCancel}
-                                    className="flex-1 py-2.5 rounded-xl border border-white/15 bg-white/5 text-sm font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                                    className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] py-2.5 text-sm font-semibold text-[var(--app-color-text-secondary)] transition-colors hover:bg-[var(--app-color-surface-active)] hover:text-[var(--app-color-text-primary)]"
                                 >
                                     取消
                                 </button>
                                 <button
                                     type="button"
                                     onClick={onConfirm}
-                                    className="flex-1 py-2.5 rounded-xl border border-red-500/40 bg-red-500/20 text-sm font-bold text-red-300 hover:bg-red-500/30 hover:text-red-200 transition-colors shadow-lg shadow-red-900/20"
+                                    className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-danger)]/40 bg-[var(--app-color-feedback-danger-soft)] py-2.5 text-sm font-bold text-[var(--app-color-feedback-danger)] transition-colors hover:border-[var(--app-color-feedback-danger)]/60 hover:bg-[var(--app-color-feedback-danger-soft)]"
                                 >
                                     确认离开
                                 </button>
