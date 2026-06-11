@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { usePendingMaterialRequests, useAllMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useFulfillMaterialRequest } from "@/api/hooks/useMaterial";
+import { usePendingMaterialRequests, useAllMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useDeleteMaterialRequest, useFulfillMaterialRequest } from "@/api/hooks/useMaterial";
 import { fetchAllMaterialDemands, resolveMaterialDemand, exportMaterialAuditTrail, type MaterialDemand } from "@/api/domains/material.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -35,6 +35,7 @@ export default function MaterialReviewPage() {
   const { data: allData, isLoading: allLoading } = useAllMaterialRequests({ page: 1, size: 50 });
   const approve = useApproveMaterialRequest();
   const reject = useRejectMaterialRequest();
+  const deleteReq = useDeleteMaterialRequest();
   const fulfill = useFulfillMaterialRequest();
 
   const qc = useQueryClient();
@@ -113,7 +114,7 @@ export default function MaterialReviewPage() {
                   <div className="flex items-center gap-2">
                     <span className={`text-[11px] px-2.5 py-0.5 rounded-full border font-medium ${statusBadge(req.status)}`}>{statusLabel(req.status)}</span>
                     <button onClick={() => handleExportPersonal(req.id)} className="text-[11px] text-blue-600 hover:underline">导出</button>
-                    {canDelete && <button onClick={() => { if (!window.confirm("删除此申领？")) return; }} className="text-[11px] text-red-500 hover:underline">删除</button>}
+                    {canDelete && <button onClick={() => { if (!window.confirm("删除此申领？")) return; deleteReq.mutate(req.id); }} className="text-[11px] text-red-500 hover:underline">删除</button>}
                   </div>
                 </div>
                 <div>

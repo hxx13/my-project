@@ -46,6 +46,8 @@ export default function MaterialManagePage() {
   const [createCoverUrl, setCreateCoverUrl] = useState("");
   const [createInitialQty, setCreateInitialQty] = useState("0");
   const [createUploading, setCreateUploading] = useState(false);
+  const [showStockQty, setShowStockQty] = useState(true);
+  const [editShowStockQty, setEditShowStockQty] = useState(true);
   const [editCoverUrl, setEditCoverUrl] = useState("");
   const [editUploading, setEditUploading] = useState(false);
 
@@ -117,13 +119,14 @@ export default function MaterialManagePage() {
       shelfStatus: "PUBLISHED", workflowType: createWorkflow,
       reviewerIds: createReviewerIds !== "[]" ? createReviewerIds : undefined,
       secondReviewerIds: createSecondReviewerIds !== "[]" ? createSecondReviewerIds : undefined,
+      showStockQty: showStockQty ? 1 : 0,
     }, { onSuccess: () => { setCreateName(""); setCreateSubtitle(""); setCreateCoverUrl(""); setCreateInitialQty("0"); } });
   };
 
   /* ── 内联编辑保存 ── */
   const saveEdit = () => {
     if (!editingItem) return;
-    updateItemMut.mutate({ id: editingItem.id, body: { name: editingItem.name, subtitle: editingItem.subtitle, shelfStatus: editingItem.shelfStatus, stockMode: editingItem.stockMode, workflowType: editingItem.workflowType, coverUrl: editCoverUrl || undefined } }, { onSuccess: () => setEditingItem(null) });
+    updateItemMut.mutate({ id: editingItem.id, body: { name: editingItem.name, subtitle: editingItem.subtitle, shelfStatus: editingItem.shelfStatus, stockMode: editingItem.stockMode, workflowType: editingItem.workflowType, coverUrl: editCoverUrl || undefined, showStockQty: editShowStockQty ? 1 : 0 } }, { onSuccess: () => setEditingItem(null) });
   };
 
   /* ── 渲染 ── */
@@ -180,6 +183,7 @@ export default function MaterialManagePage() {
               <label className="flex flex-col gap-1"><span className="text-xs text-[var(--twin-mute)]">审核流程</span>
                 <select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={createWorkflow} onChange={e => setCreateWorkflow(e.target.value as "SIMPLE" | "DUAL_REVIEW")}><option value="SIMPLE">简单流程</option><option value="DUAL_REVIEW">复核流程</option></select>
               </label>
+              <label className="flex items-center gap-2 pt-4"><input type="checkbox" checked={showStockQty} onChange={e => setShowStockQty(e.target.checked)} className="rounded" /><span className="text-xs text-[var(--twin-body)]">学生端显示具体库存数字</span></label>
               <label className="flex flex-col gap-1 col-span-2"><span className="text-xs text-[var(--twin-mute)]">审核人</span>
                 <StaffReviewerPicker value={createReviewerIds} onChange={setCreateReviewerIds} placeholder="选择审核人..." />
               </label>
@@ -297,7 +301,7 @@ export default function MaterialManagePage() {
                         </div>
                         <div className="text-[9px] text-[var(--twin-mute)]">{it.workflowType === "DUAL_REVIEW" ? "复核" : "简单"}{it.reviewerIds && it.reviewerIds !== "[]" ? " · 已指定审核人" : ""}</div>
                         <div className="flex items-center gap-0.5 text-[10px]">
-                          <button className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => { setEditingItem(it); setEditCoverUrl(it.coverUrl || ""); }}>编辑</button>
+                          <button className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => { setEditingItem(it); setEditCoverUrl(it.coverUrl || ""); setEditShowStockQty(it.showStockQty !== 0); }}>编辑</button>
                           <label className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer">图片<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadAndSet(f, (url) => { updateItemMut.mutate({ id: it.id, body: { coverUrl: url } }); }, setEditUploading); }} /></label>
                           <button className="rounded-twin-sm px-1.5 py-0.5 text-red-500 hover:bg-red-50" onClick={() => { if (!window.confirm("删除？")) return; deleteItemMut.mutate(it.id); }}>删</button>
                         </div>
@@ -367,6 +371,7 @@ export default function MaterialManagePage() {
               <label className="flex flex-col gap-1"><span className="text-xs text-[var(--twin-mute)]">状态</span><select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.shelfStatus} onChange={e => setEditingItem({ ...editingItem, shelfStatus: e.target.value })}><option value="DRAFT">草稿</option><option value="PUBLISHED">已上架</option><option value="ARCHIVED">已归档</option></select></label>
               <label className="flex flex-col gap-1"><span className="text-xs text-[var(--twin-mute)]">库存模式</span><select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.stockMode} onChange={e => setEditingItem({ ...editingItem, stockMode: e.target.value })}><option value="QUANTIFIED">数量型</option><option value="FLAG">有无型</option></select></label>
               <label className="flex flex-col gap-1 col-span-2"><span className="text-xs text-[var(--twin-mute)]">审核流程</span><select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.workflowType || "SIMPLE"} onChange={e => setEditingItem({ ...editingItem, workflowType: e.target.value })}><option value="SIMPLE">简单流程</option><option value="DUAL_REVIEW">复核流程</option></select></label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={editShowStockQty} onChange={e => setEditShowStockQty(e.target.checked)} className="rounded" /><span className="text-xs text-[var(--twin-body)]">学生端显示具体库存数字</span></label>
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t border-[var(--twin-hairline)]">
               <button type="button" className="rounded-twin-sm border border-[var(--twin-hairline)] px-4 py-1.5 text-sm text-[var(--twin-body)]" onClick={() => setEditingItem(null)}>取消</button>

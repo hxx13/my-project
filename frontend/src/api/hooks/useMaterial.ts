@@ -8,7 +8,7 @@ import {
   updateAdminMaterialItem, deleteAdminMaterialItem, fetchAdminMaterialRecycle,
   restoreAdminMaterialRecycle, purgeAdminMaterialRecycle, purgeAdminMaterialRecycleByIds,
   purgeAllAdminMaterialRecycle, adjustMaterialStock, inboundMaterialItem, fetchPendingMaterialRequests,
-  fetchAllMaterialRequests, approveMaterialRequest, rejectMaterialRequest,
+  fetchAllMaterialRequests, approveMaterialRequest, rejectMaterialRequest, deleteMaterialRequest,
   fulfillMaterialRequest, fetchMaterialStatsOverview, fetchMaterialAuditTrail,
 } from "@/api/domains/material.api";
 import { materialQueryKeys } from "@/api/hooks/queryKeys";
@@ -123,6 +123,10 @@ export function useApproveMaterialRequest() {
 export function useRejectMaterialRequest() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: rejectMaterialRequest, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.requests() }) });
+}
+export function useDeleteMaterialRequest() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: deleteMaterialRequest, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.requests() }) });
 }
 export function useFulfillMaterialRequest() {
   const qc = useQueryClient();

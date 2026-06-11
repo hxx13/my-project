@@ -62,7 +62,7 @@ export default function StudentMaterialPage() {
     const lines = Object.entries(cart).filter(([, qty]) => qty > 0).map(([itemId, qty]) => ({ itemId: Number(itemId), qty }));
     const group = authStorage.getUserInfo()?.departmentName?.trim() || undefined;
     await createRequest.mutateAsync({ lines, applicantGroup: group });
-    saveCart.mutate({}); // 清空购物车
+    saveCart.mutate({}); // 清空申领物品栏
     navigate("/student/material/requests");
   }
 
@@ -91,7 +91,7 @@ export default function StudentMaterialPage() {
           <h2 className="text-[15px] font-semibold text-[var(--student-ink)]">申领物品</h2>
           <button onClick={() => setShowCart(!showCart)}
             className="relative flex items-center gap-1 px-3 py-1.5 rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] text-white text-[13px]">
-            <ShoppingCart className="size-4" /> 购物车
+            <ShoppingCart className="size-4" /> 申领物品栏
             {cartCount > 0 && <span className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">{cartCount}</span>}
           </button>
         </div>
@@ -146,18 +146,18 @@ export default function StudentMaterialPage() {
       {showCart && (
         <aside className="w-[320px] shrink-0 border-l border-[var(--student-hairline)] bg-white flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--student-hairline)]">
-            <h3 className="text-[14px] font-semibold">购物车 ({cartCount} 件)</h3>
+            <h3 className="text-[14px] font-semibold">申领物品栏 ({cartCount} 件)</h3>
             <button onClick={() => setShowCart(false)} className="text-[var(--student-mute)] hover:text-[var(--student-ink)] text-[20px] leading-none">&times;</button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {cartItems.length === 0 ? (
-              <p className="text-center text-[13px] text-[var(--student-mute)] py-8">购物车为空</p>
+              <p className="text-center text-[13px] text-[var(--student-mute)] py-8">申领物品栏为空</p>
             ) : (
               cartItems.map((item) => (
                 <div key={item.id} className="flex items-center justify-between p-2 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)]">
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-medium truncate">{item.name}</p>
-                    <p className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : item.stockQty}</p>
+                    <p className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : Math.max(0, (item.stockQty||0) - (item.lockedQty||0))}</p>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button onClick={() => updateCartQty(item.id, -1)} className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center"><Minus className="size-3" /></button>
@@ -195,7 +195,7 @@ function MaterialItemCard({ item, cartQty, onQtyChange }: { item: MaterialItem; 
         </div>
         {item.subtitle && <p className="text-[11px] text-[var(--student-mute)] mt-0.5 line-clamp-2">{item.subtitle}</p>}
         <div className="flex items-center justify-between mt-2">
-          <span className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : item.stockQty}</span>
+          <span className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : Math.max(0, (item.stockQty||0) - (item.lockedQty||0))}</span>
           <div className="flex items-center gap-1">
             {cartQty > 0 && <button onClick={() => onQtyChange(-1)} className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center"><Minus className="size-3" /></button>}
             {cartQty > 0 && <span className="text-[13px] w-5 text-center font-medium">{cartQty}</span>}

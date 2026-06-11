@@ -53,7 +53,7 @@ public class GraphService {
         Map<Long, Integer> refCounts = new HashMap<>();
         nodes.forEach(n -> refCounts.put(n.getId(), 0));
 
-        // Build edges: manual [[wikilink]] + auto reference analysis
+        // Build edges: manual [[wikilink]] + auto reference analysisgo
         Set<String> edgeKeys = new HashSet<>();
         List<GraphResponse.GraphEdge> edges = new ArrayList<>();
 

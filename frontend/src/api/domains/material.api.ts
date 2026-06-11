@@ -245,6 +245,10 @@ export async function approveMaterialRequest(id: string) {
   return res.data.data;
 }
 
+export async function deleteMaterialRequest(id: string) {
+  await authHttp.delete(`/material/admin/requests/${id}`);
+}
+
 export async function rejectMaterialRequest(id: string) {
   await authHttp.post(`/material/admin/requests/${id}/reject`);
 }
