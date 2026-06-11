@@ -22,14 +22,16 @@ export function ScanLevelBadge({ level, exp, nextLevelExp, name }: ScanLevelBadg
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 400, damping: 20 }}
-        className="relative z-20 flex h-12 w-12 shrink-0 items-center justify-center rounded-full shadow-[0_4px_16px_rgba(251,191,36,0.25)]"
+        className="relative z-20 flex h-12 w-12 shrink-0 items-center justify-center rounded-full"
         style={{
           background: "linear-gradient(135deg, #1c1410 0%, #2d1f16 100%)",
-          border: "2px solid #fbbf24",
+          border: `2px solid var(--scan-badge-border)`,
+          boxShadow: `0 4px 16px color-mix(in srgb, var(--scan-badge-border) 25%, transparent)`,
         }}
       >
         <div className="flex flex-col items-center justify-center -space-y-0.5">
-          <span className="text-[8px] font-black tracking-[0.15em] text-amber-400">
+          <span className="text-[8px] font-black tracking-[0.15em]"
+                style={{ color: 'var(--scan-accent)' }}>
             LV
           </span>
           <span className="font-black text-base text-white leading-none">
@@ -52,7 +54,7 @@ export function ScanLevelBadge({ level, exp, nextLevelExp, name }: ScanLevelBadg
           className="relative flex h-[22px] items-center overflow-hidden rounded-r-full border pl-5 pr-2"
           style={{
             background: "linear-gradient(180deg, #1c1410 0%, #2d1f16 100%)",
-            borderColor: "rgba(251,191,36,0.15)",
+            borderColor: `color-mix(in srgb, var(--scan-badge-border) 15%, transparent)`,
           }}
         >
           {/* 填充 */}
@@ -62,8 +64,7 @@ export function ScanLevelBadge({ level, exp, nextLevelExp, name }: ScanLevelBadg
             animate={{ width: `${pct}%` }}
             transition={{ duration: 0.6, ease: "easeOut" }}
             style={{
-              background:
-                "linear-gradient(90deg, rgba(251,191,36,0.25) 0%, rgba(251,146,60,0.50) 100%)",
+              background: "var(--scan-exp-gradient)",
             }}
           />
           {/* 文字 */}

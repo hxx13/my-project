@@ -106,11 +106,12 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
     const trackData = generate24HTrackData();
     return (
         <div
-            className={`group relative w-full overflow-hidden ${AI_CARD} p-5 font-sans`}>
+            className={`group relative w-full overflow-hidden ${AI_CARD} p-5 font-sans`}
+            style={{ backgroundColor: "var(--scan-card-tint)" }}>
             <AutoGenerateBadge />
             <div
                 className="absolute -top-1/2 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full blur-3xl transition-all duration-700"
-                style={{ backgroundColor: "#fb923c", opacity: 0.12 }}
+                style={{ backgroundColor: "var(--scan-glow)", opacity: 0.12 }}
             />
 
             <div className="relative flex flex-col gap-3">

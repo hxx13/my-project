@@ -19,14 +19,11 @@ import { Z_INDEX } from "@/constants/zIndex";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { BizOverlayShell } from "./BizOverlayShell";
 import { checkPinStatus } from "./specialChannel.api";
-import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP, SCAN_MODAL_LAYER_PROPS, CHART_CARD } from "./scanPopupTheme";
+import { resolveScanAccentCss, resolveScanAccentVariant, SCAN_POPUP_BACKDROP, SCAN_MODAL_LAYER_PROPS, CHART_CARD, pickRandomScheme, SCAN_COLOR_SCHEMES } from "./scanPopupTheme";
 import { ScanLevelBadge } from "./ScanLevelBadge";
 import { useTheme } from "@/features/theme/ThemeProvider";
 
-const WeeklyRoutineMatrixChart = ({ predictions, gender }: { predictions: any[]; gender?: string | number | null }) => {
-    const accent = resolveScanAccentCss(resolveScanAccentVariant(gender));
-    const strokeEntry = accent.strokeEntry;
-    const strokeExit = accent.strokeExit;
+const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
     const days = 7;
     const width = 300;
     const height = 60;
@@ -68,7 +65,8 @@ const WeeklyRoutineMatrixChart = ({ predictions, gender }: { predictions: any[];
         <div className={`w-full ${CHART_CARD} p-4`}>
             <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-amber-100 tracking-wider">预期核心在馆时间带</span>
-                <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[9px] font-bold text-amber-300">
+                <span className="rounded-full px-2 py-0.5 text-[9px] font-bold"
+                      style={{ border: `1px solid var(--scan-accent)`, color: 'var(--scan-accent)', backgroundColor: 'var(--scan-badge-bg)' }}>
                     Time Band
                 </span>
             </div>
@@ -77,11 +75,11 @@ const WeeklyRoutineMatrixChart = ({ predictions, gender }: { predictions: any[];
                 <div className="absolute left-1 bottom-1 text-[8px] text-amber-200/50">0</div>
                 <svg className="w-full h-[60px]" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
                     {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-                        <line key={i} x1={getX(i)} y1={0} x2={getX(i)} y2={height} stroke={accent.gridStroke} strokeDasharray="2" />
+                        <line key={i} x1={getX(i)} y1={0} x2={getX(i)} y2={height} stroke="rgba(255,255,255,0.06)" strokeDasharray="2" />
                     ))}
-                    <path d={`M ${entryPath} L ${exitPath.split(" L ").reverse().join(" L ")} Z`} fill={accent.fillArea} stroke="none" />
-                    <path d={`M ${exitPath}`} fill="none" stroke={strokeExit} strokeWidth="1.5" strokeDasharray="3 3" />
-                    <path d={`M ${entryPath}`} fill="none" stroke={strokeEntry} strokeWidth="1.5" />
+                    <path d={`M ${entryPath} L ${exitPath.split(" L ").reverse().join(" L ")} Z`} fill="var(--scan-chart-fill)" stroke="none" />
+                    <path d={`M ${exitPath}`} fill="none" stroke="var(--scan-chart-exit)" strokeWidth="1.5" strokeDasharray="3 3" />
+                    <path d={`M ${entryPath}`} fill="none" stroke="var(--scan-chart-entry)" strokeWidth="1.5" />
                 </svg>
                 <div className="flex justify-between w-full mt-1.5">
                     {["一", "二", "三", "四", "五", "六", "日"].map((day) => (
@@ -101,6 +99,7 @@ export function UiverseProfilePopup(props: PopupProps) {
     const isDark = theme.mode === 'dark';
     const accentVariant = resolveScanAccentVariant(state.user?.gender);
     const badgeAccent = resolveScanAccentCss(accentVariant);
+    const [scheme] = useState(() => pickRandomScheme());
     const popupMessage = (state.inlineMessage || executeErrorMessage || "").trim();
 
     // ============================================================
@@ -161,7 +160,20 @@ export function UiverseProfilePopup(props: PopupProps) {
         Boolean(onOpenStudentBind) && result.success !== false && result.hasPhysicalCardMapping !== true;
 
     return createPortal(
-        <div className={`${theme.className} ${isDark ? 'dark' : ''}`}>
+        <div className={`${theme.className} ${isDark ? 'dark' : ''}`}
+             style={{
+               '--scan-accent': scheme.accent,
+               '--scan-accent-gradient': scheme.accentGradient,
+               '--scan-card-tint': scheme.cardTint,
+               '--scan-card-tint-dark': scheme.cardTintDark,
+               '--scan-glow': scheme.glow,
+               '--scan-chart-entry': scheme.chartStrokeEntry,
+               '--scan-chart-exit': scheme.chartStrokeExit,
+               '--scan-chart-fill': scheme.chartFill,
+               '--scan-badge-bg': scheme.badgeBg,
+               '--scan-badge-border': scheme.badgeBorder,
+               '--scan-exp-gradient': scheme.expGradient,
+             } as React.CSSProperties}>
             <ScanAccessNoticeOverlay
                 open={Boolean(state.accessNotice?.message)}
                 message={state.accessNotice?.message ?? ""}
@@ -186,6 +198,21 @@ export function UiverseProfilePopup(props: PopupProps) {
                 className={`fixed inset-0 flex flex-col ${SCAN_POPUP_BACKDROP}`}
                 style={{ zIndex: Z_INDEX.scannerPopup }}
             >
+                {/* 左上角色系指示器 */}
+                <div className="absolute top-6 left-6 z-10 flex items-center gap-1.5">
+                  {SCAN_COLOR_SCHEMES.map((s) => (
+                    <div
+                      key={s.id}
+                      className="h-2 w-2 rounded-full transition-all duration-300"
+                      style={{
+                        backgroundColor: s.id === scheme.id ? scheme.accent : 'rgba(255,255,255,0.15)',
+                        boxShadow: s.id === scheme.id ? `0 0 6px ${scheme.accent}` : 'none',
+                        transform: s.id === scheme.id ? 'scale(1.4)' : 'scale(1)',
+                      }}
+                      title={s.name}
+                    />
+                  ))}
+                </div>
                 <button className="absolute top-6 right-6 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-[var(--app-elevation-card)] transition-colors hover:border-[var(--app-color-feedback-danger)] hover:bg-[var(--app-color-feedback-danger-soft)] hover:text-[var(--app-color-feedback-danger)]" onClick={onClose} title="关闭 Esc">
                     <X className="w-5 h-5" />
                 </button>
@@ -233,7 +260,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                     </div>
                     <div className="flex flex-col items-center justify-center gap-14">
                         <div style={{ transform: "scale(1.1)", transformOrigin: "center center" }} className="w-[500px] mb-6">
-                            <WeeklyRoutineMatrixChart predictions={state.predictionList} gender={state.user?.gender} />
+                            <WeeklyRoutineMatrixChart predictions={state.predictionList} />
                         </div>
                         <div style={{ transform: "scale(1.1)", transformOrigin: "center center" }} className="w-[500px]">
                             <AIPredictionCard predictions={state.predictionList} isLoading={state.isPredLoading} accentVariant={accentVariant} onQuickActions={() => setShowQuickActions(true)} onEnterStudentCenter={handleEnterStudentCenter} />

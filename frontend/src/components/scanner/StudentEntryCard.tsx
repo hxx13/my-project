@@ -70,10 +70,11 @@ export function StudentEntryCard({
   ];
 
   return (
-    <div className={`relative flex min-h-0 w-full flex-1 flex-col ${STUDENT_CARD}`}>
+    <div className={`relative flex min-h-0 w-full flex-1 flex-col ${STUDENT_CARD}`}
+         style={{ backgroundColor: "var(--scan-card-tint)" }}>
       <div
         className="pointer-events-none absolute top-1/2 -left-10 h-1/2 w-16 -translate-y-1/2 opacity-20 blur-[60px]"
-        style={{ backgroundColor: "#fbbf24", opacity: 0.20 }}
+        style={{ backgroundColor: "var(--scan-glow)", opacity: 0.20 }}
       />
 
       <div className="relative z-10 flex shrink-0 flex-col items-center gap-1.5 px-3 pb-1 pt-3">
@@ -98,7 +99,7 @@ export function StudentEntryCard({
         </div>
       </div>
 
-      <div className="relative z-10 min-h-0 flex-1 overflow-y-auto px-3 pb-10 [&::-webkit-scrollbar]:hidden">
+      <div className="app-themed-scrollbar relative z-10 min-h-0 flex-1 overflow-y-auto px-3 pb-10">
         {page === 1 ? (
           <div className="flex flex-col gap-1.5">
             {roomOverviewFetching && capacityStats.length === 0 && roomOverviewSourceCount === 0 ? (
