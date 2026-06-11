@@ -86,6 +86,7 @@ public class NotificationInboxFeedContributor implements InboxFeedContributor {
             case "REPAIR" -> "报修";
             case "PURCHASE" -> "采购";
             case "SUPPLIES_CLAIM" -> "物资领用";
+            case "MATERIAL_REQUEST" -> "物资申领";
             default -> "";
         };
     }

@@ -41,4 +41,30 @@ public interface MaterialRequestMapper {
                                             @Param("offset") int offset, @Param("size") int size);
     int countAuditTrail(@Param("from") String from, @Param("to") String to,
                          @Param("categoryId") Long categoryId, @Param("groupId") String groupId);
+    List<Map<String, Object>> selectClaimLinesByItemId(@Param("itemId") Long itemId,
+                                                        @Param("from") String from, @Param("to") String to,
+                                                        @Param("offset") int offset, @Param("size") int size);
+    int countClaimLinesByItemId(@Param("itemId") Long itemId, @Param("from") String from, @Param("to") String to);
+    int updateApplicantMeta(@Param("id") String id, @Param("applicantName") String applicantName,
+                            @Param("applicantGroup") String applicantGroup);
+    /** 待审核申领数（PENDING + 双审 FIRST_OK） */
+    int countPendingReview();
+
+    List<Map<String, Object>> statsDailyRequests(@Param("from") String from, @Param("to") String to,
+                                                  @Param("groupId") String groupId);
+
+    List<Map<String, Object>> statsStatusInRange(@Param("from") String from, @Param("to") String to,
+                                                  @Param("groupId") String groupId);
+
+    Map<String, Object> statsPassRejectInRange(@Param("from") String from, @Param("to") String to,
+                                                @Param("groupId") String groupId);
+
+    List<Map<String, Object>> statsByStudentFiltered(@Param("from") String from, @Param("to") String to,
+                                                     @Param("groupId") String groupId);
+
+    List<Map<String, Object>> statsByItemFiltered(@Param("from") String from, @Param("to") String to,
+                                                   @Param("groupId") String groupId);
+
+    List<Map<String, Object>> statsByGroupFiltered(@Param("from") String from, @Param("to") String to,
+                                                  @Param("groupId") String groupId);
 }

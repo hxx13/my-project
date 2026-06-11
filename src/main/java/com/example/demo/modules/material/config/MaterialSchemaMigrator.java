@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
+import com.example.demo.modules.material.service.MaterialService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -13,9 +14,11 @@ import org.springframework.stereotype.Component;
 public class MaterialSchemaMigrator implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(MaterialSchemaMigrator.class);
     private final JdbcTemplate jdbcTemplate;
+    private final MaterialService materialService;
 
-    public MaterialSchemaMigrator(JdbcTemplate jdbcTemplate) {
+    public MaterialSchemaMigrator(JdbcTemplate jdbcTemplate, MaterialService materialService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.materialService = materialService;
     }
 
     @Override
@@ -167,6 +170,11 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
             // show_stock_qty 学生视角库存展示控制
             ensureColumnExists("material_item", "show_stock_qty",
                     "ALTER TABLE material_item ADD COLUMN show_stock_qty TINYINT NOT NULL DEFAULT 1 COMMENT '学生视角是否显示具体库存：1=显示数字 0=显示有货'");
+
+            int backfilled = materialService.backfillRequestApplicantMetadata();
+            if (backfilled > 0) {
+                log.info("[material-schema] 已回填 {} 条申领单的申领人/课题组元数据", backfilled);
+            }
 
             log.info("[material-schema] 物资申领表结构已就绪");
         } catch (Exception e) {

@@ -22,6 +22,16 @@ type Props = {
   suppressAutoOpen?: boolean;
 };
 
+/**
+ * 扫码公告弹窗 — 🍱 Bento 暗色主题
+ *
+ * 视觉层级设计（自上而下）：
+ *   1. Island 按钮 — 暗色容器 + steel 图标，不抢眼
+ *   2. 弹窗面板 — surface-container 底色 + 微边框，轻量化框架
+ *   3. 正文卡片 — surface-page 微提亮卡片，视觉重心落在内容
+ *
+ * 所有颜色通过 --app-color-* 语义令牌引用，遵循 Bento dark 映射。
+ */
 export function ScanAnnouncementBanner({
   bundle,
   panelOpen: panelOpenProp,
@@ -105,25 +115,33 @@ export function ScanAnnouncementBanner({
 
   return (
     <>
+      {/* ── Island 触发按钮 ── */}
       <div className="flex min-w-[min(148px,30vw)] max-w-[420px] flex-1 basis-0 justify-center">
         <button
           type="button"
           onClick={() => setPanelOpen(!panelOpen)}
-          className="group flex w-full min-w-0 max-w-[420px] items-center gap-2 rounded-[999px] border border-violet-500/45 bg-gradient-to-r from-black/75 via-violet-950/40 to-black/75 px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-transform active:scale-[0.98] sm:gap-2.5 sm:px-4 sm:py-2.5"
+          className="group flex w-full min-w-0 max-w-[420px] items-center gap-2 rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/90 px-3 py-2 shadow-lg backdrop-blur-md transition-all hover:bg-[var(--app-color-surface-hover)] active:scale-[0.98] sm:gap-2.5 sm:px-4 sm:py-2.5"
         >
-          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-500/20 ring-1 ring-violet-400/40">
-            <Megaphone className="h-4 w-4 text-violet-300" />
+          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--app-color-accent)]/10 ring-1 ring-[var(--app-color-accent)]/20">
+            <Megaphone className="h-4 w-4 text-[var(--app-color-accent)]" />
           </span>
           <span className="min-w-0 flex-1 text-left">
-            <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-violet-200/90">Notice</span>
-            <span className="block truncate text-sm font-bold text-white">{islandLabel}</span>
+            <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-[var(--app-color-text-tertiary)]">
+              Notice
+            </span>
+            <span className="block truncate text-sm font-bold text-[var(--app-color-text-primary)]">
+              {islandLabel}
+            </span>
           </span>
           <ChevronRight
-            className={`h-4 w-4 shrink-0 text-violet-200/80 transition-transform ${panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"}`}
+            className={`h-4 w-4 shrink-0 text-[var(--app-color-text-tertiary)] transition-transform ${
+              panelOpen ? "rotate-90" : "group-hover:translate-x-0.5"
+            }`}
           />
         </button>
       </div>
 
+      {/* ── 公告详情弹窗 ── */}
       {createPortal(
         <AnimatePresence>
           {panelOpen ? (
@@ -134,7 +152,7 @@ export function ScanAnnouncementBanner({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-[100130] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md"
+              className="fixed inset-0 z-[100130] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
               onClick={() => setPanelOpen(false)}
             >
               <motion.div
@@ -145,18 +163,22 @@ export function ScanAnnouncementBanner({
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: 8 }}
                 transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                className="relative flex max-h-[min(88vh,720px)] w-full max-w-[min(96vw,680px)] flex-col overflow-hidden rounded-3xl border border-violet-500/35 bg-gradient-to-b from-[#120a1f]/98 to-black/95 shadow-2xl"
+                className="relative flex max-h-[min(88vh,720px)] w-full max-w-[min(96vw,680px)] flex-col overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)]"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-violet-500/25 bg-black/40 px-4 py-3">
+                {/* ── Header ── */}
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--app-color-border-default)] px-4 py-3">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Megaphone className="h-5 w-5 shrink-0 text-violet-400" />
+                    <Megaphone className="h-5 w-5 shrink-0 text-[var(--app-color-accent)]" />
                     <div className="min-w-0">
-                      <div id="scan-announcement-title" className="truncate text-sm font-black tracking-wide text-violet-100">
+                      <div
+                        id="scan-announcement-title"
+                        className="truncate text-sm font-bold tracking-wide text-[var(--app-color-text-primary)]"
+                      >
                         {current.title || "系统公告"}
                       </div>
                       {total > 1 ? (
-                        <div className="mt-0.5 text-[11px] text-violet-200/80">
+                        <div className="mt-0.5 text-[11px] text-[var(--app-color-text-tertiary)]">
                           第 {pageIndex + 1} 条 / 共 {total} 条
                         </div>
                       ) : null}
@@ -167,7 +189,7 @@ export function ScanAnnouncementBanner({
                       <button
                         type="button"
                         onClick={acknowledge}
-                        className="rounded-full border border-violet-500/40 px-3 py-1 text-[11px] font-bold text-violet-100 hover:bg-white/10"
+                        className="rounded-full border border-[var(--app-color-border-default)] px-3 py-1 text-[11px] font-bold text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors"
                       >
                         已知悉
                       </button>
@@ -175,7 +197,7 @@ export function ScanAnnouncementBanner({
                     <button
                       type="button"
                       onClick={() => setPanelOpen(false)}
-                      className="rounded-full p-2 text-violet-200/90 hover:bg-white/10"
+                      className="rounded-full p-2 text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)] transition-colors"
                       aria-label="关闭"
                     >
                       <X className="h-4 w-4" />
@@ -183,30 +205,37 @@ export function ScanAnnouncementBanner({
                   </div>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                {/* ── 正文内容卡片（视觉重心） ── */}
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
                   {safeHtml ? (
-                    <div className={SCAN_ANNOUNCEMENT_BODY_CLASS} dangerouslySetInnerHTML={{ __html: safeHtml }} />
+                    <div
+                      className={`${SCAN_ANNOUNCEMENT_BODY_CLASS} rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-5`}
+                      dangerouslySetInnerHTML={{ __html: safeHtml }}
+                    />
                   ) : (
-                    <p className="text-center text-xs text-violet-200/65">暂无正文内容。</p>
+                    <p className="text-center text-xs text-[var(--app-color-text-tertiary)] py-8">
+                      暂无正文内容。
+                    </p>
                   )}
                 </div>
 
+                {/* ── Footer：翻页导航 ── */}
                 {total > 1 ? (
-                  <div className="flex shrink-0 items-center justify-between gap-2 border-t border-violet-500/20 bg-black/30 px-4 py-3">
+                  <div className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--app-color-border-default)] px-4 py-3">
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 px-3 py-1.5 text-xs font-bold text-violet-100 hover:bg-white/10"
+                      className="inline-flex items-center gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] px-3 py-1.5 text-xs font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors"
                       onClick={() => setPageIndex((i) => (i - 1 + total) % total)}
                     >
                       <ChevronLeft className="h-4 w-4" />
                       上一条
                     </button>
-                    <span className="text-[11px] text-violet-200/70">
+                    <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
                       {pageIndex + 1} / {total}
                     </span>
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1 rounded-lg border border-violet-500/30 px-3 py-1.5 text-xs font-bold text-violet-100 hover:bg-white/10"
+                      className="inline-flex items-center gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] px-3 py-1.5 text-xs font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors"
                       onClick={() => setPageIndex((i) => (i + 1) % total)}
                     >
                       下一条

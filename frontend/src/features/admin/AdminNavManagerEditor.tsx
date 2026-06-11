@@ -2,16 +2,20 @@ import { useState, useEffect } from "react";
 import { GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import toast from "react-hot-toast";
 import {
   updateNavGroup,
   deleteNavGroup,
+  moveNavGroup,
   moveNavItem,
   resetNavConfig,
   type AdminNavConfigNode,
 } from "@/api/domains/adminNavConfig.api";
+import { getNavFolderSiblings, getNavNodeSiblingIndex } from "@/features/admin/adminNavManagerUtils";
 
 interface Props {
   node: AdminNavConfigNode | null;
+  tree: AdminNavConfigNode[];
   allNodes: AdminNavConfigNode[];
   onRefresh: () => void;
 }
@@ -36,7 +40,7 @@ function typeAccent(node: AdminNavConfigNode): string {
   }
 }
 
-export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
+export function AdminNavManagerEditor({ node, tree, allNodes, onRefresh }: Props) {
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -97,6 +101,23 @@ export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
 
   const childItems = node.children?.filter((c) => c.type === "ITEM") ?? [];
   const childFolders = node.children?.filter((c) => c.type === "SUBGROUP") ?? [];
+  const folderSiblings = getNavFolderSiblings(tree, node);
+  const siblingIndex = getNavNodeSiblingIndex(folderSiblings, node.id);
+  const canMoveUp = siblingIndex > 0;
+  const canMoveDown = siblingIndex >= 0 && siblingIndex < folderSiblings.length - 1;
+
+  const handleMoveFolder = async (direction: "up" | "down") => {
+    try {
+      const moved = await moveNavGroup(node.id, direction);
+      if (!moved) {
+        toast.error("排序失败");
+        return;
+      }
+      onRefresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "排序失败");
+    }
+  };
 
   return (
     <div className="p-6 space-y-5">
@@ -132,15 +153,17 @@ export function AdminNavManagerEditor({ node, allNodes, onRefresh }: Props) {
         <div>
           <label className="block text-sm font-medium text-gray-600 mb-1">排序位置</label>
           <div className="flex gap-2 items-center">
-            <Button variant="outline" size="sm" disabled={node.sortOrder <= 0}
-              onClick={async () => { await updateNavGroup(node.id, { sortOrder: node.sortOrder - 1 }); onRefresh(); }}>
+            <Button variant="outline" size="sm" disabled={!canMoveUp}
+              onClick={() => handleMoveFolder("up")}>
               ↑ 上移
             </Button>
-            <Button variant="outline" size="sm"
-              onClick={async () => { await updateNavGroup(node.id, { sortOrder: node.sortOrder + 1 }); onRefresh(); }}>
+            <Button variant="outline" size="sm" disabled={!canMoveDown}
+              onClick={() => handleMoveFolder("down")}>
               ↓ 下移
             </Button>
-            <span className="text-xs text-gray-400">当前第 {node.sortOrder + 1} 位</span>
+            <span className="text-xs text-gray-400">
+              同级文件夹第 {siblingIndex >= 0 ? siblingIndex + 1 : "—"} 位 / 共 {folderSiblings.length} 个
+            </span>
           </div>
         </div>
       )}

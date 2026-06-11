@@ -43,16 +43,114 @@ public class AdminNavConfigService {
                 }
             }
         }
+        sortTreeNodes(roots);
         return roots;
+    }
+
+    private void sortTreeNodes(List<AdminNavConfigNode> nodes) {
+        nodes.sort(Comparator
+                .comparingInt(AdminNavConfigNode::getSortOrder)
+                .thenComparing(AdminNavConfigNode::getId));
+        for (AdminNavConfigNode n : nodes) {
+            sortTreeNodes(n.getChildren());
+        }
     }
 
     @Transactional
     public AdminNavConfigNode createGroup(String parentId, String type, String title, int sortOrder) {
+        boolean hasParent = parentId != null && !parentId.isBlank();
+        if (hasParent) {
+            AdminNavConfigNode parent = getById(parentId);
+            if (parent == null) {
+                throw new IllegalArgumentException("父文件夹不存在");
+            }
+            if (!"GROUP".equals(parent.getType()) && !"SUBGROUP".equals(parent.getType())) {
+                throw new IllegalArgumentException("只能在文件夹下创建子文件夹");
+            }
+            type = "SUBGROUP";
+        } else {
+            parentId = null;
+            type = "GROUP";
+        }
+        if (sortOrder <= 0) {
+            Integer maxSort = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id <=> ?",
+                    Integer.class, parentId);
+            sortOrder = (maxSort != null ? maxSort : -1) + 1;
+        }
         String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         jdbcTemplate.update(
                 "INSERT INTO admin_nav_config (id, parent_id, type, title, sort_order) VALUES (?, ?, ?, ?, ?)",
                 id, parentId, type, title, sortOrder);
         return getById(id);
+    }
+
+    /**
+     * 在同级节点中上移/下移，并重排 sort_order 为连续序号（0..n-1）。
+     */
+    @Transactional
+    public AdminNavConfigNode moveGroupRelative(String id, int delta) {
+        AdminNavConfigNode node = getById(id);
+        if (node == null) {
+            throw new IllegalArgumentException("节点不存在");
+        }
+        if (!"GROUP".equals(node.getType()) && !"SUBGROUP".equals(node.getType())) {
+            throw new IllegalArgumentException("仅文件夹可调整排序");
+        }
+        List<AdminNavConfigNode> siblings = listSiblings(node.getParentId());
+        List<Integer> folderIndices = new ArrayList<>();
+        for (int i = 0; i < siblings.size(); i++) {
+            AdminNavConfigNode s = siblings.get(i);
+            if ("GROUP".equals(s.getType()) || "SUBGROUP".equals(s.getType())) {
+                folderIndices.add(i);
+            }
+        }
+        int folderPos = -1;
+        for (int i = 0; i < folderIndices.size(); i++) {
+            if (siblings.get(folderIndices.get(i)).getId().equals(id)) {
+                folderPos = i;
+                break;
+            }
+        }
+        if (folderPos < 0) {
+            throw new IllegalArgumentException("节点不在同级文件夹列表中");
+        }
+        int newFolderPos = folderPos + delta;
+        if (newFolderPos < 0 || newFolderPos >= folderIndices.size()) {
+            return node;
+        }
+        int idxA = folderIndices.get(folderPos);
+        int idxB = folderIndices.get(newFolderPos);
+        AdminNavConfigNode swap = siblings.get(idxB);
+        siblings.set(idxB, siblings.get(idxA));
+        siblings.set(idxA, swap);
+        List<String> ids = new ArrayList<>();
+        for (AdminNavConfigNode s : siblings) {
+            ids.add(s.getId());
+        }
+        reindexSortOrders(ids);
+        return getById(id);
+    }
+
+    private List<AdminNavConfigNode> listSiblings(String parentId) {
+        if (parentId == null || parentId.isBlank()) {
+            return jdbcTemplate.query(
+                    "SELECT id, parent_id, type, title, item_path, item_icon, item_badge_key, sort_order, visible "
+                            + "FROM admin_nav_config WHERE parent_id IS NULL ORDER BY sort_order, id",
+                    new NodeRowMapper());
+        }
+        return jdbcTemplate.query(
+                "SELECT id, parent_id, type, title, item_path, item_icon, item_badge_key, sort_order, visible "
+                        + "FROM admin_nav_config WHERE parent_id = ? ORDER BY sort_order, id",
+                new NodeRowMapper(), parentId);
+    }
+
+    private void reindexSortOrders(List<String> ids) {
+        for (int i = 0; i < ids.size(); i++) {
+            jdbcTemplate.update(
+                    "UPDATE admin_nav_config SET sort_order = ?, updated_at = NOW() WHERE id = ?",
+                    i, ids.get(i));
+        }
     }
 
     @Transactional

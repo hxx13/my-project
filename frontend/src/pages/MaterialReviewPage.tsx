@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { usePendingMaterialRequests, useAllMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useDeleteMaterialRequest, useFulfillMaterialRequest } from "@/api/hooks/useMaterial";
+import { usePendingMaterialRequests, useAllMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useDeleteMaterialRequest } from "@/api/hooks/useMaterial";
 import { fetchAllMaterialDemands, resolveMaterialDemand, exportMaterialAuditTrail, type MaterialDemand } from "@/api/domains/material.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -36,8 +36,6 @@ export default function MaterialReviewPage() {
   const approve = useApproveMaterialRequest();
   const reject = useRejectMaterialRequest();
   const deleteReq = useDeleteMaterialRequest();
-  const fulfill = useFulfillMaterialRequest();
-
   const qc = useQueryClient();
   const { data: demandData, isLoading: demandLoading } = useQuery({
     queryKey: ["material", "demands", "all"],
@@ -125,12 +123,11 @@ export default function MaterialReviewPage() {
                 <div className="text-xs text-[var(--twin-mute)]">{req.createdAt?.replace("T", " ").slice(0, 19)}</div>
                 {(req.status === "PENDING" || req.status === "FIRST_OK") && (
                   <div className="flex gap-2 pt-1 border-t border-[var(--twin-hairline)]">
-                    <button onClick={() => approve.mutate(req.id)} className="rounded-twin-sm bg-green-600 px-4 py-1.5 text-sm font-medium text-white">{req.status === "PENDING" && req.workflowType === "DUAL_REVIEW" ? "初审通过" : "通过"}</button>
+                    <button onClick={() => approve.mutate(req.id)} className="rounded-twin-sm bg-green-600 px-4 py-1.5 text-sm font-medium text-white">
+                      {req.status === "FIRST_OK" ? "复审通过并出库" : req.workflowType === "DUAL_REVIEW" ? "初审通过" : "通过并出库"}
+                    </button>
                     <button onClick={() => reject.mutate(req.id)} className="rounded-twin-sm bg-red-500 px-4 py-1.5 text-sm font-medium text-white">拒绝</button>
                   </div>
-                )}
-                {req.status === "APPROVED" && (
-                  <div className="flex gap-2 pt-1 border-t"><button onClick={() => { const lines = req.lines?.map(l => ({ lineId: l.id, grant: true, fulfillQty: l.qty })) ?? []; fulfill.mutate({ id: req.id, lines }); }} className="rounded-twin-sm bg-blue-600 px-4 py-1.5 text-sm font-medium text-white">确认出库</button></div>
                 )}
               </div>
             ))}

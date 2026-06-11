@@ -8,6 +8,8 @@ export interface PendingBadges {
   processRepair: number;
   processPurchase: number;
   processSupplies: number;
+  material: number;
+  processMaterial: number;
   /** 站内信（好友）未读条数，与 /api/chat 已读游标同源 */
   chatUnread?: number;
   repairText: string;
@@ -17,6 +19,8 @@ export interface PendingBadges {
   processRepairText: string;
   processPurchaseText: string;
   processSuppliesText: string;
+  materialText: string;
+  processMaterialText: string;
   chatUnreadText?: string;
   /**
    * 侧栏「消息」单一汇总（GET /api/me/pending-badges）：chat + notify + repair + purchase + supplies，

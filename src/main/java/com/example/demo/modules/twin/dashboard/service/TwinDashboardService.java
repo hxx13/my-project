@@ -36,18 +36,22 @@ public class TwinDashboardService {
     public List<Map<String, Object>> getGroupRanking(String timeType, String region) {
         LocalDate today = businessTimeWindow.today();
         String startTime;
+        String endTime = null;
 
         if ("TODAY".equalsIgnoreCase(timeType)) {
             startTime = today.format(FMT) + " 00:00:00";
         } else if ("WEEK".equalsIgnoreCase(timeType)) {
             startTime = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).format(FMT) + " 00:00:00";
+        } else if ("MONTH_BEFORE_TODAY".equalsIgnoreCase(timeType)) {
+            // 本月 00:00 起至今日 00:00 前（不含当天），作为「凌晨基线」排名
+            startTime = today.with(TemporalAdjusters.firstDayOfMonth()).format(FMT) + " 00:00:00";
+            endTime = today.format(FMT) + " 00:00:00";
         } else {
             startTime = today.with(TemporalAdjusters.firstDayOfMonth()).format(FMT) + " 00:00:00";
         }
 
         try {
-            // 💥 解耦：直接调用 Mapper 传递参数
-            return dashboardMapper.getGroupRankingByTimeAndRegion(startTime, region);
+            return dashboardMapper.getGroupRankingByTimeAndRegion(startTime, endTime, region);
         } catch (Exception e) {
             log.error("课题组排行榜计算失败: {}", e.getMessage());
             return new ArrayList<>();

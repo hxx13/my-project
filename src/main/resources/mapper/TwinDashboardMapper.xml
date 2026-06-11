@@ -587,6 +587,9 @@
         SELECT project_group_names AS name, COUNT(*) AS value
         FROM aro_access_log
         WHERE create_time &gt;= #{startTime}
+        <if test="endTime != null and endTime != ''">
+          AND create_time &lt; #{endTime}
+        </if>
         <if test="region == 'PUDONG'"> AND area_name LIKE '%浦东%' </if>
         <if test="region == 'PUXI'"> AND area_name LIKE '%浦西%' </if>
         AND project_group_names IS NOT NULL

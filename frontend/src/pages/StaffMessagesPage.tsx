@@ -871,7 +871,13 @@ export default function StaffMessagesPage() {
                       stackedNotifyColumn
                       showWorkTabBar={false}
                       onSelectNotificationRow={(row) => { setRightPanel({ kind: "notice", row }); }}
-                      onSelectWorkItemRow={(item) => { setRightPanel({ kind: "work", item }); }}
+                      onSelectWorkItemRow={(item) => {
+                        if (item.workKind === "material") {
+                          window.location.hash = "#/admin/material/review";
+                          return;
+                        }
+                        setRightPanel({ kind: "work", item });
+                      }}
                       onCountsChange={setInboxCounts}
                     />
                   </div>

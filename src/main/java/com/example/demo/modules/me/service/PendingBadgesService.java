@@ -43,6 +43,8 @@ public class PendingBadgesService {
         v.setProcessRepairText(formatBadgeText(v.getProcessRepair()));
         v.setProcessPurchaseText(formatBadgeText(v.getProcessPurchase()));
         v.setProcessSuppliesText(formatBadgeText(v.getProcessSupplies()));
+        v.setMaterialText(formatBadgeText(v.getMaterial()));
+        v.setProcessMaterialText(formatBadgeText(v.getProcessMaterial()));
         v.setChatUnreadText(formatBadgeText(v.getChatUnread()));
         int staffSidebar = Math.max(0, v.getChatUnread())
                 + Math.max(0, v.getNotify())

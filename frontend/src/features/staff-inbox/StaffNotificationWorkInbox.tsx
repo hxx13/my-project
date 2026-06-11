@@ -38,6 +38,7 @@ import {
   type SupplyClaimOrder,
   type SupplyClaimPdfLinkItem,
 } from "@/api/domains/supplies.api";
+import { fetchPendingMaterialRequests, type MaterialRequest } from "@/api/domains/material.api";
 import { ADMIN_NOTIFICATION_SSE_PUSH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -46,7 +47,7 @@ import { webImageSrc } from "@/utils/mediaUrl";
 
 export type StaffInboxWorkTab = "notice" | "pending" | "done";
 
-type WorkKind = "claim" | "repair" | "purchase";
+type WorkKind = "claim" | "repair" | "purchase" | "material";
 
 export interface StaffInboxUnifiedItem {
   key: string;
@@ -86,6 +87,20 @@ function claimApplicantLabel(o: SupplyClaimOrder) {
   const n = (o.applicantName && o.applicantName.trim()) || "";
   if (n) return n;
   return (o.userId && o.userId.trim()) || "-";
+}
+
+function materialApplicantLabel(o: MaterialRequest) {
+  const n = (o.applicantName && o.applicantName.trim()) || "";
+  if (n) return n;
+  return (o.userId && o.userId.trim()) || "-";
+}
+
+function materialStatusText(s: string) {
+  if (s === "PENDING") return "待审核";
+  if (s === "FIRST_OK") return "待复审";
+  if (s === "FULFILLED") return "已出库";
+  if (s === "REJECTED") return "已拒绝";
+  return s || "-";
 }
 
 function orderApplicantLabel(row: RepairOrderRecord | PurchaseOrderRecord) {
@@ -235,8 +250,9 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
       if (showLoading) setPendingLoading(true);
       try {
         const wo = (st: string) => workOrderListParams(isAdmin, st);
-        const [claims, rPen, rProc, pPen, pProc] = await Promise.all([
+        const [claims, materials, rPen, rProc, pPen, pProc] = await Promise.all([
           fetchSupplyPendingTasks(),
+          fetchPendingMaterialRequests(),
           fetchRepairOrders(wo("PENDING")),
           fetchRepairOrders(wo("PROCESSING")),
           fetchPurchaseOrders(wo("PENDING")),
@@ -252,6 +268,18 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
             kindLabel: "物资领用",
             title: claimApplicantLabel(o),
             sub: `${formatBeijingDateTimeMedium(o.createdAt)} · ${claimStatusText(o.status)}`,
+            sortAt: sortKeyFrom(o.createdAt),
+          });
+        });
+
+        (materials || []).forEach((o) => {
+          merged.push({
+            key: `material_${o.id}`,
+            workKind: "material",
+            id: o.id,
+            kindLabel: "物资申领",
+            title: materialApplicantLabel(o),
+            sub: `${formatBeijingDateTimeMedium(o.createdAt)} · ${materialStatusText(o.status)}`,
             sortAt: sortKeyFrom(o.createdAt),
           });
         });
@@ -488,6 +516,10 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
     }
     if (item.workKind === "repair" || item.workKind === "purchase") {
       void openWorkOrderModal(item.workKind, item.id);
+      return;
+    }
+    if (item.workKind === "material") {
+      window.location.hash = "#/admin/material/review";
     }
   };
 

@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Bot, Layers, Star } from "lucide-react";
@@ -12,6 +13,7 @@ import { AnalyticsCopilotDialog } from "@/features/analytics/components/Analytic
 import { CageOccupancyReportPanel } from "@/features/analytics/components/CageOccupancyReportPanel";
 import { IsolationUsageReportPanel } from "@/features/analytics/components/IsolationUsageReportPanel";
 import { StudentActivityReportPanel } from "@/features/analytics/components/StudentActivityReportPanel";
+import { MaterialStatsReportPanel } from "@/features/analytics/components/MaterialStatsReportPanel";
 import CageSpecialStatusReportPanel from "@/features/analytics/components/CageSpecialStatusReportPanel";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +21,7 @@ const ISOLATION_REPORT_KEY = "isolation_usage";
 const CAGE_REPORT_KEY = "cage_occupancy";
 const STUDENT_ACTIVITY_KEY = "student_activity";
 const CAGE_SPECIAL_STATUS_KEY = "cage_special_status";
+const MATERIAL_STATS_KEY = "material_stats";
 
 const ANALYTICS_REPORT_KEYS = [ISOLATION_REPORT_KEY, CAGE_REPORT_KEY, STUDENT_ACTIVITY_KEY, CAGE_SPECIAL_STATUS_KEY] as const;
 
@@ -34,6 +37,7 @@ function saveFavoriteKey(key: string | null) {
 }
 
 export default function AdminAnalyticsPage() {
+  const [searchParams] = useSearchParams();
   const { data: reports = [], isLoading } = useQuery({
     queryKey: ["analytics", "reports"],
     queryFn: fetchAnalyticsReports,
@@ -51,6 +55,12 @@ export default function AdminAnalyticsPage() {
   // If reports loaded and saved fav no longer exists, fall back
   const active = reports.find((r) => r.key === activeKey) ?? reports[0];
   const isAnalyticsReport = ANALYTICS_REPORT_KEYS.includes(activeKey as (typeof ANALYTICS_REPORT_KEYS)[number]);
+  const isMaterialStats = activeKey === MATERIAL_STATS_KEY;
+
+  useEffect(() => {
+    const report = searchParams.get("report")?.trim();
+    if (report) setActiveKey(report);
+  }, [searchParams]);
 
   const { data: activeViews = [] } = useQuery({
     queryKey: ["analytics", "views", activeKey],
@@ -149,7 +159,8 @@ export default function AdminAnalyticsPage() {
           {activeKey === CAGE_REPORT_KEY ? <CageOccupancyReportPanel /> : null}
           {activeKey === STUDENT_ACTIVITY_KEY ? <StudentActivityReportPanel /> : null}
           {activeKey === CAGE_SPECIAL_STATUS_KEY ? <CageSpecialStatusReportPanel /> : null}
-          {!isAnalyticsReport ? (
+          {isMaterialStats ? <MaterialStatsReportPanel /> : null}
+          {!isAnalyticsReport && !isMaterialStats ? (
             <p className="text-sm text-neutral-500">该报表模块即将上线。</p>
           ) : null}
 

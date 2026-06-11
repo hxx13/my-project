@@ -6,6 +6,8 @@ const USER_INFO_KEY = "auth_user_info";
 const PREV_TOKEN_KEY = "auth_prev_token";
 const PREV_ROLE_KEY = "auth_prev_role";
 const PREV_USER_INFO_KEY = "auth_prev_user_info";
+/** 扫码弹窗 PIN 验证后进入学生中心时写入，用于顶栏仅展示「返回扫码页」、隐藏退出登录 */
+const STUDENT_ENTRY_FROM_SCAN_KEY = "student_entry_from_scan";
 const MOCK_JWT_PREFIX = "jwt_mock_token_";
 
 /** 登录或自助改昵称后写入 userInfo，供头部等订阅刷新 */
@@ -70,6 +72,32 @@ export const authStorage = {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ROLE_KEY);
     localStorage.removeItem(USER_INFO_KEY);
+    this.clearStudentEntryFromScan();
+  },
+
+  /** 标记当前学生中心会话来自扫码弹窗（特殊通道） */
+  markStudentEntryFromScan() {
+    try {
+      sessionStorage.setItem(STUDENT_ENTRY_FROM_SCAN_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  },
+
+  isStudentEntryFromScan(): boolean {
+    try {
+      return sessionStorage.getItem(STUDENT_ENTRY_FROM_SCAN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  },
+
+  clearStudentEntryFromScan() {
+    try {
+      sessionStorage.removeItem(STUDENT_ENTRY_FROM_SCAN_KEY);
+    } catch {
+      /* ignore */
+    }
   },
   hasToken(): boolean {
     return Boolean(this.getToken());
@@ -119,6 +147,7 @@ export const authStorage = {
 
     this.setAuth(prevToken, prevRole, prevUserInfo as AuthUserInfo | null);
     this.clearPreviousSession();
+    this.clearStudentEntryFromScan();
     return true;
   },
 

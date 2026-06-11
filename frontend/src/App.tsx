@@ -123,6 +123,9 @@ function GlobalSocketListener() {
             console.log("🔄 排行榜刷新信号:", payload?.jobKey);
             queryClient.invalidateQueries({ queryKey: ["dashboard", "ranking"] });
             queryClient.invalidateQueries({ queryKey: ["dashboard", "animalRanking"] });
+            if (payload?.jobKey === "DASHBOARD_RANKING_ACTIVITY") {
+                queryClient.invalidateQueries({ queryKey: ["dashboard", "rankingSnapshot"] });
+            }
         });
 
         /** 强制登出时立即断开 WebSocket，停止重连 */

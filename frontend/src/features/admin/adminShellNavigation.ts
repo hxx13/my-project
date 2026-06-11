@@ -19,7 +19,7 @@ const SECONDARY_ROUTE_TITLE: Record<string, string> = {
   "/admin/supplies/process": "领用出库处理",
   "/admin/material/review": "申领审核",
   "/admin/material/manage": "物品管理",
-  "/admin/material/audit": "物资统计与审计",
+  "/admin/material/audit": "物资申领统计",
   "/admin/material/audit-export": "申领审计导出",
 };
 
@@ -31,7 +31,7 @@ const DEFAULT_BACK_PARENT: Record<string, string> = {
   "/admin/supplies/process": "/admin/supplies/audit-export",
   "/admin/material/review": "/admin",
   "/admin/material/manage": "/admin/material/review",
-  "/admin/material/audit": "/admin/material/review",
+  "/admin/material/audit": "/admin/analytics?report=material_stats",
   "/admin/material/audit-export": "/admin/material/review",
 };
 

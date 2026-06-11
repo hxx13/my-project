@@ -7,8 +7,6 @@ import {
   CircleHelp,
   History,
   Home,
-  Lock,
-  LockOpen,
   LogIn,
   LogOut,
   Menu,
@@ -68,7 +66,6 @@ import {
   RECENT_GROUP_ID,
   splitPersonalizedPaletteItems,
   STARS_GROUP_ID,
-  toggleAdminNavLock,
   toggleAdminNavStar,
 } from "@/features/admin/adminNavPersonalization";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
@@ -485,7 +482,6 @@ export default function AdminLayout() {
       let nav = parseAdminNavLinkFromEventTarget(e.target);
       let sensitive = parseSensitiveFromEventTarget(e.target);
       let friend = parseFriendRowFromEventTarget(e.target);
-      if (!hasMinRole(role, "SUPER_ADMIN")) nav = null;
       if (sensitive && !hasMinRole(role, sensitive.configureMinRole)) sensitive = null;
       if (!friendOk) friend = null;
       setChromeCtx({ x: e.clientX, y: e.clientY, nav, sensitive, friend });
@@ -523,31 +519,21 @@ export default function AdminLayout() {
     const itemLocked = !collapsed && isAdminNavLocked(it.to);
     const itemStarred = !collapsed && isAdminNavStarred(it.to);
 
-    const actionButtons = !collapsed ? (
-      <>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); toggleAdminNavLock(it.to); }}
-          title={itemLocked ? "取消锁定" : "锁定此页面（进入后台时优先显示）"}
-          className={cn(
-            "shrink-0 p-0.5 rounded transition-colors",
-            itemLocked ? "text-amber-400 hover:text-amber-300" : "text-neutral-500 hover:text-neutral-200"
-          )}
-        >
-          {itemLocked ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
-        </button>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); toggleAdminNavStar(it.to); }}
-          title={itemStarred ? "取消收藏" : "收藏此页面"}
-          className={cn(
-            "shrink-0 p-0.5 rounded transition-colors",
-            itemStarred ? "text-amber-400 hover:text-amber-300" : "text-neutral-500 hover:text-neutral-200"
-          )}
-        >
-          <Star className={cn("h-3.5 w-3.5", itemStarred && "fill-amber-400")} />
-        </button>
-      </>
+    const starButton = !collapsed ? (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); toggleAdminNavStar(it.to); }}
+        title={itemStarred ? "取消收藏" : "收藏此页面"}
+        className={cn(
+          "shrink-0 rounded p-0.5 transition-all",
+          itemStarred
+            ? "text-amber-400 opacity-100 hover:text-amber-300"
+            : "text-neutral-500 opacity-0 group-hover:opacity-100 hover:text-neutral-200"
+        )}
+        aria-label={itemStarred ? "取消收藏" : "收藏此页面"}
+      >
+        <Star className={cn("h-3.5 w-3.5", itemStarred && "fill-amber-400")} />
+      </button>
     ) : null;
 
     if (it.telemetry) {
@@ -584,9 +570,12 @@ export default function AdminLayout() {
         </NavLink>
       );
       return (
-        <div key={it.key} className={cn("flex w-full min-w-0 items-center", itemLocked && "border-l-2 border-amber-400")}>
+        <div
+          key={it.key}
+          className={cn("group flex w-full min-w-0 items-center gap-0.5", itemLocked && "border-l-2 border-amber-400")}
+        >
+          {starButton}
           {link}
-          {actionButtons}
         </div>
       );
     }
@@ -618,9 +607,12 @@ export default function AdminLayout() {
       </NavLink>
     );
     return (
-      <div key={it.key} className={cn("flex w-full min-w-0 items-center", itemLocked && "border-l-2 border-amber-400")}>
+      <div
+        key={it.key}
+        className={cn("group flex w-full min-w-0 items-center gap-0.5", itemLocked && "border-l-2 border-amber-400")}
+      >
+        {starButton}
         {link}
-        {actionButtons}
       </div>
     );
   };

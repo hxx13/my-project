@@ -240,6 +240,16 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
         scanPopupAnnouncements,
         violationInteractiveChallenge:
             asString(safe.violationInteractiveChallenge ?? safe.violation_interactive_challenge) ?? null,
+        autoSignoutState:
+            asString(safe.autoSignoutState ?? safe.auto_signout_state) ?? null,
+        autoSignoutScheduledAt:
+            asString(safe.autoSignoutScheduledAt ?? safe.auto_signout_scheduled_at) ?? null,
+        autoSignoutSecondsRemaining: (() => {
+            const raw = safe.autoSignoutSecondsRemaining ?? safe.auto_signout_seconds_remaining;
+            if (raw == null || raw === "") return null;
+            const n = typeof raw === "number" ? raw : Number(raw);
+            return Number.isFinite(n) && n > 0 ? n : null;
+        })(),
     };
 };
 

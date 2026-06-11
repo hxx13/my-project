@@ -7,10 +7,12 @@ import {
   ExternalLink,
   KeyRound,
   Link2,
+  Lock,
   MousePointerClick,
   RefreshCw,
   Search,
   ShieldAlert,
+  Star,
   Tags,
   TextSelect,
 } from "lucide-react";
@@ -34,6 +36,12 @@ import {
 } from "@/features/admin/adminChromeClipboard";
 import { AdminEntryPermQuickSection } from "@/features/admin/AdminEntryPermQuickSection";
 import { ADMIN_STAFF_CONTACTS_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
+import {
+  isAdminNavLocked,
+  isAdminNavStarred,
+  toggleAdminNavLock,
+  toggleAdminNavStar,
+} from "@/features/admin/adminNavPersonalization";
 import type {
   AdminFriendRowContextMenuTarget,
   AdminNavContextMenuTarget,
@@ -356,6 +364,34 @@ export function AdminChromeContextMenu({
         </div>
 
         <div className="min-h-0 flex-1 px-1 py-1">
+          {payload.nav && canStaff ? (
+            <>
+              <SectionLabel>侧栏入口</SectionLabel>
+              <MenuRow
+                icon={Star}
+                label={isAdminNavStarred(payload.nav.path) ? "取消收藏" : "收藏此页面"}
+                onClick={() => {
+                  const starred = toggleAdminNavStar(payload.nav!.path);
+                  toast.success(starred ? "已收藏" : "已取消收藏");
+                  onClose();
+                }}
+              />
+              <MenuRow
+                icon={Lock}
+                label={
+                  isAdminNavLocked(payload.nav.path)
+                    ? "取消锁定"
+                    : "锁定此页面（进入后台时优先显示）"
+                }
+                onClick={() => {
+                  const locked = toggleAdminNavLock(payload.nav!.path);
+                  toast.success(locked ? "已锁定此页面" : "已取消锁定");
+                  onClose();
+                }}
+              />
+            </>
+          ) : null}
+
           {payload.nav && canConfigureEntryPerm ? (
             <>
               <SectionLabel>入口权限</SectionLabel>

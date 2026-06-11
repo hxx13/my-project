@@ -17,15 +17,40 @@
                m.request_id AS requestId, m.operator_user_id AS operatorUserId,
                m.applicant_user_id AS applicantUserId, m.remark,
                m.created_at AS createdAt,
-               r.applicant_name AS applicantName, r.applicant_group AS applicantGroup
+               COALESCE(r.applicant_name, p.name) AS applicantName,
+               COALESCE(r.applicant_group, p.project_group_name) AS applicantGroup
         FROM material_stock_movement m
         LEFT JOIN material_item i ON m.item_id = i.id
         LEFT JOIN material_request r ON m.request_id = r.id
+        LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
         WHERE m.item_id = #{itemId}
         ORDER BY m.created_at DESC
         LIMIT #{offset}, #{size}
     </select>
     <select id="countViewsByItemId" resultType="int">
         SELECT COUNT(1) FROM material_stock_movement WHERE item_id = #{itemId}
+    </select>
+    <select id="statsDailyMovements" resultType="java.util.HashMap">
+        SELECT DATE(m.created_at) AS date, m.movement_type AS movementType,
+               COUNT(*) AS movementCount, COALESCE(SUM(ABS(m.qty)), 0) AS totalQty
+        FROM material_stock_movement m
+        <if test="groupId != null and groupId != ''">
+            LEFT JOIN material_request r ON m.request_id = r.id
+        </if>
+        WHERE DATE(m.created_at) BETWEEN #{from} AND #{to}
+        <if test="groupId != null and groupId != ''">
+            AND m.movement_type = 'OUTBOUND' AND r.applicant_group = #{groupId}
+        </if>
+        GROUP BY DATE(m.created_at), m.movement_type ORDER BY date
+    </select>
+    <select id="statsOutboundHeatmap" resultType="java.util.HashMap">
+        SELECT DAYOFWEEK(m.created_at) AS dayOfWeek, HOUR(m.created_at) AS hour, COUNT(*) AS count
+        FROM material_stock_movement m
+        <if test="groupId != null and groupId != ''">
+            LEFT JOIN material_request r ON m.request_id = r.id
+        </if>
+        WHERE m.movement_type = 'OUTBOUND' AND DATE(m.created_at) BETWEEN #{from} AND #{to}
+        <if test="groupId != null and groupId != ''">AND r.applicant_group = #{groupId}</if>
+        GROUP BY DAYOFWEEK(m.created_at), HOUR(m.created_at)
     </select>
 </mapper>

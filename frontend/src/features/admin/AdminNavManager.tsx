@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import toast from "react-hot-toast";
 import { AdminNavManagerTree } from "./AdminNavManagerTree";
 import { AdminNavManagerEditor } from "./AdminNavManagerEditor";
 import { AdminNavManagerCreateDialog } from "./AdminNavManagerCreateDialog";
@@ -34,11 +35,25 @@ export default function AdminNavManager() {
   const selectedNode = selectedId ? findNodeById(tree, selectedId) : undefined;
 
   const handleCreate = async (type: "GROUP" | "SUBGROUP", title: string, parentId: string | null) => {
-    await createNavGroup({ parentId, type, title });
-    await loadTree();
+    try {
+      const created = await createNavGroup({ parentId, type, title });
+      if (!created) {
+        toast.error("创建失败");
+        return;
+      }
+      toast.success(parentId ? "子文件夹已创建" : "顶级分组已创建");
+      await loadTree();
+      if (parentId) setSelectedId(parentId);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "创建失败");
+    }
   };
 
   const allNodes = flattenTree(tree);
+  const folderOptions = useMemo(
+    () => buildFolderOptions(tree),
+    [tree],
+  );
 
   return (
     <div className="flex h-[calc(100vh-4rem)] bg-white">
@@ -69,6 +84,7 @@ export default function AdminNavManager() {
       <div className="flex-1 overflow-y-auto">
         <AdminNavManagerEditor
           node={selectedNode ?? null}
+          tree={tree}
           allNodes={allNodes}
           onRefresh={loadTree}
         />
@@ -79,6 +95,7 @@ export default function AdminNavManager() {
         onOpenChange={setCreateOpen}
         parentId={createParentId}
         parentTitle={createParentTitle}
+        folderOptions={folderOptions}
         onCreate={handleCreate}
       />
     </div>
@@ -95,6 +112,21 @@ function findNodeById(tree: AdminNavConfigNode[], id: string): AdminNavConfigNod
     }
   }
   return undefined;
+}
+
+/** 扁平化文件夹选项（含层级深度，供父级选择器使用） */
+function buildFolderOptions(tree: AdminNavConfigNode[]): { id: string; title: string; depth: number }[] {
+  const result: { id: string; title: string; depth: number }[] = [];
+  const walk = (nodes: AdminNavConfigNode[], depth: number) => {
+    for (const n of nodes) {
+      if (n.type === "GROUP" || n.type === "SUBGROUP") {
+        result.push({ id: n.id, title: n.title, depth });
+        if (n.children?.length) walk(n.children, depth + 1);
+      }
+    }
+  };
+  walk(tree, 0);
+  return result;
 }
 
 /** Flatten tree to array */

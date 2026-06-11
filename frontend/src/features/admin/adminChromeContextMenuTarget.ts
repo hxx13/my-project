@@ -29,7 +29,9 @@ export function parseAdminNavLinkFromEventTarget(target: EventTarget | null): Ad
   if (!m) return null;
   const path = normalizeAdminPath(m[1]);
   if (!path.startsWith("/admin")) return null;
-  const navRoot = a.closest("[data-admin-sidebar-nav]");
+  const navRoot = a.closest(
+    "[data-admin-sidebar-nav], [data-admin-sidebar-nav-top], [data-admin-sidebar-nav-groups]"
+  );
   const label =
     (a.getAttribute("data-admin-nav-label") || "").trim() ||
     (a.getAttribute("title") || "").trim() ||

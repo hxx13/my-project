@@ -1,14 +1,16 @@
-import { createElement, useEffect, useMemo, useState } from "react";
+import { createElement, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { fetchPublicPagePermissions, WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, type MinRole } from "@/api/domains/pagePermission.api";
+import { fetchPendingBadges } from "@/api/domains/me.api";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
-import { buildAdminNavModel, createAdminNavContext, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import { buildAdminNavModel, createAdminNavContext, normalizeAdminPath, type AdminHomeEntry } from "@/features/admin/buildAdminNavModel";
 import { ADMIN_NAV_PERSONALIZATION_EVENT, isAdminNavStarred, readAdminNavRecent, toggleAdminNavStar } from "@/features/admin/adminNavPersonalization";
-import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems } from "@/features/admin/adminNavRegistry";
+import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
+import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems, titleForUnknownAdminPath } from "@/features/admin/adminNavRegistry";
 import { cn } from "@/lib/utils";
 import { Sparkles, Star, ChevronDown, ChevronRight } from "lucide-react";
 
@@ -45,15 +47,28 @@ function cleanPath(path: string): string {
   return (path || "").replace(/[?#].*$/, "").replace(/\/+/g, "/");
 }
 
-/** If title has no Chinese characters, try registry label as fallback */
-function chineseLabel(path: string, fallback: string): string {
+/**
+ * 工作台卡片标题：优先 nav-manager / 服务端 nav config 的 title，
+ * 仅当标题为空或纯英文路径时才回退硬编码注册表（避免覆盖自定义名称）。
+ */
+function displayEntryLabel(path: string, title: string): string {
+  const t = (title || "").trim();
+  if (t && /[一-鿿]/.test(t)) return t;
   const key = cleanPath(path);
-  const reg = LABEL_MAP[key];
-  if (reg) return reg;
-  if (/[一-鿿]/.test(fallback)) return fallback;
-  const seg = path.replace(/[?#].*$/, "").split("/").filter(Boolean).pop() || "";
-  return seg.replace(/-/g, " ");
+  if (LABEL_MAP[key]) return LABEL_MAP[key];
+  if (t) return t;
+  return titleForUnknownAdminPath(path);
 }
+
+type HomeCardModel = AdminHomeEntry & {
+  groupTitle: string;
+  icon: ReturnType<typeof createElement>;
+  _bg: string;
+};
+
+/** 固定卡片宽度，按容器宽度自动填充列数并换行 */
+const HOME_CARD_GRID_CLASS =
+  "grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(5.75rem,5.75rem))]";
 
 export default function AdminHomePage() {
   const navigate = useNavigate();
@@ -68,10 +83,22 @@ export default function AdminHomePage() {
     placeholderData: (prev) => prev,
   });
 
+  const { data: pendingBadges } = useQuery({
+    queryKey: ["pendingBadges"] as const,
+    queryFn: fetchPendingBadges,
+    placeholderData: (prev) => prev,
+  });
+
   useEffect(() => {
     const fn = () => qc.invalidateQueries({ queryKey: ["publicPagePermissions"] });
     window.addEventListener(WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, fn);
     return () => window.removeEventListener(WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, fn);
+  }, [qc]);
+
+  useEffect(() => {
+    const fn = () => qc.invalidateQueries({ queryKey: ["pendingBadges"] });
+    window.addEventListener(ADMIN_PENDING_BADGES_REFRESH_EVENT, fn);
+    return () => window.removeEventListener(ADMIN_PENDING_BADGES_REFRESH_EVENT, fn);
   }, [qc]);
 
   useEffect(() => {
@@ -85,9 +112,11 @@ export default function AdminHomePage() {
 
   useEffect(() => {
     let cancelled = false;
-    buildAdminNavModel(navCtx, null).then((model) => { if (!cancelled) setNavModel(model); });
+    buildAdminNavModel(navCtx, pendingBadges ?? null).then((model) => {
+      if (!cancelled) setNavModel(model);
+    });
     return () => { cancelled = true; };
-  }, [navCtx]);
+  }, [navCtx, pendingBadges]);
 
   const allCards = useMemo(() => {
     const homeSections = navModel?.homeSections ?? [];
@@ -98,18 +127,18 @@ export default function AdminHomePage() {
         const pathKey = cleanPath(e.path);
         return {
           ...e,
-          title: chineseLabel(e.path, e.title),
+          title: displayEntryLabel(e.path, e.title),
           enabled: roleOk && permOk,
           groupTitle: g.title,
           icon: createElement(e.icon, { className: "h-5 w-5" }),
           _bg: COLOR_MAP[pathKey] || "linear-gradient(135deg, #818cf8, #a78bfa)",
-        };
+        } satisfies HomeCardModel;
       })
     );
   }, [navModel, permNodes, role]);
 
   const groups = useMemo(() => {
-    const m = new Map<string, typeof allCards>();
+    const m = new Map<string, HomeCardModel[]>();
     for (const c of allCards) {
       if (!m.has(c.groupTitle)) m.set(c.groupTitle, []);
       m.get(c.groupTitle)!.push(c);
@@ -120,8 +149,11 @@ export default function AdminHomePage() {
   const starred = useMemo(() => allCards.filter(c => isAdminNavStarred(c.path) && c.enabled), [allCards, navBump]);
   const recent = useMemo(() => {
     const paths = readAdminNavRecent();
-    const out: typeof allCards = [];
-    for (const p of paths) { const hit = allCards.find(e => normalizeAdminPath(e.path) === p && e.enabled); if (hit) out.push(hit); }
+    const out: HomeCardModel[] = [];
+    for (const p of paths) {
+      const hit = allCards.find(e => normalizeAdminPath(e.path) === p && e.enabled);
+      if (hit) out.push(hit);
+    }
     return out.slice(0, 8);
   }, [allCards, navBump]);
 
@@ -149,18 +181,18 @@ export default function AdminHomePage() {
             <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-steel-400)]">
               <Star className="h-3 w-3 fill-[var(--color-peach-500)] text-[var(--color-peach-500)]" />收藏
             </h2>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+            <HomeCardGrid>
               {starred.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} starred />)}
-            </div>
+            </HomeCardGrid>
           </section>
         )}
 
         {recent.length > 0 && (
           <section>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-steel-400)]">最近访问</h2>
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+            <HomeCardGrid>
               {recent.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} />)}
-            </div>
+            </HomeCardGrid>
           </section>
         )}
 
@@ -176,9 +208,9 @@ export default function AdminHomePage() {
                 <span className="ml-1 text-[10px] opacity-50">({enabled.length})</span>
               </button>
               {!isCollapsed && (
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+                <HomeCardGrid>
                   {enabled.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} />)}
-                </div>
+                </HomeCardGrid>
               )}
             </section>
           );
@@ -188,33 +220,71 @@ export default function AdminHomePage() {
   );
 }
 
-function HomeCard({ entry, navigate, starred }: { entry: any; navigate: (p: string) => void; starred?: boolean }) {
+function HomeCardGrid({ children }: { children: ReactNode }) {
+  return <div className={HOME_CARD_GRID_CLASS}>{children}</div>;
+}
+
+function HomePendingBadge({ text }: { text?: string }) {
+  const t = (text || "").trim();
+  if (!t) return null;
+  return (
+    <span
+      className="absolute left-1 top-1 z-[1] min-w-[1.25rem] rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white shadow-sm tabular-nums"
+      aria-label={`待处理 ${t}`}
+    >
+      {t}
+    </span>
+  );
+}
+
+function HomeCard({
+  entry,
+  navigate,
+  starred,
+}: {
+  entry: HomeCardModel;
+  navigate: (p: string) => void;
+  starred?: boolean;
+}) {
   const [isStarred, setIsStarred] = useState(starred ?? isAdminNavStarred(entry.path));
   return (
     <button
+      type="button"
       onClick={() => entry.enabled && navigate(entry.path)}
       disabled={!entry.enabled}
       className={cn(
-        "group relative flex flex-col items-center justify-center gap-2 rounded-2xl p-3 text-center transition-all duration-200",
-        "w-full min-h-[88px]",
+        "group relative box-border flex h-[6.25rem] w-[5.75rem] shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl p-2 text-center transition-all duration-200",
         entry.enabled
-          ? "bg-white border border-[var(--twin-hairline)] shadow-sm hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
-          : "bg-[var(--color-warm-100)] border border-[var(--twin-hairline)] opacity-50 cursor-not-allowed"
+          ? "cursor-pointer border border-[var(--twin-hairline)] bg-white shadow-sm hover:-translate-y-0.5 hover:shadow-md"
+          : "cursor-not-allowed border border-[var(--twin-hairline)] bg-[var(--color-warm-100)] opacity-50",
       )}
     >
+      <HomePendingBadge text={entry.badgeText} />
       <div
         className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm"
         style={{ background: entry._bg || "#818cf8" }}
       >
         {entry.icon}
       </div>
-      <span className="text-[11px] font-medium text-[var(--color-slate-800)] leading-tight line-clamp-2">{entry.title}</span>
+      <span className="line-clamp-2 w-full text-[11px] font-medium leading-tight text-[var(--color-slate-800)]">
+        {entry.title}
+      </span>
       <span
-        role="button" tabIndex={0}
+        role="button"
+        tabIndex={0}
         onClick={(e) => { e.stopPropagation(); toggleAdminNavStar(entry.path); setIsStarred(!isStarred); }}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); toggleAdminNavStar(entry.path); setIsStarred(!isStarred); } }}
-        className={cn("absolute top-1 right-1 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer",
-          isStarred ? "opacity-100 text-amber-500" : "text-gray-400 hover:text-amber-500")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.stopPropagation();
+            toggleAdminNavStar(entry.path);
+            setIsStarred(!isStarred);
+          }
+        }}
+        className={cn(
+          "absolute right-1 top-1 z-[1] rounded-lg p-1 opacity-0 transition-opacity group-hover:opacity-100",
+          isStarred ? "opacity-100 text-amber-500" : "text-gray-400 hover:text-amber-500",
+        )}
+        aria-label={isStarred ? "取消收藏" : "收藏"}
       >
         <Star className={cn("h-3.5 w-3.5", isStarred && "fill-amber-400")} />
       </span>

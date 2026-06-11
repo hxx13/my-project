@@ -286,13 +286,13 @@ export function StudentActivityDashboard({ groupName, className }: Props) {
 
           {/* Charts */}
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <div className="rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-canvas-soft)] p-4">
+            <div className="min-w-0 rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-canvas-soft)] p-4">
               <div className="mb-3 border-b border-[var(--student-border)] pb-2">
                 <h4 className="text-[12px] font-semibold text-[var(--student-ink)]">进出时段热力图</h4>
               </div>
               <ActivityHeatmapChart data={heatmapQuery.data ?? []} loading={heatmapQuery.isLoading} />
             </div>
-            <div className="rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-canvas-soft)] p-4">
+            <div className="min-w-0 rounded-[var(--student-radius-md)] border border-[var(--student-border)] bg-[var(--student-canvas-soft)] p-4">
               <div className="mb-3 border-b border-[var(--student-border)] pb-2">
                 <h4 className="text-[12px] font-semibold text-[var(--student-ink)]">喜好进出房间排行</h4>
               </div>

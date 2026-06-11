@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Folder, FolderOpen, GripVertical, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AdminNavConfigNode } from "@/api/domains/adminNavConfig.api";
@@ -49,7 +49,17 @@ function TreeNode({ node, depth, selectedId, onSelect, onAddClick }: {
   onAddClick: (parentId: string | null, parentTitle?: string) => void;
 }) {
   const [expanded, setExpanded] = useState(depth === 0);
-  const hasChildren = node.children && node.children.length > 0;
+  const childCount = node.children?.length ?? 0;
+  const prevChildCountRef = useRef(childCount);
+
+  useEffect(() => {
+    if (childCount > prevChildCountRef.current) {
+      setExpanded(true);
+    }
+    prevChildCountRef.current = childCount;
+  }, [childCount]);
+
+  const hasChildren = childCount > 0;
   const nodeType = node.type;
   const isGroup = nodeType === "GROUP";
   const isSubgroup = nodeType === "SUBGROUP";
@@ -135,7 +145,7 @@ function TreeNode({ node, depth, selectedId, onSelect, onAddClick }: {
       {/* Children */}
       {isFolder && expanded && hasChildren && (
         <div>
-          {node.children.map((child) => (
+          {node.children!.map((child) => (
             <TreeNode
               key={child.id}
               node={child}

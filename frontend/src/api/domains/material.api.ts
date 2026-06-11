@@ -82,6 +82,34 @@ export async function fetchItemStockMovements(itemId: number, params: { page: nu
   return res.data.data;
 }
 
+export interface MaterialItemClaimRow {
+  requestId: string;
+  userId?: string;
+  applicantName?: string;
+  applicantGroup?: string;
+  status: string;
+  itemName?: string;
+  qty: number;
+  fulfilledQty?: number;
+  createdAt?: string;
+  fulfilledAt?: string;
+}
+
+export async function fetchApplicantsWithRecords() {
+  const res = await authHttp.get<Result<Array<{ userId: string; applicantName: string }>>>("/material/admin/applicants-with-records");
+  return res.data.data ?? [];
+}
+
+export async function fetchGroupsWithRecords() {
+  const res = await authHttp.get<Result<string[]>>("/material/admin/groups-with-records");
+  return res.data.data ?? [];
+}
+
+export async function fetchItemClaimLines(itemId: number, params: { from?: string; to?: string; page: number; size: number }) {
+  const res = await authHttp.get<Result<{ data: MaterialItemClaimRow[]; total: number }>>(`/material/admin/audit/item/${itemId}/claims`, { params });
+  return res.data.data;
+}
+
 export interface MaterialAuditTrailRow {
   requestId: string;
   userId: string;
@@ -103,8 +131,29 @@ export interface MaterialAuditTrailRow {
 export interface MaterialStatsOverview {
   totalRequests: number;
   totalFulfilledQty: number;
+  passRate?: number;
+  refuseCount?: number;
+  stockWarnings?: Array<{ itemId: number; name: string; stockQty: number }>;
   byStudent: Array<Record<string, unknown>>;
   byItem: Array<Record<string, unknown>>;
+}
+
+export interface MaterialStatsAnalytics {
+  totalRequests: number;
+  totalRequestQty: number;
+  totalOutboundQty: number;
+  totalInboundQty: number;
+  passRate: number;
+  refuseCount: number;
+  activeStudents: number;
+  activeGroups: number;
+  stockWarnings: Array<{ itemId: number; name: string; stockQty: number }>;
+  byGroup: Array<{ groupName: string; requestCount: number; memberCount: number; totalQty: number }>;
+  byStudent: Array<{ userId: string; applicantName: string; applicantGroup: string; total: number; activeDays: number; totalQty: number }>;
+  byItem: Array<{ itemId: number; itemName: string; totalQty: number; requestCount: number }>;
+  dailyTrend: Array<{ date: string; requestCount: number; requestQty: number; outboundQty: number; inboundQty: number }>;
+  statusDistribution: Array<{ status: string; count: number }>;
+  outboundHeatmap: Array<{ dayOfWeek: number; hour: number; count: number }>;
 }
 
 // ---- student API ----
@@ -283,6 +332,11 @@ export async function fetchMaterialStatsOverview(from?: string, to?: string) {
   const res = await authHttp.get<Result<MaterialStatsOverview>>("/material/admin/stats/overview", {
     params: { from: from ?? "2000-01-01", to: to ?? "2099-12-31" },
   });
+  return res.data.data;
+}
+
+export async function fetchMaterialStatsAnalytics(params: { from: string; to: string; groupId?: string }) {
+  const res = await authHttp.get<Result<MaterialStatsAnalytics>>("/material/admin/stats/analytics", { params });
   return res.data.data;
 }
 

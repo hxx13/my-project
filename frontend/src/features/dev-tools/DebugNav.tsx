@@ -590,7 +590,8 @@ export default function DebugNav() {
                     setAutoExitConfirm(null);
                 }}
                 onCancel={() => setAutoExitConfirm(null)}
-                autoSignoutSeconds={activeAutoSignoutSeconds}
+                autoSignoutSeconds={activeResult?.autoSignoutSecondsRemaining ?? activeAutoSignoutSeconds}
+                autoSignoutState={activeResult?.autoSignoutState ?? null}
                 onCountdownEnd={() => {
                     setAutoExitConfirm(null);
                     if (lastScannedId) {

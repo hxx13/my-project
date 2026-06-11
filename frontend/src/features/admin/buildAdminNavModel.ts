@@ -21,6 +21,7 @@ import {
   type AdminNavContext,
   type AdminNavRegistryItem,
 } from "@/features/admin/adminNavRegistry";
+import { isDahuaSwingHubMergedPath } from "@/features/admin/dahuaSwingHubPaths";
 
 export type AdminSidebarNavItem = {
   key: string;
@@ -54,6 +55,7 @@ export type AdminHomeEntry = {
   icon: LucideIcon;
   tone: string;
   enabled: boolean;
+  badgeText?: string;
 };
 
 export type AdminHomeSection = {
@@ -81,6 +83,28 @@ function lookupRegistryTone(path: string): string {
     }
   }
   return "from-sky-400 to-blue-500"; // fallback
+}
+
+function lookupRegistryBadgeKey(path: string): keyof PendingBadges | undefined {
+  const norm = normalizeAdminPath(path);
+  for (const g of ADMIN_NAV_REGISTRY) {
+    for (const it of collectRegistryGroupItems(g)) {
+      if (normalizeAdminPath(it.path) === norm) return it.badgeTextKey;
+    }
+  }
+  return undefined;
+}
+
+function resolveHomeEntryBadgeText(
+  path: string,
+  itemBadgeKey: string | null | undefined,
+  pendingBadges: PendingBadges | null,
+): string | undefined {
+  const fromKey = badgeTextFromKey(
+    pendingBadges,
+    (itemBadgeKey as keyof PendingBadges | undefined) ?? lookupRegistryBadgeKey(path),
+  );
+  return fromKey;
 }
 
 export function normalizeAdminPath(path: string): string {
@@ -215,6 +239,7 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
         icon: it.icon,
         tone: it.homeTone,
         enabled: roleOk && permOk,
+        badgeText: badgeTextFromKey(pendingBadges, it.badgeTextKey),
       };
     }),
   }));
@@ -224,7 +249,7 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
   for (const n of ctx.permNodes) {
     if (!n || n.platform !== "WEB" || n.nodeType !== "ENTRY" || n.entrySource !== "sidebar") continue;
     const p = normalizeAdminPath(n.pathOrRoute);
-    if (!p || knownPaths.has(p) || seenAutoPath.has(p)) continue;
+    if (!p || knownPaths.has(p) || seenAutoPath.has(p) || isDahuaSwingHubMergedPath(p)) continue;
     seenAutoPath.add(p);
     const minRole = (n.minRole as MinRole) || "STUDENT";
     const roleOk = hasMinRole(ctx.role, minRole);
@@ -314,6 +339,7 @@ function nodeToSidebarItem(
   ctx: AdminNavContext,
 ): AdminSidebarNavItem | null {
   if (node.type !== "ITEM" || !node.itemPath) return null;
+  if (isDahuaSwingHubMergedPath(node.itemPath)) return null;
   const effectiveMinRole = resolveEntryMinRole(ctx.permNodes, node.itemPath, "STAFF");
   const roleOk = hasMinRole(ctx.role, effectiveMinRole);
   const permOk = canShowWebEntry(ctx.permNodes, node.itemPath, "sidebar", ctx.role, effectiveMinRole);
@@ -373,22 +399,33 @@ function convertServerConfigToModel(
       });
     }
 
-    // Build home section
+    // Build home section（含子分组内入口，与侧栏可见范围一致）
     const entries: AdminHomeEntry[] = [];
-    for (const child of node.children ?? []) {
-      if (child.type !== "ITEM" || !child.visible) continue;
-      const path = child.itemPath || "";
+    const pushHomeEntry = (itemNode: AdminNavConfigNode) => {
+      if (itemNode.type !== "ITEM" || !itemNode.visible) return;
+      const path = itemNode.itemPath || "";
+      if (!path || isDahuaSwingHubMergedPath(path)) return;
       const effectiveMinRole = resolveEntryMinRole(ctx.permNodes, path, "STAFF");
       const roleOk = hasMinRole(ctx.role, effectiveMinRole);
       const permOk = canShowWebEntry(ctx.permNodes, path, "sidebar", ctx.role, effectiveMinRole);
       entries.push({
-        title: child.title,
+        title: itemNode.title,
         path,
         minRole: effectiveMinRole,
-        icon: resolveIconByName(child.itemIcon),
+        icon: resolveIconByName(itemNode.itemIcon),
         tone: lookupRegistryTone(path),
         enabled: roleOk && permOk,
+        badgeText: resolveHomeEntryBadgeText(path, itemNode.itemBadgeKey, pendingBadges),
       });
+    };
+    for (const child of node.children ?? []) {
+      if (child.type === "ITEM") {
+        pushHomeEntry(child);
+      } else if (child.type === "SUBGROUP" && child.visible) {
+        for (const sgChild of child.children ?? []) {
+          pushHomeEntry(sgChild);
+        }
+      }
     }
     if (entries.length) {
       homeSections.push({ title: node.title, entries });
@@ -460,7 +497,7 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
   for (const n of ctx.permNodes) {
     if (!n || n.platform !== "WEB" || n.nodeType !== "ENTRY" || n.entrySource !== "sidebar") continue;
     const p = normalizeAdminPath(n.pathOrRoute);
-    if (!p || knownPaths.has(p) || seenAutoPath.has(p)) continue;
+    if (!p || knownPaths.has(p) || seenAutoPath.has(p) || isDahuaSwingHubMergedPath(p)) continue;
     seenAutoPath.add(p);
     const minRole = (n.minRole as MinRole) || "STUDENT";
     const roleOk = hasMinRole(ctx.role, minRole);

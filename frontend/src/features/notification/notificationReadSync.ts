@@ -50,7 +50,7 @@ export async function loadUnreadBizFlagMap(keys: BizKeyInput[]): Promise<Record<
   return out;
 }
 
-export function bizKeyFromWorkKind(workKind: "claim" | "repair" | "purchase", id: string): BizKeyInput | null {
+export function bizKeyFromWorkKind(workKind: "claim" | "repair" | "purchase" | "material", id: string): BizKeyInput | null {
   const bizType = workKindToBizType(workKind);
   if (!bizType || !id) return null;
   return { bizType, bizId: id };

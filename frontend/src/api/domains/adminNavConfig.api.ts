@@ -49,6 +49,14 @@ export async function updateNavGroup(
   return res.data?.success ? res.data.data : null;
 }
 
+export async function moveNavGroup(
+  id: string,
+  direction: "up" | "down"
+): Promise<AdminNavConfigNode | null> {
+  const res = await authHttp.put<ApiResult<AdminNavConfigNode>>(`/admin-nav/groups/${id}/move`, { direction });
+  return res.data?.success ? res.data.data : null;
+}
+
 export async function deleteNavGroup(id: string): Promise<boolean> {
   const res = await authHttp.delete<ApiResult<null>>(`/admin-nav/groups/${id}`);
   return res.data?.success ?? false;

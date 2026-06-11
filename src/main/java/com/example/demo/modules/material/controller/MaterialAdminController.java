@@ -289,7 +289,17 @@ public class MaterialAdminController {
     @GetMapping("/applicants-with-records")
     @Operation(summary = "有申领记录的人员列表")
     public Result<List<Map<String, Object>>> applicantsWithRecords() {
-        return Result.success(requestMapper.selectDistinctApplicants());
+        return materialService.listApplicantsWithRecords();
+    }
+
+    @GetMapping("/audit/item/{itemId}/claims")
+    @Operation(summary = "按物品查询申领明细")
+    public Result<Map<String, Object>> itemClaimLines(@PathVariable Long itemId,
+                                                       @RequestParam(required = false) String from,
+                                                       @RequestParam(required = false) String to,
+                                                       @RequestParam(defaultValue = "1") int page,
+                                                       @RequestParam(defaultValue = "50") int size) {
+        return materialService.listItemClaimLines(itemId, from, to, page, size);
     }
 
     @GetMapping("/eligible-reviewers")
@@ -352,6 +362,14 @@ public class MaterialAdminController {
     public Result<MaterialStatsOverview> statsOverview(@RequestParam(defaultValue = "2000-01-01") String from,
                                                         @RequestParam(defaultValue = "2099-12-31") String to) {
         return materialService.getStatsOverview(from, to);
+    }
+
+    @GetMapping("/stats/analytics")
+    @Operation(summary = "统计看板（坐标图数据，与申领审计导出同源）")
+    public Result<MaterialStatsAnalytics> statsAnalytics(@RequestParam(defaultValue = "2000-01-01") String from,
+                                                          @RequestParam(defaultValue = "2099-12-31") String to,
+                                                          @RequestParam(required = false) String groupId) {
+        return materialService.getStatsAnalytics(from, to, groupId);
     }
 
     @GetMapping("/stats/audit")

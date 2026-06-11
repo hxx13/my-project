@@ -221,10 +221,10 @@ export function StudentActivityReportPanel() {
 
           {/* Charts: heatmap + room preference */}
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <AdminFormCard title="进出时段热力图">
+            <AdminFormCard title="进出时段热力图" className="min-w-0">
               <ActivityHeatmapChart data={heatmapQuery.data ?? []} loading={heatmapQuery.isLoading} />
             </AdminFormCard>
-            <AdminFormCard title="该课题组喜好进出房间">
+            <AdminFormCard title="该课题组喜好进出房间" className="min-w-0">
               <ActivityRoomChart data={roomQuery.data ?? []} loading={roomQuery.isLoading} />
             </AdminFormCard>
           </div>

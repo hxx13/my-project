@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut } from "lucide-react";
-import { formatCountdown } from "@/utils/formatCountdown";
+import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
 
 interface SwipeExitConfirmDialogProps {
     open: boolean;
@@ -12,6 +12,8 @@ interface SwipeExitConfirmDialogProps {
     onCancel: () => void;
     /** 自动签退剩余秒数（来自 analyze）；null/undefined 则不显示倒计时区块 */
     autoSignoutSeconds?: number | null;
+    /** PENDING_ACTIVATION / AUTO_EXIT_SCHEDULED；用于区分激活与签退倒计时文案 */
+    autoSignoutState?: string | null;
     /** 倒计时归零回调：关闭弹窗 + 刷新状态 */
     onCountdownEnd?: () => void;
 }
@@ -23,6 +25,7 @@ export function SwipeExitConfirmDialog({
     onConfirm,
     onCancel,
     autoSignoutSeconds,
+    autoSignoutState,
     onCountdownEnd,
 }: SwipeExitConfirmDialogProps) {
     const [countdown, setCountdown] = useState<number | null>(null);
@@ -71,6 +74,7 @@ export function SwipeExitConfirmDialog({
     }, [countdown, onCountdownEnd]);
 
     const showCountdown = countdown != null && countdown > 0;
+    const countdownCopy = resolveAutoSignoutCountdownCopy(autoSignoutState);
 
     return createPortal(
         <AnimatePresence>
@@ -122,12 +126,15 @@ export function SwipeExitConfirmDialog({
                             {showCountdown && (
                                 <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
                                     <div className="flex items-center justify-center gap-2 mb-1.5">
+                                        <span className="text-[11px] font-bold text-amber-300/90 uppercase tracking-wide">
+                                            {countdownCopy.badge}
+                                        </span>
                                         <span className="text-2xl font-mono font-bold text-amber-400 tracking-wider">
                                             {formatCountdown(countdown!)}
                                         </span>
                                     </div>
                                     <p className="text-[11px] text-amber-300/80 text-center leading-snug">
-                                        当前已进入自动签退阶段，系统将在倒计时结束后自动为您签退。要现在手动签退吗？
+                                        {countdownCopy.hint}
                                     </p>
                                 </div>
                             )}

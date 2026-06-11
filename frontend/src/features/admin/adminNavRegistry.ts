@@ -59,6 +59,7 @@ export type PendingBadgeTextKey = keyof Pick<
   | "processSuppliesText"
   | "purchaseText"
   | "processPurchaseText"
+  | "processMaterialText"
 >;
 
 export type AdminNavContext = {
@@ -611,6 +612,7 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         icon: ClipboardCheck,
         homeTone: "from-rose-400 to-pink-500",
         fallbackMinRole: "STAFF",
+        badgeTextKey: "processMaterialText",
         sidebarVisible: () => true,
       },
       {
@@ -640,8 +642,12 @@ const PATH_TITLE_MAP: Record<string, string> = Object.fromEntries(
 );
 
 PATH_TITLE_MAP["/admin/dahua-swing-tasks"] = "门禁数据工作台";
+PATH_TITLE_MAP["/admin/dahua-swing-stats-tasks"] = "门禁数据工作台";
+PATH_TITLE_MAP["/admin/dahua-swing-stats-backfill"] = "门禁数据工作台";
+PATH_TITLE_MAP["/admin/dahua-swing-records"] = "门禁数据工作台";
+PATH_TITLE_MAP["/admin/access-audit-source"] = "门禁数据工作台";
 PATH_TITLE_MAP["/admin/access-fusion"] = "门禁数据工作台";
-PATH_TITLE_MAP["/admin/access-clean-rule-profiles"] = "清洗规则方案";
+PATH_TITLE_MAP["/admin/access-clean-rule-profiles"] = "门禁数据工作台";
 
 function normalizePath(path: string): string {
   if (!path) return "";

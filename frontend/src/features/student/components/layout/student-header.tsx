@@ -22,6 +22,11 @@ interface StudentHeaderProps {
 export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
   const navigate = useNavigate();
   const impersonation = useMemo(() => getImpersonationState(), []);
+  const isImpersonating = Boolean(impersonation?.isImpersonating);
+  /** 扫码弹窗 PIN 进入：仅允许返回扫码页，禁止退出登录以免丢失终端操作员会话 */
+  const fromScanPopup = authStorage.isStudentEntryFromScan() && !isImpersonating;
+  const showReturnToScanner = fromScanPopup;
+  const showLogout = !fromScanPopup;
 
   // 独立拉取学生档案获取真实姓名和头像
   const { data: profile } = useQuery({
@@ -73,29 +78,21 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
 
       {/* Right side */}
       <div className="flex items-center gap-2">
-        {/* Return to scanner — restore previous session (staff operator) if exists,
-               otherwise clear and go to login. Prevents role leakage: a staff member
-               scanning a student then entering student center should return as staff,
-               not as the student. */}
-        <button
-          type="button"
-          onClick={() => {
-            const restored = authStorage.restorePreviousSession();
-            if (restored) {
-              navigate("/");
-            } else {
-              // 无上一会话（学生直连场景）：清空跳转首页，由 AuthGuard 重定向到登录
-              authStorage.clear();
-              navigate("/");
-            }
-          }}
-          className="inline-flex items-center gap-1 h-8 px-3 rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-xs text-[var(--student-mute)] hover:text-[var(--student-ink)] hover:bg-[var(--student-canvas-soft)] transition-colors"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-          返回扫码页
-        </button>
+        {showReturnToScanner ? (
+          <button
+            type="button"
+            onClick={() => {
+              const restored = authStorage.restorePreviousSession();
+              navigate(restored ? "/" : "/");
+            }}
+            className="inline-flex items-center gap-1 h-8 px-3 rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-xs text-[var(--student-mute)] hover:text-[var(--student-ink)] hover:bg-[var(--student-canvas-soft)] transition-colors"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+            返回扫码页
+          </button>
+        ) : null}
 
         {/* Notification bell */}
         <button
@@ -130,7 +127,7 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
                 <span className="truncate text-sm font-medium text-[var(--student-ink)]">
                   {displayName}
                 </span>
-                {impersonation?.isImpersonating && (
+                {isImpersonating && (
                   <span className="truncate text-[10px] text-amber-600">模拟模式</span>
                 )}
               </span>
@@ -143,12 +140,12 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
               <div className="truncate text-sm font-medium text-[var(--student-ink)]">
                 {displayName}
               </div>
-              {impersonation?.isImpersonating && (
+              {isImpersonating && (
                 <div className="truncate text-[11px] text-amber-600">模拟模式</div>
               )}
             </div>
 
-            {impersonation?.isImpersonating && (
+            {isImpersonating && (
               <>
                 <div className="px-2 py-1 text-[10px] text-[var(--student-mute)]">
                   模拟查看 · {impersonation.impersonatedUserId}
@@ -162,13 +159,15 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
               </>
             )}
 
-            <DropdownMenuItem
-              className="text-red-700 focus:bg-red-50 focus:text-red-800"
-              onSelect={handleLogout}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              退出登录
-            </DropdownMenuItem>
+            {showLogout ? (
+              <DropdownMenuItem
+                className="text-red-700 focus:bg-red-50 focus:text-red-800"
+                onSelect={handleLogout}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                退出登录
+              </DropdownMenuItem>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

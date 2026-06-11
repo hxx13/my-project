@@ -1,8 +1,11 @@
 package com.example.demo.modules.material.service;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
+import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import com.example.demo.modules.material.dto.*;
 import com.example.demo.modules.material.entity.*;
 import com.example.demo.modules.material.mapper.*;
@@ -33,6 +36,7 @@ public class MaterialService {
     private final MaterialOperationLogMapper operationLogMapper;
     private final NotificationService notificationService;
     private final UserDisplayNameService userDisplayNameService;
+    private final AroPersonnelMapper aroPersonnelMapper;
 
     public MaterialService(MaterialCategoryMapper categoryMapper, MaterialItemMapper itemMapper,
                            MaterialCartMapper cartMapper, MaterialRequestMapper requestMapper,
@@ -40,7 +44,8 @@ public class MaterialService {
                            MaterialStockMovementMapper stockMovementMapper,
                            MaterialOperationLogMapper operationLogMapper,
                            NotificationService notificationService,
-                           UserDisplayNameService userDisplayNameService) {
+                           UserDisplayNameService userDisplayNameService,
+                           AroPersonnelMapper aroPersonnelMapper) {
         this.categoryMapper = categoryMapper;
         this.itemMapper = itemMapper;
         this.cartMapper = cartMapper;
@@ -50,6 +55,7 @@ public class MaterialService {
         this.operationLogMapper = operationLogMapper;
         this.notificationService = notificationService;
         this.userDisplayNameService = userDisplayNameService;
+        this.aroPersonnelMapper = aroPersonnelMapper;
     }
 
     // ==================== 分类 ====================
@@ -273,7 +279,7 @@ public class MaterialService {
         request.setId(id);
         request.setUserId(user.getId());
         request.setApplicantName(userDisplayNameService.resolveDisplayName(user.getId()));
-        request.setApplicantGroup(req.getApplicantGroup() != null ? req.getApplicantGroup() : null);
+        request.setApplicantGroup(resolveApplicantGroup(user.getId(), req.getApplicantGroup()));
         request.setStatus("PENDING");
         MaterialItem firstItem = itemMapper.selectById(req.getLines().get(0).getItemId());
         request.setWorkflowType(firstItem != null ? firstItem.getWorkflowType() : "SIMPLE");
@@ -421,7 +427,7 @@ public class MaterialService {
             }
         }
         if (finalApproved) {
-            // 确认扣减锁定库存
+            // 确认扣减锁定库存并同步出库（审核通过即出库，不再单独确认出库）
             List<MaterialRequestLine> approveLines = requestLineMapper.selectByRequestId(id);
             for (MaterialRequestLine line : approveLines) {
                 MaterialItem item = itemMapper.selectById(line.getItemId());
@@ -429,9 +435,38 @@ public class MaterialService {
                     itemMapper.applyLock(line.getItemId(), line.getQty());
                 }
             }
-            publishMaterialEvent("APPROVED", id, reviewer.getId(), request.getUserId(), "审核已通过，等待出库");
+            fulfillAllLinesOnApprove(id, reviewer, request);
         }
         return Result.success(toRequestView(requestMapper.selectById(id)));
+    }
+
+    /** 审核通过后自动出库：写库存流水并置 FULFILLED（库存已在申领预占时扣减，此处不再 updateStock） */
+    private void fulfillAllLinesOnApprove(String requestId, User operator, MaterialRequest request) {
+        List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(requestId);
+        int outboundLines = 0;
+        for (MaterialRequestLine line : lines) {
+            int qty = line.getQty() != null ? line.getQty() : 0;
+            if (qty <= 0) continue;
+            requestLineMapper.updateFulfilledQty(line.getId(), qty);
+            MaterialItem item = itemMapper.selectById(line.getItemId());
+            int stockAfter = item != null && item.getStockQty() != null ? item.getStockQty() : 0;
+            MaterialStockMovement m = new MaterialStockMovement();
+            m.setItemId(line.getItemId());
+            m.setMovementType("OUTBOUND");
+            m.setQty(-qty);
+            m.setStockAfter(stockAfter);
+            m.setRequestId(requestId);
+            m.setRequestLineId(line.getId());
+            m.setOperatorUserId(operator != null ? operator.getId() : null);
+            m.setApplicantUserId(request.getUserId());
+            m.setRemark("申领出库");
+            stockMovementMapper.insert(m);
+            outboundLines++;
+        }
+        requestMapper.updateFulfill(requestId, operator != null ? operator.getId() : null);
+        logOp("REQUEST", requestId, "FULFILL", Map.of("operator", operator != null ? operator.getId() : null, "autoOnApprove", true));
+        publishMaterialEvent("COMPLETED", requestId, operator.getId(), request.getUserId(),
+                "审核通过已出库 " + outboundLines + " 类物资");
     }
 
     @Transactional
@@ -453,39 +488,18 @@ public class MaterialService {
         return Result.success(null);
     }
 
+    /** @deprecated 审核通过已自动出库；保留接口兼容旧客户端 */
     @Transactional
     public Result<MaterialRequestView> fulfill(User operator, String id, FulfillMaterialRequestReq req) {
         MaterialRequest request = requestMapper.selectById(id);
         if (request == null) return Result.error("申领单不存在");
-        if (!"APPROVED".equals(request.getStatus())) return Result.error("当前状态不可出库");
-        List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(id);
-        for (var fl : req.getLines()) {
-            if (Boolean.TRUE.equals(fl.getGrant())) {
-                int qty = fl.getFulfillQty() != null ? fl.getFulfillQty() : 0;
-                MaterialRequestLine line = lines.stream().filter(l -> l.getId().equals(fl.getLineId())).findFirst().orElse(null);
-                if (line == null) continue;
-                requestLineMapper.updateFulfilledQty(fl.getLineId(), qty);
-                MaterialItem item = itemMapper.selectById(line.getItemId());
-                if (item != null && "LIMITED".equals(item.getStockMode())) {
-                    itemMapper.updateStock(line.getItemId(), -qty);
-                    MaterialStockMovement m = new MaterialStockMovement();
-                    m.setItemId(line.getItemId());
-                    m.setMovementType("OUTBOUND");
-                    m.setQty(-qty);
-                    m.setStockAfter((item.getStockQty() != null ? item.getStockQty() : 0) - qty);
-                    m.setRequestId(id);
-                    m.setRequestLineId(line.getId());
-                    m.setOperatorUserId(operator.getId());
-                    m.setApplicantUserId(request.getUserId());
-                    m.setRemark("申领出库");
-                    stockMovementMapper.insert(m);
-                }
-            }
+        if ("FULFILLED".equals(request.getStatus()) || "RECEIVED".equals(request.getStatus())) {
+            return Result.success(toRequestView(request));
         }
-        requestMapper.updateFulfill(id, operator.getId());
-        logOp("REQUEST", id, "FULFILL", Map.of("operator", operator.getId()));
-        publishMaterialEvent("COMPLETED", id, operator.getId(), request.getUserId(),
-                "已出库 " + req.getLines().stream().filter(l -> Boolean.TRUE.equals(l.getGrant())).count() + " 类物资");
+        if (!"APPROVED".equals(request.getStatus())) {
+            return Result.error("当前状态不可出库，请先完成审核");
+        }
+        fulfillAllLinesOnApprove(id, operator, request);
         return Result.success(toRequestView(requestMapper.selectById(id)));
     }
 
@@ -546,11 +560,70 @@ public class MaterialService {
     public Result<Map<String, Object>> listItemStockMovements(Long itemId, int page, int size) {
         int offset = (page - 1) * size;
         List<MaterialStockMovementView> views = stockMovementMapper.selectViewsByItemId(itemId, offset, size);
+        for (MaterialStockMovementView v : views) {
+            enrichMovementApplicant(v);
+        }
         int total = stockMovementMapper.countViewsByItemId(itemId);
         Map<String, Object> result = new HashMap<>();
         result.put("data", views);
         result.put("total", total);
         return Result.success(result);
+    }
+
+    public Result<List<Map<String, Object>>> listApplicantsWithRecords() {
+        List<Map<String, Object>> rows = requestMapper.selectDistinctApplicants();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            String userId = row.get("userId") != null ? String.valueOf(row.get("userId")) : "";
+            if (!StringUtils.hasText(userId)) continue;
+            String name = row.get("applicantName") != null ? String.valueOf(row.get("applicantName")).trim() : "";
+            if (!StringUtils.hasText(name)) {
+                name = userDisplayNameService.resolveDisplayName(userId);
+            }
+            Map<String, Object> m = new HashMap<>();
+            m.put("userId", userId);
+            m.put("applicantName", name);
+            out.add(m);
+        }
+        out.sort(Comparator.comparing(m -> String.valueOf(m.get("applicantName"))));
+        return Result.success(out);
+    }
+
+    public Result<Map<String, Object>> listItemClaimLines(Long itemId, String from, String to, int page, int size) {
+        int offset = (page - 1) * size;
+        List<Map<String, Object>> rows = requestMapper.selectClaimLinesByItemId(itemId, from, to, offset, size);
+        for (Map<String, Object> row : rows) {
+            String userId = row.get("userId") != null ? String.valueOf(row.get("userId")) : "";
+            if (!StringUtils.hasText(String.valueOf(row.get("applicantName")))) {
+                row.put("applicantName", userDisplayNameService.resolveDisplayName(userId));
+            }
+            if (!StringUtils.hasText(String.valueOf(row.get("applicantGroup")))) {
+                row.put("applicantGroup", resolveApplicantGroup(userId, null));
+            }
+        }
+        int total = requestMapper.countClaimLinesByItemId(itemId, from, to);
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", rows);
+        result.put("total", total);
+        return Result.success(result);
+    }
+
+    /** 启动时回填历史申领单的课题组与申领人姓名 */
+    public int backfillRequestApplicantMetadata() {
+        List<MaterialRequest> requests = requestMapper.selectAll(null, null, null, 0, 100000);
+        int updated = 0;
+        for (MaterialRequest req : requests) {
+            boolean needName = !StringUtils.hasText(req.getApplicantName());
+            boolean needGroup = !StringUtils.hasText(req.getApplicantGroup());
+            if (!needName && !needGroup) continue;
+            String name = needName ? userDisplayNameService.resolveDisplayName(req.getUserId()) : req.getApplicantName();
+            String group = needGroup ? resolveApplicantGroup(req.getUserId(), null) : req.getApplicantGroup();
+            if ((needName && StringUtils.hasText(name)) || (needGroup && StringUtils.hasText(group))) {
+                requestMapper.updateApplicantMeta(req.getId(), name, group);
+                updated++;
+            }
+        }
+        return updated;
     }
 
     // ==================== 统计审计 ====================
@@ -603,6 +676,100 @@ public class MaterialService {
     }
 
     /**
+     * 统计看板：申领记录 + 库存流水（与申领审计导出同源），直接供前端坐标图使用。
+     */
+    public Result<MaterialStatsAnalytics> getStatsAnalytics(String from, String to, String groupId) {
+        String g = StringUtils.hasText(groupId) ? groupId.trim() : null;
+        MaterialStatsAnalytics out = new MaterialStatsAnalytics();
+
+        List<Map<String, Object>> byStudent = requestMapper.statsByStudentFiltered(from, to, g);
+        List<Map<String, Object>> byItem = requestMapper.statsByItemFiltered(from, to, g);
+        List<Map<String, Object>> byGroup = requestMapper.statsByGroupFiltered(from, to, g);
+        out.setByStudent(byStudent);
+        out.setByItem(byItem);
+        out.setByGroup(byGroup);
+
+        long totalRequests = byStudent.stream()
+                .mapToLong(m -> ((Number) m.getOrDefault("total", 0)).longValue()).sum();
+        long totalRequestQty = byItem.stream()
+                .mapToLong(m -> ((Number) m.getOrDefault("totalQty", 0)).longValue()).sum();
+        out.setTotalRequests(totalRequests);
+        out.setTotalRequestQty(totalRequestQty);
+        out.setActiveStudents((long) byStudent.size());
+        out.setActiveGroups((long) byGroup.size());
+
+        Map<String, Object> passReject = requestMapper.statsPassRejectInRange(from, to, g);
+        long approved = passReject != null ? ((Number) passReject.getOrDefault("approved", 0)).longValue() : 0;
+        long rejected = passReject != null ? ((Number) passReject.getOrDefault("rejected", 0)).longValue() : 0;
+        out.setRefuseCount(rejected);
+        out.setPassRate((approved + rejected) > 0 ? (double) approved / (double) (approved + rejected) : 0.0);
+
+        List<Map<String, Object>> dailyReq = requestMapper.statsDailyRequests(from, to, g);
+        List<Map<String, Object>> dailyMov = stockMovementMapper.statsDailyMovements(from, to, g);
+        Map<String, Map<String, Object>> dayMap = new LinkedHashMap<>();
+        for (Map<String, Object> row : dailyReq) {
+            String date = String.valueOf(row.get("date"));
+            Map<String, Object> d = dayMap.computeIfAbsent(date, k -> {
+                Map<String, Object> m = new HashMap<>();
+                m.put("date", date);
+                m.put("requestCount", 0L);
+                m.put("requestQty", 0L);
+                m.put("outboundQty", 0L);
+                m.put("inboundQty", 0L);
+                return m;
+            });
+            d.put("requestCount", ((Number) row.getOrDefault("requestCount", 0)).longValue());
+            d.put("requestQty", ((Number) row.getOrDefault("requestQty", 0)).longValue());
+        }
+        long totalOutbound = 0;
+        long totalInbound = 0;
+        for (Map<String, Object> row : dailyMov) {
+            String date = String.valueOf(row.get("date"));
+            String type = String.valueOf(row.getOrDefault("movementType", ""));
+            long qty = ((Number) row.getOrDefault("totalQty", 0)).longValue();
+            Map<String, Object> d = dayMap.computeIfAbsent(date, k -> {
+                Map<String, Object> m = new HashMap<>();
+                m.put("date", date);
+                m.put("requestCount", 0L);
+                m.put("requestQty", 0L);
+                m.put("outboundQty", 0L);
+                m.put("inboundQty", 0L);
+                return m;
+            });
+            if ("OUTBOUND".equalsIgnoreCase(type)) {
+                d.put("outboundQty", qty);
+                totalOutbound += qty;
+            } else if ("INBOUND".equalsIgnoreCase(type)) {
+                d.put("inboundQty", qty);
+                totalInbound += qty;
+            }
+        }
+        out.setTotalOutboundQty(totalOutbound);
+        out.setTotalInboundQty(totalInbound);
+        out.setDailyTrend(new ArrayList<>(dayMap.values()));
+
+        out.setStatusDistribution(requestMapper.statsStatusInRange(from, to, g));
+        out.setOutboundHeatmap(stockMovementMapper.statsOutboundHeatmap(from, to, g));
+
+        List<MaterialItem> allItems = itemMapper.selectAll(null);
+        List<Map<String, Object>> warnings = new ArrayList<>();
+        for (MaterialItem it : allItems) {
+            if ("LIMITED".equals(it.getStockMode()) || "QUANTIFIED".equals(it.getStockMode())) {
+                int qty = it.getStockQty() != null ? it.getStockQty() : 0;
+                if (qty <= 5) {
+                    Map<String, Object> w = new HashMap<>();
+                    w.put("itemId", it.getId());
+                    w.put("name", it.getName());
+                    w.put("stockQty", qty);
+                    warnings.add(w);
+                }
+            }
+        }
+        out.setStockWarnings(warnings);
+        return Result.success(out);
+    }
+
+    /**
      * 审计流水：分页查询，支持按时间区间 + 课题组筛选。
      * 供审计面板和外部 agent 调用。
      *
@@ -648,6 +815,35 @@ public class MaterialService {
     }
 
     // ==================== 内部辅助 ====================
+
+    private String resolveApplicantGroup(String userId, String preferred) {
+        if (StringUtils.hasText(preferred)) {
+            return preferred.trim();
+        }
+        try {
+            AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
+            if (personnel == null) return null;
+            String resolved = personnel.getResolvedProjectGroupNames();
+            if (!StringUtils.hasText(resolved)) return null;
+            List<String> groups = PersonnelProjectGroupUtil.splitGroups(resolved);
+            return groups.isEmpty() ? resolved.trim() : groups.get(0);
+        } catch (Exception e) {
+            log.warn("解析申领人课题组失败 userId={}: {}", userId, e.getMessage());
+            return null;
+        }
+    }
+
+    private void enrichMovementApplicant(MaterialStockMovementView v) {
+        if (v == null || !StringUtils.hasText(v.getApplicantUserId())) return;
+        if (StringUtils.hasText(v.getApplicantName()) && StringUtils.hasText(v.getApplicantGroup())) return;
+        String group = resolveApplicantGroup(v.getApplicantUserId(), v.getApplicantGroup());
+        if (!StringUtils.hasText(v.getApplicantName())) {
+            v.setApplicantName(userDisplayNameService.resolveDisplayName(v.getApplicantUserId()));
+        }
+        if (!StringUtils.hasText(v.getApplicantGroup()) && StringUtils.hasText(group)) {
+            v.setApplicantGroup(group);
+        }
+    }
 
     private MaterialCategoryView toCategoryView(MaterialCategory c) {
         MaterialCategoryView v = new MaterialCategoryView();

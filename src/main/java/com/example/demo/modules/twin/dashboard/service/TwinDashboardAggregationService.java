@@ -102,8 +102,9 @@ public class TwinDashboardAggregationService {
             Set<String> bindSet,
             String dictName) {
         String rid = statusRoomIdString(status.get("roomId"));
-        if (!bindSet.isEmpty() && !rid.isEmpty() && bindSet.contains(rid)) {
-            return true;
+        // 已配置流水 room_id 时仅按 id 精确对齐，禁止别名/名称兜底（避免跨校区同名后室如 301A 串房）
+        if (!bindSet.isEmpty()) {
+            return !rid.isEmpty() && bindSet.contains(rid);
         }
         String rawName = status.get("roomName") != null ? status.get("roomName").toString().trim() : "";
         if (rawName.equals(dictName)) {

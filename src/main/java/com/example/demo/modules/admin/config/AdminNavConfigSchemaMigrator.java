@@ -47,10 +47,35 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
             jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
                 "VALUES ('item-material-audit-export', 'material-review', 'ITEM', '申领审计导出', '/admin/material/audit-export', 'Download', 2)");
+            jdbcTemplate.update(
+                "UPDATE admin_nav_config SET item_badge_key = 'processMaterialText' WHERE id = 'item-material-review'");
+
+
+            hideMergedDahuaSwingHubEntries();
 
             log.info("[admin-nav-config] 表结构已就绪，种子数据已检查");
         } catch (Exception e) {
             log.error("[admin-nav-config] 迁移失败: {}", e.getMessage());
+        }
+    }
+
+    /** 旧独立分页已合并至「门禁数据工作台」，从侧栏/工作台隐藏 */
+    private void hideMergedDahuaSwingHubEntries() {
+        String[] mergedPaths = {
+                "/admin/dahua-swing-stats-tasks",
+                "/admin/dahua-swing-stats-backfill",
+                "/admin/dahua-swing-records",
+                "/admin/access-audit-source",
+                "/admin/access-fusion",
+                "/admin/access-clean-rule-profiles",
+        };
+        for (String path : mergedPaths) {
+            int n = jdbcTemplate.update(
+                    "UPDATE admin_nav_config SET visible = 0 WHERE item_path = ?",
+                    path);
+            if (n > 0) {
+                log.info("[admin-nav-config] 已隐藏合并入口: {}", path);
+            }
         }
     }
 

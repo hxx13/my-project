@@ -3,6 +3,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import { StudentSidebar } from "./student-sidebar";
 import { StudentHeader } from "./student-header";
 import { authStorage } from "@/features/auth/authStorage";
+import { getImpersonationState, returnToStaffView } from "@/features/auth/impersonation";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 import { IDLE_TIMEOUT_MS, IDLE_WARNING_MS } from "@/config/idleTimeout";
 
@@ -25,7 +26,12 @@ export default function StudentLayout() {
     timeoutMs: IDLE_TIMEOUT_MS,
     warningMs: IDLE_WARNING_MS,
     onTimeout: () => {
-      // 优先恢复上一会话（教职工操作员身份），其次清空跳转
+      if (getImpersonationState()?.isImpersonating) {
+        returnToStaffView();
+        navigate("/admin", { replace: true });
+        return;
+      }
+      // 扫码特殊通道：恢复终端操作员会话；普通学生则清空
       const restored = authStorage.restorePreviousSession();
       if (!restored) authStorage.clear();
       navigate("/");

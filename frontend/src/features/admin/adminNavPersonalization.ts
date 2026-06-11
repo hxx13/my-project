@@ -162,6 +162,42 @@ const STARS_GROUP_ID = "nav-sidebar-stars";
 /** 置顶「消息」分组（位于「常用」之上） */
 const FRIENDS_GROUP_ID = "nav-sidebar-friends";
 
+/** 将收藏入口在所属文件夹/子分组内置顶（保留原位置分组，仅调整顺序） */
+function pinStarredInSidebarGroups(
+  groups: AdminSidebarNavGroup[],
+  starPaths: string[],
+): AdminSidebarNavGroup[] {
+  const normalizedStars = starPaths.map(normalizeAdminPath);
+  const starSet = new Set(normalizedStars);
+  if (starSet.size === 0) return groups;
+
+  const starOrder = new Map(normalizedStars.map((p, i) => [p, i]));
+
+  const sortItems = (items: AdminSidebarNavItem[]): AdminSidebarNavItem[] => {
+    const starred: AdminSidebarNavItem[] = [];
+    const rest: AdminSidebarNavItem[] = [];
+    for (const it of items) {
+      if (starSet.has(normalizeAdminPath(it.to))) starred.push(it);
+      else rest.push(it);
+    }
+    starred.sort(
+      (a, b) =>
+        (starOrder.get(normalizeAdminPath(a.to)) ?? 999) -
+        (starOrder.get(normalizeAdminPath(b.to)) ?? 999),
+    );
+    return [...starred, ...rest];
+  };
+
+  return groups.map((g) => ({
+    ...g,
+    items: sortItems(g.items),
+    subgroups: g.subgroups?.map((sg) => ({
+      ...sg,
+      items: sortItems(sg.items),
+    })),
+  }));
+}
+
 /** 在侧栏「常用」之上插入「消息」；再插入常用 / 收藏（与命令面板数据源一致，仅展示仍有权限的入口） */
 export function prependPersonalNavSidebarGroups(
   baseGroups: AdminSidebarNavGroup[],
@@ -225,7 +261,8 @@ export function prependPersonalNavSidebarGroups(
   if (recentItems.length) {
     out.push({ id: RECENT_GROUP_ID, title: "常用", items: recentItems });
   }
-  return [...out, ...baseGroups];
+  const groupsWithPinnedStars = pinStarredInSidebarGroups(baseGroups, starPaths);
+  return [...out, ...groupsWithPinnedStars];
 }
 
 export function isFriendsSidebarGroupId(id: string): boolean {

@@ -1,25 +1,49 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
+export type AdminNavFolderOption = { id: string; title: string; depth: number };
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   parentId: string | null;
   parentTitle?: string;
+  folderOptions: AdminNavFolderOption[];
   onCreate: (type: "GROUP" | "SUBGROUP", title: string, parentId: string | null) => void;
 }
 
-export function AdminNavManagerCreateDialog({ open, onOpenChange, parentId, parentTitle, onCreate }: Props) {
-  const [type, setType] = useState<"GROUP" | "SUBGROUP">(parentId ? "SUBGROUP" : "GROUP");
+export function AdminNavManagerCreateDialog({
+  open,
+  onOpenChange,
+  parentId,
+  parentTitle,
+  folderOptions,
+  onCreate,
+}: Props) {
+  const lockedParent = parentId != null;
+  const [selectedParentId, setSelectedParentId] = useState<string | null>(parentId);
   const [title, setTitle] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedParentId(parentId);
+    setTitle("");
+  }, [open, parentId]);
+
+  const effectiveParentId = lockedParent ? parentId : selectedParentId;
+  const effectiveType: "GROUP" | "SUBGROUP" = effectiveParentId ? "SUBGROUP" : "GROUP";
+  const effectiveParentTitle =
+    lockedParent
+      ? parentTitle
+      : folderOptions.find((f) => f.id === effectiveParentId)?.title;
 
   const handleCreate = () => {
     if (!title.trim()) return;
-    onCreate(type, title.trim(), parentId);
+    onCreate(effectiveType, title.trim(), effectiveParentId);
     setTitle("");
     onOpenChange(false);
   };
@@ -30,21 +54,37 @@ export function AdminNavManagerCreateDialog({ open, onOpenChange, parentId, pare
         <DialogHeader>
           <DialogTitle>新建文件夹</DialogTitle>
           <DialogDescription>
-            {parentId ? `在「${parentTitle}」下创建子文件夹` : "创建顶级分组"}
+            {effectiveParentId
+              ? `在「${effectiveParentTitle ?? "所选文件夹"}」下创建子文件夹`
+              : "创建顶级分组"}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
+          {!lockedParent && folderOptions.length > 0 && (
+            <div>
+              <label className="text-sm font-medium mb-1 block">父文件夹</label>
+              <select
+                value={selectedParentId ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSelectedParentId(v ? v : null);
+                }}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="">无（顶级分组）</option>
+                {folderOptions.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {`${"　".repeat(f.depth)}${f.title}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="text-sm font-medium mb-1 block">类型</label>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as "GROUP" | "SUBGROUP")}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              disabled={!!parentId}
-            >
-              <option value="GROUP">顶级分组</option>
-              <option value="SUBGROUP">子分组</option>
-            </select>
+            <p className="text-sm text-gray-600 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+              {effectiveType === "GROUP" ? "顶级分组" : "子分组"}
+            </p>
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">名称</label>

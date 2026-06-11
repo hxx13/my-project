@@ -22,6 +22,11 @@ type RankItem = {
 
 const MAX_ITEMS = 50;
 
+/** 与后端快照、排行榜 name 字段对齐 */
+function normGroupName(name: string | undefined | null): string {
+  return (name ?? "").trim();
+}
+
 const podiumColors = [
   {
     bg: "linear-gradient(180deg, #fef3c7, #fbbf24, #f59e0b)",
@@ -51,8 +56,21 @@ export function UnifiedRankingCard() {
   const [region, setRegion] = useState<Region>("TOTAL");
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
   const scrollBoxRef = useRef<HTMLDivElement>(null);
-  const autoTabTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 自动滚动动画写入 scrollTop 时为 true，避免误判为用户手动滚动 */
+  const isAutoScrollingRef = useRef(false);
+  const AUTO_PLAY_RESUME_MS = 8000;
+
+  const pauseAutoPlay = useCallback(() => {
+    setIsAutoPlaying(false);
+    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), AUTO_PLAY_RESUME_MS);
+  }, []);
+
+  const handleListUserScroll = useCallback(() => {
+    if (isAutoScrollingRef.current) return;
+    pauseAutoPlay();
+  }, [pauseAutoPlay]);
 
   // ---- Data fetching ----
 
@@ -65,6 +83,7 @@ export function UnifiedRankingCard() {
   const activityInterval = (pollConfig?.activityIntervalSeconds ?? 300) * 1000;
   const animalInterval = (pollConfig?.animalIntervalSeconds ?? 1800) * 1000;
 
+  // 进出活跃：展示本月累计；▲/▼ 对比当日凌晨基线（本月截至今日 00:00 前的排名）
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ["dashboard", "ranking", "MONTH", region],
     queryFn: () => fetchGroupRanking("MONTH", region),
@@ -100,7 +119,8 @@ export function UnifiedRankingCard() {
     const map = new Map<string, number>();
     if (activitySnapshot) {
       for (const it of activitySnapshot) {
-        if (it.name) map.set(it.name, it.rank);
+        const name = normGroupName(it.name);
+        if (name) map.set(name, it.rank);
       }
     }
     return map;
@@ -142,13 +162,13 @@ export function UnifiedRankingCard() {
   const rankedList = useMemo<RankItem[]>(() => {
     const src = activeTab === "activity" ? rawActivityList : displayAnimalData;
     const items: RankItem[] = src.slice(0, MAX_ITEMS).map((item, idx) => {
-      const name = item.name ?? "";
-      const value = item.value ?? 0;
+      const name = normGroupName(item.name);
+      const value = item.value ?? item.count ?? 0;
       let trend: RankItem["trend"] = "same";
       let trendValue = 0;
 
       if (activeTab === "activity") {
-        // 进出活跃：对比后端快照中的上次排名 (prevRankMap)
+        // 进出活跃：当前本月排名 vs 当日凌晨基线排名（本月截至今日 00:00 前）
         const prevRank = prevRankMap.get(name);
         if (prevRank !== undefined) {
           const curRank = idx + 1;
@@ -203,9 +223,15 @@ export function UnifiedRankingCard() {
     }
   }, []);
 
-  // Reset scroll position on region/tab change
+  // 切换区域/标签时回到列表顶部（标记为程序滚动，不触发手动暂停）
   useEffect(() => {
-    if (scrollBoxRef.current) scrollBoxRef.current.scrollTop = 0;
+    const el = scrollBoxRef.current;
+    if (!el) return;
+    isAutoScrollingRef.current = true;
+    el.scrollTop = 0;
+    requestAnimationFrame(() => {
+      isAutoScrollingRef.current = false;
+    });
   }, [region, activeTab]);
 
   useEffect(() => {
@@ -218,35 +244,41 @@ export function UnifiedRankingCard() {
     const scrollOneCycle = () => {
       if (!active || !scrollBoxRef.current) return;
       const el = scrollBoxRef.current;
-      el.scrollTop = 0;
       const maxScroll = el.scrollHeight - el.clientHeight;
       if (maxScroll <= 0) {
-        // nothing to scroll — brief pause then advance
         timeout = setTimeout(advanceCycle, 3000);
         return;
       }
 
+      const startScroll = el.scrollTop;
+      if (startScroll >= maxScroll - 1) {
+        timeout = setTimeout(advanceCycle, 3000);
+        return;
+      }
+
+      const distance = maxScroll - startScroll;
       const start = performance.now();
-      const duration = Math.max(4000, maxScroll * 38); // ~26px/s, 与公告模块相同速度
+      const duration = Math.max(2000, distance * 38); // ~26px/s，从当前位置续滚
 
       const animate = (now: number) => {
         if (!active) return;
+        isAutoScrollingRef.current = true;
         const progress = Math.min((now - start) / duration, 1);
-        el.scrollTop = progress * maxScroll; // linear, no easing
+        el.scrollTop = startScroll + progress * distance;
         if (progress < 1) {
           raf = requestAnimationFrame(animate);
         } else {
-          // reached bottom — pause 3s then advance region/tab
+          isAutoScrollingRef.current = false;
           timeout = setTimeout(advanceCycle, 3000);
         }
       };
       raf = requestAnimationFrame(animate);
     };
 
-    // initial delay before first scroll
     timeout = setTimeout(scrollOneCycle, 2500);
     return () => {
       active = false;
+      isAutoScrollingRef.current = false;
       clearTimeout(timeout);
       cancelAnimationFrame(raf);
     };
@@ -254,18 +286,14 @@ export function UnifiedRankingCard() {
 
   const handleTabClick = useCallback((tab: TabKey) => {
     setActiveTab(tab);
-    setRegion("TOTAL"); // reset region on manual tab switch
-    setIsAutoPlaying(false);
-    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 8000);
-  }, []);
+    setRegion("TOTAL");
+    pauseAutoPlay();
+  }, [pauseAutoPlay]);
 
   const handleRegionClick = useCallback((reg: Region) => {
     setRegion(reg);
-    setIsAutoPlaying(false);
-    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    resumeTimerRef.current = setTimeout(() => setIsAutoPlaying(true), 8000);
-  }, []);
+    pauseAutoPlay();
+  }, [pauseAutoPlay]);
 
   const isLoading = activeTab === "activity" ? activityLoading : animalLoading;
 
@@ -350,7 +378,7 @@ export function UnifiedRankingCard() {
               transition: "all 0.2s",
             }}
           >
-            动物消耗
+            动物购买
           </button>
         </div>
       </div>
@@ -468,6 +496,10 @@ export function UnifiedRankingCard() {
             ref={scrollBoxRef}
             className="flex-1 flex flex-col gap-[1.5px] overflow-y-auto"
             style={{ scrollbarWidth: "none" }}
+            onWheel={pauseAutoPlay}
+            onPointerDown={pauseAutoPlay}
+            onTouchStart={pauseAutoPlay}
+            onScroll={handleListUserScroll}
           >
             {(activeTab === "activity" ? rest : rankedList).map(
               (item, i) => {

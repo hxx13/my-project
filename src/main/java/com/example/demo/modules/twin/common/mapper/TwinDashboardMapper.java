@@ -128,7 +128,10 @@ public interface TwinDashboardMapper {
     List<String> getDistinctGroupNames();
 
     List<Map<String, Object>> getGroupLogsForPrediction(@Param("groupName") String groupName);
-    List<Map<String, Object>> getGroupRankingByTimeAndRegion(@Param("startTime") String startTime, @Param("region") String region);
+  List<Map<String, Object>> getGroupRankingByTimeAndRegion(
+            @Param("startTime") String startTime,
+            @Param("endTime") String endTime,
+            @Param("region") String region);
 
     List<Map<String, Object>> getRoomPieStats(@Param("todayStart") String todayStart, @Param("area") String area);
 

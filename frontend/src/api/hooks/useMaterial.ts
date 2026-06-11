@@ -118,11 +118,23 @@ export function useAllMaterialRequests(params: { page: number; size: number; sta
 }
 export function useApproveMaterialRequest() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: approveMaterialRequest, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.requests() }) });
+  return useMutation({
+    mutationFn: approveMaterialRequest,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: materialQueryKeys.requests() });
+      window.dispatchEvent(new Event("aro-admin-refresh-pending-badges"));
+    },
+  });
 }
 export function useRejectMaterialRequest() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: rejectMaterialRequest, onSuccess: () => qc.invalidateQueries({ queryKey: materialQueryKeys.requests() }) });
+  return useMutation({
+    mutationFn: rejectMaterialRequest,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: materialQueryKeys.requests() });
+      window.dispatchEvent(new Event("aro-admin-refresh-pending-badges"));
+    },
+  });
 }
 export function useDeleteMaterialRequest() {
   const qc = useQueryClient();

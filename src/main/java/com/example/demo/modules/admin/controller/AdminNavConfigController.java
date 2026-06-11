@@ -33,6 +33,17 @@ public class AdminNavConfigController {
         return Map.of("success", true, "data", node);
     }
 
+    @PutMapping("/groups/{id}/move")
+    public Map<String, Object> moveGroup(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        String direction = (String) body.getOrDefault("direction", "");
+        int delta = "up".equals(direction) ? -1 : "down".equals(direction) ? 1 : 0;
+        if (delta == 0) {
+            return Map.of("success", false, "message", "direction 须为 up 或 down");
+        }
+        AdminNavConfigNode node = service.moveGroupRelative(id, delta);
+        return Map.of("success", true, "data", node);
+    }
+
     @PutMapping("/groups/{id}")
     public Map<String, Object> updateGroup(@PathVariable String id, @RequestBody Map<String, Object> body) {
         String title = (String) body.get("title");

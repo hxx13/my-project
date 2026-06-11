@@ -18,6 +18,8 @@ public class PendingBadgesView {
     private int processRepair;
     private int processPurchase;
     private int processSupplies;
+    private int material;
+    private int processMaterial;
 
     /** 站内信（好友）未读条数 */
     private int chatUnread;
@@ -29,6 +31,8 @@ public class PendingBadgesView {
     private String processRepairText = "";
     private String processPurchaseText = "";
     private String processSuppliesText = "";
+    private String materialText = "";
+    private String processMaterialText = "";
     private String chatUnreadText = "";
 
     /**

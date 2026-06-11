@@ -64,10 +64,46 @@
         SELECT DISTINCT applicant_group FROM material_request WHERE applicant_group IS NOT NULL AND applicant_group != '' AND deleted = 0 ORDER BY applicant_group
     </select>
     <select id="selectDistinctApplicants" resultType="java.util.HashMap">
-        SELECT DISTINCT user_id AS userId, MAX(applicant_name) AS applicantName
-        FROM material_request WHERE deleted = 0 AND applicant_name IS NOT NULL AND applicant_name != ''
-        GROUP BY user_id ORDER BY applicantName
+        SELECT user_id AS userId, MAX(applicant_name) AS applicantName
+        FROM material_request WHERE deleted = 0
+        GROUP BY user_id ORDER BY user_id
     </select>
+    <select id="selectClaimLinesByItemId" resultType="java.util.HashMap">
+        SELECT r.id AS requestId, r.user_id AS userId, r.applicant_name AS applicantName,
+               r.applicant_group AS applicantGroup, r.status AS status,
+               r.created_at AS createdAt, r.fulfilled_at AS fulfilledAt,
+               l.qty AS qty, l.fulfilled_qty AS fulfilledQty, l.snapshot_name AS itemName
+        FROM material_request_line l
+        JOIN material_request r ON l.request_id = r.id
+        WHERE r.deleted = 0 AND l.item_id = #{itemId}
+        <if test="from != null and from != '' and to != null and to != ''">
+            AND (
+                (l.fulfilled_qty > 0 AND r.fulfilled_at IS NOT NULL AND DATE(r.fulfilled_at) BETWEEN #{from} AND #{to})
+                OR (l.fulfilled_qty &lt;= 0 AND DATE(r.created_at) BETWEEN #{from} AND #{to})
+                OR (l.fulfilled_qty > 0 AND r.fulfilled_at IS NULL AND DATE(r.created_at) BETWEEN #{from} AND #{to})
+            )
+        </if>
+        ORDER BY COALESCE(r.fulfilled_at, r.created_at) DESC
+        LIMIT #{offset}, #{size}
+    </select>
+    <select id="countClaimLinesByItemId" resultType="int">
+        SELECT COUNT(1)
+        FROM material_request_line l
+        JOIN material_request r ON l.request_id = r.id
+        WHERE r.deleted = 0 AND l.item_id = #{itemId}
+        <if test="from != null and from != '' and to != null and to != ''">
+            AND (
+                (l.fulfilled_qty > 0 AND r.fulfilled_at IS NOT NULL AND DATE(r.fulfilled_at) BETWEEN #{from} AND #{to})
+                OR (l.fulfilled_qty &lt;= 0 AND DATE(r.created_at) BETWEEN #{from} AND #{to})
+                OR (l.fulfilled_qty > 0 AND r.fulfilled_at IS NULL AND DATE(r.created_at) BETWEEN #{from} AND #{to})
+            )
+        </if>
+    </select>
+    <update id="updateApplicantMeta">
+        UPDATE material_request
+        SET applicant_name = #{applicantName}, applicant_group = #{applicantGroup}
+        WHERE id = #{id}
+    </update>
     <select id="statsByGroup" resultType="java.util.HashMap">
         SELECT applicant_group AS groupName, COUNT(*) AS requestCount,
                COUNT(DISTINCT user_id) AS memberCount,
@@ -79,6 +115,9 @@
     </select>
     <select id="selectPendingByReviewer" resultType="com.example.demo.modules.material.entity.MaterialRequest">
         SELECT * FROM material_request WHERE status IN ('PENDING', 'FIRST_OK') AND deleted = 0 ORDER BY created_at ASC
+    </select>
+    <select id="countPendingReview" resultType="int">
+        SELECT COUNT(1) FROM material_request WHERE deleted = 0 AND status IN ('PENDING', 'FIRST_OK')
     </select>
     <select id="statsByStudent" resultType="java.util.HashMap">
         SELECT user_id, applicant_name, applicant_group, COUNT(*) AS total, COUNT(DISTINCT DATE(created_at)) AS active_days
@@ -101,5 +140,56 @@
         SELECT COUNT(1) FROM material_request WHERE deleted = 0
         <if test="from != null and to != null">AND created_at BETWEEN #{from} AND #{to}</if>
         <if test="groupId != null and groupId != ''">AND applicant_group = #{groupId}</if>
+    </select>
+    <select id="statsDailyRequests" resultType="java.util.HashMap">
+        SELECT DATE(r.created_at) AS date,
+               COUNT(*) AS requestCount,
+               COALESCE(SUM((SELECT SUM(l.qty) FROM material_request_line l WHERE l.request_id = r.id)), 0) AS requestQty
+        FROM material_request r
+        WHERE r.deleted = 0 AND DATE(r.created_at) BETWEEN #{from} AND #{to}
+        <if test="groupId != null and groupId != ''">AND r.applicant_group = #{groupId}</if>
+        GROUP BY DATE(r.created_at) ORDER BY date
+    </select>
+    <select id="statsStatusInRange" resultType="java.util.HashMap">
+        SELECT status, COUNT(*) AS count
+        FROM material_request
+        WHERE deleted = 0 AND DATE(created_at) BETWEEN #{from} AND #{to}
+        <if test="groupId != null and groupId != ''">AND applicant_group = #{groupId}</if>
+        GROUP BY status ORDER BY count DESC
+    </select>
+    <select id="statsPassRejectInRange" resultType="java.util.HashMap">
+        SELECT
+            SUM(CASE WHEN status IN ('APPROVED','FULFILLED','RECEIVED') THEN 1 ELSE 0 END) AS approved,
+            SUM(CASE WHEN status = 'REJECTED' THEN 1 ELSE 0 END) AS rejected
+        FROM material_request
+        WHERE deleted = 0 AND DATE(created_at) BETWEEN #{from} AND #{to}
+        <if test="groupId != null and groupId != ''">AND applicant_group = #{groupId}</if>
+    </select>
+    <select id="statsByStudentFiltered" resultType="java.util.HashMap">
+        SELECT user_id AS userId, applicant_name AS applicantName, applicant_group AS applicantGroup,
+               COUNT(*) AS total, COUNT(DISTINCT DATE(created_at)) AS activeDays,
+               COALESCE(SUM((SELECT SUM(l.qty) FROM material_request_line l WHERE l.request_id = r.id)), 0) AS totalQty
+        FROM material_request r
+        WHERE deleted = 0 AND DATE(created_at) BETWEEN #{from} AND #{to}
+        <if test="groupId != null and groupId != ''">AND applicant_group = #{groupId}</if>
+        GROUP BY user_id, applicant_name, applicant_group ORDER BY total DESC LIMIT 50
+    </select>
+    <select id="statsByItemFiltered" resultType="java.util.HashMap">
+        SELECT l.item_id AS itemId, l.snapshot_name AS itemName,
+               SUM(l.qty) AS totalQty, COUNT(DISTINCT l.request_id) AS requestCount
+        FROM material_request_line l JOIN material_request r ON l.request_id = r.id
+        WHERE r.deleted = 0 AND DATE(r.created_at) BETWEEN #{from} AND #{to}
+        <if test="groupId != null and groupId != ''">AND r.applicant_group = #{groupId}</if>
+        GROUP BY l.item_id, l.snapshot_name ORDER BY totalQty DESC LIMIT 30
+    </select>
+    <select id="statsByGroupFiltered" resultType="java.util.HashMap">
+        SELECT applicant_group AS groupName, COUNT(*) AS requestCount,
+               COUNT(DISTINCT user_id) AS memberCount,
+               COALESCE(SUM((SELECT SUM(l.qty) FROM material_request_line l WHERE l.request_id = r.id)), 0) AS totalQty
+        FROM material_request r
+        WHERE deleted = 0 AND applicant_group IS NOT NULL AND applicant_group != ''
+          AND DATE(created_at) BETWEEN #{from} AND #{to}
+        <if test="groupId != null and groupId != ''">AND applicant_group = #{groupId}</if>
+        GROUP BY applicant_group ORDER BY requestCount DESC
     </select>
 </mapper>

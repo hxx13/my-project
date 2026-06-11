@@ -109,6 +109,7 @@ public class JobExecutionRegistry {
     private final AnalyticsPipelineHook analyticsPipelineHook;
     private final CageSpecialStatusScanService cageSpecialStatusScanService;
     private final com.example.demo.modules.twin.dashboard.service.StrandedViolationService strandedViolationService;
+    private final com.example.demo.modules.twin.dashboard.service.RankingSnapshotService rankingSnapshotService;
     @Autowired(required = false)
     private com.corundumstudio.socketio.SocketIOServer socketServer;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
@@ -132,7 +133,8 @@ public class JobExecutionRegistry {
             com.example.demo.modules.accessfusion.service.AccessSwingCleanWorkspaceService accessSwingCleanWorkspaceService,
             AnalyticsPipelineHook analyticsPipelineHook,
             CageSpecialStatusScanService cageSpecialStatusScanService,
-            com.example.demo.modules.twin.dashboard.service.StrandedViolationService strandedViolationService) {
+            com.example.demo.modules.twin.dashboard.service.StrandedViolationService strandedViolationService,
+            com.example.demo.modules.twin.dashboard.service.RankingSnapshotService rankingSnapshotService) {
         this.rpgEngineService = rpgEngineService;
         this.aroService = aroService;
         this.personnelDbService = personnelDbService;
@@ -152,6 +154,7 @@ public class JobExecutionRegistry {
         this.analyticsPipelineHook = analyticsPipelineHook;
         this.cageSpecialStatusScanService = cageSpecialStatusScanService;
         this.strandedViolationService = strandedViolationService;
+        this.rankingSnapshotService = rankingSnapshotService;
     }
 
     public Map<String, String> jobNameMap() {
@@ -334,12 +337,21 @@ public class JobExecutionRegistry {
                     yield JobRunOutcome.ok(jobKey,
                             "全量笼架特殊状态扫描完成，发现 " + cws + " 个特殊状态笼位", result);
                 }
-                case JOB_DASHBOARD_RANKING_ACTIVITY, JOB_DASHBOARD_RANKING_ANIMAL -> {
+                case JOB_DASHBOARD_RANKING_ACTIVITY -> {
+                    int baselineCreated = rankingSnapshotService.captureAllActivityBaselinesIfAbsent();
                     if (socketServer != null) {
                         socketServer.getBroadcastOperations().sendEvent("DASHBOARD_RANKING_REFRESH",
                                 Map.of("jobKey", jobKey, "at", java.time.LocalDateTime.now().toString()));
                     }
-                    yield JobRunOutcome.ok(jobKey, "排行榜刷新信号已广播");
+                    yield JobRunOutcome.ok(jobKey,
+                            "进出活跃排行榜刷新信号已广播；当日基线快照新增 " + baselineCreated + " 个区域");
+                }
+                case JOB_DASHBOARD_RANKING_ANIMAL -> {
+                    if (socketServer != null) {
+                        socketServer.getBroadcastOperations().sendEvent("DASHBOARD_RANKING_REFRESH",
+                                Map.of("jobKey", jobKey, "at", java.time.LocalDateTime.now().toString()));
+                    }
+                    yield JobRunOutcome.ok(jobKey, "动物消耗排行榜刷新信号已广播");
                 }
                 default -> throw new IllegalArgumentException("不支持的任务: " + jobKey);
             };
