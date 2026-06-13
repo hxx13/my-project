@@ -5,7 +5,7 @@ export function buildVTableColumns(cols: ColumnConfig[]): Record<string, unknown
   return cols.map((col) => {
     const base: Record<string, unknown> = {
       field: col.key,
-      caption: col.label,
+      title: col.label,
       width: col.width ?? 120,
     };
 
