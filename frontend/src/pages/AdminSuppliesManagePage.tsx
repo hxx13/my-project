@@ -17,6 +17,8 @@ import {
   useAdjustSupplyStock,
 } from "@/api/hooks/useSupplies";
 import type { SupplyItem } from "@/api/domains/supplies.api";
+import { uploadSingleImage } from "@/api/domains/upload.api";
+import { webImageSrc } from "@/utils/mediaUrl";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -33,6 +35,8 @@ export default function AdminSuppliesManagePage() {
   const [createName, setCreateName] = useState("");
   const [createMode, setCreateMode] = useState<"QUANTIFIED" | "FLAG">("QUANTIFIED");
   const [createInitialQty, setCreateInitialQty] = useState("0");
+  const [createCoverUrl, setCreateCoverUrl] = useState("");
+  const [createUploading, setCreateUploading] = useState(false);
   const [recyclePage, setRecyclePage] = useState(1);
   const [recycleOpen, setRecycleOpen] = useState(false);
 
@@ -216,6 +220,52 @@ export default function AdminSuppliesManagePage() {
                 onChange={(e) => setCreateInitialQty(e.target.value)}
               />
             </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-[var(--twin-mute)]">封面图</span>
+              <div className="flex items-center gap-2">
+                {createCoverUrl ? (
+                  <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded border">
+                    <img src={webImageSrc(createCoverUrl) || createCoverUrl} alt="" className="h-full w-full object-cover" />
+                  </div>
+                ) : null}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  id="create-cover-input"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    setCreateUploading(true);
+                    try {
+                      const result = await uploadSingleImage(f);
+                      setCreateCoverUrl(result.publicUrl);
+                    } catch (err: any) {
+                      toast.error(err?.message || "上传失败");
+                    } finally {
+                      setCreateUploading(false);
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs text-[var(--twin-body)]"
+                  onClick={() => document.getElementById('create-cover-input')?.click()}
+                  disabled={createUploading}
+                >
+                  {createUploading ? "上传中…" : createCoverUrl ? "更换" : "上传封面"}
+                </button>
+                {createCoverUrl ? (
+                  <button
+                    type="button"
+                    className="text-xs text-red-500"
+                    onClick={() => setCreateCoverUrl("")}
+                  >
+                    清除
+                  </button>
+                ) : null}
+              </div>
+            </label>
             <button
               type="button"
               className="rounded-twin-sm bg-[var(--twin-ink)] px-3 py-1.5 text-sm font-medium text-white"
@@ -229,6 +279,7 @@ export default function AdminSuppliesManagePage() {
                   {
                     categoryId: catId,
                     name,
+                    coverUrl: createCoverUrl || undefined,
                     stockMode: createMode,
                     stockQty: createMode === "FLAG" ? (qtyNum > 0 ? 1 : 0) : Math.floor(qtyNum),
                     shelfStatus: "ON_SHELF",
@@ -237,6 +288,7 @@ export default function AdminSuppliesManagePage() {
                     onSuccess: () => {
                       setCreateName("");
                       setCreateInitialQty("0");
+                      setCreateCoverUrl("");
                     },
                   },
                 );
@@ -280,10 +332,19 @@ export default function AdminSuppliesManagePage() {
                     </button>
                   ) : null}
                 </div>
-                <div className="pr-[52%]">
-                  <div className="font-medium text-[var(--twin-ink)] leading-snug">{it.name}</div>
-                  <div className="mt-1 text-xs text-[var(--twin-mute)]">
-                    ID {it.id} · {it.stockMode} · 库存 {it.stockQty} · {it.shelfStatus}
+                <div className="flex gap-2 pr-[52%]">
+                  {it.coverUrl ? (
+                    <img
+                      src={webImageSrc(it.coverUrl) || it.coverUrl}
+                      alt=""
+                      className="h-12 w-12 shrink-0 rounded border object-cover"
+                    />
+                  ) : null}
+                  <div className="min-w-0">
+                    <div className="font-medium text-[var(--twin-ink)] leading-snug truncate">{it.name}</div>
+                    <div className="mt-1 text-xs text-[var(--twin-mute)]">
+                      ID {it.id} · {it.stockMode} · 库存 {it.stockQty} · {it.shelfStatus}
+                    </div>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs pt-1 border-t border-[var(--twin-hairline)]">
@@ -297,6 +358,28 @@ export default function AdminSuppliesManagePage() {
                     }}
                   >
                     改名
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-twin-sm px-2 py-1 text-xs font-medium text-[var(--twin-link-deep)]"
+                    onClick={async () => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = 'image/*';
+                      input.onchange = async () => {
+                        const f = input.files?.[0];
+                        if (!f) return;
+                        try {
+                          const result = await uploadSingleImage(f);
+                          updateItemMut.mutate({ id: it.id, body: { coverUrl: result.publicUrl } });
+                        } catch (err: any) {
+                          toast.error(err?.message || "上传失败");
+                        }
+                      };
+                      input.click();
+                    }}
+                  >
+                    换图
                   </button>
                   <button
                     type="button"

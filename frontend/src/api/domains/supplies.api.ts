@@ -40,6 +40,8 @@ export interface SupplyClaimLine {
   qty: number;
   snapshotName: string;
   fulfilledQty: number;
+  coverUrl?: string;
+  remark?: string;
 }
 
 export interface SupplyClaimOrder {
@@ -124,7 +126,7 @@ export async function markSupplyItemsViewed() {
   await authHttp.post("/supplies/items/mark-viewed");
 }
 
-export async function createSupplyClaim(lines: { itemId: number; qty: number }[]) {
+export async function createSupplyClaim(lines: { itemId: number; qty: number; remark?: string }[]) {
   const res = await authHttp.post<Result<SupplyClaimOrder>>("/supplies/claims", { lines });
   return res.data.data;
 }
@@ -134,7 +136,7 @@ export async function withdrawSupplyClaim(id: string) {
 }
 
 /** PUT /supplies/claims/{id}/lines：修订待出库领用单（与小程序 supplies 提交「完成修改」一致） */
-export async function revisePendingSupplyClaimLines(claimId: string, lines: { itemId: number; qty: number }[]) {
+export async function revisePendingSupplyClaimLines(claimId: string, lines: { itemId: number; qty: number; remark?: string }[]) {
   const res = await authHttp.put<Result<SupplyClaimOrder>>(
     `/supplies/claims/${encodeURIComponent(claimId)}/lines`,
     { lines },
@@ -232,7 +234,7 @@ export async function deleteSupplyClaimPdfLink(claimId: string, linkId: string) 
   await authHttp.delete(`/supplies/claims/${encodeURIComponent(claimId)}/pdf-links/${encodeURIComponent(linkId)}`);
 }
 
-export async function fulfillSupplyClaim(id: string, lines: { lineId: number; grant: boolean; fulfillQty?: number }[]) {
+export async function fulfillSupplyClaim(id: string, lines: { lineId: number; grant: boolean; fulfillQty?: number; remark?: string }[]) {
   const res = await authHttp.post<Result<SupplyClaimOrder>>(`/supplies/admin/claims/${id}/fulfill`, { lines });
   return res.data.data;
 }

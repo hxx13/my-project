@@ -31,6 +31,7 @@ export interface AssetRow {
   latestTransferApplicant?: string;
   latestTransferRemark?: string;
   latestTransferStatus?: string;
+  latestTransferFromLocation?: string | null;
   latestTransferPhotoUrl?: string;
   latestTransferPhotoUrlsBefore?: string[];
   latestTransferPhotoUrlsAfter?: string[];

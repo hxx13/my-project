@@ -209,7 +209,10 @@ export default function DebugPersonnelPage() {
   };
 
   return (
-    <div className="box-border flex h-full flex-col overflow-y-auto bg-[var(--app-color-surface-page)] p-6 md:p-8">
+    <div
+      data-twin-debug-personnel
+      className="box-border flex h-full flex-col overflow-y-auto bg-[var(--app-color-surface-page)] p-6 md:p-8"
+    >
       <AdminToolbar className="mb-4 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
         <div className="min-w-0 max-w-[min(42vw,20rem)] shrink">
           <h1 className="flex items-center gap-2 truncate text-lg font-bold text-[var(--app-color-text-primary)] sm:text-xl">

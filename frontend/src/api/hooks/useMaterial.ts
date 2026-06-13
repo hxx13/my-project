@@ -32,7 +32,12 @@ export function useCreateMaterialRequest() {
   return useMutation({
     mutationFn: (params: { lines: { itemId: number; qty: number }[]; applicantGroup?: string }) =>
       createMaterialRequest(params.lines, params.applicantGroup),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: materialQueryKeys.requests() }); qc.invalidateQueries({ queryKey: materialQueryKeys.cart() }); },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: materialQueryKeys.requests() });
+      qc.invalidateQueries({ queryKey: materialQueryKeys.cart() });
+      const count = Array.isArray(data) ? data.length : 1;
+      return count;
+    },
   });
 }
 export function useMyMaterialRequests(params: { page: number; size: number; status?: string }) {

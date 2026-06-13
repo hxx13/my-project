@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.rpg.mapper.TwinExpRecordMapper">
+
+    <insert id="insert">
+        INSERT INTO twin_exp_record (user_id, user_name, exp_amount, source_type, access_type, room_id, room_name, create_time)
+        VALUES (#{userId}, #{userName}, #{expAmount}, #{sourceType}, #{accessType}, #{roomId}, #{roomName}, #{createTime})
+    </insert>
+
+    <select id="countTotalExp" resultType="int">
+        SELECT COALESCE(SUM(exp_amount), 0)
+        FROM twin_exp_record
+    </select>
+
+    <select id="countTodayExp" resultType="int">
+        SELECT COALESCE(SUM(exp_amount), 0)
+        FROM twin_exp_record
+        WHERE DATE(create_time) = CURDATE()
+    </select>
+
+    <select id="countActiveUsers" resultType="int">
+        SELECT COUNT(DISTINCT user_id)
+        FROM twin_exp_record
+    </select>
+
+    <select id="countTodayActiveUsers" resultType="int">
+        SELECT COUNT(DISTINCT user_id)
+        FROM twin_exp_record
+        WHERE DATE(create_time) = CURDATE()
+    </select>
+
+    <select id="getTopEarners" resultType="map">
+        SELECT r.user_id AS userId,
+               COALESCE(p.name, r.user_name, r.user_id) AS userName,
+               COALESCE(p.total_exp, 0) AS totalExp,
+               SUM(r.exp_amount) AS recordTotalExp,
+               COALESCE(SUM(CASE WHEN DATE(r.create_time) = CURDATE() THEN r.exp_amount ELSE 0 END), 0) AS todayExp
+        FROM twin_exp_record r
+        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
+        GROUP BY r.user_id, p.name, r.user_name, p.total_exp
+        ORDER BY recordTotalExp DESC
+        LIMIT #{limit}
+    </select>
+
+    <sql id="pageWhere">
+        <where>
+            <if test="userId != null and userId != ''">
+                AND r.user_id = #{userId}
+            </if>
+            <if test="sourceType != null and sourceType != ''">
+                AND r.source_type = #{sourceType}
+            </if>
+            <if test="startDate != null and startDate != ''">
+                AND r.create_time >= #{startDate}
+            </if>
+            <if test="endDate != null and endDate != ''">
+                AND r.create_time <![CDATA[ <= ]]> #{endDate}
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectPage" resultType="com.example.demo.modules.twin.rpg.entity.TwinExpRecord">
+        SELECT r.id, r.user_id,
+               COALESCE(p.name, r.user_name, r.user_id) AS user_name,
+               r.exp_amount, r.source_type, r.access_type,
+               r.room_id,
+               COALESCE(rm.room_name, r.room_name, r.room_id) AS room_name,
+               r.create_time
+        FROM twin_exp_record r
+        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
+        LEFT JOIN room_mapping_room rm ON rm.room_id = r.room_id
+        <include refid="pageWhere"/>
+        ORDER BY r.create_time DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(1)
+        FROM twin_exp_record r
+        LEFT JOIN aro_personnel p ON p.user_id = r.user_id
+        LEFT JOIN room_mapping_room rm ON rm.room_id = r.room_id
+        <include refid="pageWhere"/>
+    </select>
+
+</mapper>

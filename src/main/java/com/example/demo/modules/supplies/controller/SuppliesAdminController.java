@@ -92,7 +92,7 @@ public class SuppliesAdminController {
         User user = resolveUser(authorization);
         Result<?> denied = capabilityPolicyService.requireProcess(user, BizDomains.SUPPLIES_ADMIN);
         if (denied != null) return Result.error(denied.getMessage());
-        return suppliesService.createItem(body);
+        return suppliesService.createItem(user, body);
     }
 
     @PatchMapping("/items/{id}")

@@ -28,6 +28,8 @@
     <select id="getTodayRecords" resultType="map">
         SELECT id,
                create_time  AS event_time,
+               accessType AS action,
+               feed_source AS feed_source,
                CASE WHEN accessType = 1 THEN '进入'
                     WHEN accessType = 2 THEN '离开'
                     WHEN accessType = 3 THEN '离开'

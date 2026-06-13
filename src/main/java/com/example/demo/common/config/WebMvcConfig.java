@@ -37,6 +37,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/repair/**", "/api/purchase/**", "/api/mp/**")
                 .excludePathPatterns("/api/auth/**", "/api/public/**",
                         "/api/event/**", "/api/upload/files/**",
+                        "/api/upload/sync/**", "/api/upload/records/*",
+                        "/api/upload/proxy-image",
+                        "/api/upload/records/*/wechat-file-id",
+                        "/api/upload/cloud-mappings",
+                        "/api/upload/repair/**",
                         "/api/v1/twin/dashboard/proxy/**");
     }
 }

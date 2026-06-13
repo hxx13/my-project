@@ -16,7 +16,22 @@ public final class MpHtmlSanitizer {
         if (html == null) {
             return "";
         }
+        String preserved = preserveEmptyParagraphs(html);
         Document.OutputSettings settings = new Document.OutputSettings().prettyPrint(false);
-        return Jsoup.clean(html, "", Safelist.relaxed(), settings);
+        return Jsoup.clean(preserved, "", Safelist.relaxed(), settings);
+    }
+
+    /**
+     * Jsoup {@link Safelist#relaxed()} 会丢弃空 {@code <p></p>}，导致 TipTap 空行无法保存。
+     * 入库前将空段落转为 {@code &nbsp;} 占位，展示时仍保留段落间距。
+     */
+    static String preserveEmptyParagraphs(String html) {
+        if (html == null || html.isBlank()) {
+            return html == null ? "" : html;
+        }
+        return html.replaceAll(
+                "(?i)<p(\\s[^>]*)?>\\s*(<br\\s[^>]*\\/?>|<br\\/?>)?\\s*</p>",
+                "<p$1>&nbsp;</p>"
+        );
     }
 }

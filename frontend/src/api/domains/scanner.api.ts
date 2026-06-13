@@ -15,6 +15,7 @@ export interface ExecuteResult {
     msg?: string;
     message?: string;
     expAdded?: number;
+    expSource?: 'FIRST_ENTRY' | 'TIME_BASED' | null;
     /** 门禁需下发大华权限但未绑卡/缺 dahuaSeq */
     unboundForDahuaRule?: boolean;
     dahuaHint?: string;
@@ -39,6 +40,11 @@ const toExecuteResult = (raw: unknown): ExecuteResult => {
                 ? data.message
                 : (typeof safe.message === "string" ? safe.message : undefined),
         expAdded: typeof data.expAdded === "number" ? data.expAdded : undefined,
+        expSource:
+            typeof data.expSource === "string" &&
+            (data.expSource === "FIRST_ENTRY" || data.expSource === "TIME_BASED")
+                ? data.expSource
+                : null,
         unboundForDahuaRule: data.unboundForDahuaRule === true,
         dahuaHint: typeof data.dahuaHint === "string" ? data.dahuaHint : undefined,
         accessRuleDebug: typeof data.accessRuleDebug === "string" ? data.accessRuleDebug : undefined,

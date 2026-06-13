@@ -1,7 +1,9 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { Clock, Megaphone } from "lucide-react";
-import { useDashboardSciFiVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 import { useVerticalAutoScroll } from "./useVerticalAutoScroll";
+import { prepareAnnouncementHtml } from "@/utils/announcementHtml";
 
 /**
  * 公告 Tab：单一滚动容器同时承载公告标题/正文 + 还卡时段 + 还卡规则；
@@ -21,26 +23,22 @@ type Props = {
   scrollMode?: "loop" | "cycle";
 };
 
-function ProseBlock({
-  text,
+function SafeHtmlBlock({
+  raw,
   className = "",
 }: {
-  text: string;
+  raw: string;
   className?: string;
 }) {
-  const lines = (text ?? "").split(/\r?\n/);
+  const html = useMemo(() => prepareAnnouncementHtml(raw ?? ""), [raw]);
+  if (!html) {
+    return <p className={className}>暂无内容。</p>;
+  }
   return (
-    <div className={className}>
-      {lines.map((line, i) =>
-        line.trim() === "" ? (
-          <p key={i} className="min-h-[0.6em]" />
-        ) : (
-          <p key={i} className="whitespace-pre-wrap break-words">
-            {line}
-          </p>
-        )
-      )}
-    </div>
+    <div
+      className={className}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }
 
@@ -57,7 +55,7 @@ export function CodexNoticeStreamPanel({
   fallbackSeconds,
   scrollMode = "cycle",
 }: Props) {
-  const sf = useDashboardSciFiVisual();
+  const visual = useDashboardVisual();
   const ref = useRef<HTMLDivElement | null>(null);
 
   useVerticalAutoScroll(ref, {
@@ -71,12 +69,12 @@ export function CodexNoticeStreamPanel({
     mode: scrollMode,
   });
 
-  const headTone = sf ? "text-cyan-100" : "text-amber-900";
-  const noticeBodyTone = sf ? "text-slate-100" : "text-amber-950";
-  const dividerTone = sf ? "border-cyan-500/25" : "border-amber-300/60";
-  const hoursHeadTone = sf ? "text-slate-200" : "text-slate-700";
-  const hoursTimeTone = sf ? "text-cyan-100" : "text-slate-900";
-  const rulesTone = sf ? "text-slate-300" : "text-slate-600";
+  const headTone = dashTone(visual, "text-cyan-100", DASH_NIGHT_CLASS.title, "text-amber-900");
+  const noticeBodyTone = dashTone(visual, "text-slate-100", DASH_NIGHT_CLASS.title, "text-amber-950");
+  const dividerTone = dashTone(visual, "border-cyan-500/25", DASH_NIGHT_CLASS.header, "border-amber-300/60");
+  const hoursHeadTone = dashTone(visual, "text-slate-200", DASH_NIGHT_CLASS.textMuted, "text-slate-700");
+  const hoursTimeTone = dashTone(visual, "text-cyan-100", DASH_NIGHT_CLASS.title, "text-slate-900");
+  const rulesTone = dashTone(visual, "text-slate-300", DASH_NIGHT_CLASS.textMuted, "text-slate-600");
 
   return (
     <div
@@ -84,18 +82,20 @@ export function CodexNoticeStreamPanel({
       className="h-full w-full overflow-y-auto overflow-x-hidden pr-1 [scrollbar-gutter:stable]"
     >
       <div className="flex min-w-0 items-center gap-2 pb-1.5">
-        <Megaphone className={`h-5 w-5 shrink-0 ${sf ? "text-cyan-400" : "text-amber-600"}`} />
+        <Megaphone
+          className={`h-5 w-5 shrink-0 ${dashTone(visual, "text-cyan-400", DASH_NIGHT_CLASS.legendWarm, "text-amber-600")}`}
+        />
         <span className={`min-w-0 text-base font-black tracking-wide md:text-lg ${headTone}`}>
           {noticeTitle}
         </span>
       </div>
       {noticeBody.trim() ? (
-        <ProseBlock
-          text={noticeBody}
+        <SafeHtmlBlock
+          raw={noticeBody}
           className={`text-base leading-relaxed md:text-lg ${noticeBodyTone}`}
         />
       ) : (
-        <p className={`text-sm ${sf ? "text-slate-400" : "text-amber-800/70"}`}>
+        <p className={`text-sm ${dashTone(visual, "text-slate-400", DASH_NIGHT_CLASS.textMuted, "text-amber-800/70")}`}>
           暂无公告内容。
         </p>
       )}
@@ -103,7 +103,9 @@ export function CodexNoticeStreamPanel({
       <div className={`my-4 border-t ${dividerTone}`} />
 
       <div className={`flex min-w-0 items-center gap-2 pb-1 ${hoursHeadTone}`}>
-        <Clock className={`h-4 w-4 shrink-0 ${sf ? "text-cyan-300" : "text-amber-500"}`} />
+        <Clock
+          className={`h-4 w-4 shrink-0 ${dashTone(visual, "text-cyan-300", DASH_NIGHT_CLASS.legendSteel, "text-amber-500")}`}
+        />
         <span className="text-sm font-bold tracking-wide md:text-base">{hoursLabel}</span>
       </div>
       <div className="flex items-baseline gap-2 pb-1.5">
@@ -112,15 +114,17 @@ export function CodexNoticeStreamPanel({
         >
           {startTime}
         </span>
-        <span className={`text-base font-black ${sf ? "text-slate-500" : "text-slate-400"}`}>—</span>
+        <span className={`text-base font-black ${dashTone(visual, "text-slate-500", DASH_NIGHT_CLASS.textMuted, "text-slate-400")}`}>
+          —
+        </span>
         <span
           className={`text-2xl font-black tabular-nums tracking-tight md:text-3xl ${hoursTimeTone}`}
         >
           {endTime}
         </span>
       </div>
-      <ProseBlock
-        text={returnRules}
+      <SafeHtmlBlock
+        raw={returnRules}
         className={`text-xs leading-snug md:text-sm ${rulesTone}`}
       />
 

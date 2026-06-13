@@ -146,7 +146,7 @@ public class MaterialService {
         if (req.getCategoryId() != null) item.setCategoryId(req.getCategoryId());
         if (req.getName() != null) item.setName(req.getName());
         if (req.getSubtitle() != null) item.setSubtitle(req.getSubtitle());
-        if (req.getCoverUrl() != null) item.setCoverUrl(req.getCoverUrl());
+        if (req.getCoverUrl() != null) item.setCoverUrl(req.getCoverUrl().isEmpty() ? null : req.getCoverUrl());
         if (req.getShelfStatus() != null) item.setShelfStatus(req.getShelfStatus());
         if (req.getStockMode() != null) item.setStockMode(req.getStockMode());
         if (req.getWorkflowType() != null) item.setWorkflowType(req.getWorkflowType());
@@ -181,21 +181,55 @@ public class MaterialService {
         return Result.success(null);
     }
 
+    private void cascadePurgeItem(Long itemId) {
+        // 1. 删除关联库存流水
+        stockMovementMapper.deleteByItemId(itemId);
+        // 2. 找到引用此物品的申领单
+        List<String> requestIds = requestLineMapper.selectRequestIdsByItemId(itemId);
+        // 3. 删除这些申领单的物品行
+        requestLineMapper.deleteByItemId(itemId);
+        // 4. 如果申领单已无行，则删除申领单本身
+        for (String rid : requestIds) {
+            List<MaterialRequestLine> remaining = requestLineMapper.selectByRequestId(rid);
+            if (remaining.isEmpty()) {
+                requestMapper.hardDeleteById(rid);
+                Map<String, Object> detail = new HashMap<>();
+                detail.put("reason", "item_purged");
+                detail.put("itemId", itemId);
+                logOp("REQUEST", rid, "PURGE_CASCADE", detail);
+            }
+        }
+        // 5. 删除物品
+        itemMapper.purge(itemId);
+        logOp("ITEM", String.valueOf(itemId), "PURGE", null);
+    }
+
     public Result<?> purgeItem(Long id) {
-        itemMapper.purge(id);
+        cascadePurgeItem(id);
         return Result.success(null);
     }
 
     public Result<?> purgeItems(List<Long> ids) {
-        for (Long id : ids) itemMapper.purge(id);
+        for (Long id : ids) cascadePurgeItem(id);
         return Result.success(Map.of("deleted", ids.size()));
     }
 
     public Result<?> purgeAllItems() {
         List<MaterialItem> all = itemMapper.selectRecycle(0, 10000);
-        int count = 0;
-        for (MaterialItem it : all) { itemMapper.purge(it.getId()); count++; }
-        return Result.success(Map.of("deleted", count));
+        for (MaterialItem it : all) cascadePurgeItem(it.getId());
+        return Result.success(Map.of("deleted", all.size()));
+    }
+
+    /** 清理所有孤立数据：库存流水 + 申领行（物品已删除但相关记录残留） */
+    public Result<Map<String, Object>> purgeOrphanMovements() {
+        int m = stockMovementMapper.deleteOrphan();
+        int l = requestLineMapper.deleteOrphan();
+        int r = requestMapper.deleteEmptyRequests();
+        Map<String, Object> res = new HashMap<>();
+        res.put("orphanMovements", m);
+        res.put("orphanLines", l);
+        res.put("emptyRequests", r);
+        return Result.success(res);
     }
 
     @Transactional
@@ -272,42 +306,81 @@ public class MaterialService {
     // ==================== 申领单 ====================
 
     @Transactional
-    public Result<MaterialRequestView> createRequest(User user, CreateMaterialRequestReq req) {
+    public Result<List<MaterialRequestView>> createRequest(User user, CreateMaterialRequestReq req) {
         if (req.getLines() == null || req.getLines().isEmpty()) return Result.error("申领物品不能为空");
-        String id = "MR" + System.currentTimeMillis() + String.format("%04d", new Random().nextInt(10000));
-        MaterialRequest request = new MaterialRequest();
-        request.setId(id);
-        request.setUserId(user.getId());
-        request.setApplicantName(userDisplayNameService.resolveDisplayName(user.getId()));
-        request.setApplicantGroup(resolveApplicantGroup(user.getId(), req.getApplicantGroup()));
-        request.setStatus("PENDING");
-        MaterialItem firstItem = itemMapper.selectById(req.getLines().get(0).getItemId());
-        request.setWorkflowType(firstItem != null ? firstItem.getWorkflowType() : "SIMPLE");
-        requestMapper.insert(request);
 
-        List<MaterialRequestLine> lines = new ArrayList<>();
-        for (var lineReq : req.getLines()) {
-            MaterialItem item = itemMapper.selectById(lineReq.getItemId());
-            MaterialRequestLine line = new MaterialRequestLine();
-            line.setRequestId(id);
-            line.setItemId(lineReq.getItemId());
-            line.setQty(lineReq.getQty());
-            line.setSnapshotName(item != null ? item.getName() : "未知物品");
-            line.setFulfilledQty(0);
-            lines.add(line);
-        }
-        requestLineMapper.insertBatch(lines);
-        // 预占库存
+        // 按物品的审核流程分组，每种流程生成独立的申领单
+        Map<String, List<CreateMaterialRequestReq.LineItem>> grouped = new LinkedHashMap<>();
         for (var lr : req.getLines()) {
             MaterialItem item = itemMapper.selectById(lr.getItemId());
-            if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
-                int lockQty = Math.min(lr.getQty(), item.getStockQty() != null ? item.getStockQty() : 0);
-                if (lockQty > 0) itemMapper.lockStock(lr.getItemId(), lockQty);
-            }
+            String wf = item != null && item.getWorkflowType() != null ? item.getWorkflowType() : "SIMPLE";
+            grouped.computeIfAbsent(wf, k -> new ArrayList<>()).add(lr);
         }
-        logOp("REQUEST", id, "SUBMIT", Map.of("lines", req.getLines().size()));
-        publishMaterialEvent("CREATED", id, user.getId(), user.getId(), "共 " + req.getLines().size() + " 项物资");
-        return Result.success(toRequestView(requestMapper.selectById(id)));
+
+        String applicantName = userDisplayNameService.resolveDisplayName(user.getId());
+        String applicantGroup = resolveApplicantGroup(user.getId(), req.getApplicantGroup());
+        List<MaterialRequestView> results = new ArrayList<>();
+        long baseTs = System.currentTimeMillis();
+
+        for (var entry : grouped.entrySet()) {
+            String workflowType = entry.getKey();
+            List<CreateMaterialRequestReq.LineItem> groupLines = entry.getValue();
+            String id = "MR" + baseTs + String.format("%04d", new Random().nextInt(10000));
+            baseTs += 1; // 确保不同组 ID 不重复
+
+            MaterialRequest request = new MaterialRequest();
+            request.setId(id);
+            request.setUserId(user.getId());
+            request.setApplicantName(applicantName);
+            request.setApplicantGroup(applicantGroup);
+            if ("SKIP_REVIEW".equals(workflowType)) {
+                request.setStatus("APPROVED");
+            } else {
+                request.setStatus("PENDING");
+            }
+            request.setWorkflowType(workflowType);
+            requestMapper.insert(request);
+
+            List<MaterialRequestLine> lines = new ArrayList<>();
+            for (var lineReq : groupLines) {
+                MaterialItem item = itemMapper.selectById(lineReq.getItemId());
+                MaterialRequestLine line = new MaterialRequestLine();
+                line.setRequestId(id);
+                line.setItemId(lineReq.getItemId());
+                line.setQty(lineReq.getQty());
+                line.setSnapshotName(item != null ? item.getName() : "未知物品");
+                line.setFulfilledQty(0);
+                lines.add(line);
+            }
+            requestLineMapper.insertBatch(lines);
+
+            // 预占库存
+            for (var lr : groupLines) {
+                MaterialItem item = itemMapper.selectById(lr.getItemId());
+                if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
+                    int lockQty = Math.min(lr.getQty(), item.getStockQty() != null ? item.getStockQty() : 0);
+                    if (lockQty > 0) itemMapper.lockStock(lr.getItemId(), lockQty);
+                }
+            }
+
+            // SKIP_REVIEW: 免审自动出库
+            if ("SKIP_REVIEW".equals(workflowType)) {
+                List<MaterialRequestLine> allLines = requestLineMapper.selectByRequestId(id);
+                for (MaterialRequestLine line : allLines) {
+                    MaterialItem item = itemMapper.selectById(line.getItemId());
+                    if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
+                        itemMapper.applyLock(line.getItemId(), line.getQty());
+                    }
+                }
+                requestMapper.updateReview(id, null, "APPROVED");
+                fulfillAllLinesOnApprove(id, null, request);
+            }
+
+            logOp("REQUEST", id, "SUBMIT", Map.of("lines", groupLines.size(), "workflow", workflowType));
+            publishMaterialEvent("CREATED", id, user.getId(), user.getId(), "共 " + groupLines.size() + " 项物资");
+            results.add(toRequestView(requestMapper.selectById(id)));
+        }
+        return Result.success(results);
     }
 
     public Result<Map<String, Object>> listMine(User user, String status, int page, int size) {
@@ -381,6 +454,30 @@ public class MaterialService {
         return Result.success(views);
     }
 
+    /** 物品是否显式指定了审核人列表（非空非[]） */
+    private boolean hasExplicitReviewers(MaterialRequest request) {
+        List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(request.getId());
+        if (lines.isEmpty()) return false;
+        MaterialItem item = itemMapper.selectById(lines.get(0).getItemId());
+        if (item == null) return false;
+        String ids = "PENDING".equals(request.getStatus()) || "SIMPLE".equals(request.getWorkflowType())
+                ? item.getReviewerIds() : item.getSecondReviewerIds();
+        return ids != null && !ids.isBlank() && !"[]".equals(ids.trim());
+    }
+
+    /** null-safe Map for operation log (Map.of rejects null values) */
+    /** 统一补齐8h时差：MySQL LocalDateTime → 前端展示时间 */
+    private static String toDisplayTime(java.time.LocalDateTime dt) {
+        if (dt == null) return null;
+        return dt.plusHours(8).toString();
+    }
+
+    private static Map<String, Object> reviewLogDetail(String reviewerId) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("reviewer", reviewerId);
+        return m;
+    }
+
     private boolean canReview(MaterialRequest request, User reviewer) {
         if (reviewer.getRole() == null) return false;
         if ("STUDENT".equals(reviewer.getRole().name())) return false;
@@ -411,18 +508,20 @@ public class MaterialService {
         MaterialRequest request = requestMapper.selectById(id);
         if (request == null) return Result.error("申领单不存在");
         if (!canReview(request, reviewer)) return Result.error("无权审核此申领单");
+        // 审核人：仅在物品指定了审核人名单时才记录操作者ID，否则留空
+        String recordReviewerId = hasExplicitReviewers(request) ? reviewer.getId() : null;
         boolean finalApproved = false;
         if ("SIMPLE".equals(request.getWorkflowType())) {
-            requestMapper.updateReview(id, reviewer.getId(), "APPROVED");
-            logOp("REQUEST", id, "APPROVE", Map.of("reviewer", reviewer.getId()));
+            requestMapper.updateReview(id, recordReviewerId, "APPROVED");
+            logOp("REQUEST", id, "APPROVE", reviewLogDetail(recordReviewerId));
             finalApproved = true;
         } else if ("DUAL_REVIEW".equals(request.getWorkflowType())) {
             if ("PENDING".equals(request.getStatus())) {
-                requestMapper.updateReview(id, reviewer.getId(), "FIRST_OK");
-                logOp("REQUEST", id, "FIRST_OK", Map.of("reviewer", reviewer.getId()));
+                requestMapper.updateReview(id, recordReviewerId, "FIRST_OK");
+                logOp("REQUEST", id, "FIRST_OK", reviewLogDetail(recordReviewerId));
             } else if ("FIRST_OK".equals(request.getStatus())) {
-                requestMapper.updateReview(id, reviewer.getId(), "APPROVED");
-                logOp("REQUEST", id, "APPROVE", Map.of("reviewer", reviewer.getId()));
+                requestMapper.updateReview(id, recordReviewerId, "APPROVED");
+                logOp("REQUEST", id, "APPROVE", reviewLogDetail(recordReviewerId));
                 finalApproved = true;
             }
         }
@@ -464,8 +563,11 @@ public class MaterialService {
             outboundLines++;
         }
         requestMapper.updateFulfill(requestId, operator != null ? operator.getId() : null);
-        logOp("REQUEST", requestId, "FULFILL", Map.of("operator", operator != null ? operator.getId() : null, "autoOnApprove", true));
-        publishMaterialEvent("COMPLETED", requestId, operator.getId(), request.getUserId(),
+        Map<String, Object> detail = new HashMap<>();
+        detail.put("operator", operator != null ? operator.getId() : null);
+        detail.put("autoOnApprove", true);
+        logOp("REQUEST", requestId, "FULFILL", detail);
+        publishMaterialEvent("COMPLETED", requestId, operator != null ? operator.getId() : null, request.getUserId(),
                 "审核通过已出库 " + outboundLines + " 类物资");
     }
 
@@ -798,13 +900,13 @@ public class MaterialService {
                 v.setItemName(line.getSnapshotName());
                 v.setQty(line.getQty());
                 v.setFulfilledQty(line.getFulfilledQty());
-                v.setCreatedAt(req.getCreatedAt() != null ? req.getCreatedAt().toString() : null);
-                v.setFulfilledAt(req.getFulfilledAt() != null ? req.getFulfilledAt().toString() : null);
+                v.setCreatedAt(toDisplayTime(req.getCreatedAt()));
+                v.setFulfilledAt(toDisplayTime(req.getFulfilledAt()));
                 v.setFulfilledBy(req.getFulfilledBy());
                 v.setFirstReviewerId(req.getFirstReviewerId());
                 v.setSecondReviewerId(req.getSecondReviewerId());
-                v.setFirstReviewTime(req.getFirstReviewTime() != null ? req.getFirstReviewTime().toString() : null);
-                v.setSecondReviewTime(req.getSecondReviewTime() != null ? req.getSecondReviewTime().toString() : null);
+                v.setFirstReviewTime(toDisplayTime(req.getFirstReviewTime()));
+                v.setSecondReviewTime(toDisplayTime(req.getSecondReviewTime()));
                 views.add(v);
             }
         }
@@ -834,7 +936,11 @@ public class MaterialService {
     }
 
     private void enrichMovementApplicant(MaterialStockMovementView v) {
-        if (v == null || !StringUtils.hasText(v.getApplicantUserId())) return;
+        if (v == null) return;
+        if (StringUtils.hasText(v.getOperatorUserId()) && !StringUtils.hasText(v.getOperatorName())) {
+            v.setOperatorName(userDisplayNameService.resolveDisplayName(v.getOperatorUserId()));
+        }
+        if (!StringUtils.hasText(v.getApplicantUserId())) return;
         if (StringUtils.hasText(v.getApplicantName()) && StringUtils.hasText(v.getApplicantGroup())) return;
         String group = resolveApplicantGroup(v.getApplicantUserId(), v.getApplicantGroup());
         if (!StringUtils.hasText(v.getApplicantName())) {
@@ -869,8 +975,8 @@ public class MaterialService {
         v.setWorkflowType(item.getWorkflowType());
         v.setReviewerIds(item.getReviewerIds());
         v.setSecondReviewerIds(item.getSecondReviewerIds());
-        if (item.getCreatedAt() != null) v.setCreatedAt(item.getCreatedAt().toString());
-        if (item.getLastInboundAt() != null) v.setLastInboundAt(item.getLastInboundAt().toString());
+        if (item.getCreatedAt() != null) v.setCreatedAt(toDisplayTime(item.getCreatedAt()));
+        if (item.getLastInboundAt() != null) v.setLastInboundAt(toDisplayTime(item.getLastInboundAt()));
         return v;
     }
 
@@ -882,15 +988,15 @@ public class MaterialService {
         v.setApplicantGroup(request.getApplicantGroup());
         v.setStatus(request.getStatus());
         v.setWorkflowType(request.getWorkflowType());
-        v.setFirstReviewerId(request.getFirstReviewerId());
-        v.setSecondReviewerId(request.getSecondReviewerId());
-        if (request.getFirstReviewTime() != null) v.setFirstReviewTime(request.getFirstReviewTime().toString());
-        if (request.getSecondReviewTime() != null) v.setSecondReviewTime(request.getSecondReviewTime().toString());
-        if (request.getFulfilledAt() != null) v.setFulfilledAt(request.getFulfilledAt().toString());
+        v.setFirstReviewerId(!StringUtils.hasText(request.getFirstReviewerId()) ? "无" : request.getFirstReviewerId());
+        v.setSecondReviewerId(!StringUtils.hasText(request.getSecondReviewerId()) ? "无" : request.getSecondReviewerId());
+        v.setFirstReviewTime(toDisplayTime(request.getFirstReviewTime()));
+        v.setSecondReviewTime(toDisplayTime(request.getSecondReviewTime()));
+        v.setFulfilledAt(toDisplayTime(request.getFulfilledAt()));
         v.setFulfilledBy(request.getFulfilledBy());
-        if (request.getReceivedAt() != null) v.setReceivedAt(request.getReceivedAt().toString());
-        if (request.getCreatedAt() != null) v.setCreatedAt(request.getCreatedAt().toString());
-        if (request.getUpdatedAt() != null) v.setUpdatedAt(request.getUpdatedAt().toString());
+        v.setReceivedAt(toDisplayTime(request.getReceivedAt()));
+        v.setCreatedAt(toDisplayTime(request.getCreatedAt()));
+        v.setUpdatedAt(toDisplayTime(request.getUpdatedAt()));
         List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(request.getId());
         v.setLines(lines.stream().map(l -> {
             MaterialRequestLineView lv = new MaterialRequestLineView();

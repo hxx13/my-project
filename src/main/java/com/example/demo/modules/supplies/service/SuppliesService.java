@@ -309,14 +309,21 @@ public class SuppliesService {
         return Result.success(toItemView(it));
     }
 
-    public Result<SupplyItemView> createItem(SupplyItemUpsertRequest req) {
+    public Result<SupplyItemView> createItem(User operator, SupplyItemUpsertRequest req) {
         String err = validateItemUpsert(req, true);
         if (err != null) return Result.error(err);
         SupplyCategory cat = categoryMapper.findById(req.getCategoryId());
         if (cat == null) return Result.error("分类不存在");
         SupplyItem it = fromUpsert(req, null);
         itemMapper.insert(it);
-        logOp("ITEM_UPSERT", "ITEM", String.valueOf(it.getId()), null, Map.of("action", "CREATE", "itemId", it.getId()));
+        // 新建物资时填入的初始库存本质是一次入库，计入库存流水
+        int initialQty = it.getStockQty() != null ? it.getStockQty() : 0;
+        if (initialQty > 0 && MODE_QUANTIFIED.equals(it.getStockMode())) {
+            recordInventoryMovement("INBOUND", it.getId(), initialQty, initialQty, null, null,
+                    operator != null ? operator.getId() : null, null, "新建物资初始库存");
+        }
+        logOp("ITEM_UPSERT", "ITEM", String.valueOf(it.getId()), operator != null ? operator.getId() : null,
+                Map.of("action", "CREATE", "itemId", it.getId(), "initialQty", initialQty));
         return Result.success(toItemView(itemMapper.findById(it.getId())));
     }
 
@@ -453,11 +460,15 @@ public class SuppliesService {
             return Result.error("请选择至少一件物资");
         }
         Map<Long, Integer> merged = new LinkedHashMap<>();
+        Map<Long, String> remarkByItem = new LinkedHashMap<>();
         for (CreateSupplyClaimRequest.Line line : req.getLines()) {
             if (line == null || line.getItemId() == null || line.getQty() == null || line.getQty() <= 0) {
                 return Result.error("领用行参数无效");
             }
             merged.merge(line.getItemId(), line.getQty(), Integer::sum);
+            if (line.getRemark() != null && !line.getRemark().trim().isEmpty()) {
+                remarkByItem.put(line.getItemId(), line.getRemark().trim());
+            }
         }
         List<SupplyClaimLine> toInsert = new ArrayList<>();
         for (Map.Entry<Long, Integer> e : merged.entrySet()) {
@@ -484,6 +495,7 @@ public class SuppliesService {
             cl.setQty(e.getValue());
             cl.setSnapshotName(it.getName());
             cl.setFulfilledQty(0);
+            cl.setRemark(remarkByItem.get(e.getKey()));
             toInsert.add(cl);
         }
         return Result.success(toInsert);
@@ -928,6 +940,7 @@ public class SuppliesService {
                 .collect(Collectors.toMap(FulfillSupplyClaimRequest.Line::getLineId, l -> l, (a, b) -> a));
         boolean anyGrant = false;
         Map<Long, Integer> outQtyByLine = new HashMap<>();
+        Map<Long, String> remarkByLine = new HashMap<>();
         for (SupplyClaimLine dl : dbLines) {
             FulfillSupplyClaimRequest.Line fl = byLineId.get(dl.getId());
             if (fl == null || !Boolean.TRUE.equals(fl.getGrant())) {
@@ -939,12 +952,16 @@ public class SuppliesService {
             if (fq > max) fq = max;
             anyGrant = true;
             outQtyByLine.put(dl.getId(), fq);
+            if (fl.getRemark() != null && !fl.getRemark().trim().isEmpty()) {
+                remarkByLine.put(dl.getId(), fl.getRemark().trim());
+            }
         }
         if (!anyGrant) {
             return Result.error("请至少勾选一行同意发放");
         }
         for (SupplyClaimLine dl : dbLines) {
             Integer out = outQtyByLine.get(dl.getId());
+            String remark = remarkByLine.get(dl.getId());
             if (out == null) {
                 claimLineMapper.updateFulfilledQty(dl.getId(), 0);
                 continue;
@@ -960,10 +977,13 @@ public class SuppliesService {
                 }
             }
             claimLineMapper.updateFulfilledQty(dl.getId(), out);
+            if (remark != null) {
+                claimLineMapper.updateRemark(dl.getId(), remark);
+            }
             SupplyItem itAfter = itemMapper.findById(dl.getItemId());
             int stockAfter = itAfter != null && itAfter.getStockQty() != null ? itAfter.getStockQty() : 0;
             recordInventoryMovement("OUTBOUND", dl.getItemId(), out, stockAfter, orderId, dl.getId(),
-                    admin.getId(), locked.getUserId(), null);
+                    admin.getId(), locked.getUserId(), remark);
         }
         int uo = claimOrderMapper.updateFulfilled(orderId, admin.getId(), LocalDateTime.now());
         if (uo == 0) {
@@ -1501,6 +1521,13 @@ public class SuppliesService {
         v.setQty(l.getQty());
         v.setSnapshotName(l.getSnapshotName());
         v.setFulfilledQty(l.getFulfilledQty());
+        v.setRemark(l.getRemark());
+        if (l.getItemId() != null) {
+            SupplyItem it = itemMapper.findById(l.getItemId());
+            if (it != null) {
+                v.setCoverUrl(it.getCoverUrl());
+            }
+        }
         return v;
     }
 

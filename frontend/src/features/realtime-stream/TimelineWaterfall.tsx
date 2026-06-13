@@ -6,7 +6,8 @@ import { fetchRealtimeFeed, fetchAutomationLogsNear, type AutomationLogRow } fro
 import { PersonnelSearchDropdown } from "@/components/ui/PersonnelSearchDropdown"; // 💥 引入独立的人员预检组件
 import { Info, LogIn, LogOut, Activity } from "lucide-react"; // 💥 引入 Activity 图标作为标题Icon
 import { detailTextToLines } from "@/utils/detailTextToLines";
-import { useDashboardSciFiVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 
@@ -130,7 +131,8 @@ function ProvenancePopover(props: {
         Boolean((prov?.summaryZh ?? "").trim()) ||
         Boolean((prov?.detailZh ?? "").trim()) ||
         Boolean((prov?.doorName ?? "").trim());
-    const sf = useDashboardSciFiVisual();
+    const visual = useDashboardVisual();
+    const sf = visual.sciFi;
 
     return createPortal(
         <>
@@ -144,9 +146,12 @@ function ProvenancePopover(props: {
                 role="dialog"
                 aria-modal="true"
                 className={`fixed z-[5601] flex max-h-[min(86vh,520px)] w-[min(92vw,380px)] flex-col overflow-hidden rounded-xl border text-left shadow-2xl ${
-                    sf
-                        ? "border-cyan-500/35 bg-slate-950/95 shadow-[0_0_40px_rgba(56,189,248,0.2)]"
-                        : "border-slate-200 bg-white"
+                    dashTone(
+                        visual,
+                        "border-cyan-500/35 bg-slate-950/95 shadow-[0_0_40px_rgba(56,189,248,0.2)]",
+                        "border-white/12 bg-slate-900/88 backdrop-blur-md",
+                        "border-slate-200 bg-white",
+                    )
                 }`}
                 style={{ top, left, width: POPOVER_W, maxHeight: POPOVER_MAX_H }}
                 onClick={(e) => e.stopPropagation()}
@@ -281,7 +286,8 @@ export function TimelineWaterfall() {
     const events = useEventStore((state) => state.realtimeEvents);
     const setEvents = useEventStore((state) => state.setEvents);
     const [provOpen, setProvOpen] = useState<{ evt: UniversalEvent; rect: DOMRect } | null>(null);
-    const sf = useDashboardSciFiVisual();
+    const visual = useDashboardVisual();
+    const sf = visual.sciFi;
     /** 学生首页仅浏览流水；人员预检与单条「溯源详情」仅员工及以上 */
     const showStaffFeedTools = hasMinRole(authStorage.getRole() || "STUDENT", "STAFF");
 
@@ -343,24 +349,30 @@ export function TimelineWaterfall() {
             {/* 💥 全新标题头部：渐变徽章图标 + 渐变追踪字体 */}
             <div
                 className={`shrink-0 flex justify-between items-center border-b pb-3 mb-3 relative ${
-                    sf ? "border-cyan-500/25" : "border-slate-200/60"
+                    dashTone(visual, "border-cyan-500/25", DASH_NIGHT_CLASS.header, "border-slate-200/60")
                 }`}
             >
                 <div className="flex items-center gap-2">
                     <div
-                        className={`w-6 h-6 rounded-md flex items-center justify-center shadow-md ${
-                            sf
-                                ? "bg-gradient-to-br from-cyan-500 to-fuchsia-600 shadow-cyan-500/40"
-                                : "bg-gradient-to-br from-blue-500 to-indigo-500 shadow-blue-500/20"
+                        className={`w-6 h-6 rounded-md flex items-center justify-center ${
+                            dashTone(
+                                visual,
+                                "bg-gradient-to-br from-cyan-500 to-fuchsia-600 shadow-md shadow-cyan-500/40",
+                                DASH_NIGHT_CLASS.iconBadge,
+                                "bg-gradient-to-br from-blue-500 to-indigo-500 shadow-md shadow-blue-500/20",
+                            )
                         }`}
                     >
                         <Activity className="w-3.5 h-3.5 text-white" />
                     </div>
                     <span
                         className={`text-[15px] font-extrabold tracking-wider font-sans ${
-                            sf
-                                ? "bg-clip-text text-transparent bg-gradient-to-r from-cyan-200 via-white to-fuchsia-200 drop-shadow-[0_0_14px_rgba(34,211,238,0.35)]"
-                                : "bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-500"
+                            dashTone(
+                                visual,
+                                "bg-clip-text text-transparent bg-gradient-to-r from-cyan-200 via-white to-fuchsia-200 drop-shadow-[0_0_14px_rgba(34,211,238,0.35)]",
+                                `${DASH_NIGHT_CLASS.title}`,
+                                "bg-clip-text text-transparent bg-gradient-to-r from-slate-800 to-slate-500",
+                            )
                         }`}
                     >
                         实时进出记录链路
@@ -404,19 +416,26 @@ export function TimelineWaterfall() {
                                 {/* 💥 修复 2：去掉 pt-2，加入 items-center justify-center 保证绝对垂直居中 */}
                                 <div className="w-[52px] shrink-0 flex flex-col justify-center items-end pr-1">
                                     <div
-                                        className={`flex items-center shadow-sm rounded-[4px] overflow-hidden border group-hover:shadow-md group-hover:scale-105 transition-all duration-300 ${
-                                            sf ? "border-cyan-500/35" : "border-slate-200/60"
+                                        className={`flex items-center rounded-[4px] overflow-hidden border transition-all duration-300 ${
+                                            dashTone(
+                                                visual,
+                                                "border-cyan-500/35 shadow-sm group-hover:shadow-md group-hover:scale-105",
+                                                isEnter ? DASH_NIGHT_CLASS.timeCapsuleEnter : DASH_NIGHT_CLASS.timeCapsuleExit,
+                                                "border-slate-200/60 shadow-sm group-hover:shadow-md group-hover:scale-105",
+                                            )
                                         }`}
                                     >
                                         <span
                                             className={`backdrop-blur-md text-[10px] font-black px-1.5 py-[2px] leading-none
-                                            ${isEnter ? (sf ? "bg-cyan-500/30 text-cyan-100" : "bg-cyan-100 text-cyan-800") : sf ? "bg-rose-500/25 text-rose-100" : "bg-rose-100 text-rose-800"}`}
+                                            ${isEnter
+                                                ? dashTone(visual, "bg-cyan-500/30 text-cyan-100", DASH_NIGHT_CLASS.timeHourEnter, "bg-cyan-100 text-cyan-800")
+                                                : dashTone(visual, "bg-rose-500/25 text-rose-100", DASH_NIGHT_CLASS.timeHourExit, "bg-rose-100 text-rose-800")}`}
                                         >
                                             {hour}
                                         </span>
                                         <span
                                             className={`backdrop-blur-md text-[10px] font-black px-1.5 py-[2px] leading-none ${
-                                                sf ? "bg-slate-900/90 text-slate-300" : "bg-white text-slate-500"
+                                                dashTone(visual, "bg-slate-900/90 text-slate-300", DASH_NIGHT_CLASS.timeMin, "bg-white text-slate-500")
                                             }`}
                                         >
                                             {minute}
@@ -431,19 +450,19 @@ export function TimelineWaterfall() {
 
                                     <div
                                         className={`absolute top-0 bottom-[-16px] left-[50%] -translate-x-[50%] w-[2px] z-0 ${
-                                            sf ? "bg-cyan-500/25" : "bg-slate-200/60"
+                                            dashTone(visual, "bg-cyan-500/25", DASH_NIGHT_CLASS.timelineRail, "bg-slate-200/60")
                                         }`}
                                     >
                                     </div>
 
                                     <div
                                         className={`absolute top-[50%] left-[50%] -translate-x-[50%] -translate-y-[50%] z-10 w-7 h-7 rounded-full flex items-center justify-center border-[2px] shadow-sm transition-all duration-300 group-hover:scale-110 group-hover:shadow-md ${
-                                            sf ? "border-slate-900 shadow-cyan-500/30" : "border-white"
-                                        } ${
-                                            isEnter
-                                                ? "bg-gradient-to-br from-blue-500 to-cyan-400 shadow-blue-400/30"
-                                                : "bg-gradient-to-br from-orange-400 to-rose-400 shadow-orange-400/30"
-                                        }`}
+                                            visual.night
+                                                ? isEnter
+                                                    ? DASH_NIGHT_CLASS.hubEnter
+                                                    : DASH_NIGHT_CLASS.hubExit
+                                                : `${isEnter ? "border-white bg-gradient-to-br from-blue-500 to-cyan-400 shadow-blue-400/30" : "border-white bg-gradient-to-br from-orange-400 to-rose-400 shadow-orange-400/30"}`
+                                        } ${!visual.night && sf ? "border-slate-900 shadow-cyan-500/30" : ""}`}
                                     >
                                         {isEnter ? (
                                             <LogIn className="w-3.5 h-3.5 text-white ml-0.5" strokeWidth={3} />
@@ -459,28 +478,41 @@ export function TimelineWaterfall() {
                                 <div
                                     className={`flex-1 min-w-0 relative border rounded-[12px] p-2 flex items-center gap-1.5 group-hover:-translate-y-0.5 transition-all overflow-hidden cursor-default ${
                                         isEnter
-                                            ? sf
-                                                ? "bg-cyan-950/35 border-cyan-500/25 shadow-[0_0_24px_rgba(34,211,238,0.12)] group-hover:bg-cyan-950/50 group-hover:shadow-[0_0_28px_rgba(34,211,238,0.2)]"
-                                                : "bg-blue-50/40 border-blue-100/50 shadow-[0_2px_10px_rgba(59,130,246,0.03)] group-hover:bg-blue-50/70 group-hover:shadow-[0_6px_20px_rgba(59,130,246,0.08)]"
-                                            : sf
-                                              ? "bg-rose-950/30 border-rose-500/25 shadow-[0_0_24px_rgba(244,63,94,0.12)] group-hover:bg-rose-950/45 group-hover:shadow-[0_0_28px_rgba(244,63,94,0.18)]"
-                                              : "bg-orange-50/40 border-orange-100/50 shadow-[0_2px_10px_rgba(249,115,22,0.03)] group-hover:bg-orange-50/70 group-hover:shadow-[0_6px_20px_rgba(249,115,22,0.08)]"
+                                            ? dashTone(
+                                                  visual,
+                                                  "bg-cyan-950/35 border-cyan-500/25 shadow-[0_0_24px_rgba(34,211,238,0.12)] group-hover:bg-cyan-950/50 group-hover:shadow-[0_0_28px_rgba(34,211,238,0.2)]",
+                                                  `${DASH_NIGHT_CLASS.rowEnter} group-hover:-translate-y-0.5`,
+                                                  "bg-blue-50/40 border-blue-100/50 shadow-[0_2px_10px_rgba(59,130,246,0.03)] group-hover:bg-blue-50/70 group-hover:shadow-[0_6px_20px_rgba(59,130,246,0.08)]",
+                                              )
+                                            : dashTone(
+                                                  visual,
+                                                  "bg-rose-950/30 border-rose-500/25 shadow-[0_0_24px_rgba(244,63,94,0.12)] group-hover:bg-rose-950/45 group-hover:shadow-[0_0_28px_rgba(244,63,94,0.18)]",
+                                                  `${DASH_NIGHT_CLASS.rowExit} group-hover:-translate-y-0.5`,
+                                                  "bg-orange-50/40 border-orange-100/50 shadow-[0_2px_10px_rgba(249,115,22,0.03)] group-hover:bg-orange-50/70 group-hover:shadow-[0_6px_20px_rgba(249,115,22,0.08)]",
+                                              )
                                     }`}
                                 >
-                                    {/* ✨ 侧边魔法光晕 */}
-                                    <div className={`absolute inset-y-0 left-0 w-12 bg-gradient-to-r to-transparent opacity-40 pointer-events-none
-                                        ${isEnter ? 'from-blue-300/40' : 'from-orange-300/40'}`}
-                                    />
-
-                                    {/* ✨ 侧边极细发光灯带 (3px 缩小为 2.5px 适应单行) */}
-                                    <div className={`absolute inset-y-0 left-0 w-[2.5px] 
-                                        ${isEnter ? 'bg-gradient-to-b from-blue-400 to-cyan-300' : 'bg-gradient-to-b from-orange-400 to-rose-300'}`}
-                                    />
+                                    {!visual.night ? (
+                                        <>
+                                            <div
+                                                className={`absolute inset-y-0 left-0 w-12 bg-gradient-to-r to-transparent opacity-40 pointer-events-none ${
+                                                    isEnter ? "from-blue-300/40" : "from-orange-300/40"
+                                                }`}
+                                            />
+                                            <div
+                                                className={`absolute inset-y-0 left-0 w-[2.5px] ${
+                                                    isEnter
+                                                        ? "bg-gradient-to-b from-blue-400 to-cyan-300"
+                                                        : "bg-gradient-to-b from-orange-400 to-rose-300"
+                                                }`}
+                                            />
+                                        </>
+                                    ) : null}
 
                                     {/* 姓名 */}
                                     <span
                                         className={`relative z-10 font-black text-[13px] tracking-wide shrink-0 ${
-                                            sf ? "text-slate-100" : "text-slate-800"
+                                            dashTone(visual, "text-slate-100", DASH_NIGHT_CLASS.title, "text-slate-800")
                                         }`}
                                     >
                                         {evt.person?.name || "未知"}
@@ -488,14 +520,27 @@ export function TimelineWaterfall() {
 
                                     {/* 📍 地点标签：替换为机械探雷鼠 SVG，自动继承 Cyan/Amber 幻彩配色 */}
                                     {evt.location?.room && (
-                                        <span className={`relative z-10 flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md whitespace-nowrap overflow-hidden text-ellipsis flex-shrink border
-                                            ${isEnter ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-700' : 'bg-amber-500/10 border-amber-500/20 text-amber-700'}`}>
+                                        <span
+                                            className={`relative z-10 flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md whitespace-nowrap overflow-hidden text-ellipsis flex-shrink border ${
+                                                visual.night
+                                                    ? isEnter
+                                                        ? DASH_NIGHT_CLASS.chipEnter
+                                                        : DASH_NIGHT_CLASS.chipExit
+                                                    : isEnter
+                                                      ? "bg-cyan-500/10 border-cyan-500/20 text-cyan-700"
+                                                      : "bg-amber-500/10 border-amber-500/20 text-amber-700"
+                                            }`}
+                                        >
 
                                             {/* 机械探雷鼠 SVG (已优化尺寸与对齐) */}
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
                                                  className="w-3.5 h-3.5 shrink-0"
-                                                 style={{ filter: "drop-shadow(0 0 2px currentColor)" } as CSSProperties}
+                                                 style={
+                                                     visual.night
+                                                         ? undefined
+                                                         : ({ filter: "drop-shadow(0 0 2px currentColor)" } as CSSProperties)
+                                                 }
                                             >
                                                 {/* 1. 电子尾巴：流畅的S型数据线 */}
                                                 <path d="M4 14c-4 0-4 6 1 6h2" />
@@ -516,8 +561,16 @@ export function TimelineWaterfall() {
 
                                     {/* 🧬 课题组标签：动态幻彩配色 (进：靛蓝 / 出：玫瑰粉) */}
                                     {evt.person?.group && (
-                                        <span className={`relative z-10 text-[10px] font-bold px-1.5 py-0.5 rounded-md whitespace-nowrap overflow-hidden text-ellipsis flex-shrink border
-                                            ${isEnter ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-700' : 'bg-rose-500/10 border-rose-500/20 text-rose-700'}`}
+                                        <span
+                                            className={`relative z-10 text-[10px] font-bold px-1.5 py-0.5 rounded-md whitespace-nowrap overflow-hidden text-ellipsis flex-shrink border ${
+                                                visual.night
+                                                    ? isEnter
+                                                        ? DASH_NIGHT_CLASS.chipEnter
+                                                        : DASH_NIGHT_CLASS.chipExit
+                                                    : isEnter
+                                                      ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-700"
+                                                      : "bg-rose-500/10 border-rose-500/20 text-rose-700"
+                                            }`}
                                         >
                                             🧬 {evt.person.group}
                                         </span>
@@ -527,9 +580,12 @@ export function TimelineWaterfall() {
                                         <button
                                             type="button"
                                             className={`relative z-10 ml-auto shrink-0 rounded-full p-1 transition-colors ${
-                                                sf
-                                                    ? "text-cyan-400/80 hover:bg-cyan-500/15 hover:text-cyan-200"
-                                                    : "text-slate-400 hover:bg-slate-200/80 hover:text-slate-700"
+                                                dashTone(
+                                                    visual,
+                                                    "text-cyan-400/80 hover:bg-cyan-500/15 hover:text-cyan-200",
+                                                    "text-white/45 hover:bg-white/10 hover:text-white/80",
+                                                    "text-slate-400 hover:bg-slate-200/80 hover:text-slate-700",
+                                                )
                                             }`}
                                             title="溯源详情（锚点弹窗）"
                                             aria-label="溯源详情"

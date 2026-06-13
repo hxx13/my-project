@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut } from "lucide-react";
 import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
-import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
+import { SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
 import { useTheme } from "@/features/theme/ThemeProvider";
 
 interface SwipeExitConfirmDialogProps {
@@ -90,21 +90,17 @@ export function SwipeExitConfirmDialog({
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.2 }}
                     {...SCAN_MODAL_LAYER_PROPS}
-                    className={`fixed inset-0 z-[var(--z-modal)] flex items-center justify-center ${SCAN_NESTED_BACKDROP}`}
+                    className="swipe-exit-confirm-anchor fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4 pointer-events-none"
                     onKeyDown={(e) => {
                         if (e.key === "Escape") onCancel();
                     }}
                 >
-                    {/* Backdrop click to cancel */}
-                    <div className="absolute inset-0" onClick={onCancel} />
-
-                    {/* Card */}
                     <motion.div
                         initial={{ opacity: 0, scale: 0.92, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.92, y: 20 }}
                         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                        className="relative z-10 mx-4 w-full max-w-[400px] overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)]"
+                        className="swipe-exit-confirm-card relative z-10 mx-4 w-full max-w-[400px] overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] pointer-events-auto"
                     >
                         {/* Close button */}
                         <button

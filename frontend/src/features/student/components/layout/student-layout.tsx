@@ -6,6 +6,9 @@ import { authStorage } from "@/features/auth/authStorage";
 import { getImpersonationState, returnToStaffView } from "@/features/auth/impersonation";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 import { IDLE_TIMEOUT_MS, IDLE_WARNING_MS } from "@/config/idleTimeout";
+import { useTheme } from "@/features/theme/ThemeProvider";
+import { NightSkyBackdropDecor } from "@/features/night-sky/NightSkyBackdropDecor";
+import { cn } from "@/lib/utils";
 
 const SIDEBAR_COLLAPSED_KEY = "aro-student-sidebar-collapsed";
 
@@ -19,6 +22,8 @@ function readSidebarCollapsed(): boolean {
 
 export default function StudentLayout() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const isDark = theme.mode === "dark";
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -51,21 +56,35 @@ export default function StudentLayout() {
   }, []);
 
   return (
-    <div className="h-screen flex bg-[var(--student-canvas-soft)]">
+    <div
+      className={cn(
+        "relative flex h-screen",
+        theme.className,
+        isDark && "dark student-layout-root--night-sky",
+        !isDark && "bg-[var(--student-canvas-soft)]",
+      )}
+      style={isDark ? { backgroundColor: "var(--app-color-scan-backdrop-from)" } : undefined}
+    >
+      {isDark ? (
+        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+          <NightSkyBackdropDecor ultraRich includeOrbs={false} />
+        </div>
+      ) : null}
+
       {/* Desktop sidebar */}
-      <div className="hidden lg:block shrink-0">
+      <div className="relative z-10 hidden shrink-0 lg:block">
         <StudentSidebar collapsed={sidebarCollapsed} onToggle={handleToggleCollapse} />
       </div>
 
       {/* Mobile sidebar overlay */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-[var(--z-dropdown)] lg:hidden">
           <div
             className="absolute inset-0 bg-black/40"
             onClick={() => setMobileMenuOpen(false)}
             aria-hidden
           />
-          <div className="absolute left-0 top-0 h-full z-50">
+          <div className="absolute left-0 top-0 z-[var(--z-modal)] h-full">
             <StudentSidebar
               collapsed={false}
               onToggle={() => setMobileMenuOpen(false)}
@@ -75,21 +94,28 @@ export default function StudentLayout() {
       )}
 
       {/* Right content area */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <StudentHeader onMenuClick={() => setMobileMenuOpen(true)} />
 
-        <main className="flex-1 overflow-auto p-6">
+        <main
+          className={cn(
+            "flex-1 overflow-auto p-6",
+            isDark && "bg-transparent",
+          )}
+        >
           <Outlet />
         </main>
       </div>
 
       {/* Idle timeout warning overlay */}
       {showWarning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-slate-800 border border-white/10 rounded-xl px-6 py-4 text-center text-white shadow-2xl">
-            <p className="text-sm font-bold">长时间未操作</p>
-            <p className="text-2xl font-black text-purple-400 my-2">{remainingSeconds}s</p>
-            <p className="text-xs text-slate-400">秒后自动退出，点击任意位置继续使用</p>
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40">
+          <div
+            className="rounded-xl border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-6 py-4 text-center shadow-[var(--student-shadow-modal)]"
+          >
+            <p className="text-sm font-bold text-[var(--student-ink)]">长时间未操作</p>
+            <p className="my-2 text-2xl font-black text-[var(--student-primary)]">{remainingSeconds}s</p>
+            <p className="text-xs text-[var(--student-mute)]">秒后自动退出，点击任意位置继续使用</p>
           </div>
         </div>
       )}

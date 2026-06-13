@@ -565,8 +565,33 @@ export default function AdminPersonnelPage() {
                     </select>
                   </td>
                   <td className="px-2 py-1.5 align-middle">{renderPasswordCell(row)}</td>
+                  {/*
+                    个人密码（PIN）列 — 仅 SUPER_ADMIN 可见
+                    注意：人员表（学生分区）列出的是 aro_personnel 中的人员，
+                    不论其 sys_user.role 是否为 STUDENT。
+                    只要在人员库中即为"学生视角账号"，均可设置/使用个人密码。
+                    personalPin !== undefined 表示该人员来自 aro_personnel（有 PIN 字段）；
+                    undefined 表示来自系统用户表（无 PIN 概念）。
+                  */}
                   {isSuperAdmin ? (
-                    <td className="px-2 py-1.5 align-middle text-[var(--twin-mute)] text-[11px]">—</td>
+                    <td className="px-2 py-1.5 align-middle">
+                      {row.personalPin !== undefined ? (
+                        <div className="flex items-center gap-1">
+                          <span className={`text-[11px] ${row.personalPin ? "text-emerald-600" : "text-[var(--twin-mute)]"}`}>
+                            {row.personalPin ? "已设置" : "未设置"}
+                          </span>
+                          {row.personalPin ? (
+                            <button type="button"
+                              className="text-[10px] text-red-500 hover:underline"
+                              onClick={() => handleResetPin(row.id)}>
+                              清空
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="text-[var(--twin-mute)] text-[11px]">—</span>
+                      )}
+                    </td>
                   ) : null}
                 </tr>
               ))

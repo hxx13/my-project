@@ -65,6 +65,7 @@ import AdminSpecialStatusOverviewPage from "@/pages/AdminSpecialStatusOverviewPa
 import AdminCageShelfIndexPage from "@/pages/AdminCageShelfIndexPage";
 import AdminCageEventLogPage from "@/pages/AdminCageEventLogPage";
 import AdminAutomationLogsPage from "@/pages/AdminAutomationLogsPage";
+import AdminExpStatsPage from "@/pages/AdminExpStatsPage";
 import AnimalRoomTelemetryPage from "@/pages/AnimalRoomTelemetryPage";
 import AnimalRoomCockpitPage from "@/pages/AnimalRoomCockpitPage";
 import DigitalTwinScreenPage from "@/pages/DigitalTwinScreenPage";
@@ -254,6 +255,7 @@ export const router = createHashRouter([
                                     { path: "access-audit-source", element: <AdminAccessAuditSourcePage/>},
                                     { path: "access-fusion", element: <AdminAccessFusionPage/>},
                                     { path: "access-clean-rule-profiles", element: <AdminAccessCleanRuleProfilesPage/>},
+                                    { path: "exp-stats", element: <AdminExpStatsPage/>},
                                     { path: "student-violations", element: <AdminStudentViolationsPage/>},
                                     { path: "supplies", element: <AdminSuppliesMallPage/>},
                                     { path: "supplies/mine", element: <AdminSuppliesMinePage/>},

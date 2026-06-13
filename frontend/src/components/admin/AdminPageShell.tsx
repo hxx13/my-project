@@ -16,10 +16,10 @@ type AdminPageShellProps = {
 export function AdminPageShell({ title, description, actions, children, className }: AdminPageShellProps) {
   return (
     <div className={cn("space-y-6", className)}>
-      <div className="flex flex-col gap-3 border-b border-neutral-200/90 pb-5 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-[var(--app-color-border-default)] pb-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1.5">
-          <h2 className="text-xl font-semibold tracking-tight text-neutral-950 sm:text-2xl">{title}</h2>
-          {description ? <div className="max-w-3xl text-sm leading-relaxed text-neutral-600">{description}</div> : null}
+          <h2 className="text-xl font-semibold tracking-tight text-[var(--app-color-text-primary)] sm:text-2xl">{title}</h2>
+          {description ? <div className="max-w-3xl text-sm leading-relaxed text-[var(--app-color-text-secondary)]">{description}</div> : null}
         </div>
         {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
@@ -56,7 +56,7 @@ export function AdminTableShell({
   if (loading) {
     return (
       <div role="status" aria-busy="true" aria-live="polite"
-        className={cn("flex min-h-[200px] items-center justify-center rounded-xl border border-neutral-200/90 bg-white text-sm text-neutral-500 ring-1 ring-black/[0.02]", className)}
+        className={cn("flex min-h-[200px] items-center justify-center rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-sm text-[var(--app-color-text-tertiary)]", className)}
       >
         加载中…
       </div>
@@ -64,10 +64,10 @@ export function AdminTableShell({
   }
   if (error) {
     return (
-      <div className={cn("flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-rose-200/90 bg-rose-50/50 p-6 text-center text-sm text-rose-800 ring-1 ring-rose-100/80", className)}>
+      <div className={cn("flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-[var(--app-color-feedback-error)]/30 bg-[var(--app-color-feedback-danger-soft)] p-6 text-center text-sm text-[var(--app-color-feedback-error)]", className)}>
         <p>{error}</p>
         {onRetry ? (
-          <button type="button" onClick={onRetry} className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-50">重试</button>
+          <button type="button" onClick={onRetry} className="rounded-lg border border-[var(--app-color-feedback-error)]/40 bg-[var(--app-color-surface-container)] px-3 py-1.5 text-xs font-medium text-[var(--app-color-feedback-error)] hover:bg-[var(--app-color-surface-hover)]">重试</button>
         ) : null}
       </div>
     );
@@ -76,7 +76,7 @@ export function AdminTableShell({
     return (
       <div
         className={cn(
-          "flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-neutral-200/90 bg-neutral-50/90 text-sm text-neutral-500",
+          "flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-sm text-[var(--app-color-text-tertiary)]",
           className
         )}
       >
@@ -88,7 +88,7 @@ export function AdminTableShell({
     <div
       ref={tableRef}
       className={cn(
-        "overflow-x-auto rounded-xl border border-neutral-200/90 bg-white shadow-sm ring-1 ring-black/[0.02]",
+        "overflow-x-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm",
         className
       )}
     >
@@ -118,7 +118,7 @@ export function AdminDataTableWrap({ children, className, scrollable }: AdminDat
   return (
     <div
       className={cn(
-        "overflow-x-auto rounded-xl border border-neutral-200/90 bg-white shadow-sm ring-1 ring-black/[0.02]",
+        "overflow-x-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm",
         className
       )}
     >
@@ -145,11 +145,11 @@ type AdminFormCardProps = {
 /** 长表单分区卡片 */
 export function AdminFormCard({ title, description, actions, children, className }: AdminFormCardProps) {
   return (
-    <section className={cn("rounded-xl border border-neutral-200/90 bg-white p-5 shadow-sm ring-1 ring-black/[0.02]", className)}>
-      <div className="mb-3 flex items-start justify-between border-b border-neutral-100 pb-2">
+    <section className={cn("rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-sm", className)}>
+      <div className="mb-3 flex items-start justify-between border-b border-[var(--app-color-border-default)] pb-2">
         <div>
-          <h3 className="text-sm font-semibold text-neutral-800">{title}</h3>
-          {description ? <div className="mt-1 text-xs text-neutral-500">{description}</div> : null}
+          <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)]">{title}</h3>
+          {description ? <div className="mt-1 text-xs text-[var(--app-color-text-tertiary)]">{description}</div> : null}
         </div>
         {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
       </div>

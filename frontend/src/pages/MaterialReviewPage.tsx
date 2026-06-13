@@ -123,10 +123,10 @@ export default function MaterialReviewPage() {
                 <div className="text-xs text-[var(--twin-mute)]">{req.createdAt?.replace("T", " ").slice(0, 19)}</div>
                 {(req.status === "PENDING" || req.status === "FIRST_OK") && (
                   <div className="flex gap-2 pt-1 border-t border-[var(--twin-hairline)]">
-                    <button onClick={() => approve.mutate(req.id)} className="rounded-twin-sm bg-green-600 px-4 py-1.5 text-sm font-medium text-white">
+                    <button onClick={() => approve.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "审核失败") })} className="rounded-twin-sm bg-green-600 px-4 py-1.5 text-sm font-medium text-white">
                       {req.status === "FIRST_OK" ? "复审通过并出库" : req.workflowType === "DUAL_REVIEW" ? "初审通过" : "通过并出库"}
                     </button>
-                    <button onClick={() => reject.mutate(req.id)} className="rounded-twin-sm bg-red-500 px-4 py-1.5 text-sm font-medium text-white">拒绝</button>
+                    <button onClick={() => reject.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "操作失败") })} className="rounded-twin-sm bg-red-500 px-4 py-1.5 text-sm font-medium text-white">拒绝</button>
                   </div>
                 )}
               </div>

@@ -13,6 +13,7 @@ import com.example.demo.modules.twin.scan.service.TwinScanAppService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleEngineService;
 import com.example.demo.modules.twin.rpg.service.RpgEngineService;
+import com.example.demo.modules.twin.rpg.service.TwinExpStatsService;
 import com.example.demo.modules.twin.scan.service.TwinScanService;
 import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleConfigService;
@@ -64,6 +65,9 @@ public class TwinScanController {
 
     @Autowired
     private RpgEngineService rpgEngineService;
+
+    @Autowired
+    private TwinExpStatsService twinExpStatsService;
 
     @Autowired
     private AccessRuleDispatchService accessRuleDispatchService;
@@ -332,8 +336,20 @@ public class TwinScanController {
             // =================================================================
             // 🎯 第三关：使用 RPG 引擎返回本次操作真实经验增量
             // =================================================================
-            int expAdded = Math.max(0, rpgEngineService.predictActionReward(userId, accessType));
+            com.example.demo.modules.twin.rpg.service.PredictResult predictResult = rpgEngineService.predictActionReward(userId, accessType);
+            int expAdded = Math.max(0, predictResult.getExpAdded());
             result.setExpAdded(expAdded);
+            result.setExpSource(predictResult.getExpSource());
+
+            // Write XP record
+            if (predictResult.getExpAdded() > 0 && predictResult.getExpSource() != null) {
+                try {
+                    twinExpStatsService.recordExp(userId, userName, predictResult.getExpAdded(),
+                            predictResult.getExpSource(), accessType, effectiveRoomId, roomName);
+                } catch (Exception e) {
+                    log.warn("[扫码·登记] XP流水写入失败 id={} err={}", userId, e.getMessage());
+                }
+            }
 
             // EXIT：大华回收 + 豁免关闭 + 冻结已由 WebScanExitDahuaLinkageService 处理（可配置延迟）；ENTER 无此处冻结
 

@@ -415,7 +415,7 @@ export default function DebugNav() {
                     initial={{y: 50, opacity: 0}}
                     animate={{y: 0, opacity: 1}}
                     transition={{type: "spring", stiffness: 300, damping: 25}}
-                    className="flex items-center gap-2 px-3 py-2.5 bg-[#18181b]/80 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-full"
+                    className="twin-debug-dock flex items-center gap-2 px-3 py-2.5 bg-[#18181b]/80 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-full"
                 >
                     <button
                         type="button"

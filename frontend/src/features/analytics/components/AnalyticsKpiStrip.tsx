@@ -8,11 +8,16 @@ export type KpiItem = {
 };
 
 const TINT: Record<NonNullable<KpiItem["tint"]>, string> = {
-  lavender: "border-violet-200/80 bg-gradient-to-br from-violet-50 to-indigo-50/80 text-violet-950",
-  mint: "border-emerald-200/80 bg-gradient-to-br from-emerald-50 to-teal-50/70 text-emerald-950",
-  peach: "border-amber-200/80 bg-gradient-to-br from-amber-50 to-orange-50/70 text-amber-950",
-  sky: "border-sky-200/80 bg-gradient-to-br from-sky-50 to-cyan-50/70 text-sky-950",
-  rose: "border-rose-200/80 bg-gradient-to-br from-rose-50 to-pink-50/70 text-rose-950",
+  lavender:
+    "border-[color-mix(in_srgb,var(--app-color-accent)_35%,var(--app-color-border-default))] bg-[color-mix(in_srgb,var(--app-color-accent-soft)_70%,var(--app-color-surface-container))] text-[var(--app-color-text-primary)]",
+  mint:
+    "border-[color-mix(in_srgb,var(--app-color-feedback-success)_35%,var(--app-color-border-default))] bg-[color-mix(in_srgb,var(--app-color-feedback-success-soft)_80%,var(--app-color-surface-container))] text-[var(--app-color-text-primary)]",
+  peach:
+    "border-[color-mix(in_srgb,var(--app-color-feedback-warning)_35%,var(--app-color-border-default))] bg-[color-mix(in_srgb,var(--app-color-feedback-warning-soft)_80%,var(--app-color-surface-container))] text-[var(--app-color-text-primary)]",
+  sky:
+    "border-[color-mix(in_srgb,var(--app-color-accent-secondary)_35%,var(--app-color-border-default))] bg-[color-mix(in_srgb,var(--app-color-feedback-info-soft)_80%,var(--app-color-surface-container))] text-[var(--app-color-text-primary)]",
+  rose:
+    "border-[color-mix(in_srgb,var(--app-color-feedback-error)_35%,var(--app-color-border-default))] bg-[color-mix(in_srgb,var(--app-color-feedback-danger-soft)_80%,var(--app-color-surface-container))] text-[var(--app-color-text-primary)]",
 };
 
 export function AnalyticsKpiStrip({ items, className }: { items: KpiItem[]; className?: string }) {
@@ -22,13 +27,13 @@ export function AnalyticsKpiStrip({ items, className }: { items: KpiItem[]; clas
         <div
           key={it.label}
           className={cn(
-            "rounded-2xl border px-4 py-3.5 shadow-sm ring-1 ring-black/[0.02] transition hover:shadow-md",
+            "rounded-2xl border px-4 py-3.5 shadow-sm transition hover:shadow-md",
             TINT[it.tint ?? "lavender"]
           )}
         >
-          <p className="text-xs font-medium opacity-80">{it.label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">{it.value}</p>
-          {it.hint ? <p className="mt-0.5 text-[11px] opacity-70">{it.hint}</p> : null}
+          <p className="text-xs font-medium text-[var(--app-color-text-secondary)]">{it.label}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-[var(--app-color-text-primary)]">{it.value}</p>
+          {it.hint ? <p className="mt-0.5 text-[11px] text-[var(--app-color-text-tertiary)]">{it.hint}</p> : null}
         </div>
       ))}
     </div>

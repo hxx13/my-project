@@ -9,4 +9,6 @@ public class SupplyClaimLineView {
     private Integer qty;
     private String snapshotName;
     private Integer fulfilledQty;
+    private String coverUrl;
+    private String remark;
 }

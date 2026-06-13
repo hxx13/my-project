@@ -23,6 +23,7 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import { webImageSrc } from "@/utils/mediaUrl";
 
 type TabKey = "pending" | "done";
 
@@ -60,6 +61,7 @@ export default function AdminSuppliesProcessPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("pending");
   const [detail, setDetail] = useState<SupplyClaimOrder | null>(null);
   const [grantMap, setGrantMap] = useState<Record<number, boolean>>({});
+  const [remarkMap, setRemarkMap] = useState<Record<number, string>>({});
   const [selectedRecycleIds, setSelectedRecycleIds] = useState<string[]>([]);
 
   const { data: pendingRows = [], isLoading: pendingLoading } = useSupplyPendingTasks();
@@ -78,13 +80,28 @@ export default function AdminSuppliesProcessPage() {
       const d = await fetchSupplyClaimDetail(id);
       setDetail(d);
       const initial: Record<number, boolean> = {};
+      const remarks: Record<number, string> = {};
       (d.lines || []).forEach((line) => {
         initial[line.id] = line.fulfilledQty > 0;
+        if (line.remark) remarks[line.id] = line.remark;
       });
       setGrantMap(initial);
+      setRemarkMap(remarks);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "加载详情失败");
     }
+  };
+
+  const linesAllChecked = detail && detail.lines && detail.lines.length > 0
+    ? detail.lines.every((l) => !!grantMap[l.id])
+    : false;
+
+  const toggleAllLines = () => {
+    if (!detail?.lines) return;
+    const next = !linesAllChecked;
+    const patch: Record<number, boolean> = {};
+    detail.lines.forEach((l) => { patch[l.id] = next; });
+    setGrantMap((prev) => ({ ...prev, ...patch }));
   };
 
   const submitFulfill = async () => {
@@ -92,11 +109,13 @@ export default function AdminSuppliesProcessPage() {
     const lines = (detail.lines || []).map((line: SupplyClaimLine) => ({
       lineId: line.id,
       grant: !!grantMap[line.id],
+      remark: remarkMap[line.id]?.trim() || undefined,
     }));
     try {
       await fulfillMut.mutateAsync({ id: detail.id, lines });
       setDetail(null);
       setGrantMap({});
+      setRemarkMap({});
     } catch {
       // error handled by mutation
     }
@@ -285,49 +304,101 @@ export default function AdminSuppliesProcessPage() {
 
       {detail ? (
         <Portal>
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => { setDetail(null); setGrantMap({}); }}>
-          <div className="w-full max-w-xl rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-4" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-2 flex items-center justify-between">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onClick={() => { setDetail(null); setGrantMap({}); setRemarkMap({}); }}>
+          <div className="w-full max-w-xl rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-4 max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between shrink-0">
               <h3 className="text-base font-semibold text-[var(--twin-ink)]">物资处理详情</h3>
               <button
                 type="button"
                 className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)]"
-                onClick={() => { setDetail(null); setGrantMap({}); }}
+                onClick={() => { setDetail(null); setGrantMap({}); setRemarkMap({}); }}
               >
                 关闭
               </button>
             </div>
-            <div className="mb-2 text-sm text-[var(--twin-body)]">
+            <div className="mb-2 text-sm text-[var(--twin-body)] shrink-0">
               申请人：{applicantLabel(detail)} | 状态：{claimStatusText(detail.status)} | 申请：{toTextTime(detail.createdAt)}
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
               {(detail.lines || []).map((line) => (
-                <div key={line.id} className="flex items-center justify-between rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
-                  <span className="text-[var(--twin-ink)]">{line.snapshotName}（申 {line.qty} / 发 {line.fulfilledQty ?? 0}）</span>
-                  {canProcess && detail.status === "PENDING" ? (
-                    <label className="inline-flex items-center gap-2 text-xs text-[var(--twin-body)]">
-                      <input
-                        type="checkbox"
-                        checked={!!grantMap[line.id]}
-                        onChange={(e) => setGrantMap((prev) => ({ ...prev, [line.id]: e.target.checked }))}
+                <div key={line.id} className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
+                  <div className="flex items-center gap-3">
+                    {line.coverUrl ? (
+                      <img
+                        src={webImageSrc(line.coverUrl)}
+                        alt={line.snapshotName}
+                        className="h-12 w-12 rounded-[var(--app-radius-container)] object-cover border border-[var(--twin-hairline)] shrink-0"
                       />
-                      同意出库
-                    </label>
-                  ) : null}
+                    ) : (
+                      <div className="h-12 w-12 rounded-[var(--app-radius-container)] bg-[var(--twin-canvas)] border border-[var(--twin-hairline)] flex items-center justify-center shrink-0">
+                        <span className="text-xs text-[var(--twin-mute)]">{line.snapshotName?.charAt(0) || "?"}</span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[var(--twin-ink)] truncate">{line.snapshotName}</span>
+                        <span className="text-xs text-[var(--twin-mute)] shrink-0">申 {line.qty} / 发 {line.fulfilledQty ?? 0}</span>
+                      </div>
+                      {canProcess && detail.status === "PENDING" && grantMap[line.id] ? (
+                        <input
+                          type="text"
+                          placeholder="出库备注（可选）"
+                          value={remarkMap[line.id] || ""}
+                          onChange={(e) => setRemarkMap((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                          className="mt-1.5 w-full rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
+                        />
+                      ) : null}
+                    </div>
+                    {canProcess && detail.status === "PENDING" ? (
+                      <label className="inline-flex items-center gap-1.5 text-xs text-[var(--twin-body)] shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={!!grantMap[line.id]}
+                          onChange={(e) => setGrantMap((prev) => ({ ...prev, [line.id]: e.target.checked }))}
+                        />
+                        出库
+                      </label>
+                    ) : null}
+                  </div>
                 </div>
               ))}
             </div>
             {canProcess && detail.status === "PENDING" ? (
-              <div className="mt-3 flex justify-end gap-2">
-                <button type="button" className="rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-sm text-[var(--twin-body)]" onClick={() => { setDetail(null); setGrantMap({}); }}>取消</button>
-                <button
-                  type="button"
-                  className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-                  onClick={() => void submitFulfill()}
-                  disabled={fulfillMut.isPending}
-                >
-                  {fulfillMut.isPending ? "提交中..." : "确认出库"}
-                </button>
+              <div className="mt-3 flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-sm text-[var(--twin-body)] whitespace-nowrap"
+                    onClick={toggleAllLines}
+                  >
+                    {linesAllChecked ? "取消全选" : "一键全选"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm text-sky-700 whitespace-nowrap"
+                    onClick={() => {
+                      setDetail(null);
+                      setGrantMap({});
+                      setRemarkMap({});
+                      navigate(`/admin/supplies?reviseClaimId=${encodeURIComponent(detail.id)}`, {
+                        state: { returnTo: `${location.pathname}${location.search}` },
+                      });
+                    }}
+                  >
+                    修改领用单
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button type="button" className="rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-sm text-[var(--twin-body)] whitespace-nowrap" onClick={() => { setDetail(null); setGrantMap({}); setRemarkMap({}); }}>取消</button>
+                  <button
+                    type="button"
+                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 whitespace-nowrap"
+                    onClick={() => void submitFulfill()}
+                    disabled={fulfillMut.isPending}
+                  >
+                    {fulfillMut.isPending ? "提交中..." : "确认出库"}
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>

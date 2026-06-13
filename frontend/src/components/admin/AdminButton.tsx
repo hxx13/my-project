@@ -21,8 +21,10 @@ const adminButtonShell =
 const toneClassNames: Record<AdminButtonTone, string> = {
   primary:
     "!border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:!border-primary",
-  secondary: "!border-slate-300 bg-white text-slate-900 hover:!border-slate-400 hover:bg-slate-50",
-  ghost: "!border-slate-300 bg-white text-slate-800 hover:!border-slate-400 hover:bg-slate-50",
+  secondary:
+    "!border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] hover:!border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)]",
+  ghost:
+    "!border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)] hover:!border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)]",
   destructive:
     "!border-red-400 bg-red-50 text-red-800 hover:!border-red-500 hover:bg-red-100 dark:!border-red-500/80 dark:bg-red-950/50 dark:text-red-100 dark:hover:bg-red-950/70",
 };
@@ -37,7 +39,7 @@ export type AdminButtonProps = Omit<React.ComponentProps<typeof Button>, "varian
 
 /** 下拉列表中的「可点选行」按钮样式（人员/课题组预检） */
 export const adminPickableRowClass =
-  "flex w-full cursor-pointer items-center gap-3 rounded-lg border-2 border-slate-200 bg-white p-2.5 text-left shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 active:translate-y-px";
+  "flex w-full cursor-pointer items-center gap-3 rounded-lg border-2 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2.5 text-left shadow-sm transition-all hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)] active:translate-y-px";
 
 export function AdminButton({
   tone = "primary",

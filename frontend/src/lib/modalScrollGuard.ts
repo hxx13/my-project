@@ -28,14 +28,28 @@ function syncBodyScrollLock() {
   document.documentElement.toggleAttribute("data-modal-scroll-lock", Boolean(open));
 }
 
-function onWheel(e: WheelEvent) {
+function resolveModalRootForTarget(target: EventTarget | null): Element | null {
   const layers = document.querySelectorAll('[data-modal-layer="true"]');
   if (layers.length === 0) {
+    return null;
+  }
+  if (target instanceof Node) {
+    for (let i = layers.length - 1; i >= 0; i--) {
+      if (layers[i]!.contains(target)) {
+        return layers[i]!;
+      }
+    }
+  }
+  return layers[layers.length - 1]!;
+}
+
+function onWheel(e: WheelEvent) {
+  const modalRoot = resolveModalRootForTarget(e.target);
+  if (!modalRoot) {
     return;
   }
 
-  const topLayer = layers[layers.length - 1];
-  const scrollEl = findScrollableAncestor(e.target, topLayer);
+  const scrollEl = findScrollableAncestor(e.target, modalRoot);
   if (!scrollEl) {
     e.preventDefault();
     return;
@@ -43,10 +57,28 @@ function onWheel(e: WheelEvent) {
 
   const { scrollTop, scrollHeight, clientHeight } = scrollEl;
   const dy = e.deltaY;
+  const canScroll = scrollHeight > clientHeight + 1;
+
+  // 标记了 data-modal-scroll 但尚未形成溢出：不拦截，避免滚轮完全失效
+  if (!canScroll) {
+    if (scrollEl.hasAttribute("data-modal-scroll")) {
+      return;
+    }
+    e.preventDefault();
+    return;
+  }
+
   const atTop = scrollTop <= 0;
   const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
   if ((dy < 0 && atTop) || (dy > 0 && atBottom)) {
     e.preventDefault();
+    return;
+  }
+
+  // capture 阶段 + 多 modal 层时浏览器默认滚轮常失效，对显式滚动区手动推进
+  if (scrollEl.hasAttribute("data-modal-scroll")) {
+    e.preventDefault();
+    scrollEl.scrollTop += dy;
   }
 }
 

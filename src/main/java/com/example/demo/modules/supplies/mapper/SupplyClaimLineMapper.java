@@ -15,6 +15,8 @@ public interface SupplyClaimLineMapper {
 
     int updateFulfilledQty(@Param("id") Long id, @Param("fulfilledQty") int fulfilledQty);
 
+    int updateRemark(@Param("id") Long id, @Param("remark") String remark);
+
     int deleteByOrderId(@Param("orderId") String orderId);
 
     /** 某物资已出库的领用明细（用于历史清单部分恢复） */

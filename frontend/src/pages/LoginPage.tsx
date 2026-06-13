@@ -3,7 +3,9 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { ChevronLeft, ChevronRight, LogIn, X, ChevronDown, LogOut } from "lucide-react";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
-import { fetchLoginBranding, type LoginBranding } from "@/api/domains/publicSite.api";
+import { fetchLoginBranding, pickLoginHeroUrls, type LoginBranding } from "@/api/domains/publicSite.api";
+import { useTheme } from "@/features/theme/ThemeProvider";
+import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
 import { loginWeb } from "@/api/domains/auth.api";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { resolvePostLoginTarget } from "@/features/auth/postLoginNavigation";
@@ -42,6 +44,7 @@ function loginPortalWowDelay(delay: string): CSSProperties {
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { effectiveMode, themeId } = useTheme();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -116,9 +119,14 @@ export default function LoginPage() {
   }, []);
 
   const heroUrls = useMemo(
-    () => (branding?.heroImageUrls || []).map((u) => String(u).trim()).filter(Boolean),
-    [branding?.heroImageUrls]
+    () => pickLoginHeroUrls(branding, effectiveMode),
+    [branding, effectiveMode],
   );
+  const heroUrlKey = useMemo(() => heroUrls.join("\0"), [heroUrls]);
+
+  useEffect(() => {
+    setHeroIdx(0);
+  }, [effectiveMode, heroUrlKey, themeId]);
   const heroCarouselOn = branding?.heroCarouselEnabled !== false && heroUrls.length > 0;
 
   useEffect(() => {
@@ -128,7 +136,7 @@ export default function LoginPage() {
       setHeroIdx((i) => (i + 1) % heroUrls.length);
     }, sec * 1000);
     return () => window.clearInterval(t);
-  }, [heroCarouselOn, heroUrls.length, branding?.intervalSec]);
+  }, [heroCarouselOn, heroUrlKey, heroUrls.length, branding?.intervalSec]);
 
   const headerPrimaryLabel = useMemo(() => {
     const dn = (sessionUser?.displayName || "").trim();
@@ -196,12 +204,12 @@ export default function LoginPage() {
   return (
     <div className="login-home-page fnt18">
       {/* 轮播底图：在 loading-page 之下，portal 红底之上 */}
-      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden>
+      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden key={`hero-${effectiveMode}-${heroUrlKey}`}>
         {heroCarouselOn ? (
           <>
             {heroUrls.map((url, i) => (
               <div
-                key={`${url}-${i}`}
+                key={`${effectiveMode}-${i}-${url}`}
                 className={cn(
                   "absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-opacity duration-700 ease-out",
                   i === heroIdx ? "opacity-100" : "opacity-0"
@@ -286,6 +294,7 @@ export default function LoginPage() {
               登录
             </button>
           )}
+          <ThemeSwitcher className="rounded-full border border-[#f5d76a]/35 bg-black/20 px-2.5 py-1 text-[#f3e9d8] hover:bg-black/35 hover:text-white" />
         </div>
       </div>
 
@@ -426,7 +435,7 @@ export default function LoginPage() {
       ) : null}
 
       <Dialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
-        <DialogContent className="z-[320] sm:max-w-sm">
+        <DialogContent className="z-[var(--z-modal)] sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>退出登录</DialogTitle>
             <DialogDescription>确定要退出当前账号吗？</DialogDescription>

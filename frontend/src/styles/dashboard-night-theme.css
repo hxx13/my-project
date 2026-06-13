@@ -1,0 +1,647 @@
+/**
+ * 首页暗色（夜空）：配色与立体阴影对齐扫码弹窗 --app-color-scan-*
+ * 仅作用于 .dashboard-home-root--night-sky 后代
+ */
+
+.dashboard-home-root--night-sky {
+    /* ── 表面 / 强调色（semantic 扫码令牌） ── */
+    --dash-night-bg-profile: var(--app-color-scan-profile-bg);
+    --dash-night-bg-student: var(--app-color-scan-student-bg);
+    --dash-night-bg-ai: var(--app-color-scan-ai-bg);
+    --dash-night-accent-warm: var(--app-color-scan-profile-accent);
+    --dash-night-accent-steel: var(--app-color-scan-ai-accent);
+    --dash-night-accent-ink: var(--app-color-scan-accent-ink);
+    --dash-night-border-warm: color-mix(in srgb, var(--app-color-scan-profile-border) 100%, transparent);
+    --dash-night-border-steel: color-mix(in srgb, var(--app-color-scan-ai-border) 100%, transparent);
+    --dash-night-chart-entry: var(--app-color-scan-chart-stroke-entry);
+    --dash-night-chart-exit: var(--app-color-scan-chart-stroke-exit);
+    --dash-night-chart-fill: var(--app-color-scan-chart-fill);
+
+    /* ── 文字 ── */
+    --dash-night-text: var(--app-color-scan-accent-ink);
+    --dash-night-text-muted: color-mix(in srgb, var(--app-color-scan-accent-ink) 62%, transparent);
+    --dash-night-text-steel: color-mix(in srgb, var(--app-color-scan-ai-accent) 88%, white);
+
+    /* 进出区分：进=暖桃（扫码 entry 色），出=玫瑰珊瑚（提高饱和度便于暗色辨认） */
+    --dash-night-flow-enter: var(--dash-night-chart-entry);
+    --dash-night-flow-exit: color-mix(in srgb, var(--app-color-feedback-error) 58%, var(--dash-night-accent-warm));
+
+    /* 变量与 night-sky-surface-theme.css 同步；此处保留供 dash-night 组件类引用 */
+    --dash-night-surface-mix: 7%;
+    --dash-night-surface-mix-soft: 4%;
+    --dash-night-glass-blur: none;
+
+    /* ── 立体阴影（对齐 scan-weekly-chart-card / scan-action-btn / scan-notice-island） ── */
+    --dash-night-shadow-inset-top: inset 0 1px 0 color-mix(in srgb, var(--app-color-text-inverse) 28%, transparent);
+    --dash-night-shadow-inset-bottom: inset 0 -2px 6px color-mix(in srgb, var(--dash-night-accent-warm) 8%, transparent);
+    --dash-night-shadow-elev-sm:
+        0 2px 4px color-mix(in srgb, var(--dash-night-accent-warm) 10%, transparent),
+        0 6px 16px color-mix(in srgb, var(--dash-night-accent-warm) 16%, transparent);
+    --dash-night-shadow-elev-md:
+        inset 0 1px 0 color-mix(in srgb, var(--app-color-text-inverse) 18%, transparent),
+        0 2px 6px color-mix(in srgb, var(--dash-night-accent-warm) 8%, transparent),
+        0 6px 16px color-mix(in srgb, var(--dash-night-accent-warm) 10%, transparent);
+    --dash-night-shadow-elev-warm:
+        inset 0 1px 0 color-mix(in srgb, var(--dash-night-accent-warm) 18%, transparent),
+        inset 0 -3px 10px color-mix(in srgb, var(--app-color-text-primary) 18%, transparent),
+        0 2px 4px color-mix(in srgb, var(--dash-night-accent-ink) 10%, transparent),
+        0 8px 20px color-mix(in srgb, var(--dash-night-accent-warm) 22%, transparent);
+    --dash-night-shadow-elev-steel:
+        inset 0 1px 0 color-mix(in srgb, var(--app-color-text-inverse) 22%, transparent),
+        inset 0 -3px 8px color-mix(in srgb, var(--dash-night-accent-steel) 14%, transparent),
+        0 2px 4px color-mix(in srgb, var(--dash-night-accent-steel) 12%, transparent),
+        0 8px 20px color-mix(in srgb, var(--dash-night-accent-steel) 18%, transparent);
+
+    color: var(--dash-night-text);
+
+    /* GlassCard 令牌：由 styled-components 内 var() 读取，生产/开发一致 */
+    --glass-card-body-bg: linear-gradient(
+        155deg,
+        color-mix(in srgb, var(--dash-night-bg-student) var(--dash-night-surface-mix), transparent) 0%,
+        color-mix(in srgb, var(--dash-night-bg-profile) var(--dash-night-surface-mix-soft), transparent) 52%,
+        color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) 100%
+    );
+    --glass-card-body-border: 1px solid color-mix(in srgb, var(--dash-night-border-warm) 42%, transparent);
+    --glass-card-backdrop-filter: none;
+    --glass-card-body-shadow: var(--dash-night-shadow-elev-md);
+}
+
+/* GlassCard：高透面板（无 backdrop-blur，避免糊化星空与内容） */
+.dashboard-home-root--night-sky [data-glass-card] .card-body {
+    background: var(--glass-card-body-bg) !important;
+    border: var(--glass-card-body-border) !important;
+    backdrop-filter: var(--glass-card-backdrop-filter) !important;
+    -webkit-backdrop-filter: var(--glass-card-backdrop-filter) !important;
+    box-shadow: var(--glass-card-body-shadow) !important;
+}
+
+/* 卡片内容区全局打透，便于透视星空背景 */
+.dashboard-home-root--night-sky [data-glass-card] .content-container {
+    background: transparent;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chart-area {
+    background: transparent !important;
+}
+
+.dashboard-home-root--night-sky [data-glass-card] .blob-orb,
+.dashboard-home-root--night-sky [data-glass-card] .sweep,
+.dashboard-home-root--night-sky [data-glass-card] .grid-overlay {
+    display: none !important;
+}
+
+.dashboard-home-root--night-sky [data-glass-card] .card-frame:hover {
+    transform: translateY(-1px);
+}
+
+.dashboard-home-root--night-sky [data-glass-card] .card-frame:hover .card-body {
+    box-shadow:
+        inset 0 1px 0 color-mix(in srgb, var(--app-color-text-inverse) 22%, transparent),
+        0 4px 10px color-mix(in srgb, var(--dash-night-accent-warm) 12%, transparent),
+        0 10px 22px color-mix(in srgb, var(--dash-night-accent-warm) 14%, transparent) !important;
+}
+
+/* ── 排版 ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-title {
+    color: var(--dash-night-text);
+    font-weight: 800;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-text-muted {
+    color: var(--dash-night-text-muted);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-header {
+    border-bottom: 1px solid color-mix(in srgb, var(--dash-night-accent-warm) 22%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-icon-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--app-radius-element);
+    border: 1px solid color-mix(in srgb, var(--dash-night-accent-warm) 35%, transparent);
+    background: color-mix(in srgb, var(--dash-night-accent-warm) 18%, var(--dash-night-bg-ai));
+    color: var(--dash-night-accent-ink);
+    box-shadow: var(--dash-night-shadow-elev-sm);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-icon-badge--steel {
+    border-color: color-mix(in srgb, var(--dash-night-accent-steel) 34%, transparent);
+    background: color-mix(in srgb, var(--dash-night-accent-steel) 16%, var(--dash-night-bg-ai));
+    color: var(--dash-night-text-steel);
+}
+
+/* ── 行 / 面板（对齐 scan-inner-row + scan-action-btn 暗色） ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-row {
+    border: 1px solid color-mix(in srgb, var(--dash-night-accent-warm) 16%, transparent);
+    border-radius: var(--app-radius-container);
+    background: color-mix(in srgb, var(--dash-night-bg-student) var(--dash-night-surface-mix-soft), transparent);
+    box-shadow: var(--dash-night-shadow-elev-sm);
+    transition:
+        transform var(--app-motion-hover),
+        box-shadow var(--app-motion-hover),
+        background-color var(--app-motion-hover);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-row:hover {
+    box-shadow: var(--dash-night-shadow-elev-warm);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-row--enter {
+    border-color: color-mix(in srgb, var(--dash-night-flow-enter) 40%, transparent);
+    border-left: 4px solid color-mix(in srgb, var(--dash-night-flow-enter) 88%, transparent);
+    background: linear-gradient(
+        168deg,
+        color-mix(in srgb, var(--dash-night-flow-enter) 16%, transparent) 0%,
+        color-mix(in srgb, var(--dash-night-bg-student) var(--dash-night-surface-mix-soft), transparent) 100%
+    );
+    box-shadow:
+        inset 3px 0 12px color-mix(in srgb, var(--dash-night-flow-enter) 18%, transparent),
+        var(--dash-night-shadow-elev-sm);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-row--exit {
+    border-color: color-mix(in srgb, var(--dash-night-flow-exit) 36%, transparent);
+    border-left: 4px solid color-mix(in srgb, var(--dash-night-flow-exit) 82%, transparent);
+    background: linear-gradient(
+        168deg,
+        color-mix(in srgb, var(--dash-night-flow-exit) 14%, transparent) 0%,
+        color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) 100%
+    );
+    box-shadow:
+        inset 3px 0 12px color-mix(in srgb, var(--dash-night-flow-exit) 14%, transparent),
+        var(--dash-night-shadow-elev-sm);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-row--warn {
+    border-color: color-mix(in srgb, var(--app-color-feedback-warning) 40%, transparent);
+    border-left: 3px solid color-mix(in srgb, var(--app-color-feedback-warning) 65%, transparent);
+    background: color-mix(in srgb, var(--app-color-feedback-warning) 10%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-panel {
+    border: 1px solid color-mix(in srgb, var(--dash-night-accent-warm) 18%, transparent);
+    border-radius: var(--app-radius-element);
+    background: color-mix(in srgb, var(--dash-night-bg-student) var(--dash-night-surface-mix-soft), transparent);
+    box-shadow: var(--dash-night-shadow-elev-sm);
+}
+
+/* ── 标签 / Chip ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chip {
+    border-radius: var(--app-radius-element);
+    border: 1px solid color-mix(in srgb, var(--dash-night-accent-warm) 18%, transparent);
+    background: color-mix(in srgb, var(--dash-night-accent-warm) 10%, transparent);
+    color: var(--dash-night-accent-ink);
+    font-weight: 700;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chip--steel {
+    border-color: color-mix(in srgb, var(--dash-night-accent-steel) 24%, transparent);
+    background: color-mix(in srgb, var(--dash-night-accent-steel) 10%, transparent);
+    color: var(--dash-night-text-steel);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chip--muted {
+    border-color: color-mix(in srgb, var(--dash-night-accent-warm) 14%, transparent);
+    background: color-mix(in srgb, var(--dash-night-bg-profile) var(--dash-night-surface-mix-soft), transparent);
+    color: var(--dash-night-text-muted);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chip--enter {
+    border-color: color-mix(in srgb, var(--dash-night-flow-enter) 45%, transparent);
+    background: color-mix(in srgb, var(--dash-night-flow-enter) 22%, transparent);
+    color: color-mix(in srgb, var(--dash-night-flow-enter) 95%, white);
+    box-shadow: inset 0 0 8px color-mix(in srgb, var(--dash-night-flow-enter) 12%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chip--exit {
+    border-color: color-mix(in srgb, var(--dash-night-flow-exit) 42%, transparent);
+    background: color-mix(in srgb, var(--dash-night-flow-exit) 20%, transparent);
+    color: color-mix(in srgb, var(--dash-night-flow-exit) 95%, white);
+    box-shadow: inset 0 0 8px color-mix(in srgb, var(--dash-night-flow-exit) 10%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chip--success {
+    border-color: color-mix(in srgb, var(--app-color-feedback-success) 40%, transparent);
+    background: color-mix(in srgb, var(--app-color-feedback-success) 18%, transparent);
+    color: color-mix(in srgb, var(--app-color-feedback-success) 92%, white);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chip--warn {
+    border-color: color-mix(in srgb, var(--app-color-feedback-warning) 42%, transparent);
+    background: color-mix(in srgb, var(--app-color-feedback-warning) 16%, transparent);
+    color: color-mix(in srgb, var(--app-color-feedback-warning) 92%, white);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chip--danger {
+    border-color: color-mix(in srgb, var(--app-color-feedback-error) 40%, transparent);
+    background: color-mix(in srgb, var(--app-color-feedback-error) 16%, transparent);
+    color: color-mix(in srgb, var(--app-color-feedback-error) 90%, white);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-level-badge {
+    border-radius: var(--app-radius-element);
+    padding: 0.125rem 0.375rem;
+    font-size: 10px;
+    font-weight: 800;
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--app-color-feedback-warning) 82%, transparent),
+        color-mix(in srgb, var(--dash-night-accent-warm) 78%, transparent)
+    );
+    color: var(--dash-night-accent-ink);
+}
+
+/* ── Tab / 切换 ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-tab-group {
+    border: 1px solid color-mix(in srgb, var(--dash-night-accent-steel) 22%, transparent);
+    border-radius: var(--app-radius-element);
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent);
+    padding: 2px;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-tab {
+    border-radius: calc(var(--app-radius-element) - 2px);
+    color: var(--dash-night-text-muted);
+    font-weight: 700;
+    transition: background-color var(--app-motion-hover), color var(--app-motion-hover), box-shadow var(--app-motion-hover);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-tab--active {
+    color: var(--dash-night-accent-ink);
+    background: linear-gradient(
+        168deg,
+        color-mix(in srgb, var(--dash-night-accent-warm) 22%, var(--dash-night-bg-student)) 0%,
+        color-mix(in srgb, var(--dash-night-accent-warm) 14%, var(--dash-night-bg-profile)) 100%
+    );
+    box-shadow: var(--dash-night-shadow-elev-sm);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-tab-btn {
+    border: 1px solid color-mix(in srgb, var(--dash-night-accent-warm) 28%, transparent);
+    border-radius: var(--app-radius-element);
+    background: linear-gradient(
+        168deg,
+        color-mix(in srgb, var(--dash-night-accent-warm) 18%, var(--dash-night-bg-student)) 0%,
+        color-mix(in srgb, var(--dash-night-accent-warm) 10%, var(--dash-night-bg-profile)) 100%
+    );
+    color: var(--dash-night-text-muted);
+    box-shadow: var(--dash-night-shadow-elev-sm);
+    font-weight: 800;
+    transition: box-shadow var(--app-motion-hover), transform var(--app-motion-hover);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-tab-btn--active {
+    color: var(--dash-night-accent-ink);
+    box-shadow: var(--dash-night-shadow-elev-warm);
+}
+
+/* ── 时间胶囊 / 迷你计量 ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-time-capsule {
+    border: 1px solid color-mix(in srgb, var(--dash-night-accent-steel) 22%, transparent);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: var(--dash-night-shadow-elev-sm);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-time-capsule__hour {
+    background: color-mix(in srgb, var(--dash-night-accent-steel) 28%, var(--dash-night-bg-ai));
+    color: var(--dash-night-text-steel);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-time-capsule__min {
+    background: color-mix(in srgb, var(--dash-night-bg-profile) var(--dash-night-surface-mix-soft), transparent);
+    color: var(--dash-night-text-muted);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-time-capsule--enter .dash-night-time-capsule__min {
+    background: color-mix(in srgb, var(--dash-night-flow-enter) 14%, transparent);
+    color: color-mix(in srgb, var(--dash-night-flow-enter) 72%, white);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-time-capsule--exit .dash-night-time-capsule__min {
+    background: color-mix(in srgb, var(--dash-night-flow-exit) 16%, transparent);
+    color: color-mix(in srgb, var(--dash-night-flow-exit) 78%, white);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-time-capsule--enter {
+    border-color: color-mix(in srgb, var(--dash-night-flow-enter) 40%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-time-capsule--exit {
+    border-color: color-mix(in srgb, var(--dash-night-flow-exit) 38%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-time-hour--enter {
+    background: color-mix(in srgb, var(--dash-night-flow-enter) 32%, transparent);
+    color: var(--dash-night-flow-enter);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-time-hour--exit {
+    background: color-mix(in srgb, var(--dash-night-flow-exit) 28%, transparent);
+    color: color-mix(in srgb, var(--dash-night-flow-exit) 95%, white);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-hub--enter {
+    border-color: color-mix(in srgb, var(--dash-night-flow-enter) 45%, transparent) !important;
+    background: linear-gradient(
+        145deg,
+        color-mix(in srgb, var(--dash-night-flow-enter) 55%, var(--dash-night-bg-profile)) 0%,
+        color-mix(in srgb, var(--dash-night-flow-enter) 35%, var(--dash-night-bg-student)) 100%
+    ) !important;
+    box-shadow: 0 0 12px color-mix(in srgb, var(--dash-night-flow-enter) 28%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-hub--exit {
+    border-color: color-mix(in srgb, var(--dash-night-flow-exit) 42%, transparent) !important;
+    background: linear-gradient(
+        145deg,
+        color-mix(in srgb, var(--dash-night-flow-exit) 48%, var(--dash-night-bg-profile)) 0%,
+        color-mix(in srgb, var(--dash-night-flow-exit) 28%, var(--dash-night-bg-ai)) 100%
+    ) !important;
+    box-shadow: 0 0 12px color-mix(in srgb, var(--dash-night-flow-exit) 22%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-timeline-rail {
+    background: color-mix(in srgb, var(--dash-night-accent-steel) 18%, transparent);
+}
+
+/* ── 滞留监控：徽章 / 计量条 / 按钮 ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-badge {
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 4px;
+    border-radius: var(--app-radius-element);
+    border: 1px solid transparent;
+    line-height: 1.2;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-badge--shared {
+    border-color: color-mix(in srgb, var(--dash-night-accent-steel) 35%, transparent);
+    background: color-mix(in srgb, var(--dash-night-accent-steel) 14%, transparent);
+    color: var(--dash-night-text-steel);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-badge--public {
+    border-color: color-mix(in srgb, var(--dash-night-accent-steel) 32%, transparent);
+    background: color-mix(in srgb, var(--dash-night-accent-steel) 12%, transparent);
+    color: color-mix(in srgb, var(--dash-night-accent-steel) 90%, white);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-badge--own {
+    border-color: color-mix(in srgb, var(--dash-night-flow-enter) 32%, transparent);
+    background: color-mix(in srgb, var(--dash-night-flow-enter) 12%, transparent);
+    color: var(--dash-night-flow-enter);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-badge--keep {
+    border-color: color-mix(in srgb, var(--app-color-feedback-error) 38%, transparent);
+    background: color-mix(in srgb, var(--app-color-feedback-error) 12%, transparent);
+    color: color-mix(in srgb, var(--app-color-feedback-error) 85%, white);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-metric {
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--dash-night-accent-steel) 22%, transparent);
+    box-shadow: var(--dash-night-shadow-elev-sm);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-metric--warn {
+    border-color: color-mix(in srgb, var(--app-color-feedback-warning) 38%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-metric__label {
+    padding: 2px 6px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent);
+    color: var(--dash-night-text-muted);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-metric--warn .dash-night-metric__label {
+    background: color-mix(in srgb, var(--app-color-feedback-warning) 14%, transparent);
+    color: color-mix(in srgb, var(--app-color-feedback-warning) 88%, white);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-metric__value {
+    flex: 1;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 2px;
+    padding: 2px 4px;
+    line-height: 1;
+    background: color-mix(in srgb, var(--dash-night-bg-student) var(--dash-night-surface-mix-soft), transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-btn {
+    width: 100%;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 4px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    transition: opacity var(--app-motion-hover), transform var(--app-motion-hover);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-btn--normal {
+    border-color: color-mix(in srgb, var(--dash-night-accent-steel) 28%, transparent);
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent);
+    color: var(--dash-night-text-muted);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-btn--normal:hover {
+    opacity: 0.92;
+    color: var(--dash-night-accent-ink);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-btn--warn {
+    border-color: color-mix(in srgb, var(--app-color-feedback-warning) 45%, transparent);
+    background: color-mix(in srgb, var(--app-color-feedback-warning) 55%, transparent);
+    color: white;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-btn--disabled {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    white-space: nowrap;
+    font-size: 9px;
+    border-color: color-mix(in srgb, var(--app-color-feedback-error) 28%, transparent);
+    background: color-mix(in srgb, var(--app-color-feedback-error) 10%, transparent);
+    color: color-mix(in srgb, var(--app-color-feedback-error) 70%, white);
+    cursor: not-allowed;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-status-pulse {
+    color: var(--dash-night-flow-exit);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-status-pulse__dot {
+    position: relative;
+    display: flex;
+    height: 8px;
+    width: 8px;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-status-pulse__dot::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--dash-night-flow-exit) 65%, transparent);
+    opacity: 0.75;
+    animation: dash-night-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-status-pulse__dot::after {
+    content: "";
+    position: relative;
+    display: inline-flex;
+    height: 8px;
+    width: 8px;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--dash-night-flow-exit) 92%, white);
+}
+
+@keyframes dash-night-ping {
+    0% {
+        transform: scale(1);
+        opacity: 0.75;
+    }
+    75%,
+    100% {
+        transform: scale(2.2);
+        opacity: 0;
+    }
+}
+
+/* ── 图表外壳 ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chart-shell {
+    border: 1px solid color-mix(in srgb, var(--dash-night-accent-warm) 12%, transparent);
+    border-radius: var(--app-radius-element);
+    background: color-mix(in srgb, var(--dash-night-bg-student) 6%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-chart-header {
+    border-bottom: 1px solid color-mix(in srgb, var(--dash-night-accent-warm) 12%, transparent);
+    background: color-mix(in srgb, var(--dash-night-bg-profile) 7%, transparent);
+    color: var(--dash-night-text-muted);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-legend {
+    border: 1px solid color-mix(in srgb, var(--dash-night-accent-steel) 20%, transparent);
+    border-radius: var(--app-radius-container);
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent);
+    box-shadow: var(--dash-night-shadow-elev-sm);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-legend__warm {
+    color: var(--dash-night-chart-entry);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-legend__steel {
+    color: var(--dash-night-chart-exit);
+}
+
+/* ── 列表斑马 ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-list-row:nth-child(odd) {
+    background: color-mix(in srgb, var(--dash-night-bg-student) var(--dash-night-surface-mix-soft), transparent);
+    border-radius: 4px;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-progress-track {
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent);
+    border-radius: 5px;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .dash-night-progress-fill {
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--dash-night-accent-steel) 85%, transparent),
+        color-mix(in srgb, var(--dash-night-chart-exit) 75%, transparent)
+    );
+    border-radius: 5px;
+}
+
+/* 亮色兜底：非夜空根下 dash-night 类仍用语义令牌 */
+.dash-night-panel {
+    border: 1px solid var(--app-color-border-default);
+    border-radius: var(--app-radius-element);
+    background: var(--app-color-surface-container);
+}
+
+.dash-night-row {
+    border: 1px solid var(--app-color-border-default);
+    border-radius: var(--app-radius-container);
+    background: var(--app-color-surface-container);
+}
+
+.dash-night-chip {
+    border-radius: var(--app-radius-element);
+    border: 1px solid var(--app-color-border-default);
+    background: var(--app-color-accent-soft);
+    color: var(--app-color-text-primary);
+}
+
+.dash-night-chip--steel {
+    border-color: color-mix(in srgb, var(--app-color-accent-secondary) 30%, transparent);
+    background: color-mix(in srgb, var(--app-color-accent-secondary) 12%, transparent);
+    color: var(--app-color-accent-secondary);
+}
+
+.dash-night-chip--muted {
+    background: var(--app-color-surface-elevated);
+    color: var(--app-color-text-tertiary);
+}
+
+.dash-night-chip--success {
+    border-color: color-mix(in srgb, var(--app-color-feedback-success) 35%, transparent);
+    background: color-mix(in srgb, var(--app-color-feedback-success) 12%, transparent);
+    color: var(--app-color-feedback-success);
+}
+
+.dash-night-chip--warn {
+    border-color: color-mix(in srgb, var(--app-color-feedback-warning) 35%, transparent);
+    background: color-mix(in srgb, var(--app-color-feedback-warning) 12%, transparent);
+    color: var(--app-color-feedback-warning);
+}
+
+.dash-night-chip--danger {
+    border-color: color-mix(in srgb, var(--app-color-feedback-error) 35%, transparent);
+    background: color-mix(in srgb, var(--app-color-feedback-error) 12%, transparent);
+    color: var(--app-color-feedback-error);
+}
+
+.dash-night-btn {
+    border: 1px solid var(--app-color-border-default);
+    border-radius: var(--app-radius-element);
+    background: var(--app-color-surface-container);
+    color: var(--app-color-text-secondary);
+    transition: background-color var(--app-motion-hover), border-color var(--app-motion-hover);
+}
+
+.dash-night-btn:hover {
+    background: var(--app-color-surface-hover);
+    border-color: var(--app-color-border-strong);
+}
+
+.dash-night-level-badge {
+    border-radius: var(--app-radius-element);
+    padding: 0.125rem 0.375rem;
+    font-size: 10px;
+    font-weight: 800;
+    background: linear-gradient(90deg, var(--app-color-feedback-warning), var(--app-color-accent));
+    color: var(--app-color-text-inverse);
+}
+
+.dash-night-text-muted {
+    color: var(--app-color-text-tertiary);
+}

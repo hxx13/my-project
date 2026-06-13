@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Archive, Download, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
+import { AutoImage } from "@/components/ui/AutoImage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   clearAssetTable,
@@ -46,6 +47,11 @@ function downloadBlob(blob: Blob, fileName: string) {
   a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function parseCh(v: string): number {
+  const m = String(v).match(/^([\d.]+)ch$/);
+  return m ? parseFloat(m[1]) : 14;
 }
 
 function calcColumnWidth(header: string, samples: Array<string | number | undefined | null>, minCh = 8, maxCh = 60) {
@@ -118,11 +124,55 @@ export default function AdminAssetRecordPage() {
   const [widthProfile, setWidthProfile] = useState<{
     assetCode: string;
     assetName: string;
+    latestTransferTime: string;
     actions: string;
     dynamic: Record<string, string>;
   } | null>(null);
   const [tableEditMode, setTableEditMode] = useState(false);
+  const [columnWidthOverrides, setColumnWidthOverrides] = useState<Record<string, string>>({});
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  // --- 表头拖拽调节列宽 ---
+  const resizeState = useRef<{
+    columnKey: string;
+    startX: number;
+    startWidthCh: number;
+  } | null>(null);
+
+  const onResizeMouseDown = (e: React.MouseEvent, columnKey: string, currentWidthCh: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeState.current = { columnKey, startX: e.clientX, startWidthCh: currentWidthCh };
+    document.addEventListener("mousemove", onResizeMouseMove);
+    document.addEventListener("mouseup", onResizeMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  const onResizeMouseMove = (e: MouseEvent) => {
+    if (!resizeState.current) return;
+    const { columnKey, startX, startWidthCh } = resizeState.current;
+    const deltaPx = e.clientX - startX;
+    // 1ch ≈ 8px in most monospace contexts, use a rough conversion
+    const deltaCh = Math.round(deltaPx / 8);
+    const newWidthCh = Math.max(6, startWidthCh + deltaCh);
+    setColumnWidthOverrides((prev) => ({
+      ...prev,
+      [columnKey]: `${newWidthCh}ch`,
+    }));
+  };
+
+  const onResizeMouseUp = () => {
+    resizeState.current = null;
+    document.removeEventListener("mousemove", onResizeMouseMove);
+    document.removeEventListener("mouseup", onResizeMouseUp);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  };
+
+  const resolveColWidth = (columnKey: string, defaultCh: string) =>
+    columnWidthOverrides[columnKey] ?? defaultCh;
+  // ---
 
   const normalizeAll = (value: string) => (value === "__ALL__" ? "" : value);
 
@@ -180,6 +230,10 @@ export default function AdminAssetRecordPage() {
         const label = (c.columnLabel || "").trim();
         if (label === "资产编号" || label === "资产编码") return false;
         if (c.columnKey === "col_资产编号" || c.columnKey === "col_资产编码") return false;
+        // 移入详情弹窗
+        if (label === "申请转移时间" || label === "申请转移地点" || label === "申请人" || label === "申请备注") return false;
+        if (label === "数量" || label === "单价" || label === "价值" || label === "记账日期" || label === "资产类别") return false;
+        if (label === "是否锁定") return false;
         return true;
       }),
     [columns]
@@ -192,12 +246,29 @@ export default function AdminAssetRecordPage() {
     [detailAsset]
   );
 
-  const widths = widthProfile ?? {
-    assetCode: "14ch",
-    assetName: "20ch",
-    actions: "16ch",
-    dynamic: Object.fromEntries(editableColumns.map((c) => [c.columnKey, "14ch"])),
-  };
+  const detailBeforePhotoUrls = useMemo(
+    () => (detailAsset ? parseTransferPhotoUrls(detailAsset.latestTransferPhotoUrlsBefore) : []),
+    [detailAsset]
+  );
+
+  const widths = useMemo(() => {
+    const base = widthProfile ?? {
+      assetCode: "14ch",
+      assetName: "20ch",
+      latestTransferTime: "16ch",
+      actions: "16ch",
+      dynamic: Object.fromEntries(editableColumns.map((c) => [c.columnKey, "14ch"])),
+    };
+    return {
+      assetCode: resolveColWidth("assetCode", base.assetCode),
+      assetName: resolveColWidth("assetName", base.assetName),
+      latestTransferTime: resolveColWidth("latestTransferTime", base.latestTransferTime),
+      actions: resolveColWidth("actions", base.actions),
+      dynamic: Object.fromEntries(
+        editableColumns.map((c) => [c.columnKey, resolveColWidth(c.columnKey, base.dynamic[c.columnKey] ?? "14ch")])
+      ),
+    };
+  }, [widthProfile, editableColumns, columnWidthOverrides]);
 
   const toggleSort = (field: string) => {
     if (sortBy === field) {
@@ -216,6 +287,21 @@ export default function AdminAssetRecordPage() {
     setAppliedModel(model === "__ALL__" ? "" : model);
     setPage(1);
   };
+
+  // Debounced auto-search: 输入即搜，无需手动点击查询按钮
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const kw = keyword.trim();
+      const an = assetName === "__ALL__" ? "" : assetName;
+      const u = user === "__ALL__" ? "" : user;
+      const m = model === "__ALL__" ? "" : model;
+      if (kw !== appliedKeyword || an !== appliedAssetName || u !== appliedUser || m !== appliedModel) {
+        applySearch();
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyword, assetName, user, model]);
 
   const resetSearch = () => {
     setKeyword("");
@@ -242,6 +328,7 @@ export default function AdminAssetRecordPage() {
     setWidthProfile({
       assetCode: calcColumnWidth("资产编码", rows.map((r) => r.assetCode), 10, 40),
       assetName: calcColumnWidth("资产名称", rows.map((r) => r.assetName), 12, 80),
+      latestTransferTime: calcColumnWidth("转移时间", rows.map((r) => r.latestTransferTime), 14, 30),
       actions: "16ch",
       dynamic,
     });
@@ -388,29 +475,6 @@ export default function AdminAssetRecordPage() {
       await purgeRecycleMut.mutateAsync(id);
     } catch {
       // error handled by mutation
-    }
-  };
-
-  const onSave = async (row: AssetRow) => {
-    const dynamicValues = { ...(row.dynamicValues || {}) } as Record<string, string>;
-    for (const c of editableColumns) {
-      const key = `${row.id}::${c.columnKey}`;
-      if (editing[key] != null) {
-        dynamicValues[c.columnKey] = editing[key];
-      }
-    }
-    try {
-      await patchAssetRecord(row.id, { dynamicValues });
-      toast.success("保存成功");
-      setEditing((prev) => {
-        const next = { ...prev };
-        for (const c of editableColumns) {
-          delete next[`${row.id}::${c.columnKey}`];
-        }
-        return next;
-      });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "保存失败");
     }
   };
 
@@ -563,18 +627,18 @@ export default function AdminAssetRecordPage() {
     >
     <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-auto pb-2">
         <AdminFormCard title="筛选" description={`共 ${total} 条；列宽可随内容在「更多操作」中刷新。`}>
-          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
-            <label className="flex w-full max-w-full min-w-0 flex-col gap-1 lg:max-w-md">
+          <div className="flex flex-nowrap items-end gap-3 overflow-x-auto">
+            <label className="flex min-w-[10rem] shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>全局搜索</span>
               <input
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && applySearch()}
                 className={adminInputClass}
-                placeholder="资产编码/动态列/申请记录"
+                placeholder="资产编码/名称..."
               />
             </label>
-            <label className="flex min-w-[12rem] shrink-0 flex-col gap-1">
+            <label className="flex min-w-[7rem] shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>资产名称</span>
               <AdminSelect value={assetName} onChange={(e) => setAssetName(e.target.value)}>
                 <option value="__ALL__">全部</option>
@@ -583,7 +647,7 @@ export default function AdminAssetRecordPage() {
                 ))}
               </AdminSelect>
             </label>
-            <label className="flex min-w-[10rem] shrink-0 flex-col gap-1">
+            <label className="flex min-w-[6rem] shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>使用人</span>
               <AdminSelect value={user} onChange={(e) => setUser(e.target.value)}>
                 <option value="__ALL__">全部</option>
@@ -592,7 +656,7 @@ export default function AdminAssetRecordPage() {
                 ))}
               </AdminSelect>
             </label>
-            <label className="flex min-w-[10rem] shrink-0 flex-col gap-1">
+            <label className="flex min-w-[7rem] shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>规格型号</span>
               <AdminSelect value={model} onChange={(e) => setModel(e.target.value)}>
                 <option value="__ALL__">全部</option>
@@ -601,7 +665,7 @@ export default function AdminAssetRecordPage() {
                 ))}
               </AdminSelect>
             </label>
-            <div className="flex w-full flex-wrap gap-2 lg:w-auto">
+            <div className="flex shrink-0 items-end gap-2">
               <AdminButton type="button" onClick={applySearch} className="inline-flex items-center gap-1">
                 <Search className="h-4 w-4" aria-hidden />
                 查询
@@ -621,16 +685,76 @@ export default function AdminAssetRecordPage() {
           className="w-full min-w-0 overscroll-x-contain"
         >
           <table className="w-max min-w-full border-collapse text-sm">
-            <thead>
+            <colgroup>
+              <col style={{ width: widths.assetCode }} />
+              <col style={{ width: widths.assetName }} />
+              {editableColumns.map((c) => (
+                <col key={c.columnKey} style={{ width: widths.dynamic[c.columnKey] }} />
+              ))}
+              <col style={{ width: widths.latestTransferTime }} />
+              <col style={{ width: widths.actions }} />
+            </colgroup>
+            <thead className="sticky top-0 z-10 bg-[var(--twin-canvas)]">
               <tr>
-                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ width: widths.assetCode }}>资产编码</th>
-                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ width: widths.assetName }}>资产名称</th>
+                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ position: "relative" }}>
+                  资产编码
+                  <span
+                    onMouseDown={(e) => onResizeMouseDown(e, "assetCode", parseCh(widths.assetCode))}
+                    style={{
+                      position: "absolute", right: 0, top: 0, bottom: 0,
+                      width: "8px", cursor: "col-resize",
+                      borderRight: "2px solid transparent",
+                      transition: "border-color 0.15s",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderRightColor = "var(--twin-hairline-strong, #cbd5e1)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderRightColor = "transparent")}
+                  />
+                </th>
+                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ position: "relative" }}>
+                  资产名称
+                  <span
+                    onMouseDown={(e) => onResizeMouseDown(e, "assetName", parseCh(widths.assetName))}
+                    style={{
+                      position: "absolute", right: 0, top: 0, bottom: 0,
+                      width: "8px", cursor: "col-resize",
+                      borderRight: "2px solid transparent",
+                      transition: "border-color 0.15s",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderRightColor = "var(--twin-hairline-strong, #cbd5e1)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderRightColor = "transparent")}
+                  />
+                </th>
                 {editableColumns.map((c: AssetColumnDef) => (
-                  <th key={c.columnKey} className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ width: widths.dynamic[c.columnKey] }}>
+                  <th key={c.columnKey} className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ position: "relative" }}>
                     <button className="underline decoration-dotted" onClick={() => toggleSort(c.columnKey)}>{normalizeColumnLabel(c.columnLabel)}</button>
+                    <span
+                      onMouseDown={(e) => onResizeMouseDown(e, c.columnKey, parseCh(widths.dynamic[c.columnKey] ?? "14ch"))}
+                      style={{
+                        position: "absolute", right: 0, top: 0, bottom: 0,
+                        width: "8px", cursor: "col-resize",
+                        borderRight: "2px solid transparent",
+                        transition: "border-color 0.15s",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderRightColor = "var(--twin-hairline-strong, #cbd5e1)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderRightColor = "transparent")}
+                    />
                   </th>
                 ))}
-                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ width: widths.actions }}>操作</th>
+                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ position: "relative" }}>
+                  转移时间
+                  <span
+                    onMouseDown={(e) => onResizeMouseDown(e, "latestTransferTime", parseCh(widths.latestTransferTime))}
+                    style={{
+                      position: "absolute", right: 0, top: 0, bottom: 0,
+                      width: "8px", cursor: "col-resize",
+                      borderRight: "2px solid transparent",
+                      transition: "border-color 0.15s",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.borderRightColor = "var(--twin-hairline-strong, #cbd5e1)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.borderRightColor = "transparent")}
+                  />
+                </th>
+                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -647,7 +771,8 @@ export default function AdminAssetRecordPage() {
                           <input
                             value={display}
                             onChange={(e) => setEditing((prev) => ({ ...prev, [key]: e.target.value }))}
-                            className="w-full min-w-[8ch] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
+                            className="w-full min-w-[14ch] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-xs"
+                            style={{ width: "100%", minWidth: "10ch" }}
                           />
                         ) : (
                           <span className="block min-w-0 max-w-[48ch] truncate text-[var(--twin-ink)]" title={String(display)}>
@@ -657,13 +782,11 @@ export default function AdminAssetRecordPage() {
                       </td>
                     );
                   })}
+                  <td className="border-b px-2 py-1.5 whitespace-nowrap text-xs text-[var(--twin-body)]">
+                    {r.latestTransferTime ? String(r.latestTransferTime).replace("T", " ").slice(0, 16) : <span className="text-[var(--twin-mute)]">—</span>}
+                  </td>
                   <td className="border-b px-2 py-1.5">
                     <div className="flex items-center gap-2">
-                      {tableEditMode ? (
-                        <AdminButton type="button" tone="secondary" size="sm" onClick={() => void onSave(r)}>
-                          保存
-                        </AdminButton>
-                      ) : null}
                       <AdminButton
                         type="button"
                         tone="secondary"
@@ -897,11 +1020,38 @@ export default function AdminAssetRecordPage() {
               <div className="space-y-2 text-sm text-[var(--twin-body)]">
                 <div><span className="text-[var(--twin-mute)]">资产编码：</span>{detailAsset.assetCode || "-"}</div>
                 <div><span className="text-[var(--twin-mute)]">资产名称：</span>{detailAsset.assetName || "-"}</div>
-                <div><span className="text-[var(--twin-mute)]">申请单号：</span>{detailAsset.latestTransferRequestId || "-"}</div>
-                <div><span className="text-[var(--twin-mute)]">转移状态：</span>{transferStatusLabel(detailAsset.latestTransferStatus)}</div>
-                <div><span className="text-[var(--twin-mute)]">转移时间：</span>{detailAsset.latestTransferTime ? String(detailAsset.latestTransferTime).replace("T", " ").slice(0, 19) : "-"}</div>
-                <div><span className="text-[var(--twin-mute)]">转移备注：</span>{detailAsset.latestTransferRemark || "-"}</div>
-                <div><span className="text-[var(--twin-mute)]">转移地点：</span>{detailAsset.latestTransferLocation || "-"}</div>
+                <div><span className="text-[var(--twin-mute)]">当前存放地点：</span>{detailAsset.location || "-"}</div>
+                <div><span className="text-[var(--twin-mute)]">是否锁定：</span>{detailAsset.locked === 1 ? "已锁定" : "未锁定"}</div>
+                {detailAsset.latestTransferRequestId && (
+                  <>
+                    <hr className="my-2 border-[var(--twin-hairline)]" />
+                    <div className="text-xs font-semibold text-[var(--twin-mute)] uppercase tracking-wide">转移记录</div>
+                    <div><span className="text-[var(--twin-mute)]">申请单号：</span>{detailAsset.latestTransferRequestId}</div>
+                    <div><span className="text-[var(--twin-mute)]">转移状态：</span>{transferStatusLabel(detailAsset.latestTransferStatus)}</div>
+                    <div><span className="text-[var(--twin-mute)]">申请人：</span>{detailAsset.latestTransferApplicant || "-"}</div>
+                    <div><span className="text-[var(--twin-mute)]">转移时间：</span>{detailAsset.latestTransferTime ? String(detailAsset.latestTransferTime).replace("T", " ").slice(0, 19) : "-"}</div>
+                    <div><span className="text-[var(--twin-mute)]">转移地点：</span>{detailAsset.latestTransferLocation || "-"}</div>
+                    <div><span className="text-[var(--twin-mute)]">上次存放地点：</span>{detailAsset.latestTransferFromLocation || "-"}</div>
+                    <div><span className="text-[var(--twin-mute)]">转移备注：</span>{detailAsset.latestTransferRemark || "-"}</div>
+                  </>
+                )}
+                {detailBeforePhotoUrls.length > 0 && (
+                  <div className="pt-2">
+                    <div className="text-[var(--twin-mute)]">转移前照片</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {detailBeforePhotoUrls.map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          className="h-20 w-20 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0"
+                          onClick={() => setDetailImagePreview(u)}
+                        >
+                          <AutoImage src={u} alt="" className="h-full w-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {detailAfterPhotoUrls.length > 0 && (
                   <div className="pt-2">
                     <div className="text-[var(--twin-mute)]">转移后照片</div>
@@ -913,7 +1063,7 @@ export default function AdminAssetRecordPage() {
                           className="h-20 w-20 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0"
                           onClick={() => setDetailImagePreview(u)}
                         >
-                          <img src={u} alt="" className="h-full w-full object-cover" />
+                          <AutoImage src={u} alt="" className="h-full w-full object-cover" />
                         </button>
                       ))}
                     </div>
@@ -932,7 +1082,7 @@ export default function AdminAssetRecordPage() {
               onClick={() => setDetailImagePreview(null)}
               aria-label="关闭预览"
             >
-              <img src={detailImagePreview} alt="" className="max-h-[90vh] max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
+              <AutoImage src={detailImagePreview} alt="" className="max-h-[90vh] max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
             </button>
           </Portal>
         )}

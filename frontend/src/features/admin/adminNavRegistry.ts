@@ -39,6 +39,7 @@ import {
   Table2,
   TableProperties,
   Terminal,
+  TrendingUp,
   Thermometer,
   Ticket,
   Users,
@@ -342,6 +343,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-violet-400 to-indigo-500",
         fallbackMinRole: "STAFF",
         sidebarVisible: (ctx) => ctx.flags.canViewNotifications && show(ctx, "/admin/automation-logs", "STAFF"),
+      },
+      {
+        id: "exp-stats",
+        path: "/admin/exp-stats",
+        label: "经验值统计",
+        icon: TrendingUp,
+        homeTone: "from-amber-400 to-yellow-500",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx) => ctx.flags.canViewNotifications && show(ctx, "/admin/exp-stats", "STAFF"),
       },
       {
         id: "dept-storage",

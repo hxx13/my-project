@@ -388,7 +388,7 @@ public class MaterialAdminController {
     public ResponseEntity<byte[]> exportPersonalRequestExcel(@RequestParam String requestId) {
         MaterialRequestView view = materialService.getRequestDetail(null, requestId).getData();
         if (view == null) return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN).body("申领单不存在".getBytes(StandardCharsets.UTF_8));
-        byte[] body = excelExportService.buildPersonalRequestSheet(view);
+        byte[] body = excelExportService.buildPersonalRequestSheet(view, userDisplayNameService::resolveDisplayName);
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"material-request-" + requestId + ".xlsx\"")
                 .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")).body(body);
     }
@@ -408,7 +408,7 @@ public class MaterialAdminController {
             @SuppressWarnings("unchecked")
             List<MaterialAuditTrailView> rows = (List<MaterialAuditTrailView>) result.getData().get("data");
             if (rows == null) rows = List.of();
-            byte[] body = excelExportService.buildAuditTrailSheet(rows);
+            byte[] body = excelExportService.buildAuditTrailSheet(rows, userDisplayNameService::resolveDisplayName);
             String fn = "material-audit-" + from + "_" + to + ".xlsx";
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fn + "\"")
@@ -418,6 +418,16 @@ public class MaterialAdminController {
             return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN)
                     .body(("导出失败: " + ex.getMessage()).getBytes(StandardCharsets.UTF_8));
         }
+    }
+
+    @PostMapping("/maintenance/purge-orphan-movements")
+    @Operation(summary = "清理孤立库存流水（物品已删除但流水残留）")
+    public Result<Map<String, Object>> purgeOrphanMovements(@RequestHeader(value = "Authorization", required = false) String auth) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.ADMIN.getLevel())
+            return Result.error("无权限");
+        return materialService.purgeOrphanMovements();
     }
 
     private User resolveUser(String auth) {

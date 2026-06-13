@@ -63,6 +63,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
         runScript("db/bootstrap-twin-violation-text-template.sql", "twin_violation_text_template（违规文案模板预设）");
         runScript("db/bootstrap-smartsheet.sql", "smartsheet_definition/row/change_log（智能表格三表）");
         runScript("db/bootstrap-smartsheet-pin.sql", "smartsheet_definition is_pinned 列");
+        runScript("db/bootstrap-upload-file-record.sql", "upload_file_record（双端图片互通记录表）");
+        runScript("db/bootstrap-fix-relative-urls.sql", "修复历史相对路径为完整公网URL（幂等）");
+        runScript("db/bootstrap-twin-exp-record.sql", "twin_exp_record（经验值流水记录）");
     }
 
     /** @return 是否执行成功 */

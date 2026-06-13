@@ -13,17 +13,29 @@ import { StudentEntryCard } from "./StudentEntryCard";
 import { ActionButtons } from "./components/ActionButtons";
 import { DisciplinaryModal } from "./components/DisciplinaryModal";
 import { ScanAccessNoticeOverlay } from "./ScanAccessNoticeOverlay";
+import { ScanAccessMotionOverlay } from "./ScanAccessMotionOverlay";
+import { resolveRoomActionDensity } from "./roomActionDensity";
+import { ACCESS_MOTION_CORNER_MODULE_RATIO } from "./accessMotionLoaderScale";
 import type { PopupProps } from "./components/types";
 import { ScanPopupNoticeCoordinator } from "./ScanPopupNoticeCoordinator";
 import { Z_INDEX } from "@/constants/zIndex";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { BizOverlayShell } from "./BizOverlayShell";
+import { useBizRegistry } from "./useBizRegistry";
+import MaterialBizPanel from "./MaterialBizPanel";
 import { checkPinStatus } from "./specialChannel.api";
-import { resolveScanAccentCss, resolveScanAccentVariant, schemeBackdrop, SCAN_MODAL_LAYER_PROPS, CHART_CARD, getActiveScheme, setActiveScheme, SCAN_COLOR_SCHEMES } from "./scanPopupTheme";
+import {
+  resolveScanAccentVariant,
+  SCAN_MODAL_LAYER_PROPS,
+  CHART_CARD,
+  SCAN_POPUP_BACKDROP,
+  scanPaletteCssVars,
+} from "./scanPopupTheme";
 import { ScanLevelBadge } from "./ScanLevelBadge";
+import { ScanPopupBackdropDecor } from "./ScanPopupBackdropDecor";
 import { useTheme } from "@/features/theme/ThemeProvider";
 
-/** 预期核心在馆时间带 — 背景/边框/曲线均消费父级 schemeCssVars（--scan-card-tint 等） */
+/** 预期核心在馆时间带 — 颜色由父级 schemeCssVars 注入的 --scan-chart-* / --scan-card-tint */
 const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
     const days = 7;
     const width = 300;
@@ -98,8 +110,6 @@ export function UiverseProfilePopup(props: PopupProps) {
     const { theme } = useTheme();
     const isDark = theme.mode === 'dark';
     const accentVariant = resolveScanAccentVariant(state.user?.gender);
-    const badgeAccent = resolveScanAccentCss(accentVariant);
-    const [scheme, setScheme] = useState(() => getActiveScheme());
     const popupMessage = (state.inlineMessage || executeErrorMessage || "").trim();
 
     // ============================================================
@@ -118,6 +128,20 @@ export function UiverseProfilePopup(props: PopupProps) {
     const [showQuickActions, setShowQuickActions] = useState(false);
     const [keypadUserId, setKeypadUserId] = useState("");
     const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
+
+    // 注册快捷业务
+    const { register: registerBiz, clear: clearBiz } = useBizRegistry();
+    useEffect(() => {
+      registerBiz({
+        id: "material-claim",
+        label: "申领物品",
+        icon: "📦",
+        order: 1,
+        component: MaterialBizPanel,
+        enabled: true,
+      });
+      return () => clearBiz();
+    }, [registerBiz, clearBiz]);
 
     const handleEnterStudentCenter = async () => {
       if (!studentUserId) return;
@@ -145,45 +169,68 @@ export function UiverseProfilePopup(props: PopupProps) {
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
-                if (state.accessNotice) actions.dismissAccessNotice();
+                if (state.enterCelebrateRoomId) actions.dismissEnterCelebrate();
+                else if (state.exitCelebrateRoomId) actions.dismissExitCelebrate();
+                else if (state.accessNotice) actions.dismissAccessNotice();
                 else if (state.showRiskModal) actions.setShowRiskModal(false);
                 else onClose();
             }
         };
         window.addEventListener("keydown", handleEsc);
         return () => window.removeEventListener("keydown", handleEsc);
-    }, [actions, onClose, state.accessNotice, state.showRiskModal]);
+    }, [actions, onClose, state.accessNotice, state.enterCelebrateRoomId, state.exitCelebrateRoomId, state.showRiskModal]);
 
     if (!result) return null;
 
     const showUnboundBindHint =
         Boolean(onOpenStudentBind) && result.success !== false && result.hasPhysicalCardMapping !== true;
+    const motionAnchorRoomId = state.enterCelebrateRoomId || state.exitCelebrateRoomId;
+    const cornerLeaveRoom =
+        state.targetRooms.find(
+            (r) => (r.officialRoomId || r.id) === state.enterCelebrateRoomId
+        ) ?? state.targetRooms[0];
+    const cornerLeaveIdx = cornerLeaveRoom ? state.targetRooms.indexOf(cornerLeaveRoom) : 0;
+    const cornerLeaveLabel = cornerLeaveRoom?.displayName || cornerLeaveRoom?.name || "空间";
+    /** 进入闭环落点 + 场内：点右下角动效触发离开（中央不挂 ActionButtons） */
+    const showCornerLeaveHit =
+        Boolean(state.enterCelebrateRoomId) &&
+        !state.exitCelebrateRoomId &&
+        state.enterCornerReady &&
+        state.action === "EXIT" &&
+        Boolean(cornerLeaveRoom);
 
     return createPortal(
-        <div className={`${theme.className} ${isDark ? 'dark' : ''}`}
-             style={{
-               '--scan-accent': scheme.accent,
-               '--scan-accent-gradient': scheme.accentGradient,
-               '--scan-card-tint': scheme.cardTint,
-               '--scan-card-tint-dark': scheme.cardTintDark,
-               '--scan-glow': scheme.glow,
-               '--scan-chart-entry': scheme.chartStrokeEntry,
-               '--scan-chart-exit': scheme.chartStrokeExit,
-               '--scan-chart-fill': scheme.chartFill,
-               '--scan-chart-grid': `color-mix(in srgb, ${scheme.accent} 22%, var(--app-color-border-default))`,
-               '--scan-badge-bg': scheme.badgeBg,
-               '--scan-badge-border': scheme.badgeBorder,
-               '--scan-exp-gradient': scheme.expGradient,
-               '--scan-profile-bg': scheme.profileBg,
-               '--scan-profile-bg-dark': scheme.profileBgDark,
-               '--scan-profile-border': scheme.profileBorder,
-               '--scan-student-bg': scheme.studentBg,
-               '--scan-student-bg-dark': scheme.studentBgDark,
-               '--scan-ai-bg': scheme.aiBg,
-               '--scan-ai-bg-dark': scheme.aiBgDark,
-             } as React.CSSProperties}>
+        <div
+            className={`${theme.className} ${isDark ? "dark" : ""}`}
+            style={scanPaletteCssVars() as React.CSSProperties}
+        >
+            <ScanAccessMotionOverlay
+                mode="enter"
+                active={Boolean(state.enterCelebrateRoomId)}
+                roomId={state.enterCelebrateRoomId}
+                variant={state.accessMotionVariant}
+                startAtCorner={state.enterMotionAtCorner}
+                density={resolveRoomActionDensity(state.targetRooms.length)}
+                themeClassName={theme.className}
+                isDark={isDark}
+                onCornerReady={actions.markEnterCornerReady}
+            />
+            <ScanAccessMotionOverlay
+                mode="exit"
+                active={Boolean(state.exitCelebrateRoomId)}
+                roomId={state.exitCelebrateRoomId}
+                variant={state.accessMotionVariant}
+                density={resolveRoomActionDensity(state.targetRooms.length)}
+                themeClassName={theme.className}
+                isDark={isDark}
+                onComplete={actions.dismissExitCelebrate}
+            />
             <ScanAccessNoticeOverlay
-                open={Boolean(state.accessNotice?.message)}
+                open={Boolean(
+                    state.accessNotice?.message &&
+                        !state.enterCelebrateRoomId &&
+                        !state.exitCelebrateRoomId
+                )}
                 message={state.accessNotice?.message ?? ""}
                 durationMs={state.accessNoticeDurationMs}
                 accentVariant={accentVariant}
@@ -203,33 +250,10 @@ export function UiverseProfilePopup(props: PopupProps) {
                 {...SCAN_MODAL_LAYER_PROPS}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className={`fixed inset-0 flex flex-col ${schemeBackdrop(scheme)}`}
+                className={`fixed inset-0 flex flex-col ${SCAN_POPUP_BACKDROP}`}
                 style={{ zIndex: Z_INDEX.scannerPopup }}
             >
-                {/* 左上角色系指示器（可点击切换） */}
-                <div className="absolute top-6 left-6 z-10 flex items-center gap-1.5">
-                  {SCAN_COLOR_SCHEMES.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className="h-2.5 w-2.5 rounded-full transition-all duration-300 hover:scale-150 cursor-pointer border-0 p-0"
-                      style={{
-                        backgroundColor: s.id === scheme.id ? scheme.accent : 'rgba(255,255,255,0.2)',
-                        boxShadow: s.id === scheme.id ? `0 0 8px ${scheme.accent}` : 'none',
-                        transform: s.id === scheme.id ? 'scale(1.5)' : 'scale(1)',
-                      }}
-                      title={`切换至「${s.name}」色系`}
-                      onClick={() => {
-                        const next = SCAN_COLOR_SCHEMES.find(x => x.id === s.id);
-                        if (next && next.id !== scheme.id) {
-                          setScheme(next);
-                          setActiveScheme(next.id);
-                        }
-                      }}
-                      aria-label={`${s.name}色系${s.id === scheme.id ? '（当前）' : ''}`}
-                    />
-                  ))}
-                </div>
+                <ScanPopupBackdropDecor />
                 <button className="absolute top-6 right-6 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-[var(--app-elevation-card)] transition-colors hover:border-[var(--app-color-feedback-danger)] hover:bg-[var(--app-color-feedback-danger-soft)] hover:text-[var(--app-color-feedback-danger)]" onClick={onClose} title="关闭 Esc">
                     <X className="w-5 h-5" />
                 </button>
@@ -243,7 +267,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                     </button>
                 ) : null}
                 <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-hidden p-10 pb-20">
-                    <div className="flex w-full max-w-[min(96vw,1120px)] shrink-0 justify-center px-1 pt-1">
+                    <div className="flex w-full max-w-[min(67.2vw,784px)] shrink-0 justify-center px-1 pt-1">
                         <ScanPopupNoticeCoordinator
                             result={result}
                             onViolationInteractiveVerified={onViolationInteractiveVerified}
@@ -328,24 +352,51 @@ export function UiverseProfilePopup(props: PopupProps) {
                                     </p>
                                 )}
                             </div>
-                            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-                                <ActionButtons
-                                    action={state.action}
-                                    targetRooms={state.targetRooms}
-                                    onRoomClick={actions.handleRoomClick}
-                                    isSuccess={state.isSuccess}
-                                    exitCelebrateRoomId={state.exitCelebrateRoomId}
-                                    actedRoomId={state.actedRoomId}
-                                    finishedRooms={state.finishedRooms}
-                                    autoActionRoomId={autoActionRoomId}
-                                    getButtonText={actions.getButtonText}
-                                    isEnterLocked={actions.isEnterLocked}
-                                    isExitLocked={actions.isExitLocked}
-                                    getKeepCardState={actions.getKeepCardState}
-                                    setKeepCardState={actions.setKeepCardState}
-                                    autoSignoutSecondsRemaining={state.autoSignoutSecondsRemaining}
-                                    autoSignoutState={state.autoSignoutState}
-                                />
+                            <div className="relative flex-1 min-h-0 overflow-hidden flex flex-col" data-scan-action-module>
+                                {motionAnchorRoomId ? (
+                                    <div
+                                        data-scan-exit-anchor={motionAnchorRoomId}
+                                        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                                        style={{
+                                            width: `${ACCESS_MOTION_CORNER_MODULE_RATIO * 100}%`,
+                                            height: `${ACCESS_MOTION_CORNER_MODULE_RATIO * 100}%`,
+                                        }}
+                                        aria-hidden
+                                    />
+                                ) : null}
+                                {showCornerLeaveHit ? (
+                                    <button
+                                        type="button"
+                                        className="absolute left-1/2 top-1/2 z-[var(--z-dropdown)] -translate-x-1/2 -translate-y-1/2 cursor-pointer opacity-0 pointer-events-auto"
+                                        style={{
+                                            width: `${ACCESS_MOTION_CORNER_MODULE_RATIO * 100}%`,
+                                            height: `${ACCESS_MOTION_CORNER_MODULE_RATIO * 100}%`,
+                                        }}
+                                        aria-label={`确认离开 ${cornerLeaveLabel}`}
+                                        onClick={() => actions.handleRoomClick(cornerLeaveRoom!, cornerLeaveIdx)}
+                                    />
+                                ) : null}
+                                {state.renderActionButtons ? (
+                                    <ActionButtons
+                                        key={`action-${state.action}-${state.enterCelebrateRoomId ?? "none"}`}
+                                        action={state.action}
+                                        targetRooms={state.targetRooms}
+                                        onRoomClick={actions.handleRoomClick}
+                                        isSuccess={state.isSuccess}
+                                        actedRoomId={state.actedRoomId}
+                                        finishedRooms={state.finishedRooms}
+                                        autoActionRoomId={autoActionRoomId}
+                                        getButtonText={actions.getButtonText}
+                                        isEnterLocked={actions.isEnterLocked}
+                                        isExitLocked={actions.isExitLocked}
+                                        getKeepCardState={actions.getKeepCardState}
+                                        setKeepCardState={actions.setKeepCardState}
+                                        autoSignoutSecondsRemaining={state.autoSignoutSecondsRemaining}
+                                        autoSignoutState={state.autoSignoutState}
+                                    />
+                                ) : (
+                                    <div className="flex-1 min-h-[120px] w-full shrink-0" aria-hidden />
+                                )}
                             </div>
                         </div>
                     </div>

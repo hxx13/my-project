@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Bell, ChevronDown, LogOut, Menu, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
+import { PageHelpHost } from "@/features/page-help/PageHelpHost";
 
 interface StudentHeaderProps {
   onMenuClick: () => void;
@@ -21,6 +23,7 @@ interface StudentHeaderProps {
 
 export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const impersonation = useMemo(() => getImpersonationState(), []);
   const isImpersonating = Boolean(impersonation?.isImpersonating);
   /** 扫码弹窗 PIN 进入：仅允许返回扫码页，禁止退出登录以免丢失终端操作员会话 */
@@ -57,7 +60,7 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
   return (
     <header
       className={cn(
-        "flex items-center justify-between h-14 shrink-0 border-b border-[var(--student-hairline)] bg-[var(--student-canvas)] px-4",
+        "sticky top-0 z-[var(--z-sticky)] flex h-14 shrink-0 items-center justify-between border-b border-[var(--student-hairline)] bg-[var(--student-canvas)] px-4",
       )}
     >
       {/* Left side */}
@@ -93,6 +96,12 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
             返回扫码页
           </button>
         ) : null}
+
+        <ThemeSwitcher
+          className="h-8 shrink-0 rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-2.5 text-[11px] font-medium text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]"
+        />
+
+        <PageHelpHost pagePath={pathname} variant="student" enableFullHelpDialog />
 
         {/* Notification bell */}
         <button
@@ -134,7 +143,10 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
               <ChevronDown className="hidden h-4 w-4 shrink-0 text-[var(--student-mute)] sm:block" aria-hidden />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuContent
+            align="end"
+            className="z-[var(--z-tooltip)] w-56 border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[var(--student-ink)] shadow-[var(--student-shadow-modal)]"
+          >
             {/* Mobile-only name display */}
             <div className="px-2 py-1.5 sm:hidden">
               <div className="truncate text-sm font-medium text-[var(--student-ink)]">
@@ -148,7 +160,7 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
             {isImpersonating && (
               <>
                 <div className="px-2 py-1 text-[10px] text-[var(--student-mute)]">
-                  模拟查看 · {impersonation.impersonatedUserId}
+                  模拟查看 · {impersonation?.impersonatedUserId}
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={handleReturnToStaff}>
@@ -161,7 +173,7 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
 
             {showLogout ? (
               <DropdownMenuItem
-                className="text-red-700 focus:bg-red-50 focus:text-red-800"
+                className="text-[var(--student-error)] focus:bg-[var(--student-error-soft)] focus:text-[var(--student-error)]"
                 onSelect={handleLogout}
               >
                 <LogOut className="mr-2 h-4 w-4" />

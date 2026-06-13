@@ -24,7 +24,7 @@ export function AdminPageTabs({ tabs, value, onChange, className, panelIdPrefix 
     <div
       role="tablist"
       aria-label="页面分区"
-      className={cn("flex flex-wrap gap-1 border-b border-slate-200/90 bg-slate-50/80 px-1 pt-1", className)}
+      className={cn("flex flex-wrap gap-1 border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-1 pt-1", className)}
     >
       {tabs.map((tab) => {
         const selected = value === tab.id;
@@ -41,8 +41,8 @@ export function AdminPageTabs({ tabs, value, onChange, className, panelIdPrefix 
               "inline-flex min-h-[var(--admin-control-height,2.25rem)] items-center gap-2 rounded-t-lg border px-4 py-2 text-sm font-medium transition-all",
               "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)]/40",
               selected
-                ? "z-[1] -mb-px border-2 border-slate-300 border-b-white bg-white text-slate-900 shadow-sm"
-                : "border-2 border-slate-200 bg-white/90 text-slate-600 shadow-sm hover:border-slate-300 hover:bg-white hover:text-slate-900"
+                ? "z-[1] -mb-px border-2 border-[var(--app-color-border-strong)] border-b-[var(--app-color-surface-container)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-sm"
+                : "border-2 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/90 text-[var(--app-color-text-secondary)] shadow-sm hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-container)] hover:text-[var(--app-color-text-primary)]"
             )}
             onClick={() => onChange(tab.id)}
           >

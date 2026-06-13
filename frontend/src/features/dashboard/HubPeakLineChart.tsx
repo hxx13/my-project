@@ -1,7 +1,12 @@
 import { useEffect, useRef } from "react";
 import * as echarts from "echarts";
 import type { LineStats } from "@/api/twinApi";
-import { useDashboardSciFiVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import {
+    DASH_NIGHT_CLASS,
+    hexToRgba,
+    readDashboardNightChartPalette,
+} from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 
 interface HubPeakLineChartProps {
     data: LineStats;
@@ -9,7 +14,7 @@ interface HubPeakLineChartProps {
 
 export function HubPeakLineChart({ data }: HubPeakLineChartProps) {
     const chartRef = useRef<HTMLDivElement>(null);
-    const sciFi = useDashboardSciFiVisual();
+    const visual = useDashboardVisual();
 
     useEffect(() => {
         if (!chartRef.current || !data) return;
@@ -19,7 +24,7 @@ export function HubPeakLineChart({ data }: HubPeakLineChartProps) {
             chart = echarts.init(chartRef.current);
         }
 
-        const option = sciFi
+        const option = visual.sciFi
             ? {
                   backgroundColor: "transparent",
                   title: {
@@ -111,7 +116,92 @@ export function HubPeakLineChart({ data }: HubPeakLineChartProps) {
                       },
                   ],
               }
-            : {
+            : visual.night
+              ? (() => {
+                    const p = readDashboardNightChartPalette(chartRef.current?.closest(".dashboard-home-root--night-sky"));
+                    return {
+                        backgroundColor: "transparent",
+                        title: {
+                            text: "进出高峰枢纽对比",
+                            left: "center",
+                            top: 10,
+                            textStyle: {
+                                fontSize: 15,
+                                fontWeight: "800",
+                                color: p.accentInk,
+                            },
+                        },
+                        tooltip: {
+                            trigger: "axis",
+                            backgroundColor: hexToRgba(p.surfaceStudent, 0.92),
+                            textStyle: { color: p.accentInk },
+                            borderColor: hexToRgba(p.accentWarm, 0.35),
+                            extraCssText: "backdrop-filter: blur(10px);",
+                            borderRadius: 10,
+                        },
+                        legend: {
+                            bottom: 0,
+                            data: ["浦东", "浦西"],
+                            icon: "circle",
+                            textStyle: { color: p.textMuted },
+                        },
+                        color: [p.exit, p.entry],
+                        grid: { top: "25%", bottom: "15%", left: "5%", right: "5%", containLabel: true },
+                        xAxis: {
+                            type: "category",
+                            data: data.times,
+                            axisLine: { lineStyle: { color: hexToRgba(p.accentWarm, 0.22) } },
+                            axisLabel: { interval: 1, color: p.textMuted },
+                        },
+                        yAxis: {
+                            type: "value",
+                            axisLine: { show: false },
+                            splitLine: { lineStyle: { color: hexToRgba(p.accentSteel, 0.12) } },
+                            axisLabel: { color: p.textMuted },
+                        },
+                        series: [
+                            {
+                                name: "浦东",
+                                type: "line",
+                                smooth: true,
+                                lineStyle: { width: 2, color: p.exit },
+                                areaStyle: {
+                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: hexToRgba(p.exit, 0.32) },
+                                        { offset: 1, color: "transparent" },
+                                    ]),
+                                },
+                                data: data.pudong,
+                                label: {
+                                    show: true,
+                                    position: "top",
+                                    color: p.textMuted,
+                                    formatter: (v: { value?: number }) => (v.value ?? 0) > 0 ? String(v.value) : "",
+                                },
+                            },
+                            {
+                                name: "浦西",
+                                type: "line",
+                                smooth: true,
+                                lineStyle: { width: 2, color: p.entry },
+                                areaStyle: {
+                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: p.chartFill },
+                                        { offset: 1, color: "transparent" },
+                                    ]),
+                                },
+                                data: data.puxi,
+                                label: {
+                                    show: true,
+                                    position: "top",
+                                    color: p.textMuted,
+                                    formatter: (v: { value?: number }) => (v.value ?? 0) > 0 ? String(v.value) : "",
+                                },
+                            },
+                        ],
+                    };
+                })()
+              : {
                   title: {
                       text: "进出高峰枢纽对比",
                       left: "center",
@@ -198,7 +288,12 @@ export function HubPeakLineChart({ data }: HubPeakLineChartProps) {
         return () => {
             window.removeEventListener("resize", handleResize);
         };
-    }, [data, sciFi]);
+    }, [data, visual.sciFi, visual.night]);
 
-    return <div ref={chartRef} className="w-full h-full" />;
+    return (
+        <div
+            ref={chartRef}
+            className={`w-full h-full ${visual.night ? DASH_NIGHT_CLASS.chartArea : ""}`}
+        />
+    );
 }

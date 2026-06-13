@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AutoImage } from "@/components/ui/AutoImage";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
+import { queryKeys } from "@/api/hooks/queryKeys";
 import { Portal } from "@/components/Portal";
 import { ClipboardList, Download } from "lucide-react";
 import {
@@ -181,6 +183,18 @@ export default function AdminAssetTransferRecordPage() {
   const role = authStorage.getRole() || "STUDENT";
   const canDeleteTransfer = hasMinRole(role, "ADMIN");
 
+  // Debounced auto-search: 输入即搜
+  useEffect(() => {
+    const kw = keyword.trim();
+    if (kw === appliedKeyword) return;
+    const timer = setTimeout(() => {
+      setAppliedKeyword(keyword.trim());
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyword]);
+
   const transferQueryKey = useMemo(
     () => ["transferRecords", { page, size, keyword: appliedKeyword || undefined }] as const,
     [page, size, appliedKeyword],
@@ -290,6 +304,7 @@ export default function AdminAssetTransferRecordPage() {
           ),
         };
       });
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "追加失败");
     } finally {
@@ -320,6 +335,7 @@ export default function AdminAssetTransferRecordPage() {
           ),
         };
       });
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
     } finally {
@@ -344,6 +360,7 @@ export default function AdminAssetTransferRecordPage() {
           rows: prev.rows.map((x) => (x.id === r.id ? { ...x, status: "WITHDRAWN" } : x)),
         };
       });
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "撤回失败");
     } finally {
@@ -373,6 +390,7 @@ export default function AdminAssetTransferRecordPage() {
           rows: prev.rows.filter((x) => x.id !== r.id),
         };
       });
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "删除失败");
     } finally {
@@ -745,7 +763,7 @@ export default function AdminAssetTransferRecordPage() {
                       className="h-16 w-16 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] p-0"
                       onClick={() => setPreviewUrl(u)}
                     >
-                      <img src={u} alt="" className="h-full w-full object-cover" />
+                      <AutoImage src={u} alt="" className="h-full w-full object-cover" />
                     </button>
                   ))}
                 </div>
@@ -761,7 +779,7 @@ export default function AdminAssetTransferRecordPage() {
                   {parsePhotoUrlJson(continueRow.photoUrlsAfter).map((u) => (
                     <div key={u} className="relative inline-block">
                       <button type="button" className="block h-16 w-16 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] p-0" onClick={() => setPreviewUrl(u)}>
-                        <img src={u} alt="" className="h-full w-full object-cover" />
+                        <AutoImage src={u} alt="" className="h-full w-full object-cover" />
                       </button>
                       <button
                         type="button"
@@ -883,7 +901,7 @@ export default function AdminAssetTransferRecordPage() {
           onClick={() => setPreviewUrl(null)}
           aria-label="关闭预览"
         >
-          <img src={previewUrl} alt="" className="max-h-[90vh] max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
+          <AutoImage src={previewUrl} alt="" className="max-h-[90vh] max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
         </button>
         </Portal>
       )}

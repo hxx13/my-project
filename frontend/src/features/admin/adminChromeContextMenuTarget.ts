@@ -19,19 +19,45 @@ export type AdminFriendRowContextMenuTarget = {
   contactGroupId: string;
 };
 
+function parseAdminPathFromHref(href: string): string | null {
+  const trimmed = (href || "").trim();
+  if (!trimmed) return null;
+  const hashMatch = trimmed.match(/#(\/admin[^?#]*)/);
+  if (hashMatch) return normalizeAdminPath(hashMatch[1]);
+  const relMatch = trimmed.match(/^(\/admin[^?#]*)/);
+  if (relMatch) return normalizeAdminPath(relMatch[1]);
+  try {
+    const pathname = new URL(trimmed, window.location.href).pathname;
+    const p = normalizeAdminPath(pathname);
+    if (p.startsWith("/admin")) return p;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /** 从侧栏 NavLink（data-admin-sidebar-nav）或页面内任意指向 #/admin 的链接解析路由，供「入口权限（快捷）」 */
 export function parseAdminNavLinkFromEventTarget(target: EventTarget | null): AdminNavContextMenuTarget | null {
   if (!target || !(target instanceof Element)) return null;
-  const a = target.closest("a[href]");
-  if (!a) return null;
-  const href = a.getAttribute("href") || "";
-  const m = href.match(/#(\/admin[^?#]*)/);
-  if (!m) return null;
-  const path = normalizeAdminPath(m[1]);
-  if (!path.startsWith("/admin")) return null;
-  const navRoot = a.closest(
+
+  const navRoot = target.closest(
     "[data-admin-sidebar-nav], [data-admin-sidebar-nav-top], [data-admin-sidebar-nav-groups]"
   );
+  const sidebarItem = target.closest("[data-admin-sidebar-nav-item]");
+
+  if (sidebarItem && navRoot?.contains(sidebarItem)) {
+    const path = normalizeAdminPath(sidebarItem.getAttribute("data-admin-nav-path") || "");
+    if (!path.startsWith("/admin")) return null;
+    const label =
+      (sidebarItem.getAttribute("data-admin-nav-label") || "").trim() ||
+      path;
+    return { path, label };
+  }
+
+  const a = target.closest("a[href]");
+  if (!a) return null;
+  const path = parseAdminPathFromHref(a.getAttribute("href") || "");
+  if (!path || !path.startsWith("/admin")) return null;
   const label =
     (a.getAttribute("data-admin-nav-label") || "").trim() ||
     (a.getAttribute("title") || "").trim() ||

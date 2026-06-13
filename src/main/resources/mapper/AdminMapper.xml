@@ -15,7 +15,9 @@
             su.password,
             su.role,
             su.open_id AS openId,
-            su.status
+            su.status,
+            ap.personal_pin AS personalPin,
+            ap.pin_updated_at AS pinUpdatedAt
         FROM aro_personnel ap
         LEFT JOIN sys_user su ON su.id = ap.user_id
         <where>

@@ -1,8 +1,10 @@
 package com.example.demo.modules.twin.rpg.controller;
 
+import com.example.demo.common.dto.Result;
 import com.example.demo.modules.aro.dto.RpgStatsDto;
 import com.example.demo.modules.twin.rpg.service.RpgDatabaseService;
 import com.example.demo.modules.twin.rpg.service.RpgEngineService;
+import com.example.demo.modules.twin.rpg.service.TwinExpStatsService;
 import com.example.demo.modules.twin.common.service.JobExecutionRegistry;
 import com.example.demo.modules.twin.common.service.JobSchedulerService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -26,6 +28,8 @@ public class RpgController {
     private RpgDatabaseService rpgDatabaseService;
     @Autowired
     private JobSchedulerService jobSchedulerService;
+    @Autowired
+    private TwinExpStatsService twinExpStatsService;
 
     @GetMapping("/exp/{userId}")
     @Operation(summary = "查询用户经验值")
@@ -43,8 +47,8 @@ public class RpgController {
         return "全量经验重算已执行";
     }
 
-    // 💥 暴露给前端的“全量同步人员库”核弹按钮接口
-    @PostMapping("/personnel/sync-all") // 注意对应你前端写的路径，如果前面有类级别的 @RequestMapping 请留意拼接
+    // 暴露给前端的"全量同步人员库"核弹按钮接口
+    @PostMapping("/personnel/sync-all")
     @Operation(summary = "全量同步ARO人员")
     public Map<String, Object> syncAllPersonnel() {
         Map<String, Object> response = new HashMap<>();
@@ -57,5 +61,23 @@ public class RpgController {
             response.put("msg", "同步异常: " + e.getMessage());
         }
         return response;
+    }
+
+    @GetMapping("/exp/summary")
+    @Operation(summary = "经验值统计总览")
+    public Result<Map<String, Object>> getExpSummary() {
+        return Result.success(twinExpStatsService.getSummary());
+    }
+
+    @GetMapping("/exp/records")
+    @Operation(summary = "经验值流水明细（分页）")
+    public Result<Map<String, Object>> getExpRecords(
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String sourceType,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        return Result.success(twinExpStatsService.getRecordsPage(pageNum, pageSize, userId, sourceType, startDate, endDate));
     }
 }

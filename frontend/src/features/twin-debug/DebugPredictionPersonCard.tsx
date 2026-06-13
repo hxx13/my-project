@@ -2,6 +2,8 @@ import {useMemo, useState} from "react";
 import {ChevronDown, ChevronUp} from "lucide-react";
 import {DebugPersonCardShell} from "./DebugPersonCardShell";
 import {CombinedMiniCurve, WeeklyRibbonChart, policyTagLabel} from "./predictionCharts";
+import {DASH_NIGHT_CLASS} from "@/features/dashboard-scifi-theme/dashboardNightTokens";
+import {cn} from "@/lib/utils";
 import type {DebugPredictionRoomDto, DebugPredictionUserDto} from "@/api/twinApi";
 
 const VISIBLE_ROOMS = 3;
@@ -67,27 +69,27 @@ export function DebugPredictionPersonCard({user}: { user: DebugPredictionUserDto
             badges={
                 <>
                     {user.hasOfficialRoomPermission ? (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">官方可进</span>
+                        <span className={cn(DASH_NIGHT_CLASS.chipSuccess, "rounded-full px-2 py-0.5 text-[10px] font-bold")}>官方可进</span>
                     ) : (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">普通</span>
+                        <span className={cn(DASH_NIGHT_CLASS.chipMuted, "rounded-full px-2 py-0.5 text-[10px] font-bold")}>普通</span>
                     )}
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                    <span className={cn(DASH_NIGHT_CLASS.chipSteel, "rounded-full px-2 py-0.5 text-[10px] font-bold")}>
                         {rooms.length} 个房间
                     </span>
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">Lv.{user.level ?? 1}</span>
+                    <span className={cn(DASH_NIGHT_CLASS.chipWarn, "rounded-full px-2 py-0.5 text-[10px] font-bold")}>Lv.{user.level ?? 1}</span>
                 </>
             }
         >
             {primary ? (
-                <div className="mb-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[11px]">
-                    <div className="flex flex-wrap items-center justify-between gap-1 font-bold text-slate-600">
-                        <span className="text-blue-700">{primary.peakEntryTime || "—"}</span>
-                        <span className="text-slate-400">→</span>
+                <div className={cn(DASH_NIGHT_CLASS.panel, "mb-2 px-2 py-1.5 text-[11px]")}>
+                    <div className="flex flex-wrap items-center justify-between gap-1 font-bold text-[var(--app-color-text-secondary)]">
+                        <span className="text-[var(--app-color-accent-secondary)]">{primary.peakEntryTime || "—"}</span>
+                        <span className={DASH_NIGHT_CLASS.textMuted}>→</span>
                         <span>{formatDuration(avgDuration)}</span>
-                        <span className="text-slate-400">→</span>
-                        <span className="text-amber-700">{primary.predictedExitLabel ?? primary.predictedExitTime ?? "—"}</span>
+                        <span className={DASH_NIGHT_CLASS.textMuted}>→</span>
+                        <span className="text-[var(--app-color-feedback-warning)]">{primary.predictedExitLabel ?? primary.predictedExitTime ?? "—"}</span>
                     </div>
-                    <div className="mt-0.5 text-[10px] text-slate-500">{policyLabel}</div>
+                    <div className={cn("mt-0.5 text-[10px]", DASH_NIGHT_CLASS.textMuted)}>{policyLabel}</div>
                 </div>
             ) : null}
 
@@ -98,15 +100,15 @@ export function DebugPredictionPersonCard({user}: { user: DebugPredictionUserDto
                     return (
                         <div
                             key={`${user.userId}-${room.roomId}`}
-                            className="rounded-lg border border-slate-100 bg-white px-2 py-1.5 text-[11px]"
+                            className={cn(DASH_NIGHT_CLASS.row, "px-2 py-1.5 text-[11px]")}
                         >
                             <div className="flex items-center justify-between gap-1">
-                                <span className="truncate font-bold text-slate-700">{room.roomName || room.roomId}</span>
-                                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${high ? "bg-red-100 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>
+                                <span className="truncate font-bold text-[var(--app-color-text-primary)]">{room.roomName || room.roomId}</span>
+                                <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black", high ? DASH_NIGHT_CLASS.chipDanger : DASH_NIGHT_CLASS.chipSuccess)}>
                                     延时 {prob.toFixed(0)}%
                                 </span>
                             </div>
-                            <div className="mt-0.5 flex flex-wrap gap-x-2 text-slate-500">
+                            <div className={cn("mt-0.5 flex flex-wrap gap-x-2", DASH_NIGHT_CLASS.textMuted)}>
                                 <span>{room.visitCount ?? 0} 次</span>
                                 <span>驻留 {formatDuration(room.medianDurationMins ?? 0)}</span>
                                 <span className="truncate" title={topNextDest(room.nextRoomProb)}>→ {topNextDest(room.nextRoomProb)}</span>
@@ -118,7 +120,7 @@ export function DebugPredictionPersonCard({user}: { user: DebugPredictionUserDto
                     <button
                         type="button"
                         onClick={() => setExpandedRooms((v) => !v)}
-                        className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-slate-200 py-1 text-[11px] font-bold text-blue-600 hover:bg-blue-50/50"
+                        className={cn(DASH_NIGHT_CLASS.btnNormal, "flex w-full items-center justify-center gap-1 border-dashed py-1 text-[11px] font-bold")}
                     >
                         {expandedRooms ? <ChevronUp className="h-3 w-3"/> : <ChevronDown className="h-3 w-3"/>}
                         {expandedRooms ? "收起" : `展开 ${hiddenCount} 间`}

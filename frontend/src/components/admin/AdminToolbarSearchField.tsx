@@ -29,7 +29,7 @@ export function AdminToolbarSearchField({
 }: AdminToolbarSearchFieldProps) {
   return (
     <div data-twin-debug-admin-search className={cn("relative min-w-0", className)}>
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-color-text-tertiary)]" aria-hidden />
       <input
         id={id}
         type="search"
@@ -37,7 +37,7 @@ export function AdminToolbarSearchField({
         autoComplete="off"
         disabled={disabled}
         aria-label={ariaLabel ?? placeholder}
-        className="h-[var(--admin-control-height,2.25rem)] w-full min-w-0 rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-10 text-sm text-slate-900 shadow-sm outline-none ring-slate-200 placeholder:text-slate-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+        className="h-[var(--admin-control-height,2.25rem)] w-full min-w-0 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] py-2 pl-9 pr-10 text-sm text-[var(--app-color-text-primary)] shadow-sm outline-none placeholder:text-[var(--app-color-text-tertiary)] focus:border-[var(--app-color-accent-secondary)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--app-color-accent-secondary)_25%,transparent)] disabled:opacity-60"
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -51,7 +51,7 @@ export function AdminToolbarSearchField({
       <button
         type="button"
         disabled={disabled}
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600 disabled:pointer-events-none disabled:opacity-40"
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[var(--app-color-text-tertiary)] transition-colors hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-accent-secondary)] disabled:pointer-events-none disabled:opacity-40"
         aria-label="搜索"
         onClick={() => onSubmit()}
       >

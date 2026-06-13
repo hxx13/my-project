@@ -137,12 +137,13 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         seedItem("access-meta-env", 3, "item-swing-tasks", "/admin/dahua-swing-tasks", "门禁数据工作台", "SlidersHorizontal", null);
         seedItem("access-meta-env", 4, "item-swing-rules", "/admin/dahua-swing-rules", "门禁联动规则", "ShieldAlert", null);
         seedItem("access-meta-env", 5, "item-auto-logs", "/admin/automation-logs", "自动化日志", "FileText", null);
-        seedItem("access-meta-env", 6, "item-dept-storage", "/admin/department-storage", "部门落库", "GitBranch", null);
-        seedItem("access-meta-env", 7, "item-telemetry-wl", "/admin/telemetry-watchlists", "WinCC 变量导入", "Table2", null);
-        seedItem("access-meta-env", 8, "item-telemetry-arch", "/admin/telemetry-archive", "温湿度数据归档", "Archive", null);
-        seedItem("access-meta-env", 9, "item-animal-tel", "/animal-room-telemetry", "动物房温湿度监测", "Thermometer", null);
-        seedItem("access-meta-env", 10, "item-animal-cockpit", "/animal-room-cockpit", "动物房驾驶舱", "BarChart3", null);
-        seedItem("access-meta-env", 11, "item-digital-twin-screen", "/digital-twin-screen", "数字孪生大屏", "Monitor", null);
+        seedItem("access-meta-env", 6, "item-exp-stats", "/admin/exp-stats", "经验值统计", "TrendingUp", null);
+        seedItem("access-meta-env", 7, "item-dept-storage", "/admin/department-storage", "部门落库", "GitBranch", null);
+        seedItem("access-meta-env", 8, "item-telemetry-wl", "/admin/telemetry-watchlists", "WinCC 变量导入", "Table2", null);
+        seedItem("access-meta-env", 9, "item-telemetry-arch", "/admin/telemetry-archive", "温湿度数据归档", "Archive", null);
+        seedItem("access-meta-env", 10, "item-animal-tel", "/animal-room-telemetry", "动物房温湿度监测", "Thermometer", null);
+        seedItem("access-meta-env", 11, "item-animal-cockpit", "/animal-room-cockpit", "动物房驾驶舱", "BarChart3", null);
+        seedItem("access-meta-env", 12, "item-digital-twin-screen", "/digital-twin-screen", "数字孪生大屏", "Monitor", null);
 
         // ARO 房间与联动
         seedGroup(null, 3, "aro-room-link", "ARO 房间与联动");

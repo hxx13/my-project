@@ -10,4 +10,8 @@ public interface MaterialRequestLineMapper {
     List<MaterialRequestLine> selectByRequestId(@Param("requestId") String requestId);
     int insertBatch(@Param("lines") List<MaterialRequestLine> lines);
     int updateFulfilledQty(@Param("id") Long id, @Param("qty") int qty);
+    int deleteByItemId(@Param("itemId") Long itemId);
+    int deleteByRequestId(@Param("requestId") String requestId);
+    List<String> selectRequestIdsByItemId(@Param("itemId") Long itemId);
+    int deleteOrphan();
 }

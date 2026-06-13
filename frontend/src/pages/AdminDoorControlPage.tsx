@@ -171,7 +171,7 @@ export default function AdminDoorControlPage() {
   }, [data?.list]);
 
   return (
-    <div className="p-6 bg-slate-50 min-h-full">
+    <div className="min-h-full bg-transparent p-6">
       <div className="mb-4">
         <h1 className="text-2xl font-black text-slate-800">门禁控制</h1>
         <p className="text-sm text-slate-500">仅超级管理员可见，按通道名称控制门禁模式</p>

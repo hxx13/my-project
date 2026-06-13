@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from "react";
 import { RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { router } from "@/router";
@@ -19,6 +19,24 @@ import {
   TELEMETRY_ANIMAL_ROOM_QUERY_KEY_PREFIX,
   mergeTelemetryTagRowsIntoAnimalRoomPageDto,
 } from "@/api/telemetryApi";
+
+class DiagnosticErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  state: { hasError: boolean; error: Error | null } = { hasError: false, error: null };
+  static getDerivedStateFromError(error: Error) { return { hasError: true, error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[DiagnosticErrorBoundary] Error:", error.message);
+    console.error("[DiagnosticErrorBoundary] Component stack:\n", info.componentStack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return <div style={{padding:40,color:'red',fontFamily:'monospace'}}>
+        <h2>Error: {this.state.error?.message}</h2>
+        <pre style={{fontSize:11,whiteSpace:'pre-wrap'}}>{this.state.error?.stack}</pre>
+      </div>;
+    }
+    return this.props.children;
+  }
+}
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -157,7 +175,9 @@ function App() {
             <ThemeProvider>
                 {/* 💥 将基站挂载在 React 根节点，只要网页开着就永远在线！ */}
                 <GlobalSocketListener />
-                <RouterProvider router={router} />
+                <DiagnosticErrorBoundary>
+                    <RouterProvider router={router} />
+                </DiagnosticErrorBoundary>
                 <Toaster position="top-right" />
                 <SwipeFailureBanner />
             </ThemeProvider>

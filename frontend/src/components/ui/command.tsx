@@ -94,18 +94,13 @@ CommandGroup.displayName = CommandPrimitive.Group.displayName;
 const CommandItem = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Item>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>
->(({ className, onMouseDown, ...props }, ref) => (
+>(({ className, ...props }, ref) => (
   <CommandPrimitive.Item
     ref={ref}
     className={cn(
       "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-slate-100 aria-selected:text-slate-900 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className
     )}
-    onMouseDown={(e) => {
-      onMouseDown?.(e);
-      // cmdk：避免焦点移出导致点击不触发 onSelect
-      e.preventDefault();
-    }}
     {...props}
   />
 ));

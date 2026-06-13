@@ -1,5 +1,6 @@
 import { adminHttp } from "@/api/core/adminHttp";
 import { authHttp } from "@/api/core/authHttp";
+import { resolveApiMediaUrl } from "@/utils/mediaUrl";
 
 interface SpringResult<T> {
   success: boolean;
@@ -121,11 +122,14 @@ export async function deleteMpRelease(id: string): Promise<void> {
 export async function uploadRichImage(file: File): Promise<string> {
   const fd = new FormData();
   fd.append("file", file);
-  const res = await authHttp.post<SpringResult<{ url: string }>>("/upload", fd);
+  const res = await authHttp.post<SpringResult<{ url: string; publicUrl?: string }>>("/upload", fd);
   const data = unwrap(res, "上传失败");
-  const u = data.url;
-  if (!u) throw new Error("上传未返回地址");
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  const origin = window.location.origin;
-  return `${origin}${u.startsWith("/") ? u : `/${u}`}`;
+  const publicUrl = data.publicUrl?.trim();
+  if (publicUrl && /^https?:\/\//i.test(publicUrl)) {
+    return publicUrl;
+  }
+  const relative = data.url?.trim();
+  if (!relative) throw new Error("上传未返回地址");
+  const normalized = relative.startsWith("/") ? relative : `/${relative}`;
+  return resolveApiMediaUrl(normalized) ?? normalized;
 }

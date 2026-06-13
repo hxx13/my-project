@@ -9,6 +9,12 @@ import {
   type AnalyticsDraftFilter,
 } from "@/features/analytics/analyticsPipelineFilter";
 import { cn } from "@/lib/utils";
+import {
+  analyticsChipActive,
+  analyticsChipIdle,
+  analyticsFilterShell,
+  analyticsInput,
+} from "@/features/analytics/analyticsUiTokens";
 
 const PUDONG_CAMPUS = "浦东";
 
@@ -37,9 +43,7 @@ function Chip({
       onClick={onClick}
       className={cn(
         "shrink-0 rounded-md border px-2 py-1 text-[11px] font-semibold transition",
-        active
-          ? "border-violet-400 bg-violet-100 text-violet-900"
-          : "border-neutral-200 bg-white text-neutral-600 hover:border-violet-200"
+        active ? analyticsChipActive : analyticsChipIdle
       )}
     >
       {label}
@@ -71,7 +75,7 @@ export function AnalyticsPipelineFilterBar({
     <>
       <div
         data-analytics-scope-filters
-        className="flex flex-nowrap items-center gap-1.5 overflow-x-auto rounded-xl border border-neutral-200/90 bg-white px-3 py-2 shadow-sm [scrollbar-width:thin]"
+        className={cn("flex flex-nowrap items-center gap-1.5 overflow-x-auto px-3 py-2 [scrollbar-width:thin]", analyticsFilterShell)}
       >
         {!isCageReport && !hideActionType ? (
           <>
@@ -80,13 +84,13 @@ export function AnalyticsPipelineFilterBar({
               onChange={(e) =>
                 onChange({ ...filters, actionType: e.target.value as AnalyticsDraftFilter["actionType"] })
               }
-              className="shrink-0 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-bold text-neutral-700 outline-none"
+              className={cn("shrink-0 px-2 py-1 text-[11px] font-bold outline-none", analyticsInput)}
             >
               <option value="">全部动作</option>
               <option value="1">进入</option>
               <option value="2">离开</option>
             </select>
-            <span className="mx-0.5 h-5 w-px shrink-0 bg-neutral-200" />
+            <span className="mx-0.5 h-5 w-px shrink-0 bg-[var(--app-color-border-default)]" />
           </>
         ) : null}
 
@@ -122,25 +126,25 @@ export function AnalyticsPipelineFilterBar({
           placeholder={isCageReport ? "房间名" : "房号尾数"}
           value={filters.roomName}
           onChange={(e) => onChange({ ...filters, roomName: e.target.value })}
-          className="w-[88px] shrink-0 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-semibold outline-none focus:border-violet-400"
+          className={cn("w-[88px] shrink-0 px-2 py-1 text-[11px] font-semibold outline-none", analyticsInput)}
         />
 
         {!isCageReport ? (
           <>
-            <span className="mx-0.5 h-5 w-px shrink-0 bg-neutral-200" />
-            <label className="flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1">
+            <span className="mx-0.5 h-5 w-px shrink-0 bg-[var(--app-color-border-default)]" />
+            <label className={cn("flex shrink-0 cursor-pointer items-center gap-1 rounded-md border px-2 py-1", analyticsChipIdle)}>
               <input
                 type="checkbox"
-                className="h-3.5 w-3.5 rounded border-neutral-300 text-violet-600"
+                className="h-3.5 w-3.5 rounded border-[var(--app-color-border-default)] text-[var(--app-color-accent)]"
                 checked={filters.excludeBlacklist}
                 onChange={(e) => onChange({ ...filters, excludeBlacklist: e.target.checked })}
               />
-              <span className="text-[10px] font-semibold text-neutral-600">排除黑名单</span>
+              <span className="text-[10px] font-semibold text-[var(--app-color-text-secondary)]">排除黑名单</span>
             </label>
             <button
               type="button"
               onClick={() => setBlacklistOpen(true)}
-              className="shrink-0 rounded p-1 text-neutral-400 hover:bg-violet-50 hover:text-violet-600"
+              className="shrink-0 rounded p-1 text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-accent)]"
               title="黑名单"
             >
               <Settings className="h-4 w-4" />
@@ -151,7 +155,7 @@ export function AnalyticsPipelineFilterBar({
         <button
           type="button"
           onClick={onClear}
-          className="shrink-0 text-[10px] font-semibold text-neutral-400 hover:text-rose-500"
+          className="shrink-0 text-[10px] font-semibold text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-feedback-error)]"
         >
           清除
         </button>

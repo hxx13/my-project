@@ -76,3 +76,14 @@ export async function resetNavConfig(): Promise<boolean> {
   const res = await authHttp.post<ApiResult<null>>("/admin-nav/reset");
   return res.data?.success ?? false;
 }
+
+export async function ensureNavItems(
+  items: { path: string; label: string; icon: string; groupTitle: string }[]
+): Promise<{ created: number; existed: number }> {
+  try {
+    const res = await authHttp.post<ApiResult<{ created: number; existed: number }>>("/admin-nav/ensure-items", { items });
+    return res.data?.success ? res.data.data ?? { created: 0, existed: 0 } : { created: 0, existed: 0 };
+  } catch {
+    return { created: 0, existed: 0 };
+  }
+}

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, Megaphone, X } from "lucide-react";
+import { AlertTriangle, ChevronRight, CreditCard, Megaphone } from "lucide-react";
 import type { ScanPopupAnnouncementBundle, StudentViolationNotice } from "@/api/types/scanner";
-import { prepareAnnouncementHtml, SCAN_ANNOUNCEMENT_BODY_CLASS } from "@/utils/announcementHtml";
+import { prepareAnnouncementHtml } from "@/utils/announcementHtml";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { InteractiveChallenge } from "./InteractiveChallenge";
+import { ScanNoticeDoodleCard } from "./ScanNoticeDoodleCard";
 import { ackViolationInteractivePermanent } from "./twinViolationInteractive";
 import {
   noticeThemeClass,
@@ -54,14 +54,6 @@ function readAcked(kind: NoticeKind, id: number): boolean {
   } catch {
     return false;
   }
-}
-
-function imageGridClass(count: number): string {
-  if (count <= 0) return "";
-  if (count === 1) return "grid grid-cols-1 place-items-center max-w-2xl mx-auto w-full";
-  if (count === 2) return "grid grid-cols-2 gap-3 sm:gap-4 w-full max-w-3xl mx-auto";
-  if (count <= 4) return "grid grid-cols-2 sm:grid-cols-2 gap-3 sm:gap-4 w-full max-w-4xl mx-auto";
-  return "grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 w-full max-w-5xl mx-auto";
 }
 
 function useControlledPanel(
@@ -301,13 +293,16 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
     totalPages: announcementTotal,
   });
 
-  const imgCount = images.length;
   const targetUserId = kind === "announcement" ? undefined : props.targetUserId;
   const onInteractiveVerified = kind === "announcement" ? undefined : props.onInteractiveVerified;
+  const PanelIcon =
+    kind === "announcement" ? Megaphone : kind === "violation" ? AlertTriangle : CreditCard;
 
   return (
     <>
-      <div className={`flex min-w-[min(128px,28vw)] max-w-[360px] flex-1 basis-0 justify-center ${noticeThemeShell}`}>
+      <div
+        className={`flex min-w-[min(90px,19.6vw)] max-w-[224px] flex-1 basis-0 justify-center ${noticeThemeShell}`}
+      >
         <button
           type="button"
           onClick={() => {
@@ -318,7 +313,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
           className={`group scan-notice-island w-full ${panelOpen ? "scan-notice-island--open" : ""}`}
         >
           <span className="scan-notice-island-icon relative shrink-0">
-            <Megaphone className="h-3.5 w-3.5" />
+            <PanelIcon className="h-3.5 w-3.5" />
             {locked ? (
               <span
                 className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[var(--app-color-feedback-danger)] ring-2 ring-[var(--app-color-surface-page)]"
@@ -343,164 +338,85 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
 
       {createPortal(
         <div className={noticeThemeShell}>
-          <AnimatePresence>
-            {panelOpen ? (
-              <motion.div
-                key={`${kind}-notice-panel`}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={meta.titleId}
-                initial={{ opacity: 0, scale: 0.96, y: 14 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.98, y: 8 }}
-                transition={{ type: "spring", stiffness: 380, damping: 32 }}
-                className="scan-notice-panel fixed inset-0 z-[var(--z-modal)] m-auto flex flex-col overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-              >
-                  <div className="scan-notice-panel-accent" aria-hidden />
-
-                  <div className="scan-notice-header">
-                    <div className="scan-notice-header-main">
-                      <span id={meta.titleId} className="scan-notice-category-pill shrink-0">
-                        {meta.dialogCategory}
-                      </span>
-                      {dialogHeadline ? (
-                        <p className="scan-notice-dialog-title">{dialogHeadline}</p>
-                      ) : null}
-                      {kind === "announcement" && announcementTotal > 1 ? (
-                        <span className="scan-notice-status-pill shrink-0">
-                          第 {pageIndex + 1} 条 / 共 {announcementTotal} 条
-                        </span>
-                      ) : null}
-                      {kind !== "announcement" && isViolation && remaining != null ? (
-                        <span className="scan-notice-status-pill shrink-0">剩余进入 {remaining} 次</span>
-                      ) : null}
-                      {kind !== "announcement" && locked ? (
-                        <span className="scan-notice-status-pill scan-notice-status-pill--danger shrink-0">
-                          禁止进入
-                        </span>
-                      ) : null}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={announcementCloseViaButtonOnly ? closeAnnouncementViaHeader : closePanel}
-                      className="scan-notice-close-btn shrink-0 p-1.5"
-                      aria-label="关闭"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <div className="app-themed-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-8 sm:py-6">
-                    <div className="mx-auto flex w-full max-w-[42rem] flex-col items-center gap-6 sm:gap-8">
-                      {safeHtml ? (
-                        <div className="scan-notice-body-card w-full p-5 sm:p-6">
-                          <div
-                            className={`${SCAN_ANNOUNCEMENT_BODY_CLASS} w-full text-left text-[1.02rem] sm:text-[1.08rem] [&_p]:text-center [&_p]:text-[1.05rem] [&_p]:sm:text-[1.15rem]`}
-                            dangerouslySetInnerHTML={{ __html: safeHtml }}
-                          />
-                        </div>
-                      ) : imgCount === 0 && !(interactivePhrase && !interactiveDone) ? (
-                        <p className="text-center text-sm leading-relaxed text-[var(--app-color-text-tertiary)]">
-                          {meta.emptyBodyHint}
-                        </p>
-                      ) : null}
-
-                      {imgCount > 0 ? (
-                        <div className={`w-full ${imageGridClass(imgCount)}`}>
-                          {images.map((src) => (
-                            <div
-                              key={src}
-                              className="scan-notice-body-card flex max-h-[min(32vh,280px)] items-center justify-center overflow-hidden p-2"
-                            >
-                              <img
-                                src={src}
-                                alt={meta.imageAlt}
-                                className="max-h-[min(32vh,280px)] w-full object-contain"
-                                referrerPolicy="no-referrer"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {interactivePhrase && !interactiveDone ? (
-                        <div className="scan-notice-body-card w-full px-4 py-6 sm:px-6">
-                          <InteractiveChallenge
-                            phrase={interactivePhrase}
-                            onComplete={() => {
-                              if (
-                                kind === "announcement" ||
-                                notice?.id == null ||
-                                !targetUserId ||
-                                interactiveSaving ||
-                                interactiveDone
-                              ) {
-                                return;
-                              }
-                              setInteractiveSaving(true);
-                              void ackViolationInteractivePermanent(notice.id, targetUserId)
-                                .then((ack) => {
-                                  setInteractiveDone(true);
-                                  onInteractiveVerified?.({
-                                    violationId: ack.violationId,
-                                    enterLocked: ack.enterLocked,
-                                    interactiveChallengeVerified: ack.interactiveChallengeVerified,
-                                    violationExpired: ack.violationExpired,
-                                  });
-                                })
-                                .catch(() => {
-                                  setInteractiveDone(false);
-                                })
-                                .finally(() => setInteractiveSaving(false));
-                            }}
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {kind === "announcement" && announcementTotal > 1 ? (
-                    <div className="scan-notice-footer justify-between gap-2">
-                      <button
-                        type="button"
-                        className="scan-notice-btn"
-                        onClick={() =>
-                          setPageIndex((i) => (i - 1 + announcementTotal) % announcementTotal)
-                        }
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                        上一条
-                      </button>
-                      <span className="scan-notice-status-pill">
-                        {pageIndex + 1} / {announcementTotal}
-                      </span>
-                      <button
-                        type="button"
-                        className="scan-notice-btn"
-                        onClick={() => setPageIndex((i) => (i + 1) % announcementTotal)}
-                      >
-                        下一条
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
+          {panelOpen ? (
+            <ScanNoticeDoodleCard
+              kind={kind}
+              titleId={meta.titleId}
+              title={dialogHeadline || meta.dialogCategory}
+              categoryLabel={meta.dialogCategory}
+              icon={PanelIcon}
+              bodyHtml={safeHtml}
+              emptyHint={meta.emptyBodyHint}
+              imageUrls={kind === "announcement" ? [] : images}
+              imageAlt={meta.imageAlt}
+              pageIndex={pageIndex}
+              totalPages={kind === "announcement" ? announcementTotal : 1}
+              statusSlot={
+                <>
+                  {isViolation && remaining != null ? (
+                    <span className="scan-doodle-card__status">剩余进入 {remaining} 次</span>
                   ) : null}
-
-                  {!showEveryScan && !announcementCloseViaButtonOnly ? (
-                    <div className="scan-notice-footer justify-center">
-                      <button
-                        type="button"
-                        disabled={Boolean(interactivePhrase && !interactiveDone)}
-                        onClick={acknowledge}
-                        className="scan-notice-btn scan-notice-btn--primary min-w-[9.5rem]"
-                      >
-                        {interactivePhrase && !interactiveDone ? "请先完成上方验证" : "已知悉，关闭"}
-                      </button>
-                    </div>
+                  {locked ? (
+                    <span className="scan-doodle-card__status scan-doodle-card__status--danger">禁止进入</span>
                   ) : null}
-                </motion.div>
-            ) : null}
-          </AnimatePresence>
+                </>
+              }
+              footerSlot={
+                interactivePhrase && !interactiveDone ? (
+                  <InteractiveChallenge
+                    phrase={interactivePhrase}
+                    onComplete={() => {
+                      if (
+                        kind === "announcement" ||
+                        notice?.id == null ||
+                        !targetUserId ||
+                        interactiveSaving ||
+                        interactiveDone
+                      ) {
+                        return;
+                      }
+                      setInteractiveSaving(true);
+                      void ackViolationInteractivePermanent(notice.id, targetUserId)
+                        .then((ack) => {
+                          setInteractiveDone(true);
+                          onInteractiveVerified?.({
+                            violationId: ack.violationId,
+                            enterLocked: ack.enterLocked,
+                            interactiveChallengeVerified: ack.interactiveChallengeVerified,
+                            violationExpired: ack.violationExpired,
+                          });
+                        })
+                        .catch(() => {
+                          setInteractiveDone(false);
+                        })
+                        .finally(() => setInteractiveSaving(false));
+                    }}
+                  />
+                ) : null
+              }
+              primaryLabel={
+                kind === "announcement"
+                  ? "知道了"
+                  : interactivePhrase && !interactiveDone
+                    ? "请先完成上方验证"
+                    : "已知悉，关闭"
+              }
+              primaryDisabled={Boolean(kind !== "announcement" && interactivePhrase && !interactiveDone)}
+              showPrimary={kind === "announcement" || !showEveryScan}
+              onPrimary={kind === "announcement" ? closeAnnouncementViaHeader : acknowledge}
+              onClose={kind === "announcement" ? closeAnnouncementViaHeader : closePanel}
+              onPrev={
+                kind === "announcement" && announcementTotal > 1
+                  ? () => setPageIndex((i) => (i - 1 + announcementTotal) % announcementTotal)
+                  : undefined
+              }
+              onNext={
+                kind === "announcement" && announcementTotal > 1
+                  ? () => setPageIndex((i) => (i + 1) % announcementTotal)
+                  : undefined
+              }
+            />
+          ) : null}
         </div>,
         document.body
       )}

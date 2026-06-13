@@ -9,11 +9,12 @@
         <result property="qty" column="qty"/>
         <result property="snapshotName" column="snapshot_name"/>
         <result property="fulfilledQty" column="fulfilled_qty"/>
+        <result property="remark" column="remark"/>
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO supply_claim_line(order_id, item_id, qty, snapshot_name, fulfilled_qty)
-        VALUES (#{orderId}, #{itemId}, #{qty}, #{snapshotName}, #{fulfilledQty})
+        INSERT INTO supply_claim_line(order_id, item_id, qty, snapshot_name, fulfilled_qty, remark)
+        VALUES (#{orderId}, #{itemId}, #{qty}, #{snapshotName}, #{fulfilledQty}, #{remark})
     </insert>
 
     <select id="listByOrderId" resultMap="Base">
@@ -22,6 +23,10 @@
 
     <update id="updateFulfilledQty">
         UPDATE supply_claim_line SET fulfilled_qty = #{fulfilledQty} WHERE id = #{id}
+    </update>
+
+    <update id="updateRemark">
+        UPDATE supply_claim_line SET remark = #{remark} WHERE id = #{id}
     </update>
 
     <delete id="deleteByOrderId">
@@ -43,6 +48,10 @@
           AND IFNULL(o.deleted, 0) = 0
           AND o.status = 'FULFILLED'
           AND IFNULL(l.fulfilled_qty, 0) &gt; 0
+          AND NOT EXISTS (
+              SELECT 1 FROM supply_inventory_movement m
+              WHERE m.claim_line_id = l.id
+          )
         ORDER BY o.fulfilled_at DESC, l.id DESC
         LIMIT #{limit} OFFSET #{offset}
     </select>
@@ -55,5 +64,9 @@
           AND IFNULL(o.deleted, 0) = 0
           AND o.status = 'FULFILLED'
           AND IFNULL(l.fulfilled_qty, 0) &gt; 0
+          AND NOT EXISTS (
+              SELECT 1 FROM supply_inventory_movement m
+              WHERE m.claim_line_id = l.id
+          )
     </select>
 </mapper>

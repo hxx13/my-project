@@ -27,7 +27,7 @@ type CardPanel = null | { itemId: number; kind: "inbound" | "stock" };
 export default function MaterialManagePage() {
   /* ── 筛选 ── */
   const [filterCat, setFilterCat] = useState<number | "">("");
-  const [filterWorkflow, setFilterWorkflow] = useState<"" | "SIMPLE" | "DUAL_REVIEW">("");
+  const [filterWorkflow, setFilterWorkflow] = useState<"" | "SIMPLE" | "DUAL_REVIEW" | "SKIP_REVIEW">("");
   const [recycleOpen, setRecycleOpen] = useState(false);
   const [recyclePage, setRecyclePage] = useState(1);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -40,7 +40,7 @@ export default function MaterialManagePage() {
   const [createName, setCreateName] = useState("");
   const [createSubtitle, setCreateSubtitle] = useState("");
   const [createMode, setCreateMode] = useState<"QUANTIFIED" | "FLAG">("QUANTIFIED");
-  const [createWorkflow, setCreateWorkflow] = useState<"SIMPLE" | "DUAL_REVIEW">("SIMPLE");
+  const [createWorkflow, setCreateWorkflow] = useState<"SIMPLE" | "DUAL_REVIEW" | "SKIP_REVIEW">("SIMPLE");
   const [createReviewerIds, setCreateReviewerIds] = useState("[]");
   const [createSecondReviewerIds, setCreateSecondReviewerIds] = useState("[]");
   const [createCoverUrl, setCreateCoverUrl] = useState("");
@@ -92,7 +92,7 @@ export default function MaterialManagePage() {
   /* ── 图片上传（拖拽/粘贴/点击） ── */
   const uploadAndSet = async (file: File, setUrl: (u: string) => void, setLoading: (v: boolean) => void) => {
     setLoading(true);
-    try { const url = await uploadSingleImage(file); setUrl(url); toast.success("图片上传成功"); }
+    try { const url = (await uploadSingleImage(file)).publicUrl; setUrl(url); toast.success("图片上传成功"); }
     catch { toast.error("图片上传失败"); }
     finally { setLoading(false); }
   };
@@ -123,7 +123,7 @@ export default function MaterialManagePage() {
   /* ── 内联编辑保存 ── */
   const saveEdit = () => {
     if (!editingItem) return;
-    updateItemMut.mutate({ id: editingItem.id, body: { name: editingItem.name, subtitle: editingItem.subtitle, shelfStatus: editingItem.shelfStatus, stockMode: editingItem.stockMode, workflowType: editingItem.workflowType, coverUrl: editCoverUrl || undefined, showStockQty: editShowStockQty ? 1 : 0 } }, { onSuccess: () => setEditingItem(null) });
+    updateItemMut.mutate({ id: editingItem.id, body: { name: editingItem.name, subtitle: editingItem.subtitle, shelfStatus: editingItem.shelfStatus, stockMode: editingItem.stockMode, workflowType: editingItem.workflowType, coverUrl: editCoverUrl !== null ? editCoverUrl : undefined, showStockQty: editShowStockQty ? 1 : 0 } }, { onSuccess: () => setEditingItem(null) });
   };
 
   /* ── 渲染 ── */
@@ -178,7 +178,7 @@ export default function MaterialManagePage() {
                 <input className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" type="number" min={0} value={createInitialQty} onChange={e => setCreateInitialQty(e.target.value)} />
               </label>
               <label className="flex flex-col gap-1"><span className="text-xs text-[var(--twin-mute)]">审核流程</span>
-                <select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={createWorkflow} onChange={e => setCreateWorkflow(e.target.value as "SIMPLE" | "DUAL_REVIEW")}><option value="SIMPLE">简单流程</option><option value="DUAL_REVIEW">复核流程</option></select>
+                <select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={createWorkflow} onChange={e => setCreateWorkflow(e.target.value as "SIMPLE" | "DUAL_REVIEW" | "SKIP_REVIEW")}><option value="SIMPLE">简单流程</option><option value="DUAL_REVIEW">复核流程</option><option value="SKIP_REVIEW">免审流程</option></select>
               </label>
               <label className="flex items-center gap-2 pt-4"><input type="checkbox" checked={showStockQty} onChange={e => setShowStockQty(e.target.checked)} className="rounded" /><span className="text-xs text-[var(--twin-body)]">学生端显示具体库存数字</span></label>
               <label className="flex flex-col gap-1 col-span-2"><span className="text-xs text-[var(--twin-mute)]">审核人</span>
@@ -228,7 +228,7 @@ export default function MaterialManagePage() {
           <h3 className="font-medium text-[var(--twin-ink)]">物品列表</h3>
           <div className="flex items-center gap-2 text-sm">
             <select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={filterWorkflow} onChange={e => setFilterWorkflow(e.target.value as "" | "SIMPLE" | "DUAL_REVIEW")}>
-              <option value="">全部流程</option><option value="SIMPLE">简单流程</option><option value="DUAL_REVIEW">复核流程</option>
+              <option value="">全部流程</option><option value="SIMPLE">简单流程</option><option value="DUAL_REVIEW">复核流程</option><option value="SKIP_REVIEW">免审流程</option>
             </select>
             <button type="button" className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs text-[var(--twin-body)]" onClick={() => setRecycleOpen(!recycleOpen)}>回收站</button>
             <button type="button" className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs text-[var(--twin-body)] flex items-center gap-1" onClick={() => setPreviewOpen(!previewOpen)}>
@@ -296,7 +296,7 @@ export default function MaterialManagePage() {
                           <span className="px-1 rounded-full bg-slate-100 text-slate-600">库存 {available}</span>
                           {locked > 0 && <span className="px-1 rounded-full bg-amber-50 text-amber-600">锁定 {locked}</span>}
                         </div>
-                        <div className="text-[9px] text-[var(--twin-mute)]">{it.workflowType === "DUAL_REVIEW" ? "复核" : "简单"}{it.reviewerIds && it.reviewerIds !== "[]" ? " · 已指定审核人" : ""}</div>
+                        <div className="text-[9px] text-[var(--twin-mute)]">{it.workflowType === "DUAL_REVIEW" ? "复核" : it.workflowType === "SKIP_REVIEW" ? "免审" : "简单"}{it.reviewerIds && it.reviewerIds !== "[]" ? " · 已指定审核人" : ""}</div>
                         <div className="flex items-center gap-0.5 text-[10px]">
                           <button className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => { setEditingItem(it); setEditCoverUrl(it.coverUrl || ""); setEditShowStockQty(it.showStockQty !== 0); }}>编辑</button>
                           <label className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer">图片<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadAndSet(f, (url) => { updateItemMut.mutate({ id: it.id, body: { coverUrl: url } }); }, setEditUploading); }} /></label>
@@ -359,15 +359,24 @@ export default function MaterialManagePage() {
               onDragLeave={() => setDragOverEdit(false)}
               onDrop={handleDropEdit}
             >
-              {editCoverUrl ? <img src={webImageSrc(editCoverUrl)} alt="" className="max-h-[120px] mx-auto rounded" /> : <span className="text-xs text-[var(--twin-mute)]">拖拽图片上传封面</span>}
-              {editUploading && <span className="text-xs text-[var(--twin-mute)]">上传中...</span>}
+              {editCoverUrl ? (
+                <div className="flex items-center justify-center gap-3">
+                  <img src={webImageSrc(editCoverUrl)} alt="" className="max-h-[120px] rounded" />
+                  <button type="button" className="text-xs text-red-500 hover:underline shrink-0" onClick={() => setEditCoverUrl("")}>移除</button>
+                </div>
+              ) : (
+                <>
+                  <span className="text-xs text-[var(--twin-mute)]">拖拽图片上传封面</span>
+                  {editUploading && <span className="text-xs text-[var(--twin-mute)]">上传中...</span>}
+                </>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <label className="flex flex-col gap-1"><span className="text-xs text-[var(--twin-mute)]">名称</span><input className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.name} onChange={e => setEditingItem({ ...editingItem, name: e.target.value })} /></label>
               <label className="flex flex-col gap-1"><span className="text-xs text-[var(--twin-mute)]">副标题</span><input className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.subtitle || ""} onChange={e => setEditingItem({ ...editingItem, subtitle: e.target.value })} /></label>
               <label className="flex flex-col gap-1"><span className="text-xs text-[var(--twin-mute)]">状态</span><select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.shelfStatus} onChange={e => setEditingItem({ ...editingItem, shelfStatus: e.target.value })}><option value="DRAFT">草稿</option><option value="PUBLISHED">已上架</option><option value="ARCHIVED">已归档</option></select></label>
               <label className="flex flex-col gap-1"><span className="text-xs text-[var(--twin-mute)]">库存模式</span><select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.stockMode} onChange={e => setEditingItem({ ...editingItem, stockMode: e.target.value })}><option value="QUANTIFIED">数量型</option><option value="FLAG">有无型</option></select></label>
-              <label className="flex flex-col gap-1 col-span-2"><span className="text-xs text-[var(--twin-mute)]">审核流程</span><select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.workflowType || "SIMPLE"} onChange={e => setEditingItem({ ...editingItem, workflowType: e.target.value })}><option value="SIMPLE">简单流程</option><option value="DUAL_REVIEW">复核流程</option></select></label>
+              <label className="flex flex-col gap-1 col-span-2"><span className="text-xs text-[var(--twin-mute)]">审核流程</span><select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.workflowType || "SIMPLE"} onChange={e => setEditingItem({ ...editingItem, workflowType: e.target.value })}><option value="SIMPLE">简单流程</option><option value="DUAL_REVIEW">复核流程</option><option value="SKIP_REVIEW">免审流程</option></select></label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={editShowStockQty} onChange={e => setEditShowStockQty(e.target.checked)} className="rounded" /><span className="text-xs text-[var(--twin-body)]">学生端显示具体库存数字</span></label>
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t border-[var(--twin-hairline)]">

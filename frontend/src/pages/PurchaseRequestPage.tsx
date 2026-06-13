@@ -48,7 +48,7 @@ export default function PurchaseRequestPage() {
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     try {
-      const urls = await Promise.all(Array.from(files).map((f) => uploadSingleImage(f)));
+      const urls = await Promise.all(Array.from(files).map(async (f) => (await uploadSingleImage(f)).publicUrl));
       setImageUrls((prev) => [...prev, ...urls]);
       toast.success(`已上传 ${urls.length} 张图片`);
     } catch (error) {

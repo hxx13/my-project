@@ -74,6 +74,27 @@ public class AdminNavConfigController {
         return Map.of("success", true);
     }
 
+    @PostMapping("/ensure-items")
+    public Map<String, Object> ensureItems(@RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
+        int created = 0;
+        int existed = 0;
+        for (Map<String, Object> item : items) {
+            String path = (String) item.get("path");
+            String label = (String) item.get("label");
+            String icon = (String) item.getOrDefault("icon", "Layers");
+            String groupTitle = (String) item.get("groupTitle");
+            if (path == null || path.isBlank() || label == null || label.isBlank() || groupTitle == null) {
+                continue;
+            }
+            Map<String, Object> r = service.ensureItem(path, label, icon, groupTitle);
+            if (Boolean.TRUE.equals(r.get("created"))) created++;
+            else existed++;
+        }
+        return Map.of("success", true, "created", created, "existed", existed);
+    }
+
     @PostMapping("/reset")
     public Map<String, Object> reset() {
         service.resetToDefault();

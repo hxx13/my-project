@@ -1,3 +1,6 @@
+import {DASH_NIGHT_CLASS} from "@/features/dashboard-scifi-theme/dashboardNightTokens";
+import {cn} from "@/lib/utils";
+
 const DAY_START = 7;
 const DAY_END = 22;
 
@@ -14,7 +17,7 @@ export const CombinedMiniCurve = ({entryCurve, exitCurve}: { entryCurve?: number
     const entryData = entryCurve?.length === 24 ? entryCurve : null;
     const exitData = exitCurve?.length === 24 ? exitCurve : null;
     if (!entryData || !exitData) {
-        return <span className="text-xs text-slate-400">无曲线</span>;
+        return <span className={cn("text-xs", DASH_NIGHT_CLASS.textMuted)}>无曲线</span>;
     }
 
     const entrySliced = entryData.slice(DAY_START, DAY_END + 1);
@@ -30,22 +33,60 @@ export const CombinedMiniCurve = ({entryCurve, exitCurve}: { entryCurve?: number
     const tickHours = [7, 10, 13, 16, 19, 22];
 
     return (
-        <div className="rounded border border-slate-200 bg-white p-1 shadow-sm">
+        <div className={cn(DASH_NIGHT_CLASS.panel, "p-1 shadow-sm")}>
             <svg width={width} height={height} className="overflow-visible">
                 {tickHours.map((h) => {
                     const idx = h - DAY_START;
                     const x = padL + (plotW * idx) / (nPoints - 1);
-                    return <line key={`vx-${h}`} x1={x} y1={padT} x2={x} y2={padT + plotH} stroke="rgba(0,0,0,0.07)" strokeDasharray="2"/>;
+                    return (
+                        <line
+                            key={`vx-${h}`}
+                            x1={x}
+                            y1={padT}
+                            x2={x}
+                            y2={padT + plotH}
+                            stroke="var(--app-color-border-default)"
+                            strokeOpacity={0.45}
+                            strokeDasharray="2"
+                        />
+                    );
                 })}
-                <polygon points={`${padL},${padT + plotH} ${entryPointsStr} ${padL + plotW},${padT + plotH}`} fill="rgba(37, 99, 235, 0.2)"/>
-                <polyline points={entryPointsStr} fill="none" stroke="rgba(37, 99, 235, 0.8)" strokeWidth="1.5"/>
-                <polygon points={`${padL},${padT + plotH} ${exitPointsStr} ${padL + plotW},${padT + plotH}`} fill="rgba(225, 29, 72, 0.2)"/>
-                <polyline points={exitPointsStr} fill="none" stroke="rgba(225, 29, 72, 0.8)" strokeWidth="1.5"/>
+                <polygon
+                    points={`${padL},${padT + plotH} ${entryPointsStr} ${padL + plotW},${padT + plotH}`}
+                    fill="var(--app-color-scan-chart-stroke-entry)"
+                    fillOpacity={0.22}
+                />
+                <polyline
+                    points={entryPointsStr}
+                    fill="none"
+                    stroke="var(--app-color-scan-chart-stroke-entry)"
+                    strokeOpacity={0.88}
+                    strokeWidth="1.5"
+                />
+                <polygon
+                    points={`${padL},${padT + plotH} ${exitPointsStr} ${padL + plotW},${padT + plotH}`}
+                    fill="var(--app-color-scan-chart-stroke-exit)"
+                    fillOpacity={0.22}
+                />
+                <polyline
+                    points={exitPointsStr}
+                    fill="none"
+                    stroke="var(--app-color-scan-chart-stroke-exit)"
+                    strokeOpacity={0.88}
+                    strokeWidth="1.5"
+                />
                 {tickHours.map((h) => {
                     const idx = h - DAY_START;
                     const x = padL + (plotW * idx) / (nPoints - 1);
                     return (
-                        <text key={`tx-${h}`} x={x} y={height - 2} textAnchor="middle" fontSize="9" fill="#64748b">
+                        <text
+                            key={`tx-${h}`}
+                            x={x}
+                            y={height - 2}
+                            textAnchor="middle"
+                            fontSize="9"
+                            fill="var(--app-color-text-tertiary)"
+                        >
                             {h}
                         </text>
                     );
@@ -71,8 +112,8 @@ export const WeeklyRibbonChart = ({entryCurve, exitCurve}: { entryCurve?: number
 
     if (!entryCurve || entryCurve.length !== 7 || !exitCurve || exitCurve.length !== 7) {
         return (
-            <div className="flex min-h-[60px] items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50/50">
-                <span className="text-xs font-bold text-slate-400">暂无周维度数据</span>
+            <div className={cn(DASH_NIGHT_CLASS.panel, "flex min-h-[60px] items-center justify-center border-dashed")}>
+                <span className={cn("text-xs font-bold", DASH_NIGHT_CLASS.textMuted)}>暂无周维度数据</span>
             </div>
         );
     }
@@ -91,16 +132,45 @@ export const WeeklyRibbonChart = ({entryCurve, exitCurve}: { entryCurve?: number
     ].join(" ");
 
     return (
-        <div className="relative rounded border border-slate-200 bg-white p-2 shadow-sm">
+        <div className={cn(DASH_NIGHT_CLASS.panel, "relative p-2 shadow-sm")}>
             <svg width={width} height={height} className="overflow-visible">
                 {Array.from({length: days.length}).map((_, i) => (
-                    <line key={i} x1={xAt(i)} y1={padT} x2={xAt(i)} y2={padT + plotH} stroke="rgba(0,0,0,0.06)" strokeDasharray="2"/>
+                    <line
+                        key={i}
+                        x1={xAt(i)}
+                        y1={padT}
+                        x2={xAt(i)}
+                        y2={padT + plotH}
+                        stroke="var(--app-color-border-default)"
+                        strokeOpacity={0.4}
+                        strokeDasharray="2"
+                    />
                 ))}
-                <polygon points={ribbonPoints} fill="rgba(139, 92, 246, 0.14)"/>
-                <polyline points={entryPoints} fill="none" stroke="rgba(37, 99, 235, 0.85)" strokeWidth="1.5"/>
-                <polyline points={exitPoints} fill="none" stroke="rgba(225, 29, 72, 0.85)" strokeWidth="1.5" strokeDasharray="2 2"/>
+                <polygon points={ribbonPoints} fill="var(--app-color-accent)" fillOpacity={0.14} />
+                <polyline
+                    points={entryPoints}
+                    fill="none"
+                    stroke="var(--app-color-scan-chart-stroke-entry)"
+                    strokeOpacity={0.88}
+                    strokeWidth="1.5"
+                />
+                <polyline
+                    points={exitPoints}
+                    fill="none"
+                    stroke="var(--app-color-scan-chart-stroke-exit)"
+                    strokeOpacity={0.88}
+                    strokeWidth="1.5"
+                    strokeDasharray="2 2"
+                />
                 {days.map((d, i) => (
-                    <text key={`dx-${i}`} x={xAt(i)} y={height - 2} textAnchor="middle" fontSize="9" fill="#64748b">
+                    <text
+                        key={`dx-${i}`}
+                        x={xAt(i)}
+                        y={height - 2}
+                        textAnchor="middle"
+                        fontSize="9"
+                        fill="var(--app-color-text-tertiary)"
+                    >
                         {d}
                     </text>
                 ))}

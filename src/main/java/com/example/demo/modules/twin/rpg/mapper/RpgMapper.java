@@ -15,4 +15,6 @@ public interface RpgMapper {
     int updatePersonnelTotalExp(@Param("userId") String userId, @Param("totalExp") long totalExp);
 
     int recalculateAllExpByEntryCount();
+
+    int countTodayStrandedViolation(@Param("userId") String userId);
 }

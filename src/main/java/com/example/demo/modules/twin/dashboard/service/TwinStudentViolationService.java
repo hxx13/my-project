@@ -1,6 +1,7 @@
 package com.example.demo.modules.twin.dashboard.service;
 
 import com.example.demo.modules.auth.service.UserDisplayNameService;
+import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.dashboard.dto.DashboardViolationBoardItemDTO;
 import com.example.demo.modules.twin.dashboard.dto.ScanStudentViolationNoticeDTO;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -32,16 +34,19 @@ public class TwinStudentViolationService {
     private final TwinStudentViolationMapper violationMapper;
     private final ObjectMapper objectMapper;
     private final UserDisplayNameService userDisplayNameService;
+    private final TwinDashboardMapper dashboardMapper;
 
     /** 检测到表不存在后短路，避免每次扫码/列表都打库抛错（执行 DDL 后需重启应用或等后续扩展热恢复） */
     private final AtomicBoolean violationTableAbsent = new AtomicBoolean(false);
 
     public TwinStudentViolationService(TwinStudentViolationMapper violationMapper,
                                        ObjectMapper objectMapper,
-                                       UserDisplayNameService userDisplayNameService) {
+                                       UserDisplayNameService userDisplayNameService,
+                                       TwinDashboardMapper dashboardMapper) {
         this.violationMapper = violationMapper;
         this.objectMapper = objectMapper;
         this.userDisplayNameService = userDisplayNameService;
+        this.dashboardMapper = dashboardMapper;
     }
 
     private static boolean isTwinStudentViolationTableMissing(Throwable e) {
@@ -116,7 +121,7 @@ public class TwinStudentViolationService {
         }
         ScanStudentViolationNoticeDTO dto = new ScanStudentViolationNoticeDTO();
         dto.setId(row.getId());
-        dto.setViolationText(row.getViolationText());
+        dto.setViolationText(applyTemplateVariables(row.getViolationText(), row.getTargetUserId()));
         dto.setImageUrls(parseImageUrls(row.getImageUrls()));
         dto.setShowNoticeEveryScan(row.getShowNoticeEveryScan() != null && row.getShowNoticeEveryScan() == 1);
         boolean locked = computeEnterLocked(row);
@@ -270,7 +275,7 @@ public class TwinStudentViolationService {
             dto.setId(row.getId());
             String name = userDisplayNameService.resolveDisplayName(row.getTargetUserId());
             dto.setDisplayName(StringUtils.hasText(name) ? name : row.getTargetUserId());
-            dto.setSummary(buildSummary(row.getViolationText(), maxLen));
+            dto.setSummary(buildSummary(applyTemplateVariables(row.getViolationText(), row.getTargetUserId()), maxLen));
             List<String> imgs = parseImageUrls(row.getImageUrls());
             dto.setCoverImageUrl(imgs.isEmpty() ? null : imgs.get(0));
             dto.setCreatedAt(row.getCreatedAt());
@@ -279,12 +284,49 @@ public class TwinStudentViolationService {
         return out;
     }
 
+    /**
+     * 违规文案模板变量：库内保留 ${name}/${dept}/${date}，展示/扫码时再按当事人替换。
+     */
+    String applyTemplateVariables(String rawText, String targetUserId) {
+        if (!StringUtils.hasText(rawText) || !rawText.contains("${")) {
+            return rawText != null ? rawText : "";
+        }
+        String tid = StringUtils.hasText(targetUserId) ? targetUserId.trim() : "";
+        String name = StringUtils.hasText(tid) ? userDisplayNameService.resolveDisplayName(tid) : "";
+        if (!StringUtils.hasText(name) && StringUtils.hasText(tid)) {
+            name = tid;
+        }
+        String dept = resolveDepartmentName(tid);
+        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        return rawText
+                .replace("${name}", name)
+                .replace("${dept}", dept)
+                .replace("${date}", date);
+    }
+
+    private String resolveDepartmentName(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return "";
+        }
+        try {
+            List<Map<String, Object>> hits = dashboardMapper.searchPersonnel(userId.trim(), 1);
+            if (hits != null && !hits.isEmpty()) {
+                return Objects.toString(hits.get(0).get("department_name"), "");
+            }
+        } catch (Exception e) {
+            log.debug("[student-violation] 解析部门失败 userId={} err={}", userId, e.getMessage());
+        }
+        return "";
+    }
+
     private static String buildSummary(String rawText, int maxLen) {
         if (!StringUtils.hasText(rawText)) {
             return "";
         }
+        // 先剥离 HTML 标签再截断，避免 <p>/<img> 等标签吃掉字符配额
+        String plain = rawText.replaceAll("<[^>]+>", " ");
         // 折叠换行/制表符为单空格，避免大屏单行高度被破坏
-        String folded = rawText.replaceAll("[\\r\\n\\t]+", " ").replaceAll(" {2,}", " ").trim();
+        String folded = plain.replaceAll("[\\r\\n\\t]+", " ").replaceAll(" {2,}", " ").trim();
         if (folded.length() <= maxLen) {
             return folded;
         }

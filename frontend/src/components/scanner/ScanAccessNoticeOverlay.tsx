@@ -14,15 +14,14 @@ type Props = {
     accentVariant?: ScanAccentVariant;
 };
 
-function resolveNoticeTheme(variant: ScanAccentVariant) {
-    const isWarm = variant === "warm";
+function resolveNoticeTheme(_variant: ScanAccentVariant) {
     return {
         backdrop: SCAN_NESTED_BACKDROP,
-        card: `${ACCESS_NOTICE_CARD_BASE} ${isWarm ? "border-rose-400/30" : "border-amber-400/30"}`,
-        iconWrap: isWarm ? "border-rose-400/30 bg-rose-100 dark:bg-rose-900/20" : "border-amber-400/30 bg-amber-100 dark:bg-amber-900/20",
-        icon: isWarm ? "text-rose-500" : "text-amber-500",
-        text: "text-slate-800 dark:text-warm-50",
-        label: isWarm ? "text-rose-400/80" : "text-amber-400/80",
+        card: ACCESS_NOTICE_CARD_BASE,
+        iconWrap: "scan-accent-icon",
+        icon: "text-[var(--scan-accent-ink,var(--app-color-scan-accent-ink))]",
+        text: "text-[var(--app-color-text-primary)]",
+        label: "text-[var(--app-color-text-tertiary)]",
     };
 }
 

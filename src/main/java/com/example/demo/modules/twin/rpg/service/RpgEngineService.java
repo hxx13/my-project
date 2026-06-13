@@ -40,8 +40,8 @@ public class RpgEngineService {
 
         for (Map<String, Object> record : todayRecords) {
             String action = String.valueOf(record.get("action"));
-            boolean isEnter = "ENTER".equalsIgnoreCase(action) || "1".equals(action) || "进入".equals(action);
-            boolean isExit = "EXIT".equalsIgnoreCase(action) || "2".equals(action) || "离开".equals(action);
+            boolean isEnter = "1".equals(action);
+            boolean isExit = "2".equals(action);
 
             Object createTimeObj = record.get("create_time");
             if (createTimeObj == null) continue;
@@ -71,8 +71,10 @@ public class RpgEngineService {
                 currentEnterTime = recordTime;
             }
             else if (isExit && currentEnterTime != null) {
-                // 💥 移除死板的 17:30 cutoff，采用时长结算
-                todayExp += calculateTimeExp(currentEnterTime, recordTime);
+                // 自动签退的离开不计入时长结算，但正确关闭 ENTER 会话
+                if (!isStrandedViolationExit(record)) {
+                    todayExp += calculateTimeExp(currentEnterTime, recordTime);
+                }
                 currentEnterTime = null;
             }
         }
@@ -84,6 +86,12 @@ public class RpgEngineService {
 
         double realTotalExp = historicalExp + todayExp;
         return buildDto(realTotalExp);
+    }
+
+    /** 判断一条 access_log 记录是否为滞留违规自动签退（不计入时长 XP） */
+    private boolean isStrandedViolationExit(Map<String, Object> record) {
+        Object fs = record.get("feed_source");
+        return fs != null && "TWIN_AUTO_SIGNOUT_VIOLATION".equals(String.valueOf(fs).trim());
     }
 
     /**
@@ -134,13 +142,22 @@ public class RpgEngineService {
                 Object createTimeObj = log.get("create_time");
                 if (createTimeObj == null) continue;
 
-                String timeStr = createTimeObj.toString();
-                if (timeStr.length() > 19) timeStr = timeStr.substring(0, 19);
-                else if (timeStr.length() == 16) timeStr += ":00";
+                LocalDateTime recordTime = null;
 
-                LocalDateTime recordTime;
-                try { recordTime = LocalDateTime.parse(timeStr, formatter); }
-                catch (Exception e) { continue; }
+                try {
+                    if (createTimeObj instanceof LocalDateTime) {
+                        recordTime = (LocalDateTime) createTimeObj;
+                    } else if (createTimeObj instanceof Timestamp) {
+                        recordTime = ((Timestamp) createTimeObj).toLocalDateTime();
+                    } else {
+                        String timeStr = createTimeObj.toString();
+                        if (timeStr.length() > 19) timeStr = timeStr.substring(0, 19);
+                        else if (timeStr.length() == 16) timeStr += ":00";
+                        recordTime = LocalDateTime.parse(timeStr, formatter);
+                    }
+                } catch (Exception e) {
+                    continue;
+                }
 
                 String currentDate = recordTime.toLocalDate().toString();
                 if (!currentDate.equals(lastProcessedDate)) {
@@ -150,8 +167,8 @@ public class RpgEngineService {
                 }
 
                 String action = String.valueOf(log.get("action"));
-                boolean isEnter = "1".equals(action) || "ENTER".equalsIgnoreCase(action);
-                boolean isExit = "2".equals(action) || "EXIT".equalsIgnoreCase(action);
+                boolean isEnter = "1".equals(action);
+                boolean isExit = "2".equals(action);
 
                 if (isEnter) {
                     if (!dailyFirstBlood) {
@@ -160,8 +177,10 @@ public class RpgEngineService {
                     }
                     currentEnterTime = recordTime;
                 } else if (isExit && currentEnterTime != null) {
-                    // 💥 调用新的时间结算规则 (含 12 小时防挂机)
-                    userTotalExp += calculateTimeExp(currentEnterTime, recordTime);
+                    // 自动签退的离开不计入时长结算，但正确关闭 ENTER 会话
+                    if (!isStrandedViolationExit(log)) {
+                        userTotalExp += calculateTimeExp(currentEnterTime, recordTime);
+                    }
                     currentEnterTime = null;
                 }
             }
@@ -175,27 +194,30 @@ public class RpgEngineService {
     /**
      * 🔮 动作收益预测引擎：在流水尚未入库前，精准计算本次打卡将获得的经验值！
      */
-    public int predictActionReward(String userId, int accessType) {
-        // 拿到截至此刻的今日本地流水
+    public PredictResult predictActionReward(String userId, int accessType) {
+        // 拿到截至此刻的今日本地流水（含自动签退记录，用于正确关闭 ENTER 会话）
         List<Map<String, Object>> todayRecords = rpgDatabaseService.getTodayRecords(userId);
 
         if (accessType == 1) {
             // 🟢 尝试进入：检查今天之前有没有进入过？
             boolean hasEnteredToday = todayRecords.stream().anyMatch(record -> {
                 String action = String.valueOf(record.get("action"));
-                return "1".equals(action) || "ENTER".equalsIgnoreCase(action);
+                return "1".equals(action);
             });
-            // 💥 核心算法：如果今天没进过，首签拿 50 点；进过了，不给进门分（给 0 点，走时长结算）
-            return hasEnteredToday ? 0 : (int) DAILY_FIRST_ENTER_EXP;
+            if (hasEnteredToday) {
+                return new PredictResult(0, null);
+            }
+            return new PredictResult((int) DAILY_FIRST_ENTER_EXP, "FIRST_ENTRY");
         }
         else if (accessType == 2) {
             // 🔴 尝试离开：计算这次在里面呆了多久？
+            // 自动签退的离开记录会正确关闭 ENTER 会话，但不计入时长结算
             LocalDateTime lastEnterTime = null;
             DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
             for (Map<String, Object> record : todayRecords) {
                 String action = String.valueOf(record.get("action"));
-                if ("1".equals(action) || "ENTER".equalsIgnoreCase(action)) {
+                if ("1".equals(action)) {
                     Object timeObj = record.get("create_time");
                     if (timeObj != null) {
                         try {
@@ -207,7 +229,9 @@ public class RpgEngineService {
                             log.warn("解析lastEnterTime失败: {}", e.getMessage());
                         }
                     }
-                } else if ("2".equals(action) || "EXIT".equalsIgnoreCase(action)) {
+                } else if ("2".equals(action)) {
+                    // 自动签退：关闭会话但不计 XP（已在 calculateRealtimeExp 中同样处理）
+                    // 非自动签退的正常离开：正常关闭会话
                     lastEnterTime = null; // 中间有离开过，上一段作废
                 }
             }
@@ -216,10 +240,11 @@ public class RpgEngineService {
                 // 💥 核心算法：算出从上次进入到现在的时长！
                 long minutes = Duration.between(lastEnterTime, LocalDateTime.now()).toMinutes();
                 minutes = Math.min(minutes, 720); // 防挂机机制：封顶 12 小时
-                return (int) (Math.max(0, minutes) * EXP_PER_MINUTE);
+                int exp = (int) (Math.max(0, minutes) * EXP_PER_MINUTE);
+                return new PredictResult(exp, exp > 0 ? "TIME_BASED" : null);
             }
         }
-        return 0; // 异常情况保底给 0
+        return new PredictResult(0, null); // 异常情况保底给 0
     }
 
 

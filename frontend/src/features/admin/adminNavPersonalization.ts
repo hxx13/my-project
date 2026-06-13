@@ -112,6 +112,27 @@ export function isAdminNavLocked(pathname: string): boolean {
   return readAdminNavLock() === p;
 }
 
+export function clearAdminNavLock(): void {
+  try {
+    localStorage.removeItem(LOCK_KEY);
+    dispatchPersonalizationChanged();
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 侧栏当前可见入口 path（已 normalize），供锁定跳转校验 */
+export function collectAdminSidebarVisiblePaths(groups: AdminSidebarNavGroup[]): Set<string> {
+  const out = new Set<string>();
+  for (const g of groups) {
+    for (const it of g.items) out.add(normalizeAdminPath(it.to));
+    for (const sg of g.subgroups ?? []) {
+      for (const it of sg.items) out.add(normalizeAdminPath(it.to));
+    }
+  }
+  return out;
+}
+
 export type PersonalizedPaletteSplit = {
   starredItems: AdminCommandPaletteItem[];
   recentItems: AdminCommandPaletteItem[];

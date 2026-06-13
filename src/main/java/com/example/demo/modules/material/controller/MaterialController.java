@@ -70,9 +70,9 @@ public class MaterialController {
     }
 
     @PostMapping("/requests")
-    @Operation(summary = "提交申领")
-    public Result<MaterialRequestView> createRequest(@RequestHeader(value = "Authorization", required = false) String auth,
-                                                       @RequestBody CreateMaterialRequestReq req) {
+    @Operation(summary = "提交申领（按审核流程自动拆分）")
+    public Result<List<MaterialRequestView>> createRequest(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                              @RequestBody CreateMaterialRequestReq req) {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
         return materialService.createRequest(user, req);

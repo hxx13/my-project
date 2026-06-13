@@ -234,6 +234,7 @@
     <select id="listAssets" resultMap="AssetRecordResultMap">
         SELECT a.*
         FROM asset_record a
+        LEFT JOIN asset_transfer_request r ON r.id = a.latest_transfer_request_id
         WHERE 1=1
         <include refid="assetFilterSql"/>
         ORDER BY
@@ -243,6 +244,7 @@
             <when test="sortBy == 'status'">a.status</when>
             <when test="sortBy == 'location'">a.location</when>
             <when test="sortBy == 'locked'">a.locked</when>
+            <when test="sortBy == 'latestTransferTime'">r.transfer_time</when>
             <otherwise>a.update_time</otherwise>
         </choose>
         <choose>

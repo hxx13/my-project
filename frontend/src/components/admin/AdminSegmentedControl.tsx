@@ -30,7 +30,7 @@ export function AdminSegmentedControl<T extends string>({
       role="group"
       aria-label={ariaLabel}
       className={cn(
-        "inline-flex max-w-full flex-wrap gap-1 rounded-lg border border-slate-200 bg-slate-100/90 p-1",
+        "inline-flex max-w-full flex-wrap gap-1 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] p-1",
         disabled && "pointer-events-none opacity-60",
         className
       )}
@@ -48,7 +48,7 @@ export function AdminSegmentedControl<T extends string>({
               "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)]/40 active:translate-y-px",
               pressed
                 ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
-                : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900"
+                : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)] hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"
             )}
             onClick={() => onChange(opt.value)}
           >

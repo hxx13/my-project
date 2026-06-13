@@ -8,12 +8,32 @@ type Props = {
   onPreview: (displayableSrc: string) => void;
 };
 
+/**
+ * 显示工单/物资图片缩略图。
+ * - http(s) 或相对路径：直接渲染 <img>（含 404 兜底）
+ * - cloud:// 格式：显示提示 — 可在小程序查看，或等待后台同步完成
+ */
 export function WorkorderImageThumb({ url, alt, onPreview }: Props) {
   const src = webImageSrc(url);
   if (src) {
     return (
       <button type="button" onClick={() => onPreview(src)} className="shrink-0">
-        <img src={src} alt={alt} className="h-16 w-16 rounded border object-cover" />
+        <img
+          src={src}
+          alt={alt}
+          className="h-16 w-16 rounded border object-cover"
+          onError={(e) => {
+            // 图片加载失败（404/网络错误） → 显示占位
+            (e.target as HTMLImageElement).style.display = "none";
+            const placeholder = (e.target as HTMLImageElement).nextElementSibling;
+            if (placeholder) (placeholder as HTMLElement).style.display = "flex";
+          }}
+        />
+        <span
+          className="hidden h-16 w-16 flex-col items-center justify-center rounded border bg-[var(--app-color-surface-container)] text-[var(--app-color-text-tertiary)] text-[10px] leading-tight"
+        >
+          无图片
+        </span>
       </button>
     );
   }
@@ -21,11 +41,11 @@ export function WorkorderImageThumb({ url, alt, onPreview }: Props) {
     return (
       <button
         type="button"
-        onClick={() => toast("云存储图片请在小程序中查看", { duration: 3500 })}
-        className="shrink-0 flex h-16 w-16 flex-col items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 px-0.5 text-center text-[10px] leading-tight text-slate-500"
+        onClick={() => toast("云存储图片请在小程序中查看，或等待后台同步完成后刷新", { duration: 4000 })}
+        className="shrink-0 flex h-16 w-16 flex-col items-center justify-center rounded border bg-[var(--app-color-surface-container)] text-[var(--app-color-text-tertiary)] text-[10px] leading-tight"
       >
-        云图
-        <span className="text-[9px]">小程序</span>
+        小程序
+        <span className="text-[9px]">查看</span>
       </button>
     );
   }

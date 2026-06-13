@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import ReactECharts from "echarts-for-react";
 import type { RoomUsageItem } from "@/api/domains/analytics.api";
+import { useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 
 const BAR_COLORS: [string, string][] = [
   ["#ec4899", "#f472b6"], // pink — 1st
@@ -13,6 +15,7 @@ const BAR_COLORS: [string, string][] = [
 type Props = { data: RoomUsageItem[]; loading?: boolean; groupName?: string };
 
 export function RoomPreferenceChart({ data, loading, groupName }: Props) {
+  const { night } = useDashboardVisual();
   const sorted = useMemo(
     () =>
       [...data].sort((a, b) => b.entryCount - a.entryCount).slice(0, 5),
@@ -43,7 +46,11 @@ export function RoomPreferenceChart({ data, loading, groupName }: Props) {
         data: names,
         axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { color: "#475569", fontSize: 10, fontWeight: 600 },
+        axisLabel: {
+          color: night ? "rgba(255,255,255,0.55)" : "#475569",
+          fontSize: 10,
+          fontWeight: 600,
+        },
         inverse: true,
       },
       series: [
@@ -70,7 +77,7 @@ export function RoomPreferenceChart({ data, loading, groupName }: Props) {
           label: {
             show: true,
             position: "right",
-            color: "#475569",
+            color: night ? "rgba(255,255,255,0.55)" : "#475569",
             fontSize: 9,
             fontWeight: 700,
             formatter: "{c} 次",
@@ -80,7 +87,7 @@ export function RoomPreferenceChart({ data, loading, groupName }: Props) {
         },
       ],
     };
-  }, [sorted]);
+  }, [sorted, night]);
 
   if (loading) {
     return (
@@ -99,9 +106,19 @@ export function RoomPreferenceChart({ data, loading, groupName }: Props) {
   }
 
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden rounded-md border border-pink-100">
+    <div
+      className={`h-full w-full flex flex-col overflow-hidden rounded-md border ${
+        night ? `${DASH_NIGHT_CLASS.chartShell} ${DASH_NIGHT_CLASS.chartArea}` : "border-pink-100"
+      }`}
+    >
       {groupName && (
-        <div className="shrink-0 px-2 py-0.5 text-[9px] font-semibold text-pink-600 bg-pink-50 border-b border-pink-100 text-center truncate">
+        <div
+          className={`shrink-0 px-2 py-0.5 text-[9px] font-semibold text-center truncate ${
+            night
+              ? `${DASH_NIGHT_CLASS.chartHeader} text-center truncate`
+              : "text-pink-600 bg-pink-50 border-b border-pink-100 text-center truncate"
+          }`}
+        >
           📌 {groupName}
         </div>
       )}

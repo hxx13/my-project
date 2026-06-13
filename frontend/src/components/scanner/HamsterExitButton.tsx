@@ -1,140 +1,117 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import styled from "styled-components";
 import type { RoomActionDensity } from "@/components/scanner/roomActionDensity";
-import { BrickworkExitLoader } from "@/components/scanner/BrickworkExitLoader";
 
-export type ExitRoomVisualVariant = "hamster" | "brick";
+export interface HamsterExitButtonHandle {
+    /** 程序化触发离开（视觉区域不可点击，供后续其它按钮或自动流程调用） */
+    triggerExit: () => void;
+}
 
 interface HamsterExitButtonProps {
     roomName: string;
     onClick: () => void;
     isWorking: boolean;
     isSuccess: boolean;
-    /** 该房间离开已成功落库（用于搬砖动效文案） */
     isFinished: boolean;
-    /** 用于在「仓鼠 / 搬砖」之间稳定伪随机（建议传 officialRoomId） */
-    variantSeed: string;
+    /** 通行动效播放时隐藏，避免与中心 overlay 重复 */
+    hidden?: boolean;
+    /** @deprecated 保留 API 兼容，已不再用于切换动效变体 */
+    variantSeed?: string;
     density?: RoomActionDensity;
 }
 
-function pickVariant(seed: string): ExitRoomVisualVariant {
-    let h = 5381;
-    for (let i = 0; i < seed.length; i++) {
-        h = (h * 33) ^ seed.charCodeAt(i);
-    }
-    return (h >>> 0) % 2 === 0 ? "hamster" : "brick";
-}
+export const HamsterExitButton = forwardRef<HamsterExitButtonHandle, HamsterExitButtonProps>(
+    function HamsterExitButton(
+        { roomName, onClick, isWorking, isSuccess, density = "normal", hidden = false },
+        ref
+    ) {
+        const wheelRef = useRef<HTMLDivElement>(null);
+        const onClickRef = useRef(onClick);
+        onClickRef.current = onClick;
 
-export const HamsterExitButton: React.FC<HamsterExitButtonProps> = ({
-    roomName,
-    onClick,
-    isWorking,
-    isSuccess,
-    isFinished,
-    variantSeed,
-    density = "normal",
-}) => {
-    const variant = useMemo(() => pickVariant(variantSeed || roomName || "default"), [variantSeed, roomName]);
-    const wheelRef = useRef<HTMLDivElement>(null);
+        useImperativeHandle(ref, () => ({
+            triggerExit: () => onClickRef.current(),
+        }));
 
-    // 初始为慢速，展示“逐渐加速到奔跑”
-    const physics = useRef({dur: 2.2, tilt: 0});
+        const physics = useRef({ dur: 2.2, tilt: 0 });
 
-    useEffect(() => {
-        let animationFrameId: number;
+        useEffect(() => {
+            let animationFrameId: number;
 
-        const updatePhysics = () => {
-            let targetDur = 2.2;
-            let targetTilt = 0;
+            const updatePhysics = () => {
+                let targetDur = 2.2;
+                let targetTilt = 0;
+                let durFriction = 0.04;
+                let tiltFriction = 0.08;
 
-            // 💥 新增：定义摩擦力系数（阻尼）
-            let durFriction = 0.04;
-            let tiltFriction = 0.08;
+                if (isSuccess) {
+                    targetDur = 20.0;
+                    targetTilt = 0;
+                    durFriction = 0.01;
+                    tiltFriction = 0.02;
+                } else if (isWorking) {
+                    targetDur = 0.35;
+                    targetTilt = 0;
+                    durFriction = 0.06;
+                    tiltFriction = 0.06;
+                }
 
-            if (isSuccess) {
-                // 🛑 成功：刹车溜车
-                targetDur = 20.0;
-                targetTilt = 0;
-                // 💥 核心修复：把减速的摩擦力调到极小(0.01)，这会让 60帧/秒的插值过程拉长到约 2.5 秒！
-                // 视觉效果就是：小老鼠不再瞬间定格，而是慢慢地、有惯性地滑行停下。
-                durFriction = 0.01;
-                tiltFriction = 0.02;
-            } else if (isWorking) {
-                // 奔跑态：逐渐加速到稳定高速
-                targetDur = 0.35;
-                targetTilt = 0;
-                durFriction = 0.06;
-                tiltFriction = 0.06;
-            }
+                physics.current.dur += (targetDur - physics.current.dur) * durFriction;
+                physics.current.tilt += (targetTilt - physics.current.tilt) * tiltFriction;
 
-            // 🏎️ 线性插值平滑过渡 (使用动态阻力)
-            physics.current.dur += (targetDur - physics.current.dur) * durFriction;
-            physics.current.tilt += (targetTilt - physics.current.tilt) * tiltFriction;
+                if (wheelRef.current) {
+                    wheelRef.current.style.setProperty("--dur", `${physics.current.dur}s`);
+                    wheelRef.current.style.setProperty("--tilt", `${physics.current.tilt}deg`);
+                }
+                animationFrameId = requestAnimationFrame(updatePhysics);
+            };
 
-            if (wheelRef.current) {
-                wheelRef.current.style.setProperty('--dur', `${physics.current.dur}s`);
-                wheelRef.current.style.setProperty('--tilt', `${physics.current.tilt}deg`);
-            }
-            animationFrameId = requestAnimationFrame(updatePhysics);
-        };
+            updatePhysics();
+            return () => cancelAnimationFrame(animationFrameId);
+        }, [isWorking, isSuccess]);
 
-        updatePhysics();
-        return () => cancelAnimationFrame(animationFrameId);
-    }, [isWorking, isSuccess]);
-
-    if (variant === "brick") {
         return (
-            <BrickworkExitLoader
-                onClick={onClick}
-                isWorking={isWorking}
-                isSuccess={isSuccess}
-                isFinished={isFinished}
-                roomName={roomName}
-                density={density}
-            />
+            <StyledWrapper
+                $density={density}
+                $hidden={hidden}
+                title={roomName ? `离开：${roomName}` : undefined}
+                aria-label={roomName ? `离开：${roomName}` : "离开动效"}
+                role="img"
+                aria-hidden={hidden}
+            >
+                <div ref={wheelRef} className="wheel-and-hamster mx-auto">
+                    <div className="wheel" />
+                    <div className="hamster">
+                        <div className="hamster__body">
+                            <div className="hamster__head">
+                                <div className="hamster__ear" />
+                                <div className="hamster__eye" />
+                                <div className="hamster__nose" />
+                            </div>
+                            <div className="hamster__limb hamster__limb--fr" />
+                            <div className="hamster__limb hamster__limb--fl" />
+                            <div className="hamster__limb hamster__limb--br" />
+                            <div className="hamster__limb hamster__limb--bl" />
+                            <div className="hamster__tail" />
+                        </div>
+                    </div>
+                    <div className="spoke" />
+                </div>
+            </StyledWrapper>
         );
     }
+);
 
-    return (
-        // 💥 修复 2：剥离所有画蛇添足的 disabled 限制，直接把你的 onClick 还给你！
-        <StyledWrapper $density={density} onClick={onClick} title={roomName ? `离开：${roomName}` : undefined}>
-            <div ref={wheelRef} aria-label="Running hamster" role="img"
-                 className="wheel-and-hamster mx-auto cursor-pointer">
-                <div className="wheel"/>
-                <div className="hamster">
-                    <div className="hamster__body">
-                        <div className="hamster__head">
-                            <div className="hamster__ear"/>
-                            <div className="hamster__eye"/>
-                            <div className="hamster__nose"/>
-                        </div>
-                        <div className="hamster__limb hamster__limb--fr"/>
-                        <div className="hamster__limb hamster__limb--fl"/>
-                        <div className="hamster__limb hamster__limb--br"/>
-                        <div className="hamster__limb hamster__limb--bl"/>
-                        <div className="hamster__tail"/>
-                    </div>
-                </div>
-                <div className="spoke"/>
-            </div>
-        </StyledWrapper>
-    );
-};
-
-// 🎨 样式：纯净包装，只保留 hover 缩放和鼠标小手
-const StyledWrapper = styled.div<{ $density: RoomActionDensity }>`
+const StyledWrapper = styled.div<{ $density: RoomActionDensity; $hidden: boolean }>`
     width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: ${(p) => (p.$density === 'dense' ? '4px' : p.$density === 'compact' ? '6px' : '10px')};
-    transition: all 0.3s;
-    cursor: pointer;
-
-    &:hover .wheel-and-hamster {
-        transform: scale(1.05);
-    }
+    padding: ${(p) => (p.$density === "dense" ? "4px" : p.$density === "compact" ? "6px" : "10px")};
+    pointer-events: none;
+    user-select: none;
+    visibility: ${(p) => (p.$hidden ? "hidden" : "visible")};
 
     .wheel-and-hamster {
         --dur: 0.35s;
@@ -142,16 +119,20 @@ const StyledWrapper = styled.div<{ $density: RoomActionDensity }>`
         position: relative;
         width: 12em;
         height: 12em;
-        font-size: ${(p) => (p.$density === 'dense' ? '12px' : p.$density === 'compact' ? '14px' : '16px')};
+        font-size: ${(p) => (p.$density === "dense" ? "12px" : p.$density === "compact" ? "14px" : "16px")};
         transition: all 0.5s ease;
         overflow: hidden;
     }
 
-    .wheel, .hamster, .hamster div, .spoke {
+    .wheel,
+    .hamster,
+    .hamster div,
+    .spoke {
         position: absolute;
     }
 
-    .wheel, .spoke {
+    .wheel,
+    .spoke {
         border-radius: 50%;
         top: 0;
         left: 0;
@@ -231,7 +212,8 @@ const StyledWrapper = styled.div<{ $density: RoomActionDensity }>`
         transform-style: preserve-3d;
     }
 
-    .hamster__limb--fr, .hamster__limb--fl {
+    .hamster__limb--fr,
+    .hamster__limb--fl {
         clip-path: polygon(0 0, 100% 0, 70% 80%, 60% 100%, 0% 100%, 40% 80%);
         top: 2em;
         left: 0.5em;
@@ -252,7 +234,8 @@ const StyledWrapper = styled.div<{ $density: RoomActionDensity }>`
         transform: rotate(15deg);
     }
 
-    .hamster__limb--br, .hamster__limb--bl {
+    .hamster__limb--br,
+    .hamster__limb--bl {
         border-radius: 0.75em 0.75em 0 0;
         clip-path: polygon(0 0, 100% 0, 100% 30%, 70% 90%, 70% 100%, 30% 100%, 40% 90%, 0% 30%);
         top: 1em;
@@ -289,11 +272,14 @@ const StyledWrapper = styled.div<{ $density: RoomActionDensity }>`
 
     .spoke {
         animation: spoke var(--dur) linear infinite;
-        background: radial-gradient(100% 100% at center, hsl(0, 0%, 60%) 4.8%, hsla(0, 0%, 60%, 0) 5%), linear-gradient(hsla(0, 0%, 55%, 0) 46.9%, hsl(0, 0%, 65%) 47% 52.9%, hsla(0, 0%, 65%, 0) 53%) 50% 50% / 99% 99% no-repeat;
+        background: radial-gradient(100% 100% at center, hsl(0, 0%, 60%) 4.8%, hsla(0, 0%, 60%, 0) 5%),
+            linear-gradient(hsla(0, 0%, 55%, 0) 46.9%, hsl(0, 0%, 65%) 47% 52.9%, hsla(0, 0%, 65%, 0) 53%) 50% 50% /
+                99% 99% no-repeat;
     }
 
     @keyframes hamster {
-        from, to {
+        from,
+        to {
             transform: rotate(calc(4deg + var(--tilt))) translate(-0.8em, 1.85em);
         }
         50% {
@@ -301,15 +287,24 @@ const StyledWrapper = styled.div<{ $density: RoomActionDensity }>`
         }
     }
     @keyframes hamsterHead {
-        from, 25%, 50%, 75%, to {
+        from,
+        25%,
+        50%,
+        75%,
+        to {
             transform: rotate(0);
         }
-        12.5%, 37.5%, 62.5%, 87.5% {
+        12.5%,
+        37.5%,
+        62.5%,
+        87.5% {
             transform: rotate(8deg);
         }
     }
     @keyframes hamsterEye {
-        from, 90%, to {
+        from,
+        90%,
+        to {
             transform: scaleY(1);
         }
         95% {
@@ -317,58 +312,107 @@ const StyledWrapper = styled.div<{ $density: RoomActionDensity }>`
         }
     }
     @keyframes hamsterEar {
-        from, 25%, 50%, 75%, to {
+        from,
+        25%,
+        50%,
+        75%,
+        to {
             transform: rotate(0);
         }
-        12.5%, 37.5%, 62.5%, 87.5% {
+        12.5%,
+        37.5%,
+        62.5%,
+        87.5% {
             transform: rotate(12deg);
         }
     }
     @keyframes hamsterBody {
-        from, 25%, 50%, 75%, to {
+        from,
+        25%,
+        50%,
+        75%,
+        to {
             transform: rotate(0);
         }
-        12.5%, 37.5%, 62.5%, 87.5% {
+        12.5%,
+        37.5%,
+        62.5%,
+        87.5% {
             transform: rotate(-2deg);
         }
     }
     @keyframes hamsterFRLimb {
-        from, 25%, 50%, 75%, to {
+        from,
+        25%,
+        50%,
+        75%,
+        to {
             transform: rotate(50deg) translateZ(-1px);
         }
-        12.5%, 37.5%, 62.5%, 87.5% {
+        12.5%,
+        37.5%,
+        62.5%,
+        87.5% {
             transform: rotate(-30deg) translateZ(-1px);
         }
     }
     @keyframes hamsterFLLimb {
-        from, 25%, 50%, 75%, to {
+        from,
+        25%,
+        50%,
+        75%,
+        to {
             transform: rotate(-30deg);
         }
-        12.5%, 37.5%, 62.5%, 87.5% {
+        12.5%,
+        37.5%,
+        62.5%,
+        87.5% {
             transform: rotate(50deg);
         }
     }
     @keyframes hamsterBRLimb {
-        from, 25%, 50%, 75%, to {
+        from,
+        25%,
+        50%,
+        75%,
+        to {
             transform: rotate(-60deg) translateZ(-1px);
         }
-        12.5%, 37.5%, 62.5%, 87.5% {
+        12.5%,
+        37.5%,
+        62.5%,
+        87.5% {
             transform: rotate(20deg) translateZ(-1px);
         }
     }
     @keyframes hamsterBLLimb {
-        from, 25%, 50%, 75%, to {
+        from,
+        25%,
+        50%,
+        75%,
+        to {
             transform: rotate(20deg);
         }
-        12.5%, 37.5%, 62.5%, 87.5% {
+        12.5%,
+        37.5%,
+        62.5%,
+        87.5% {
             transform: rotate(-60deg);
         }
     }
     @keyframes hamsterTail {
-        from, 25%, 50%, 75%, to {
+        from,
+        25%,
+        50%,
+        75%,
+        to {
             transform: rotate(30deg) translateZ(-1px);
         }
-        12.5%, 37.5%, 62.5%, 87.5% {
+        12.5%,
+        37.5%,
+        62.5%,
+        87.5% {
             transform: rotate(10deg) translateZ(-1px);
         }
     }
@@ -381,3 +425,5 @@ const StyledWrapper = styled.div<{ $density: RoomActionDensity }>`
         }
     }
 `;
+
+HamsterExitButton.displayName = "HamsterExitButton";

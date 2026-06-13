@@ -16,6 +16,14 @@ import type { SortKey } from "./ActivityMemberTable";
 import { ActivityHeatmapChart } from "./ActivityHeatmapChart";
 import { ActivityRoomChart } from "./ActivityRoomChart";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
+import {
+  analyticsEmptyShell,
+  analyticsKpiInfo,
+  analyticsKpiSuccess,
+  analyticsKpiViolet,
+  analyticsKpiWarning,
+} from "@/features/analytics/analyticsUiTokens";
+import { cn } from "@/lib/utils";
 
 function defaultMonthRange(): { start: string; end: string } {
   const now = new Date();
@@ -175,7 +183,7 @@ export function StudentActivityReportPanel() {
           type="button"
           onClick={handleRecalculate}
           disabled={recalculating}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-40 shrink-0"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[color-mix(in_srgb,var(--app-color-feedback-warning)_40%,var(--app-color-border-default))] bg-[var(--app-color-feedback-warning-soft)] px-3 py-2 text-xs font-medium text-[var(--app-color-feedback-warning)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-40"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${recalculating ? "animate-spin" : ""}`} />
           强制重算
@@ -183,25 +191,25 @@ export function StudentActivityReportPanel() {
       </div>
 
       {isGroupsLoading ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-neutral-300 bg-white py-16 text-center">
-          <Loader2 className="h-10 w-10 animate-spin text-violet-400" />
-          <p className="text-sm text-neutral-500">正在加载课题组数据…</p>
+        <div className={analyticsEmptyShell}>
+          <Loader2 className="h-10 w-10 animate-spin text-[var(--app-color-accent)]" />
+          <p className="text-sm text-[var(--app-color-text-tertiary)]">正在加载课题组数据…</p>
         </div>
       ) : groupName ? (
         <>
           {/* KPI Cards with time range labels */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <AdminFormCard title={`课题组人数（${displayTimeLabel}）`}>
-              <p className="text-2xl font-extrabold text-violet-600">{summary?.memberCount ?? "-"}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiViolet)}>{summary?.memberCount ?? "-"}</p>
             </AdminFormCard>
             <AdminFormCard title={`总进出次数（${displayTimeLabel}）`}>
-              <p className="text-2xl font-extrabold text-emerald-600">{summary?.totalEntries ?? "-"}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiSuccess)}>{summary?.totalEntries ?? "-"}</p>
             </AdminFormCard>
             <AdminFormCard title={`人均频次（${summary?.rateLabel || "本月"}）`}>
-              <p className="text-2xl font-extrabold text-blue-600">{summary?.perCapitaWeeklyFreq ?? "-"}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiInfo)}>{summary?.perCapitaWeeklyFreq ?? "-"}</p>
             </AdminFormCard>
             <AdminFormCard title={`近期活跃度占比（${summary?.rateLabel || "本月"}）`}>
-              <p className="text-2xl font-extrabold text-amber-600">{summary?.activeSharePct != null ? `${summary.activeSharePct}%` : "-"}</p>
+              <p className={cn("text-2xl font-extrabold", analyticsKpiWarning)}>{summary?.activeSharePct != null ? `${summary.activeSharePct}%` : "-"}</p>
             </AdminFormCard>
           </div>
 
@@ -230,9 +238,9 @@ export function StudentActivityReportPanel() {
           </div>
         </>
       ) : groupTotal === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-neutral-300 bg-white py-16 text-center">
-          <Users className="h-10 w-10 text-neutral-300" />
-          <p className="text-sm text-neutral-500">当前时间范围内无课题组活跃数据</p>
+        <div className={analyticsEmptyShell}>
+          <Users className="h-10 w-10 text-[var(--app-color-text-tertiary)]" />
+          <p className="text-sm text-[var(--app-color-text-tertiary)]">当前时间范围内无课题组活跃数据</p>
         </div>
       ) : null}
     </div>

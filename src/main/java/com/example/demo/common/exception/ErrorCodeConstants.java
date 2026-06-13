@@ -52,4 +52,8 @@ public final class ErrorCodeConstants {
     public static final int SMARTSHEET_ROW_NOT_FOUND        = 1_006_007;  // "数据行不存在"
     public static final int SMARTSHEET_COLUMN_TYPE_CONFLICT = 1_006_008;  // "列类型变更将清空已有数据"
     public static final int SMARTSHEET_TEMPLATE_NOT_FOUND   = 1_006_009;  // "模板不存在"
+
+    // Upload 1-007-xxx
+    public static final int UPLOAD_FILE_NOT_FOUND = 1_007_001;
+    public static final int UPLOAD_SYNC_SECRET_INVALID = 1_007_002;
 }

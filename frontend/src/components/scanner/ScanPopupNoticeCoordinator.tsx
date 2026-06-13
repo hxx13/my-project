@@ -157,7 +157,7 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
 
   return (
 
-    <div className="pointer-events-auto z-[10002] flex w-full max-w-[min(96vw,1120px)] flex-row flex-wrap items-stretch justify-center gap-2 px-1">
+    <div className="pointer-events-auto z-[10002] flex w-full max-w-[min(67.2vw,784px)] flex-row flex-wrap items-stretch justify-center gap-2 px-1">
 
       {hasViolation ? (
 

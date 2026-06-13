@@ -12,9 +12,9 @@ interface ProfileHeaderProps {
 }
 
 const Field = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between text-xs border-b border-slate-100 dark:border-white/5 py-1.5 last:border-b-0">
-        <span className="text-slate-400 dark:text-warm-300">{label}</span>
-        <span className="text-slate-700 dark:text-warm-100 font-semibold">{value || "【无数据】"}</span>
+    <div className="flex items-center justify-between text-xs border-b border-[var(--app-color-border-default)] py-1.5 last:border-b-0">
+        <span className="text-[var(--app-color-text-tertiary)]">{label}</span>
+        <span className="text-[var(--app-color-text-primary)] font-semibold">{value || "【无数据】"}</span>
     </div>
 );
 
@@ -29,8 +29,10 @@ export const ProfileHeader = ({
     return (
     <div className={`w-full ${PROFILE_CARD} p-5`}>
         <div className="flex items-center gap-4 border-b border-[var(--app-color-border-default)] pb-4">
-            <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-800 border-2 shadow-lg"
-                 style={{ borderColor: "var(--scan-accent)" }}>
+            <div
+                className="w-16 h-16 rounded-full overflow-hidden bg-[var(--app-color-surface-hover)] border-2 shadow-lg"
+                style={{ borderColor: "var(--scan-profile-border, var(--app-color-scan-profile-border))" }}
+            >
                 {avatarSrc && isAvatarLoaded ? (
                     <img src={avatarSrc} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt="avatar" onError={onAvatarError} />
                 ) : (
@@ -40,7 +42,7 @@ export const ProfileHeader = ({
                 )}
             </div>
             <div className="flex flex-col">
-                <span className="text-2xl font-black text-slate-800 dark:text-warm-50 flex items-center gap-2">
+                <span className="text-2xl font-black text-[var(--app-color-text-primary)] flex items-center gap-2">
                     {user.name || "未知人员"}
                     <button
                         onClick={onOpenRiskModal}

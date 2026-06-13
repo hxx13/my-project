@@ -11,6 +11,8 @@ export interface PersonnelAuthRecord {
   role?: string;
   openId?: string;
   status?: number;
+  personalPin?: string | null;
+  pinUpdatedAt?: string | null;
 }
 
 export interface SystemUserRecord {

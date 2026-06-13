@@ -1,6 +1,6 @@
 /**
- * 仅作用于 .dashboard-home-root--scifi 后代，避免污染其它页面。
- * 动画时长变量由 SciFiDashboardChrome 内联注入：--scifi-aurora-s、--scifi-border-flow-s
+ * 科幻壳：仅 .dashboard-home-root--scifi（亮色科幻开关）
+ * 夜空暗色：.dashboard-home-root--night-sky（通透玻璃，无赛博流光）
  */
 
 .dashboard-home-root--scifi {
@@ -15,7 +15,9 @@
     color: var(--scifi-text);
 }
 
-/* 覆盖首页根上 Tailwind 文字色 */
+/* 暗色令牌与组件质感见 dashboard-night-theme.css */
+
+/* 科幻文字覆盖 */
 .dashboard-home-root--scifi.text-slate-800 {
     color: var(--scifi-text);
 }
@@ -33,7 +35,23 @@
     color: rgb(125 211 252);
 }
 
-/* GlassCard：去白边、冷色描边、压暗底；覆盖 styled 整段 border */
+/* 夜空文字覆盖（令牌在 dashboard-night-theme.css） */
+.dashboard-home-root--night-sky.text-slate-800,
+.dashboard-home-root--night-sky .text-slate-800 {
+    color: var(--dash-night-text);
+}
+
+.dashboard-home-root--night-sky .text-slate-500,
+.dashboard-home-root--night-sky .text-slate-600,
+.dashboard-home-root--night-sky .text-slate-400 {
+    color: var(--dash-night-text-muted);
+}
+
+.dashboard-home-root--night-sky .text-blue-500 {
+    color: var(--dash-night-text-steel);
+}
+
+/* 科幻 GlassCard：冷色描边 + 内辉光 */
 .dashboard-home-root--scifi [data-glass-card] .card-body {
     background: linear-gradient(155deg, rgba(15, 23, 42, 0.88), rgba(30, 27, 75, 0.55));
     border: 1px solid rgba(125, 211, 252, 0.32) !important;
@@ -52,7 +70,7 @@
         linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
 }
 
-/* 背景叠层 */
+/* 科幻背景叠层 */
 .dashboard-home-root--scifi .scifi-layer--base {
     position: absolute;
     inset: 0;
@@ -111,12 +129,19 @@
     mix-blend-mode: overlay;
 }
 
-.dashboard-home-root--scifi .scifi-content {
+.dashboard-home-root--scifi .scifi-content,
+.dashboard-home-root--night-sky .scifi-content {
     position: relative;
     z-index: 1;
     box-sizing: border-box;
     padding: 15px;
     min-height: 0;
+}
+
+.dashboard-home-root--night-sky .scifi-layer--night-sky .scan-popup-backdrop__orbs,
+.dashboard-home-root--night-sky .scifi-layer--night-sky .scan-popup-backdrop__night {
+    position: absolute;
+    inset: 0;
 }
 
 @keyframes scifi-aurora-spin {

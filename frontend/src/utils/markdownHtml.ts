@@ -134,6 +134,16 @@ export function markdownToHtml(md: string, theme: MarkdownTheme = "light"): stri
     const h1 = t.match(/^#\s+(.+)$/);
     if (h1) { flushPara(); closeLists(); out.push(`<h1 class="${st.h1}" id="${headingId(h1[1])}">${formatInline(h1[1])}</h1>`); i++; continue; }
 
+    // 独立一行的 **小节标题**（常见于更新日志粘贴）→ 二级标题
+    const boldSection = t.match(/^\*\*([^*]+)\*\*$/);
+    if (boldSection) {
+      flushPara();
+      closeLists();
+      out.push(`<h2 class="${st.h2}" id="${headingId(boldSection[1])}">${formatInline(boldSection[1])}</h2>`);
+      i++;
+      continue;
+    }
+
     // ── Blockquote ──
     const bq = t.match(/^>\s?(.+)$/);
     if (bq) { flushPara(); closeLists(); out.push(`<blockquote class="${st.blockquote}">${formatInline(bq[1])}</blockquote>`); i++; continue; }

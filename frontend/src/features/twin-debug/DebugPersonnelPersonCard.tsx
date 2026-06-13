@@ -14,6 +14,8 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ContactGroup } from "@/api/domains/chat.api";
+import {DASH_NIGHT_CLASS} from "@/features/dashboard-scifi-theme/dashboardNightTokens";
+import {cn} from "@/lib/utils";
 
 type Props = {
     person: Record<string, unknown>;
@@ -53,11 +55,11 @@ export function DebugPersonnelPersonCard({
             avatarUrl={avatarSrc}
             badges={
                 <>
-                    <span className="rounded bg-gradient-to-r from-amber-400 to-orange-500 px-1.5 py-0.5 text-[10px] font-black text-white">
+                    <span className={DASH_NIGHT_CLASS.levelBadge}>
                         Lv.{level}
                     </span>
-                    <span className="font-mono text-[10px] text-slate-500">Exp {exp.toFixed(0)}</span>
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-black ${hasOfficial ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"}`}>
+                    <span className={cn("font-mono text-[10px]", DASH_NIGHT_CLASS.textMuted)}>Exp {exp.toFixed(0)}</span>
+                    <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-black", hasOfficial ? DASH_NIGHT_CLASS.chipSuccess : DASH_NIGHT_CLASS.chipMuted)}>
                         官方可进 {hasOfficial ? "有" : "无"}
                     </span>
                 </>
@@ -69,7 +71,7 @@ export function DebugPersonnelPersonCard({
                             <DropdownMenuTrigger asChild>
                                 <button
                                     type="button"
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                    className={cn(DASH_NIGHT_CLASS.btnNormal, "inline-flex h-7 w-7 items-center justify-center rounded-lg p-0")}
                                     aria-label="通讯录"
                                 >
                                     <MoreVertical className="h-3.5 w-3.5"/>

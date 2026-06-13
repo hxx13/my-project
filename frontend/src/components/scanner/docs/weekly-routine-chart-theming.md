@@ -1,29 +1,42 @@
-# 「预期核心在馆时间带」配色说明
+# 预期核心在馆时间带配色（AI 必读）
 
-组件：`UiverseProfilePopup.tsx` → `WeeklyRoutineMatrixChart`
+组件：`UiverseProfilePopup.tsx` → `WeeklyRoutineMatrixChart`  
+CSS class：`CHART_CARD` = `scan-weekly-chart-card`
 
-## 背景框（已修复）
+## 配色体系
 
-原先 `CHART_CARD` 写死 `bg-[#1c1410]` / `dark:bg-[#0f0b09]`，无论亮色主题还是切换左上角色系，外框始终是深暖棕。
+扫码弹窗使用 **单一统一配色** `SCAN_PALETTE`（Bento 暖桃 `#FAD4C0` + 钢蓝 `#80A1C1`），不再提供多套色系切换。
 
-现已改为 CSS 类 `scan-weekly-chart-card`（`scanPopupNotice.css`）：
+## 正确链路（必须保持）
 
-| 模式 | 背景令牌 |
-|------|----------|
-| 亮色 | `var(--scan-card-tint)` — 随当前 `SCAN_COLOR_SCHEMES` 变化（如桃色 `#fff5f3`、琥珀 `#fffbf0`） |
-| 暗色 | `var(--scan-card-tint-dark)` |
+```
+scanPopupTheme.SCAN_PALETTE
+  → scanPopupTheme.scanPaletteCssVars()
+    → UiverseProfilePopup Portal 根 div style={scanPaletteCssVars()}
+      → --scan-card-tint / --scan-card-tint-dark
+      → scanPopupNotice.css `.scan-weekly-chart-card`
+```
 
-边框与阴影使用 `var(--scan-accent)`、`var(--scan-glow)`，与 AI 预测卡、Profile 卡同一套 `schemeCssVars` 注入链路。
+曲线与边框：
 
-## 其他元素
+- `--scan-chart-entry` / `--scan-chart-exit` / `--scan-chart-fill` / `--scan-chart-grid`
+- `--scan-accent` / `--scan-glow`（外框边框与阴影）
 
-- 标题 / 坐标 / 星期：`--app-color-text-*`
-- 曲线：`--scan-chart-entry` / `--scan-chart-exit` / `--scan-chart-fill`
-- 网格：`--scan-chart-grid`（由 `schemeCssVars` 按 accent 生成）
-- Time Band 徽章：`scan-weekly-chart-badge`
+三张主卡片：
+
+- `.scan-profile-card` / `.scan-student-card` / `.scan-ai-card` 读 `--scan-profile-bg` 等同 family 变量
+
+## 改色入口
+
+1. **弹窗整体色调**：改 `scanPopupTheme.ts` 的 `SCAN_PALETTE`
+2. **主题静态兜底**：同步 `semantic.css` 的 `--app-color-scan-*`
+3. **不要**只改 semantic 指望 Portal 内动态色生效（无注入时才是兜底）
 
 ## 相关文件
 
-- `frontend/src/styles/scanPopupNotice.css` — `.scan-weekly-chart-card`
-- `frontend/src/components/scanner/scanPopupTheme.ts` — `CHART_CARD`、`schemeCssVars`
-- `frontend/src/components/scanner/UiverseProfilePopup.tsx` — 组件实现
+| 文件 | 职责 |
+|------|------|
+| `scanPopupTheme.ts` | `SCAN_PALETTE`、`scanPaletteCssVars` |
+| `UiverseProfilePopup.tsx` | Portal 根 `style={scanPaletteCssVars()}` |
+| `scanPopupNotice.css` | `.scan-weekly-chart-*`、`.scan-*-card` 只读 `--scan-*` |
+| `semantic.css` | `--app-color-scan-*` 静态兜底 |

@@ -94,7 +94,7 @@ public class SuppliesExcelExportService {
                 row.createCell(5).setCellValue(type);
                 row.createCell(6).setCellValue(op);
                 row.createCell(7).setCellValue(applicant);
-                row.createCell(8).setCellValue("");
+                row.createCell(8).setCellValue(safe(line.getRemark()));
             }
             ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloor(sh, PERSONAL_CLAIM_DETAIL_HEADER_ROW, 0, cols.length - 1);
             wb.write(out);
@@ -173,7 +173,7 @@ public class SuppliesExcelExportService {
                     row.createCell(5).setCellValue(type);
                     row.createCell(6).setCellValue(op);
                     row.createCell(7).setCellValue(applicant);
-                    row.createCell(8).setCellValue("");
+                    row.createCell(8).setCellValue(safe(line.getRemark()));
                 }
             }
             ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloor(sh, AGGREGATE_CLAIM_DETAIL_HEADER_ROW, 0, cols.length - 1);

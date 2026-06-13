@@ -72,13 +72,21 @@ const StyledWrapper = styled.div<{ $compact?: boolean }>`
     .card-body {
         position: absolute;
         inset: 0;
-        background: rgba(255, 255, 255, 0.85);
+        /* 夜空/科幻主题在 .dashboard-home-root--* 上注入 --glass-card-*，避免打包后 styled-components 盖掉全局覆盖 */
+        background: var(
+            --glass-card-body-bg,
+            rgba(255, 255, 255, 0.85)
+        );
         border-radius: 24px;
         z-index: 2;
         overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.9);
-        backdrop-filter: blur(40px) saturate(150%);
-        box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.05);
+        border: var(--glass-card-body-border, 1px solid rgba(255, 255, 255, 0.9));
+        backdrop-filter: var(--glass-card-backdrop-filter, blur(40px) saturate(150%));
+        -webkit-backdrop-filter: var(--glass-card-backdrop-filter, blur(40px) saturate(150%));
+        box-shadow: var(
+            --glass-card-body-shadow,
+            0 20px 40px -10px rgba(0, 0, 0, 0.05)
+        );
     }
 
     .grid-overlay {

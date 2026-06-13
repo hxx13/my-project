@@ -47,7 +47,9 @@
       "Skill(code-review)",
       "Skill(code-review:*)",
       "Bash(cd \"d:\\\\codex\\\\verson.1.2\\\\20260416\" && rm -f .git/index.lock && git add docs/superpowers/specs/2026-06-10-admin-home-redesign.md docs/superpowers/plans/2026-06-10-admin-home-redesign.md && git commit -m \"docs: admin home redesign spec + implementation plan\")",
-      "Bash(cd \"d:\\\\codex\\\\verson.1.2\\\\20260416\" && sleep 2 && rm -f .git/index.lock && git add frontend/src/layouts/AdminLayout.tsx && git commit -m \"fix: add missing ADMIN_NAV_REGISTRY import + handle subgroups in breadcrumb\")"
+      "Bash(cd \"d:\\\\codex\\\\verson.1.2\\\\20260416\" && sleep 2 && rm -f .git/index.lock && git add frontend/src/layouts/AdminLayout.tsx && git commit -m \"fix: add missing ADMIN_NAV_REGISTRY import + handle subgroups in breadcrumb\")",
+      "Skill(humanizer)",
+      "Skill(humanizer:*)"
     ],
     "additionalDirectories": [
       "d:\\codex\\verson.1.2\\20260416\\.claude",

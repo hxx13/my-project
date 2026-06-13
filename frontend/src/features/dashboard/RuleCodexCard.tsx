@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { fetchDashboardViolationBoard } from "@/api/domains/dashboardViolationBoard.api";
-import { useDashboardSciFiVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 import { CodexNoticeStreamPanel } from "./CodexNoticeStreamPanel";
 import { CodexViolationBoardPanel } from "./CodexViolationBoardPanel";
 import { useCodexTabRotation, type CodexTabId } from "./useCodexTabRotation";
@@ -84,7 +85,7 @@ function CodexTabButtons({
   onSelect: (t: CodexTabId) => void;
   violationCount?: number;
 }) {
-  const sf = useDashboardSciFiVisual();
+  const visual = useDashboardVisual();
   const labels: Record<CodexTabId, string> = {
     notice: "公告",
     violation: violationCount != null && violationCount > 0 ? `惩戒公示 (${violationCount})` : "惩戒公示",
@@ -103,12 +104,18 @@ function CodexTabButtons({
             onClick={() => onSelect(t)}
             className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold tracking-wide transition-all sm:px-3.5 sm:py-2 sm:text-sm ${
               active
-                ? sf
-                  ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-50 shadow-[0_0_12px_rgba(34,211,238,0.35)]"
-                  : "border-amber-500/70 bg-amber-100 text-amber-950 shadow-sm"
-                : sf
-                  ? "border-slate-600/50 bg-slate-900/40 text-slate-400 hover:border-slate-500 hover:text-slate-200"
-                  : "border-slate-200 bg-white/80 text-slate-500 hover:border-slate-300 hover:text-slate-800"
+                ? dashTone(
+                    visual,
+                    "border-cyan-400/60 bg-cyan-500/20 text-cyan-50 shadow-[0_0_12px_rgba(34,211,238,0.35)]",
+                    `${DASH_NIGHT_CLASS.tabBtnActive}`,
+                    "border-amber-500/70 bg-amber-100 text-amber-950 shadow-sm",
+                  )
+                : dashTone(
+                    visual,
+                    "border-slate-600/50 bg-slate-900/40 text-slate-400 hover:border-slate-500 hover:text-slate-200",
+                    `${DASH_NIGHT_CLASS.tabBtn}`,
+                    "border-slate-200 bg-white/80 text-slate-500 hover:border-slate-300 hover:text-slate-800",
+                  )
             }`}
           >
             {labels[t]}
@@ -120,7 +127,7 @@ function CodexTabButtons({
 }
 
 export function RuleCodexCard() {
-  const sf = useDashboardSciFiVisual();
+  const visual = useDashboardVisual();
 
   const { data: cfg, isLoading, isError } = useQuery({
     queryKey: ["public-runtime-config"],
@@ -173,12 +180,12 @@ export function RuleCodexCard() {
     <div className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden">
       <div
         className={`flex shrink-0 flex-col gap-2 border-b pb-2 sm:flex-row sm:items-center sm:justify-between ${
-          sf ? "border-cyan-500/25" : "border-slate-200/70"
+          dashTone(visual, "border-cyan-500/25", DASH_NIGHT_CLASS.header, "border-slate-200/70")
         }`}
       >
         <h3
           className={`min-w-0 font-black tracking-tight ${
-            sf ? "text-slate-100 drop-shadow-[0_0_10px_rgba(34,211,238,0.25)]" : "text-slate-900"
+            dashTone(visual, "text-slate-100 drop-shadow-[0_0_10px_rgba(34,211,238,0.25)]", DASH_NIGHT_CLASS.title, "text-slate-900")
           } ${TITLE_CLASS[titleScale]}`}
         >
           {title}
@@ -200,7 +207,7 @@ export function RuleCodexCard() {
       ) : null}
       {isLoading ? (
         <div
-          className={`mt-1 shrink-0 text-center text-[11px] ${sf ? "text-slate-400" : "text-slate-400"}`}
+          className={`mt-1 shrink-0 text-center text-[11px] ${dashTone(visual, "text-slate-400", "text-white/45", "text-slate-400")}`}
         >
           正在同步配置…
         </div>

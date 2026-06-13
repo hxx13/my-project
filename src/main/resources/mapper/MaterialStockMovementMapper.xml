@@ -15,14 +15,17 @@
         SELECT m.id, m.item_id AS itemId, COALESCE(i.name, '未知物品') AS itemName,
                m.movement_type AS movementType, m.qty, m.stock_after AS stockAfter,
                m.request_id AS requestId, m.operator_user_id AS operatorUserId,
+               COALESCE(op.name, op2.display_nickname, op2.username) AS operatorName,
                m.applicant_user_id AS applicantUserId, m.remark,
-               m.created_at AS createdAt,
+               DATE_ADD(m.created_at, INTERVAL 8 HOUR) AS createdAt,
                COALESCE(r.applicant_name, p.name) AS applicantName,
                COALESCE(r.applicant_group, p.project_group_name) AS applicantGroup
         FROM material_stock_movement m
         LEFT JOIN material_item i ON m.item_id = i.id
         LEFT JOIN material_request r ON m.request_id = r.id
         LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
+        LEFT JOIN aro_personnel op ON m.operator_user_id = op.user_id
+        LEFT JOIN sys_user op2 ON m.operator_user_id = op2.id
         WHERE m.item_id = #{itemId}
         ORDER BY m.created_at DESC
         LIMIT #{offset}, #{size}
@@ -53,4 +56,14 @@
         <if test="groupId != null and groupId != ''">AND r.applicant_group = #{groupId}</if>
         GROUP BY DAYOFWEEK(m.created_at), HOUR(m.created_at)
     </select>
+
+    <delete id="deleteByItemId">
+        DELETE FROM material_stock_movement WHERE item_id = #{itemId}
+    </delete>
+
+    <delete id="deleteOrphan">
+        DELETE m FROM material_stock_movement m
+        LEFT JOIN material_item i ON m.item_id = i.id
+        WHERE i.id IS NULL
+    </delete>
 </mapper>

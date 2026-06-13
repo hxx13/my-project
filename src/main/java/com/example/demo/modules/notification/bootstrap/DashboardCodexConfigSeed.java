@@ -248,10 +248,10 @@ public class DashboardCodexConfigSeed implements ApplicationRunner {
                     "dashboard_codex",
                     "dashboard.codex.violation_board_summary_max_len",
                     "公示说明截断字符数",
-                    "服务端会折叠换行并按字符数截断 violation_text；范围 10～200，默认 60。",
+                    "服务端会剥离HTML标签后折叠换行并按字符数截断；范围 10～200，默认 200。",
                     "STRING",
                     null,
-                    "60",
+                    "200",
                     0,
                     0,
                     1

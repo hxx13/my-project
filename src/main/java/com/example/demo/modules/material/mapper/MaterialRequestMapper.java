@@ -25,6 +25,7 @@ public interface MaterialRequestMapper {
     int softDelete(@Param("id") String id, @Param("deletedBy") String deletedBy, @Param("purgeAfter") java.time.LocalDateTime purgeAfter);
     int restoreById(@Param("id") String id);
     int hardDeleteById(@Param("id") String id);
+    int deleteEmptyRequests();
     List<MaterialRequest> selectRecycle(@Param("offset") int offset, @Param("size") int size);
     int countRecycle();
     List<MaterialRequest> selectPendingByReviewer(@Param("reviewerId") String reviewerId);

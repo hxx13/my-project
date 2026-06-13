@@ -54,6 +54,11 @@
     <delete id="hardDeleteById">
         DELETE FROM material_request WHERE id = #{id} AND deleted = 1
     </delete>
+    <delete id="deleteEmptyRequests">
+        DELETE r FROM material_request r
+        LEFT JOIN material_request_line l ON r.id = l.request_id
+        WHERE l.id IS NULL
+    </delete>
     <select id="selectRecycle" resultType="com.example.demo.modules.material.entity.MaterialRequest">
         SELECT * FROM material_request WHERE deleted = 1 ORDER BY deleted_time DESC LIMIT #{offset}, #{size}
     </select>

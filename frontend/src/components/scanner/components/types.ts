@@ -1,6 +1,7 @@
 import type { AnalyzeResponse, AnalyzeUserInfo, DisciplinaryRecord, ExecutePayload, RoomInfo } from "@/api/types/scanner";
 import type { ExecuteResult } from "@/api/domains/scanner.api";
 import type { RoomPrediction } from "@/components/scanner/AIPredictionCard";
+import type { AccessMotionVariant } from "@/components/scanner/accessMotionVariants";
 
 export interface PopupProps {
     result: AnalyzeResponse | null;
@@ -56,6 +57,16 @@ export interface PopupState {
     inlineMessage: string;
     /** 仅离开成功后的仓鼠减速动画，与全局 execute 成功解耦 */
     exitCelebrateRoomId: string | null;
+    /** 进入成功后的卡片堆叠飞入动画（替代「您已进入」遮罩弹窗） */
+    enterCelebrateRoomId: string | null;
+    /** 本次进入/离开闭环随机选中的动效变体 */
+    accessMotionVariant: AccessMotionVariant | null;
+    /** 已在场内打开弹窗：进入 overlay 直接落点右下角，不播中心进入 */
+    enterMotionAtCorner: boolean;
+    /** 右下角动效已就绪，可点击触发离开 */
+    enterCornerReady: boolean;
+    /** 为 false 时 ActionButtons 完全不挂载（动效期间销毁，防止按钮闪现） */
+    renderActionButtons: boolean;
     accessNotice: { message: string } | null;
     accessNoticeDurationMs: number;
     /** 自动签退计时器状态 */
@@ -79,4 +90,7 @@ export interface PopupActions {
     isRoomLocked: (room: RoomInfo) => boolean;
     getButtonText: (room: RoomInfo, roomId: string) => string;
     dismissAccessNotice: () => void;
+    dismissEnterCelebrate: () => void;
+    dismissExitCelebrate: () => void;
+    markEnterCornerReady: () => void;
 }

@@ -48,15 +48,15 @@ export function AdminSubPageHeader({
         <button
           type="button"
           onClick={onBack}
-          className="group inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs font-medium text-neutral-700 shadow-sm transition hover:border-neutral-300 hover:bg-neutral-50"
+          className="group inline-flex items-center gap-1.5 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5 text-xs font-medium text-[var(--app-color-text-secondary)] shadow-sm transition hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)]"
         >
           <ArrowLeft className="h-3.5 w-3.5 shrink-0 transition group-hover:-translate-x-0.5" aria-hidden />
           {backLabel}
         </button>
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-neutral-950 sm:text-2xl">{title}</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-[var(--app-color-text-primary)] sm:text-2xl">{title}</h1>
           {description ? (
-            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-neutral-600">{description}</p>
+            <p className="mt-1 max-w-3xl text-sm leading-relaxed text-[var(--app-color-text-secondary)]">{description}</p>
           ) : null}
         </div>
       </div>

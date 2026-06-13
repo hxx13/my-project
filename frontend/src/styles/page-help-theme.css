@@ -1,0 +1,254 @@
+/* 页面帮助弹窗 — 亮/暗主题 + 富文本排版 */
+
+@layer components {
+  .page-help-dialog {
+    border-color: var(--app-color-border-default) !important;
+    background-color: var(--app-color-surface-elevated) !important;
+    color: var(--app-color-text-primary) !important;
+    box-shadow: var(--app-elevation-modal);
+    --page-help-content-img-max-width: 100%;
+    --page-help-content-img-max-height: min(42vh, 440px);
+  }
+
+  /* 首次介绍弹窗更高，图片可占更多纵向空间 */
+  .page-help-intro-dialog {
+    --page-help-content-img-max-height: min(58vh, 640px);
+  }
+
+  .page-help-rich-editor {
+    --page-help-content-img-max-width: 100%;
+    --page-help-content-img-max-height: min(36vh, 380px);
+  }
+
+  .page-help-dialog > button.absolute {
+    color: var(--app-color-text-secondary);
+    ring-offset-color: var(--app-color-surface-elevated);
+  }
+
+  .page-help-dialog > button.absolute:hover {
+    color: var(--app-color-text-primary);
+    opacity: 1;
+  }
+
+  .page-help-dialog > button.absolute:focus-visible {
+    --tw-ring-color: var(--app-color-accent-secondary);
+  }
+
+  /* 帮助弹窗滚动条 — 跟随亮/暗/科幻主题的语义色 */
+  .page-help-scrollbar,
+  .page-help-prose :where(pre),
+  .page-help-rich-editor .ProseMirror {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--app-color-text-tertiary) 70%, transparent)
+      color-mix(in srgb, var(--app-color-surface-hover) 85%, transparent);
+  }
+
+  .page-help-scrollbar::-webkit-scrollbar,
+  .page-help-prose :where(pre)::-webkit-scrollbar,
+  .page-help-rich-editor .ProseMirror::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .page-help-scrollbar::-webkit-scrollbar-track,
+  .page-help-prose :where(pre)::-webkit-scrollbar-track,
+  .page-help-rich-editor .ProseMirror::-webkit-scrollbar-track {
+    margin: 2px 0;
+    border-radius: var(--app-radius-pill);
+    background: color-mix(in srgb, var(--app-color-surface-hover) 70%, transparent);
+  }
+
+  .page-help-scrollbar::-webkit-scrollbar-thumb,
+  .page-help-prose :where(pre)::-webkit-scrollbar-thumb,
+  .page-help-rich-editor .ProseMirror::-webkit-scrollbar-thumb {
+    border-radius: var(--app-radius-pill);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    background: color-mix(in srgb, var(--app-color-text-tertiary) 55%, var(--app-color-border-strong));
+  }
+
+  .page-help-scrollbar::-webkit-scrollbar-thumb:hover,
+  .page-help-prose :where(pre)::-webkit-scrollbar-thumb:hover,
+  .page-help-rich-editor .ProseMirror::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--app-color-accent-secondary) 45%, var(--app-color-text-secondary));
+  }
+
+  .page-help-scrollbar::-webkit-scrollbar-corner,
+  .page-help-prose :where(pre)::-webkit-scrollbar-corner,
+  .page-help-rich-editor .ProseMirror::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .page-help-prose {
+    font-size: var(--font-size-sm);
+    line-height: var(--font-lineheight-base);
+    color: var(--app-color-text-primary);
+    word-break: break-word;
+  }
+
+  .page-help-prose :where(h1) {
+    margin-top: 0.875rem;
+    margin-bottom: 0.5rem;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--app-color-text-primary);
+  }
+
+  .page-help-prose :where(h2) {
+    margin-top: 0.75rem;
+    margin-bottom: 0.5rem;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--app-color-text-primary);
+  }
+
+  .page-help-prose :where(h3) {
+    margin-top: 0.5rem;
+    margin-bottom: 0.375rem;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--app-color-text-primary);
+  }
+
+  .page-help-prose :where(p) {
+    margin-top: 0.375rem;
+    margin-bottom: 0.375rem;
+    min-height: 1em;
+  }
+
+  .page-help-prose :where(p:empty)::before {
+    content: "\00a0";
+  }
+
+  .page-help-prose :where(strong, b) {
+    font-weight: var(--font-weight-semibold);
+    color: var(--app-color-text-primary);
+  }
+
+  .page-help-prose :where(em, i) {
+    font-style: italic;
+  }
+
+  .page-help-prose :where(ul) {
+    margin: 0.375rem 0;
+    padding-left: 1.25rem;
+    list-style-type: disc;
+  }
+
+  .page-help-prose :where(ol) {
+    margin: 0.375rem 0;
+    padding-left: 1.25rem;
+    list-style-type: decimal;
+  }
+
+  .page-help-prose :where(li) {
+    margin: 0.125rem 0;
+  }
+
+  .page-help-prose :where(blockquote) {
+    margin: 0.5rem 0;
+    padding-left: 0.75rem;
+    border-left: 2px solid var(--app-color-border-strong);
+    color: var(--app-color-text-secondary);
+  }
+
+  .page-help-prose :where(a) {
+    color: var(--app-color-accent-secondary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .page-help-prose :where(hr) {
+    margin: 0.75rem 0;
+    border: none;
+    border-top: 1px solid var(--app-color-border-default);
+  }
+
+  .page-help-prose :where(code) {
+    padding: 0.125rem 0.25rem;
+    border-radius: var(--app-radius-element);
+    background: var(--app-color-surface-hover);
+    font-family: var(--font-family-mono);
+    font-size: 0.85em;
+    color: var(--app-color-text-primary);
+  }
+
+  .page-help-prose :where(pre) {
+    margin: 0.5rem 0;
+    padding: 0.5rem 0.75rem;
+    overflow-x: auto;
+    border-radius: var(--app-radius-element);
+    background: var(--app-color-surface-hover);
+  }
+
+  .page-help-prose :where(img),
+  .page-help-prose :where(.page-help-content-img),
+  .page-help-rich-editor .ProseMirror :where(img) {
+    display: block;
+    box-sizing: border-box;
+    max-width: var(--page-help-content-img-max-width);
+    max-height: var(--page-help-content-img-max-height);
+    width: auto;
+    height: auto;
+    margin: 0.5rem auto;
+    border-radius: var(--app-radius-element);
+    object-fit: contain;
+    cursor: zoom-in;
+    transition: opacity var(--app-motion-hover), box-shadow var(--app-motion-hover);
+  }
+
+  .page-help-prose :where(img):hover,
+  .page-help-prose :where(.page-help-content-img):hover {
+    opacity: 0.92;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-color-accent-secondary) 35%, transparent);
+  }
+
+  /* 粘贴/编辑器 inline 色值在暗色下强制跟随语义色，避免黑字不可见 */
+  .dark .page-help-prose :where([style*="color"]),
+  .theme-standard-dark .page-help-prose :where([style*="color"]) {
+    color: inherit !important;
+  }
+
+  /* TipTap 编辑区与预览排版一致 */
+  .page-help-rich-editor .ProseMirror {
+    min-height: 200px;
+    outline: none;
+    color: var(--app-color-text-primary);
+  }
+
+  .page-help-rich-editor .ProseMirror :where(ul) {
+    padding-left: 1.25rem;
+    list-style-type: disc;
+  }
+
+  .page-help-rich-editor .ProseMirror :where(ol) {
+    padding-left: 1.25rem;
+    list-style-type: decimal;
+  }
+
+  .page-help-rich-editor .ProseMirror :where(blockquote) {
+    padding-left: 0.75rem;
+    border-left: 2px solid var(--app-color-border-strong);
+    color: var(--app-color-text-secondary);
+  }
+
+  .page-help-rich-editor .ProseMirror :where(p) {
+    min-height: 1.25em;
+  }
+
+  .page-help-rich-editor .ProseMirror :where(h1) {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .page-help-rich-editor .ProseMirror :where(h2) {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+  }
+
+  .page-help-rich-editor .ProseMirror :where(h3) {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+  }
+}

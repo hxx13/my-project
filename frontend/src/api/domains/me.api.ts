@@ -63,6 +63,15 @@ interface CapabilitySummaryResultBody {
 /** Twin Web 壳主题，与 /api/me/mini-preferences 中 twinWebChromeTheme 一致 */
 export type TwinWebChromeThemeId = "standard" | "dashboardSciFi";
 
+/** 全站亮/暗色定时切换偏好（与 ThemeProvider 共用） */
+export interface AppearanceSchedulePreferences {
+  autoScheduleEnabled?: boolean;
+  manualOverride?: "light" | "dark" | null;
+  lightStart?: string;
+  lightEnd?: string;
+  manualThemeId?: string;
+}
+
 export interface MiniPreferencesRoomWatchSelection {
   campus: string;
   floor: string;
@@ -73,6 +82,9 @@ export interface MiniPreferences {
     selections: MiniPreferencesRoomWatchSelection[];
   };
   twinWebChromeTheme?: TwinWebChromeThemeId | string | null;
+  appearanceSchedule?: AppearanceSchedulePreferences;
+  /** 页面帮助「我已知晓」记录：path -> help.updatedAt */
+  pageHelpIntroAck?: Record<string, string>;
 }
 
 interface MiniPreferencesResultBody {

@@ -13,6 +13,8 @@ public interface MaterialStockMovementMapper {
     /** 按物品查询流水视图（含物品名称） */
     List<com.example.demo.modules.material.dto.MaterialStockMovementView> selectViewsByItemId(@Param("itemId") Long itemId, @Param("offset") int offset, @Param("size") int size);
     int countViewsByItemId(@Param("itemId") Long itemId);
+    int deleteByItemId(@Param("itemId") Long itemId);
+    int deleteOrphan();
 
     List<java.util.Map<String, Object>> statsDailyMovements(@Param("from") String from, @Param("to") String to,
                                                              @Param("groupId") String groupId);

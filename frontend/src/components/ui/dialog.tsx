@@ -27,31 +27,62 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     showClose?: boolean;
+    /** 点击遮罩是否关闭，默认 true */
+    closeOnOverlayClick?: boolean;
     /** 覆盖遮罩层 class（如命令面板需高于业务弹层 z-[1200]） */
     overlayClassName?: string;
     /** 左侧/右侧全高抽屉 */
     variant?: "default" | "leftSheet" | "rightSheet";
     /** 不渲染半透明遮罩（仅居中内容；请配合 `<Dialog modal={false}>` 以免焦点陷阱异常） */
     overlay?: "default" | "none";
+    /** modal={false} 时 Radix 不渲染 Overlay；设为 true 时用静态遮罩（帮助弹窗等） */
+    alwaysShowOverlay?: boolean;
   }
->(({ className, children, showClose = true, overlayClassName, variant = "default", overlay = "default", ...props }, ref) => {
+>(({ className, children, showClose = true, closeOnOverlayClick = true, overlayClassName, variant = "default", overlay = "default", alwaysShowOverlay = false, onInteractOutside, onPointerDownOutside, onFocusOutside, ...props }, ref) => {
   const leftSheet = variant === "leftSheet";
   const rightSheet = variant === "rightSheet";
   const sheet = leftSheet || rightSheet;
   const showOverlay = overlay !== "none";
+  const blockOutsideDismiss = (event: Event) => {
+    if (!closeOnOverlayClick) {
+      event.preventDefault();
+    }
+  };
   return (
     <DialogPortal>
       {showOverlay ? (
-        <DialogOverlay
-          className={cn(
-            sheet ? "z-[var(--z-overlay)]" : undefined,
-            overlayClassName
-          )}
-        />
+        alwaysShowOverlay ? (
+          <div
+            className={cn(
+              "fixed inset-0 top-16 z-[var(--z-overlay)] bg-black/50",
+              overlayClassName
+            )}
+            aria-hidden
+          />
+        ) : (
+          <DialogOverlay
+            className={cn(
+              sheet ? "z-[var(--z-overlay)]" : undefined,
+              overlayClassName
+            )}
+          />
+        )
       ) : null}
       <DialogPrimitive.Content
         ref={ref}
         data-modal-layer="true"
+        onInteractOutside={(event) => {
+          blockOutsideDismiss(event);
+          onInteractOutside?.(event);
+        }}
+        onPointerDownOutside={(event) => {
+          blockOutsideDismiss(event);
+          onPointerDownOutside?.(event);
+        }}
+        onFocusOutside={(event) => {
+          blockOutsideDismiss(event);
+          onFocusOutside?.(event);
+        }}
         className={cn(
           sheet && "overflow-hidden",
           leftSheet

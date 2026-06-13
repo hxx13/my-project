@@ -202,6 +202,59 @@ public class AdminNavConfigService {
         }
     }
 
+    /**
+     * 确保一个入口存在于 DB 中（如不存在则自动创建）。
+     * 若所属 GROUP 不存在也自动创建。
+     */
+    @Transactional
+    public Map<String, Object> ensureItem(String path, String label, String icon, String groupTitle) {
+        // 1. 检查是否有同路径的 ITEM 已存在
+        List<String> existing = jdbcTemplate.queryForList(
+                "SELECT id FROM admin_nav_config WHERE item_path = ? AND type = 'ITEM'",
+                String.class, path);
+        if (!existing.isEmpty()) {
+            return Map.of("existed", true, "id", existing.get(0));
+        }
+
+        // 2. 找到或创建 GROUP
+        String groupId = findOrCreateGroup(groupTitle);
+
+        // 3. 获取当前最大 sort_order
+        Integer maxSort = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id = ?",
+                Integer.class, groupId);
+        int sortOrder = (maxSort != null ? maxSort : -1) + 1;
+
+        // 4. 创建 ITEM
+        String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        jdbcTemplate.update(
+                "INSERT INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order, visible) " +
+                "VALUES (?, ?, 'ITEM', ?, ?, ?, ?, 1)",
+                id, groupId, label, path, icon, sortOrder);
+        log.info("[admin-nav-config] ensureItem created: path={} label={} group={}", path, label, groupTitle);
+        return Map.of("existed", false, "id", id, "created", true);
+    }
+
+    private String findOrCreateGroup(String title) {
+        List<String> existing = jdbcTemplate.queryForList(
+                "SELECT id FROM admin_nav_config WHERE title = ? AND type = 'GROUP'",
+                String.class, title);
+        if (!existing.isEmpty()) {
+            return existing.get(0);
+        }
+        // 创建 GROUP
+        String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        Integer maxSort = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(sort_order), -1) FROM admin_nav_config WHERE parent_id IS NULL AND type = 'GROUP'",
+                Integer.class);
+        int sortOrder = (maxSort != null ? maxSort : -1) + 1;
+        jdbcTemplate.update(
+                "INSERT INTO admin_nav_config (id, parent_id, type, title, sort_order, visible) VALUES (?, NULL, 'GROUP', ?, ?, 1)",
+                id, title, sortOrder);
+        log.info("[admin-nav-config] findOrCreateGroup created: title={}", title);
+        return id;
+    }
+
     @Transactional
     public void resetToDefault() {
         jdbcTemplate.update("DELETE FROM admin_nav_config");

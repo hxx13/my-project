@@ -222,6 +222,7 @@ public class AssetService {
         row.put("latestTransferApplicant", latestReq == null ? null : latestReq.getApplicantName());
         row.put("latestTransferRemark", latestReq == null ? null : latestReq.getRemark());
         row.put("latestTransferStatus", latestReq == null ? null : latestReq.getStatus());
+        row.put("latestTransferFromLocation", latestReq == null ? null : latestReq.getFromLocation());
         row.put("latestTransferPhotoUrl", latestReq == null ? null : latestReq.getPhotoUrl());
         row.put("latestTransferPhotoUrlsBefore", latestReq == null ? List.of() : photoUrlsFromRequest(latestReq, true));
         row.put("latestTransferPhotoUrlsAfter", latestReq == null ? List.of() : photoUrlsFromRequest(latestReq, false));
@@ -525,6 +526,13 @@ public class AssetService {
         }
         record.setUpdateBy("system");
         assetMapper.updateAssetBase(record);
+        // 同步更新 EAV "存放地点" 动态值（与 completeTransfer 保持一致）
+        if (location != null) {
+            String storageColKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
+            if (StringUtils.hasText(storageColKey)) {
+                assetMapper.upsertAssetValue(id, storageColKey, location.trim());
+            }
+        }
         if (dynamicValues != null && !dynamicValues.isEmpty()) {
             List<AssetColumnDef> defs = assetMapper.listColumnDefs();
             Set<String> validKeys = new HashSet<>();
@@ -841,6 +849,11 @@ public class AssetService {
         asset.setLocation(req.getTransferLocation().trim());
         asset.setUpdateBy(operatorId);
         assetMapper.updateAssetBase(asset);
+        // 同步更新 EAV 动态列"存放地点"值，确保 Web/小程序两端展示一致
+        String storageColKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
+        if (StringUtils.hasText(storageColKey)) {
+            assetMapper.upsertAssetValue(asset.getId(), storageColKey, req.getTransferLocation().trim());
+        }
         assetMapper.updateAssetLock(asset.getId(), 0, operatorId);
         assetMapper.insertTransferLog(
                 "ATL_" + UUID.randomUUID().toString().replace("-", ""),
@@ -909,6 +922,11 @@ public class AssetService {
             asset.setLocation(req.getFromLocation().trim());
             asset.setUpdateBy(operatorId);
             assetMapper.updateAssetBase(asset);
+            // 同步回滚 EAV 动态列"存放地点"值
+            String storageColKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
+            if (StringUtils.hasText(storageColKey)) {
+                assetMapper.upsertAssetValue(asset.getId(), storageColKey, req.getFromLocation().trim());
+            }
         }
         assetMapper.updateAssetLock(req.getAssetId(), 0, operatorId);
         assetMapper.insertTransferLog(
@@ -1498,20 +1516,33 @@ public class AssetService {
         if (defs == null) {
             return null;
         }
+        // 第一优先：列名精确匹配 "存放地点N"（如 存放地点1）
         for (AssetColumnDef d : defs) {
             if (d == null || !StringUtils.hasText(d.getColumnKey())) {
                 continue;
             }
             String label = str(d.getColumnLabel()).trim();
-            if (label.matches("(?i)存放地点\\d+")) {
+            if (label.matches("(?i)存放地点\\d*")) {
                 return d.getColumnKey();
             }
         }
+        // 第二优先：列名包含 "存放地点" 或 "当前位置" 或 "所在地"
         for (AssetColumnDef d : defs) {
             if (d == null || !StringUtils.hasText(d.getColumnKey())) {
                 continue;
             }
-            if (str(d.getColumnLabel()).contains("存放地点")) {
+            String label = str(d.getColumnLabel()).trim();
+            if (label.contains("存放地点") || label.contains("当前位置") || label.contains("所在地") || label.contains("存放位置") || label.contains("存储位置")) {
+                return d.getColumnKey();
+            }
+        }
+        // 第三兜底：column_key 包含 "存放" 或 "位置" 或 "location" 或 "storage"
+        for (AssetColumnDef d : defs) {
+            if (d == null || !StringUtils.hasText(d.getColumnKey())) {
+                continue;
+            }
+            String key = d.getColumnKey().toLowerCase(Locale.ROOT);
+            if (key.contains("存放") || key.contains("位置") || key.contains("location") || key.contains("storage")) {
                 return d.getColumnKey();
             }
         }

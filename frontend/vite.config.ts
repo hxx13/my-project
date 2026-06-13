@@ -23,6 +23,10 @@ export default defineConfig({
     build: {
         outDir: '../src/main/resources/static',
         emptyOutDir: true,
+        // 🔧 使用 esbuild 压缩 CSS 替代 LightningCSS
+        // LightningCSS (Vite 8 默认) 在生产构建中会错误处理 backdrop-filter /
+        // color-mix() / CSS 自定义属性，导致首页 GlassCard 透明度丢失
+        cssMinify: 'esbuild',
     },
 
 })

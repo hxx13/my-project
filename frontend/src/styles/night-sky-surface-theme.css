@@ -1,0 +1,710 @@
+/**
+ * 夜空表面主题（首页 / Twin Debug / 管理后台 / 学生中心暗色共用）
+ * 配色对齐 --app-color-scan-*；高透面板、无 backdrop-blur
+ */
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) {
+    --dash-night-bg-profile: var(--app-color-scan-profile-bg);
+    --dash-night-bg-student: var(--app-color-scan-student-bg);
+    --dash-night-bg-ai: var(--app-color-scan-ai-bg);
+    --dash-night-accent-warm: var(--app-color-scan-profile-accent);
+    --dash-night-accent-steel: var(--app-color-scan-ai-accent);
+    --dash-night-accent-ink: var(--app-color-scan-accent-ink);
+    --dash-night-border-warm: color-mix(in srgb, var(--app-color-scan-profile-border) 100%, transparent);
+    --dash-night-border-steel: color-mix(in srgb, var(--app-color-scan-ai-border) 100%, transparent);
+    --dash-night-text: var(--app-color-scan-accent-ink);
+    --dash-night-text-muted: color-mix(in srgb, var(--app-color-scan-accent-ink) 62%, transparent);
+    --dash-night-text-steel: color-mix(in srgb, var(--app-color-scan-ai-accent) 88%, white);
+    --dash-night-flow-enter: var(--app-color-scan-chart-stroke-entry);
+    --dash-night-flow-exit: color-mix(in srgb, var(--app-color-feedback-error) 58%, var(--dash-night-accent-warm));
+    --dash-night-surface-mix: 7%;
+    --dash-night-surface-mix-soft: 4%;
+    --dash-night-glass-blur: none;
+    --dash-night-shadow-elev-sm:
+        0 2px 6px color-mix(in srgb, var(--dash-night-accent-warm) 8%, transparent),
+        0 6px 14px color-mix(in srgb, var(--dash-night-accent-warm) 10%, transparent);
+    --dash-night-shadow-elev-md:
+        inset 0 1px 0 color-mix(in srgb, var(--app-color-text-inverse) 18%, transparent),
+        0 2px 6px color-mix(in srgb, var(--dash-night-accent-warm) 8%, transparent),
+        0 6px 16px color-mix(in srgb, var(--dash-night-accent-warm) 10%, transparent);
+    --dash-night-panel-bg: linear-gradient(
+        155deg,
+        color-mix(in srgb, var(--dash-night-bg-student) var(--dash-night-surface-mix), transparent) 0%,
+        color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) 100%
+    );
+
+    --app-color-surface-page: transparent;
+    --app-color-surface-container: color-mix(in srgb, var(--app-color-scan-student-bg) var(--dash-night-surface-mix), transparent);
+    --app-color-surface-elevated: color-mix(in srgb, var(--app-color-scan-profile-bg) var(--dash-night-surface-mix-soft), transparent);
+    --app-color-surface-hover: color-mix(in srgb, var(--app-color-scan-ai-bg) var(--dash-night-surface-mix-soft), transparent);
+    --app-color-surface-active: color-mix(in srgb, var(--app-color-scan-ai-bg) 18%, transparent);
+    --app-color-text-primary: var(--app-color-scan-accent-ink);
+    --app-color-text-secondary: color-mix(in srgb, var(--app-color-scan-accent-ink) 72%, transparent);
+    --app-color-text-tertiary: color-mix(in srgb, var(--app-color-scan-accent-ink) 48%, transparent);
+    --app-color-accent: var(--app-color-scan-profile-accent);
+    --app-color-accent-hover: color-mix(in srgb, var(--app-color-scan-profile-accent) 88%, white);
+    --app-color-accent-soft: color-mix(in srgb, var(--app-color-scan-profile-accent) 10%, transparent);
+    --app-color-accent-secondary: var(--app-color-scan-ai-accent);
+    --app-color-border-default: color-mix(in srgb, var(--app-color-scan-profile-border) 40%, transparent);
+    --app-color-border-strong: color-mix(in srgb, var(--app-color-scan-ai-accent) 34%, transparent);
+    --app-elevation-card: var(--dash-night-shadow-elev-sm);
+
+    color: var(--dash-night-text);
+}
+
+/* ── 管理后台 Twin 令牌 remap ── */
+.admin-layout-root--night-sky {
+    --admin-home-entry-card-bg: color-mix(in srgb, var(--app-color-scan-student-bg) 28%, transparent);
+    --admin-home-entry-card-bg-hover: color-mix(in srgb, var(--app-color-scan-student-bg) 38%, transparent);
+    --admin-home-entry-card-border: color-mix(in srgb, var(--app-color-scan-profile-border) 42%, transparent);
+    --admin-home-entry-card-border-hover: color-mix(in srgb, var(--app-color-scan-ai-accent) 38%, transparent);
+
+    --twin-ink: var(--app-color-scan-accent-ink);
+    --twin-body: color-mix(in srgb, var(--app-color-scan-accent-ink) 78%, transparent);
+    --twin-mute: color-mix(in srgb, var(--app-color-scan-accent-ink) 52%, transparent);
+    --twin-canvas: transparent;
+    --twin-canvas-soft: transparent;
+    --twin-canvas-soft-2: color-mix(in srgb, var(--app-color-scan-ai-bg) var(--dash-night-surface-mix-soft), transparent);
+    --twin-hairline: color-mix(in srgb, var(--app-color-scan-profile-border) 38%, transparent);
+    --twin-hairline-strong: color-mix(in srgb, var(--app-color-scan-ai-accent) 42%, transparent);
+    --twin-link: var(--app-color-scan-ai-accent);
+    --twin-link-deep: color-mix(in srgb, var(--app-color-scan-ai-accent) 88%, white);
+    --twin-primary: var(--app-color-scan-profile-accent);
+    --twin-on-primary: var(--app-color-scan-student-bg);
+    --twin-error: var(--app-color-feedback-error);
+    --twin-error-soft: color-mix(in srgb, var(--app-color-feedback-error) 14%, transparent);
+    --twin-warning: var(--app-color-feedback-warning);
+    --twin-warning-soft: color-mix(in srgb, var(--app-color-feedback-warning) 14%, transparent);
+    --twin-page-bg: transparent;
+    background: transparent;
+
+    /* 原语色板 remap：页面内 text/bg-[var(--color-*)] 随暗色夜空同步 */
+    --color-slate-900: var(--app-color-scan-accent-ink);
+    --color-slate-800: color-mix(in srgb, var(--app-color-scan-accent-ink) 92%, transparent);
+    --color-slate-700: color-mix(in srgb, var(--app-color-scan-accent-ink) 78%, transparent);
+    --color-slate-600: color-mix(in srgb, var(--app-color-scan-accent-ink) 65%, transparent);
+    --color-slate-500: color-mix(in srgb, var(--app-color-scan-accent-ink) 52%, transparent);
+    --color-slate-400: color-mix(in srgb, var(--app-color-scan-accent-ink) 42%, transparent);
+    --color-steel-500: var(--app-color-scan-ai-accent);
+    --color-steel-400: color-mix(in srgb, var(--app-color-scan-ai-accent) 88%, white);
+    --color-peach-500: var(--app-color-scan-profile-accent);
+  /* 勿将 --color-warm-50 设为 transparent：.dark 下 --app-color-text-primary 仍可能引用它 */
+    --color-warm-100: color-mix(in srgb, var(--app-color-scan-student-bg) var(--dash-night-surface-mix-soft), transparent);
+    --color-warm-200: color-mix(in srgb, var(--app-color-scan-profile-border) 38%, transparent);
+    --color-neutral-950: var(--app-color-scan-accent-ink);
+    --color-neutral-900: color-mix(in srgb, var(--app-color-scan-accent-ink) 95%, transparent);
+    --color-neutral-800: color-mix(in srgb, var(--app-color-scan-accent-ink) 88%, transparent);
+    --color-neutral-700: color-mix(in srgb, var(--app-color-scan-accent-ink) 75%, transparent);
+    --color-neutral-600: color-mix(in srgb, var(--app-color-scan-accent-ink) 62%, transparent);
+    --color-neutral-500: color-mix(in srgb, var(--app-color-scan-accent-ink) 50%, transparent);
+    --color-neutral-400: color-mix(in srgb, var(--app-color-scan-accent-ink) 40%, transparent);
+    --color-neutral-100: color-mix(in srgb, var(--app-color-scan-ai-bg) var(--dash-night-surface-mix-soft), transparent);
+}
+
+.admin-layout-root--night-sky main {
+    background: transparent !important;
+}
+
+.admin-layout-root--night-sky .admin-page-content {
+    background: transparent;
+}
+
+.admin-layout-root--night-sky > aside {
+    border-color: color-mix(in srgb, var(--app-color-scan-profile-border) 32%, transparent) !important;
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--app-color-scan-student-bg) 88%, black) 0%,
+        color-mix(in srgb, var(--app-color-scan-ai-bg) 82%, black) 100%
+    ) !important;
+}
+
+.admin-layout-root--night-sky header[class*="sticky"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: color-mix(in srgb, var(--app-color-scan-student-bg) 42%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-scan-profile-border) 35%, transparent) !important;
+}
+
+/* ── 学生中心令牌 remap ── */
+.student-layout-root--night-sky {
+    --student-ink: var(--app-color-scan-accent-ink);
+    --student-body: color-mix(in srgb, var(--app-color-scan-accent-ink) 78%, transparent);
+    --student-mute: color-mix(in srgb, var(--app-color-scan-accent-ink) 52%, transparent);
+    --student-canvas: transparent;
+    --student-canvas-soft: transparent;
+    --student-canvas-soft-2: color-mix(in srgb, var(--app-color-scan-ai-bg) var(--dash-night-surface-mix-soft), transparent);
+    --student-hairline: color-mix(in srgb, var(--app-color-scan-profile-border) 38%, transparent);
+    --student-hairline-strong: color-mix(in srgb, var(--app-color-scan-ai-accent) 42%, transparent);
+    --student-primary: var(--app-color-scan-profile-accent);
+    --student-primary-hover: color-mix(in srgb, var(--app-color-scan-profile-accent) 88%, white);
+    --student-primary-soft: color-mix(in srgb, var(--app-color-scan-profile-accent) 14%, transparent);
+    --student-primary-muted: color-mix(in srgb, var(--app-color-scan-profile-accent) 28%, transparent);
+    --student-on-primary: var(--app-color-scan-student-bg);
+    --student-foreground: var(--app-color-scan-accent-ink);
+    --student-mute-foreground: color-mix(in srgb, var(--app-color-scan-accent-ink) 52%, transparent);
+    --student-border: color-mix(in srgb, var(--app-color-scan-profile-border) 38%, transparent);
+    --student-card-soft-bg: color-mix(in srgb, var(--app-color-scan-ai-bg) var(--dash-night-surface-mix-soft), transparent);
+    --student-success: var(--app-color-feedback-success);
+    --student-success-soft: color-mix(in srgb, var(--app-color-feedback-success) 14%, transparent);
+    --student-error: var(--app-color-feedback-error);
+    --student-error-soft: color-mix(in srgb, var(--app-color-feedback-error) 14%, transparent);
+    --student-warning: var(--app-color-feedback-warning);
+    --student-warning-soft: color-mix(in srgb, var(--app-color-feedback-warning) 14%, transparent);
+  --student-accent-access: var(--app-color-feedback-success);
+  --student-accent-access-soft: color-mix(in srgb, var(--app-color-feedback-success) 14%, transparent);
+  --student-accent-telemetry: var(--app-color-scan-ai-accent);
+  --student-accent-telemetry-soft: color-mix(in srgb, var(--app-color-scan-ai-bg) var(--dash-night-surface-mix-soft), transparent);
+  --student-accent-alert: var(--app-color-feedback-warning);
+  --student-accent-alert-soft: color-mix(in srgb, var(--app-color-feedback-warning) 14%, transparent);
+  --student-accent-profile: var(--app-color-scan-profile-accent);
+  --student-accent-profile-soft: color-mix(in srgb, var(--app-color-scan-profile-accent) 14%, transparent);
+    background: transparent;
+
+    --color-slate-900: var(--app-color-scan-accent-ink);
+    --color-slate-800: color-mix(in srgb, var(--app-color-scan-accent-ink) 92%, transparent);
+    --color-slate-700: color-mix(in srgb, var(--app-color-scan-accent-ink) 78%, transparent);
+    --color-slate-600: color-mix(in srgb, var(--app-color-scan-accent-ink) 65%, transparent);
+    --color-slate-500: color-mix(in srgb, var(--app-color-scan-accent-ink) 52%, transparent);
+    --color-slate-400: color-mix(in srgb, var(--app-color-scan-accent-ink) 42%, transparent);
+    --color-steel-500: var(--app-color-scan-ai-accent);
+    --color-steel-400: color-mix(in srgb, var(--app-color-scan-ai-accent) 88%, white);
+    --color-peach-500: var(--app-color-scan-profile-accent);
+    --color-warm-100: color-mix(in srgb, var(--app-color-scan-student-bg) var(--dash-night-surface-mix-soft), transparent);
+    --color-warm-200: color-mix(in srgb, var(--app-color-scan-profile-border) 38%, transparent);
+    --color-neutral-950: var(--app-color-scan-accent-ink);
+    --color-neutral-900: color-mix(in srgb, var(--app-color-scan-accent-ink) 95%, transparent);
+    --color-neutral-800: color-mix(in srgb, var(--app-color-scan-accent-ink) 88%, transparent);
+    --color-neutral-700: color-mix(in srgb, var(--app-color-scan-accent-ink) 75%, transparent);
+    --color-neutral-600: color-mix(in srgb, var(--app-color-scan-accent-ink) 62%, transparent);
+    --color-neutral-500: color-mix(in srgb, var(--app-color-scan-accent-ink) 50%, transparent);
+    --color-neutral-400: color-mix(in srgb, var(--app-color-scan-accent-ink) 40%, transparent);
+    --color-neutral-100: color-mix(in srgb, var(--app-color-scan-ai-bg) var(--dash-night-surface-mix-soft), transparent);
+}
+
+.student-layout-root--night-sky main {
+    background: transparent !important;
+}
+
+.student-layout-root--night-sky aside {
+    border-color: color-mix(in srgb, var(--app-color-scan-profile-border) 32%, transparent) !important;
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--app-color-scan-student-bg) 88%, black) 0%,
+        color-mix(in srgb, var(--app-color-scan-ai-bg) 82%, black) 100%
+    ) !important;
+}
+
+.student-layout-root--night-sky header {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: color-mix(in srgb, var(--app-color-scan-student-bg) 42%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-scan-profile-border) 35%, transparent) !important;
+}
+
+.dark.student-layout-root--night-sky {
+    --student-ink: var(--app-color-scan-accent-ink);
+    --student-body: color-mix(in srgb, var(--app-color-scan-accent-ink) 78%, transparent);
+    --student-mute: color-mix(in srgb, var(--app-color-scan-accent-ink) 52%, transparent);
+    --app-color-text-primary: var(--app-color-scan-accent-ink);
+    --app-color-text-secondary: color-mix(in srgb, var(--app-color-scan-accent-ink) 72%, transparent);
+    --app-color-text-tertiary: color-mix(in srgb, var(--app-color-scan-accent-ink) 48%, transparent);
+}
+
+.admin-layout-root--night-sky .rounded-twin-lg,
+.admin-layout-root--night-sky .rounded-twin-xl,
+.admin-layout-root--night-sky .rounded-twin-md,
+.admin-layout-root--night-sky .rounded-twin-sm,
+.admin-layout-root--night-sky [class*="rounded-xl"][class*="border"],
+.admin-layout-root--night-sky [class*="rounded-lg"][class*="border"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* ── 通用面板 / 浅色硬编码块 ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-white,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-white\/90,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-white\/80 {
+    background: var(--dash-night-panel-bg) !important;
+    border-color: color-mix(in srgb, var(--dash-night-border-warm) 38%, transparent) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: var(--dash-night-shadow-elev-sm) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-50\/50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-50\/80,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-200\/50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-200\/60 {
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) !important;
+    backdrop-filter: none !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-slate-800,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-slate-900 {
+    color: var(--dash-night-text) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-slate-700 {
+    color: color-mix(in srgb, var(--dash-night-text) 88%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-slate-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-slate-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-slate-400 {
+    color: var(--dash-night-text-muted) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-slate-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-slate-200\/60,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-slate-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-slate-300 {
+    border-color: color-mix(in srgb, var(--dash-night-border-warm) 30%, transparent) !important;
+}
+
+/* ── 状态徽章 / 指示色（进/出/成功/警告/错误） ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-green-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-green-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-emerald-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-emerald-100 {
+    background: color-mix(in srgb, var(--app-color-feedback-success) 16%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-feedback-success) 38%, transparent) !important;
+    color: color-mix(in srgb, var(--app-color-feedback-success) 88%, white) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-green-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-green-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-green-800,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-emerald-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-emerald-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-emerald-800 {
+    color: color-mix(in srgb, var(--app-color-feedback-success) 88%, white) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-green-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-green-300,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-emerald-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-emerald-300 {
+    border-color: color-mix(in srgb, var(--app-color-feedback-success) 36%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-rose-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-rose-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-red-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-red-100 {
+    background: color-mix(in srgb, var(--app-color-feedback-error) 14%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-feedback-error) 36%, transparent) !important;
+    color: color-mix(in srgb, var(--app-color-feedback-error) 85%, white) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-rose-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-rose-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-rose-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-red-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-red-700 {
+    color: color-mix(in srgb, var(--app-color-feedback-error) 85%, white) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-rose-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-rose-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-red-200 {
+    border-color: color-mix(in srgb, var(--app-color-feedback-error) 34%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-amber-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-amber-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-yellow-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-yellow-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-orange-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-orange-100 {
+    background: color-mix(in srgb, var(--app-color-feedback-warning) 14%, transparent) !important;
+    border-color: color-mix(in srgb, var(--app-color-feedback-warning) 36%, transparent) !important;
+    color: color-mix(in srgb, var(--app-color-feedback-warning) 90%, white) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-amber-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-amber-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-amber-800,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-amber-900,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-yellow-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-orange-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-orange-700 {
+    color: color-mix(in srgb, var(--app-color-feedback-warning) 90%, white) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-amber-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-amber-300,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-yellow-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-orange-200 {
+    border-color: color-mix(in srgb, var(--app-color-feedback-warning) 34%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-indigo-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-indigo-50\/80,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-indigo-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-blue-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-blue-50\/50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-blue-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-cyan-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-sky-50 {
+    background: color-mix(in srgb, var(--dash-night-accent-steel) 14%, transparent) !important;
+    border-color: color-mix(in srgb, var(--dash-night-accent-steel) 32%, transparent) !important;
+    color: var(--dash-night-text-steel) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-indigo-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-indigo-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-indigo-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-blue-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-blue-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-blue-800,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-cyan-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-cyan-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-sky-600 {
+    color: var(--dash-night-text-steel) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-indigo-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-indigo-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-blue-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-blue-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-cyan-200 {
+    border-color: color-mix(in srgb, var(--dash-night-accent-steel) 30%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-purple-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-purple-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-violet-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-violet-100 {
+    background: color-mix(in srgb, var(--dash-night-accent-warm) 12%, transparent) !important;
+    border-color: color-mix(in srgb, var(--dash-night-accent-warm) 30%, transparent) !important;
+    color: color-mix(in srgb, var(--dash-night-accent-warm) 90%, white) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-purple-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-purple-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-violet-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-violet-700 {
+    color: color-mix(in srgb, var(--dash-night-accent-warm) 92%, white) !important;
+}
+
+/* 实心状态按钮 / 角标 */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-rose-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-rose-600 {
+    background: color-mix(in srgb, var(--app-color-feedback-error) 72%, transparent) !important;
+    color: white !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-emerald-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-emerald-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-green-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-green-600 {
+    background: color-mix(in srgb, var(--app-color-feedback-success) 65%, transparent) !important;
+    color: white !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-indigo-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-indigo-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-blue-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-blue-600 {
+    background: color-mix(in srgb, var(--dash-night-accent-steel) 62%, transparent) !important;
+    color: var(--dash-night-accent-ink) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-amber-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-amber-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-orange-500 {
+    background: color-mix(in srgb, var(--app-color-feedback-warning) 68%, transparent) !important;
+    color: white !important;
+}
+
+/* 开关 / Toggle */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-indigo-500[class*="rounded-full"],
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) button .bg-indigo-500 {
+    background: color-mix(in srgb, var(--dash-night-accent-steel) 70%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-300[class*="rounded-full"] {
+    background: color-mix(in srgb, var(--dash-night-bg-ai) 55%, transparent) !important;
+}
+
+/* 表格 */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) table thead,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) thead.bg-slate-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) th.sticky.bg-slate-100 {
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) th {
+    color: var(--dash-night-text-steel) !important;
+    border-color: color-mix(in srgb, var(--dash-night-border-steel) 28%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) td {
+    color: var(--dash-night-text) !important;
+    border-color: color-mix(in srgb, var(--dash-night-border-warm) 18%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--dash-night-bg-student) 6%, transparent);
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) tbody tr:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) tr.hover\:bg-blue-50\/40:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:bg-indigo-50:hover {
+    background: color-mix(in srgb, var(--dash-night-accent-warm) 10%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) td.sticky.bg-white,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) th.sticky.bg-white {
+    background: color-mix(in srgb, var(--dash-night-bg-student) var(--dash-night-surface-mix), transparent) !important;
+}
+
+/* 表单控件 */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) input:not([type="checkbox"]):not([type="radio"]),
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) select,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) textarea {
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) !important;
+    color: var(--dash-night-text) !important;
+    border-color: color-mix(in srgb, var(--dash-night-border-steel) 32%, transparent) !important;
+    backdrop-filter: none !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) input::placeholder,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) textarea::placeholder {
+    color: var(--dash-night-text-muted) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) *:focus-visible {
+    outline-color: color-mix(in srgb, var(--dash-night-accent-warm) 55%, transparent);
+}
+
+/* 滚动条 */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) {
+    scrollbar-color: color-mix(in srgb, var(--dash-night-accent-steel) 35%, transparent) transparent;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--dash-night-accent-steel) 35%, transparent);
+    border-radius: 6px;
+}
+
+/* ── gray / neutral / zinc（管理后台常用） ── */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-gray-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-gray-50\/40,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-gray-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-neutral-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-neutral-50\/40,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-neutral-50\/80,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-neutral-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-zinc-50,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-zinc-50\/80,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-zinc-50\/95,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-zinc-100 {
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) !important;
+    backdrop-filter: none !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-gray-400,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-gray-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-gray-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-gray-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-neutral-400,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-neutral-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-neutral-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-neutral-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-neutral-800,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-neutral-900,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-zinc-400,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-zinc-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-zinc-600,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-zinc-700,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-zinc-800 {
+    color: var(--dash-night-text-muted) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-gray-900,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-neutral-900 {
+    color: var(--dash-night-text) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-gray-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-gray-300,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-neutral-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-zinc-100,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-zinc-200,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-zinc-300 {
+    border-color: color-mix(in srgb, var(--dash-night-border-warm) 28%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-300,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-800,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-800\/90,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-slate-900,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-zinc-800,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-zinc-950\/45 {
+    background: color-mix(in srgb, var(--dash-night-bg-student) 55%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-slate-100 {
+    border-color: color-mix(in srgb, var(--dash-night-border-warm) 22%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .text-slate-300 {
+    color: color-mix(in srgb, var(--dash-night-text-muted) 70%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:bg-slate-50:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:bg-gray-100:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:bg-gray-200:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:bg-neutral-50:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:bg-neutral-100:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:bg-zinc-50:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:bg-zinc-100:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:bg-blue-50\/50:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:bg-indigo-50:hover {
+    background: color-mix(in srgb, var(--dash-night-accent-warm) 12%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:text-indigo-600:hover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:text-sky-700:hover {
+    color: var(--dash-night-text-steel) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .hover\:border-indigo-200:hover {
+    border-color: color-mix(in srgb, var(--dash-night-accent-steel) 38%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .focus\:border-indigo-400:focus,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .focus\:border-blue-400:focus {
+    border-color: color-mix(in srgb, var(--dash-night-accent-steel) 55%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-red-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-red-500\/90 {
+    background: color-mix(in srgb, var(--app-color-feedback-error) 72%, transparent) !important;
+    color: white !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .border-red-400 {
+    border-color: color-mix(in srgb, var(--app-color-feedback-error) 50%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-gradient-to-r.from-amber-400.to-orange-500,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .from-amber-400.to-orange-500 {
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--app-color-feedback-warning) 82%, transparent),
+        color-mix(in srgb, var(--dash-night-accent-warm) 78%, transparent)
+    ) !important;
+    color: var(--dash-night-accent-ink) !important;
+}
+
+/* shadcn 浮层 / 命令面板 */
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .bg-popover,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) [data-radix-menu-content],
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) [data-radix-popper-content-wrapper] .bg-popover {
+    background: color-mix(in srgb, var(--dash-night-bg-student) 78%, transparent) !important;
+    border-color: color-mix(in srgb, var(--dash-night-border-warm) 35%, transparent) !important;
+    color: var(--dash-night-text) !important;
+    backdrop-filter: none !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .focus\:bg-rose-50:focus,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) [data-highlighted].bg-accent,
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) [data-highlighted]:focus {
+    background: color-mix(in srgb, var(--dash-night-accent-warm) 14%, transparent) !important;
+}
+
+:is(.dashboard-home-root--night-sky, .twin-chrome-debug-root--night-sky, .admin-layout-root--night-sky, .student-layout-root--night-sky) .shadow-sm {
+    box-shadow: var(--dash-night-shadow-elev-sm) !important;
+}
+
+/* 后台数据表（index.css @apply neutral — 夜空下覆写） */
+.admin-layout-root--night-sky .admin-table-shell-inner table,
+.admin-layout-root--night-sky .admin-data-table-wrap table {
+    color: var(--dash-night-text) !important;
+}
+
+.admin-layout-root--night-sky .admin-table-shell-inner thead th,
+.admin-layout-root--night-sky .admin-data-table-wrap thead th {
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) !important;
+    color: var(--dash-night-text-steel) !important;
+    border-color: color-mix(in srgb, var(--dash-night-border-steel) 28%, transparent) !important;
+    box-shadow: 0 1px 0 0 color-mix(in srgb, var(--dash-night-border-warm) 22%, transparent) !important;
+}
+
+.admin-layout-root--night-sky .admin-table-shell-inner tbody td,
+.admin-layout-root--night-sky .admin-data-table-wrap tbody td {
+    border-color: color-mix(in srgb, var(--dash-night-border-warm) 16%, transparent) !important;
+}
+
+.admin-layout-root--night-sky .admin-table-shell-inner tbody tr:nth-child(even),
+.admin-layout-root--night-sky .admin-data-table-wrap tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--dash-night-bg-student) 6%, transparent) !important;
+}
+
+.admin-layout-root--night-sky .admin-table-shell-inner tbody tr:hover,
+.admin-layout-root--night-sky .admin-data-table-wrap tbody tr:hover {
+    background: color-mix(in srgb, var(--dash-night-accent-warm) 10%, transparent) !important;
+}
+
+.admin-layout-root--night-sky .admin-table-shell-inner tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea),
+.admin-layout-root--night-sky .admin-data-table-wrap tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea) {
+    background: color-mix(in srgb, var(--dash-night-bg-ai) var(--dash-night-surface-mix-soft), transparent) !important;
+    color: var(--dash-night-text) !important;
+    border-color: color-mix(in srgb, var(--dash-night-border-steel) 32%, transparent) !important;
+}
+
+.admin-layout-root--night-sky .admin-table-shell-inner tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea)::placeholder,
+.admin-layout-root--night-sky .admin-data-table-wrap tbody :where(select, input:not([type="checkbox"]):not([type="radio"]), textarea)::placeholder {
+    color: var(--dash-night-text-muted) !important;
+}
+
+.admin-layout-root--night-sky .ring-black\/\[0\.02\] {
+    --tw-ring-color: color-mix(in srgb, var(--dash-night-accent-warm) 8%, transparent) !important;
+}
+
+.admin-layout-root--night-sky .focus\:ring-indigo-100:focus {
+    --tw-ring-color: color-mix(in srgb, var(--dash-night-accent-steel) 28%, transparent) !important;
+}
+
+/* 高于 index.css `.dark { --twin-ink }`，确保后台夜空下文字可读 */
+.dark.admin-layout-root--night-sky {
+    --twin-ink: var(--app-color-scan-accent-ink);
+    --twin-body: color-mix(in srgb, var(--app-color-scan-accent-ink) 78%, transparent);
+    --twin-mute: color-mix(in srgb, var(--app-color-scan-accent-ink) 52%, transparent);
+    --app-color-text-primary: var(--app-color-scan-accent-ink);
+    --app-color-text-secondary: color-mix(in srgb, var(--app-color-scan-accent-ink) 72%, transparent);
+    --app-color-text-tertiary: color-mix(in srgb, var(--app-color-scan-accent-ink) 48%, transparent);
+    --color-warm-50: var(--app-color-scan-accent-ink);
+}
+
+/* 工作台入口卡片：半透明底 + 明确文字色（避免星空上「看不见」） */
+.admin-layout-root--night-sky .admin-home-entry-card {
+    background: var(--admin-home-entry-card-bg);
+    border-color: var(--admin-home-entry-card-border);
+    color: var(--app-color-scan-accent-ink);
+    box-shadow: var(--dash-night-shadow-elev-sm);
+}
+
+.admin-layout-root--night-sky .admin-home-entry-card:hover:not(:disabled) {
+    background: var(--admin-home-entry-card-bg-hover);
+    border-color: var(--admin-home-entry-card-border-hover);
+}
+
+.admin-layout-root--night-sky .admin-home-entry-card__label {
+    color: var(--app-color-scan-accent-ink);
+    text-shadow: 0 1px 2px color-mix(in srgb, var(--app-color-scan-student-bg) 85%, transparent);
+}
+
+.admin-home-entry-card {
+    appearance: none;
+    border-color: var(--app-color-border-default);
+    background: var(--admin-home-entry-card-bg, var(--app-color-surface-container));
+}
+
+.admin-home-entry-card__label {
+    color: var(--twin-ink);
+}

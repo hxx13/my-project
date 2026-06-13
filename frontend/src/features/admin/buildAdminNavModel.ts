@@ -462,6 +462,54 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
     }
   }
 
+  // 将硬编码 registry 中、服务器 config 中缺失的条目补回侧栏。
+  // 这样新增的代码定义入口即使服务器 config 中不存在也可见。
+  const syncQueue: { path: string; label: string; icon: string; groupTitle: string }[] = [];
+  for (const rg of ADMIN_NAV_REGISTRY) {
+    const missing: AdminNavRegistryItem[] = [];
+    for (const ri of collectRegistryGroupItems(rg)) {
+      if (knownPaths.has(normalizeAdminPath(ri.path))) continue;
+      if (!ri.sidebarVisible(ctx)) continue;
+      missing.push(ri);
+    }
+    if (!missing.length) continue;
+
+    // 尝试匹配服务器 config 中同标题的分组
+    let targetGroup = sidebarGroups.find((g) => g.title === rg.title);
+    if (!targetGroup) {
+      targetGroup = { id: `fallback-${rg.id}`, title: rg.title, items: [] };
+      sidebarGroups.push(targetGroup);
+    }
+
+    for (const ri of missing) {
+      targetGroup.items.push({
+        key: ri.id,
+        to: ri.path,
+        label: ri.label,
+        icon: ri.icon,
+        telemetry: (ri as any).telemetry,
+        telemetryReturnStorageKey: (ri as any).telemetryReturnStorageKey,
+      });
+      knownPaths.add(normalizeAdminPath(ri.path));
+      // 异步同步到后端 DB，使 AdminNavManager 可见
+      if (serverConfig.length > 0) {
+        syncQueue.push({
+          path: ri.path,
+          label: ri.label,
+          icon: (ri.icon as any)?.displayName || 'Layers',
+          groupTitle: rg.title,
+        });
+      }
+    }
+  }
+
+  // 后台异步：将注册表缺失条目写入 admin_nav_config，使其在 AdminNavManager 中可见
+  if (syncQueue.length > 0) {
+    import("@/api/domains/adminNavConfig.api").then(({ ensureNavItems }) => {
+      ensureNavItems(syncQueue).catch(() => {});
+    });
+  }
+
   const registryLookup = new Map(ADMIN_NAV_REGISTRY.flatMap(g =>
     collectRegistryGroupItems(g).map(it => [it.id, it])
   ));

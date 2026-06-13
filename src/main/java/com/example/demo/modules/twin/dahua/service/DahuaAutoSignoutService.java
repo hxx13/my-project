@@ -168,7 +168,7 @@ public class DahuaAutoSignoutService {
                                 + "；未撤销大华门禁权限、未冻结（门禁联动规则 autoRiskActionEnabled=关闭）");
             }
             Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
-            registerSignoutCorrelation(userId, roomId, auditId, msg);
+            registerSignoutCorrelation(userId, roomId, auditId, msg, triggerType);
             return true;
         }
 
@@ -196,7 +196,7 @@ public class DahuaAutoSignoutService {
             msg = mergeDetail(detail, "自动离开完成：已尝试撤销大华门禁权限并执行冻结检查（" + roomLabel + "）");
         }
         Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
-        registerSignoutCorrelation(userId, roomId, auditId, msg);
+        registerSignoutCorrelation(userId, roomId, auditId, msg, triggerType);
         return true;
     }
 
@@ -212,15 +212,19 @@ public class DahuaAutoSignoutService {
         }
     }
 
-    private void registerSignoutCorrelation(String userId, String roomId, Long automationLogId, String detailForMatch) {
+    private void registerSignoutCorrelation(String userId, String roomId, Long automationLogId,
+                                             String detailForMatch, String triggerType) {
         if (automationLogId == null) {
             return;
         }
+        String sourceTag = "STRANDED_VIOLATION".equalsIgnoreCase(triggerType)
+                ? TwinAccessLogCorrelationService.SOURCE_STRANDED_VIOLATION
+                : TwinAccessLogCorrelationService.SOURCE_AUTO_SIGNOUT;
         twinAccessLogCorrelationService.registerPending(
                 2,
                 userId,
                 roomId,
-                TwinAccessLogCorrelationService.SOURCE_AUTO_SIGNOUT,
+                sourceTag,
                 automationLogId,
                 "孪生·自动离开（ARO 离开登记）",
                 detailForMatch != null ? detailForMatch : ""

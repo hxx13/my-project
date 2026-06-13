@@ -10,7 +10,7 @@
     </select>
 
     <select id="getUserLogsForRecalc" resultType="map">
-        SELECT create_time, accessType AS action
+        SELECT create_time, accessType AS action, feed_source AS feed_source
         FROM aro_access_log
         WHERE user_id = #{userId}
         ORDER BY create_time ASC
@@ -32,5 +32,16 @@
         ) l ON l.name = p.name
         SET p.total_exp = COALESCE(l.total_exp, 0)
     </update>
+
+    <select id="countTodayStrandedViolation" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_automation_log
+        WHERE user_id = #{userId}
+          AND automation_type = 'AUTO_SIGNOUT'
+          AND trigger_type = 'STRANDED_VIOLATION'
+          AND success = 1
+          AND DATE(event_time) = CURDATE()
+        LIMIT 1
+    </select>
 
 </mapper>

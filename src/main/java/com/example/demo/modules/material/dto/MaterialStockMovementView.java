@@ -13,6 +13,7 @@ public class MaterialStockMovementView {
     private Integer stockAfter;
     private String requestId;
     private String operatorUserId;
+    private String operatorName;
     private String applicantUserId;
     private String remark;
     private String createdAt;

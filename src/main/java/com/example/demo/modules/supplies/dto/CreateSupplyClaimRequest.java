@@ -12,5 +12,6 @@ public class CreateSupplyClaimRequest {
     public static class Line {
         private Long itemId;
         private Integer qty;
+        private String remark;
     }
 }

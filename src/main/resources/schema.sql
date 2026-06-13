@@ -827,6 +827,18 @@ CREATE TABLE IF NOT EXISTS admin_page_help_message (
     KEY idx_admin_page_help_message_path (page_path)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='后台页面帮助留言';
 
+CREATE TABLE IF NOT EXISTS admin_page_help_version (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    page_path VARCHAR(512) NOT NULL,
+    version_label VARCHAR(32) NOT NULL COMMENT '如 V1.0.0',
+    version_kind VARCHAR(16) NOT NULL DEFAULT 'update' COMMENT 'update=更新内容, new=新内容',
+    body_html MEDIUMTEXT NULL,
+    created_by VARCHAR(64) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_page_help_version (page_path, version_label),
+    KEY idx_page_help_version_path (page_path)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='页面帮助版本历史';
+
 CREATE TABLE IF NOT EXISTS supply_user_cart (
     user_id VARCHAR(64) NOT NULL PRIMARY KEY COMMENT 'sys_user.id',
     lines_json MEDIUMTEXT NOT NULL COMMENT 'JSON：物资 itemId 字符串 -> 数量',

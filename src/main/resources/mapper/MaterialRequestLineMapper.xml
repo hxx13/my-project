@@ -13,4 +13,18 @@
     <update id="updateFulfilledQty">
         UPDATE material_request_line SET fulfilled_qty = #{qty} WHERE id = #{id}
     </update>
+    <delete id="deleteByItemId">
+        DELETE FROM material_request_line WHERE item_id = #{itemId}
+    </delete>
+    <delete id="deleteByRequestId">
+        DELETE FROM material_request_line WHERE request_id = #{requestId}
+    </delete>
+    <select id="selectRequestIdsByItemId" resultType="string">
+        SELECT DISTINCT request_id FROM material_request_line WHERE item_id = #{itemId}
+    </select>
+    <delete id="deleteOrphan">
+        DELETE l FROM material_request_line l
+        LEFT JOIN material_item i ON l.item_id = i.id
+        WHERE i.id IS NULL
+    </delete>
 </mapper>

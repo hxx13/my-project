@@ -19,7 +19,7 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
 
   if (loading) {
     return (
-      <div className={cn(shell, "items-center justify-center text-sm text-neutral-400")}>
+      <div className={cn(shell, "items-center justify-center text-sm text-[var(--app-color-text-tertiary)]")}>
         加载中…
       </div>
     );
@@ -27,7 +27,7 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
 
   if (data.length === 0) {
     return (
-      <div className={cn(shell, "items-center justify-center text-sm text-neutral-400")}>
+      <div className={cn(shell, "items-center justify-center text-sm text-[var(--app-color-text-tertiary)]")}>
         暂无热力数据
       </div>
     );
@@ -35,7 +35,7 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
 
   return (
     <div className={shell}>
-      <div className="flex min-h-0 flex-1 w-full overflow-hidden rounded-md border border-neutral-100">
+      <div className="flex min-h-0 flex-1 w-full overflow-hidden rounded-md border border-[var(--app-color-border-default)]">
         <table
           className="border-collapse leading-tight"
           style={{ width: "100%", height: "100%", tableLayout: "fixed" }}
@@ -47,9 +47,9 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
             ))}
           </colgroup>
           <thead>
-            <tr className="bg-neutral-50">
+            <tr className="bg-[var(--app-color-surface-elevated)]">
               <th
-                className="truncate p-0.5 text-left text-[8px] font-semibold text-neutral-500"
+                className="truncate p-0.5 text-left text-[8px] font-semibold text-[var(--app-color-text-tertiary)]"
                 style={{ fontSize: 8 }}
               >
                 时\日
@@ -57,7 +57,7 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
               {HOURS.map((h) => (
                 <th
                   key={h}
-                  className="truncate p-0 text-center font-normal text-neutral-400"
+                  className="truncate p-0 text-center font-normal text-[var(--app-color-text-tertiary)]"
                   style={{ fontSize: 7 }}
                 >
                   {h}
@@ -69,7 +69,7 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
             {[1, 2, 3, 4, 5, 6, 7].map((dow) => (
               <tr key={dow}>
                 <td
-                  className="truncate bg-neutral-50 p-0.5 font-medium text-neutral-600"
+                  className="truncate bg-[var(--app-color-surface-elevated)] p-0.5 font-medium text-[var(--app-color-text-secondary)]"
                   style={{ fontSize: 8 }}
                 >
                   {DAY_LABELS[dow]}
@@ -86,10 +86,10 @@ export function ActivityHeatmapChart({ data, loading, className }: Props) {
                         fontSize: 7,
                         backgroundColor:
                           intensity > 0
-                            ? `rgba(124, 58, 237, ${Math.max(0.08, intensity)})`
+                            ? `color-mix(in srgb, var(--app-color-accent) ${Math.round(Math.max(8, intensity * 88))}%, transparent)`
                             : "transparent",
                         fontWeight: isPeak ? 700 : 400,
-                        color: isPeak ? "#fff" : undefined,
+                        color: isPeak ? "var(--app-color-text-inverse)" : "var(--app-color-text-secondary)",
                       }}
                       title={cell ? `${DAY_LABELS[dow]} ${h}:00 — ${cell.count} 次` : undefined}
                     >

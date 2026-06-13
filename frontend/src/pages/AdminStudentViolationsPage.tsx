@@ -353,7 +353,7 @@ export default function AdminStudentViolationsPage() {
     try {
       const urls: string[] = [];
       for (const f of imgs) {
-        urls.push(await uploadSingleImage(f));
+        urls.push((await uploadSingleImage(f)).publicUrl);
       }
       setUnboundUrls((prev) => [...prev, ...urls]);
       toast.success(`已上传 ${urls.length} 张`);
@@ -518,7 +518,7 @@ export default function AdminStudentViolationsPage() {
     try {
       const urls: string[] = [];
       for (const f of imgs) {
-        urls.push(await uploadSingleImage(f));
+        urls.push((await uploadSingleImage(f)).publicUrl);
       }
       setImageUrls((prev) => [...prev, ...urls]);
       toast.success(`已上传 ${urls.length} 张`);
@@ -694,7 +694,7 @@ export default function AdminStudentViolationsPage() {
     try {
       const urls: string[] = [];
       for (const f of Array.from(files)) {
-        urls.push(await uploadSingleImage(f));
+        urls.push((await uploadSingleImage(f)).publicUrl);
       }
       setEditUrls((prev) => [...prev, ...urls]);
       toast.success(`已上传 ${urls.length} 张`);
@@ -1759,8 +1759,11 @@ export default function AdminStudentViolationsPage() {
                   />
                 </div>
                 <div className="mt-1.5">
-                  <RichTextEditor value={editText} onChange={setEditText} />
+                  <RichTextEditor key={editId} value={editText} onChange={setEditText} />
                 </div>
+                <p className="mt-1.5 text-[11px] text-[var(--twin-mute)]">
+                  支持富文本与插图；可用变量：{'${name}'}、{'${dept}'}、{'${date}'}（扫码展示时按当事人自动替换）。
+                </p>
               </div>
               <div>
                 <label className="text-xs font-medium text-[var(--twin-body)]">图片</label>

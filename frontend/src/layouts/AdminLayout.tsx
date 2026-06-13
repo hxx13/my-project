@@ -4,7 +4,6 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  CircleHelp,
   History,
   Home,
   LogIn,
@@ -16,8 +15,8 @@ import {
   Star,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PageTransition } from "@/components/animation/PageTransition";
 import { BackfillAutoGlobalBanner } from "@/features/dahua-swing-stats/BackfillAutoGlobalBanner";
 import { toast } from "react-hot-toast";
@@ -42,6 +41,7 @@ import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import {
   createAdminNavContext,
   buildAdminNavModel,
+  normalizeAdminPath,
   type AdminSidebarNavGroup,
   type AdminSidebarNavItem,
 } from "@/features/admin/buildAdminNavModel";
@@ -55,6 +55,8 @@ import {
 import {
   ADMIN_NAV_PERSONALIZATION_EVENT,
   appendAdminNavRecent,
+  clearAdminNavLock,
+  collectAdminSidebarVisiblePaths,
   isAdminNavLocked,
   isAdminNavStarred,
   isFriendsSidebarGroupId,
@@ -71,6 +73,7 @@ import {
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { adminInputClass } from "@/features/admin/adminFormUi";
+import jsQR from "jsqr";
 import { AdminChromeContextMenu, type AdminChromeContextMenuPayload } from "@/features/admin/AdminChromeContextMenu";
 import {
   parseAdminNavLinkFromEventTarget,
@@ -78,7 +81,7 @@ import {
   parseSensitiveFromEventTarget,
 } from "@/features/admin/adminChromeContextMenuTarget";
 import { AdminCommandPalette } from "@/features/admin/AdminCommandPalette";
-import { AdminPageHelpDialog } from "@/features/admin/AdminPageHelpDialog";
+import { PageHelpHost } from "@/features/page-help/PageHelpHost";
 import {
   ADMIN_SIDEBAR_OPEN_GROUPS_SESSION_KEY,
   ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY,
@@ -101,6 +104,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
+import { useTheme } from "@/features/theme/ThemeProvider";
+import { NightSkyBackdropDecor } from "@/features/night-sky/NightSkyBackdropDecor";
 
 const SIDEBAR_COLLAPSED_KEY = "aro-admin-sidebar-collapsed";
 
@@ -136,23 +141,48 @@ function sidebarGroupPendingTotal(items: { badgeText?: string }[]): number {
   return sum;
 }
 
+/** 从图片文件中解码二维码，返回文本内容或 null */
+function decodeQrFromFile(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, img.width, img.height);
+        const code = jsQR(imageData.data, img.width, img.height);
+        resolve(code?.data ?? null);
+      };
+      img.onerror = () => resolve(null);
+      img.src = reader.result as string;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const pathname = location.pathname;
+  const { theme, effectiveMode } = useTheme();
+  const isDark = effectiveMode === "dark";
   const [pendingBadges, setPendingBadges] = useState<PendingBadges | null>(null);
   const role = authStorage.getRole() || "STUDENT";
   const [permNodes, setPermNodes] = useState<PublicPagePermissionNode[]>([]);
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [personalBump, setPersonalBump] = useState(0);
-  const lockRedirectFiredRef = useRef(false);
   /** 教职工及以上：整页自定义右键；菜单内改权等仍按角色收紧 */
   const [chromeCtx, setChromeCtx] = useState<AdminChromeContextMenuPayload | null>(null);
   const [sessionUser, setSessionUser] = useState(() => authStorage.getUserInfo());
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [sidebarLogoBroken, setSidebarLogoBroken] = useState(false);
-  const [pageHelpOpen, setPageHelpOpen] = useState(false);
 
   /** ARO account binding — SUPER_ADMIN only */
   const [aroBinding, setAroBinding] = useState<null | false | { aroUserId: string; name: string; departmentName: string; createdAt: string }>(null);
@@ -227,7 +257,7 @@ export default function AdminLayout() {
 
   /** Fetch ARO account binding status for SUPER_ADMIN */
   useEffect(() => {
-    if (!hasMinRole(role, "SUPER_ADMIN")) return;
+    if (!hasMinRole(role, "ADMIN")) return;
     const token = authStorage.getToken();
     if (!token) return;
     fetch("/api/admin/account/binding", {
@@ -405,38 +435,45 @@ export default function AdminLayout() {
     return () => window.removeEventListener(ADMIN_NAV_PERSONALIZATION_EVENT, onEvt);
   }, []);
 
-  useEffect(() => {
-    if (pathname.startsWith("/admin")) appendAdminNavRecent(pathname);
-  }, [pathname]);
+  const adminNavLockPath = useMemo(() => readAdminNavLock(), [personalBump]);
 
-  // 锁定页面自动跳转：首次进入后台时，若存在锁定路径且当前不在该页面，自动跳转
+  /** 本次进入 AdminLayout 是否已完成锁定引导（仅首次进后台跳一次，之后允许自由切换） */
+  const [lockBootstrapDone, setLockBootstrapDone] = useState(() => !readAdminNavLock());
+
   useEffect(() => {
-    if (lockRedirectFiredRef.current) return;
-    const lockPath = readAdminNavLock();
-    if (!lockPath) return;
-    if (pathname === lockPath) {
-      lockRedirectFiredRef.current = true;
+    if (!adminNavLockPath) {
+      setLockBootstrapDone(true);
       return;
     }
-    // 仅在后台路径下触发，避免从非后台页面被错误重定向
-    if (!pathname.startsWith("/admin")) return;
-    // 验证锁定路径对应的页面在当前权限下仍可见
-    const allVisiblePaths = new Set<string>();
-    for (const g of sidebarGroups) {
-      for (const it of g.items) allVisiblePaths.add(it.to);
-      for (const sg of g.subgroups ?? []) {
-        for (const it of sg.items) allVisiblePaths.add(it.to);
-      }
+    if (normalizeAdminPath(pathname) === adminNavLockPath) {
+      setLockBootstrapDone(true);
     }
-    if (!allVisiblePaths.has(lockPath)) {
-      // 页面已不可见，清除锁定
-      try { localStorage.removeItem("aro-admin-nav-lock"); } catch { /* ignore */ }
-      lockRedirectFiredRef.current = true;
-      return;
+  }, [adminNavLockPath, pathname]);
+
+  /** 锁定入口：仅引导阶段 replace 至锁定页（含 nav 未就绪时的乐观跳转） */
+  const lockRedirectTarget = useMemo(() => {
+    if (lockBootstrapDone) return null;
+    if (!adminNavLockPath || !pathname.startsWith("/admin")) return null;
+    if (normalizeAdminPath(pathname) === adminNavLockPath) return null;
+    if (!navModel) return adminNavLockPath;
+    if (!collectAdminSidebarVisiblePaths(sidebarGroups).has(adminNavLockPath)) return null;
+    return adminNavLockPath;
+  }, [lockBootstrapDone, adminNavLockPath, pathname, navModel, sidebarGroups]);
+
+  const pendingLockRedirect = lockRedirectTarget !== null;
+
+  useEffect(() => {
+    if (!navModel || !adminNavLockPath) return;
+    if (!collectAdminSidebarVisiblePaths(sidebarGroups).has(adminNavLockPath)) {
+      clearAdminNavLock();
+      setLockBootstrapDone(true);
     }
-    lockRedirectFiredRef.current = true;
-    navigate(lockPath, { replace: true });
-  }, [pathname, sidebarGroups, navigate]);
+  }, [navModel, adminNavLockPath, sidebarGroups]);
+
+  useEffect(() => {
+    if (pendingLockRedirect || !pathname.startsWith("/admin")) return;
+    appendAdminNavRecent(pathname);
+  }, [pathname, pendingLockRedirect]);
 
   useEffect(() => {
     setOpenGroups((prev) => {
@@ -523,7 +560,11 @@ export default function AdminLayout() {
     const starButton = !collapsed ? (
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); toggleAdminNavStar(it.to); }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleAdminNavStar(it.to);
+        }}
         title={itemStarred ? "取消收藏" : "收藏此页面"}
         className={cn(
           "shrink-0 rounded p-0.5 transition-all",
@@ -536,6 +577,12 @@ export default function AdminLayout() {
         <Star className={cn("h-3.5 w-3.5", itemStarred && "fill-amber-400")} />
       </button>
     ) : null;
+
+    const itemShellProps = {
+      "data-admin-sidebar-nav-item": true,
+      "data-admin-nav-path": it.to,
+      "data-admin-nav-label": it.label,
+    } as const;
 
     if (it.telemetry) {
       const TIcon = it.icon;
@@ -573,6 +620,7 @@ export default function AdminLayout() {
       return (
         <div
           key={it.key}
+          {...itemShellProps}
           className={cn("group flex w-full min-w-0 items-center gap-0.5", itemLocked && "border-l-2 border-amber-400")}
         >
           {starButton}
@@ -610,6 +658,7 @@ export default function AdminLayout() {
     return (
       <div
         key={it.key}
+        {...itemShellProps}
         className={cn("group flex w-full min-w-0 items-center gap-0.5", itemLocked && "border-l-2 border-amber-400")}
       >
         {starButton}
@@ -869,7 +918,15 @@ export default function AdminLayout() {
   };
 
   return (
-    <div className="flex min-h-screen min-w-0 items-start bg-[var(--twin-canvas-soft)] text-[var(--twin-ink)]">
+    <div
+      className={cn(
+        "flex min-h-screen min-w-0 items-start text-[var(--twin-ink)]",
+        theme.className,
+        isDark && "dark admin-layout-root--night-sky",
+        !isDark && "bg-[var(--twin-canvas-soft)]"
+      )}
+      style={isDark ? { backgroundColor: "var(--app-color-scan-backdrop-from)" } : undefined}
+    >
       <AdminCommandPalette
         open={commandOpen}
         onOpenChange={setCommandOpen}
@@ -908,8 +965,18 @@ export default function AdminLayout() {
 {/* ⚠️ self-stretch + minHeight:100dvh 是必须的：父容器 items-start 导致子元素不拉伸，
     不加这两个属性会导致所有子页面的 h-full 失效（高度塌为 0）。
     见 docs/UI设计规范与主题标准.md § 高度链完整性 */}
-      <section className="flex min-w-0 flex-1 flex-col self-stretch" style={{ minHeight: "100dvh" }}>
-        <header className="sticky top-0 z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)]/95 px-4 py-2 shadow-twin-level-2 backdrop-blur-md sm:px-6 md:h-16 md:flex-nowrap md:py-0">
+      <section className="relative flex min-w-0 flex-1 flex-col self-stretch" style={{ minHeight: "100dvh" }}>
+        {isDark ? (
+          <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+            <NightSkyBackdropDecor ultraRich includeOrbs={false} />
+          </div>
+        ) : null}
+        <header
+          className={cn(
+            "sticky top-0 z-20 flex min-h-16 shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-b border-[var(--twin-hairline)] px-4 py-2 shadow-twin-level-2 sm:px-6 md:h-16 md:flex-nowrap md:py-0",
+            isDark ? "bg-[var(--twin-canvas)]" : "bg-[var(--twin-canvas)]/95 backdrop-blur-md"
+          )}
+        >
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:flex-1 md:flex-nowrap">
             <button
               type="button"
@@ -959,15 +1026,7 @@ export default function AdminLayout() {
                 {adminHeaderTitle}
               </h1>
               <ThemeSwitcher className="h-8 shrink-0 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 text-[11px] font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" />
-              <button
-                type="button"
-                onClick={() => setPageHelpOpen(true)}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
-                title="本页帮助与留言"
-                aria-label="本页帮助与留言"
-              >
-                <CircleHelp className="h-4 w-4" />
-              </button>
+              <PageHelpHost pagePath={pathname} variant="admin" suppressAutoIntro={pendingLockRedirect} />
               {hasMinRole(role, "SUPER_ADMIN") ? (
                 <button
                   type="button"
@@ -1011,13 +1070,13 @@ export default function AdminLayout() {
                 </div>
                 <div className="px-2 py-1 text-[10px] text-[var(--twin-mute)] sm:block">当前角色 · {role}</div>
                 <DropdownMenuSeparator />
-                {hasMinRole(role, "SUPER_ADMIN") && aroBinding === false && (
+                {hasMinRole(role, "ADMIN") && aroBinding === false && (
                   <DropdownMenuItem onSelect={() => setAroBindDialogOpen(true)}>
                     <UserRound className="mr-2 h-4 w-4" />
                     绑定ARO账号
                   </DropdownMenuItem>
                 )}
-                {hasMinRole(role, "SUPER_ADMIN") && aroBinding && (
+                {hasMinRole(role, "ADMIN") && aroBinding && (
                   <>
                     <DropdownMenuItem disabled className="text-[var(--twin-mute)] opacity-70">
                       <UserRound className="mr-2 h-4 w-4" />
@@ -1091,17 +1150,23 @@ export default function AdminLayout() {
           </div>
         </header>
 
-        <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden bg-[var(--twin-canvas-soft)]">
+        <main
+          className={cn(
+            "relative z-[1] flex w-full min-w-0 flex-1 flex-col overflow-x-hidden",
+            isDark ? "bg-transparent" : "bg-[var(--twin-canvas-soft)]"
+          )}
+        >
+          {lockRedirectTarget ? <Navigate to={lockRedirectTarget} replace /> : null}
           <BackfillAutoGlobalBanner />
           <div className="admin-page-content mx-auto w-full max-w-[1600px] flex-1">
-            <PageTransition key={location.pathname} variant="fadeUp" duration={0.3} className="h-full">
-              <Outlet />
-            </PageTransition>
+            {!pendingLockRedirect ? (
+              <PageTransition key={location.pathname} variant="fadeUp" duration={0.3} className="h-full">
+                <Outlet />
+              </PageTransition>
+            ) : null}
           </div>
         </main>
       </section>
-
-      <AdminPageHelpDialog open={pageHelpOpen} onOpenChange={setPageHelpOpen} pagePath={pathname} />
 
       <AdminChromeContextMenu
         open={!!chromeCtx}
@@ -1160,20 +1225,49 @@ export default function AdminLayout() {
             <DialogTitle>绑定ARO账号</DialogTitle>
             <DialogDescription>输入要绑定的ARO用户ID</DialogDescription>
           </DialogHeader>
-          <div className="py-2">
-            <input
-              className={adminInputClass}
-              placeholder="ARO用户ID"
-              value={aroBindUserId}
-              onChange={(e) => setAroBindUserId(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && aroBindUserId.trim()) {
-                  e.preventDefault();
-                  const btn = document.getElementById("aro-bind-submit-btn") as HTMLButtonElement | null;
-                  btn?.click();
-                }
-              }}
-            />
+          <div className="py-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                title="扫描二维码识别ARO ID"
+                className="shrink-0 flex h-10 w-10 items-center justify-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] transition-colors"
+                onClick={() => {
+                  const inp = document.createElement("input");
+                  inp.type = "file";
+                  inp.accept = "image/*";
+                  inp.onchange = async () => {
+                    const file = inp.files?.[0];
+                    if (!file) return;
+                    toast.loading("识别二维码中…", { id: "qr-decode" });
+                    const text = await decodeQrFromFile(file);
+                    toast.dismiss("qr-decode");
+                    if (text) {
+                      setAroBindUserId(text);
+                      toast.success("已识别");
+                    } else {
+                      toast.error("未识别到二维码，请重试");
+                    }
+                  };
+                  inp.click();
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              </button>
+              <input
+                className={`${adminInputClass} flex-1`}
+                placeholder="ARO用户ID"
+                value={aroBindUserId}
+                onChange={(e) => setAroBindUserId(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && aroBindUserId.trim()) {
+                    e.preventDefault();
+                    const btn = document.getElementById("aro-bind-submit-btn") as HTMLButtonElement | null;
+                    btn?.click();
+                  }
+                }}
+              />
+            </div>
+            <p className="text-[10px] text-[var(--twin-mute)]">可手动输入或点击左侧扫码图标上传二维码图片自动识别</p>
           </div>
           <DialogFooter className="gap-2 sm:gap-2">
             <Button

@@ -10,8 +10,11 @@ import { useTheme } from "@/features/theme/ThemeProvider";
 import "@/features/twin-chrome/twinChromeDebugOutlet.css";
 import "@/features/twin-chrome/twinChromeDebugPipeline.css";
 import "@/features/twin-chrome/twinChromeDebugNeonGlobal.css";
+import "@/features/twin-chrome/twinChromeDebugNight.css";
 import "@/features/twin-chrome/twinChromeAnimalTelemetrySciFi.css";
 import "@/features/twin-chrome/twinChromeAnimalTelemetryRoomFx.css";
+import { NightSkyBackdropDecor } from "@/features/night-sky/NightSkyBackdropDecor";
+import { PageHelpHost } from "@/features/page-help/PageHelpHost";
 
 function hideDockPath(pathname: string) {
     const p = pathname.replace(/\/+$/, "") || "/";
@@ -41,6 +44,7 @@ export default function TwinLayoutInner() {
     const isDark = theme.mode === 'dark';
     const [ctxMenu, setCtxMenu] = useState<TwinChromeContextMenuPayload | null>(null);
     const debugShell = isDebugShellPath(pathname);
+    const debugNightShell = debugShell && isDark;
     /** 驾驶舱页固定科幻壳；动物房页仍随 Twin 主题 dashboardSciFi 切换 */
     const pNorm = pathname.replace(/\/+$/, "") || "/";
     const isPreview = pNorm === "/dashboard-preview";
@@ -85,7 +89,17 @@ export default function TwinLayoutInner() {
     }, [animalSciFiShell]);
 
     return (
-        <div className={cn("fixed inset-0 w-screen m-0 p-0 overflow-x-hidden", theme.className, isDark && 'dark', isPreview ? "min-h-screen overflow-y-auto" : "h-screen overflow-y-auto")} style={{ backgroundColor: isPreview ? "#0A0014" : "#f8f9fa" }}>
+        <div
+            className={cn("fixed inset-0 w-screen m-0 p-0 overflow-x-hidden", theme.className, isDark && 'dark', isPreview ? "min-h-screen overflow-y-auto" : "h-screen overflow-y-auto")}
+            data-twin-debug-night={debugNightShell ? "1" : undefined}
+            style={{
+                backgroundColor: isPreview
+                    ? "#0A0014"
+                    : isDark
+                      ? "var(--app-color-scan-backdrop-from)"
+                      : "#f8f9fa",
+            }}
+        >
             <style>{`
                 .nebula-bg {
                     overflow: clip;
@@ -104,24 +118,47 @@ export default function TwinLayoutInner() {
                 }
             `}</style>
 
-            <div className="nebula-bg absolute inset-0 z-0 pointer-events-none" />
+            {!isDark && !isPreview ? <div className="nebula-bg absolute inset-0 z-0 pointer-events-none" /> : null}
 
             <div className={cn("relative z-10 w-full", isPreview ? "min-h-full" : "h-full min-h-0")}>
                 <div
                     className={cn(
+                        "relative",
                         isPreview ? "min-h-full w-full" : "h-full min-h-0 w-full",
-                        debugShell && themeId === "dashboardSciFi" && "twin-chrome-debug-root",
+                        debugNightShell && "twin-chrome-debug-root twin-chrome-debug-root--night-sky",
+                        debugShell && !debugNightShell && themeId === "dashboardSciFi" && "twin-chrome-debug-root",
                         animalSciFiShell && "twin-chrome-animal-telemetry-scifi"
                     )}
                     data-twin-chrome-theme={themeId}
                 >
-                    <PageTransition key={pathname} variant="fadeIn" duration={0.25} className="h-full min-h-0">
-                      <Outlet />
+                    {debugNightShell ? (
+                        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+                            <NightSkyBackdropDecor ultraRich includeOrbs={false} />
+                        </div>
+                    ) : null}
+                    <PageTransition
+                        key={pathname}
+                        variant="fadeIn"
+                        duration={0.25}
+                        className="relative z-[1] h-full min-h-0"
+                    >
+                        <Outlet />
                     </PageTransition>
                 </div>
             </div>
 
             {showDock ? <DebugNav /> : null}
+
+{/* TEMP: 暂时移除 PageHelpHost 以诊断 React 错误 #185 */}
+            {/*
+            {!isPreview ? (
+                <div className="pointer-events-none fixed right-2.5 top-2.5 z-[var(--z-sticky)] sm:right-3 sm:top-3">
+                    <div className="pointer-events-auto">
+                        <PageHelpHost pagePath={pathname} variant="twin" enableFullHelpDialog />
+                    </div>
+                </div>
+            ) : null}
+            */}
 
             <TwinChromeContextMenu
                 key={ctxMenu ? `${ctxMenu.x}-${ctxMenu.y}` : "twin-ctx-closed"}

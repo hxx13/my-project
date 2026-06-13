@@ -276,7 +276,10 @@ export default function DebugHeatmapPage() {
     if (isLoadingRooms) return <div className="p-10 text-xl font-bold text-[var(--app-color-text-tertiary)]">正在扫描全校物理空间坐标...</div>;
 
     return (
-        <div className="p-8 bg-[var(--app-color-surface-page)] h-full flex flex-col box-border relative overflow-y-auto">
+        <div
+            data-twin-debug-heatmap
+            className="p-8 bg-[var(--app-color-surface-page)] h-full flex flex-col box-border relative overflow-y-auto"
+        >
             <AdminToolbar className="mb-6 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
                 <div className="min-w-0 max-w-[min(38vw,20rem)] shrink">
                     <h1 className="flex items-center gap-2 truncate text-xl font-black text-[var(--app-color-text-primary)] sm:text-2xl">

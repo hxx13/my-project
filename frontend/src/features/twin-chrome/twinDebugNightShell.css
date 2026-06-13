@@ -1,0 +1,38 @@
+/**
+ * Debug 暗色夜空壳层（对齐首页 dashboard-night，非赛博霓虹）
+ */
+
+.twin-chrome-debug-root--night-sky .twin-debug-night-shell {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    padding: 0.5rem 0.6rem 0.65rem;
+}
+
+@media (min-width: 768px) {
+    .twin-chrome-debug-root--night-sky .twin-debug-night-shell {
+        padding: 0.65rem 0.85rem 0.85rem;
+    }
+}
+
+.twin-chrome-debug-root--night-sky .twin-debug-night-shell__header {
+    flex-shrink: 0;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--dash-night-accent-warm) 22%, transparent);
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dash-night-text);
+}
+
+.twin-chrome-debug-root--night-sky .twin-debug-night-shell__body {
+    position: relative;
+    z-index: 1;
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+}

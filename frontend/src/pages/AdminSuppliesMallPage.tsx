@@ -22,8 +22,13 @@ import { fetchPublicPagePermissions, WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED } from 
 import type { PublicPagePermissionNode } from "@/api/domains/pagePermission.api";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { webImageSrc } from "@/utils/mediaUrl";
+import { Portal } from "@/components/Portal";
 
 const SUPPLIES_MALL_CARD_MIN_COL_PX = 300;
+/** 卡片最小高度（约为原版 2×） */
+const SUPPLIES_MALL_CARD_MIN_H = "8rem";
+/** 缩略图边长（原版 48px → 96px，与卡片加高同步） */
+const SUPPLIES_MALL_THUMB_PX = 96;
 
 const LEGACY_WEB_CART_PREFIX = "aro_web_supplies_cart_v1_";
 
@@ -92,6 +97,9 @@ export default function AdminSuppliesMallPage() {
   const cartRef = useRef<Record<number, number>>({});
   const remoteSaveTimerRef = useRef<number | null>(null);
   const [authUserId, setAuthUserId] = useState(() => authStorage.getUserInfo()?.id?.trim() || "");
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [remarkMap, setRemarkMap] = useState<Record<number, string>>({});
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const claimCap = capMap.SUPPLIES_CLAIM;
   const adminCap = capMap.SUPPLIES_ADMIN;
@@ -247,7 +255,7 @@ export default function AdminSuppliesMallPage() {
 
   const reconcileCartWithStock = useCallback(
     (list: SupplyItem[]) => {
-      const next = { ...cart };
+      const next = { ...cartRef.current };
       let changed = false;
       for (const it of list) {
         const id = it.id;
@@ -263,7 +271,7 @@ export default function AdminSuppliesMallPage() {
       }
       if (changed) syncCart(next);
     },
-    [cart, syncCart],
+    [syncCart],
   );
 
   useEffect(() => {
@@ -389,14 +397,15 @@ export default function AdminSuppliesMallPage() {
     if (Number.isFinite(n) && n > max) toast.error(`最多可下单 ${max}`);
   };
 
-  const submitOrder = async () => {
+  const doSubmit = async () => {
     const lines = Object.entries(cart)
-      .map(([itemId, qty]) => ({ itemId: Number(itemId), qty }))
+      .map(([itemId, qty]) => ({ itemId: Number(itemId), qty, remark: remarkMap[Number(itemId)]?.trim() || undefined }))
       .filter((l) => l.qty > 0);
     if (lines.length === 0) {
       toast.error("请先选择物资");
       return;
     }
+    setConfirmOpen(false);
     setSubmitting(true);
     try {
       if (reviseClaimId) {
@@ -405,6 +414,7 @@ export default function AdminSuppliesMallPage() {
         setReviseClaimId(null);
         syncCartImmediate({});
         setCartSheetOpen(false);
+        setRemarkMap({});
         window.dispatchEvent(new Event(ADMIN_PENDING_BADGES_REFRESH_EVENT));
         navigate("/admin/supplies/mine");
         return;
@@ -413,6 +423,7 @@ export default function AdminSuppliesMallPage() {
       toast.success("领用单已提交");
       syncCartImmediate({});
       setCartSheetOpen(false);
+      setRemarkMap({});
       window.dispatchEvent(new Event(ADMIN_PENDING_BADGES_REFRESH_EVENT));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "提交失败");
@@ -535,19 +546,23 @@ export default function AdminSuppliesMallPage() {
               return (
                 <div
                   key={item.id}
-                  className="flex min-w-0 flex-row gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 shadow-sm"
+                  className="flex min-w-0 flex-row items-center gap-3 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 shadow-sm"
+                  style={{ minHeight: SUPPLIES_MALL_CARD_MIN_H }}
                 >
-                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md bg-[var(--twin-canvas-soft)]">
+                  <div
+                    className="relative shrink-0 overflow-hidden rounded-md bg-[var(--twin-canvas-soft)]"
+                    style={{ width: SUPPLIES_MALL_THUMB_PX, height: SUPPLIES_MALL_THUMB_PX }}
+                  >
                     {cover ? (
                       <button
                         type="button"
                         className="absolute inset-0 block"
-                        onClick={() => window.open(cover, "_blank", "noopener,noreferrer")}
+                        onClick={() => setPreviewSrc(cover)}
                       >
                         <img src={cover} alt="" className="h-full w-full object-cover" />
                       </button>
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-[var(--twin-mute)]">
+                      <div className="flex h-full w-full items-center justify-center text-base font-semibold text-[var(--twin-mute)]">
                         {String(item.name || "?").trim().charAt(0) || "?"}
                       </div>
                     )}
@@ -556,16 +571,16 @@ export default function AdminSuppliesMallPage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex min-w-0 flex-1 items-center justify-start gap-1">
                         <span
-                          className="min-w-0 shrink truncate text-left text-xs font-semibold leading-snug text-[var(--twin-ink)]"
+                          className="min-w-0 shrink truncate text-left text-sm font-semibold leading-snug text-[var(--twin-ink)]"
                           title={String(item.name || "").trim() || undefined}
                         >
                           {item.name}
                         </span>
                         {item.isNewItem ? (
-                          <span className="shrink-0 whitespace-nowrap text-[10px] font-bold text-orange-600">新品!</span>
+                          <span className="shrink-0 whitespace-nowrap text-[11px] font-bold text-orange-600">新品!</span>
                         ) : null}
                         {item.isNewInbound ? (
-                          <span className="shrink-0 whitespace-nowrap text-[10px] font-bold text-emerald-600">进货!</span>
+                          <span className="shrink-0 whitespace-nowrap text-[11px] font-bold text-emerald-600">进货!</span>
                         ) : null}
                       </div>
                       <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0.5">
@@ -595,13 +610,13 @@ export default function AdminSuppliesMallPage() {
                     </div>
                     {item.subtitle ? (
                       <div
-                        className="mt-0.5 truncate text-left text-[11px] text-[var(--twin-mute)]"
+                        className="mt-0.5 truncate text-left text-xs text-[var(--twin-mute)]"
                         title={String(item.subtitle || "").trim() || undefined}
                       >
                         {item.subtitle}
                       </div>
                     ) : null}
-                    <div className="mt-0.5 truncate text-left text-[11px] text-[var(--twin-body)]">
+                    <div className="mt-0.5 truncate text-left text-xs text-[var(--twin-body)]">
                       {item.stockMode === "QUANTIFIED" ? `库存 ${item.stockQty}` : item.stockQty >= 1 ? "有货" : "缺货"}
                     </div>
                   </div>
@@ -628,8 +643,8 @@ export default function AdminSuppliesMallPage() {
         <button
           type="button"
           disabled={submitting || cartCount === 0}
-          onClick={() => void submitOrder()}
-          className="rounded-full bg-sky-600 px-5 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+          onClick={() => setConfirmOpen(true)}
+          className="rounded-full bg-sky-600 px-5 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50 whitespace-nowrap"
         >
           {submitting ? "提交中…" : reviseClaimId ? "完成修改" : "提交领用单"}
         </button>
@@ -693,6 +708,13 @@ export default function AdminSuppliesMallPage() {
                           +
                         </button>
                       </div>
+                      <input
+                        type="text"
+                        placeholder="备注（可选，将计入审计）"
+                        value={remarkMap[line.id] || ""}
+                        onChange={(e) => setRemarkMap((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                        className="mt-1 w-full rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-0.5 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
+                      />
                     </div>
                   </div>
                 );
@@ -700,12 +722,108 @@ export default function AdminSuppliesMallPage() {
             </div>
             <div className="flex shrink-0 items-center justify-between border-t border-[var(--twin-hairline)] px-4 py-3">
               <span className="text-xs text-[var(--twin-body)]">共 {cartCount} 件</span>
-              <button type="button" className="text-xs font-medium text-sky-600 hover:underline" onClick={() => setCartSheetOpen(false)}>
-                收起
-              </button>
+              <div className="flex items-center gap-2">
+                <button type="button" className="rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs text-[var(--twin-body)]" onClick={() => setCartSheetOpen(false)}>
+                  收起
+                </button>
+                <button
+                  type="button"
+                  className="rounded-full bg-sky-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50"
+                  disabled={cartCount === 0}
+                  onClick={() => setConfirmOpen(true)}
+                >
+                  去提交
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      ) : null}
+
+      {/* 图片预览弹窗 */}
+      {previewSrc ? (
+        <div
+          className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setPreviewSrc(null)}
+        >
+          <button
+            type="button"
+            className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/40"
+            onClick={() => setPreviewSrc(null)}
+          >
+            ✕
+          </button>
+          <img
+            src={previewSrc}
+            alt="预览"
+            className="max-h-[90vh] max-w-[90vw] rounded-[var(--app-radius-container)] object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
+
+      {/* 提交确认弹窗 */}
+      {confirmOpen ? (
+        <Portal>
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4" onClick={() => setConfirmOpen(false)}>
+          <div className="w-full max-w-lg rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-4 max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between shrink-0">
+              <h3 className="text-base font-semibold text-[var(--twin-ink)]">{reviseClaimId ? "确认修改领用单" : "确认提交领用单"}</h3>
+              <button
+                type="button"
+                className="rounded-lg border border-[var(--twin-hairline)] px-3 py-1.5 text-sm text-[var(--twin-body)]"
+                onClick={() => setConfirmOpen(false)}
+              >
+                关闭
+              </button>
+            </div>
+            <p className="mb-2 text-xs text-[var(--twin-mute)] shrink-0">请核对以下物品与备注信息，提交后将进入出库处理流程。</p>
+            <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
+              {cartLines.map((line) => {
+                const item = items.find((x) => x.id === line.id);
+                return (
+                  <div key={line.id} className="flex items-center gap-3 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
+                    {line.cover ? (
+                      <img src={line.cover} alt="" className="h-10 w-10 shrink-0 rounded object-cover border border-[var(--twin-hairline)]" />
+                    ) : (
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-[var(--twin-canvas)] border border-[var(--twin-hairline)] text-xs text-[var(--twin-mute)]">
+                        {line.initial}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[var(--twin-ink)] truncate">{line.name}</span>
+                        <span className="text-xs text-[var(--twin-mute)] shrink-0">×{line.qty}</span>
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="备注（可选，将计入审计）"
+                        value={remarkMap[line.id] || ""}
+                        onChange={(e) => setRemarkMap((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                        className="mt-1 w-full rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-0.5 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2 shrink-0">
+              <span className="text-xs text-[var(--twin-mute)]">共 {cartCount} 件</span>
+              <div className="flex items-center gap-2">
+                <button type="button" className="rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-sm text-[var(--twin-body)] whitespace-nowrap" onClick={() => setConfirmOpen(false)}>取消</button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 whitespace-nowrap"
+                  disabled={submitting}
+                  onClick={() => void doSubmit()}
+                >
+                  {submitting ? "提交中…" : "确认提交"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        </Portal>
       ) : null}
     </div>
     </div>

@@ -1,5 +1,7 @@
 import React from 'react';
+import { GraduationCap, LayoutGrid } from 'lucide-react';
 import AutoGenerateBadge from './AutoGenerateBadge';
+import { ScanActionButton } from './ScanActionButton';
 import { resolveScanAccentCss, type ScanAccentVariant, AI_CARD, INNER_ROW } from './scanPopupTheme';
 // 💥 1. 扩展接口定义
 export interface RoomPrediction {
@@ -33,7 +35,6 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                                                                onEnterStudentCenter,
                                                            }) => {
     const accent = resolveScanAccentCss(accentVariant);
-    const isWarm = accent.isWarm;
     const visiblePredictions = predictions.filter((p) => !p.isPlaceholder);
 
     // 💥 视觉重构 3：升级翻译器，将名字和概率在数据结构上彻底分离，方便独立上色！
@@ -56,8 +57,8 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
         }
     };
 
-    const iconColor = 'text-orange-500 dark:text-orange-400';
-    const iconBg = 'border-orange-400/30 bg-orange-100 dark:bg-orange-900/30';
+    const iconColor = 'text-[var(--scan-accent-ink,var(--app-color-scan-accent-ink))]';
+    const iconBg = 'scan-accent-icon';
 // ==========================================
     // 💥 绝杀引擎：24H出入场概率双轨聚合计算 (真实数据驱动)
     // ==========================================
@@ -111,7 +112,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
             <AutoGenerateBadge />
             <div
                 className="absolute -top-1/2 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full blur-3xl transition-all duration-700"
-                style={{ backgroundColor: "var(--scan-glow)", opacity: 0.12 }}
+                style={{ backgroundColor: "var(--scan-glow, var(--app-color-scan-backdrop-neon))", opacity: 0.12 }}
             />
 
             <div className="relative flex flex-col gap-3">
@@ -128,10 +129,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                         </div>
                         <div>
                             {/* 💥 视觉重构 1：模块大标题采用主题渐变色，文字修改为 AI行为预测 */}
-                            <p
-                                className="text-base font-black leading-none tracking-widest"
-                                style={{ color: accent.accent }}
-                            >
+                            <p className="text-base font-black leading-none tracking-widest text-[var(--scan-accent-ink,var(--app-color-scan-accent-ink))]">
                                 AI行为预测
                             </p>
                             <p className="mt-1.5 text-[10px] font-medium leading-none text-[var(--app-color-text-tertiary)]">
@@ -228,7 +226,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
 
                             {/* 💥 视觉重构 2：核心驻留时长，采用高饱和度琥珀色 + 强发光，瞬间抓住眼球 */}
                             <div className="flex flex-[0.7] flex-col items-center justify-center border-r border-[var(--app-color-border-default)] px-1.5">
-                                <p className="text-[16px] font-black leading-none tracking-tight text-[var(--app-color-feedback-warning)]">
+                                <p className="text-[16px] font-black leading-none tracking-tight text-[var(--scan-accent-ink,var(--app-color-scan-accent-ink))]">
                                     {pred.focusTime}
                                 </p>
                                 <p className="mt-1.5 whitespace-nowrap text-[7px] font-medium leading-none text-[var(--app-color-text-tertiary)]">
@@ -286,7 +284,7 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                     <div className="relative flex-1 w-full">
                         <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 300 45" preserveAspectRatio="none">
                             <defs>
-                                <linearGradient id={isWarm ? "area-warm" : "area-cool"} x1={0} y1={0} x2={0} y2={1}>
+                                <linearGradient id="scan-area-fill" x1={0} y1={0} x2={0} y2={1}>
                                     <stop offset="0%" stopColor={accent.strokeEntry} stopOpacity="0.25" />
                                     <stop offset="100%" stopColor={accent.strokeExit} stopOpacity="0.02" />
                                 </linearGradient>
@@ -298,8 +296,8 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                             ))}
 
                             {/* 💥 精准修复：用两座触底的山峰面积叠加，替代原本悬浮的飘带 */}
-                            <polygon points={trackData.entryAreaPoints} fill={`url(#${isWarm ? 'area-warm' : 'area-cool'})`} opacity="0.8" />
-                            <polygon points={trackData.exitAreaPoints} fill={`url(#${isWarm ? 'area-warm' : 'area-cool'})`} opacity="0.4" />
+                            <polygon points={trackData.entryAreaPoints} fill="url(#scan-area-fill)" opacity="0.8" />
+                            <polygon points={trackData.exitAreaPoints} fill="url(#scan-area-fill)" opacity="0.4" />
 
                             <polyline points={trackData.entryPoints} fill="none" stroke={accent.strokeEntry} strokeWidth="1.5" />
                             <polyline points={trackData.exitPoints} fill="none" stroke={accent.strokeExit} strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
@@ -316,19 +314,21 @@ const AIPredictionCard: React.FC<AIPredictionCardProps> = ({
                     </div>
                 </div>
 
-                <div className="flex gap-3 border-t border-[var(--app-color-border-default)] pt-3">
-                    <button
-                        onClick={onQuickActions}
-                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-success)]/30 bg-[var(--app-color-feedback-success-soft)] px-2.5 py-2 text-xs font-semibold text-[var(--app-color-feedback-success)] transition-all duration-300 hover:border-[var(--app-color-feedback-success)]/60 hover:bg-[var(--app-color-feedback-success-soft)]"
-                    >
-                        <span className="mr-1.5 text-sm">📋</span>快捷业务
-                    </button>
-                    <button
-                        onClick={onEnterStudentCenter}
-                        className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-accent)]/30 bg-[var(--app-color-accent-soft)] px-2.5 py-2 text-xs font-semibold text-[var(--app-color-accent)] transition-all duration-300 hover:border-[var(--app-color-accent)]/60 hover:bg-[var(--app-color-accent-soft)]"
-                    >
-                        <span className="mr-1.5 text-sm">🎓</span>个人中心
-                    </button>
+                <div className="flex gap-2.5 border-t border-[var(--app-color-border-default)] pt-3">
+                    <ScanActionButton
+                        layout="compact"
+                        variant="quick"
+                        icon={LayoutGrid}
+                        label="快捷业务"
+                        onClick={() => onQuickActions?.()}
+                    />
+                    <ScanActionButton
+                        layout="compact"
+                        variant="student"
+                        icon={GraduationCap}
+                        label="个人中心"
+                        onClick={() => onEnterStudentCenter?.()}
+                    />
                 </div>
             </div>
         </div>

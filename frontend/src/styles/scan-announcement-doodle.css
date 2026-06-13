@@ -1,0 +1,335 @@
+/* 扫码灵动岛详情 — 统一手绘涂鸦便签卡（无遮罩） */
+
+@layer components {
+  .scan-notice-doodle-anchor {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    pointer-events: none;
+  }
+
+  .scan-doodle-card {
+    min-height: 0;
+    overflow: hidden;
+    --doodle-bg: var(--app-color-surface-page);
+    --doodle-ink: var(--app-color-text-primary);
+    --doodle-line: var(--app-color-border-default);
+    --doodle-tape: color-mix(in srgb, var(--scan-notice-accent, var(--scan-accent)) 78%, transparent);
+    --doodle-coral: var(--scan-notice-accent, var(--app-color-notice-announcement-accent));
+    --doodle-mint: color-mix(in srgb, var(--scan-notice-soft, var(--app-color-feedback-success-soft)) 65%, var(--scan-accent, transparent));
+    --doodle-lavender: color-mix(in srgb, var(--scan-notice-accent) 35%, var(--scan-accent-secondary, var(--app-color-scan-ai-accent)));
+    --doodle-yellow: color-mix(in srgb, var(--app-color-feedback-warning) 45%, var(--scan-notice-accent));
+
+    position: relative;
+    width: min(94vw, 34em);
+    height: 80vh;
+    min-height: 80vh;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 2.4em 1.5em 1.35em;
+    font-size: 18px;
+    color: var(--doodle-ink);
+    background:
+      linear-gradient(var(--doodle-bg) 1.5em, transparent 1.5em) 0 0 / 100% 1.6em,
+      linear-gradient(var(--doodle-line) 0.08em, transparent 0.08em) 0 1.5em / 100% 1.6em var(--doodle-bg);
+    border: 0.22em solid var(--doodle-ink);
+    border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+    box-shadow:
+      0.45em 0.45em 0 color-mix(in srgb, var(--doodle-ink) 88%, transparent),
+      inset 0 0 1.2em color-mix(in srgb, var(--doodle-ink) 3%, transparent);
+    pointer-events: auto;
+    transform-origin: center center;
+  }
+
+  .scan-doodle-card::before {
+    content: "";
+    position: absolute;
+    top: -0.65em;
+    left: 50%;
+    z-index: 10;
+    width: 5.5em;
+    height: 1.35em;
+    transform: translateX(-50%) rotate(-4deg);
+    border: 0.1em solid color-mix(in srgb, var(--doodle-ink) 10%, transparent);
+    border-radius: 2px 4px 2px 5px;
+    background: var(--doodle-tape);
+    box-shadow: 0.1em 0.1em 0.2em color-mix(in srgb, var(--doodle-ink) 10%, transparent);
+  }
+
+  .scan-doodle-card__close {
+    position: absolute;
+    top: 0.5em;
+    right: 0.5em;
+    z-index: 12;
+    display: flex;
+    height: 1.85em;
+    width: 1.85em;
+    align-items: center;
+    justify-content: center;
+    border: 0.12em solid var(--doodle-ink);
+    border-radius: 50% 40% 60% 40% / 40% 60% 40% 50%;
+    background: var(--app-color-surface-container);
+    color: var(--doodle-ink);
+    box-shadow: 0.15em 0.15em 0 color-mix(in srgb, var(--doodle-ink) 75%, transparent);
+    cursor: pointer;
+  }
+
+  .scan-doodle-card__close:hover {
+    background: color-mix(in srgb, var(--doodle-coral) 35%, var(--app-color-surface-container));
+  }
+
+  .scan-doodle-card__corner-icon {
+    position: absolute;
+    top: 2.1em;
+    left: 0.85em;
+    z-index: 11;
+    display: flex;
+    height: 2em;
+    width: 2em;
+    align-items: center;
+    justify-content: center;
+    border: 0.12em solid var(--doodle-ink);
+    border-radius: 45% 55% 50% 50% / 50% 45% 55% 50%;
+    color: var(--scan-notice-ink, var(--doodle-ink));
+    background: color-mix(in srgb, var(--scan-notice-surface, var(--app-color-surface-elevated)) 88%, var(--doodle-coral) 12%);
+    box-shadow: 0.12em 0.12em 0 color-mix(in srgb, var(--doodle-ink) 70%, transparent);
+  }
+
+  .scan-doodle-deco {
+    position: absolute;
+    fill: none;
+    stroke: var(--doodle-ink);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .scan-doodle-deco--star {
+    width: 1.35em;
+    height: 1.35em;
+    top: 1.15em;
+    right: 3.2em;
+    fill: var(--doodle-yellow);
+  }
+
+  .scan-doodle-deco--sparkle {
+    width: 1.1em;
+    height: 1.1em;
+    bottom: 1.2em;
+    left: 1em;
+    fill: var(--doodle-mint);
+  }
+
+  .scan-doodle-deco--swirl {
+    width: 1.8em;
+    height: 1.8em;
+    bottom: 1.1em;
+    right: 0.75em;
+    stroke: var(--doodle-lavender);
+    stroke-width: 5;
+    opacity: 0.55;
+  }
+
+  .scan-doodle-card__head {
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+    padding: 0.15em 2.5em 0.5em 2.6em;
+    text-align: center;
+  }
+
+  .scan-doodle-card__title {
+    font-size: 1.5em;
+    font-weight: 900;
+    font-family: "Comic Sans MS", "Chalkboard SE", "Marker Felt", var(--font-sans, sans-serif);
+    letter-spacing: 0.03em;
+    line-height: 1.4;
+    color: var(--doodle-ink);
+    text-shadow: 0.06em 0.06em 0 var(--doodle-lavender);
+    word-break: break-word;
+  }
+
+  .scan-doodle-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
+    margin-top: 0.5em;
+  }
+
+  .scan-doodle-card__badge {
+    display: inline-block;
+    padding: 0.3em 0.75em;
+    font-size: 0.58em;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    text-shadow: none;
+    color: var(--doodle-ink);
+    border: 0.13em solid var(--doodle-ink);
+    border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+    background: var(--doodle-mint);
+    box-shadow: 0.15em 0.15em 0 var(--doodle-ink);
+  }
+
+  .scan-doodle-card__status {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2em 0.55em;
+    font-size: 0.62em;
+    font-weight: 700;
+    border: 0.1em solid color-mix(in srgb, var(--scan-notice-border) 80%, var(--doodle-ink));
+    border-radius: var(--app-radius-pill);
+    background: var(--scan-notice-surface, var(--app-color-surface-hover));
+    color: var(--app-color-text-secondary);
+  }
+
+  .scan-doodle-card__status--danger {
+    border-color: var(--app-color-feedback-danger);
+    background: var(--app-color-feedback-danger-soft);
+    color: var(--app-color-feedback-danger);
+  }
+
+  .scan-doodle-card__pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35em;
+    margin-top: 0.45em;
+  }
+
+  .scan-doodle-card__dot {
+    width: 0.38em;
+    height: 0.38em;
+    border-radius: var(--app-radius-pill);
+    background: color-mix(in srgb, var(--doodle-ink) 18%, var(--doodle-line));
+  }
+
+  .scan-doodle-card__dot--active {
+    width: 1em;
+    background: var(--doodle-coral);
+  }
+
+  .scan-doodle-card__body {
+    z-index: 2;
+    flex: 1 1 0%;
+    width: 100%;
+    min-height: 0;
+    max-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+    margin: 0.25em 0 0.5em;
+    padding: 0.5em 0.35em 0.65em;
+    text-align: center;
+    font-size: var(--font-size-lg);
+    line-height: 1.75;
+    color: var(--doodle-ink);
+  }
+
+  .scan-doodle-card__body :is(p, li) {
+    text-align: center;
+  }
+
+  .scan-doodle-card__empty {
+    font-size: var(--font-size-base);
+    color: var(--app-color-text-tertiary);
+  }
+
+  .scan-doodle-card__images {
+    margin-top: 0.65em;
+  }
+
+  .scan-doodle-card__image-frame {
+    display: flex;
+    max-height: min(42vh, 320px);
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 0.35em;
+    border: 0.12em solid color-mix(in srgb, var(--doodle-ink) 22%, var(--doodle-line));
+    border-radius: var(--app-radius-element);
+    background: var(--app-color-surface-hover);
+  }
+
+  .scan-doodle-card__image {
+    max-height: min(42vh, 320px);
+    width: 100%;
+    object-fit: contain;
+  }
+
+  .scan-doodle-card__footer-slot {
+    z-index: 2;
+    flex-shrink: 0;
+    width: 100%;
+    padding: 0 0.25em 0.35em;
+  }
+
+  .scan-doodle-card__actions {
+    z-index: 2;
+    flex-shrink: 0;
+    display: flex;
+    width: 100%;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6em;
+    margin-top: 0.25em;
+    padding-top: 0.35em;
+  }
+
+  .scan-doodle-card__btn {
+    min-width: 2.5em;
+    height: 2.5em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3em;
+    padding: 0 0.85em;
+    border: 0.14em solid var(--doodle-ink);
+    border-radius: 50% 40% 60% 40% / 40% 60% 40% 50%;
+    background: var(--app-color-surface-container);
+    color: var(--doodle-ink);
+    font-size: 0.8em;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0.16em 0.16em 0 var(--doodle-ink);
+  }
+
+  .scan-doodle-card__btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .scan-doodle-card__btn--nav:hover:not(:disabled) {
+    background: var(--doodle-lavender);
+  }
+
+  .scan-doodle-card__btn--primary {
+    min-width: 8em;
+    background: var(--doodle-coral);
+    color: var(--app-color-text-inverse);
+  }
+
+  .scan-doodle-card__btn--primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--doodle-coral) 88%, var(--app-color-text-inverse));
+  }
+
+  .scan-doodle-card__counter {
+    font-size: 0.74em;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--app-color-text-secondary);
+  }
+}

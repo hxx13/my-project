@@ -7,8 +7,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -45,6 +47,8 @@ public class MiniPreferencesService {
                 vo.getRoomWatch().setSelections(new ArrayList<>());
             }
             vo.setTwinWebChromeTheme(sanitizeTwinWebChromeTheme(vo.getTwinWebChromeTheme()));
+            vo.setAppearanceSchedule(sanitizeAppearanceSchedule(vo.getAppearanceSchedule()));
+            vo.setPageHelpIntroAck(sanitizePageHelpIntroAck(vo.getPageHelpIntroAck()));
             return vo;
         } catch (Exception e) {
             return empty();
@@ -82,6 +86,12 @@ public class MiniPreferencesService {
                             : new ArrayList<>()
             );
         }
+        if (incoming.getAppearanceSchedule() == null && existing.getAppearanceSchedule() != null) {
+            incoming.setAppearanceSchedule(existing.getAppearanceSchedule());
+        }
+        if (incoming.getPageHelpIntroAck() == null && existing.getPageHelpIntroAck() != null) {
+            incoming.setPageHelpIntroAck(new LinkedHashMap<>(existing.getPageHelpIntroAck()));
+        }
     }
 
     private static String sanitizeTwinWebChromeTheme(String raw) {
@@ -95,9 +105,73 @@ public class MiniPreferencesService {
         return "standard";
     }
 
+    private static com.example.demo.modules.me.dto.AppearanceScheduleVo sanitizeAppearanceSchedule(
+            com.example.demo.modules.me.dto.AppearanceScheduleVo raw) {
+        com.example.demo.modules.me.dto.AppearanceScheduleVo out = new com.example.demo.modules.me.dto.AppearanceScheduleVo();
+        if (raw == null) {
+            out.setAutoScheduleEnabled(true);
+            out.setManualOverride(null);
+            out.setLightStart("08:00");
+            out.setLightEnd("16:30");
+            out.setManualThemeId("standard");
+            return out;
+        }
+        out.setAutoScheduleEnabled(raw.getAutoScheduleEnabled() == null || Boolean.TRUE.equals(raw.getAutoScheduleEnabled()));
+        String mo = raw.getManualOverride() == null ? "" : raw.getManualOverride().trim();
+        if ("light".equals(mo) || "dark".equals(mo)) {
+            out.setManualOverride(mo);
+        } else {
+            out.setManualOverride(null);
+        }
+        out.setLightStart(sanitizeHhMm(raw.getLightStart(), "08:00"));
+        out.setLightEnd(sanitizeHhMm(raw.getLightEnd(), "16:30"));
+        String mt = raw.getManualThemeId() == null ? "" : raw.getManualThemeId().trim();
+        if ("standard".equals(mt) || "standard-dark".equals(mt) || "scifi".equals(mt)) {
+            out.setManualThemeId(mt);
+        } else {
+            out.setManualThemeId("standard");
+        }
+        return out;
+    }
+
+    private static String sanitizeHhMm(String raw, String fallback) {
+        if (raw == null || raw.isBlank()) {
+            return fallback;
+        }
+        String t = raw.trim();
+        if (t.matches("^\\d{1,2}:\\d{2}$")) {
+            return t;
+        }
+        return fallback;
+    }
+
+    private static Map<String, String> sanitizePageHelpIntroAck(Map<String, String> raw) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (raw == null) {
+            return out;
+        }
+        for (Map.Entry<String, String> e : raw.entrySet()) {
+            if (e.getKey() == null || e.getValue() == null) {
+                continue;
+            }
+            String path = e.getKey().trim();
+            String at = e.getValue().trim();
+            if (path.isEmpty() || path.length() > 512 || path.contains("..") || at.isEmpty()) {
+                continue;
+            }
+            out.put(path, at);
+            if (out.size() >= 128) {
+                break;
+            }
+        }
+        return out;
+    }
+
     private static MiniPreferencesVo empty() {
         MiniPreferencesVo vo = new MiniPreferencesVo();
         vo.setTwinWebChromeTheme("standard");
+        vo.setAppearanceSchedule(sanitizeAppearanceSchedule(null));
+        vo.setPageHelpIntroAck(new LinkedHashMap<>());
         vo.setRoomWatch(new MiniPreferencesVo.RoomWatchVo());
         vo.getRoomWatch().setSelections(new ArrayList<>());
         return vo;
@@ -106,6 +180,8 @@ public class MiniPreferencesService {
     private static MiniPreferencesVo normalize(MiniPreferencesVo in) {
         MiniPreferencesVo out = new MiniPreferencesVo();
         out.setTwinWebChromeTheme(sanitizeTwinWebChromeTheme(in.getTwinWebChromeTheme()));
+        out.setAppearanceSchedule(sanitizeAppearanceSchedule(in.getAppearanceSchedule()));
+        out.setPageHelpIntroAck(sanitizePageHelpIntroAck(in.getPageHelpIntroAck()));
         MiniPreferencesVo.RoomWatchVo rw = new MiniPreferencesVo.RoomWatchVo();
         List<MiniPreferencesVo.RoomWatchSelectionVo> list =
                 in.getRoomWatch() != null && in.getRoomWatch().getSelections() != null

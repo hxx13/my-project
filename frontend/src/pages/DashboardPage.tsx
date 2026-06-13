@@ -20,11 +20,15 @@ import { RuleCodexCard } from '@/features/dashboard/RuleCodexCard';
 import { SciFiDashboardChrome } from '@/features/dashboard-scifi-theme/SciFiDashboardChrome';
 import { DashboardSciFiVisualProvider } from '@/features/dashboard-scifi-theme/DashboardSciFiVisualContext';
 import { useTwinChromeTheme } from '@/features/twin-chrome/TwinChromeThemeContext';
+import { useTheme } from '@/features/theme/ThemeProvider';
 
 export default function DashboardPage() {
     useEventStore((state) => state.setInitialFeed);
     const queryClient = useQueryClient();
     const sciFiTheme = useTwinChromeTheme();
+    const { effectiveMode } = useTheme();
+    const isDark = effectiveMode === 'dark';
+    const chromeShellVisual = sciFiTheme.enabled || isDark;
     const [activeTab, setActiveTab] = useState<'浦东' | '浦西'>('浦东');
     const dashRef = useRef<HTMLDivElement>(null);
 
@@ -167,6 +171,11 @@ export default function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: ["dashboard", "roomUsage"] });
     }, [activeGroup, queryClient]);
 
+    const dashboardVisual = useMemo(
+        () => ({ sciFi: sciFiTheme.enabled && !isDark, night: isDark }),
+        [sciFiTheme.enabled, isDark],
+    );
+
     return (
         <>
         <style>{`
@@ -195,10 +204,10 @@ export default function DashboardPage() {
             50% { filter: brightness(1.15); }
           }
         `}</style>
-        <DashboardSciFiVisualProvider value={sciFiTheme.enabled}>
+        <DashboardSciFiVisualProvider value={dashboardVisual}>
         <div
             className={`w-full h-screen bg-transparent text-slate-800 flex flex-col font-sans overflow-hidden box-border ${
-                sciFiTheme.enabled ? 'p-0' : 'p-[15px]'
+                chromeShellVisual ? 'p-0' : 'p-[15px]'
             }`}
         >
             <SciFiDashboardChrome enabled={sciFiTheme.enabled}>

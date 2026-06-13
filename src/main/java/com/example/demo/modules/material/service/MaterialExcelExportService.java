@@ -12,15 +12,16 @@ import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.util.List;
+import java.util.function.Function;
 
 @Service
 public class MaterialExcelExportService {
 
     /**
      * 审计流水导出为单工作表 Excel。
-     * 列：申领单号 | 申领人 | 课题组 | 物品 | 申请数量 | 出库数量 | 状态 | 申请时间 | 出库时间 | 审核人 | 复审人
+     * @param resolveName 将用户ID解析为展示名称的函数
      */
-    public byte[] buildAuditTrailSheet(List<MaterialAuditTrailView> rows) {
+    public byte[] buildAuditTrailSheet(List<MaterialAuditTrailView> rows, Function<String, String> resolveName) {
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("物资审计流水"));
             int r = 0;
@@ -39,9 +40,9 @@ public class MaterialExcelExportService {
                 data.createCell(6).setCellValue(safe(statusZh(row.getStatus())));
                 data.createCell(7).setCellValue(safe(row.getCreatedAt()));
                 data.createCell(8).setCellValue(safe(row.getFulfilledAt()));
-                data.createCell(9).setCellValue(safe(row.getFulfilledBy()));
-                data.createCell(10).setCellValue(safe(row.getFirstReviewerId()));
-                data.createCell(11).setCellValue(safe(row.getSecondReviewerId()));
+                data.createCell(9).setCellValue(safe(resolveName.apply(row.getFulfilledBy())));
+                data.createCell(10).setCellValue(safe(resolveName.apply(row.getFirstReviewerId())));
+                data.createCell(11).setCellValue(safe(resolveName.apply(row.getSecondReviewerId())));
                 data.createCell(12).setCellValue(safe(row.getFirstReviewTime()));
                 data.createCell(13).setCellValue(safe(row.getSecondReviewTime()));
             }
@@ -54,7 +55,7 @@ public class MaterialExcelExportService {
     }
 
     /** 单张申领单导出 */
-    public byte[] buildPersonalRequestSheet(MaterialRequestView request) {
+    public byte[] buildPersonalRequestSheet(MaterialRequestView request, Function<String, String> resolveName) {
         try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("申领单明细"));
             int r = 0;
@@ -73,8 +74,8 @@ public class MaterialExcelExportService {
                     row.createCell(0).setCellValue(safe(line.getSnapshotName()));
                     row.createCell(1).setCellValue(line.getQty() != null ? line.getQty() : 0);
                     row.createCell(2).setCellValue(line.getFulfilledQty() != null ? line.getFulfilledQty() : 0);
-                    row.createCell(3).setCellValue(safe(request.getFirstReviewerId()));
-                    row.createCell(4).setCellValue(safe(request.getSecondReviewerId()));
+                    row.createCell(3).setCellValue(safe(resolveName.apply(request.getFirstReviewerId())));
+                    row.createCell(4).setCellValue(safe(resolveName.apply(request.getSecondReviewerId())));
                 }
             }
             ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);

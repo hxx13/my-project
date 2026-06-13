@@ -13,5 +13,6 @@ public class FulfillSupplyClaimRequest {
         private Long lineId;
         private Boolean grant;
         private Integer fulfillQty;
+        private String remark;
     }
 }

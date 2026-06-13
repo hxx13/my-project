@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ShieldAlert } from "lucide-react";
 import { fetchDashboardViolationBoard } from "@/api/domains/dashboardViolationBoard.api";
-import { useDashboardSciFiVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 import { ViolationBoardRow } from "./ViolationBoardRow";
 import { useVerticalAutoScroll } from "./useVerticalAutoScroll";
 
@@ -23,7 +24,7 @@ export function CodexViolationBoardPanel({
   onCycleComplete,
   onEmpty,
 }: Props) {
-  const sf = useDashboardSciFiVisual();
+  const visual = useDashboardVisual();
   const ref = useRef<HTMLDivElement | null>(null);
 
   const { data, isLoading, isError } = useQuery({
@@ -56,9 +57,9 @@ export function CodexViolationBoardPanel({
     mode: "cycle",
   });
 
-  const headTone = sf ? "text-fuchsia-100" : "text-rose-900";
-  const metaTone = sf ? "text-fuchsia-200/70" : "text-rose-700/80";
-  const emptyTone = sf ? "text-slate-400" : "text-slate-500";
+  const headTone = dashTone(visual, "text-fuchsia-100", DASH_NIGHT_CLASS.title, "text-rose-900");
+  const metaTone = dashTone(visual, "text-fuchsia-200/70", DASH_NIGHT_CLASS.textMuted, "text-rose-700/80");
+  const emptyTone = dashTone(visual, "text-slate-400", DASH_NIGHT_CLASS.textMuted, "text-slate-500");
 
   if (isLoading) {
     return (
@@ -95,7 +96,9 @@ export function CodexViolationBoardPanel({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className={`mb-2 flex shrink-0 items-center gap-2 ${headTone}`}>
-        <ShieldAlert className={`h-4 w-4 shrink-0 md:h-5 md:w-5 ${sf ? "text-fuchsia-400" : "text-rose-600"}`} />
+        <ShieldAlert
+          className={`h-4 w-4 shrink-0 md:h-5 md:w-5 ${dashTone(visual, "text-fuchsia-400", DASH_NIGHT_CLASS.legendWarm, "text-rose-600")}`}
+        />
         <span className="text-sm font-bold tracking-wide md:text-base">违规惩戒公示</span>
         <span className={`text-xs font-normal ${metaTone}`}>· 共 {items.length} 人</span>
       </div>

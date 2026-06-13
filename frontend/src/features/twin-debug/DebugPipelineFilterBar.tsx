@@ -4,6 +4,8 @@ import { Calendar, MapPin, Settings } from "lucide-react";
 import { BlacklistManageModal } from "@/components/admin/BlacklistManageModal";
 import { AdminToolbar } from "@/components/admin/AdminToolbar";
 import type { DebugPipelineFilter } from "@/features/twin-debug/debugPipelineFilter";
+import { cn } from "@/lib/utils";
+import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 
 type Props = {
   filters: DebugPipelineFilter;
@@ -42,50 +44,50 @@ export function DebugPipelineFilterBar({ filters, onChange, onClear, invalidateK
         data-twin-debug-pipeline-filters
         className={
           className ??
-          "shrink-0 flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm !items-stretch"
+          "shrink-0 flex-col gap-3 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-4 shadow-sm !items-stretch"
         }
       >
         <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-          <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1.5">
-            <Calendar className="ml-2 h-4 w-4 text-slate-400" />
+          <div className={cn(DASH_NIGHT_CLASS.panel, "flex items-center gap-2 p-1.5")}>
+            <Calendar className={cn("ml-2 h-4 w-4", DASH_NIGHT_CLASS.textMuted)} />
             <input
               type="date"
               value={filters.startTime}
               onChange={(e) => onChange({ ...filters, startTime: e.target.value })}
-              className="w-[110px] cursor-pointer bg-transparent text-[13px] font-bold text-slate-700 outline-none"
+              className="w-[110px] cursor-pointer bg-transparent text-[13px] font-bold text-[var(--app-color-text-primary)] outline-none"
             />
-            <span className="text-slate-300">-</span>
+            <span className={DASH_NIGHT_CLASS.textMuted}>-</span>
             <input
               type="date"
               value={filters.endTime}
               onChange={(e) => onChange({ ...filters, endTime: e.target.value })}
-              className="w-[110px] cursor-pointer bg-transparent text-[13px] font-bold text-slate-700 outline-none"
+              className="w-[110px] cursor-pointer bg-transparent text-[13px] font-bold text-[var(--app-color-text-primary)] outline-none"
             />
             <button
               type="button"
               onClick={setToday}
-              className="rounded border border-slate-200 bg-white px-2 py-1 text-[10px] font-black text-slate-500 transition-colors hover:border-indigo-200 hover:text-indigo-600"
+              className={cn(DASH_NIGHT_CLASS.btnNormal, "px-2 py-1 text-[10px] font-black")}
             >
               今日
             </button>
           </div>
 
-          <div className="mx-1 h-6 w-px bg-slate-200" />
+          <div className="mx-1 h-6 w-px bg-[var(--app-color-border-default)]" />
 
           <select
             value={filters.actionType}
             onChange={(e) => onChange({ ...filters, actionType: e.target.value as DebugPipelineFilter["actionType"] })}
-            className="cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 text-[13px] font-bold text-slate-700 outline-none"
+            className={cn(DASH_NIGHT_CLASS.panel, "cursor-pointer px-2 py-2 text-[13px] font-bold text-[var(--app-color-text-primary)] outline-none")}
           >
             <option value="">全部动作</option>
             <option value="1">只看进入</option>
             <option value="2">只看离开</option>
           </select>
 
-          <div className="mx-1 h-6 w-px bg-slate-200" />
+          <div className="mx-1 h-6 w-px bg-[var(--app-color-border-default)]" />
 
-          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
-            <MapPin className="h-4 w-4 text-slate-400" />
+          <div className={cn(DASH_NIGHT_CLASS.panel, "flex items-center gap-1.5 px-2 py-1.5")}>
+            <MapPin className={cn("h-4 w-4", DASH_NIGHT_CLASS.textMuted)} />
             <select
               value={filters.campus}
               onChange={(e) => handleCampusChange(e.target.value)}
@@ -101,7 +103,7 @@ export function DebugPipelineFilterBar({ filters, onChange, onClear, invalidateK
             <select
               value={filters.floor}
               onChange={(e) => onChange({ ...filters, floor: e.target.value })}
-              className="cursor-pointer rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-2 text-[13px] font-bold text-indigo-700 outline-none"
+              className={cn(DASH_NIGHT_CLASS.chipSteel, "cursor-pointer rounded-lg px-2 py-2 text-[13px] font-bold outline-none")}
             >
               <option value="">全部楼层</option>
               <option value="E11A">地下室 E11A 区</option>
@@ -119,12 +121,12 @@ export function DebugPipelineFilterBar({ filters, onChange, onClear, invalidateK
             placeholder="房号尾数 (如: 01A)"
             value={filters.roomName}
             onChange={(e) => onChange({ ...filters, roomName: e.target.value })}
-            className="w-[130px] rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] font-bold text-slate-700 outline-none transition-colors focus:border-indigo-400"
+            className={cn(DASH_NIGHT_CLASS.panel, "w-[130px] px-3 py-2 text-[13px] font-bold text-[var(--app-color-text-primary)] outline-none transition-colors")}
           />
 
           <span className="mx-1 h-6 w-px bg-slate-200" />
 
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
+          <label className={cn(DASH_NIGHT_CLASS.panel, "flex cursor-pointer items-center gap-2 px-3 py-1.5")}>
             <div className="relative">
               <input
                 type="checkbox"
@@ -139,12 +141,12 @@ export function DebugPipelineFilterBar({ filters, onChange, onClear, invalidateK
                 className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${filters.excludeBlacklist ? "translate-x-4" : ""}`}
               />
             </div>
-            <span className="select-none text-xs font-bold text-slate-600">排除黑名单</span>
+            <span className={cn("select-none text-xs font-bold", DASH_NIGHT_CLASS.textMuted)}>排除黑名单</span>
           </label>
           <button
             type="button"
             onClick={() => setIsBlacklistOpen(true)}
-            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+            className={cn(DASH_NIGHT_CLASS.btnNormal, "rounded-md p-1.5", DASH_NIGHT_CLASS.textMuted)}
             title="管理黑名单"
           >
             <Settings className="h-5 w-5" />

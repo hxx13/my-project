@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle } from "lucide-react";
 import { Z_INDEX } from "@/constants/zIndex";
-import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
+import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS, SCAN_WARNING_PANEL } from "./scanPopupTheme";
 import { useTheme } from "@/features/theme/ThemeProvider";
 
 type Props = {
@@ -32,7 +32,6 @@ export function RepeatedSwipeWarningBanner({ message, triggerKey, blockedUntil }
     }
   }, [message, triggerKey]);
 
-  // 倒计时
   useEffect(() => {
     if (!panelOpen || !blockedUntil) return;
     const tick = () => {
@@ -73,28 +72,21 @@ export function RepeatedSwipeWarningBanner({ message, triggerKey, blockedUntil }
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="relative flex w-full max-w-[min(96vw,420px)] flex-col items-center gap-4 overflow-hidden rounded-3xl border border-amber-500/40 bg-gradient-to-b from-[#1a1005]/98 to-black/95 px-6 py-8 shadow-2xl"
+            className={SCAN_WARNING_PANEL}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/20 ring-1 ring-amber-400/40">
-              <AlertTriangle className="h-7 w-7 text-amber-400" />
+            <div className="scan-warning-panel__icon">
+              <AlertTriangle className="h-7 w-7" aria-hidden />
             </div>
-            <p
-              id="repeated-swipe-warning-title"
-              className="text-center text-base font-bold leading-relaxed text-amber-100"
-            >
+            <p id="repeated-swipe-warning-title" className="scan-warning-panel__title">
               {message}
             </p>
             {blockedUntil > 0 && remaining > 0 ? (
-              <p className="text-center text-sm font-bold text-amber-300/80">
+              <p className="scan-warning-panel__countdown">
                 {remaining} 秒后可再次刷卡
               </p>
             ) : null}
-            <button
-              type="button"
-              onClick={dismiss}
-              className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-6 py-2.5 text-sm font-bold text-amber-100 transition-all hover:bg-amber-500/20 active:scale-[0.97]"
-            >
+            <button type="button" onClick={dismiss} className="scan-warning-panel__btn">
               我知道了
             </button>
           </motion.div>

@@ -8,6 +8,7 @@ import com.example.demo.modules.me.dto.PendingBadgesView;
 import com.example.demo.modules.me.inbox.InboxAggregationService;
 import com.example.demo.modules.me.inbox.dto.InboxFeedResponse;
 import com.example.demo.modules.me.service.MiniPreferencesService;
+import com.example.demo.modules.me.service.PageHelpIntroService;
 import com.example.demo.modules.me.service.PendingBadgesService;
 import com.example.demo.modules.policy.dto.CapabilitySummaryRow;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/me")
@@ -33,17 +36,20 @@ public class MeController {
     private final MiniPreferencesService miniPreferencesService;
     private final InboxAggregationService inboxAggregationService;
     private final CapabilityPolicyService capabilityPolicyService;
+    private final PageHelpIntroService pageHelpIntroService;
 
     public MeController(AuthContextService authContextService,
                           PendingBadgesService pendingBadgesService,
                           MiniPreferencesService miniPreferencesService,
                           InboxAggregationService inboxAggregationService,
-                          CapabilityPolicyService capabilityPolicyService) {
+                          CapabilityPolicyService capabilityPolicyService,
+                          PageHelpIntroService pageHelpIntroService) {
         this.authContextService = authContextService;
         this.pendingBadgesService = pendingBadgesService;
         this.miniPreferencesService = miniPreferencesService;
         this.inboxAggregationService = inboxAggregationService;
         this.capabilityPolicyService = capabilityPolicyService;
+        this.pageHelpIntroService = pageHelpIntroService;
     }
 
     @GetMapping("/pending-badges")
@@ -113,6 +119,47 @@ public class MeController {
         try {
             return Result.success(miniPreferencesService.save(user.getId(), body));
         } catch (Exception e) {
+            return Result.error("保存失败");
+        }
+    }
+
+    @GetMapping("/page-help")
+    @Operation(summary = "读取当前页帮助与新功能介绍弹出状态（按账号）")
+    public Result<Map<String, Object>> pageHelp(HttpServletRequest request, @RequestParam("path") String path) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) {
+            return Result.error("未登录或Token无效");
+        }
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            return Result.error("账号已禁用");
+        }
+        try {
+            return Result.success(pageHelpIntroService.loadForUser(user.getId(), path));
+        } catch (IllegalArgumentException ex) {
+            return Result.error(ex.getMessage());
+        }
+    }
+
+    @PostMapping("/page-help/intro-ack")
+    @Operation(summary = "标记本页新功能介绍已知晓（按账号，内容更新后会再次弹出）")
+    public Result<MiniPreferencesVo> ackPageHelpIntro(HttpServletRequest request, @RequestBody Map<String, String> body) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) {
+            return Result.error("未登录或Token无效");
+        }
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            return Result.error("账号已禁用");
+        }
+        try {
+            String path = body == null ? "" : body.getOrDefault("path", "");
+            String versionLabel = body == null ? "" : body.getOrDefault("versionLabel", "");
+            if (versionLabel == null || versionLabel.isBlank()) {
+                versionLabel = body == null ? "" : body.getOrDefault("contentUpdatedAt", "");
+            }
+            return Result.success(pageHelpIntroService.acknowledgeIntro(user.getId(), path, versionLabel));
+        } catch (IllegalArgumentException ex) {
+            return Result.error(ex.getMessage());
+        } catch (Exception ex) {
             return Result.error("保存失败");
         }
     }

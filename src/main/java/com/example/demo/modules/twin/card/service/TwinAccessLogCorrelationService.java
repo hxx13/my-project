@@ -22,6 +22,7 @@ import java.util.Map;
 public class TwinAccessLogCorrelationService {
     private static final Logger log = LoggerFactory.getLogger(TwinAccessLogCorrelationService.class);
     public static final String SOURCE_AUTO_SIGNOUT = "AUTO_SIGNOUT";
+    public static final String SOURCE_STRANDED_VIOLATION = "AUTO_SIGNOUT_VIOLATION";
     public static final String SOURCE_WEB_SCAN = "WEB_SCAN";
 
     public static final String FEED_SOURCE_MATCHED_AUTO = "TWIN_AUTO_SIGNOUT";

@@ -1,6 +1,19 @@
-/** 离开成功仓鼠/搬砖减速动画时长（与 exitCelebrateRoomId 清除对齐） */
+/** 离开成功仓鼠减速动画时长（与 exitCelebrateRoomId 清除对齐） */
 export const EXIT_CELEBRATE_MS = 2600;
-export const ENTER_REFRESH_MS = 1500;
+
+export {
+    ACCESS_MOTION_CENTER_HOLD_MS,
+    ACCESS_MOTION_ENTER_TOTAL_MS,
+    ACCESS_MOTION_EXIT_FLY_MS,
+    ACCESS_MOTION_EXIT_TOTAL_MS,
+    ACCESS_MOTION_FLY_MS,
+    ACCESS_MOTION_FLY_EASE,
+    ACCESS_MOTION_LOOP_SEC,
+    ACCESS_MOTION_TEXT,
+    ENTER_FLY_MOTION_MS,
+    ENTER_FLY_TRANSITION,
+    ENTER_REFRESH_MS,
+} from "@/components/scanner/accessMotionConfig";
 /** 刷新 analyze 后等待 UI 切回「进入」按钮再显示离开提示 */
 export const EXIT_NOTICE_AFTER_REFRESH_MS = 120;
 

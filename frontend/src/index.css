@@ -9,7 +9,14 @@
 
 /* ── SmartSheet revo-grid 主题桥接 ── */
 @import "@/styles/smartsheet-theme.css";
+@import "@/styles/scan-notice-theme.css";
+@import "@/styles/scan-announcement-doodle.css";
+@import "@/styles/scan-access-motion.css";
 @import "@/styles/scanPopupNotice.css";
+@import "@/styles/night-sky-backdrop.css";
+@import "@/styles/dashboard-night-theme.css";
+@import "@/styles/night-sky-surface-theme.css";
+@import "@/styles/page-help-theme.css";
 
 /* ── 学生端独立令牌（保留，后续逐步合并） ── */
 @import "@/features/student/config/student-design-tokens.css";

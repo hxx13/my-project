@@ -49,6 +49,8 @@ public class SuppliesSchemaMigrator implements ApplicationRunner {
                     "ALTER TABLE supply_claim_order ADD COLUMN deleted_by VARCHAR(50) NULL COMMENT '删除人ID'");
             ensureColumnExists("supply_claim_order", "purge_after_time",
                     "ALTER TABLE supply_claim_order ADD COLUMN purge_after_time DATETIME NULL COMMENT '计划彻底清理时间'");
+            ensureColumnExists("supply_claim_line", "remark",
+                    "ALTER TABLE supply_claim_line ADD COLUMN remark VARCHAR(500) NULL COMMENT '出库备注'");
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS supply_claim_export_file (
                         id VARCHAR(64) PRIMARY KEY,
