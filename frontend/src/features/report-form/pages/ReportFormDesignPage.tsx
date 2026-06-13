@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import FormGridEditor from '../components/FormGridEditor';
@@ -75,6 +76,15 @@ export default function ReportFormDesignPage() {
   console.warn('%c🟣 [DESIGNER] initialLayout cells=%c' + initialLayout.cells?.length + '%c fields=%c' + Object.keys(initialLayout.fields || {}).length,
     'font-size:14px;color:purple;font-weight:bold', '', '', '');
   const editor = useFormGridEditor(initialLayout);
+
+  // 🔑 修复：当 query 数据加载完成后，同步 layout 到编辑器
+  useEffect(() => {
+    if (initialLayout.cells.length > 0) {
+      console.warn('%c🟢 [DESIGNER] useEffect 同步 layout 到编辑器: cells=%c' + initialLayout.cells.length,
+        'font-size:14px;color:green;font-weight:bold', '');
+      editor.setLayout(initialLayout);
+    }
+  }, [form?.id]); // 仅在 form.id 变化时触发（首次加载 + 切换表单）
 
   const saveMut = useMutation({
     mutationFn: () => updateForm(formId, {
