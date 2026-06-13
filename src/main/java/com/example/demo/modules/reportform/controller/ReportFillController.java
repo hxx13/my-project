@@ -9,14 +9,17 @@ import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormSubmission;
 import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
 import com.example.demo.modules.reportform.service.ReportFillService;
+import com.example.demo.modules.reportform.service.ReportFormExportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin/report-fill")
@@ -28,11 +31,14 @@ public class ReportFillController {
 
     private final ReportFillService reportFillService;
     private final ReportFormSubmissionMapper submissionMapper;
+    private final ReportFormExportService exportService;
 
     public ReportFillController(ReportFillService reportFillService,
-                                ReportFormSubmissionMapper submissionMapper) {
+                                ReportFormSubmissionMapper submissionMapper,
+                                ReportFormExportService exportService) {
         this.reportFillService = reportFillService;
         this.submissionMapper = submissionMapper;
+        this.exportService = exportService;
     }
 
     @GetMapping("/available")
@@ -95,6 +101,37 @@ public class ReportFillController {
         Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
         if (denied != null) return denied;
         return Result.success(submissionMapper.selectByFormId(id));
+    }
+
+    @GetMapping("/forms/{id}/export")
+    @Operation(summary = "导出报表（单条或批量）")
+    public ResponseEntity<byte[]> exportSingle(@PathVariable Long id, @RequestParam(required = false) Long submissionId) {
+        try {
+            byte[] data;
+            String filename;
+            if (submissionId != null) {
+                data = exportService.exportSingle(id, submissionId);
+                filename = "report-form-" + id + "-submission-" + submissionId + ".xlsx";
+            } else {
+                data = exportService.exportBatch(id);
+                filename = "report-form-" + id + "-batch.xlsx";
+            }
+            return ResponseEntity.ok()
+                .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                .body(data);
+        } catch (Exception e) {
+            throw new RuntimeException("导出失败: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/forms/{id}/print")
+    @Operation(summary = "打印报表（接口预留）")
+    public Result<?> printForm(@PathVariable Long id, @RequestBody Map<String, Object> body, HttpServletRequest request) {
+        var denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        log.info("[report-form] 打印请求 form={} params={}", id, body);
+        return Result.success(Map.of("status", "submitted", "message", "打印任务已提交（接口预留）"));
     }
 
     private User getCurrentUser(HttpServletRequest request) {
