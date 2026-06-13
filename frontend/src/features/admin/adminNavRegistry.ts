@@ -257,15 +257,6 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx: any) => true,
       },
       {
-        id: "smartsheet",
-        path: "/admin/smartsheet",
-        label: "智能表格",
-        icon: Table2,
-        homeTone: "from-indigo-400 to-violet-500",
-        fallbackMinRole: "STAFF",
-        sidebarVisible: (ctx) => show(ctx, "/admin/smartsheet", "STAFF"),
-      },
-      {
         id: "login-branding",
         path: "/admin/login-branding",
         label: "登录页轮播图",
@@ -515,6 +506,24 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => show(ctx, "/admin/file-templates", "STAFF"),
       },
       {
+        id: "report-form",
+        path: "/admin/report-form",
+        label: "填报报表管理",
+        icon: Table2,
+        homeTone: "from-emerald-400 to-teal-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => show(ctx, "/admin/report-form", "ADMIN"),
+      },
+      {
+        id: "report-fill",
+        path: "/admin/report-fill",
+        label: "填报中心",
+        icon: ClipboardCheck,
+        homeTone: "from-violet-400 to-purple-500",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx) => show(ctx, "/admin/report-fill", "STAFF"),
+      },
+      {
         id: "analytics",
         path: "/admin/analytics",
         label: "统计与审计",
@@ -703,7 +712,9 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p.startsWith("/admin/asset-") ||
     p === "/admin/file-templates" ||
     p === "/admin/analytics" ||
-    p === "/admin/facility-maintenance"
+    p === "/admin/facility-maintenance" ||
+    p === "/admin/report-form" ||
+    p === "/admin/report-fill"
   ) {
     return "资产与运维";
   }
