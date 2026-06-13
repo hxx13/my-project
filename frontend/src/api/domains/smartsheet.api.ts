@@ -4,7 +4,6 @@ import type {
   SmartSheetDefinition,
   SmartSheetRow,
   SmartsheetSheetRequest,
-  ColumnStats,
   SmartsheetImportResult,
 } from '@/features/smartsheet/types';
 
@@ -131,22 +130,22 @@ export async function batchRows(sheetId: string, rows: { rowLabel: string; cellD
   return data.data as { inserted: number };
 }
 
-// Export / Import
-export function getExportUrl(sheetId: string) {
-  return `/api/admin/smartsheet/${sheetId}/export`;
-}
-
-export async function importFile(sheetId: string, file: File): Promise<SmartsheetImportResult> {
-  const form = new FormData();
-  form.append('file', file);
+// ═══════ Import (UPDATED) ═══════
+export async function importFile(sheetId: string, file: File) {
+  const form = new FormData(); form.append('file', file);
   const { data } = await adminHttp.post(`${BASE}/${sheetId}/import`, form);
   return data.data as SmartsheetImportResult;
+}
+
+// ═══════ Template delete (NEW) ═══════
+export async function deleteTemplate(id: string) {
+  await adminHttp.delete(`${BASE}/template/${id}`);
 }
 
 // Stats
 export async function fetchColumnStats(sheetId: string, columnKey: string) {
   const { data } = await adminHttp.get(`${BASE}/${sheetId}/stats`, { params: { columnKey } });
-  return data.data as ColumnStats;
+  return data.data as Record<string, unknown>;
 }
 
 // ═══════ Cell update (NEW - PATCH single cell) ═══════
