@@ -7,6 +7,7 @@ import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormOptionSet;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormOptionSetMapper;
+import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -24,12 +25,15 @@ public class ReportFormService {
 
     private final ReportFormDefinitionMapper definitionMapper;
     private final ReportFormOptionSetMapper optionSetMapper;
+    private final ReportFormSubmissionMapper submissionMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ReportFormService(ReportFormDefinitionMapper definitionMapper,
-                             ReportFormOptionSetMapper optionSetMapper) {
+                             ReportFormOptionSetMapper optionSetMapper,
+                             ReportFormSubmissionMapper submissionMapper) {
         this.definitionMapper = definitionMapper;
         this.optionSetMapper = optionSetMapper;
+        this.submissionMapper = submissionMapper;
     }
 
     public List<ReportFormDefinition> page() {
@@ -49,6 +53,14 @@ public class ReportFormService {
         if (def == null) {
             throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
         }
+
+        // If the form is published and layout is being changed, log it for audit
+        if ("published".equals(def.getStatus()) && body.containsKey("layoutJson")) {
+            int submissionCount = submissionMapper.countByFormId(def.getId());
+            log.warn("[report-form] 已发布报表 {} ({}) 的结构被 {} 修改 — 已有 {} 条填报记录将自动兼容新结构",
+                    def.getId(), def.getName(), username, submissionCount);
+        }
+
         if (body.containsKey("name")) def.setName((String) body.get("name"));
         if (body.containsKey("description")) def.setDescription((String) body.get("description"));
         if (body.containsKey("layoutJson")) def.setLayoutJson((String) body.get("layoutJson"));

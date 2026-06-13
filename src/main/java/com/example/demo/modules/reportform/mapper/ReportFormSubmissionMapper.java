@@ -29,4 +29,7 @@ public interface ReportFormSubmissionMapper {
     @Update("UPDATE report_form_submission SET status='submitted', submitted_at=NOW(), " +
             "updated_at=NOW() WHERE id=#{id}")
     int submit(Long id);
+
+    @Select("SELECT COUNT(*) FROM report_form_submission WHERE form_id = #{formId}")
+    int countByFormId(Long formId);
 }
