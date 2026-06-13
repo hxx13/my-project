@@ -45,6 +45,9 @@ public class ReportFormService {
         if (def == null) {
             throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表表单不存在");
         }
+        log.info("[report-form] 读取表单: id={} name={} layoutLen={}",
+                def.getId(), def.getName(),
+                def.getLayoutJson() != null ? def.getLayoutJson().length() : 0);
         return def;
     }
 
@@ -69,7 +72,12 @@ public class ReportFormService {
         if (body.containsKey("permissionJson")) def.setPermissionJson((String) body.get("permissionJson"));
         if (body.containsKey("scheduleJson")) def.setScheduleJson((String) body.get("scheduleJson"));
         def.setUpdatedBy(username);
-        definitionMapper.update(def);
+        int rows = definitionMapper.update(def);
+        log.info("[report-form] 保存完成: id={} rows={} layoutLen={}",
+                id, rows, def.getLayoutJson() != null ? def.getLayoutJson().length() : 0);
+        if (rows == 0) {
+            throw new RuntimeException("保存失败：未找到匹配记录");
+        }
     }
 
     public ReportFormDefinition createBlank(String username) {

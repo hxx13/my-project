@@ -49,12 +49,24 @@ function DesignerInner({
   const editor = useFormGridEditor(initialLayout);
 
   const saveMut = useMutation({
-    mutationFn: () => updateForm(formId, {
-      name: form.name as string,
-      layoutJson: JSON.stringify(editor.layout),
-    }),
+    mutationFn: async () => {
+      const payload = {
+        name: form.name as string,
+        layoutJson: JSON.stringify(editor.layout),
+      };
+      await updateForm(formId, payload);
+      // 保存后立即验证：重新读取表单
+      const verify = await fetchFormById(formId);
+      const verifyLayout = parseLayout((verify as Record<string, unknown>).layoutJson);
+      if (verifyLayout.cells.length !== editor.layout.cells.length) {
+        throw new Error(`数据校验失败: DB中cells=${verifyLayout.cells.length}, 本地=${editor.layout.cells.length}`);
+      }
+    },
     onSuccess: () => toast.success('已保存'),
-    onError: (e: Error) => toast.error('保存失败: ' + e.message),
+    onError: (e: Error) => {
+      console.error('[SAVE] 保存失败:', e);
+      toast.error('保存失败: ' + e.message);
+    },
   });
 
   const selectedCellIds = [...editor.selectedCellIds];
