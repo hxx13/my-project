@@ -43,7 +43,7 @@ export interface SmartSheetRow {
   rowIndex: number;
   rowLabel: string;
   rowEntityId?: string;
-  cellData: Record<string, string>;
+  cellData: Record<string, unknown>;  // preserves boolean/number/string native types
   version: number;
   createdAt: string;
   updatedAt: string;

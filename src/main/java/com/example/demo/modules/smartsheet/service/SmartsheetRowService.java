@@ -1,8 +1,10 @@
 package com.example.demo.modules.smartsheet.service;
 
 import com.example.demo.modules.smartsheet.entity.SmartsheetChangeLog;
+import com.example.demo.modules.smartsheet.entity.SmartsheetDefinition;
 import com.example.demo.modules.smartsheet.entity.SmartsheetRow;
 import com.example.demo.modules.smartsheet.mapper.SmartsheetChangeLogMapper;
+import com.example.demo.modules.smartsheet.mapper.SmartsheetDefinitionMapper;
 import com.example.demo.modules.smartsheet.mapper.SmartsheetRowMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,11 +25,14 @@ public class SmartsheetRowService {
 
     private final SmartsheetRowMapper rowMapper;
     private final SmartsheetChangeLogMapper changeLogMapper;
+    private final SmartsheetDefinitionMapper definitionMapper;
 
     public SmartsheetRowService(SmartsheetRowMapper rowMapper,
-                                SmartsheetChangeLogMapper changeLogMapper) {
+                                SmartsheetChangeLogMapper changeLogMapper,
+                                SmartsheetDefinitionMapper definitionMapper) {
         this.rowMapper = rowMapper;
         this.changeLogMapper = changeLogMapper;
+        this.definitionMapper = definitionMapper;
     }
 
     public List<SmartsheetRow> getRowsBySheetId(Long sheetId) {
@@ -49,7 +54,7 @@ public class SmartsheetRowService {
         row.setRowIndex(nextIndex);
         row.setRowLabel(rowLabel != null ? rowLabel : "");
         row.setRowEntityId(rowEntityId);
-        row.setCellData("{}");
+        row.setCellData(buildDefaultCellData(sheetId));
         row.setVersion(0);
         rowMapper.insert(row);
         return row;
@@ -155,6 +160,32 @@ public class SmartsheetRowService {
         logEntry.setNewValue(newJson);
         logEntry.setChangedBy(userId);
         changeLogMapper.insert(logEntry);
+    }
+
+    /** Build default cell data JSON from sheet's column config — checkbox=false, number=0, etc. */
+    @SuppressWarnings("unchecked")
+    private String buildDefaultCellData(Long sheetId) {
+        try {
+            SmartsheetDefinition def = definitionMapper.selectById(sheetId);
+            if (def == null || def.getColumnsConfig() == null) return "{}";
+            List<Map<String, Object>> cols = objectMapper.readValue(def.getColumnsConfig(), List.class);
+            Map<String, Object> defaults = new LinkedHashMap<>();
+            for (Map<String, Object> col : cols) {
+                String key = (String) col.get("key");
+                String type = (String) col.getOrDefault("type", "text");
+                if (key == null) continue;
+                switch (type) {
+                    case "checkbox": defaults.put(key, false); break;
+                    case "number":   defaults.put(key, 0); break;
+                    case "progressbar": defaults.put(key, 0); break;
+                    default:         defaults.put(key, ""); break;
+                }
+            }
+            return objectMapper.writeValueAsString(defaults);
+        } catch (Exception e) {
+            log.warn("Failed to build default cell data: {}", e.getMessage());
+            return "{}";
+        }
     }
 
     private String toJson(Object obj) {

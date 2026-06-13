@@ -54,8 +54,20 @@ export function buildVTableColumns(cols: ColumnConfig[]): Record<string, unknown
   });
 }
 
+/** Get default value for a column type when creating new rows */
+export function getDefaultCellValue(type: ColumnConfig['type']): unknown {
+  switch (type) {
+    case 'checkbox': return false;
+    case 'radio': return '';
+    case 'number': return null;
+    case 'progressbar': return 0;
+    case 'select': case 'multi-select': case 'text': case 'user': case 'date':
+    default: return '';
+  }
+}
+
 export function buildVTableRecords(
-  rows: { id: string; rowIndex: number; rowLabel: string; cellData: Record<string, string>; version: number }[]
+  rows: { id: string; rowIndex: number; rowLabel: string; cellData: Record<string, unknown>; version: number }[]
 ): Record<string, unknown>[] {
   return rows.map((row) => ({
     __id: row.id,

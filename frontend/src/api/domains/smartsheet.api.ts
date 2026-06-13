@@ -34,14 +34,14 @@ function normalizeRow(raw: any): SmartSheetRow {
     ...raw,
     cellData: (() => {
       const rawCd = (typeof raw.cellData === 'object' && !Array.isArray(raw.cellData) ? raw.cellData : maybeParse(raw.cellData) ?? {}) as Record<string, unknown>;
-      const out: Record<string, string> = {};
+      const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(rawCd)) {
-        if (typeof v === 'string') {
-          out[k] = v;
-        } else if (v && typeof v === 'object' && 'v' in (v as any)) {
-          out[k] = String((v as any).v ?? '');
+        // Unwrap legacy CellValue { v: ..., fmt: ... } wrapper
+        if (v && typeof v === 'object' && 'v' in (v as Record<string, unknown>)) {
+          out[k] = (v as Record<string, unknown>).v ?? '';
         } else {
-          out[k] = v != null ? String(v) : '';
+          // Preserve native types: boolean, number, string, null
+          out[k] = v;
         }
       }
       return out;
