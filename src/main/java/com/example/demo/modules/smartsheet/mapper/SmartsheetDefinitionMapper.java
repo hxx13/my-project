@@ -16,13 +16,17 @@ public interface SmartsheetDefinitionMapper {
     @Select("SELECT * FROM smartsheet_definition WHERE id = #{id}")
     SmartsheetDefinition selectById(@Param("id") Long id);
 
-    @Insert("INSERT INTO smartsheet_definition (name, description, layout_mode, columns_config, row_entity_source, template_id, created_by, updated_by, created_at, updated_at) " +
-            "VALUES (#{name}, #{description}, #{layoutMode}, #{columnsConfig}, #{rowEntitySource}, #{templateId}, #{createdBy}, #{updatedBy}, NOW(), NOW())")
+    @Insert("INSERT INTO smartsheet_definition (name, description, layout_mode, columns_config, row_entity_source, template_id, " +
+            "row_limit, theme_config, is_template, created_by, updated_by, created_at, updated_at) " +
+            "VALUES (#{name}, #{description}, #{layoutMode}, #{columnsConfig}, #{rowEntitySource}, #{templateId}, " +
+            "#{rowLimit}, #{themeConfig}, #{isTemplate}, #{createdBy}, #{updatedBy}, NOW(), NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(SmartsheetDefinition def);
 
     @Update("UPDATE smartsheet_definition SET name = #{name}, description = #{description}, layout_mode = #{layoutMode}, " +
-            "columns_config = #{columnsConfig}, row_entity_source = #{rowEntitySource}, updated_by = #{updatedBy}, updated_at = NOW() " +
+            "columns_config = #{columnsConfig}, row_entity_source = #{rowEntitySource}, " +
+            "row_limit = #{rowLimit}, theme_config = #{themeConfig}, is_template = #{isTemplate}, " +
+            "updated_by = #{updatedBy}, updated_at = NOW() " +
             "WHERE id = #{id}")
     int update(SmartsheetDefinition def);
 
@@ -37,4 +41,10 @@ public interface SmartsheetDefinitionMapper {
 
     @Update("UPDATE smartsheet_definition SET name = #{name}, updated_at = NOW() WHERE id = #{id}")
     int rename(@Param("id") Long id, @Param("name") String name);
+
+    @Select("SELECT * FROM smartsheet_definition WHERE is_template = 1 ORDER BY updated_at DESC")
+    List<SmartsheetDefinition> selectTemplates();
+
+    @Update("UPDATE smartsheet_definition SET is_template = #{isTemplate} WHERE id = #{id}")
+    int updateTemplateFlag(@Param("id") Long id, @Param("isTemplate") int isTemplate);
 }

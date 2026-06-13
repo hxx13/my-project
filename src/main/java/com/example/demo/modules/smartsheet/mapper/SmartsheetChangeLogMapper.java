@@ -17,4 +17,10 @@ public interface SmartsheetChangeLogMapper {
 
     @Delete("DELETE FROM smartsheet_change_log WHERE sheet_id = #{sheetId}")
     int deleteBySheetId(@Param("sheetId") Long sheetId);
+
+    @Insert("INSERT INTO smartsheet_change_log (sheet_id, row_id, column_key, old_value, new_value, " +
+            "changed_by, row_index, changed_at) " +
+            "VALUES (#{sheetId}, #{rowId}, #{columnKey}, #{oldValue}, #{newValue}, " +
+            "#{changedBy}, #{rowIndex}, NOW())")
+    int insertCellLog(SmartsheetChangeLog log);
 }

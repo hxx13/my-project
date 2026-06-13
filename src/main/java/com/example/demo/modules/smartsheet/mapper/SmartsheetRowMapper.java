@@ -48,4 +48,10 @@ public interface SmartsheetRowMapper {
 
     @Delete("DELETE FROM smartsheet_row WHERE sheet_id = #{sheetId}")
     int clearBySheetId(@Param("sheetId") Long sheetId);
+
+    @Select("SELECT * FROM smartsheet_row WHERE sheet_id = #{sheetId} ORDER BY row_index ASC " +
+            "LIMIT #{limit} OFFSET #{offset}")
+    List<SmartsheetRow> selectBySheetIdPaged(@Param("sheetId") Long sheetId,
+                                              @Param("offset") int offset,
+                                              @Param("limit") int limit);
 }
