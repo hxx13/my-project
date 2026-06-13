@@ -104,14 +104,17 @@ public class ReportFormController {
     public Result<?> update(@PathVariable Long id,
                             @RequestBody Map<String, Object> body,
                             HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
         if (denied != null) return denied;
         try {
             String username = getCurrentUsername(request);
+            System.err.println("[REPORT-FORM-CTRL] >>> PUT update id=" + id + " keys=" + body.keySet() + " username=" + username);
             reportFormService.update(id, body, username);
+            System.err.println("[REPORT-FORM-CTRL] >>> PUT update 成功");
             return Result.success(null);
         } catch (Exception e) {
-            log.error("更新报表失败", e);
+            System.err.println("[REPORT-FORM-CTRL] >>> PUT update 失败: " + e.getMessage());
+            e.printStackTrace();
             return Result.error(e.getMessage());
         }
     }
