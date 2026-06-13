@@ -1,1 +1,0 @@
-ALTER TABLE smartsheet_definition ADD COLUMN is_pinned TINYINT NOT NULL DEFAULT 0 COMMENT '置顶';

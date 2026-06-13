@@ -10,8 +10,17 @@ export default defineConfig({
         },
     },
 
-    // 💥 新增：代理配置。只要前端请求 /api，Vite 就自动帮你转给 Spring Boot！
-    server: {
+    // VTable 等大依赖预构建；避免 dev 时出现 504 Outdated Optimize Dep
+    optimizeDeps: {
+        include: [
+            "@visactor/vtable",
+            "@visactor/vtable-editors",
+            "@visactor/vtable-export",
+            "@visactor/vtable-search",
+        ],
+    },
+
+  server: {
         proxy: {
             '/api': {
                 target: 'http://localhost:8081',
@@ -23,9 +32,6 @@ export default defineConfig({
     build: {
         outDir: '../src/main/resources/static',
         emptyOutDir: true,
-        // 🔧 使用 esbuild 压缩 CSS 替代 LightningCSS
-        // LightningCSS (Vite 8 默认) 在生产构建中会错误处理 backdrop-filter /
-        // color-mix() / CSS 自定义属性，导致首页 GlassCard 透明度丢失
         cssMinify: 'esbuild',
     },
 

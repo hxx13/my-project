@@ -137,6 +137,36 @@ public class ReportFormController {
         }
     }
 
+    // ──────────────── 归档 / 取消归档 ────────────────
+
+    @PostMapping("/forms/{id}/archive")
+    @Operation(summary = "归档报表表单")
+    public Result<?> archive(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            reportFormService.archive(id);
+            return Result.success(null);
+        } catch (Exception e) {
+            log.error("归档失败 form={}: {}", id, e.getMessage());
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/forms/{id}/unarchive")
+    @Operation(summary = "取消归档报表表单")
+    public Result<?> unarchive(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            reportFormService.unarchive(id);
+            return Result.success(null);
+        } catch (Exception e) {
+            log.error("取消归档失败 form={}: {}", id, e.getMessage());
+            return Result.error(e.getMessage());
+        }
+    }
+
     // ──────────────── 删除 / 重命名 / 复制 ────────────────
 
     @DeleteMapping("/forms/{id}")

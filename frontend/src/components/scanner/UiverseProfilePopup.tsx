@@ -18,6 +18,7 @@ import { resolveRoomActionDensity } from "./roomActionDensity";
 import { ACCESS_MOTION_CORNER_MODULE_RATIO } from "./accessMotionLoaderScale";
 import type { PopupProps } from "./components/types";
 import { ScanPopupNoticeCoordinator } from "./ScanPopupNoticeCoordinator";
+import { ScanEntryNotice } from "./ScanEntryNotice";
 import { Z_INDEX } from "@/constants/zIndex";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { BizOverlayShell } from "./BizOverlayShell";
@@ -402,6 +403,13 @@ export function UiverseProfilePopup(props: PopupProps) {
                     </div>
                     </div>
                 </div>
+
+                {/* 进入确认：居中弹窗 + 倒计时 → 最小化到角落胶囊 */}
+                <ScanEntryNotice
+                    state={state}
+                    roomName={cornerLeaveLabel}
+                    onDismiss={actions.dismissEnterCelebrate}
+                />
             </motion.div>
             {/* Keypad overlay */}
             {showKeypad && (

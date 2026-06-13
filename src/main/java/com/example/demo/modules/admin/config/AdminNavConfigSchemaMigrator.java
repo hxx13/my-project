@@ -29,11 +29,6 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
                 "VALUES ('item-knowledge', 'system-security', 'ITEM', '知识库', '/admin/knowledge', 'BookOpen', 9)");
 
-            // 确保智能表格入口始终存在
-            jdbcTemplate.update(
-                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-smartsheet', 'system-security', 'ITEM', '智能表格', '/admin/smartsheet', 'Table2', 11)");
-
             // 确保「审核」分组与「申领审核」入口始终存在
             jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) " +

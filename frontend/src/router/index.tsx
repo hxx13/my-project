@@ -92,21 +92,11 @@ import StudentCageShelfPage from "@/features/student/pages/student-cage-shelf";
 import StudentMaterialPage from "@/features/student/pages/student-material";
 import StudentMaterialRequestsPage from "@/features/student/pages/student-material-requests";
 import StudentMaterialStatsPage from "@/features/student/pages/student-material-stats";
-import SmartSheetListPage from "@/features/smartsheet/SmartSheetListPage";
-import SmartSheetEditorPage from "@/features/smartsheet/SmartSheetEditorPage";
-import SmartSheetFillPage from "@/features/smartsheet/SmartSheetFillPage";
 import ReportFormListPage from "@/features/report-form/pages/ReportFormListPage";
 import ReportFormDesignPage from "@/features/report-form/pages/ReportFormDesignPage";
 import ReportFillHubPage from "@/features/report-form/pages/ReportFillHubPage";
 import ReportFillPage from "@/features/report-form/pages/ReportFillPage";
 import SubmissionManagePage from "@/features/report-form/pages/SubmissionManagePage";
-import { Navigate, useParams } from "react-router-dom";
-
-function SmartSheetLegacyRedirect() {
-  const { id } = useParams<{ id: string }>();
-  return <Navigate to={`/admin/smartsheet/${id}/fill`} replace />;
-}
-
 export const router = createHashRouter([
     {
         path: "/login",
@@ -233,10 +223,6 @@ export const router = createHashRouter([
                             { path: "file-templates", element: <AdminFileTemplatesPage/>},
                             { path: "content-hub", element: <AdminContentHubPage/>},
                             { path: "knowledge", element: <AdminKnowledgeHomePage/>},
-                            { path: "smartsheet", element: <SmartSheetListPage/>},
-                            { path: "smartsheet/:id/edit", element: <SmartSheetEditorPage/>},
-                            { path: "smartsheet/:id/fill", element: <SmartSheetFillPage/>},
-                            { path: "smartsheet/:id", element: <SmartSheetLegacyRedirect/>},
                             { path: "report-form", element: <ReportFormListPage/>},
                             { path: "report-form/:id/design", element: <ReportFormDesignPage/>},
                             { path: "report-form/:id/submissions", element: <SubmissionManagePage/>},

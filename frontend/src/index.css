@@ -7,8 +7,6 @@
 @import "@/styles/tokens.css";
 @import "@/styles/semantic.css";
 
-/* ── SmartSheet revo-grid 主题桥接 ── */
-@import "@/styles/smartsheet-theme.css";
 @import "@/styles/scan-notice-theme.css";
 @import "@/styles/scan-announcement-doodle.css";
 @import "@/styles/scan-access-motion.css";

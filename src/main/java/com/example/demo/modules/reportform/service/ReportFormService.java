@@ -158,6 +158,26 @@ public class ReportFormService {
         definitionMapper.updateStatus(def);
     }
 
+    // ──────────────── Archive / Unarchive ────────────────
+
+    public void archive(Long id) {
+        ReportFormDefinition def = definitionMapper.selectById(id);
+        if (def == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
+        }
+        def.setStatus("archived");
+        definitionMapper.updateStatus(def);
+    }
+
+    public void unarchive(Long id) {
+        ReportFormDefinition def = definitionMapper.selectById(id);
+        if (def == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
+        }
+        def.setStatus("draft");
+        definitionMapper.updateStatus(def);
+    }
+
     private String getDefaultTheme() {
         return "{\"headerBg\":\"var(--app-color-surface-container)\",\"headerColor\":\"var(--app-color-text-primary)\",\"headerFontSize\":13,\"headerBold\":true,\"headerAlign\":\"center\",\"zebraStripe\":true,\"oddRowBg\":\"var(--app-color-surface-page)\",\"evenRowBg\":\"var(--app-color-surface-container)\",\"borderWidth\":1,\"borderColor\":\"var(--app-color-border)\",\"borderRadius\":8,\"cellPadding\":8,\"defaultFontSize\":13,\"defaultAlign\":\"center\",\"columnWidths\":{},\"rowHeights\":{}}";
     }

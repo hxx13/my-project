@@ -13,7 +13,7 @@ export function resolveAutoSignoutCountdownCopy(state: string | null | undefined
     if (state === "PENDING_ACTIVATION") {
         return {
             badge: "待激活",
-            hint: "须在倒计时内刷激活门完成卡片激活；超时系统将自动签退。要现在手动离开吗？",
+            hint: "须在倒计时内刷激活门完成卡片激活；超时系统将自动签退。",
         };
     }
     return {

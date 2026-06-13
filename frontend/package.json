@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:force": "vite --force",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -26,6 +27,10 @@
     "@tiptap/starter-kit": "^3.23.1",
     "@types/d3": "^7.4.3",
     "@types/papaparse": "^5.5.2",
+    "@visactor/vtable": "^1.26.1",
+    "@visactor/vtable-editors": "^1.26.1",
+    "@visactor/vtable-export": "^1.26.1",
+    "@visactor/vtable-search": "^1.26.1",
     "axios": "^1.13.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

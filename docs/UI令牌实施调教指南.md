@@ -10,25 +10,21 @@
 
 ---
 
-## 一、调教总览
+## 一、当前状态
 
-### 1.1 文件创建清单（按执行顺序）
+> **截至 2026-06-13**：以下文件已全部落地，令牌体系在生产环境运行中。
 
-```
-Step 1: frontend/src/styles/tokens.css          ← 基础令牌（纯值仓库）
-Step 2: frontend/src/styles/semantic.css         ← 语义令牌（意图映射）+ 亮色默认值
-Step 3: frontend/src/index.css                   ← 修改：用新 @import 替换旧令牌
-Step 4: frontend/tailwind.config.js              ← 修改：用 token() 函数桥接
-Step 5: frontend/src/features/theme/             ← 新建：主题注册表 + Provider + 主题映射 CSS
-Step 6: frontend/src/App.tsx                     ← 修改：包裹 ThemeProvider
-Step 7: 组件迁改                                  ← 逐批替换硬编码为令牌引用
-```
+| 文件 | 状态 | 说明 |
+|------|------|------|
+| `frontend/src/styles/tokens.css` | ✅ 已落地 | 含 Bento Warm/Peach/Steel + Dark 色系 |
+| `frontend/src/styles/semantic.css` | ✅ 已落地 | 含 4 个主题映射（standard / standard-dark / scifi / classic-backup）+ 通知岛令牌 |
+| `frontend/src/index.css` | ✅ 已落地 | shadcn 兼容映射已建立 |
+| `frontend/tailwind.config.js` | ✅ 已落地 | app/* 颜色类名已注册 |
+| `frontend/src/features/theme/` | ✅ 已落地 | ThemeProvider 含 autoSchedule / effectiveMode / toggleLightDark |
+| `frontend/src/App.tsx` | ✅ 已落地 | ThemeProvider 包裹 |
+| `frontend/src/constants/zIndex.ts` | ✅ 已落地 | 扫描弹窗专用层级常量 |
 
-### 1.2 调教前置条件
-
-- Tailwind CSS v4（已安装，使用 `@tailwind base/components/utilities` 旧式指令或 v4 新式 `@import "tailwindcss"`——本指南兼容两种写法）
-- CSS `@layer base` 可以定义 `:root` 变量（已验证，现有 `index.css` 已使用此模式）
-- Vite 支持 `@/` 路径别名（`vite.config.ts` 已配置）
+以下为原始搭建指南（供新增主题或迁移参考）。
 
 ---
 
@@ -1182,4 +1178,4 @@ export const themeRegistry: ThemeEntry[] = [
 ---
 
 *本文档是 [UI设计规范与主题标准.md](UI设计规范与主题标准.md) 的实施配方，包含精确的代码和迁改步骤。*
-*版本 v1.5 — 新增 🍱 Bento 设计系统集成章节。*
+*版本 v1.6 — 新增当前状态概览；令牌体系已全量落地。*

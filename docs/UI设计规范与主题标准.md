@@ -665,6 +665,10 @@ CSS 定义（使用 oklch 色彩空间以保证感知均匀性）：
 
 > **铁律**：任何地方不得出现本文档未定义的 z-index 值。
 
+项目存在两套 z-index 体系，各司其职：
+
+**CSS 令牌**（`frontend/src/styles/tokens.css`）— Tailwind 类名和 CSS 文件引用：
+
 ```css
 :root {
   --z-base:       0;       /* 文档流 */
@@ -690,6 +694,36 @@ CSS 定义（使用 oklch 色彩空间以保证感知均匀性）：
 | `--z-toast` | Toast, Notification | 高于模态框 |
 | `--z-tooltip` | Tooltip | 高于 Toast（悬停信息优先级最高） |
 | `--z-command` | CommandPalette | 全局命令面板，最高层 |
+
+**TypeScript 常量**（`frontend/src/constants/zIndex.ts`）— 扫描弹窗、灵动岛等命令式 portal 组件引用：
+
+```typescript
+export const Z_INDEX = {
+  base: 0,
+  dropdown: 100,
+  modal: 200,
+  scannerPopup: 300,       // UiverseProfilePopup 全屏覆盖层
+  popupNotice: 310,        // ScanAccessNoticeOverlay 通行提示
+  popupModal: 320,         // DisciplinaryModal 违规弹窗
+  bizOverlay: 400,         // BizOverlayShell 快捷业务
+  keypad: 500,             // NumericKeypad 密码键盘（始终最顶）
+  globalToast: 600,        // 全局 Toast
+} as const;
+```
+
+| 层级 | 典型组件 | 对应 CSS 层级 |
+|------|---------|-------------|
+| `Z_INDEX.base` (0) | 文档流 | `--z-base` (0) |
+| `Z_INDEX.dropdown` (100) | 人员搜索下拉 | `--z-dropdown` (200) |
+| `Z_INDEX.modal` (200) | 居中弹窗 | `--z-modal` (800) |
+| `Z_INDEX.scannerPopup` (300) | 扫描弹窗覆盖层 | 无直接对应 |
+| `Z_INDEX.popupNotice` (310) | 通行成功提示 | 无直接对应 |
+| `Z_INDEX.popupModal` (320) | 违规弹窗 | 无直接对应 |
+| `Z_INDEX.bizOverlay` (400) | 快捷业务面板 | 无直接对应 |
+| `Z_INDEX.keypad` (500) | 密码键盘 | 无直接对应 |
+| `Z_INDEX.globalToast` (600) | 全局 Toast | `--z-toast` (1000) |
+
+> **注意**：两套体系独立运作，数值不对齐是正常的。CSS 令牌用于 Tailwind 类名（`z-[var(--z-modal)]`），TypeScript 常量用于 `style={{ zIndex: Z_INDEX.scannerPopup }}`。扫描弹窗专属层级（300-500）仅在 TypeScript 常量中定义。
 
 ### 3.7 动效令牌
 
@@ -977,17 +1011,19 @@ CSS 定义（使用 oklch 色彩空间以保证感知均匀性）：
 }
 ```
 
-### 5.2 主题注册表
+### 5.2 主题定义与注册表
+
+**文件**：`frontend/src/features/theme/types.ts` + `frontend/src/features/theme/themeRegistry.ts`
 
 ```typescript
-// features/theme/types.ts
+// types.ts
+export type ColorMode = 'light' | 'dark';
+
 export interface ThemeDefinition {
   id: string;
   label: string;
-  mode: 'light' | 'dark';
-  /** 挂载到 <html> 的 CSS class */
-  className: string;
-  /** 设置页预览色块 */
+  mode: ColorMode;
+  className: string;       // 挂载到 <html> 的 CSS class
   preview: {
     accent: string;
     surface: string;
@@ -995,21 +1031,21 @@ export interface ThemeDefinition {
   };
 }
 
-// features/theme/themeRegistry.ts
+// themeRegistry.ts — 当前注册 3 个主题
 export const THEME_REGISTRY: ThemeDefinition[] = [
   {
     id: 'standard',
     label: '标准',
     mode: 'light',
     className: 'theme-standard',
-    preview: { accent: '#3b82f6', surface: '#ffffff', text: '#0f172a' },
+    preview: { accent: '#FAD4C0', surface: '#FFF5E6', text: '#111827' },
   },
   {
     id: 'standard-dark',
     label: '暗色',
     mode: 'dark',
     className: 'theme-standard-dark',
-    preview: { accent: '#60a5fa', surface: '#0f172a', text: '#f8fafc' },
+    preview: { accent: '#80A1C1', surface: '#1a1a2e', text: '#f8fafc' },
   },
   {
     id: 'scifi',
@@ -1021,65 +1057,56 @@ export const THEME_REGISTRY: ThemeDefinition[] = [
 ];
 ```
 
+> **注意**：`theme-classic` 的 CSS 定义存在于 `semantic.css`（§4.6b 经典主题回退），但**未注册到 THEME_REGISTRY**，用户无法通过 UI 选择。如需启用，需在 registry 中追加条目。
+
 ### 5.3 ThemeProvider
 
-```tsx
-// features/theme/ThemeProvider.tsx
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { THEME_REGISTRY, type ThemeDefinition } from './themeRegistry';
+**文件**：`frontend/src/features/theme/ThemeProvider.tsx`
 
+ThemeContext 提供以下完整接口：
+
+```typescript
 interface ThemeContextValue {
-  themeId: string;
-  theme: ThemeDefinition;
-  setThemeId: (id: string) => void;
-  themes: ThemeDefinition[];
-}
+  themeId: string;                        // 当前主题 id（"standard" | "standard-dark" | "scifi"）
+  theme: ThemeDefinition;                 // 当前主题定义对象
+  setThemeId: (id: string) => void;      // 切换到指定主题
+  themes: ThemeDefinition[];             // 可用主题列表
+  cycleTheme: () => void;                // 别名，等价于 toggleLightDark()
 
-const ThemeContext = createContext<ThemeContextValue | null>(null);
+  // 自动明暗切换
+  effectiveMode: ColorMode;              // 实际生效的明暗模式（考虑定时 + 手动覆盖）
+  autoScheduleEnabled: boolean;          // 是否启用作息表自动切换（默认 true）
+  setAutoScheduleEnabled: (enabled: boolean) => void;
+  lightStart: string;                    // 亮色开始时间，默认 "08:00"
+  lightEnd: string;                      // 亮色结束时间，默认 "16:30"
+  setScheduleTimes: (lightStart: string, lightEnd: string) => void;
+  toggleLightDark: () => void;           // 手动切换亮/暗（覆盖自动调度）
 
-const STORAGE_KEY = 'twin-theme';
-
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeId, setThemeIdState] = useState(() => {
-    return localStorage.getItem(STORAGE_KEY) || 'standard';
-  });
-
-  const theme = THEME_REGISTRY.find(t => t.id === themeId) || THEME_REGISTRY[0];
-
-  const setThemeId = useCallback((id: string) => {
-    if (THEME_REGISTRY.some(t => t.id === id)) {
-      setThemeIdState(id);
-      localStorage.setItem(STORAGE_KEY, id);
-    }
-  }, []);
-
-  useEffect(() => {
-    const root = document.documentElement;
-    // 清除所有主题 class
-    THEME_REGISTRY.forEach(t => root.classList.remove(t.className));
-    // 挂载新主题
-    root.classList.add(theme.className);
-    // 暗色模式
-    if (theme.mode === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-  }, [theme]);
-
-  return (
-    <ThemeContext.Provider value={{ themeId, theme, setThemeId, themes: THEME_REGISTRY }}>
-      {children}
-    </ThemeContext.Provider>
-  );
-}
-
-export function useTheme() {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error('useTheme must be used within ThemeProvider');
-  return ctx;
+  hydrated: boolean;                     // localStorage 恢复完成标记（避免 SSR/初始闪烁）
 }
 ```
+
+**关键行为**：
+
+- `effectiveMode` 是**实际驱动的模式**——组件应使用 `effectiveMode === 'dark'` 判断暗色，而非 `theme.mode === 'dark'`。
+- `.dark` class 由 `effectiveMode` 驱动（不是 `theme.mode`），在自动调度+手动覆盖场景下二者可能不一致。
+- `<html>` 上同时设置 `data-app-color-mode={effectiveMode}` 和 `data-app-theme-id={themeId}`。
+- `cycleTheme` / `toggleLightDark` 不会轮换到 scifi——仅在亮↔暗之间切换。
+
+**组件中使用主题的两种模式**：
+
+```tsx
+// 模式 1：useTheme() hook（推荐）
+const { theme, effectiveMode } = useTheme();
+const isDark = effectiveMode === 'dark';          // ← 用 effectiveMode，不用 theme.mode
+<div className={theme.className}>
+
+// 模式 2：仅需 theme.className + isDark 时（扫描弹窗等）
+const { theme } = useTheme();
+const isDark = theme.mode === 'dark';            // ← 仅在不需要自动调度感知时使用
+```
+
+**文件**：`frontend/src/features/theme/ThemeProvider.tsx`，完整实现见代码。
 
 ### 5.4 App.tsx 集成
 
@@ -1681,7 +1708,98 @@ Bento 的核心是**模块化卡片网格**——像日式便当盒一样，用�
 
 ---
 
-## 十五、禁止事项清单
+## 十五、扫描弹窗专属设计令牌（Scan Popup Theme）
+
+> **文件**：`frontend/src/components/scanner/scanPopupTheme.ts`
+>
+> 扫描弹窗（`UiverseProfilePopup`）是一个独立的全屏 portal 覆盖层，拥有自己的设计令牌子体系。这些令牌基于 Bento 暖桃色系，但有独立的暗色 sci-fi 呈现。
+
+### 15.1 扫描强调色（Scan Accent）
+
+扫描弹窗的强调色统一使用暖桃色 + 钢蓝色组合，不再根据性别区分：
+
+```typescript
+// scanPopupTheme.ts
+export const SCAN_PALETTE = {
+  surface:   '#FFF5E6',   // --scan-surface → var(--color-warm-50)
+  ink:       '#FAD4C0',   // --scan-accent-ink → var(--color-peach-500)
+  strong:    '#E8A88C',   // --scan-accent-strong → var(--color-peach-600)
+  deep:      '#B86B4F',   // --scan-accent-deep → var(--color-peach-700)
+  steel:     '#80A1C1',   // --scan-accent-steel → var(--color-steel-500)
+  darkBg:    '#0f172a',   // --scan-dark-bg
+  neon:      '#FAD4C0',   // --scan-glow / --scan-chart-fill
+};
+```
+
+### 15.2 CSS 类名常量
+
+扫描弹窗预设了以下 CSS 类名常量，供组件引用：
+
+| 常量 | 用途 |
+|------|------|
+| `SCAN_POPUP_BACKDROP` | 全屏覆盖层背景（多层渐变 + `backdrop-blur-md`） |
+| `SCAN_NESTED_BACKDROP` | 内嵌业务弹窗遮罩（不透明纯色） |
+| `SCAN_MODAL_LAYER_PROPS` | `data-modal-layer="true"` 等 DOM 属性 |
+| `PROFILE_CARD` | 左侧人员信息卡片 |
+| `STUDENT_CARD` | 左下角学生入口卡片 |
+| `AI_CARD` | 中间 AI 预测卡片 |
+| `CHART_CARD` | 中间图表卡片 |
+| `INNER_ROW` | 卡片内部行 |
+| `ACCESS_NOTICE_CARD_BASE` | 通行成功提示卡片 |
+| `TOGGLE_TRAY` | 自带/领用公卡切换托盘 |
+
+### 15.3 scanPaletteCssVars
+
+`scanPaletteCssVars()` 返回一组 CSS 自定义属性，注入到扫描弹窗的根 div 上：
+
+```typescript
+// 返回值包含 --scan-surface, --scan-accent-ink, --scan-accent-strong,
+// --scan-accent-deep, --scan-accent-steel, --scan-dark-bg, --scan-glow,
+// --scan-chart-grid, --scan-chart-fill, --scan-chart-entry, --scan-chart-exit 等
+```
+
+**使用方式**：在扫描弹窗 portal 的根 div 上 `style={scanPaletteCssVars()}`，子组件通过 `var(--scan-accent-ink)` 等引用。
+
+### 15.4 Z-Index 层级（扫描弹窗内）
+
+| 组件 | z-index 来源 | 值 |
+|------|------------|-----|
+| 扫描弹窗覆盖层 | `Z_INDEX.scannerPopup` | 300 |
+| 通行成功提示 | `Z_INDEX.popupNotice` | 310 |
+| 违规弹窗 | `Z_INDEX.popupModal` | 320 |
+| 快捷业务面板 | `Z_INDEX.bizOverlay` | 400 |
+| 密码键盘 | `Z_INDEX.keypad` | 500 |
+
+### 15.5 通行动效时长
+
+**文件**：`frontend/src/components/scanner/accessMotionConfig.ts`
+
+| 常量 | 值 | 用途 |
+|------|-----|------|
+| `ACCESS_MOTION_CENTER_HOLD_MS` | 2800ms | 进入动效在中央停留 |
+| `ACCESS_MOTION_FLY_MS` | 2400ms | 中央飞行到右下角 |
+| `ACCESS_MOTION_EXIT_FLY_MS` | 1800ms | 离开飞行回中央 |
+| `ACCESS_MOTION_FADE_MS` | 450ms | 淡出消失 |
+| `ACCESS_MOTION_FLY_EASE` | `[0.22, 0.61, 0.36, 1]` | 飞行动效贝塞尔曲线 |
+| `ENTER_REFRESH_MS` | 2800ms | 进入后刷新 analyze 的延迟 |
+
+### 15.6 通知岛（灵动岛）令牌
+
+**文件**：`frontend/src/styles/semantic.css`（Notice Island 段）
+
+扫描弹窗顶部的 `ScanPopupNoticeCoordinator` 使用专属通知令牌：
+
+| 令牌组 | 用途 | 色系 |
+|--------|------|------|
+| `--app-color-notice-announcement-*` | 公告通知 | 青色系 (cyan) |
+| `--app-color-notice-violation-*` | 违规通知 | 红色系 (red) |
+| `--app-color-notice-unbound-*` | 未绑卡通知 | 琥珀系 (amber) |
+
+每个令牌组包含 `bg`, `border`, `text`, `badge-bg`, `badge-text`, `icon`, `glow`, `progress` 等子令牌。
+
+---
+
+## 十六、禁止事项清单
 
 | 禁止行为 | 原因 |
 |---------|------|
@@ -1699,4 +1817,4 @@ Bento 的核心是**模块化卡片网格**——像日式便当盒一样，用�
 ---
 
 *本文档是 TwinSystem UI 层的元规范。所有页面、组件、主题的视觉实现必须以本文档为准。*
-*版本 v1.6 — 新增级联下拉菜单规范 §6.3a；集成 Bento；Warm/Peach/Steel 色系。*
+*版本 v1.8 — 修正 ThemeProvider 接口（effectiveMode/autoSchedule）；双 Z-Index 体系文档化；新增扫描弹窗专属设计令牌 §15。*
