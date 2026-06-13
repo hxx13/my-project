@@ -168,6 +168,11 @@ public class SmartsheetService {
         definitionMapper.updateTemplateFlag(id, isTemplate ? 1 : 0);
     }
 
+    public void unsetTemplateFlag(Long id) {
+        getById(id);
+        definitionMapper.updateTemplateFlag(id, 0);
+    }
+
     @Transactional
     public SmartsheetDefinition createFromTemplate(Long templateId, String name, Long userId) {
         SmartsheetDefinition template = getById(templateId);

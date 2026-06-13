@@ -375,6 +375,14 @@ public class SmartsheetController {
         }
     }
 
+    @DeleteMapping("/template/{id}")
+    public Result<Void> deleteTemplate(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        sheetService.unsetTemplateFlag(id);
+        return Result.success(null);
+    }
+
     // ═══════ Stats ═══════
 
     @GetMapping("/{sheetId}/stats")
