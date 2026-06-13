@@ -1,5 +1,5 @@
-import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useCallback } from 'react';
+import { useParams, useNavigate, useBlocker } from 'react-router-dom';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import FormGridEditor from '../components/FormGridEditor';
@@ -9,7 +9,7 @@ import { fetchFormById, updateForm } from '../api/reportForm.api';
 import type { LayoutJson } from '../types';
 import { useFormGridEditor } from '../hooks/useFormGridEditor';
 import toast from 'react-hot-toast';
-import { Undo2, Redo2, Save } from 'lucide-react';
+import { Undo2, Redo2, Save, AlertTriangle } from 'lucide-react';
 
 function parseLayout(raw: unknown): LayoutJson {
   if (!raw) return { cells: [], fields: {}, mergeGroups: [] };
@@ -49,7 +49,41 @@ function DesignerInner({
 }) {
   const editor = useFormGridEditor(initialLayout);
 
-  // 双击编辑状态
+  // 原始快照，用于检测未保存修改
+  const savedSnapshot = useRef(JSON.stringify(initialLayout));
+  const justSaved = useRef(false);
+
+  // 是否有未保存修改
+  const isDirty = useCallback(() => {
+    return JSON.stringify(editor.layout) !== savedSnapshot.current;
+  }, [editor.layout]);
+
+  // 保存后更新快照
+  const markSaved = useCallback(() => {
+    savedSnapshot.current = JSON.stringify(editor.layout);
+    justSaved.current = true;
+    setTimeout(() => { justSaved.current = false; }, 500);
+  }, [editor.layout]);
+
+  // 浏览器关闭/刷新拦截
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty()) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  // 应用内导航拦截
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => {
+    if (justSaved.current) return false;
+    return currentLocation.pathname !== nextLocation.pathname && isDirty();
+  });
+
+  // 双击编辑
   const [editingCellId, setEditingCellId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
 
@@ -70,28 +104,22 @@ function DesignerInner({
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const payload = {
-        name: form.name as string,
-        layoutJson: JSON.stringify(editor.layout),
-      };
+      const payload = { name: form.name as string, layoutJson: JSON.stringify(editor.layout) };
       await updateForm(formId, payload);
-      // 保存后立即验证：重新读取表单
-      const verify = await fetchFormById(formId);
-      const verifyLayout = parseLayout((verify as Record<string, unknown>).layoutJson);
-      if (verifyLayout.cells.length !== editor.layout.cells.length) {
-        throw new Error(`数据校验失败: DB中cells=${verifyLayout.cells.length}, 本地=${editor.layout.cells.length}`);
-      }
     },
-    onSuccess: () => toast.success('已保存'),
+    onSuccess: () => {
+      markSaved();
+      toast.success('已保存');
+    },
     onError: (e: Error) => toast.error('保存失败: ' + e.message),
   });
 
-  const selectedCellIds = [...editor.selectedCellIds];
-  const selectedCell = selectedCellIds.length === 1
-    ? editor.layout.cells.find(c => c.id === selectedCellIds[0]) || null
+  const selectedCell = editor.selectedCellIds.size === 1
+    ? editor.layout.cells.find(c => c.id === [...editor.selectedCellIds][0]) || null
     : null;
 
   const hasCells = editor.layout.cells.length > 0;
+  const dirty = isDirty();
 
   return (
     <AdminPageShell title={String(form.name || '报表设计器')} description="点击格子编辑属性">
@@ -110,12 +138,15 @@ function DesignerInner({
           <Redo2 className="w-3.5 h-3.5" /> 重做
         </button>
         <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
-          className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-1">
+          className={`px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium flex items-center gap-1 transition-colors ${
+            dirty ? 'bg-[var(--app-color-feedback-danger)] text-white hover:opacity-90' : 'bg-[var(--app-color-accent)] text-white hover:opacity-90'
+          } disabled:opacity-50`}>
           <Save className="w-3.5 h-3.5" />
-          {saveMut.isPending ? '保存中...' : '保存'}
+          {saveMut.isPending ? '保存中...' : dirty ? '保存 *' : '保存'}
         </button>
         <span className="text-[11px] text-[var(--app-color-text-tertiary)] ml-auto">
           {editor.layout.cells.length} 格 · 选中 {editor.selectedCellIds.size}
+          {dirty && <span className="text-[var(--app-color-feedback-danger)] ml-1">未保存</span>}
         </span>
       </div>
 
@@ -157,6 +188,38 @@ function DesignerInner({
         onUpdateField={editor.updateFieldDefinition}
         onClose={() => editor.selectRange([])}
       />
+
+      {/* 未保存离开确认弹窗 */}
+      {blocker.state === 'blocked' && (
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle className="w-5 h-5 text-[var(--app-color-feedback-danger)]" />
+              <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)]">未保存的修改</h3>
+            </div>
+            <p className="text-xs text-[var(--app-color-text-secondary)] mb-4">
+              你有未保存的修改，如果离开此页面，修改将会丢失。
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => blocker.reset?.()}
+                className="px-4 py-1.5 rounded-[6px] text-[12px] border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
+                继续编辑
+              </button>
+              <button onClick={async () => {
+                await saveMut.mutateAsync();
+                blocker.proceed?.();
+              }}
+                className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90">
+                保存并离开
+              </button>
+              <button onClick={() => blocker.proceed?.()}
+                className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-feedback-danger)] text-white hover:opacity-90">
+                不保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminPageShell>
   );
 }
