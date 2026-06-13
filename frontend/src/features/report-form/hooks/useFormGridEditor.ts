@@ -32,10 +32,19 @@ export function useFormGridEditor(initialLayout: LayoutJson) {
 
   const selectCell = useCallback((cellId: string, multi: boolean) => {
     setSelectedCellIds(prev => {
-      const next = new Set(multi ? prev : []);
-      if (prev.has(cellId) && multi) next.delete(cellId);
-      else next.add(cellId);
-      return next;
+      if (multi) {
+        // Shift+click / drag: toggle in multi-select mode
+        const next = new Set(prev);
+        if (next.has(cellId)) next.delete(cellId);
+        else next.add(cellId);
+        return next;
+      } else {
+        // Single click: select only this cell, or deselect if already the only one
+        if (prev.size === 1 && prev.has(cellId)) {
+          return new Set(); // toggle off
+        }
+        return new Set([cellId]);
+      }
     });
   }, []);
 

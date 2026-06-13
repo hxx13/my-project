@@ -1,5 +1,5 @@
 import { useParams, useNavigate, useBlocker } from 'react-router-dom';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import FormGridEditor from '../components/FormGridEditor';
@@ -64,6 +64,15 @@ function DesignerInner({
     justSaved.current = true;
     setTimeout(() => { justSaved.current = false; }, 500);
   }, [editor.layout]);
+
+  // 浏览器刷新/关闭拦截
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty()) { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   // 应用内导航拦截
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {

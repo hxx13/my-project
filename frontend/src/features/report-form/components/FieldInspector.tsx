@@ -77,9 +77,9 @@ export default function FieldInspector({
 
   return (
     <div
-      className="fixed z-[var(--z-modal)] rounded-[var(--app-radius-container)] border border-[var(--app-color-border)]
+      className="fixed rounded-[var(--app-radius-container)] border border-[var(--app-color-border)]
                  bg-[var(--app-color-surface-elevated)] shadow-lg flex flex-col overflow-hidden"
-      style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
+      style={{ left: pos.x, top: pos.y, width: size.w, height: size.h, zIndex: 800 }}
     >
       {/* 标题栏 — 可拖动 */}
       <div

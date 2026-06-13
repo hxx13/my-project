@@ -386,9 +386,6 @@ public class ReportFormController {
         }
     }
 
-    private final ReportFormDefinitionMapper definitionMapper;
-    private final com.example.demo.modules.reportform.service.ReportFormWordService wordService;
-
     // ──────────────── 选项集 CRUD ────────────────
 
     @GetMapping("/option-sets")

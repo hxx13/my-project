@@ -194,9 +194,6 @@ public class ReportFillController {
         return Result.success(Map.of("status", "submitted", "message", "打印任务已提交（接口预留）"));
     }
 
-    private final ReportFormDefinitionMapper definitionMapper;
-    private final ReportFormWordService wordService;
-
     private User getCurrentUser(HttpServletRequest request) {
         return (User) request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
     }
