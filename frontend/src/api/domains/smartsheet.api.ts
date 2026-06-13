@@ -3,11 +3,9 @@ import { adminHttp } from '@/api/core/adminHttp';
 import type {
   SmartSheetDefinition,
   SmartSheetRow,
-  SmartSheetCreateRequest,
-  SmartSheetUpdateRequest,
-  SmartSheetRowUpdateRequest,
+  SmartsheetSheetRequest,
   ColumnStats,
-  CellValue,
+  SmartsheetImportResult,
 } from '@/features/smartsheet/types';
 
 const BASE = '/smartsheet';
@@ -23,26 +21,6 @@ function maybeParse(v: unknown): unknown {
   return v;
 }
 
-function normalizeCellValue(raw: unknown): CellValue {
-  if (raw == null || raw === '') return { v: '' };
-  if (typeof raw === 'string') {
-    // Try parsing as JSON first (cell data may be stored as JSON string)
-    if (raw.startsWith('{')) {
-      try { const parsed = JSON.parse(raw); if (parsed && typeof parsed === 'object' && 'v' in parsed) return parsed as CellValue; } catch {}
-    }
-    return { v: raw };
-  }
-  if (typeof raw === 'object' && 'v' in (raw as any)) return raw as CellValue;
-  return { v: String(raw) };
-}
-
-function denormalizeCellValue(cv: CellValue): CellValue {
-  // Strip undefined fmt to minimize JSON size
-  const out: CellValue = { v: cv.v };
-  if (cv.fmt && Object.keys(cv.fmt).length > 0) out.fmt = cv.fmt;
-  return out;
-}
-
 function normalizeSheet(raw: any): SmartSheetDefinition {
   return {
     ...raw,
@@ -56,10 +34,18 @@ function normalizeRow(raw: any): SmartSheetRow {
     ...raw,
     cellData: (() => {
       const rawCd = (typeof raw.cellData === 'object' && !Array.isArray(raw.cellData) ? raw.cellData : maybeParse(raw.cellData) ?? {}) as Record<string, unknown>;
-      const out: Record<string, CellValue> = {};
-      for (const [k, v] of Object.entries(rawCd)) { out[k] = normalizeCellValue(v); }
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(rawCd)) {
+        if (typeof v === 'string') {
+          out[k] = v;
+        } else if (v && typeof v === 'object' && 'v' in (v as any)) {
+          out[k] = String((v as any).v ?? '');
+        } else {
+          out[k] = v != null ? String(v) : '';
+        }
+      }
       return out;
-    })() as Record<string, CellValue>,
+    })(),
   };
 }
 
@@ -70,7 +56,7 @@ export async function fetchSheetPage(page = 1, pageSize = 20) {
   return { list: raw.list.map(normalizeSheet), total: raw.total };
 }
 
-export async function createSheet(req: SmartSheetCreateRequest) {
+export async function createSheet(req: SmartsheetSheetRequest) {
   const { data } = await adminHttp.post(`${BASE}/sheet`, req);
   return normalizeSheet(data.data);
 }
@@ -80,7 +66,7 @@ export async function getSheet(id: string) {
   return normalizeSheet(data.data);
 }
 
-export async function updateSheet(id: string, req: SmartSheetUpdateRequest) {
+export async function updateSheet(id: string, req: Record<string, unknown>) {
   const { data } = await adminHttp.put(`${BASE}/sheet/${id}`, req);
   return normalizeSheet(data.data);
 }
@@ -131,7 +117,7 @@ export async function addRow(sheetId: string, rowLabel = '', rowEntityId?: strin
   return normalizeRow(data.data);
 }
 
-export async function updateRow(sheetId: string, rowId: string, req: SmartSheetRowUpdateRequest) {
+export async function updateRow(sheetId: string, rowId: string, req: { cellData?: Record<string, string>; rowLabel?: string; version?: number }) {
   const { data } = await adminHttp.put(`${BASE}/${sheetId}/row/${rowId}`, req);
   return normalizeRow(data.data);
 }
@@ -150,15 +136,49 @@ export function getExportUrl(sheetId: string) {
   return `/api/admin/smartsheet/${sheetId}/export`;
 }
 
-export async function importFile(sheetId: string, file: File) {
+export async function importFile(sheetId: string, file: File): Promise<SmartsheetImportResult> {
   const form = new FormData();
   form.append('file', file);
   const { data } = await adminHttp.post(`${BASE}/${sheetId}/import`, form);
-  return data.data;
+  return data.data as SmartsheetImportResult;
 }
 
 // Stats
 export async function fetchColumnStats(sheetId: string, columnKey: string) {
   const { data } = await adminHttp.get(`${BASE}/${sheetId}/stats`, { params: { columnKey } });
   return data.data as ColumnStats;
+}
+
+// ═══════ Cell update (NEW - PATCH single cell) ═══════
+export async function updateCell(sheetId: string, rowId: string, req: {
+  columnKey: string;
+  value: unknown;
+  expectedVersion: number;
+}) {
+  const { data } = await adminHttp.patch(`${BASE}/${sheetId}/row/${rowId}/cell`, req);
+  return normalizeRow(data.data);
+}
+
+// ═══════ Export URLs (multi-format) ═══════
+export function getCsvExportUrl(sheetId: string) {
+  return `/api/admin/smartsheet/${sheetId}/export/csv`;
+}
+
+export function getXlsxExportUrl(sheetId: string) {
+  return `/api/admin/smartsheet/${sheetId}/export/xlsx`;
+}
+
+// ═══════ Templates (NEW) ═══════
+export async function fetchTemplates() {
+  const { data } = await adminHttp.get(`${BASE}/templates`);
+  return (data.data as any[]).map(normalizeSheet);
+}
+
+export async function saveAsTemplate(sheetId: string) {
+  await adminHttp.post(`${BASE}/template`, { sheetId: Number(sheetId) });
+}
+
+export async function createFromTemplate(templateId: string, name: string) {
+  const { data } = await adminHttp.post(`${BASE}/sheet/from-template/${templateId}`, { name });
+  return normalizeSheet(data.data);
 }
