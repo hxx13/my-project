@@ -78,19 +78,23 @@ public class ReportFormController {
         try {
             String name = Objects.requireNonNullElse(file.getOriginalFilename(), "未命名报表")
                     .replaceAll("\\.(xlsx|xls)$", "");
-            log.info("[report-form-ctrl] 收到导入请求: file={}, name={}", file.getOriginalFilename(), name);
+            System.err.println("[REPORT-FORM-CTRL] >>> 收到导入请求: file=" + file.getOriginalFilename() + " name=" + name);
             var result = importService.importFromExcel(file, name);
-            log.info("[report-form-ctrl] 导入解析完成: cellCount={}, layoutJson长度={}",
-                    result.getCellCount(),
-                    result.getLayoutJson() != null ? result.getLayoutJson().length() : 0);
+            System.err.println("[REPORT-FORM-CTRL] >>> 导入解析完成: cellCount=" + result.getCellCount()
+                + " layoutJson长度=" + (result.getLayoutJson() != null ? result.getLayoutJson().length() : 0));
             String username = getCurrentUsername(request);
             var form = reportFormService.createFromImport(result, username);
-            log.info("[report-form-ctrl] 表单已创建: id={}, name={}, 返回layoutJson类型={}",
-                    form.getId(), form.getName(),
-                    form.getLayoutJson() != null ? form.getLayoutJson().getClass().getSimpleName() : "null");
+            System.err.println("[REPORT-FORM-CTRL] >>> 表单已创建: id=" + form.getId()
+                + " name=" + form.getName()
+                + " status=" + form.getStatus()
+                + " layoutJson类型=" + (form.getLayoutJson() != null ? form.getLayoutJson().getClass().getSimpleName() : "NULL!"));
+            System.err.println("[REPORT-FORM-CTRL] >>> 返回前 layoutJson 前200字符: "
+                + (form.getLayoutJson() != null && form.getLayoutJson().length() > 200
+                    ? form.getLayoutJson().substring(0, 200) : form.getLayoutJson()));
             return Result.success(form);
         } catch (Exception e) {
-            log.error("Excel 导入失败", e);
+            System.err.println("[REPORT-FORM-CTRL] >>> 导入异常: " + e.getMessage());
+            e.printStackTrace();
             return Result.error("Excel 导入失败: " + e.getMessage());
         }
     }

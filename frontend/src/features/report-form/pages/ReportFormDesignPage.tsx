@@ -12,22 +12,29 @@ import { Undo2, Redo2, Save } from 'lucide-react';
 
 /** layoutJson 从后端返回的是 JSON 字符串，需要解析 */
 function parseLayout(raw: unknown): LayoutJson {
-  console.log('[report-form-designer] parseLayout 输入类型:', typeof raw);
+  console.warn('%c🟡 [DESIGNER] parseLayout 输入 typeof=%c' + typeof raw,
+    'font-size:14px;color:orange;font-weight:bold', '');
   if (!raw) {
-    console.warn('[report-form-designer] parseLayout: raw 为空, 返回空 layout');
+    console.warn('%c🟡 [DESIGNER] ⚠️ parseLayout: raw 为空(null/undefined), 返回空 layout',
+      'font-size:16px;color:orange;font-weight:bold');
     return { cells: [], fields: {}, mergeGroups: [] };
   }
   if (typeof raw === 'string') {
     try {
       const parsed = JSON.parse(raw);
-      console.log('[report-form-designer] parseLayout 解析成功: cells=', parsed.cells?.length, 'fields=', Object.keys(parsed.fields || {}).length);
+      console.warn('%c🟢 [DESIGNER] parseLayout 解析成功: cells=%c' + parsed.cells?.length + '%c fields=%c' + Object.keys(parsed.fields || {}).length,
+        'font-size:14px;color:green;font-weight:bold', '', '', '');
       return parsed;
     } catch (e) {
-      console.error('[report-form-designer] parseLayout JSON.parse 失败:', e, 'raw前100字符:', raw.substring(0, 100));
+      console.warn('%c🔴 [DESIGNER] parseLayout JSON.parse 失败!%c',
+        'font-size:18px;color:red;font-weight:bold', '', e);
+      console.warn('%c🔴 [DESIGNER] 原始字符串前200字符:%c ' + (raw as string).substring(0, 200),
+        'font-size:14px;color:red', '');
       return { cells: [], fields: {}, mergeGroups: [] };
     }
   }
-  console.log('[report-form-designer] parseLayout: raw 已是对象, cells=', (raw as LayoutJson).cells?.length);
+  console.warn('%c🟢 [DESIGNER] parseLayout: raw 已是对象, cells=%c' + (raw as LayoutJson).cells?.length,
+    'font-size:14px;color:green', '');
   return raw as LayoutJson;
 }
 
@@ -40,20 +47,33 @@ export default function ReportFormDesignPage() {
     queryKey: ['report-form', formId],
     queryFn: async () => {
       const f = await fetchFormById(formId);
-      console.log('[report-form-designer] fetchFormById 返回:', f);
-      console.log('[report-form-designer] form.id:', (f as Record<string,unknown>)?.id);
-      console.log('[report-form-designer] form.layoutJson 类型:', typeof (f as Record<string,unknown>)?.layoutJson);
-      console.log('[report-form-designer] form.layoutJson 前200字符:',
-        typeof (f as Record<string,unknown>)?.layoutJson === 'string'
-          ? ((f as Record<string,unknown>).layoutJson as string).substring(0, 200)
-          : 'N/A (非字符串)');
+      const raw = f as Record<string, unknown>;
+      console.warn('%c🔵 [DESIGNER] fetchFormById 返回:%c',
+        'font-size:14px;color:blue;font-weight:bold', '', f);
+      console.warn('%c🔵 [DESIGNER] form.id=%c' + raw?.id,
+        'font-size:14px;color:blue', '');
+      console.warn('%c🔵 [DESIGNER] form.layoutJson typeof=%c' + typeof raw?.layoutJson,
+        'font-size:14px;color:blue', '');
+      if (typeof raw?.layoutJson === 'string') {
+        console.warn('%c🔵 [DESIGNER] form.layoutJson 长度=%c' + (raw.layoutJson as string).length,
+          'font-size:14px;color:blue', '');
+        console.warn('%c🔵 [DESIGNER] form.layoutJson 前300字符:%c\n' + (raw.layoutJson as string).substring(0, 300),
+          'font-size:12px;color:blue', '');
+      } else if (raw?.layoutJson && typeof raw.layoutJson === 'object') {
+        console.warn('%c🔵 [DESIGNER] form.layoutJson 是对象, keys=%c' + Object.keys(raw.layoutJson as object).join(','),
+          'font-size:14px;color:blue', '');
+      } else {
+        console.warn('%c🔵 [DESIGNER] ⚠️ form.layoutJson 异常: typeof=%c' + typeof raw?.layoutJson,
+          'font-size:16px;color:blue;font-weight:bold', '');
+      }
       return f;
     },
     enabled: !!formId,
   });
 
   const initialLayout = parseLayout((form as Record<string, unknown> | null)?.layoutJson);
-  console.log('[report-form-designer] initialLayout cells:', initialLayout.cells?.length);
+  console.warn('%c🟣 [DESIGNER] initialLayout cells=%c' + initialLayout.cells?.length + '%c fields=%c' + Object.keys(initialLayout.fields || {}).length,
+    'font-size:14px;color:purple;font-weight:bold', '', '', '');
   const editor = useFormGridEditor(initialLayout);
 
   const saveMut = useMutation({

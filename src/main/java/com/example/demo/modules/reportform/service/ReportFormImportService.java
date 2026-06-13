@@ -22,13 +22,15 @@ public class ReportFormImportService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ReportFormImportResult importFromExcel(MultipartFile file, String name) throws Exception {
-        log.info("[report-form-import] ========== 开始导入 Excel: {} ({} bytes) ==========",
-                file.getOriginalFilename(), file.getSize());
+        System.err.println("╔══════════════════════════════════════════════════════════╗");
+        System.err.println("║ [REPORT-FORM-IMPORT] 开始导入                             ║");
+        System.err.println("║ 文件: " + file.getOriginalFilename() + " 大小: " + file.getSize() + " bytes");
+        System.err.println("╚══════════════════════════════════════════════════════════╝");
         try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
-            log.info("[report-form-import] Sheet: {}, rows: {} (0-{}), merged regions: {}",
-                    sheet.getSheetName(), sheet.getLastRowNum() + 1, sheet.getLastRowNum(),
-                    sheet.getNumMergedRegions());
+            System.err.println("[REPORT-FORM-IMPORT] Sheet名称=" + sheet.getSheetName()
+                + " 总行数=" + (sheet.getLastRowNum() + 1)
+                + " 合并区域数=" + sheet.getNumMergedRegions());
             if (sheet.getLastRowNum() < 0) {
                 throw new IllegalArgumentException("Excel 无有效数据");
             }
@@ -123,10 +125,13 @@ public class ReportFormImportService {
             result.setCellCount(cellId);
             result.setName(name);
 
-            log.info("[report-form-import] 解析完成: cells={}, fields={}, layoutJson长度={}",
-                    cellId, fields.size(), layoutStr.length());
-            log.info("[report-form-import] layoutJson 前200字符: {}",
-                    layoutStr.length() > 200 ? layoutStr.substring(0, 200) + "..." : layoutStr);
+            System.err.println("[REPORT-FORM-IMPORT] ====== 解析完成 ======");
+            System.err.println("[REPORT-FORM-IMPORT] cells数量=" + cellId);
+            System.err.println("[REPORT-FORM-IMPORT] fields数量=" + fields.size());
+            System.err.println("[REPORT-FORM-IMPORT] layoutJson总长度=" + layoutStr.length());
+            System.err.println("[REPORT-FORM-IMPORT] layoutJson前300字符:");
+            System.err.println(layoutStr.length() > 300 ? layoutStr.substring(0, 300) : layoutStr);
+            System.err.println("[REPORT-FORM-IMPORT] ====== 解析结束 ======");
             return result;
         }
     }
