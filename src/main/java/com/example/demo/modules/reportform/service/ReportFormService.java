@@ -76,7 +76,7 @@ public class ReportFormService {
         ReportFormDefinition def = new ReportFormDefinition();
         def.setName("空白报表 " + java.time.LocalDate.now().toString());
         def.setStatus("draft");
-        def.setLayoutJson("{\"cells\":[],\"fields\":{},\"mergeGroups\":[]}");
+        def.setLayoutJson(generateDefaultLayout(5, 5));
         def.setThemeJson(getDefaultTheme());
         def.setFillPolicyJson("{\"mode\":\"shared\",\"submitLabel\":\"提交\",\"allowEditAfterSubmit\":true}");
         def.setPermissionJson("{\"visibleRoles\":[],\"visibleUserIds\":[],\"fieldRoleBindings\":{},\"allowUnboundView\":true}");
@@ -176,6 +176,53 @@ public class ReportFormService {
         }
         def.setStatus("draft");
         definitionMapper.updateStatus(def);
+    }
+
+    private String generateDefaultLayout(int rows, int cols) {
+        try {
+            ObjectNode layout = objectMapper.createObjectNode();
+            ArrayNode cells = objectMapper.createArrayNode();
+            ObjectNode fields = objectMapper.createObjectNode();
+            ArrayNode mergeGroups = objectMapper.createArrayNode();
+
+            for (int r = 0; r < rows; r++) {
+                for (int c = 0; c < cols; c++) {
+                    int cellId = r * cols + c;
+                    String fieldKey = "f_" + cellId;
+
+                    ObjectNode cellNode = objectMapper.createObjectNode();
+                    cellNode.put("id", "c" + cellId);
+                    cellNode.put("row", r);
+                    cellNode.put("col", c);
+                    cellNode.put("colSpan", 1);
+                    cellNode.put("rowSpan", 1);
+                    cellNode.put("kind", "static");
+                    cellNode.put("staticText", "");
+                    cellNode.put("fieldKey", fieldKey);
+
+                    ObjectNode styleNode = objectMapper.createObjectNode();
+                    styleNode.put("align", "center");
+                    cellNode.set("style", styleNode);
+
+                    cells.add(cellNode);
+
+                    ObjectNode fieldNode = objectMapper.createObjectNode();
+                    fieldNode.put("type", "TEXT");
+                    fieldNode.put("label", "字段" + cellId);
+                    fieldNode.put("editableInFill", true);
+                    fieldNode.putArray("editableByRoles");
+                    fields.set(fieldKey, fieldNode);
+                }
+            }
+
+            layout.set("cells", cells);
+            layout.set("fields", fields);
+            layout.set("mergeGroups", mergeGroups);
+            return layout.toString();
+        } catch (Exception e) {
+            log.error("生成默认布局失败", e);
+            return "{\"cells\":[],\"fields\":{},\"mergeGroups\":[]}";
+        }
     }
 
     private String getDefaultTheme() {

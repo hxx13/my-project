@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import FormGridEditor from '../components/FormGridEditor';
@@ -10,9 +10,19 @@ import { useFormGridEditor } from '../hooks/useFormGridEditor';
 import toast from 'react-hot-toast';
 import { Undo2, Redo2, Save } from 'lucide-react';
 
+/** layoutJson 从后端返回的是 JSON 字符串，需要解析 */
+function parseLayout(raw: unknown): LayoutJson {
+  if (!raw) return { cells: [], fields: {}, mergeGroups: [] };
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw); } catch { return { cells: [], fields: {}, mergeGroups: [] }; }
+  }
+  return raw as LayoutJson;
+}
+
 export default function ReportFormDesignPage() {
   const { id } = useParams<{ id: string }>();
   const formId = Number(id);
+  const navigate = useNavigate();
 
   const { data: form, isLoading } = useQuery({
     queryKey: ['report-form', formId],
@@ -20,7 +30,8 @@ export default function ReportFormDesignPage() {
     enabled: !!formId,
   });
 
-  const editor = useFormGridEditor(form?.layoutJson || { cells: [], fields: {}, mergeGroups: [] });
+  const initialLayout = parseLayout((form as Record<string, unknown> | null)?.layoutJson);
+  const editor = useFormGridEditor(initialLayout);
 
   const saveMut = useMutation({
     mutationFn: () => updateForm(formId, {
@@ -49,7 +60,8 @@ export default function ReportFormDesignPage() {
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <ExcelImportButton
           onImported={(f) => {
-            editor.setLayout(typeof f.layoutJson === 'string' ? JSON.parse(f.layoutJson) : f.layoutJson);
+            // 导入成功后跳转到新表单的设计页
+            navigate(`/admin/report-form/${f.id}/design`);
           }}
         />
         <button
