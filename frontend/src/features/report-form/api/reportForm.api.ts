@@ -9,15 +9,7 @@ export function fetchFormPage(page = 1, size = 100): Promise<PageResult<ReportFo
 }
 
 export function fetchFormById(id: number): Promise<ReportFormDefinition> {
-  return adminHttp.get(`${BASE}/forms/${id}`).then(({ data }) => {
-    console.warn('%c🔵 [REPORT-FORM-API] fetchFormById id=%c' + id,
-      'font-size:14px;color:blue;font-weight:bold', '');
-    console.warn('%c🔵 [REPORT-FORM-API] fetchFormById 响应 raw=%c', '', '', data);
-    const form = data.data as Record<string, unknown>;
-    console.warn('%c🔵 [REPORT-FORM-API] fetchFormById form.layoutJson typeof=%c' + typeof form?.layoutJson,
-      'font-size:14px;color:blue', '');
-    return data.data;
-  });
+  return adminHttp.get(`${BASE}/forms/${id}`).then(({ data }) => data.data);
 }
 
 export function updateForm(id: number, data: Record<string, unknown>): Promise<void> {
@@ -31,32 +23,9 @@ export function createBlankForm(): Promise<ReportFormDefinition> {
 export function createFormFromExcel(file: File): Promise<ReportFormDefinition> {
   const formData = new FormData();
   formData.append('file', file);
-  console.warn('%c🔴 [REPORT-FORM-API] 开始上传 Excel%c',
-    'font-size:16px;color:red;font-weight:bold', '',
-    file.name, file.size, 'bytes');
   return adminHttp.post(`${BASE}/forms/from-excel`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-  }).then(({ data }) => {
-    console.warn('%c🔴 [REPORT-FORM-API] 上传响应%c', 'font-size:16px;color:red;font-weight:bold', '', data);
-    const form = data.data as Record<string, unknown>;
-    console.warn('%c🔴 [REPORT-FORM-API] form.id=%c' + form?.id,
-      'font-size:14px;color:red', '');
-    console.warn('%c🔴 [REPORT-FORM-API] form.layoutJson 类型=%c' + typeof form?.layoutJson,
-      'font-size:14px;color:red', '');
-    if (typeof form?.layoutJson === 'string') {
-      console.warn('%c🔴 [REPORT-FORM-API] form.layoutJson 长度=%c' + (form.layoutJson as string).length,
-        'font-size:14px;color:red', '');
-      console.warn('%c🔴 [REPORT-FORM-API] form.layoutJson 前300字符=%c' + (form.layoutJson as string).substring(0, 300),
-        'font-size:14px;color:red', '');
-    } else {
-      console.warn('%c🔴 [REPORT-FORM-API] ⚠️ layoutJson 不是字符串! typeof=' + typeof form?.layoutJson,
-        'font-size:16px;color:red;font-weight:bold');
-    }
-    return data.data;
-  }).catch(e => {
-    console.warn('%c🔴 [REPORT-FORM-API] 上传失败%c', 'font-size:16px;color:red;font-weight:bold', '', e);
-    throw e;
-  });
+  }).then(({ data }) => data.data);
 }
 
 export function deleteForm(id: number): Promise<void> {

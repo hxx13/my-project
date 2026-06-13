@@ -78,23 +78,13 @@ public class ReportFormController {
         try {
             String name = Objects.requireNonNullElse(file.getOriginalFilename(), "未命名报表")
                     .replaceAll("\\.(xlsx|xls)$", "");
-            System.err.println("[REPORT-FORM-CTRL] >>> 收到导入请求: file=" + file.getOriginalFilename() + " name=" + name);
             var result = importService.importFromExcel(file, name);
-            System.err.println("[REPORT-FORM-CTRL] >>> 导入解析完成: cellCount=" + result.getCellCount()
-                + " layoutJson长度=" + (result.getLayoutJson() != null ? result.getLayoutJson().length() : 0));
             String username = getCurrentUsername(request);
             var form = reportFormService.createFromImport(result, username);
-            System.err.println("[REPORT-FORM-CTRL] >>> 表单已创建: id=" + form.getId()
-                + " name=" + form.getName()
-                + " status=" + form.getStatus()
-                + " layoutJson类型=" + (form.getLayoutJson() != null ? form.getLayoutJson().getClass().getSimpleName() : "NULL!"));
-            System.err.println("[REPORT-FORM-CTRL] >>> 返回前 layoutJson 前200字符: "
-                + (form.getLayoutJson() != null && form.getLayoutJson().length() > 200
-                    ? form.getLayoutJson().substring(0, 200) : form.getLayoutJson()));
+            log.info("[report-form] 表单已创建: id={} name={} cells={}", form.getId(), form.getName(), result.getCellCount());
             return Result.success(form);
         } catch (Exception e) {
-            System.err.println("[REPORT-FORM-CTRL] >>> 导入异常: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Excel 导入失败", e);
             return Result.error("Excel 导入失败: " + e.getMessage());
         }
     }
@@ -108,13 +98,10 @@ public class ReportFormController {
         if (denied != null) return denied;
         try {
             String username = getCurrentUsername(request);
-            System.err.println("[REPORT-FORM-CTRL] >>> PUT update id=" + id + " keys=" + body.keySet() + " username=" + username);
             reportFormService.update(id, body, username);
-            System.err.println("[REPORT-FORM-CTRL] >>> PUT update 成功");
             return Result.success(null);
         } catch (Exception e) {
-            System.err.println("[REPORT-FORM-CTRL] >>> PUT update 失败: " + e.getMessage());
-            e.printStackTrace();
+            log.error("更新报表失败 form={}: {}", id, e.getMessage());
             return Result.error(e.getMessage());
         }
     }

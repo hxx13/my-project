@@ -22,15 +22,11 @@ public class ReportFormImportService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ReportFormImportResult importFromExcel(MultipartFile file, String name) throws Exception {
-        System.err.println("╔══════════════════════════════════════════════════════════╗");
-        System.err.println("║ [REPORT-FORM-IMPORT] 开始导入                             ║");
-        System.err.println("║ 文件: " + file.getOriginalFilename() + " 大小: " + file.getSize() + " bytes");
-        System.err.println("╚══════════════════════════════════════════════════════════╝");
+        log.info("[report-form] 导入 Excel: {} ({} bytes)", file.getOriginalFilename(), file.getSize());
         try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
-            System.err.println("[REPORT-FORM-IMPORT] Sheet名称=" + sheet.getSheetName()
-                + " 总行数=" + (sheet.getLastRowNum() + 1)
-                + " 合并区域数=" + sheet.getNumMergedRegions());
+            log.info("[report-form] Sheet={} rows={} mergedRegions={}",
+                    sheet.getSheetName(), sheet.getLastRowNum() + 1, sheet.getNumMergedRegions());
             if (sheet.getLastRowNum() < 0) {
                 throw new IllegalArgumentException("Excel 无有效数据");
             }
@@ -125,13 +121,7 @@ public class ReportFormImportService {
             result.setCellCount(cellId);
             result.setName(name);
 
-            System.err.println("[REPORT-FORM-IMPORT] ====== 解析完成 ======");
-            System.err.println("[REPORT-FORM-IMPORT] cells数量=" + cellId);
-            System.err.println("[REPORT-FORM-IMPORT] fields数量=" + fields.size());
-            System.err.println("[REPORT-FORM-IMPORT] layoutJson总长度=" + layoutStr.length());
-            System.err.println("[REPORT-FORM-IMPORT] layoutJson前300字符:");
-            System.err.println(layoutStr.length() > 300 ? layoutStr.substring(0, 300) : layoutStr);
-            System.err.println("[REPORT-FORM-IMPORT] ====== 解析结束 ======");
+            log.info("[report-form] 导入完成: cells={} fields={} layoutJson长度={}", cellId, fields.size(), layoutStr.length());
             return result;
         }
     }
