@@ -13,6 +13,9 @@ public class SmartsheetDefinition {
     private String rowEntitySource;  // JSON string, nullable
     private Long templateId;
     private Integer isPinned;
+    private Integer rowLimit;
+    private String themeConfig;
+    private Integer isTemplate;
     private Long createdBy;
     private Long updatedBy;
     private LocalDateTime createdAt;

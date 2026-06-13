@@ -9,6 +9,7 @@ public class SmartsheetChangeLog {
     private Long sheetId;
     private Long rowId;
     private String columnKey;
+    private Integer rowIndex;
     private String oldValue;
     private String newValue;
     private Long changedBy;
