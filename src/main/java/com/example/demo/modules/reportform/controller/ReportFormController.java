@@ -90,6 +90,38 @@ public class ReportFormController {
         }
     }
 
+    // ──────────────── 发布/撤回 ────────────────
+
+    @PostMapping("/forms/{id}/publish")
+    @Operation(summary = "发布报表表单")
+    public Result<?> publish(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            String username = getCurrentUsername(request);
+            var form = reportFormService.publish(id, username);
+            return Result.success(form);
+        } catch (Exception e) {
+            log.error("发布失败 form={}: {}", id, e.getMessage());
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/forms/{id}/unpublish")
+    @Operation(summary = "撤回已发布报表")
+    public Result<?> unpublish(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            String username = getCurrentUsername(request);
+            reportFormService.unpublish(id, username);
+            return Result.success(null);
+        } catch (Exception e) {
+            log.error("撤回失败 form={}: {}", id, e.getMessage());
+            return Result.error(e.getMessage());
+        }
+    }
+
     // ──────────────── 选项集 CRUD ────────────────
 
     @GetMapping("/option-sets")

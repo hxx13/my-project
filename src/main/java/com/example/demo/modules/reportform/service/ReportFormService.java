@@ -7,6 +7,9 @@ import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormOptionSet;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormOptionSetMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -21,6 +24,7 @@ public class ReportFormService {
 
     private final ReportFormDefinitionMapper definitionMapper;
     private final ReportFormOptionSetMapper optionSetMapper;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ReportFormService(ReportFormDefinitionMapper definitionMapper,
                              ReportFormOptionSetMapper optionSetMapper) {
@@ -69,6 +73,62 @@ public class ReportFormService {
         def.setUpdatedBy(username);
         definitionMapper.insert(def);
         return def;
+    }
+
+    public ReportFormDefinition publish(Long id, String username) {
+        ReportFormDefinition def = definitionMapper.selectById(id);
+        if (def == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
+        }
+        if ("published".equals(def.getStatus())) {
+            throw new RuntimeException("报表已发布，无需重复操作");
+        }
+
+        // Build version snapshot
+        String snapshots = def.getVersionSnapshotsJson();
+        ArrayNode snapshotArray;
+        try {
+            if (snapshots != null && !snapshots.isEmpty()) {
+                snapshotArray = (ArrayNode) objectMapper.readTree(snapshots);
+            } else {
+                snapshotArray = objectMapper.createArrayNode();
+            }
+        } catch (Exception e) {
+            snapshotArray = objectMapper.createArrayNode();
+        }
+
+        int nextVersion = snapshotArray.size() + 1;
+        ObjectNode snapshot = objectMapper.createObjectNode();
+        snapshot.put("version", nextVersion);
+        snapshot.put("publishedAt", java.time.LocalDateTime.now().toString());
+        snapshot.put("publishedBy", username);
+        ObjectNode snapshotData = objectMapper.createObjectNode();
+        snapshotData.put("layoutJson", def.getLayoutJson());
+        snapshotData.put("themeJson", def.getThemeJson());
+        snapshotData.put("permissionJson", def.getPermissionJson());
+        snapshot.set("snapshot", snapshotData);
+        snapshotArray.add(snapshot);
+
+        def.setStatus("published");
+        def.setPublishedBy(username);
+        def.setPublishedAt(java.time.LocalDateTime.now());
+        def.setVersionSnapshotsJson(snapshotArray.toString());
+        def.setUpdatedBy(username);
+        definitionMapper.updateStatus(def);
+        return def;
+    }
+
+    public void unpublish(Long id, String username) {
+        ReportFormDefinition def = definitionMapper.selectById(id);
+        if (def == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
+        }
+        if (!"published".equals(def.getStatus())) {
+            throw new RuntimeException("报表未发布，无法撤回");
+        }
+        def.setStatus("draft");
+        def.setUpdatedBy(username);
+        definitionMapper.updateStatus(def);
     }
 
     private String getDefaultTheme() {
