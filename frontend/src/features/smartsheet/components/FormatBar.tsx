@@ -1,13 +1,22 @@
 // FormatBar — Bold / Italic / bg-color / font-color / font-size toolbar
 import React, { useState, useRef, useEffect } from 'react';
 import { Bold, Italic, AlignLeft, AlignCenter, AlignRight, PaintBucket, Type } from 'lucide-react';
-import { useCellFormat } from '@/features/smartsheet/hooks/useCellFormat';
 import ColorPicker from './ColorPicker';
+
+interface CellFormat {
+  b?: boolean;
+  i?: boolean;
+  bg?: string;
+  color?: string;
+  align?: 'left' | 'center' | 'right';
+  size?: number;
+}
 
 const FONT_SIZES = [10, 12, 14, 16, 18, 20];
 
 export default function FormatBar() {
-  const { format, setFormat } = useCellFormat();
+  const [format, setFormatState] = useState<CellFormat>({});
+  const setFormat = (f: Partial<CellFormat>) => setFormatState(prev => ({ ...prev, ...f }));
   const [showBg, setShowBg] = useState(false);
   const [showColor, setShowColor] = useState(false);
   const bgRef = useRef<HTMLDivElement>(null);
