@@ -4,7 +4,9 @@ import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.modules.reportform.dto.ReportFormImportResult;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
+import com.example.demo.modules.reportform.entity.ReportFormOptionSet;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
+import com.example.demo.modules.reportform.mapper.ReportFormOptionSetMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -18,9 +20,12 @@ public class ReportFormService {
     private static final Logger log = LoggerFactory.getLogger(ReportFormService.class);
 
     private final ReportFormDefinitionMapper definitionMapper;
+    private final ReportFormOptionSetMapper optionSetMapper;
 
-    public ReportFormService(ReportFormDefinitionMapper definitionMapper) {
+    public ReportFormService(ReportFormDefinitionMapper definitionMapper,
+                             ReportFormOptionSetMapper optionSetMapper) {
         this.definitionMapper = definitionMapper;
+        this.optionSetMapper = optionSetMapper;
     }
 
     public List<ReportFormDefinition> page() {
@@ -68,5 +73,39 @@ public class ReportFormService {
 
     private String getDefaultTheme() {
         return "{\"headerBg\":\"var(--app-color-surface-container)\",\"headerColor\":\"var(--app-color-text-primary)\",\"headerFontSize\":13,\"headerBold\":true,\"headerAlign\":\"center\",\"zebraStripe\":true,\"oddRowBg\":\"var(--app-color-surface-page)\",\"evenRowBg\":\"var(--app-color-surface-container)\",\"borderWidth\":1,\"borderColor\":\"var(--app-color-border)\",\"borderRadius\":8,\"cellPadding\":8,\"defaultFontSize\":13,\"defaultAlign\":\"center\",\"columnWidths\":{},\"rowHeights\":{}}";
+    }
+
+    // ──────────────── Option Set CRUD ────────────────
+
+    public List<ReportFormOptionSet> listOptionSets() {
+        return optionSetMapper.selectByScope(null);
+    }
+
+    public ReportFormOptionSet createOptionSet(String name, String scope, Long formId, String itemsJson) {
+        ReportFormOptionSet os = new ReportFormOptionSet();
+        os.setName(name);
+        os.setScope(scope != null ? scope : "global");
+        os.setFormId(formId);
+        os.setItemsJson(itemsJson);
+        optionSetMapper.insert(os);
+        return os;
+    }
+
+    public void updateOptionSet(Long id, String name, String itemsJson) {
+        ReportFormOptionSet os = optionSetMapper.selectById(id);
+        if (os == null) {
+            throw new RuntimeException("选项集不存在");
+        }
+        os.setName(name);
+        os.setItemsJson(itemsJson);
+        optionSetMapper.update(os);
+    }
+
+    public void deleteOptionSet(Long id) {
+        int refs = optionSetMapper.countFieldRefsByOptionSetId(id);
+        if (refs > 0) {
+            throw new RuntimeException("该选项集被 " + refs + " 个表单引用，无法删除");
+        }
+        optionSetMapper.deleteById(id);
     }
 }

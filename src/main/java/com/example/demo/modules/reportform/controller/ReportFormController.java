@@ -5,6 +5,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
+import com.example.demo.modules.reportform.entity.ReportFormOptionSet;
 import com.example.demo.modules.reportform.service.ReportFormImportService;
 import com.example.demo.modules.reportform.service.ReportFormService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -85,6 +86,65 @@ public class ReportFormController {
             return Result.success(null);
         } catch (Exception e) {
             log.error("更新报表失败", e);
+            return Result.error(e.getMessage());
+        }
+    }
+
+    // ──────────────── 选项集 CRUD ────────────────
+
+    @GetMapping("/option-sets")
+    @Operation(summary = "查询所有选项集")
+    public Result<List<ReportFormOptionSet>> listOptionSets(HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        return Result.success(reportFormService.listOptionSets());
+    }
+
+    @PostMapping("/option-sets")
+    @Operation(summary = "创建选项集")
+    public Result<?> createOptionSet(@RequestBody Map<String, Object> body,
+                                     HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            String name = (String) body.get("name");
+            String scope = (String) body.getOrDefault("scope", "global");
+            Long formId = body.containsKey("formId") ? ((Number) body.get("formId")).longValue() : null;
+            String itemsJson = (String) body.get("itemsJson");
+            var os = reportFormService.createOptionSet(name, scope, formId, itemsJson);
+            return Result.success(os);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PutMapping("/option-sets/{id}")
+    @Operation(summary = "更新选项集")
+    public Result<?> updateOptionSet(@PathVariable Long id,
+                                     @RequestBody Map<String, Object> body,
+                                     HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            String name = (String) body.get("name");
+            String itemsJson = (String) body.get("itemsJson");
+            reportFormService.updateOptionSet(id, name, itemsJson);
+            return Result.success(null);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/option-sets/{id}")
+    @Operation(summary = "删除选项集")
+    public Result<?> deleteOptionSet(@PathVariable Long id,
+                                     HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            reportFormService.deleteOptionSet(id);
+            return Result.success(null);
+        } catch (Exception e) {
             return Result.error(e.getMessage());
         }
     }
