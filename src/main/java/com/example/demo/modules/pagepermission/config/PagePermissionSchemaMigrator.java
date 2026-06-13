@@ -272,6 +272,34 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
         } catch (Exception e) {
             log.debug("[page-permission-schema] 智能表格入口种子跳过: {}", e.getMessage());
         }
+        // ========== 填报报表模块 ==========
+        try {
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'WEB', 'entry:web:admin:report-form', 'ENTRY', '填报报表管理', '/admin/report-form', 'sidebar',
+                        'ADMIN', 'ADMIN', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'WEB', 'entry:web:admin:report-fill', 'ENTRY', '填报中心', '/admin/report-fill', 'sidebar',
+                        'STAFF', 'STAFF', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            log.info("[page-permission-schema] 已种子填报报表模块双入口: report-form + report-fill");
+        } catch (Exception e) {
+            log.debug("[page-permission-schema] 填报报表入口种子跳过: {}", e.getMessage());
+        }
     }
 }
 
