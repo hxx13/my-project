@@ -5,6 +5,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
+import com.example.demo.modules.reportform.service.ReportFormImportService;
 import com.example.demo.modules.reportform.service.ReportFormService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -12,8 +13,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/admin/report-form")
@@ -24,9 +27,12 @@ public class ReportFormController {
     private static final Logger log = LoggerFactory.getLogger(ReportFormController.class);
 
     private final ReportFormService reportFormService;
+    private final ReportFormImportService importService;
 
-    public ReportFormController(ReportFormService reportFormService) {
+    public ReportFormController(ReportFormService reportFormService,
+                                ReportFormImportService importService) {
         this.reportFormService = reportFormService;
+        this.importService = importService;
     }
 
     @GetMapping("/forms/page")
@@ -46,6 +52,25 @@ public class ReportFormController {
         return Result.success(reportFormService.getById(id));
     }
 
+    @PostMapping("/forms/from-excel")
+    @Operation(summary = "从 Excel 导入创建报表表单")
+    public Result<?> createFromExcel(@RequestParam("file") MultipartFile file,
+                                     HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            String name = Objects.requireNonNullElse(file.getOriginalFilename(), "未命名报表")
+                    .replaceAll("\\.(xlsx|xls)$", "");
+            var result = importService.importFromExcel(file, name);
+            String username = getCurrentUsername(request);
+            var form = reportFormService.createFromImport(result, username);
+            return Result.success(form);
+        } catch (Exception e) {
+            log.error("Excel 导入失败", e);
+            return Result.error("Excel 导入失败: " + e.getMessage());
+        }
+    }
+
     private Result<?> requireMinRole(HttpServletRequest request, RoleEnum minRole) {
         Object attr = request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
         if (!(attr instanceof User currentUser)) {
@@ -56,5 +81,13 @@ public class ReportFormController {
             return Result.error("无权限访问");
         }
         return null;
+    }
+
+    private String getCurrentUsername(HttpServletRequest request) {
+        Object attr = request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
+        if (attr instanceof User user) {
+            return user.getUsername();
+        }
+        return "unknown";
     }
 }
