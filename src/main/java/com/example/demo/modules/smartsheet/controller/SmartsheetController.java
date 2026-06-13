@@ -4,11 +4,13 @@ import com.example.demo.common.config.AdminAuthInterceptor;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.smartsheet.dto.*;
 import com.example.demo.modules.smartsheet.entity.SmartsheetDefinition;
 import com.example.demo.modules.smartsheet.entity.SmartsheetRow;
-import com.example.demo.modules.smartsheet.dto.*;
-import com.example.demo.modules.smartsheet.service.SmartsheetService;
+import com.example.demo.modules.smartsheet.service.SmartsheetExportService;
+import com.example.demo.modules.smartsheet.service.SmartsheetImportService;
 import com.example.demo.modules.smartsheet.service.SmartsheetRowService;
+import com.example.demo.modules.smartsheet.service.SmartsheetService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -28,10 +30,15 @@ public class SmartsheetController {
 
     private final SmartsheetService sheetService;
     private final SmartsheetRowService rowService;
+    private final SmartsheetImportService importService;
+    private final SmartsheetExportService exportService;
 
-    public SmartsheetController(SmartsheetService sheetService, SmartsheetRowService rowService) {
+    public SmartsheetController(SmartsheetService sheetService, SmartsheetRowService rowService,
+                                 SmartsheetImportService importService, SmartsheetExportService exportService) {
         this.sheetService = sheetService;
         this.rowService = rowService;
+        this.importService = importService;
+        this.exportService = exportService;
     }
 
     // ═══════ Sheet CRUD ═══════
@@ -49,7 +56,7 @@ public class SmartsheetController {
     }
 
     @PostMapping("/sheet")
-    public Result<SmartsheetDefinition> create(@RequestBody SmartsheetCreateRequest req, HttpServletRequest request) {
+    public Result<SmartsheetDefinition> create(@RequestBody SmartsheetSheetRequest req, HttpServletRequest request) {
         Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
         if (denied != null) return Result.error(denied.getMessage());
         Long userId = getCurrentUserId(request);
@@ -74,7 +81,7 @@ public class SmartsheetController {
 
     @PutMapping("/sheet/{id}")
     public Result<SmartsheetDefinition> update(@PathVariable Long id,
-                                                @RequestBody SmartsheetUpdateRequest req,
+                                                @RequestBody SmartsheetSheetRequest req,
                                                 HttpServletRequest request) {
         Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
         if (denied != null) return Result.error(denied.getMessage());
@@ -221,6 +228,23 @@ public class SmartsheetController {
         }
     }
 
+    @PatchMapping("/{sheetId}/row/{rowId}/cell")
+    public Result<SmartsheetRow> updateCell(@PathVariable Long sheetId,
+                                             @PathVariable Long rowId,
+                                             @RequestBody SmartsheetCellUpdateRequest req,
+                                             HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) return Result.error(denied.getMessage());
+        Long userId = getCurrentUserId(request);
+        try {
+            SmartsheetRow updated = rowService.updateCell(
+                rowId, req.getColumnKey(), req.getValue(), req.getExpectedVersion(), userId, sheetId);
+            return Result.success(updated);
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     @DeleteMapping("/{sheetId}/row/{rowId}")
     public Result<Void> deleteRow(@PathVariable Long sheetId, @PathVariable Long rowId,
                                    HttpServletRequest request) {
@@ -267,91 +291,88 @@ public class SmartsheetController {
         if (denied != null) { response.sendError(403); return; }
         SmartsheetDefinition sheet = sheetService.getById(sheetId);
         List<SmartsheetRow> rows = rowService.getRowsBySheetId(sheetId);
-        response.setContentType("text/csv;charset=UTF-8");
-        response.setHeader("Content-Disposition", "attachment; filename=\"" + sheet.getName() + ".csv\"");
-
-        // UTF-8 BOM for Excel compatibility (prevents garbled Chinese characters)
-        response.getOutputStream().write(0xEF);
-        response.getOutputStream().write(0xBB);
-        response.getOutputStream().write(0xBF);
-
-        java.io.PrintWriter writer = response.getWriter();
-
-        // Parse columns config
-        List<Map<String, Object>> columns = new ArrayList<>();
-        try {
-            @SuppressWarnings("unchecked")
-            List<Map<String, Object>> parsed = objectMapper.readValue(
-                sheet.getColumnsConfig(), List.class);
-            if (parsed != null) columns = parsed;
-        } catch (Exception e) {
-            log.warn("Failed to parse columns config for export: {}", e.getMessage());
-        }
-
-        // Write header row with column labels
-        List<String> colKeys = new ArrayList<>();
-        for (Map<String, Object> col : columns) {
-            String key = (String) col.get("key");
-            String label = (String) col.getOrDefault("label", key);
-            if (key != null) {
-                colKeys.add(key);
-                writer.write(escapeCsv(label));
-                writer.write(",");
-            }
-        }
-        if (!colKeys.isEmpty()) {
-            writer.write("\n");
-        }
-
-        // Write data rows
-        for (SmartsheetRow r : rows) {
-            try {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> cellData = objectMapper.readValue(r.getCellData(), Map.class);
-                for (int i = 0; i < colKeys.size(); i++) {
-                    if (i > 0) writer.write(",");
-                    String key = colKeys.get(i);
-                    Object val = cellData != null ? cellData.get(key) : null;
-                    String strVal;
-                    if (val instanceof Map) {
-                        // CellValue object: extract .v field
-                        Object v = ((Map<?, ?>) val).get("v");
-                        strVal = v != null ? v.toString() : "";
-                    } else {
-                        strVal = val != null ? val.toString() : "";
-                    }
-                    writer.write(escapeCsv(strVal));
-                }
-                writer.write("\n");
-            } catch (Exception e) {
-                log.debug("Skipping row {} during export: {}", r.getId(), e.getMessage());
-            }
-        }
-        writer.flush();
+        exportService.exportCsv(sheet, rows, response);
     }
 
-    private String escapeCsv(String value) {
-        if (value == null) return "";
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
-        }
-        return value;
+    @GetMapping("/{sheetId}/export/csv")
+    public void exportCsv(@PathVariable Long sheetId, HttpServletResponse response,
+                           HttpServletRequest request) throws IOException {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) { response.sendError(403); return; }
+        SmartsheetDefinition sheet = sheetService.getById(sheetId);
+        List<SmartsheetRow> rows = rowService.getRowsBySheetId(sheetId);
+        exportService.exportCsv(sheet, rows, response);
+    }
+
+    @GetMapping("/{sheetId}/export/xlsx")
+    public void exportXlsx(@PathVariable Long sheetId, HttpServletResponse response,
+                            HttpServletRequest request) throws IOException {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) { response.sendError(403); return; }
+        SmartsheetDefinition sheet = sheetService.getById(sheetId);
+        List<SmartsheetRow> rows = rowService.getRowsBySheetId(sheetId);
+        exportService.exportXlsx(sheet, rows, response);
     }
 
     @PostMapping("/{sheetId}/import")
-    public Result<Map<String, Object>> importFile(@PathVariable Long sheetId,
-                                                    @RequestParam("file") MultipartFile file,
-                                                    HttpServletRequest request) {
+    public Result<SmartsheetImportResult> importFile(@PathVariable Long sheetId,
+                                                      @RequestParam("file") MultipartFile file,
+                                                      @RequestParam(value = "columnKeys", defaultValue = "") String columnKeys,
+                                                      HttpServletRequest request) {
         Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
         if (denied != null) return Result.error(denied.getMessage());
         String filename = file.getOriginalFilename();
         if (filename == null || !filename.matches(".*\\.(xlsx|xls|csv)$")) {
-            return Result.error("不支持的文件格式，仅接受 .xlsx/.xls/.csv");
+            SmartsheetImportResult err = new SmartsheetImportResult();
+            err.setErrors(List.of("不支持的文件格式，仅接受 .xlsx/.xls/.csv"));
+            return Result.success(err);
         }
         if (file.getSize() > 10 * 1024 * 1024) {
-            return Result.error("文件大小超限(10MB)");
+            SmartsheetImportResult err = new SmartsheetImportResult();
+            err.setErrors(List.of("文件大小超限(10MB)"));
+            return Result.success(err);
         }
-        return Result.success(Map.of("preview", List.of(), "columns", List.of()));
+        List<String> keys = columnKeys.isEmpty() ? List.of() : Arrays.asList(columnKeys.split(","));
+        SmartsheetImportResult result = importService.importFile(sheetId, file, keys);
+        return Result.success(result);
+    }
+
+    // ═══════ Templates ═══════
+
+    @GetMapping("/templates")
+    public Result<List<SmartsheetDefinition>> templates(HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) return Result.error(denied.getMessage());
+        return Result.success(sheetService.getTemplates());
+    }
+
+    @PostMapping("/template")
+    public Result<Void> saveAsTemplate(@RequestBody Map<String, Long> body, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        Long id = body.get("id");
+        if (id == null) return Result.error("id 不能为空");
+        try {
+            sheetService.setTemplateFlag(id, true);
+            return Result.success(null);
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/sheet/from-template/{templateId}")
+    public Result<SmartsheetDefinition> createFromTemplate(@PathVariable Long templateId,
+                                                             @RequestBody Map<String, String> body,
+                                                             HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        Long userId = getCurrentUserId(request);
+        String name = body.getOrDefault("name", "从模板新建");
+        try {
+            return Result.success(sheetService.createFromTemplate(templateId, name, userId));
+        } catch (RuntimeException e) {
+            return Result.error(e.getMessage());
+        }
     }
 
     // ═══════ Stats ═══════

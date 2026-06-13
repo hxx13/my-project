@@ -11,12 +11,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class SmartsheetRowService {
     private static final Logger log = LoggerFactory.getLogger(SmartsheetRowService.class);
-    private static final int MAX_ROWS = 500;
+    private static final int MAX_ROWS = 50000;
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final SmartsheetRowMapper rowMapper;
@@ -40,7 +42,7 @@ public class SmartsheetRowService {
 
     public SmartsheetRow addRow(Long sheetId, String rowLabel, String rowEntityId) {
         int count = rowMapper.countBySheetId(sheetId);
-        if (count >= MAX_ROWS) throw new RuntimeException("超过最大行数限制(500)");
+        if (count >= MAX_ROWS) throw new RuntimeException("超过最大行数限制(" + MAX_ROWS + ")");
         int nextIndex = rowMapper.maxRowIndex(sheetId) + 1;
         SmartsheetRow row = new SmartsheetRow();
         row.setSheetId(sheetId);
@@ -76,6 +78,53 @@ public class SmartsheetRowService {
         return getById(id);
     }
 
+    /**
+     * Update a single cell value with optimistic locking.
+     */
+    @Transactional
+    public SmartsheetRow updateCell(Long rowId, String columnKey, Object value,
+                                     Integer expectedVersion, Long userId, Long sheetId) {
+        SmartsheetRow existing = getById(rowId);
+        if (expectedVersion != null && !expectedVersion.equals(existing.getVersion())) {
+            throw new RuntimeException("数据已被他人修改，请刷新");
+        }
+
+        Map<String, Object> cellData;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parsed = objectMapper.readValue(existing.getCellData(), Map.class);
+            cellData = parsed;
+        } catch (Exception e) {
+            cellData = new LinkedHashMap<>();
+        }
+
+        Object oldValue = cellData.get(columnKey);
+        cellData.put(columnKey, value);
+        String newCellDataJson;
+        try {
+            newCellDataJson = objectMapper.writeValueAsString(cellData);
+        } catch (Exception e) {
+            throw new RuntimeException("JSON 序列化失败", e);
+        }
+
+        int updated = rowMapper.updateCellData(rowId, newCellDataJson, existing.getVersion());
+        if (updated == 0) throw new RuntimeException("数据已被他人修改，请刷新");
+
+        if (userId != null) {
+            SmartsheetChangeLog log = new SmartsheetChangeLog();
+            log.setSheetId(sheetId);
+            log.setRowId(rowId);
+            log.setColumnKey(columnKey);
+            log.setOldValue(oldValue != null ? oldValue.toString() : null);
+            log.setNewValue(value != null ? value.toString() : null);
+            log.setRowIndex(existing.getRowIndex());
+            log.setChangedBy(userId);
+            changeLogMapper.insertCellLog(log);
+        }
+
+        return rowMapper.selectById(rowId);
+    }
+
     public void deleteRow(Long id) {
         getById(id);
         rowMapper.deleteById(id);
@@ -84,7 +133,7 @@ public class SmartsheetRowService {
     @Transactional
     public int batchInsert(Long sheetId, List<SmartsheetRow> rows) {
         int existing = rowMapper.countBySheetId(sheetId);
-        if (existing + rows.size() > MAX_ROWS) throw new RuntimeException("超过最大行数限制(500)");
+        if (existing + rows.size() > MAX_ROWS) throw new RuntimeException("超过最大行数限制(" + MAX_ROWS + ")");
         int nextIdx = rowMapper.maxRowIndex(sheetId) + 1;
         for (SmartsheetRow r : rows) {
             r.setSheetId(sheetId);

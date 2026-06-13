@@ -47,7 +47,7 @@ public class SmartsheetService {
         return def;
     }
 
-    public SmartsheetDefinition create(SmartsheetCreateRequest req, Long userId) {
+    public SmartsheetDefinition create(SmartsheetSheetRequest req, Long userId) {
         String columnsJson = toJson(req.getColumnsConfig());
         validateColumnsConfig(columnsJson);
         SmartsheetDefinition def = new SmartsheetDefinition();
@@ -56,7 +56,10 @@ public class SmartsheetService {
         def.setLayoutMode(req.getLayoutMode() != null ? req.getLayoutMode() : "table");
         def.setColumnsConfig(columnsJson);
         def.setRowEntitySource(toJson(req.getRowEntitySource()));
-        def.setTemplateId(req.getTemplateId());
+        def.setTemplateId(req.getTemplateId() != null ? Long.parseLong(req.getTemplateId()) : null);
+        def.setRowLimit(req.getRowLimit() != null ? req.getRowLimit() : 50000);
+        def.setThemeConfig(toJson(req.getThemeConfig()));
+        def.setIsTemplate(req.getIsTemplate() != null && req.getIsTemplate() ? 1 : 0);
         def.setCreatedBy(userId);
         def.setUpdatedBy(userId);
         definitionMapper.insert(def);
@@ -64,7 +67,7 @@ public class SmartsheetService {
         return def;
     }
 
-    public SmartsheetDefinition update(Long id, SmartsheetUpdateRequest req, Long userId) {
+    public SmartsheetDefinition update(Long id, SmartsheetSheetRequest req, Long userId) {
         SmartsheetDefinition def = getById(id);
         if (req.getColumnsConfig() != null) {
             String columnsJson = toJson(req.getColumnsConfig());
@@ -75,10 +78,13 @@ public class SmartsheetService {
         if (req.getDescription() != null) def.setDescription(req.getDescription());
         if (req.getLayoutMode() != null) def.setLayoutMode(req.getLayoutMode());
         if (req.getRowEntitySource() != null) def.setRowEntitySource(toJson(req.getRowEntitySource()));
+        if (req.getRowLimit() != null) def.setRowLimit(req.getRowLimit());
+        if (req.getThemeConfig() != null) def.setThemeConfig(toJson(req.getThemeConfig()));
+        if (req.getIsTemplate() != null) def.setIsTemplate(req.getIsTemplate() ? 1 : 0);
         def.setUpdatedBy(userId);
         int updated = definitionMapper.update(def);
         if (updated == 0) throw new RuntimeException("更新失败");
-        log.info("[SmartSheet] columns updated sheet={}", id);
+        log.info("[SmartSheet] sheet updated id={}", id);
         return def;
     }
 
@@ -151,6 +157,33 @@ public class SmartsheetService {
         int newPin = def.getIsPinned() != null && def.getIsPinned() == 1 ? 0 : 1;
         definitionMapper.updatePin(id, newPin);
         log.info("[SmartSheet] pin id={} pinned={}", id, newPin);
+    }
+
+    public List<SmartsheetDefinition> getTemplates() {
+        return definitionMapper.selectTemplates();
+    }
+
+    public void setTemplateFlag(Long id, boolean isTemplate) {
+        getById(id);
+        definitionMapper.updateTemplateFlag(id, isTemplate ? 1 : 0);
+    }
+
+    @Transactional
+    public SmartsheetDefinition createFromTemplate(Long templateId, String name, Long userId) {
+        SmartsheetDefinition template = getById(templateId);
+        SmartsheetDefinition def = new SmartsheetDefinition();
+        def.setName(name);
+        def.setDescription(template.getDescription());
+        def.setLayoutMode(template.getLayoutMode());
+        def.setColumnsConfig(template.getColumnsConfig());
+        def.setRowEntitySource(template.getRowEntitySource());
+        def.setRowLimit(template.getRowLimit());
+        def.setThemeConfig(template.getThemeConfig());
+        def.setCreatedBy(userId);
+        def.setUpdatedBy(userId);
+        definitionMapper.insert(def);
+        log.info("[SmartSheet] created from template id={} -> {}", templateId, def.getId());
+        return def;
     }
 
     @SuppressWarnings("unchecked")
