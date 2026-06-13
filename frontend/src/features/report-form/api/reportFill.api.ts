@@ -15,3 +15,16 @@ export function fetchMySubmission(formId: number): Promise<ReportFormSubmission>
 export function fetchFormSubmissions(formId: number): Promise<ReportFormSubmission[]> {
   return adminHttp.get(`${BASE}/forms/${formId}/submissions`).then(({ data }) => data.data);
 }
+
+export interface SavePayload {
+  fieldValuesJson: string;
+  expectedVersion: number;
+}
+
+export function saveMySubmission(formId: number, payload: SavePayload): Promise<ReportFormSubmission> {
+  return adminHttp.post(`${BASE}/forms/${formId}/my-submission`, payload).then(({ data }) => data.data);
+}
+
+export function submitMySubmission(formId: number): Promise<ReportFormSubmission> {
+  return adminHttp.post(`${BASE}/forms/${formId}/submit`).then(({ data }) => data.data);
+}
