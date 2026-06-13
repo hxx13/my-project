@@ -1,5 +1,6 @@
 // ReportFormListPage — 填报报表管理列表
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -221,8 +222,8 @@ export default function ReportFormListPage() {
       )}
 
       {/* Version history dialog */}
-      {versionFormId && (
-        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 p-4" onClick={() => setVersionFormId(null)}>
+      {versionFormId && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 800 }} onClick={() => setVersionFormId(null)}>
           <div className="w-full max-w-md rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg max-h-[70vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-[var(--app-color-text-primary)]">
@@ -248,7 +249,7 @@ export default function ReportFormListPage() {
             )}
           </div>
         </div>
-      )}
+      , document.body)}
     </AdminPageShell>
   );
 }

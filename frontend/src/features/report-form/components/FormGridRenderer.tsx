@@ -1,4 +1,5 @@
 // components/FormGridRenderer.tsx
+import { useState } from 'react';
 import type { LayoutJson, FieldDefinition } from '../types';
 import UserSelector from './UserSelector';
 import { adminHttp } from '@/api/core/adminHttp';
@@ -23,22 +24,44 @@ export default function FormGridRenderer({ layout, values, editable, onChange, u
   const rendered = new Set<string>();
 
   const canEditField = (field: FieldDefinition): boolean => {
-    if (!editable || !field.editableInFill) return false;
+    if (!editable) return false;
+    // editableInFill 默认为 true（兼容未显式设置的字段）
+    if (field.editableInFill === false) return false;
     const roles = field.editableByRoles || [];
     if (roles.length === 0) return true; // empty = anyone can edit
     if (userRoles.length === 0) return false;
     return roles.some(r => userRoles.includes(r));
   };
 
+  /** 安全获取布尔值（处理 string "false" 等） */
+  const toBoolean = (v: unknown): boolean => {
+    if (v === null || v === undefined) return false;
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'string') return v !== '' && v !== 'false' && v !== '0';
+    if (typeof v === 'number') return v !== 0;
+    return !!v;
+  };
+
+  /** 安全获取数组值（处理 JSON 字符串） */
+  const toArray = (v: unknown): string[] => {
+    if (Array.isArray(v)) return v as string[];
+    if (typeof v === 'string' && v.startsWith('[')) {
+      try { const parsed = JSON.parse(v); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+    }
+    return v != null ? [String(v)] : [];
+  };
+
   const renderFieldControl = (cell: typeof layout.cells[0], field: FieldDefinition, value: unknown) => {
     const canEdit = canEditField(field);
-    const fieldKey = cell.fieldKey!;
+    const fieldKey = cell.fieldKey;
+    if (!fieldKey) return <span className="text-xs text-[var(--app-color-text-tertiary)]">—</span>;
+
     const inputClass = "w-full border border-[var(--app-color-border-default)] rounded-[var(--app-radius-xs)] px-2 py-1 text-xs text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-page)] outline-none focus:border-[var(--app-color-accent)]";
 
     if (!canEdit) {
       // Read-only display
       const displayValue = field.type === 'BOOLEAN'
-        ? (value ? '✓' : '✗')
+        ? (toBoolean(value) ? '✓' : '✗')
         : field.type === 'IMAGE' && value
           ? '[图片]'
           : field.type === 'FILE' && value
@@ -60,7 +83,7 @@ export default function FormGridRenderer({ layout, values, editable, onChange, u
         );
       case 'BOOLEAN':
         return (
-          <input type="checkbox" checked={!!value} onChange={e => onChange?.(fieldKey, e.target.checked)}
+          <input type="checkbox" checked={toBoolean(value)} onChange={e => onChange?.(fieldKey, e.target.checked)}
             className="w-4 h-4 accent-[var(--app-color-accent)]" />
         );
       case 'SELECT':
@@ -73,7 +96,7 @@ export default function FormGridRenderer({ layout, values, editable, onChange, u
           </select>
         );
       case 'MULTI_SELECT': {
-        const selected: string[] = Array.isArray(value) ? value as string[] : [];
+        const selected: string[] = toArray(value);
         return (
           <div className="flex flex-wrap gap-1">
             {(field.options || []).map(opt => (
@@ -97,14 +120,23 @@ export default function FormGridRenderer({ layout, values, editable, onChange, u
           <input type="datetime-local" value={String(value ?? '')} onChange={e => onChange?.(fieldKey, e.target.value)}
             className={inputClass} />
         );
-      case 'IMAGE':
+      case 'IMAGE': {
+        const [imgError, setImgError] = useState(false);
         return (
           <div className="space-y-1">
-            <input type="text" value={String(value ?? '')} onChange={e => onChange?.(fieldKey, e.target.value)}
-              className={inputClass} placeholder="粘贴图片链接或点击上传" />
-            {value && <img src={String(value)} alt="预览" className="max-w-[200px] max-h-[100px] rounded-[var(--app-radius-xs)] object-cover" />}
+            <input type="text" value={String(value ?? '')}
+              onChange={e => { setImgError(false); onChange?.(fieldKey, e.target.value); }}
+              className={inputClass} placeholder="粘贴图片链接" />
+            {value && !imgError ? (
+              <img src={String(value)} alt="预览"
+                onError={() => setImgError(true)}
+                className="max-w-[200px] max-h-[100px] rounded-[var(--app-radius-xs)] object-cover" />
+            ) : value && imgError ? (
+              <span className="text-[10px] text-[var(--app-color-feedback-danger)]">图片加载失败</span>
+            ) : null}
           </div>
         );
+      }
       case 'FILE':
         return (
           <div className="space-y-1">

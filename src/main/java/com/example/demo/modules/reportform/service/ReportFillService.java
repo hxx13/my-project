@@ -10,6 +10,7 @@ import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormSubmissionLogMapper;
 import com.example.demo.modules.reportform.validator.FieldValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -169,13 +170,20 @@ public class ReportFillService {
                 var layout = objectMapper.readTree(form.getLayoutJson());
                 var fields = layout.get("fields");
                 if (fields != null) {
-                    var values = objectMapper.readTree(fieldValuesJson);
+                    var valuesNode = objectMapper.readTree(fieldValuesJson);
                     var iter = fields.fields();
                     while (iter.hasNext()) {
                         var entry = iter.next();
                         String fk = entry.getKey();
-                        if (values.has(fk)) {
-                            FieldValidator.validate(fk, entry.getValue(), values.get(fk).asText());
+                        if (valuesNode.has(fk) && !valuesNode.get(fk).isNull()) {
+                            JsonNode valueNode = valuesNode.get(fk);
+                            // Pass appropriate Java type based on JSON node type
+                            Object value;
+                            if (valueNode.isBoolean()) value = valueNode.asBoolean();
+                            else if (valueNode.isNumber()) value = valueNode.asDouble();
+                            else if (valueNode.isArray()) value = valueNode.toString();
+                            else value = valueNode.asText();
+                            FieldValidator.validate(fk, entry.getValue(), value);
                         }
                     }
                 }

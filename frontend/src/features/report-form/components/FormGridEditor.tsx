@@ -14,13 +14,28 @@ interface Props {
   onEditingCommit: () => void;
 }
 
-/** 计算列宽：取每列最长文本宽度（中文≈字符数×14px，英文≈字符数×8px），最少80px */
-function calcColumnWidths(cells: GridCell[], maxCol: number): Map<number, number> {
+/** 获取格子的显示文本（静态文本或字段标签） */
+function getCellDisplayText(cell: GridCell, fields: Record<string, { label?: string }>): string {
+  if (cell.kind === 'static') return cell.staticText || '';
+  const field = cell.fieldKey ? fields[cell.fieldKey] : null;
+  return field?.label || cell.fieldKey || '';
+}
+
+/** 计算列宽：取每列最长文本宽度（中文≈14px，英文≈8px），最少80px */
+function calcColumnWidths(cells: GridCell[], fields: Record<string, { label?: string }>, maxCol: number): Map<number, number> {
   const colTexts = new Map<number, string[]>();
   for (const cell of cells) {
+    const text = getCellDisplayText(cell, fields);
+    // 对于 rowSpan>1 的合并格，文本宽度应分摊到所占列
+    const perColText = cell.colSpan > 1 ? text : text;
     for (let c = cell.col; c < cell.col + cell.colSpan; c++) {
       if (!colTexts.has(c)) colTexts.set(c, []);
-      colTexts.get(c)!.push(cell.staticText || '');
+      colTexts.get(c)!.push(cell.colSpan > 1 ? '' : perColText);
+    }
+    // 对于合并格，把完整文本放到第一列
+    if (cell.colSpan > 1) {
+      const firstCol = colTexts.get(cell.col);
+      if (firstCol) firstCol.push(text);
     }
   }
   const widths = new Map<number, number>();
@@ -33,7 +48,7 @@ function calcColumnWidths(cells: GridCell[], maxCol: number): Map<number, number
       }
       return len;
     }), 0);
-    widths.set(c, Math.max(80, Math.min(maxLen + 24, 400))); // +24 padding, max 400px
+    widths.set(c, Math.max(80, Math.min(maxLen + 24, 400)));
   }
   return widths;
 }
@@ -48,9 +63,10 @@ export default function FormGridEditor({ layout, selectedCellIds, editingCellId,
     return map;
   }, [cells]);
 
+  const fields = layout.fields || {};
   const maxRow = useMemo(() => Math.max(...cells.map(c => c.row + c.rowSpan), 0), [cells]);
   const maxCol = useMemo(() => Math.max(...cells.map(c => c.col + c.colSpan), 0), [cells]);
-  const colWidths = useMemo(() => calcColumnWidths(cells, maxCol), [cells, maxCol]);
+  const colWidths = useMemo(() => calcColumnWidths(cells, fields, maxCol), [cells, fields, maxCol]);
 
   return (
     <div
@@ -92,7 +108,12 @@ export default function FormGridEditor({ layout, selectedCellIds, editingCellId,
                   }
 
                   const isSelected = selectedCellIds.has(cell.id);
-                  const width = (colWidths.get(c) || 80) * cell.colSpan;
+                  // 合并单元格宽度 = 所有跨列宽度的总和
+                  let width = 0;
+                  for (let cc = cell.col; cc < cell.col + cell.colSpan; cc++) {
+                    width += colWidths.get(cc) || 80;
+                  }
+                  const isEditing = editingCellId === cell.id && cell.kind === 'static';
 
                   return (
                     <td
@@ -120,7 +141,7 @@ export default function FormGridEditor({ layout, selectedCellIds, editingCellId,
                       onMouseEnter={(e) => onCellMouseEnter(cell.id, e)}
                       onDoubleClick={() => onCellDoubleClick(cell.id)}
                     >
-                      {editingCellId === cell.id && cell.kind === 'static' ? (
+                      {isEditing ? (
                       <textarea
                         autoFocus
                         value={editingText}
@@ -136,10 +157,12 @@ export default function FormGridEditor({ layout, selectedCellIds, editingCellId,
                       <span className="whitespace-pre-wrap break-words">
                         {cell.kind === 'static'
                           ? (cell.staticText || '')
-                          : (
+                          : cell.fieldKey ? (
                             <span className="text-[var(--app-color-accent)] font-medium">
-                              {layout.fields[cell.fieldKey!]?.label || cell.fieldKey}
+                              {layout.fields[cell.fieldKey]?.label || cell.fieldKey}
                             </span>
+                          ) : (
+                            <span className="text-[var(--app-color-text-tertiary)] italic text-xs">未设置</span>
                           )}
                       </span>
                     )}

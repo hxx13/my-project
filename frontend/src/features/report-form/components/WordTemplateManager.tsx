@@ -1,5 +1,6 @@
 // components/WordTemplateManager.tsx — Word 打印模板管理
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminHttp } from '@/api/core/adminHttp';
 import { Upload, Trash2, X, FileText, Link } from 'lucide-react';
@@ -62,8 +63,8 @@ export default function WordTemplateManager({ open, onClose, formId, fieldKeys }
   const inputClass = "w-full rounded-[4px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-page)] px-2 py-1 text-[11px] text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)]";
   const labelClass = "text-[10px] font-medium text-[var(--app-color-text-secondary)] mb-0.5 block";
 
-  return (
-    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 800 }} onClick={onClose}>
       <div className="w-full max-w-lg rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-[var(--app-color-text-primary)]">Word 打印模板</h2>
@@ -177,5 +178,5 @@ export default function WordTemplateManager({ open, onClose, formId, fieldKeys }
         )}
       </div>
     </div>
-  );
+  , document.body);
 }
