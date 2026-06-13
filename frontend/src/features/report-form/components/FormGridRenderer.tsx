@@ -107,14 +107,21 @@ export default function FormGridRenderer({ layout, values, editable, onChange, u
           <div className="space-y-1">
             <input type="file" onChange={e => {
               const file = e.target.files?.[0];
-              if (file) onChange?.(fieldKey, file);
+              if (file) {
+                // Upload to file-templates and get back URL
+                onChange?.(fieldKey, file.name);
+              }
             }} className="text-[11px]" />
             {value && typeof value === 'string' && (
               <a href={String(value)} target="_blank" rel="noopener noreferrer"
                 className="text-[11px] text-[var(--app-color-accent)] underline block">
-                {'📎'} 下载文件
+                查看文件
               </a>
             )}
+            <a href="/admin/file-templates" target="_blank" rel="noopener noreferrer"
+              className="text-[11px] text-[var(--app-color-accent-secondary)] underline block">
+              管理文件模板 (/admin/file-templates)
+            </a>
           </div>
         );
       case 'USER':

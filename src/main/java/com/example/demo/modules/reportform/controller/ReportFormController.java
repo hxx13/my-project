@@ -54,6 +54,21 @@ public class ReportFormController {
         return Result.success(reportFormService.getById(id));
     }
 
+    @PostMapping("/forms/create-blank")
+    @Operation(summary = "创建空白报表表单")
+    public Result<?> createBlank(HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            String username = getCurrentUsername(request);
+            var form = reportFormService.createBlank(username);
+            return Result.success(form);
+        } catch (Exception e) {
+            log.error("创建空白报表失败", e);
+            return Result.error(e.getMessage());
+        }
+    }
+
     @PostMapping("/forms/from-excel")
     @Operation(summary = "从 Excel 导入创建报表表单")
     public Result<?> createFromExcel(@RequestParam("file") MultipartFile file,
@@ -120,6 +135,110 @@ public class ReportFormController {
             log.error("撤回失败 form={}: {}", id, e.getMessage());
             return Result.error(e.getMessage());
         }
+    }
+
+    // ──────────────── 删除 / 重命名 / 复制 ────────────────
+
+    @DeleteMapping("/forms/{id}")
+    @Operation(summary = "删除报表表单")
+    public Result<?> deleteForm(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            reportFormService.deleteForm(id);
+            return Result.success(null);
+        } catch (Exception e) {
+            log.error("删除失败 form={}: {}", id, e.getMessage());
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/forms/batch-delete")
+    @Operation(summary = "批量删除报表表单")
+    public Result<?> batchDelete(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            @SuppressWarnings("unchecked")
+            List<Integer> ids = (List<Integer>) body.get("ids");
+            if (ids == null || ids.isEmpty()) return Result.error("ids 不能为空");
+            for (Integer i : ids) reportFormService.deleteForm(i.longValue());
+            return Result.success(null);
+        } catch (Exception e) {
+            log.error("批量删除失败: {}", e.getMessage());
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PutMapping("/forms/{id}/rename")
+    @Operation(summary = "重命名报表表单")
+    public Result<?> renameForm(@PathVariable Long id, @RequestBody Map<String, Object> body,
+                                 HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            String name = (String) body.get("name");
+            if (name == null || name.isBlank()) return Result.error("名称不能为空");
+            reportFormService.renameForm(id, name);
+            return Result.success(null);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/forms/{id}/duplicate")
+    @Operation(summary = "复制报表表单")
+    public Result<?> duplicateForm(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            String username = getCurrentUsername(request);
+            var dup = reportFormService.duplicateForm(id, username);
+            return Result.success(dup);
+        } catch (Exception e) {
+            log.error("复制失败 form={}: {}", id, e.getMessage());
+            return Result.error(e.getMessage());
+        }
+    }
+
+    // ──────────────── 版本快照 ────────────────
+
+    @GetMapping("/forms/{id}/versions")
+    @Operation(summary = "查询版本快照历史")
+    public Result<?> listVersions(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        try {
+            var form = reportFormService.getById(id);
+            if (form == null) return Result.error("报表不存在");
+            return Result.success(form.getVersionSnapshotsJson());
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    // ──────────────── 模板操作 ────────────────
+
+    @PostMapping("/forms/{id}/save-as-template")
+    @Operation(summary = "保存为模板")
+    public Result<?> saveAsTemplate(@PathVariable Long id, @RequestBody Map<String, Object> body,
+                                     HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            String username = getCurrentUsername(request);
+            boolean shared = body.containsKey("shared") && (Boolean) body.get("shared");
+            var template = reportFormService.saveAsTemplate(id, shared, username);
+            return Result.success(template);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @GetMapping("/templates")
+    @Operation(summary = "查询共享模板列表")
+    public Result<?> listTemplates() {
+        return Result.success(reportFormService.listTemplates());
     }
 
     // ──────────────── 选项集 CRUD ────────────────

@@ -72,6 +72,21 @@ public class ReportFormService {
         definitionMapper.update(def);
     }
 
+    public ReportFormDefinition createBlank(String username) {
+        ReportFormDefinition def = new ReportFormDefinition();
+        def.setName("空白报表 " + java.time.LocalDate.now().toString());
+        def.setStatus("draft");
+        def.setLayoutJson("{\"cells\":[],\"fields\":{},\"mergeGroups\":[]}");
+        def.setThemeJson(getDefaultTheme());
+        def.setFillPolicyJson("{\"mode\":\"shared\",\"submitLabel\":\"提交\",\"allowEditAfterSubmit\":true}");
+        def.setPermissionJson("{\"visibleRoles\":[],\"visibleUserIds\":[],\"fieldRoleBindings\":{},\"allowUnboundView\":true}");
+        def.setScheduleJson("{\"period\":\"manual\"}");
+        def.setCreatedBy(username);
+        def.setUpdatedBy(username);
+        definitionMapper.insert(def);
+        return def;
+    }
+
     public ReportFormDefinition createFromImport(ReportFormImportResult result, String username) {
         ReportFormDefinition def = new ReportFormDefinition();
         def.setName(result.getName());
@@ -145,6 +160,73 @@ public class ReportFormService {
 
     private String getDefaultTheme() {
         return "{\"headerBg\":\"var(--app-color-surface-container)\",\"headerColor\":\"var(--app-color-text-primary)\",\"headerFontSize\":13,\"headerBold\":true,\"headerAlign\":\"center\",\"zebraStripe\":true,\"oddRowBg\":\"var(--app-color-surface-page)\",\"evenRowBg\":\"var(--app-color-surface-container)\",\"borderWidth\":1,\"borderColor\":\"var(--app-color-border)\",\"borderRadius\":8,\"cellPadding\":8,\"defaultFontSize\":13,\"defaultAlign\":\"center\",\"columnWidths\":{},\"rowHeights\":{}}";
+    }
+
+    // ──────────────── Template ────────────────
+
+    public ReportFormDefinition saveAsTemplate(Long id, boolean shared, String username) {
+        ReportFormDefinition src = definitionMapper.selectById(id);
+        if (src == null) {
+            throw new RuntimeException("报表不存在");
+        }
+        ReportFormDefinition template = new ReportFormDefinition();
+        template.setName(src.getName() + " (模板)");
+        template.setDescription(src.getDescription());
+        template.setStatus("draft");
+        template.setLayoutJson(src.getLayoutJson());
+        template.setThemeJson(src.getThemeJson());
+        template.setFillPolicyJson(src.getFillPolicyJson());
+        template.setPermissionJson(src.getPermissionJson());
+        template.setScheduleJson(src.getScheduleJson());
+        template.setCreatedBy(username);
+        template.setUpdatedBy(username);
+        definitionMapper.insert(template);
+        return template;
+    }
+
+    public List<ReportFormDefinition> listTemplates() {
+        return definitionMapper.selectPage().stream()
+            .filter(f -> "draft".equals(f.getStatus()))
+            .collect(java.util.stream.Collectors.toList());
+    }
+
+    // ──────────────── Delete / Rename / Duplicate ────────────────
+
+    public void deleteForm(Long id) {
+        ReportFormDefinition def = definitionMapper.selectById(id);
+        if (def == null) {
+            throw new RuntimeException("报表不存在");
+        }
+        definitionMapper.deleteById(id);
+    }
+
+    public void renameForm(Long id, String name) {
+        ReportFormDefinition def = definitionMapper.selectById(id);
+        if (def == null) {
+            throw new RuntimeException("报表不存在");
+        }
+        def.setName(name);
+        definitionMapper.update(def);
+    }
+
+    public ReportFormDefinition duplicateForm(Long id, String username) {
+        ReportFormDefinition src = definitionMapper.selectById(id);
+        if (src == null) {
+            throw new RuntimeException("报表不存在");
+        }
+        ReportFormDefinition dup = new ReportFormDefinition();
+        dup.setName(src.getName() + " (副本)");
+        dup.setDescription(src.getDescription());
+        dup.setStatus("draft");
+        dup.setLayoutJson(src.getLayoutJson());
+        dup.setThemeJson(src.getThemeJson());
+        dup.setFillPolicyJson(src.getFillPolicyJson());
+        dup.setPermissionJson(src.getPermissionJson());
+        dup.setScheduleJson(src.getScheduleJson());
+        dup.setCreatedBy(username);
+        dup.setUpdatedBy(username);
+        definitionMapper.insert(dup);
+        return dup;
     }
 
     // ──────────────── Option Set CRUD ────────────────
