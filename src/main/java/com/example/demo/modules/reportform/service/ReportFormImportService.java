@@ -22,8 +22,13 @@ public class ReportFormImportService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ReportFormImportResult importFromExcel(MultipartFile file, String name) throws Exception {
+        log.info("[report-form-import] ========== 开始导入 Excel: {} ({} bytes) ==========",
+                file.getOriginalFilename(), file.getSize());
         try (Workbook workbook = new XSSFWorkbook(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
+            log.info("[report-form-import] Sheet: {}, rows: {} (0-{}), merged regions: {}",
+                    sheet.getSheetName(), sheet.getLastRowNum() + 1, sheet.getLastRowNum(),
+                    sheet.getNumMergedRegions());
             if (sheet.getLastRowNum() < 0) {
                 throw new IllegalArgumentException("Excel 无有效数据");
             }
@@ -113,9 +118,15 @@ public class ReportFormImportService {
             layout.putArray("mergeGroups");
 
             ReportFormImportResult result = new ReportFormImportResult();
-            result.setLayoutJson(layout.toString());
+            String layoutStr = layout.toString();
+            result.setLayoutJson(layoutStr);
             result.setCellCount(cellId);
             result.setName(name);
+
+            log.info("[report-form-import] 解析完成: cells={}, fields={}, layoutJson长度={}",
+                    cellId, fields.size(), layoutStr.length());
+            log.info("[report-form-import] layoutJson 前200字符: {}",
+                    layoutStr.length() > 200 ? layoutStr.substring(0, 200) + "..." : layoutStr);
             return result;
         }
     }

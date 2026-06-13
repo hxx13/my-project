@@ -23,9 +23,19 @@ export function createBlankForm(): Promise<ReportFormDefinition> {
 export function createFormFromExcel(file: File): Promise<ReportFormDefinition> {
   const formData = new FormData();
   formData.append('file', file);
+  console.log('[report-form-api] 开始上传 Excel:', file.name, file.size, 'bytes');
   return adminHttp.post(`${BASE}/forms/from-excel`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-  }).then(({ data }) => data.data);
+  }).then(({ data }) => {
+    console.log('[report-form-api] 上传响应 raw:', data);
+    console.log('[report-form-api] data.data:', data.data);
+    console.log('[report-form-api] layoutJson 类型:', typeof data.data?.layoutJson);
+    console.log('[report-form-api] layoutJson 前200字符:',
+      typeof data.data?.layoutJson === 'string'
+        ? data.data.layoutJson.substring(0, 200)
+        : JSON.stringify(data.data?.layoutJson).substring(0, 200));
+    return data.data;
+  });
 }
 
 export function deleteForm(id: number): Promise<void> {

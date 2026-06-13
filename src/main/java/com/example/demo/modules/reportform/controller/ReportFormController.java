@@ -78,9 +78,16 @@ public class ReportFormController {
         try {
             String name = Objects.requireNonNullElse(file.getOriginalFilename(), "未命名报表")
                     .replaceAll("\\.(xlsx|xls)$", "");
+            log.info("[report-form-ctrl] 收到导入请求: file={}, name={}", file.getOriginalFilename(), name);
             var result = importService.importFromExcel(file, name);
+            log.info("[report-form-ctrl] 导入解析完成: cellCount={}, layoutJson长度={}",
+                    result.getCellCount(),
+                    result.getLayoutJson() != null ? result.getLayoutJson().length() : 0);
             String username = getCurrentUsername(request);
             var form = reportFormService.createFromImport(result, username);
+            log.info("[report-form-ctrl] 表单已创建: id={}, name={}, 返回layoutJson类型={}",
+                    form.getId(), form.getName(),
+                    form.getLayoutJson() != null ? form.getLayoutJson().getClass().getSimpleName() : "null");
             return Result.success(form);
         } catch (Exception e) {
             log.error("Excel 导入失败", e);

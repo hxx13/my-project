@@ -12,10 +12,22 @@ import { Undo2, Redo2, Save } from 'lucide-react';
 
 /** layoutJson 从后端返回的是 JSON 字符串，需要解析 */
 function parseLayout(raw: unknown): LayoutJson {
-  if (!raw) return { cells: [], fields: {}, mergeGroups: [] };
-  if (typeof raw === 'string') {
-    try { return JSON.parse(raw); } catch { return { cells: [], fields: {}, mergeGroups: [] }; }
+  console.log('[report-form-designer] parseLayout 输入类型:', typeof raw);
+  if (!raw) {
+    console.warn('[report-form-designer] parseLayout: raw 为空, 返回空 layout');
+    return { cells: [], fields: {}, mergeGroups: [] };
   }
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      console.log('[report-form-designer] parseLayout 解析成功: cells=', parsed.cells?.length, 'fields=', Object.keys(parsed.fields || {}).length);
+      return parsed;
+    } catch (e) {
+      console.error('[report-form-designer] parseLayout JSON.parse 失败:', e, 'raw前100字符:', raw.substring(0, 100));
+      return { cells: [], fields: {}, mergeGroups: [] };
+    }
+  }
+  console.log('[report-form-designer] parseLayout: raw 已是对象, cells=', (raw as LayoutJson).cells?.length);
   return raw as LayoutJson;
 }
 
@@ -26,11 +38,22 @@ export default function ReportFormDesignPage() {
 
   const { data: form, isLoading } = useQuery({
     queryKey: ['report-form', formId],
-    queryFn: () => fetchFormById(formId),
+    queryFn: async () => {
+      const f = await fetchFormById(formId);
+      console.log('[report-form-designer] fetchFormById 返回:', f);
+      console.log('[report-form-designer] form.id:', (f as Record<string,unknown>)?.id);
+      console.log('[report-form-designer] form.layoutJson 类型:', typeof (f as Record<string,unknown>)?.layoutJson);
+      console.log('[report-form-designer] form.layoutJson 前200字符:',
+        typeof (f as Record<string,unknown>)?.layoutJson === 'string'
+          ? ((f as Record<string,unknown>).layoutJson as string).substring(0, 200)
+          : 'N/A (非字符串)');
+      return f;
+    },
     enabled: !!formId,
   });
 
   const initialLayout = parseLayout((form as Record<string, unknown> | null)?.layoutJson);
+  console.log('[report-form-designer] initialLayout cells:', initialLayout.cells?.length);
   const editor = useFormGridEditor(initialLayout);
 
   const saveMut = useMutation({
