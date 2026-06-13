@@ -105,7 +105,9 @@ function DesignerInner({
           layout={editor.layout}
           selectedCellIds={editor.selectedCellIds}
           onCellMouseDown={(cellId, e) => editor.selectCell(cellId, e.shiftKey)}
-          onCellMouseEnter={(cellId) => editor.selectCell(cellId, true)}
+          onCellMouseEnter={(cellId, e) => {
+            if (e.buttons === 1) editor.selectCell(cellId, true);
+          }}
           onMouseUp={() => editor.setIsDragging(false)}
         />
       ) : (

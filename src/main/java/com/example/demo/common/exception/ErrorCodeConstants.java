@@ -45,4 +45,16 @@ public final class ErrorCodeConstants {
     // Upload 1-007-xxx
     public static final int UPLOAD_FILE_NOT_FOUND = 1_007_001;
     public static final int UPLOAD_SYNC_SECRET_INVALID = 1_007_002;
+
+    /** 填报报表 report-form 1-008-xxx */
+    public static final int REPORT_FORM_NOT_FOUND = 1_008_001;
+    public static final int REPORT_FORM_NOT_PUBLISHED = 1_008_002;
+    public static final int REPORT_FORM_VERSION_CONFLICT = 1_008_003;
+    public static final int REPORT_FORM_OUT_OF_WINDOW = 1_008_004;
+    public static final int REPORT_FORM_FIELD_REQUIRED = 1_008_005;
+    public static final int REPORT_FORM_FIELD_INVALID = 1_008_006;
+    public static final int REPORT_FORM_NO_PERMISSION = 1_008_007;
+    public static final int REPORT_FORM_FIELD_NO_PERMISSION = 1_008_008;
+    public static final int REPORT_FORM_OPTION_SET_IN_USE = 1_008_009;
+    public static final int REPORT_FORM_WORD_TEMPLATE_NOT_FOUND = 1_008_010;
 }

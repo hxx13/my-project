@@ -43,7 +43,7 @@ public class ReportFormService {
     public ReportFormDefinition getById(Long id) {
         ReportFormDefinition def = definitionMapper.selectById(id);
         if (def == null) {
-            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表表单不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表表单不存在");
         }
         log.info("[report-form] 读取表单: id={} name={} layoutLen={}",
                 def.getId(), def.getName(),
@@ -54,7 +54,7 @@ public class ReportFormService {
     public void update(Long id, Map<String, Object> body, String username) {
         ReportFormDefinition def = definitionMapper.selectById(id);
         if (def == null) {
-            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
 
         // If the form is published and layout is being changed, log it for audit
@@ -76,7 +76,7 @@ public class ReportFormService {
         log.info("[report-form] 保存完成: id={} rows={} layoutLen={}",
                 id, rows, def.getLayoutJson() != null ? def.getLayoutJson().length() : 0);
         if (rows == 0) {
-            throw new RuntimeException("保存失败：未找到匹配记录");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "保存失败：未找到匹配记录");
         }
     }
 
@@ -113,10 +113,10 @@ public class ReportFormService {
     public ReportFormDefinition publish(Long id, String username) {
         ReportFormDefinition def = definitionMapper.selectById(id);
         if (def == null) {
-            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
         if ("published".equals(def.getStatus())) {
-            throw new RuntimeException("报表已发布，无需重复操作");
+            throw TwinBusinessException.of(ErrorCodeConstants.BAD_REQUEST, "报表已发布，无需重复操作");
         }
 
         // Build version snapshot
@@ -156,10 +156,10 @@ public class ReportFormService {
     public void unpublish(Long id, String username) {
         ReportFormDefinition def = definitionMapper.selectById(id);
         if (def == null) {
-            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
         if (!"published".equals(def.getStatus())) {
-            throw new RuntimeException("报表未发布，无法撤回");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_PUBLISHED, "报表未发布，无法撤回");
         }
         def.setStatus("draft");
         def.setUpdatedBy(username);
@@ -171,7 +171,7 @@ public class ReportFormService {
     public void archive(Long id) {
         ReportFormDefinition def = definitionMapper.selectById(id);
         if (def == null) {
-            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
         def.setStatus("archived");
         definitionMapper.updateStatus(def);
@@ -180,7 +180,7 @@ public class ReportFormService {
     public void unarchive(Long id) {
         ReportFormDefinition def = definitionMapper.selectById(id);
         if (def == null) {
-            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
         def.setStatus("draft");
         definitionMapper.updateStatus(def);
@@ -242,7 +242,7 @@ public class ReportFormService {
     public ReportFormDefinition saveAsTemplate(Long id, boolean shared, String username) {
         ReportFormDefinition src = definitionMapper.selectById(id);
         if (src == null) {
-            throw new RuntimeException("报表不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
         ReportFormDefinition template = new ReportFormDefinition();
         template.setName(src.getName() + " (模板)");
@@ -270,7 +270,7 @@ public class ReportFormService {
     public void deleteForm(Long id) {
         ReportFormDefinition def = definitionMapper.selectById(id);
         if (def == null) {
-            throw new RuntimeException("报表不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
         definitionMapper.deleteById(id);
     }
@@ -278,7 +278,7 @@ public class ReportFormService {
     public void renameForm(Long id, String name) {
         ReportFormDefinition def = definitionMapper.selectById(id);
         if (def == null) {
-            throw new RuntimeException("报表不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
         def.setName(name);
         definitionMapper.update(def);
@@ -287,7 +287,7 @@ public class ReportFormService {
     public ReportFormDefinition duplicateForm(Long id, String username) {
         ReportFormDefinition src = definitionMapper.selectById(id);
         if (src == null) {
-            throw new RuntimeException("报表不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
         ReportFormDefinition dup = new ReportFormDefinition();
         dup.setName(src.getName() + " (副本)");
@@ -323,7 +323,7 @@ public class ReportFormService {
     public void updateOptionSet(Long id, String name, String itemsJson) {
         ReportFormOptionSet os = optionSetMapper.selectById(id);
         if (os == null) {
-            throw new RuntimeException("选项集不存在");
+            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "选项集不存在");
         }
         os.setName(name);
         os.setItemsJson(itemsJson);
@@ -333,7 +333,8 @@ public class ReportFormService {
     public void deleteOptionSet(Long id) {
         int refs = optionSetMapper.countFieldRefsByOptionSetId(id);
         if (refs > 0) {
-            throw new RuntimeException("该选项集被 " + refs + " 个表单引用，无法删除");
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_OPTION_SET_IN_USE,
+                    "该选项集被 " + refs + " 个表单引用，无法删除");
         }
         optionSetMapper.deleteById(id);
     }

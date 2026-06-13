@@ -9,7 +9,14 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.util.*;
 
 @Service
@@ -117,5 +124,117 @@ public class ReportFormExportService {
             wb.write(bos);
             return bos.toByteArray();
         }
+    }
+
+    // ──────────── PDF 导出 ────────────
+
+    /** 单条提交记录导出为 PDF */
+    public byte[] exportSinglePdf(Long formId, Long submissionId) throws Exception {
+        ReportFormDefinition form = definitionMapper.selectById(formId);
+        if (form == null) throw new RuntimeException("报表不存在");
+
+        ReportFormSubmission sub = submissionMapper.selectById(submissionId);
+        if (sub == null) throw new RuntimeException("提交记录不存在");
+
+        var layout = objectMapper.readTree(form.getLayoutJson());
+        var cells = layout.get("cells");
+        var fieldValues = objectMapper.readTree(sub.getFieldValuesJson());
+
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+
+            // 尝试加载中文字体
+            PDType0Font font;
+            try (InputStream fontStream = getClass().getResourceAsStream("/fonts/NotoSansSC-Regular.ttf")) {
+                if (fontStream != null) {
+                    font = PDType0Font.load(doc, fontStream);
+                } else {
+                    font = PDType0Font.load(doc, getClass().getResourceAsStream("/fonts/SimHei.ttf"));
+                }
+            } catch (Exception e) {
+                // Fallback: use built-in font (Latin only)
+                font = PDType0Font.load(doc,
+                    getClass().getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf"));
+            }
+
+            float margin = 50;
+            float yStart = PDRectangle.A4.getHeight() - margin;
+            float tableWidth = PDRectangle.A4.getWidth() - 2 * margin;
+            float yPosition = yStart;
+            float rowHeight = 24;
+            float fontSize = 10;
+
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                // Title
+                cs.beginText();
+                cs.setFont(font, 14);
+                cs.newLineAtOffset(margin, yPosition);
+                cs.showText(form.getName());
+                cs.endText();
+                yPosition -= 30;
+
+                // Simple key-value layout for field cells
+                for (var cell : cells) {
+                    if (yPosition < margin + 50) {
+                        // New page
+                        page = new PDPage(PDRectangle.A4);
+                        doc.addPage(page);
+                        yPosition = yStart;
+                    }
+
+                    String kind = cell.get("kind").asText();
+                    String label;
+                    String value;
+
+                    if ("static".equals(kind)) {
+                        label = cell.has("staticText") ? cell.get("staticText").asText() : "";
+                        value = "";
+                    } else {
+                        String fk = cell.get("fieldKey").asText();
+                        var fields = layout.get("fields");
+                        label = fields.has(fk) && fields.get(fk).has("label")
+                            ? fields.get(fk).get("label").asText() : fk;
+                        value = fieldValues.has(fk) ? fieldValues.get(fk).asText() : "";
+                    }
+
+                    // Draw label + value
+                    cs.beginText();
+                    cs.setFont(font, fontSize);
+                    cs.newLineAtOffset(margin, yPosition);
+                    cs.showText(label + ": " + value);
+                    cs.endText();
+                    yPosition -= rowHeight;
+                }
+            }
+
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            doc.save(bos);
+            return bos.toByteArray();
+        }
+    }
+
+    /** 批量导出 PDF（所有提交合并为一个 PDF） */
+    public byte[] exportBatchPdf(Long formId) throws Exception {
+        ReportFormDefinition form = definitionMapper.selectById(formId);
+        if (form == null) throw new RuntimeException("报表不存在");
+
+        List<ReportFormSubmission> subs = submissionMapper.selectByFormId(formId);
+        if (subs.isEmpty()) throw new RuntimeException("无提交记录");
+
+        // 合并第一个导出的 PDF（简化：逐条导出后合并）
+        ByteArrayOutputStream merged = new ByteArrayOutputStream();
+        try (PDDocument mergedDoc = new PDDocument()) {
+            for (ReportFormSubmission sub : subs) {
+                byte[] singlePdf = exportSinglePdf(formId, sub.getId());
+                try (PDDocument singleDoc = PDDocument.load(singlePdf)) {
+                    for (int i = 0; i < singleDoc.getNumberOfPages(); i++) {
+                        mergedDoc.addPage(singleDoc.getPage(i));
+                    }
+                }
+            }
+            mergedDoc.save(merged);
+        }
+        return merged.toByteArray();
     }
 }
