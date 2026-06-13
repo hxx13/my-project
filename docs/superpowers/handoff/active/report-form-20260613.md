@@ -1,6 +1,6 @@
-# 填报报表新模块 — Phase 0 完成
+# 填报报表新模块 — Phase 1 完成
 
-## 状态：Phase 1/6 待开始
+## 状态：Phase 2/6 待开始
 
 **创建**: 2026-06-13 · **最后更新**: 2026-06-13
 
@@ -30,15 +30,34 @@
 
 5. **旧 smartsheet 代码文件未删除**（仅移除了路由+导航引用），Phase 6 再删。
 
-## 下一步：Phase 1
+## Phase 1 完成清单
+
+| # | 任务 | 状态 |
+|---|------|------|
+| 1.1 | POI Excel 导入解析（合并单元格 → layout_json） | ✅ |
+| 1.2 | FormGridEditor（HTML table 渲染 + 选格 + 拖选 + Undo/Redo） | ✅ |
+| 1.3 | GridContextMenu（右键：插行/列、合并/拆分、删除） | ✅ |
+| 1.4 | FieldInspector（属性面板：类型切换/配置/样式/合并） | ✅ |
+| 1.5 | 格子切换 static↔field（内嵌于 FieldInspector） | ✅ |
+| 1.6 | 保存草稿 PUT API + ReportFormDesignPage 全集成 + ExcelImportButton | ✅ |
+
+### 关键上下文（新增）
+
+- **Excel 导入**：`ReportFormImportService.importFromExcel()` 解析合并单元格，生成 `cells[]` 默认 `kind:static` + `align:center`
+- **设计器**：左右分栏（7:3），FormGridEditor + FieldInspector
+- **保存**：PUT `/api/admin/report-form/forms/{id}` 接受 `{ name, layoutJson }`，支持部分更新
+- **useFormGridEditor**：管理 selection、undo/redo 栈（structuredClone）、cell/field/style 更新
+- **`adminHttp` baseURL = `/api/admin`**，API 路径不需要 `/api/admin` 前缀
+
+## 下一步：Phase 2
 
 6 个任务：
-- 1.1 POI Excel 导入解析
-- 1.2 FormGridEditor HTML table
-- 1.3 右键菜单
-- 1.4 FieldInspector 属性面板
-- 1.5 格子切换 static↔field
-- 1.6 保存草稿 API + FE 对接
+- 2.1 选项集 CRUD + 管理页（全局 + 表单私有）
+- 2.2 ThemePanel（7 项主题配置）
+- 2.3 PermissionPanel（字段角色绑定）
+- 2.4 PublishWizard（快速+分步）
+- 2.5 publish/unpublish API + 版本快照
+- 2.6 发布后编辑兼容
 
 ## 相关文档
 
