@@ -63,10 +63,7 @@ function DesignerInner({
       }
     },
     onSuccess: () => toast.success('已保存'),
-    onError: (e: Error) => {
-      console.error('[SAVE] 保存失败:', e);
-      toast.error('保存失败: ' + e.message);
-    },
+    onError: (e: Error) => toast.error('保存失败: ' + e.message),
   });
 
   const selectedCellIds = [...editor.selectedCellIds];

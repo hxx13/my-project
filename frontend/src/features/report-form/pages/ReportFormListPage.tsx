@@ -22,12 +22,7 @@ export default function ReportFormListPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['report-form-list'],
-    queryFn: async () => {
-      console.error('🔥 [LIST] fetchFormPage 开始...');
-      const result = await fetchFormPage();
-      console.error('🔥 [LIST] fetchFormPage 结果:', result);
-      return result;
-    },
+    queryFn: () => fetchFormPage(),
   });
 
   if (error) {
@@ -39,43 +34,23 @@ export default function ReportFormListPage() {
   };
 
   const createBlankMut = useMutation({
-    mutationFn: async () => {
-      console.error('🔥 [LIST] createBlank 开始...');
-      const result = await createBlankForm();
-      console.error('🔥 [LIST] createBlank 成功:', result);
-      return result;
-    },
+    mutationFn: createBlankForm,
     onSuccess: (form) => {
       invalidate();
       navigate(`/admin/report-form/${form.id}/design`);
       toast.success('已创建空白报表');
     },
-    onError: (e: unknown) => {
-      console.error('🔥 [LIST] createBlank 失败:', e);
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error(msg);
-      alert('创建失败: ' + msg);
-    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const createFromExcelMut = useMutation({
-    mutationFn: async (file: File) => {
-      console.error('🔥 [LIST] createFromExcel 开始:', file.name, file.size);
-      const result = await createFormFromExcel(file);
-      console.error('🔥 [LIST] createFromExcel 成功:', result);
-      return result;
-    },
+    mutationFn: (file: File) => createFormFromExcel(file),
     onSuccess: (form) => {
       invalidate();
       navigate(`/admin/report-form/${form.id}/design`);
       toast.success('已从 Excel 创建报表');
     },
-    onError: (e: unknown) => {
-      console.error('🔥 [LIST] createFromExcel 失败:', e);
-      const msg = e instanceof Error ? e.message : String(e);
-      toast.error(msg);
-      alert('导入失败: ' + msg);
-    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMut = useMutation({
