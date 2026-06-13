@@ -4,9 +4,14 @@ import type { LayoutJson, GridCell } from '../types';
 interface Props {
   layout: LayoutJson;
   selectedCellIds: Set<string>;
+  editingCellId: string | null;
+  editingText: string;
   onCellMouseDown: (cellId: string, e: React.MouseEvent) => void;
   onCellMouseEnter: (cellId: string, e: React.MouseEvent) => void;
   onMouseUp: () => void;
+  onCellDoubleClick: (cellId: string) => void;
+  onEditingTextChange: (text: string) => void;
+  onEditingCommit: () => void;
 }
 
 /** 计算列宽：取每列最长文本宽度（中文≈字符数×14px，英文≈字符数×8px），最少80px */
@@ -33,7 +38,7 @@ function calcColumnWidths(cells: GridCell[], maxCol: number): Map<number, number
   return widths;
 }
 
-export default function FormGridEditor({ layout, selectedCellIds, onCellMouseDown, onCellMouseEnter, onMouseUp }: Props) {
+export default function FormGridEditor({ layout, selectedCellIds, editingCellId, editingText, onCellMouseDown, onCellMouseEnter, onMouseUp, onCellDoubleClick, onEditingTextChange, onEditingCommit }: Props) {
   const cells = layout.cells;
 
   // 构建格子查找表
@@ -113,7 +118,21 @@ export default function FormGridEditor({ layout, selectedCellIds, onCellMouseDow
                         onCellMouseDown(cell.id, e);
                       }}
                       onMouseEnter={(e) => onCellMouseEnter(cell.id, e)}
+                      onDoubleClick={() => onCellDoubleClick(cell.id)}
                     >
+                      {editingCellId === cell.id && cell.kind === 'static' ? (
+                      <textarea
+                        autoFocus
+                        value={editingText}
+                        onChange={e => onEditingTextChange(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEditingCommit(); }
+                          if (e.key === 'Escape') onEditingCommit();
+                        }}
+                        onBlur={onEditingCommit}
+                        className="w-full min-w-[120px] min-h-[40px] resize border border-[var(--app-color-accent)] rounded-[4px] px-2 py-1 text-[13px] bg-[var(--app-color-surface-page)] text-[var(--app-color-text-primary)] outline-none"
+                      />
+                    ) : (
                       <span className="whitespace-pre-wrap break-words">
                         {cell.kind === 'static'
                           ? (cell.staticText || '')
@@ -123,6 +142,7 @@ export default function FormGridEditor({ layout, selectedCellIds, onCellMouseDow
                             </span>
                           )}
                       </span>
+                    )}
                     </td>
                   );
                 })}

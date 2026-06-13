@@ -8,6 +8,8 @@ import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormOptionSet;
 import com.example.demo.modules.reportform.service.ReportFormImportService;
 import com.example.demo.modules.reportform.service.ReportFormService;
+import com.example.demo.modules.reportform.service.ReportFormWordService;
+import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,11 +32,17 @@ public class ReportFormController {
 
     private final ReportFormService reportFormService;
     private final ReportFormImportService importService;
+    private final ReportFormDefinitionMapper definitionMapper;
+    private final ReportFormWordService wordService;
 
     public ReportFormController(ReportFormService reportFormService,
-                                ReportFormImportService importService) {
+                                ReportFormImportService importService,
+                                ReportFormDefinitionMapper definitionMapper,
+                                ReportFormWordService wordService) {
         this.reportFormService = reportFormService;
         this.importService = importService;
+        this.definitionMapper = definitionMapper;
+        this.wordService = wordService;
     }
 
     @GetMapping("/forms/page")
@@ -271,6 +279,115 @@ public class ReportFormController {
     public Result<?> listTemplates() {
         return Result.success(reportFormService.listTemplates());
     }
+
+    @PostMapping("/forms/from-template/{templateId}")
+    @Operation(summary = "从模板创建报表")
+    public Result<?> createFromTemplate(@PathVariable Long templateId, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            String username = getCurrentUsername(request);
+            var form = reportFormService.duplicateForm(templateId, username);
+            form.setName(form.getName().replace(" (副本)", ""));
+            definitionMapper.update(form);
+            return Result.success(form);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    // ──────────────── Word 模板管理 ────────────────
+
+    @PostMapping("/forms/{id}/word-templates")
+    @Operation(summary = "上传并绑定 Word 打印模板")
+    public Result<?> uploadWordTemplate(@PathVariable Long id,
+                                        @RequestParam("file") MultipartFile file,
+                                        @RequestParam(value = "name", required = false) String templateName,
+                                        HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            var form = reportFormService.getById(id);
+            if (form == null) return Result.error("报表不存在");
+
+            // 解析书签
+            var bookmarks = wordService.parseBookmarks(file.getBytes());
+            String name = templateName != null ? templateName
+                : Objects.requireNonNullElse(file.getOriginalFilename(), "未命名模板")
+                    .replaceAll("\\.(docx|doc)$", "");
+
+            // 存储模板字节到 form 的 word_template_ids_json
+            String wtId = "wt_" + java.util.UUID.randomUUID().toString().substring(0, 8);
+            var binding = new java.util.HashMap<String, Object>();
+            binding.put("id", wtId);
+            binding.put("name", name);
+            binding.put("bookmarks", bookmarks);
+            binding.put("bookmarkMapping", new java.util.HashMap<String, String>());
+
+            // 追加到 word_template_ids_json
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.node.ArrayNode templates;
+            String existing = form.getWordTemplateIdsJson();
+            if (existing != null && !existing.isEmpty()) {
+                templates = (com.fasterxml.jackson.databind.node.ArrayNode) mapper.readTree(existing);
+            } else {
+                templates = mapper.createArrayNode();
+            }
+            templates.add(mapper.valueToTree(binding));
+            form.setWordTemplateIdsJson(templates.toString());
+
+            // 存储模板文件（使用外部目录或内存）
+            // 简化：将模板字节存储为 base64 在 binding 中（生产环境应使用文件存储）
+            String base64 = java.util.Base64.getEncoder().encodeToString(file.getBytes());
+            ((com.fasterxml.jackson.databind.node.ObjectNode) templates.get(templates.size() - 1))
+                .put("data", base64);
+
+            form.setWordTemplateIdsJson(templates.toString());
+            reportFormService.update(id, java.util.Map.of("wordTemplateIdsJson", templates.toString()),
+                getCurrentUsername(request));
+
+            return Result.success(binding);
+        } catch (Exception e) {
+            log.error("Word模板上传失败", e);
+            return Result.error("Word模板上传失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/forms/{id}/word-templates")
+    @Operation(summary = "查看已绑定的 Word 模板列表")
+    public Result<?> listWordTemplates(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        var form = reportFormService.getById(id);
+        if (form == null) return Result.error("报表不存在");
+        return Result.success(form.getWordTemplateIdsJson());
+    }
+
+    @DeleteMapping("/forms/{id}/word-templates/{wtId}")
+    @Operation(summary = "解绑 Word 模板")
+    public Result<?> unbindWordTemplate(@PathVariable Long id, @PathVariable String wtId,
+                                        HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            var form = reportFormService.getById(id);
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var templates = mapper.readTree(form.getWordTemplateIdsJson());
+            var filtered = mapper.createArrayNode();
+            for (var t : templates) {
+                if (!t.get("id").asText().equals(wtId)) filtered.add(t);
+            }
+            form.setWordTemplateIdsJson(filtered.toString());
+            reportFormService.update(id, java.util.Map.of("wordTemplateIdsJson", filtered.toString()),
+                getCurrentUsername(request));
+            return Result.success(null);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    private final ReportFormDefinitionMapper definitionMapper;
+    private final com.example.demo.modules.reportform.service.ReportFormWordService wordService;
 
     // ──────────────── 选项集 CRUD ────────────────
 

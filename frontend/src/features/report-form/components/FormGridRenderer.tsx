@@ -1,5 +1,8 @@
 // components/FormGridRenderer.tsx
 import type { LayoutJson, FieldDefinition } from '../types';
+import UserSelector from './UserSelector';
+import { adminHttp } from '@/api/core/adminHttp';
+import toast from 'react-hot-toast';
 
 interface Props {
   layout: LayoutJson;
@@ -105,13 +108,29 @@ export default function FormGridRenderer({ layout, values, editable, onChange, u
       case 'FILE':
         return (
           <div className="space-y-1">
-            <input type="file" onChange={e => {
-              const file = e.target.files?.[0];
-              if (file) {
-                // Upload to file-templates and get back URL
-                onChange?.(fieldKey, file.name);
-              }
-            }} className="text-[11px]" />
+            <input
+              type="file"
+              onChange={async e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                // 上传到 file-templates API 获取 URL
+                try {
+                  const fd = new FormData();
+                  fd.append('file', file);
+                  const { data } = await adminHttp.post('/file-templates/upload', fd, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                  });
+                  const url = data?.data?.url || data?.data;
+                  onChange?.(fieldKey, url || file.name);
+                  toast.success('文件上传成功');
+                } catch {
+                  // fallback: 保存文件名
+                  onChange?.(fieldKey, file.name);
+                  toast.error('文件上传失败，已保存文件名');
+                }
+              }}
+              className="text-[11px]"
+            />
             {value && typeof value === 'string' && (
               <a href={String(value)} target="_blank" rel="noopener noreferrer"
                 className="text-[11px] text-[var(--app-color-accent)] underline block">
@@ -120,14 +139,16 @@ export default function FormGridRenderer({ layout, values, editable, onChange, u
             )}
             <a href="/admin/file-templates" target="_blank" rel="noopener noreferrer"
               className="text-[11px] text-[var(--app-color-accent-secondary)] underline block">
-              管理文件模板 (/admin/file-templates)
+              管理文件模板
             </a>
           </div>
         );
       case 'USER':
         return (
-          <input type="text" value={String(value ?? '')} onChange={e => onChange?.(fieldKey, e.target.value)}
-            className={inputClass} placeholder="搜索用户..." />
+          <UserSelector
+            value={String(value ?? '')}
+            onChange={v => onChange?.(fieldKey, v)}
+          />
         );
       default:
         return <span className="text-xs text-[var(--app-color-text-tertiary)]">—</span>;

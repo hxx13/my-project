@@ -7,9 +7,11 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.reportform.dto.SubmissionRequest;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormSubmission;
+import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
 import com.example.demo.modules.reportform.service.ReportFillService;
 import com.example.demo.modules.reportform.service.ReportFormExportService;
+import com.example.demo.modules.reportform.service.ReportFormWordService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,13 +34,19 @@ public class ReportFillController {
     private final ReportFillService reportFillService;
     private final ReportFormSubmissionMapper submissionMapper;
     private final ReportFormExportService exportService;
+    private final ReportFormDefinitionMapper definitionMapper;
+    private final ReportFormWordService wordService;
 
     public ReportFillController(ReportFillService reportFillService,
                                 ReportFormSubmissionMapper submissionMapper,
-                                ReportFormExportService exportService) {
+                                ReportFormExportService exportService,
+                                ReportFormDefinitionMapper definitionMapper,
+                                ReportFormWordService wordService) {
         this.reportFillService = reportFillService;
         this.submissionMapper = submissionMapper;
         this.exportService = exportService;
+        this.definitionMapper = definitionMapper;
+        this.wordService = wordService;
     }
 
     @GetMapping("/available")
@@ -125,6 +133,58 @@ public class ReportFillController {
         }
     }
 
+    @GetMapping("/forms/{id}/export-pdf")
+    @Operation(summary = "导出报表为 PDF")
+    public ResponseEntity<byte[]> exportPdf(@PathVariable Long id,
+                                            @RequestParam(required = false) Long submissionId) throws Exception {
+        byte[] data;
+        String filename;
+        if (submissionId != null) {
+            data = exportService.exportSinglePdf(id, submissionId);
+            filename = "report-form-" + id + "-submission-" + submissionId + ".pdf";
+        } else {
+            data = exportService.exportBatchPdf(id);
+            filename = "report-form-" + id + "-batch.pdf";
+        }
+        return ResponseEntity.ok()
+            .header("Content-Type", "application/pdf")
+            .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+            .body(data);
+    }
+
+    @GetMapping("/forms/{id}/export-word/{wtId}")
+    @Operation(summary = "Word 模板注入导出")
+    public ResponseEntity<byte[]> exportWord(@PathVariable Long id, @PathVariable String wtId,
+                                             @RequestParam Long submissionId) throws Exception {
+        var form = definitionMapper.selectById(id);
+        if (form == null) throw new RuntimeException("报表不存在");
+
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var templates = mapper.readTree(form.getWordTemplateIdsJson());
+        com.fasterxml.jackson.databind.JsonNode target = null;
+        for (var t : templates) {
+            if (t.get("id").asText().equals(wtId)) { target = t; break; }
+        }
+        if (target == null) throw new RuntimeException("Word模板不存在");
+
+        byte[] templateBytes = java.util.Base64.getDecoder().decode(target.get("data").asText());
+        var bookmarkMapping = new java.util.HashMap<String, String>();
+        var bmMap = target.get("bookmarkMapping");
+        if (bmMap != null) {
+            var iter = bmMap.fields();
+            while (iter.hasNext()) {
+                var e = iter.next();
+                bookmarkMapping.put(e.getKey(), e.getValue().asText());
+            }
+        }
+
+        byte[] data = wordService.exportWord(id, submissionId, templateBytes, bookmarkMapping);
+        return ResponseEntity.ok()
+            .header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            .header("Content-Disposition", "attachment; filename=\"report-form-" + id + ".docx\"")
+            .body(data);
+    }
+
     @PostMapping("/forms/{id}/print")
     @Operation(summary = "打印报表（接口预留）")
     public Result<?> printForm(@PathVariable Long id, @RequestBody Map<String, Object> body, HttpServletRequest request) {
@@ -133,6 +193,9 @@ public class ReportFillController {
         log.info("[report-form] 打印请求 form={} params={}", id, body);
         return Result.success(Map.of("status", "submitted", "message", "打印任务已提交（接口预留）"));
     }
+
+    private final ReportFormDefinitionMapper definitionMapper;
+    private final ReportFormWordService wordService;
 
     private User getCurrentUser(HttpServletRequest request) {
         return (User) request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);

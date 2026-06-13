@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import FormGridEditor from '../components/FormGridEditor';
@@ -47,6 +48,25 @@ function DesignerInner({
   formId: number; form: Record<string, unknown>; initialLayout: LayoutJson; navigate: ReturnType<typeof useNavigate>;
 }) {
   const editor = useFormGridEditor(initialLayout);
+
+  // 双击编辑状态
+  const [editingCellId, setEditingCellId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+
+  const handleDoubleClick = useCallback((cellId: string) => {
+    const cell = editor.layout.cells.find(c => c.id === cellId);
+    if (cell?.kind === 'static') {
+      setEditingCellId(cellId);
+      setEditingText(cell.staticText || '');
+    }
+  }, [editor.layout.cells]);
+
+  const handleEditingCommit = useCallback(() => {
+    if (editingCellId) {
+      editor.updateCell(editingCellId, { staticText: editingText });
+      setEditingCellId(null);
+    }
+  }, [editingCellId, editingText, editor]);
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -104,11 +124,19 @@ function DesignerInner({
         <FormGridEditor
           layout={editor.layout}
           selectedCellIds={editor.selectedCellIds}
-          onCellMouseDown={(cellId, e) => editor.selectCell(cellId, e.shiftKey)}
+          editingCellId={editingCellId}
+          editingText={editingText}
+          onCellMouseDown={(cellId, e) => {
+            if (editingCellId) handleEditingCommit();
+            editor.selectCell(cellId, e.shiftKey);
+          }}
           onCellMouseEnter={(cellId, e) => {
             if (e.buttons === 1) editor.selectCell(cellId, true);
           }}
           onMouseUp={() => editor.setIsDragging(false)}
+          onCellDoubleClick={handleDoubleClick}
+          onEditingTextChange={setEditingText}
+          onEditingCommit={handleEditingCommit}
         />
       ) : (
         <div className="text-center py-16">

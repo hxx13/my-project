@@ -50,6 +50,27 @@ CREATE TABLE IF NOT EXISTS `report_form_submission_log` (
   KEY `idx_log_submission` (`submission_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提交日志';
 
+CREATE TABLE IF NOT EXISTS `report_form_template` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `name` VARCHAR(255) NOT NULL COMMENT '模板名称',
+  `description` VARCHAR(1000) DEFAULT NULL COMMENT '描述',
+  `is_template` TINYINT NOT NULL DEFAULT 1 COMMENT '是否模板=1',
+  `shared` TINYINT NOT NULL DEFAULT 0 COMMENT '是否共享给组织',
+  `layout_json` MEDIUMTEXT COMMENT '网格 cells[] + fields{}',
+  `theme_json` MEDIUMTEXT COMMENT '主题配置',
+  `fill_policy_json` MEDIUMTEXT COMMENT '填报策略',
+  `permission_json` MEDIUMTEXT COMMENT '权限配置',
+  `schedule_json` MEDIUMTEXT COMMENT '周期配置',
+  `word_template_ids_json` JSON DEFAULT NULL COMMENT '绑定的Word打印模板',
+  `version_snapshots_json` MEDIUMTEXT COMMENT '发布历史快照',
+  `created_by` VARCHAR(64) DEFAULT NULL COMMENT '创建人',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_template_shared` (`shared`),
+  KEY `idx_template_created_by` (`created_by`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='填报报表模板（共享）';
+
 CREATE TABLE IF NOT EXISTS `report_form_option_set` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
   `name` VARCHAR(255) NOT NULL COMMENT '选项集名称',

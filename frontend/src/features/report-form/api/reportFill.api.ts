@@ -22,9 +22,13 @@ export interface SavePayload {
 }
 
 export function saveMySubmission(formId: number, payload: SavePayload): Promise<ReportFormSubmission> {
-  return adminHttp.post(`${BASE}/forms/${formId}/my-submission`, payload).then(({ data }) => data.data);
+  return adminHttp.put(`${BASE}/forms/${formId}/my-submission`, payload).then(({ data }) => data.data);
 }
 
 export function submitMySubmission(formId: number): Promise<ReportFormSubmission> {
-  return adminHttp.post(`${BASE}/forms/${formId}/submit`).then(({ data }) => data.data);
+  return adminHttp.post(`${BASE}/forms/${formId}/my-submission/submit`).then(({ data }) => data.data);
+}
+
+export function createFromTemplate(templateId: number): Promise<ReportFormDefinition> {
+  return adminHttp.post(`/report-form/forms/from-template/${templateId}`).then(({ data }) => data.data);
 }
