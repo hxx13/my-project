@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Table2, Plus, Pin, MoreVertical, FileDown, FileJson, Printer, Link2, Trash2, Copy, Pencil, Eraser, Eye, Upload } from 'lucide-react';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import { fetchSheetPage, createSheet, deleteSheet, bulkDeleteSheets, renameSheet, duplicateSheet, clearSheetData, togglePinSheet, getExportUrl, getExportJsonUrl, importJsonBackup } from '@/api/domains/smartsheet.api';
-import { PRESET_TEMPLATES } from './types';
+import { SYSTEM_PRESETS } from './types';
 import type { SmartSheetDefinition } from './types';
 import toast from 'react-hot-toast';
 
@@ -81,7 +81,7 @@ export default function SmartSheetListPage() {
       <div className="mb-4">
         <h3 className="text-[11px] font-semibold text-app-text-secondary uppercase tracking-wider mb-2">快捷模板</h3>
         <div className="flex gap-3 flex-wrap">
-          {PRESET_TEMPLATES.map((tpl) => (
+          {SYSTEM_PRESETS.map((tpl) => (
             <button key={tpl.id}
               className="px-4 py-3 rounded-[14px] border border-app-border bg-app-surface-container hover:border-app-accent text-sm transition-all text-left shadow-app-card min-w-[160px]"
               onClick={() => createMut.mutate({ name: `${tpl.name} ${new Date().toLocaleDateString()}`, description: tpl.description, layoutMode: tpl.layoutMode, columnsConfig: tpl.defaultColumns })}>
