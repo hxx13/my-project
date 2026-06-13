@@ -1308,3 +1308,6 @@ CREATE TABLE IF NOT EXISTS telemetry_archive_purge_config (
     updated_by VARCHAR(64) NULL,
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='温湿度归档清理策略';
+
+-- 填报报表模块
+SOURCE scripts/report_form.ddl.sql;
