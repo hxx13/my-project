@@ -4,7 +4,7 @@ import type { ReportFormDefinition, PageResult } from '../types';
 
 const BASE = '/report-form';
 
-export function fetchFormPage(page = 1, size = 100): Promise<PageResult<ReportFormDefinition>> {
+export function fetchFormPage(page = 1, size = 100): Promise<ReportFormDefinition[]> {
   return adminHttp.get(`${BASE}/forms/page`, { params: { page, size } }).then(({ data }) => data.data);
 }
 

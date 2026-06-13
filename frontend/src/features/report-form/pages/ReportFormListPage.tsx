@@ -135,8 +135,9 @@ export default function ReportFormListPage() {
     navigate(`/admin/report-form/${form.id}/design`);
   };
 
-  const list = data?.list ?? [];
-  const filtered = list.filter(f => !search || f.name.toLowerCase().includes(search.toLowerCase()));
+  // 后端可能返回数组或 PageResult 对象，兼容两者
+  const rawList: ReportFormDefinition[] = Array.isArray(data) ? data : (data?.list ?? []);
+  const filtered = rawList.filter(f => !search || f.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <AdminPageShell title="填报报表管理" description="创建、设计、发布填报报表">
