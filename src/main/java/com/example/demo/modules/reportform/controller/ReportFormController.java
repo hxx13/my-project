@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 @RestController
@@ -68,6 +69,23 @@ public class ReportFormController {
         } catch (Exception e) {
             log.error("Excel 导入失败", e);
             return Result.error("Excel 导入失败: " + e.getMessage());
+        }
+    }
+
+    @PutMapping("/forms/{id}")
+    @Operation(summary = "更新报表表单定义（保存草稿）")
+    public Result<?> update(@PathVariable Long id,
+                            @RequestBody Map<String, Object> body,
+                            HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            String username = getCurrentUsername(request);
+            reportFormService.update(id, body, username);
+            return Result.success(null);
+        } catch (Exception e) {
+            log.error("更新报表失败", e);
+            return Result.error(e.getMessage());
         }
     }
 

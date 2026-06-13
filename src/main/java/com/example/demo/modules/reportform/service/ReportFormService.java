@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ReportFormService {
@@ -32,6 +33,22 @@ public class ReportFormService {
             throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表表单不存在");
         }
         return def;
+    }
+
+    public void update(Long id, Map<String, Object> body, String username) {
+        ReportFormDefinition def = definitionMapper.selectById(id);
+        if (def == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "报表不存在");
+        }
+        if (body.containsKey("name")) def.setName((String) body.get("name"));
+        if (body.containsKey("description")) def.setDescription((String) body.get("description"));
+        if (body.containsKey("layoutJson")) def.setLayoutJson((String) body.get("layoutJson"));
+        if (body.containsKey("themeJson")) def.setThemeJson((String) body.get("themeJson"));
+        if (body.containsKey("fillPolicyJson")) def.setFillPolicyJson((String) body.get("fillPolicyJson"));
+        if (body.containsKey("permissionJson")) def.setPermissionJson((String) body.get("permissionJson"));
+        if (body.containsKey("scheduleJson")) def.setScheduleJson((String) body.get("scheduleJson"));
+        def.setUpdatedBy(username);
+        definitionMapper.update(def);
     }
 
     public ReportFormDefinition createFromImport(ReportFormImportResult result, String username) {
