@@ -101,7 +101,13 @@ function DesignerInner({
 
       {/* 全宽编辑器 */}
       {hasCells ? (
-        <FormGridEditor layout={editor.layout} onChange={l => editor.setLayout(l)} />
+        <FormGridEditor
+          layout={editor.layout}
+          selectedCellIds={editor.selectedCellIds}
+          onCellMouseDown={(cellId, e) => editor.selectCell(cellId, e.shiftKey)}
+          onCellMouseEnter={(cellId) => editor.selectCell(cellId, true)}
+          onMouseUp={() => editor.setIsDragging(false)}
+        />
       ) : (
         <div className="text-center py-16">
           <p className="text-sm text-[var(--app-color-text-tertiary)] mb-3">当前表格为空</p>
@@ -119,7 +125,7 @@ function DesignerInner({
         onUpdateStyle={editor.updateCellStyle}
         onToggleKind={editor.toggleCellKind}
         onUpdateField={editor.updateFieldDefinition}
-        onClose={() => editor.selectCell(selectedCellIds[0], false)}
+        onClose={() => editor.selectRange([])}
       />
     </AdminPageShell>
   );
