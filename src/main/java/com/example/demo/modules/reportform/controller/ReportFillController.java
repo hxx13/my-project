@@ -186,12 +186,22 @@ public class ReportFillController {
     }
 
     @PostMapping("/forms/{id}/print")
-    @Operation(summary = "打印报表（接口预留）")
-    public Result<?> printForm(@PathVariable Long id, @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        var denied = requireMinRole(request, RoleEnum.ADMIN);
-        if (denied != null) return denied;
-        log.info("[report-form] 打印请求 form={} params={}", id, body);
-        return Result.success(Map.of("status", "submitted", "message", "打印任务已提交（接口预留）"));
+    @Operation(summary = "打印报表（生成 PDF 返回）")
+    public ResponseEntity<byte[]> printForm(@PathVariable Long id,
+                                            @RequestBody Map<String, Object> body) throws Exception {
+        Long submissionId = body.containsKey("submissionId")
+            ? ((Number) body.get("submissionId")).longValue() : null;
+        byte[] data;
+        if (submissionId != null) {
+            data = exportService.exportSinglePdf(id, submissionId);
+        } else {
+            data = exportService.exportBatchPdf(id);
+        }
+        log.info("[report-form] 打印: form={} submission={} size={}", id, submissionId, data.length);
+        return ResponseEntity.ok()
+            .header("Content-Type", "application/pdf")
+            .header("Content-Disposition", "inline; filename=\"report-form-" + id + ".pdf\"")
+            .body(data);
     }
 
     private User getCurrentUser(HttpServletRequest request) {

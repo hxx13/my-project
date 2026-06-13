@@ -3,12 +3,13 @@ import { useParams } from 'react-router-dom';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import FormGridRenderer from '../components/FormGridRenderer';
 import { useReportFill } from '../hooks/useReportFill';
-import { Save, Send, Clock, User } from 'lucide-react';
+import { exportExcel, exportPdf } from '../api/reportFill.api';
+import { Save, Send, Clock, User, Download, FileSpreadsheet } from 'lucide-react';
 
 export default function ReportFillPage() {
   const { id } = useParams<{ id: string }>();
   const formId = Number(id);
-  const { form, values, formLoading, updateValue, submitMut, flushSave } = useReportFill(formId);
+  const { form, values, submission, formLoading, updateValue, submitMut, flushSave } = useReportFill(formId);
 
   if (formLoading || !form) {
     return (
@@ -45,6 +46,15 @@ export default function ReportFillPage() {
         >
           <Send className="w-3.5 h-3.5" />
           {submitMut.isPending ? '提交中...' : submitLabel}
+        </button>
+        <span className="w-px h-5 bg-[var(--app-color-border-default)]" />
+        <button onClick={() => exportExcel(formId, submission?.id)}
+          className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] flex items-center gap-1">
+          <FileSpreadsheet className="w-3.5 h-3.5" /> Excel
+        </button>
+        <button onClick={() => exportPdf(formId, submission?.id)}
+          className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] flex items-center gap-1">
+          <Download className="w-3.5 h-3.5" /> PDF
         </button>
         <div className="ml-auto flex items-center gap-4 text-[11px] text-[var(--app-color-text-tertiary)]">
           <span className="flex items-center gap-1">

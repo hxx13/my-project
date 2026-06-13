@@ -9,8 +9,9 @@ import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import {
   fetchFormPage, deleteForm, batchDeleteForms, renameForm,
   duplicateForm, publishForm, unpublishForm, saveAsTemplate,
-  createFormFromExcel, createBlankForm,
+  createFormFromExcel, createBlankForm, archiveForm, unarchiveForm, fetchVersions,
 } from '../api/reportForm.api';
+import PublishWizard from '../components/PublishWizard';
 import type { ReportFormDefinition } from '../types';
 import toast from 'react-hot-toast';
 
@@ -94,6 +95,22 @@ export default function ReportFormListPage() {
     onSuccess: () => { invalidate(); toast.success('已保存为模板'); },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const archiveMut = useMutation({
+    mutationFn: archiveForm,
+    onSuccess: () => { invalidate(); toast.success('已归档'); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const unarchiveMut = useMutation({
+    mutationFn: unarchiveForm,
+    onSuccess: () => { invalidate(); toast.success('已取消归档'); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const [publishWizardFormId, setPublishWizardFormId] = useState<number | null>(null);
+  const [versionFormId, setVersionFormId] = useState<number | null>(null);
+  const [versions, setVersions] = useState<unknown[]>([]);
 
   const handleExcelCreate = () => {
     const input = document.createElement('input');
@@ -179,11 +196,57 @@ export default function ReportFormListPage() {
               }}
               onRename={name => renameMut.mutate({ id: form.id, name })}
               onDuplicate={() => duplicateMut.mutate(form.id)}
-              onPublish={() => publishMut.mutate(form.id)}
+              onPublish={() => setPublishWizardFormId(form.id)}
               onUnpublish={() => unpublishMut.mutate(form.id)}
               onSaveTemplate={() => saveTemplateMut.mutate(form.id)}
+              onArchive={() => archiveMut.mutate(form.id)}
+              onUnarchive={() => unarchiveMut.mutate(form.id)}
+              onViewVersions={async () => {
+                setVersionFormId(form.id);
+                try { setVersions(await fetchVersions(form.id) || []); } catch { setVersions([]); }
+              }}
+              status={form.status}
             />
           ))}
+        </div>
+      )}
+      {/* PublishWizard modal */}
+      {publishWizardFormId && (
+        <PublishWizard
+          open={true}
+          onClose={() => setPublishWizardFormId(null)}
+          formId={publishWizardFormId}
+          layout={rawList.find(f => f.id === publishWizardFormId)?.layoutJson || { cells: [], fields: {}, mergeGroups: [] }}
+        />
+      )}
+
+      {/* Version history dialog */}
+      {versionFormId && (
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 p-4" onClick={() => setVersionFormId(null)}>
+          <div className="w-full max-w-md rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg max-h-[70vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-[var(--app-color-text-primary)]">
+                版本历史 · {rawList.find(f => f.id === versionFormId)?.name}
+              </h2>
+              <button onClick={() => setVersionFormId(null)} className="p-1 rounded-[4px] hover:bg-[var(--app-color-surface-hover)]">
+                <span className="text-[var(--app-color-text-secondary)]">✕</span>
+              </button>
+            </div>
+            {versions.length === 0 ? (
+              <p className="text-xs text-[var(--app-color-text-tertiary)]">暂无发布版本</p>
+            ) : (
+              <div className="space-y-2">
+                {versions.map((v: Record<string, unknown>, i: number) => (
+                  <div key={i} className="p-3 rounded-[var(--app-radius-container)] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]">
+                    <div className="text-[12px] font-medium text-[var(--app-color-text-primary)]">版本 {(v as Record<string,unknown>).version}</div>
+                    <div className="text-[11px] text-[var(--app-color-text-tertiary)] mt-0.5">
+                      发布于 {(v as Record<string,unknown>).publishedAt as string} · {(v as Record<string,unknown>).publishedBy as string}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </AdminPageShell>
@@ -193,6 +256,7 @@ export default function ReportFormListPage() {
 function FormRow({
   form, selected, onToggleSel, onOpen, onEdit, onDelete, onRename,
   onDuplicate, onPublish, onUnpublish, onSaveTemplate,
+  onArchive, onUnarchive, onViewVersions, status,
 }: {
   form: ReportFormDefinition;
   selected: boolean;
@@ -205,6 +269,10 @@ function FormRow({
   onPublish: () => void;
   onUnpublish: () => void;
   onSaveTemplate: () => void;
+  onArchive: () => void;
+  onUnarchive: () => void;
+  onViewVersions: () => void;
+  status: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuDir, setMenuDir] = useState<'down' | 'up'>('down');
@@ -294,6 +362,13 @@ function FormRow({
               <MenuItem icon={Eye} label="发布" onClick={() => { onPublish(); setMenuOpen(false); }} />
             )}
             <MenuItem icon={Copy} label="保存为模板" onClick={() => { onSaveTemplate(); setMenuOpen(false); }} />
+            <MenuDivider />
+            {status === 'archived' ? (
+              <MenuItem icon={Eye} label="取消归档" onClick={() => { onUnarchive(); setMenuOpen(false); }} />
+            ) : (
+              <MenuItem icon={Eye} label="归档" onClick={() => { onArchive(); setMenuOpen(false); }} />
+            )}
+            <MenuItem icon={Eye} label="版本历史" onClick={() => { onViewVersions(); setMenuOpen(false); }} />
             <MenuDivider />
             <MenuItem icon={Trash2} label="删除" danger onClick={() => { onDelete(); setMenuOpen(false); }} />
           </div>

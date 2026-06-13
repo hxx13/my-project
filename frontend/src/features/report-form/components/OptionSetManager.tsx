@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, X } from 'lucide-react';
 import { adminHttp } from '@/api/core/adminHttp';
@@ -46,9 +47,9 @@ export default function OptionSetManager({ open, onClose }: Props) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 800 }}
       onClick={onClose}
     >
       <div
@@ -141,5 +142,5 @@ export default function OptionSetManager({ open, onClose }: Props) {
         )}
       </div>
     </div>
-  );
+  , document.body);
 }

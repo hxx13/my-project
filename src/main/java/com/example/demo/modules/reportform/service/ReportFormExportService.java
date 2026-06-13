@@ -9,6 +9,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -227,7 +228,7 @@ public class ReportFormExportService {
         try (PDDocument mergedDoc = new PDDocument()) {
             for (ReportFormSubmission sub : subs) {
                 byte[] singlePdf = exportSinglePdf(formId, sub.getId());
-                try (PDDocument singleDoc = PDDocument.load(singlePdf)) {
+                try (PDDocument singleDoc = Loader.loadPDF(singlePdf)) {
                     for (int i = 0; i < singleDoc.getNumberOfPages(); i++) {
                         mergedDoc.addPage(singleDoc.getPage(i));
                     }

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2, Combine, Ungroup } from 'lucide-react';
 
 interface Props {
@@ -45,12 +46,12 @@ export default function GridContextMenu({
 
   const divider = <div className="h-px bg-[var(--app-color-border-default)] my-1" />;
 
-  return (
+  return createPortal(
     <div
       ref={ref}
       className="fixed w-[200px] rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)]
-                 bg-[var(--app-color-surface-elevated)] shadow-lg py-1.5 z-[var(--z-dropdown)]"
-      style={{ left: x, top: y }}
+                 bg-[var(--app-color-surface-elevated)] shadow-lg py-1.5"
+      style={{ left: x, top: y, zIndex: 200 }}
     >
       {menuItem('上方插入行', <Plus className="w-3.5 h-3.5" />, () => onInsertRow('above'))}
       {menuItem('下方插入行', <Plus className="w-3.5 h-3.5" />, () => onInsertRow('below'))}
@@ -63,5 +64,5 @@ export default function GridContextMenu({
       {menuItem('删除行', <Trash2 className="w-3.5 h-3.5" />, onDeleteRow, true)}
       {menuItem('删除列', <Trash2 className="w-3.5 h-3.5" />, onDeleteCol, true)}
     </div>
-  );
+  , document.body);
 }

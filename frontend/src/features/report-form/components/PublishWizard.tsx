@@ -1,5 +1,6 @@
 // components/PublishWizard.tsx
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation } from '@tanstack/react-query';
 import { Send, X, ChevronRight, ChevronLeft } from 'lucide-react';
 import { adminHttp } from '@/api/core/adminHttp';
@@ -71,8 +72,8 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
     setVisibleRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]);
   };
 
-  return (
-    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 800 }} onClick={onClose}>
       <div className="w-full max-w-2xl rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-[var(--app-color-text-primary)]">发布报表</h2>
@@ -225,5 +226,5 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
         )}
       </div>
     </div>
-  );
+  , document.body);
 }

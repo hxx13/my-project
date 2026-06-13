@@ -6,7 +6,8 @@ import { fetchFormById } from '../api/reportForm.api';
 import { fetchFormSubmissions } from '../api/reportFill.api';
 import FormGridRenderer from '../components/FormGridRenderer';
 import type { ReportFormSubmission } from '../types';
-import { Table2, Eye, User, Clock, CheckCircle, FileText } from 'lucide-react';
+import { exportExcel, exportPdf } from '../api/reportFill.api';
+import { Table2, Eye, User, Clock, CheckCircle, FileText, Download, FileSpreadsheet } from 'lucide-react';
 
 type ViewMode = 'table' | 'detail';
 
@@ -51,7 +52,7 @@ export default function SubmissionManagePage() {
 
   return (
     <AdminPageShell title={`${form.name} · 提交管理`} description={`共 ${submissions.length} 条记录`}>
-      {/* Mode toggle */}
+      {/* Mode toggle + Export */}
       <div className="flex items-center gap-3 mb-4">
         <button onClick={() => setViewMode('table')}
           className={`px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium flex items-center gap-1 transition-colors ${
@@ -64,6 +65,17 @@ export default function SubmissionManagePage() {
             viewMode === 'detail' ? 'bg-[var(--app-color-accent)] text-white' : 'border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]'
           }`}>
           <Eye className="w-3.5 h-3.5" /> 逐份查看
+        </button>
+        <span className="w-px h-5 bg-[var(--app-color-border-default)]" />
+        <button onClick={() => exportExcel(formId)}
+          disabled={submissions.length === 0}
+          className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 flex items-center gap-1">
+          <FileSpreadsheet className="w-3.5 h-3.5" /> 批量 Excel
+        </button>
+        <button onClick={() => exportPdf(formId)}
+          disabled={submissions.length === 0}
+          className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 flex items-center gap-1">
+          <Download className="w-3.5 h-3.5" /> 批量 PDF
         </button>
       </div>
 

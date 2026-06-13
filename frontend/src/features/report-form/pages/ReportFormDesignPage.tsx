@@ -1,5 +1,6 @@
 import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import FormGridEditor from '../components/FormGridEditor';
@@ -9,7 +10,11 @@ import { fetchFormById, updateForm } from '../api/reportForm.api';
 import type { LayoutJson } from '../types';
 import { useFormGridEditor } from '../hooks/useFormGridEditor';
 import toast from 'react-hot-toast';
-import { Undo2, Redo2, Save, AlertTriangle } from 'lucide-react';
+import ThemePanel from '../components/ThemePanel';
+import PermissionPanel from '../components/PermissionPanel';
+import PublishWizard from '../components/PublishWizard';
+import WordTemplateManager from '../components/WordTemplateManager';
+import { Undo2, Redo2, Save, AlertTriangle, Palette, Shield, FileText, Send, PanelRight, PanelRightClose } from 'lucide-react';
 
 function parseLayout(raw: unknown): LayoutJson {
   if (!raw) return { cells: [], fields: {}, mergeGroups: [] };
@@ -48,6 +53,18 @@ function DesignerInner({
   formId: number; form: Record<string, unknown>; initialLayout: LayoutJson; navigate: ReturnType<typeof useNavigate>;
 }) {
   const editor = useFormGridEditor(initialLayout);
+
+  // 右侧面板
+  const [sidePanel, setSidePanel] = useState<'theme' | 'permission' | null>(null);
+  const [showPublishWizard, setShowPublishWizard] = useState(false);
+  const [showWordTemplate, setShowWordTemplate] = useState(false);
+
+  // 从 form 中解析当前主题/权限配置（供面板使用）
+  const theme = typeof form.themeJson === 'string' ? JSON.parse(form.themeJson as string) : (form.themeJson || {});
+  const permission = typeof form.permissionJson === 'string' ? JSON.parse(form.permissionJson as string) : (form.permissionJson || { visibleRoles: [], visibleUserIds: [], fieldRoleBindings: {}, allowUnboundView: true });
+
+  // 获取所有 field keys（供 Word 模板映射使用）
+  const fieldKeys = Object.keys(editor.layout.fields || {});
 
   // 原始快照，用于检测未保存修改
   const savedSnapshot = useRef(JSON.stringify(initialLayout));
@@ -141,13 +158,40 @@ function DesignerInner({
           <Save className="w-3.5 h-3.5" />
           {saveMut.isPending ? '保存中...' : dirty ? '保存 *' : '保存'}
         </button>
+        <span className="w-px h-5 bg-[var(--app-color-border)]" />
+        <button onClick={() => setSidePanel(sidePanel === 'theme' ? null : 'theme')}
+          className={`px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium flex items-center gap-1 transition-colors ${
+            sidePanel === 'theme' ? 'bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]' : 'border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]'
+          }`}>
+          <Palette className="w-3.5 h-3.5" /> 主题
+        </button>
+        <button onClick={() => setSidePanel(sidePanel === 'permission' ? null : 'permission')}
+          className={`px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium flex items-center gap-1 transition-colors ${
+            sidePanel === 'permission' ? 'bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]' : 'border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]'
+          }`}>
+          <Shield className="w-3.5 h-3.5" /> 权限
+        </button>
+        <button onClick={() => setShowWordTemplate(true)}
+          className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] flex items-center gap-1">
+          <FileText className="w-3.5 h-3.5" /> 模板
+        </button>
+        <span className="w-px h-5 bg-[var(--app-color-border)]" />
+        <button onClick={() => setShowPublishWizard(true)}
+          disabled={form.status === 'published'}
+          className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90 disabled:opacity-40 flex items-center gap-1">
+          <Send className="w-3.5 h-3.5" />
+          {form.status === 'published' ? '已发布' : '发布'}
+        </button>
         <span className="text-[11px] text-[var(--app-color-text-tertiary)] ml-auto">
           {editor.layout.cells.length} 格 · 选中 {editor.selectedCellIds.size}
           {dirty && <span className="text-[var(--app-color-feedback-danger)] ml-1">未保存</span>}
         </span>
       </div>
 
-      {/* 全宽编辑器 */}
+      {/* 主编辑区 + 侧栏 */}
+      <div className="flex gap-4">
+        <div className="flex-1 min-w-0">
+          {/* 编辑器 */}
       {hasCells ? (
         <FormGridEditor
           layout={editor.layout}
@@ -175,6 +219,35 @@ function DesignerInner({
         </div>
       )}
 
+        </div>
+        {/* 右侧面板 */}
+        {sidePanel && (
+          <div className="w-[300px] shrink-0 rounded-[var(--app-radius-container)] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--app-color-border)]">
+              <span className="text-[11px] font-semibold text-[var(--app-color-text-primary)]">
+                {sidePanel === 'theme' ? '主题配置' : sidePanel === 'permission' ? '权限配置' : 'Word 打印模板'}
+              </span>
+              <button onClick={() => setSidePanel(null)}
+                className="p-0.5 rounded-[4px] hover:bg-[var(--app-color-surface-hover)]">
+                <PanelRightClose className="w-3.5 h-3.5 text-[var(--app-color-text-secondary)]" />
+              </button>
+            </div>
+            {sidePanel === 'theme' && (
+              <ThemePanel theme={theme} onChange={(t) => {
+                form.themeJson = JSON.stringify(t);
+                updateForm(formId, { themeJson: JSON.stringify(t) }).catch(() => {});
+              }} />
+            )}
+            {sidePanel === 'permission' && (
+              <PermissionPanel permission={permission} layout={editor.layout} onChange={(p) => {
+                form.permissionJson = JSON.stringify(p);
+                updateForm(formId, { permissionJson: JSON.stringify(p) }).catch(() => {});
+              }} />
+            )}
+          </div>
+        )}
+      </div>
+
       {/* 浮动属性弹窗 */}
       <FieldInspector
         selectedCell={selectedCell}
@@ -186,9 +259,25 @@ function DesignerInner({
         onClose={() => editor.selectRange([])}
       />
 
+      {/* 发布向导 */}
+      <PublishWizard
+        open={showPublishWizard}
+        onClose={() => setShowPublishWizard(false)}
+        formId={formId}
+        layout={editor.layout}
+      />
+
+      {/* Word 模板管理 */}
+      <WordTemplateManager
+        open={showWordTemplate}
+        onClose={() => setShowWordTemplate(false)}
+        formId={formId}
+        fieldKeys={fieldKeys}
+      />
+
       {/* 未保存离开确认弹窗 */}
-      {blocker.state === 'blocked' && (
-        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50">
+      {blocker.state === 'blocked' && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50" style={{ zIndex: 800 }}>
           <div className="w-full max-w-sm rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg">
             <div className="flex items-center gap-2 mb-3">
               <AlertTriangle className="w-5 h-5 text-[var(--app-color-feedback-danger)]" />
@@ -216,7 +305,7 @@ function DesignerInner({
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </AdminPageShell>
   );
 }

@@ -44,13 +44,7 @@ public class ReportFormWordService {
     public List<String> parseBookmarks(byte[] docxBytes) throws Exception {
         List<String> bookmarks = new ArrayList<>();
         try (XWPFDocument doc = new XWPFDocument(new ByteArrayInputStream(docxBytes))) {
-            // 从段落中提取 CTBookmark
-            for (XWPFParagraph para : doc.getParagraphs()) {
-                for (org.apache.xmlbeans.XmlObject obj : para.getCTP().getCommentList()) {
-                    // CTBookmark 在 poi-ooxml 中可能需要遍历 runs
-                }
-            }
-            // 遍历所有 XML 元素查找书签
+            // 遍历段落中的书签
             for (XWPFParagraph para : doc.getParagraphs()) {
                 var ctp = para.getCTP();
                 var bookmarkList = ctp.getBookmarkStartList();

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { GridCell, LayoutJson, FieldType, FieldDefinition, CellStyle } from '../types';
 import { X, GripHorizontal } from 'lucide-react';
 
@@ -75,7 +76,7 @@ export default function FieldInspector({
   const field = selectedCell.fieldKey ? layout.fields[selectedCell.fieldKey] : null;
   const isStatic = selectedCell.kind === 'static';
 
-  return (
+  return createPortal(
     <div
       className="fixed rounded-[var(--app-radius-container)] border border-[var(--app-color-border)]
                  bg-[var(--app-color-surface-elevated)] shadow-lg flex flex-col overflow-hidden"
@@ -231,5 +232,5 @@ export default function FieldInspector({
         <GripHorizontal className="w-3 h-3 text-[var(--app-color-text-tertiary)] rotate-45" />
       </div>
     </div>
-  );
+  , document.body);
 }

@@ -63,3 +63,11 @@ export function fetchTemplates(): Promise<ReportFormDefinition[]> {
 export function fetchVersions(id: number): Promise<unknown[]> {
   return adminHttp.get(`${BASE}/forms/${id}/versions`).then(({ data }) => data.data);
 }
+
+export function archiveForm(id: number): Promise<void> {
+  return adminHttp.post(`${BASE}/forms/${id}/archive`);
+}
+
+export function unarchiveForm(id: number): Promise<void> {
+  return adminHttp.post(`${BASE}/forms/${id}/unarchive`);
+}
