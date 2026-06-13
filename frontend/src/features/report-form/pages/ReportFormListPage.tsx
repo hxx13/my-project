@@ -20,33 +20,62 @@ export default function ReportFormListPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['report-form-list'],
-    queryFn: () => fetchFormPage(),
+    queryFn: async () => {
+      console.error('🔥 [LIST] fetchFormPage 开始...');
+      const result = await fetchFormPage();
+      console.error('🔥 [LIST] fetchFormPage 结果:', result);
+      return result;
+    },
   });
+
+  if (error) {
+    console.error('🔥 [LIST] 列表加载失败:', error);
+  }
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['report-form-list'] });
   };
 
   const createBlankMut = useMutation({
-    mutationFn: createBlankForm,
+    mutationFn: async () => {
+      console.error('🔥 [LIST] createBlank 开始...');
+      const result = await createBlankForm();
+      console.error('🔥 [LIST] createBlank 成功:', result);
+      return result;
+    },
     onSuccess: (form) => {
       invalidate();
       navigate(`/admin/report-form/${form.id}/design`);
       toast.success('已创建空白报表');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => {
+      console.error('🔥 [LIST] createBlank 失败:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg);
+      alert('创建失败: ' + msg);
+    },
   });
 
   const createFromExcelMut = useMutation({
-    mutationFn: (file: File) => createFormFromExcel(file),
+    mutationFn: async (file: File) => {
+      console.error('🔥 [LIST] createFromExcel 开始:', file.name, file.size);
+      const result = await createFormFromExcel(file);
+      console.error('🔥 [LIST] createFromExcel 成功:', result);
+      return result;
+    },
     onSuccess: (form) => {
       invalidate();
       navigate(`/admin/report-form/${form.id}/design`);
       toast.success('已从 Excel 创建报表');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => {
+      console.error('🔥 [LIST] createFromExcel 失败:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg);
+      alert('导入失败: ' + msg);
+    },
   });
 
   const deleteMut = useMutation({
@@ -147,7 +176,11 @@ export default function ReportFormListPage() {
         )}
       </div>
 
-      {isLoading ? (
+      {error ? (
+        <div className="p-4 rounded-[var(--app-radius-container)] bg-[var(--app-color-feedback-danger-soft)] text-sm text-[var(--app-color-feedback-danger)]">
+          加载失败: {String(error)}
+        </div>
+      ) : isLoading ? (
         <div className="text-sm text-app-text-tertiary py-4">加载中...</div>
       ) : filtered.length === 0 ? (
         <div className="text-sm text-app-text-tertiary py-4">暂无报表，从 Excel 创建或新建空白报表</div>
