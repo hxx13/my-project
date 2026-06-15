@@ -50,7 +50,11 @@
       "Bash(cd \"d:\\\\codex\\\\verson.1.2\\\\20260416\" && sleep 2 && rm -f .git/index.lock && git add frontend/src/layouts/AdminLayout.tsx && git commit -m \"fix: add missing ADMIN_NAV_REGISTRY import + handle subgroups in breadcrumb\")",
       "Skill(humanizer)",
       "Skill(humanizer:*)",
-      "mcp__firecrawl__firecrawl_search_feedback"
+      "mcp__firecrawl__firecrawl_search_feedback",
+      "Skill(deep-research)",
+      "Skill(deep-research:*)",
+      "Workflow(deep-research)",
+      "mcp__firecrawl__firecrawl_extract"
     ],
     "additionalDirectories": [
       "d:\\codex\\verson.1.2\\20260416\\.claude",

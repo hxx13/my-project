@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS `report_form_definition` (
   `version_snapshots_json` MEDIUMTEXT COMMENT '发布历史快照数组',
   `created_by` VARCHAR(64) DEFAULT NULL COMMENT '创建人',
   `updated_by` VARCHAR(64) DEFAULT NULL COMMENT '最后编辑人',
+  `pinned` TINYINT NOT NULL DEFAULT 0 COMMENT '是否置顶 0/1',
   `published_by` VARCHAR(64) DEFAULT NULL COMMENT '发布人',
   `published_at` DATETIME DEFAULT NULL COMMENT '发布时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -83,3 +84,4 @@ CREATE TABLE IF NOT EXISTS `report_form_option_set` (
   KEY `idx_opt_scope` (`scope`),
   KEY `idx_opt_form` (`form_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='选项集';
+ALTER TABLE report_form_definition ADD COLUMN source VARCHAR(16) DEFAULT 'blank' COMMENT '来源: blank|excel|word|template';

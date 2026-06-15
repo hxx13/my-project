@@ -13,7 +13,7 @@ import toast from 'react-hot-toast';
 export function useReportFill(formId: number) {
   const [values, setValues] = useState<Record<string, unknown>>({});
   const pendingRef = useRef<Record<string, unknown>>({});
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const submissionRef = useRef<ReportFormSubmission | null>(null);
 
   // Fetch form definition
@@ -34,10 +34,18 @@ export function useReportFill(formId: number) {
   useEffect(() => {
     if (submission) {
       submissionRef.current = submission;
+      // Parse fieldValuesJson — 后端返回的是 JSON 字符串，需解析
+      let parsed: Record<string, unknown> = {};
+      const raw = submission.fieldValuesJson;
+      if (typeof raw === 'string') {
+        try { parsed = JSON.parse(raw); } catch { parsed = {}; }
+      } else if (raw && typeof raw === 'object') {
+        parsed = raw as Record<string, unknown>;
+      }
       // Only set values if not currently editing (avoid overwriting local changes)
       const pendingKeys = Object.keys(pendingRef.current);
       if (pendingKeys.length === 0) {
-        setValues(submission.fieldValuesJson || {});
+        setValues(parsed);
       }
     }
   }, [submission]);

@@ -5,9 +5,11 @@ import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.modules.reportform.dto.ReportFormImportResult;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormOptionSet;
+import com.example.demo.modules.reportform.entity.ReportFormTemplate;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormOptionSetMapper;
 import com.example.demo.modules.reportform.mapper.ReportFormSubmissionMapper;
+import com.example.demo.modules.reportform.mapper.ReportFormTemplateMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -26,18 +28,22 @@ public class ReportFormService {
     private final ReportFormDefinitionMapper definitionMapper;
     private final ReportFormOptionSetMapper optionSetMapper;
     private final ReportFormSubmissionMapper submissionMapper;
+    private final ReportFormTemplateMapper templateMapper;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ReportFormService(ReportFormDefinitionMapper definitionMapper,
                              ReportFormOptionSetMapper optionSetMapper,
-                             ReportFormSubmissionMapper submissionMapper) {
+                             ReportFormSubmissionMapper submissionMapper,
+                             ReportFormTemplateMapper templateMapper) {
         this.definitionMapper = definitionMapper;
         this.optionSetMapper = optionSetMapper;
         this.submissionMapper = submissionMapper;
+        this.templateMapper = templateMapper;
     }
 
-    public List<ReportFormDefinition> page() {
-        return definitionMapper.selectPage();
+    /** 管理列表：每个人只看自己创建的 */
+    public List<ReportFormDefinition> page(String role, String username) {
+        return definitionMapper.selectPageByUser(username);
     }
 
     public ReportFormDefinition getById(Long id) {
@@ -71,6 +77,7 @@ public class ReportFormService {
         if (body.containsKey("fillPolicyJson")) def.setFillPolicyJson((String) body.get("fillPolicyJson"));
         if (body.containsKey("permissionJson")) def.setPermissionJson((String) body.get("permissionJson"));
         if (body.containsKey("scheduleJson")) def.setScheduleJson((String) body.get("scheduleJson"));
+        if (body.containsKey("pinned")) def.setPinned((Boolean) body.get("pinned"));
         def.setUpdatedBy(username);
         int rows = definitionMapper.update(def);
         log.info("[report-form] 保存完成: id={} rows={} layoutLen={}",
@@ -83,6 +90,7 @@ public class ReportFormService {
     public ReportFormDefinition createBlank(String username) {
         ReportFormDefinition def = new ReportFormDefinition();
         def.setName("空白报表 " + java.time.LocalDate.now().toString());
+        def.setSource("blank");
         def.setStatus("draft");
         def.setLayoutJson(generateDefaultLayout(5, 5));
         def.setThemeJson(getDefaultTheme());
@@ -98,9 +106,11 @@ public class ReportFormService {
     public ReportFormDefinition createFromImport(ReportFormImportResult result, String username) {
         ReportFormDefinition def = new ReportFormDefinition();
         def.setName(result.getName());
+        def.setSource(result.getSource() != null ? result.getSource() : "excel");
         def.setStatus("draft");
         def.setLayoutJson(result.getLayoutJson());
-        def.setThemeJson(getDefaultTheme());
+        def.setThemeJson(result.getThemeJson() != null && !result.getThemeJson().isBlank()
+                ? result.getThemeJson() : getDefaultTheme());
         def.setFillPolicyJson("{\"mode\":\"shared\",\"submitLabel\":\"提交\",\"allowEditAfterSubmit\":true}");
         def.setPermissionJson("{\"visibleRoles\":[],\"visibleUserIds\":[],\"fieldRoleBindings\":{},\"allowUnboundView\":true}");
         def.setScheduleJson("{\"period\":\"manual\"}");
@@ -115,8 +125,9 @@ public class ReportFormService {
         if (def == null) {
             throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
+        // 允许重新发布（已发布 → 更新版本快照）
         if ("published".equals(def.getStatus())) {
-            throw TwinBusinessException.of(ErrorCodeConstants.BAD_REQUEST, "报表已发布，无需重复操作");
+            log.info("[report-form] 重新发布报表 {} — 增量版本快照", id);
         }
 
         // Build version snapshot
@@ -150,6 +161,26 @@ public class ReportFormService {
         def.setVersionSnapshotsJson(snapshotArray.toString());
         def.setUpdatedBy(username);
         definitionMapper.updateStatus(def);
+
+        // 发布保险：自动备份到模板库，源文件删除后模板仍存活
+        try {
+            ReportFormTemplate t = new ReportFormTemplate();
+            t.setName(def.getName());
+            t.setDescription(def.getDescription());
+            t.setLayoutJson(def.getLayoutJson());
+            t.setThemeJson(def.getThemeJson());
+            t.setFillPolicyJson(def.getFillPolicyJson());
+            t.setPermissionJson(def.getPermissionJson());
+            t.setScheduleJson(def.getScheduleJson());
+            t.setWordTemplateIdsJson(def.getWordTemplateIdsJson());
+            t.setVersionSnapshotsJson(snapshotArray.toString());
+            t.setCreatedBy(username);
+            templateMapper.insert(t);
+            log.info("[report-form] 发布模板备份完成: templateId={} name={}", t.getId(), def.getName());
+        } catch (Exception e) {
+            log.warn("[report-form] 模板备份失败（不影响发布）: {}", e.getMessage());
+        }
+
         return def;
     }
 
@@ -247,6 +278,7 @@ public class ReportFormService {
         ReportFormDefinition template = new ReportFormDefinition();
         template.setName(src.getName() + " (模板)");
         template.setDescription(src.getDescription());
+        template.setSource("template");
         template.setStatus("draft");
         template.setLayoutJson(src.getLayoutJson());
         template.setThemeJson(src.getThemeJson());
@@ -263,6 +295,16 @@ public class ReportFormService {
         return definitionMapper.selectPage().stream()
             .filter(f -> "draft".equals(f.getStatus()))
             .collect(java.util.stream.Collectors.toList());
+    }
+
+    public void togglePin(Long id) {
+        ReportFormDefinition def = definitionMapper.selectById(id);
+        if (def == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
+        }
+        boolean newPinned = def.getPinned() == null || !def.getPinned();
+        definitionMapper.updatePinned(id, newPinned);
+        log.info("[report-form] 置顶切换: id={} pinned={}", id, newPinned);
     }
 
     // ──────────────── Delete / Rename / Duplicate ────────────────
@@ -292,6 +334,7 @@ public class ReportFormService {
         ReportFormDefinition dup = new ReportFormDefinition();
         dup.setName(src.getName() + " (副本)");
         dup.setDescription(src.getDescription());
+        dup.setSource(src.getSource() != null ? src.getSource() : "blank");
         dup.setStatus("draft");
         dup.setLayoutJson(src.getLayoutJson());
         dup.setThemeJson(src.getThemeJson());
@@ -308,6 +351,14 @@ public class ReportFormService {
 
     public List<ReportFormOptionSet> listOptionSets() {
         return optionSetMapper.selectByScope(null);
+    }
+
+    public ReportFormOptionSet getOptionSet(Long id) {
+        ReportFormOptionSet os = optionSetMapper.selectById(id);
+        if (os == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "选项集不存在");
+        }
+        return os;
     }
 
     public ReportFormOptionSet createOptionSet(String name, String scope, Long formId, String itemsJson) {

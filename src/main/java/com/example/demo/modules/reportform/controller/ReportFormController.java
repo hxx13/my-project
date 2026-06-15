@@ -50,7 +50,9 @@ public class ReportFormController {
     public Result<List<ReportFormDefinition>> page(HttpServletRequest request) {
         Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
         if (denied != null) return Result.error(denied.getMessage());
-        return Result.success(reportFormService.page());
+        String username = getCurrentUsername(request);
+        String role = getCurrentUserRole(request);
+        return Result.success(reportFormService.page(role, username));
     }
 
     @GetMapping("/forms/{id}")
@@ -225,6 +227,19 @@ public class ReportFormController {
         }
     }
 
+    @PostMapping("/forms/{id}/pin")
+    @Operation(summary = "置顶/取消置顶报表")
+    public Result<?> togglePin(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return denied;
+        try {
+            reportFormService.togglePin(id);
+            return Result.success(null);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     @PostMapping("/forms/{id}/duplicate")
     @Operation(summary = "复制报表表单")
     public Result<?> duplicateForm(@PathVariable Long id, HttpServletRequest request) {
@@ -278,6 +293,26 @@ public class ReportFormController {
     @Operation(summary = "查询共享模板列表")
     public Result<?> listTemplates() {
         return Result.success(reportFormService.listTemplates());
+    }
+
+    @PostMapping("/forms/from-word")
+    @Operation(summary = "从 Word 文档导入创建报表")
+    public Result<?> createFromWord(@RequestParam("file") MultipartFile file,
+                                    HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            String name = Objects.requireNonNullElse(file.getOriginalFilename(), "未命名报表")
+                    .replaceAll("\\.(docx|doc)$", "");
+            var result = importService.importFromWord(file, name);
+            String username = getCurrentUsername(request);
+            var form = reportFormService.createFromImport(result, username);
+            log.info("[report-form] Word 导入创建: id={} name={}", form.getId(), form.getName());
+            return Result.success(form);
+        } catch (Exception e) {
+            log.error("Word 导入失败", e);
+            return Result.error("Word 导入失败: " + e.getMessage());
+        }
     }
 
     @PostMapping("/forms/from-template/{templateId}")
@@ -396,6 +431,14 @@ public class ReportFormController {
         return Result.success(reportFormService.listOptionSets());
     }
 
+    @GetMapping("/option-sets/{id}")
+    @Operation(summary = "查询单个选项集")
+    public Result<?> getOptionSet(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        if (denied != null) return Result.error(denied.getMessage());
+        return Result.success(reportFormService.getOptionSet(id));
+    }
+
     @PostMapping("/option-sets")
     @Operation(summary = "创建选项集")
     public Result<?> createOptionSet(@RequestBody Map<String, Object> body,
@@ -463,5 +506,13 @@ public class ReportFormController {
             return user.getUsername();
         }
         return "unknown";
+    }
+
+    private String getCurrentUserRole(HttpServletRequest request) {
+        Object attr = request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
+        if (attr instanceof User user && user.getRole() != null) {
+            return user.getRole().name();
+        }
+        return "STUDENT";
     }
 }

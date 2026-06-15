@@ -4,10 +4,12 @@ import { useQuery } from '@tanstack/react-query';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import { fetchFormById } from '../api/reportForm.api';
 import { fetchFormSubmissions } from '../api/reportFill.api';
-import FormGridRenderer from '../components/FormGridRenderer';
+import FormGridRenderer, { parseLayoutJson } from '../components/FormGridRenderer';
 import type { ReportFormSubmission } from '../types';
-import { exportExcel, exportPdf } from '../api/reportFill.api';
+import { exportExcel, exportPdf, exportWord } from '../api/reportFill.api';
+import { fetchWordTemplates } from '../api/reportForm.api';
 import { Table2, Eye, User, Clock, CheckCircle, FileText, Download, FileSpreadsheet } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 type ViewMode = 'table' | 'detail';
 
@@ -37,8 +39,9 @@ export default function SubmissionManagePage() {
     );
   }
 
-  const fieldCells = form.layoutJson.cells.filter(c => c.kind === 'field' && c.fieldKey);
-  const fields = form.layoutJson.fields;
+  const layout = parseLayoutJson(form.layoutJson);
+  const fieldCells = layout.cells.filter(c => c.kind === 'field' && c.fieldKey);
+  const fields = layout.fields;
 
   const statusBadge = (status: string) => (
     <span className={`px-1.5 py-0 rounded text-[10px] font-medium ${
@@ -76,6 +79,18 @@ export default function SubmissionManagePage() {
           disabled={submissions.length === 0}
           className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 flex items-center gap-1">
           <Download className="w-3.5 h-3.5" /> 批量 PDF
+        </button>
+        <button onClick={async () => {
+          try {
+            const wtList = await fetchWordTemplates(formId);
+            if (wtList.length === 0) { toast.error('未绑定 Word 模板，请先在设计器中上传'); return; }
+            // 使用第一个模板导出
+            await exportWord(formId, wtList[0].id, submissions[0]?.id);
+          } catch (e) { toast.error('Word 导出失败: ' + (e as Error).message); }
+        }}
+          disabled={submissions.length === 0}
+          className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 flex items-center gap-1">
+          <FileText className="w-3.5 h-3.5" /> Word
         </button>
       </div>
 
@@ -170,7 +185,7 @@ export default function SubmissionManagePage() {
                   </span>
                 </div>
                 <FormGridRenderer
-                  layout={form.layoutJson}
+                  layout={layout}
                   values={selectedSub.fieldValuesJson || {}}
                   editable={false}
                 />

@@ -54,6 +54,7 @@ public final class FieldValidator {
                 case "IMAGE" -> validateImage(fieldKey, value);
                 case "FILE" -> validateFile(fieldKey, fieldDef, value);
                 case "USER" -> { /* any string OK */ }
+                case "AUTO_USER" -> { /* auto-injected by service, skip */ }
                 default -> { /* unknown type, skip */ }
             }
         } catch (TwinBusinessException e) {

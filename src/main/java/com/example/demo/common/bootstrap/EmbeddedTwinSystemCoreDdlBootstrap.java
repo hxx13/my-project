@@ -65,6 +65,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
         runScript("db/bootstrap-fix-relative-urls.sql", "修复历史相对路径为完整公网URL（幂等）");
         runScript("db/bootstrap-twin-exp-record.sql", "twin_exp_record（经验值流水记录）");
         runScript("db/bootstrap-report-form.sql", "report_form_definition/submission/submission_log/option_set（填报报表4表）");
+        runScript("db/bootstrap-report-form-source.sql", "report_form_definition source列（如已存在则跳过）");
     }
 
     /** @return 是否执行成功 */

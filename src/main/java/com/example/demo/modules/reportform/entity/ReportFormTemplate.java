@@ -1,16 +1,16 @@
 package com.example.demo.modules.reportform.entity;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import java.time.LocalDateTime;
 
+/** 发布模板缓存 — 源文件删除后模板仍然存活 */
 @Data
-public class ReportFormDefinition {
+public class ReportFormTemplate {
     private Long id;
     private String name;
     private String description;
-    private String source; // blank | excel | word | template
-    private String status;
+    private Boolean isTemplate = true;
+    private Boolean shared = false;
     private String layoutJson;
     private String themeJson;
     private String fillPolicyJson;
@@ -19,13 +19,6 @@ public class ReportFormDefinition {
     private String wordTemplateIdsJson;
     private String versionSnapshotsJson;
     private String createdBy;
-    private String updatedBy;
-    private Boolean pinned = false;
-    private String publishedBy;
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss+08:00")
-    private LocalDateTime publishedAt;
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss+08:00")
     private LocalDateTime createdAt;
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss+08:00")
     private LocalDateTime updatedAt;
 }

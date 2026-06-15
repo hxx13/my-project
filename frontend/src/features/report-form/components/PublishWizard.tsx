@@ -16,7 +16,14 @@ interface Props {
   layout: LayoutJson;
 }
 
-const ALL_ROLES = ['ADMIN', 'SUPER_ADMIN', 'STAFF', 'STUDENT', 'INSPECTOR'];
+const ROLE_LABELS: Record<string, string> = {
+  STUDENT: '学生',
+  STAFF: '普通员工',
+  SENIOR: '高级员工',
+  ADMIN: '管理员',
+  SUPER_ADMIN: '超级管理员',
+  PLATFORM_OWNER: '平台所有者',
+};
 const inputClass = "w-full rounded-[6px] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-2 py-1 text-xs text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)]";
 const labelClass = "text-[11px] font-medium text-[var(--app-color-text-secondary)] mb-0.5 block";
 
@@ -24,7 +31,6 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
   const [mode, setMode] = useState<'quick' | 'wizard' | null>(null);
   const [step, setStep] = useState(0);
   const [fillMode, setFillMode] = useState<FillMode>('shared');
-  const [visibleRoles, setVisibleRoles] = useState<string[]>(['STAFF']);
   const [permission, setPermission] = useState<PermissionJson>({
     visibleRoles: ['STAFF'],
     visibleUserIds: [],
@@ -35,41 +41,25 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
     period: 'manual',
   });
 
+  const minEditRole = permission.visibleRoles?.[0] || '';
+
   const publishMut = useMutation({
     mutationFn: () => adminHttp.post(`/report-form/forms/${formId}/publish`),
     onSuccess: () => { toast.success('发布成功'); onClose(); },
     onError: (e: Error) => toast.error('发布失败: ' + e.message),
   });
 
-  const handleQuickPublish = () => {
-    // First save permission, then publish
-    const body = {
-      fillPolicyJson: JSON.stringify({ mode: fillMode, submitLabel: '提交', allowEditAfterSubmit: true }),
-      permissionJson: JSON.stringify({ ...permission, visibleRoles }),
-      scheduleJson: JSON.stringify(schedule),
-    };
-    // Quick: save then publish
-    adminHttp.put(`/report-form/forms/${formId}`, body).then(() => {
-      publishMut.mutate();
-    }).catch((e: Error) => toast.error('保存失败: ' + e.message));
-  };
-
   if (!open) return null;
 
-  // Sync visibleRoles from quick mode to permission object before publishing
   const handleWizardPublish = () => {
     const body = {
       fillPolicyJson: JSON.stringify({ mode: fillMode, submitLabel: '提交', allowEditAfterSubmit: true }),
-      permissionJson: JSON.stringify({ ...permission, visibleRoles }),
+      permissionJson: JSON.stringify(permission),
       scheduleJson: JSON.stringify(schedule),
     };
     adminHttp.put(`/report-form/forms/${formId}`, body).then(() => {
       publishMut.mutate();
     }).catch((e: Error) => toast.error('保存失败: ' + e.message));
-  };
-
-  const toggleRole = (role: string) => {
-    setVisibleRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]);
   };
 
   return createPortal(
@@ -102,39 +92,33 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
             </button>
           </div>
         ) : mode === 'quick' ? (
-          /* Quick publish */
+          /* Quick publish — 一键发布，默认：协同模式 + 全员可见 + 不限时间 */
           <div className="space-y-3">
-            <div>
-              <label className={labelClass}>填报模式</label>
-              <div className="flex gap-2">
-                <button onClick={() => setFillMode('shared')}
-                  className={`flex-1 px-3 py-2 rounded-[6px] text-[12px] font-medium transition-colors ${
-                    fillMode === 'shared' ? 'bg-[var(--app-color-accent)] text-white' : 'border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]'
-                  }`}>协同表（多人同表）</button>
-                <button onClick={() => setFillMode('individual')}
-                  className={`flex-1 px-3 py-2 rounded-[6px] text-[12px] font-medium transition-colors ${
-                    fillMode === 'individual' ? 'bg-[var(--app-color-accent)] text-white' : 'border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]'
-                  }`}>个人表（每人一份）</button>
-              </div>
-            </div>
-            <div>
-              <label className={labelClass}>可见角色</label>
-              <div className="flex flex-wrap gap-2">
-                {ALL_ROLES.map(role => (
-                  <label key={role} className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={visibleRoles.includes(role)} onChange={() => toggleRole(role)}
-                      className="w-3.5 h-3.5 accent-[var(--app-color-accent)]" />
-                    <span className="text-[11px] text-[var(--app-color-text-secondary)]">{role}</span>
-                  </label>
-                ))}
-              </div>
+            <div className="p-3 rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-container)]">
+              <p className="text-[11px] text-[var(--app-color-text-secondary)]">一键发布，使用默认设置：</p>
+              <ul className="text-[10px] text-[var(--app-color-text-tertiary)] mt-1.5 space-y-0.5 list-disc list-inside">
+                <li>协作模式：多人同表</li>
+                <li>可见范围：所有角色可见</li>
+                <li>时间限制：无（随时可填）</li>
+              </ul>
             </div>
             <div className="flex justify-end gap-2 pt-3 border-t border-[var(--app-color-border-default)]">
               <button onClick={() => setMode(null)}
                 className="px-4 py-1.5 rounded-[6px] text-[12px] border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">返回</button>
-              <button onClick={handleQuickPublish} disabled={publishMut.isPending}
+              <button onClick={async () => {
+                // 一键发布：设置默认值后直接发布
+                const body = {
+                  fillPolicyJson: JSON.stringify({ mode: 'shared', submitLabel: '提交', allowEditAfterSubmit: true }),
+                  permissionJson: JSON.stringify({ visibleRoles: ['STAFF'], visibleUserIds: [], fieldRoleBindings: {}, allowUnboundView: true }),
+                  scheduleJson: JSON.stringify({ period: 'manual' }),
+                };
+                try {
+                  await adminHttp.put(`/report-form/forms/${formId}`, body);
+                  publishMut.mutate();
+                } catch (e) { toast.error('保存失败: ' + (e as Error).message); }
+              }} disabled={publishMut.isPending}
                 className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-1">
-                <Send className="w-3.5 h-3.5" /> {publishMut.isPending ? '发布中...' : '发布'}
+                <Send className="w-3.5 h-3.5" /> {publishMut.isPending ? '发布中...' : '一键发布'}
               </button>
             </div>
           </div>
@@ -198,7 +182,9 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
               <div className="space-y-2">
                 <div className="p-3 rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-container)]">
                   <div className="text-[11px] text-[var(--app-color-text-secondary)]">模式：{fillMode === 'shared' ? '协同表（多人同表）' : '个人表（每人一份）'}</div>
-                  <div className="text-[11px] text-[var(--app-color-text-secondary)] mt-1">可见角色：{visibleRoles.join(', ') || '未选择'}</div>
+                  <div className="text-[11px] text-[var(--app-color-text-secondary)] mt-1">
+                    最低可编辑角色：{ROLE_LABELS[minEditRole] || minEditRole || '所有人'} 及以上
+                  </div>
                   <div className="text-[11px] text-[var(--app-color-text-secondary)] mt-1">周期：{schedule.period === 'manual' ? '手动' : schedule.period}</div>
                   <div className="text-[11px] text-[var(--app-color-text-secondary)] mt-1">字段绑定：{Object.keys(permission.fieldRoleBindings).length} 个字段有角色限制</div>
                 </div>

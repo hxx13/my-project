@@ -4,6 +4,7 @@ import com.example.demo.common.config.AdminAuthInterceptor;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.reportform.dto.SubmissionRequest;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormSubmission;
@@ -36,8 +37,10 @@ public class ReportFillController {
     private final ReportFormExportService exportService;
     private final ReportFormDefinitionMapper definitionMapper;
     private final ReportFormWordService wordService;
+    private final UserMapper userMapper;
 
     public ReportFillController(ReportFillService reportFillService,
+                                UserMapper userMapper,
                                 ReportFormSubmissionMapper submissionMapper,
                                 ReportFormExportService exportService,
                                 ReportFormDefinitionMapper definitionMapper,
@@ -47,6 +50,36 @@ public class ReportFillController {
         this.exportService = exportService;
         this.definitionMapper = definitionMapper;
         this.wordService = wordService;
+        this.userMapper = userMapper;
+    }
+
+    @GetMapping("/users/search")
+    @Operation(summary = "搜索用户（昵称/用户名）")
+    public Result<?> searchUsers(@RequestParam String keyword) {
+        List<User> users = userMapper.searchByKeyword(keyword);
+        var list = users.stream().map(u -> {
+            var m = new java.util.HashMap<String, Object>();
+            m.put("id", u.getId());
+            m.put("username", u.getUsername());
+            m.put("displayNickname", u.getDisplayNickname() != null ? u.getDisplayNickname() : "");
+            return m;
+        }).toList();
+        return Result.success(list);
+    }
+
+    @GetMapping("/forms/{id}/can-edit")
+    @Operation(summary = "检查当前用户是否有该表单的编辑权限")
+    public Result<?> canEdit(@PathVariable Long id, HttpServletRequest request) {
+        User currentUser = getCurrentUser(request);
+        String role = currentUser.getRole() != null ? currentUser.getRole().name() : "STUDENT";
+        Long userId = parseUserId(currentUser.getId());
+        ReportFormDefinition form = definitionMapper.selectById(id);
+        if (form == null) return Result.error("表单不存在");
+        boolean canEdit = reportFillService.canEdit(form, role, userId);
+        var result = new java.util.HashMap<String, Object>();
+        result.put("canEdit", canEdit);
+        result.put("role", role);
+        return Result.success(result);
     }
 
     @GetMapping("/available")
@@ -67,11 +100,26 @@ public class ReportFillController {
         if (denied != null) return denied;
         try {
             Long userId = parseUserId(getCurrentUser(request).getId());
-            var sub = reportFillService.getOrCreateSubmission(id, userId);
+            ReportFormDefinition form = definitionMapper.selectById(id);
+            if (form == null) return Result.error("表单不存在");
+            // 协同模式：所有人共享一条记录（userId=0）；个人模式：每人独立
+            String mode = getFillMode(form);
+            Long effectiveUserId = "individual".equals(mode) ? userId : 0L;
+            var sub = reportFillService.getOrCreateSubmission(id, effectiveUserId);
             return Result.success(sub);
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    private String getFillMode(ReportFormDefinition form) {
+        try {
+            if (form.getFillPolicyJson() != null) {
+                var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(form.getFillPolicyJson());
+                if (node.has("mode")) return node.get("mode").asText();
+            }
+        } catch (Exception ignored) {}
+        return "shared";
     }
 
     @PutMapping("/forms/{id}/my-submission")
@@ -81,8 +129,13 @@ public class ReportFillController {
         Result<?> denied = requireMinRole(request, RoleEnum.STUDENT);
         if (denied != null) return denied;
         try {
-            Long userId = parseUserId(getCurrentUser(request).getId());
-            var sub = reportFillService.saveSubmission(id, userId, req.getFieldValuesJson(), req.getExpectedVersion());
+            User cu = getCurrentUser(request);
+            Long userId = parseUserId(cu.getId());
+            String nick = cu.getDisplayNickname();
+            ReportFormDefinition form = definitionMapper.selectById(id);
+            String mode = getFillMode(form);
+            Long effectiveUserId = "individual".equals(mode) ? userId : 0L;
+            var sub = reportFillService.saveSubmission(id, effectiveUserId, req.getFieldValuesJson(), req.getExpectedVersion(), nick);
             return Result.success(sub);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -96,7 +149,10 @@ public class ReportFillController {
         if (denied != null) return denied;
         try {
             Long userId = parseUserId(getCurrentUser(request).getId());
-            var sub = reportFillService.submitSubmission(id, userId);
+            ReportFormDefinition form = definitionMapper.selectById(id);
+            String mode = getFillMode(form);
+            Long effectiveUserId = "individual".equals(mode) ? userId : 0L;
+            var sub = reportFillService.submitSubmission(id, effectiveUserId);
             return Result.success(sub);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -129,7 +185,8 @@ public class ReportFillController {
                 .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
                 .body(data);
         } catch (Exception e) {
-            throw new RuntimeException("导出失败: " + e.getMessage());
+            log.error("[report-form] Excel 导出失败: form={} submission={}", id, submissionId, e);
+            throw new IllegalArgumentException("Excel 导出失败: " + e.getMessage());
         }
     }
 
@@ -137,19 +194,24 @@ public class ReportFillController {
     @Operation(summary = "导出报表为 PDF")
     public ResponseEntity<byte[]> exportPdf(@PathVariable Long id,
                                             @RequestParam(required = false) Long submissionId) throws Exception {
-        byte[] data;
-        String filename;
-        if (submissionId != null) {
-            data = exportService.exportSinglePdf(id, submissionId);
-            filename = "report-form-" + id + "-submission-" + submissionId + ".pdf";
-        } else {
-            data = exportService.exportBatchPdf(id);
-            filename = "report-form-" + id + "-batch.pdf";
+        try {
+            byte[] data;
+            String filename;
+            if (submissionId != null) {
+                data = exportService.exportSinglePdf(id, submissionId);
+                filename = "report-form-" + id + "-submission-" + submissionId + ".pdf";
+            } else {
+                data = exportService.exportBatchPdf(id);
+                filename = "report-form-" + id + "-batch.pdf";
+            }
+            return ResponseEntity.ok()
+                .header("Content-Type", "application/pdf")
+                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                .body(data);
+        } catch (Exception e) {
+            log.error("[report-form] PDF 导出失败: form={} submission={}", id, submissionId, e);
+            throw new IllegalArgumentException("PDF 导出失败: " + e.getMessage());
         }
-        return ResponseEntity.ok()
-            .header("Content-Type", "application/pdf")
-            .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
-            .body(data);
     }
 
     @GetMapping("/forms/{id}/export-word/{wtId}")
@@ -185,19 +247,22 @@ public class ReportFillController {
             .body(data);
     }
 
-    @PostMapping("/forms/{id}/print")
-    @Operation(summary = "打印报表（生成 PDF 返回）")
+    @RequestMapping(value = "/forms/{id}/print", method = { RequestMethod.GET, RequestMethod.POST })
+    @Operation(summary = "打印报表（生成 PDF 返回，GET/POST 均可）")
     public ResponseEntity<byte[]> printForm(@PathVariable Long id,
-                                            @RequestBody Map<String, Object> body) throws Exception {
-        Long submissionId = body.containsKey("submissionId")
-            ? ((Number) body.get("submissionId")).longValue() : null;
+                                            @RequestParam(required = false) Long submissionId,
+                                            @RequestBody(required = false) Map<String, Object> body) throws Exception {
+        Long sid = submissionId;
+        if (sid == null && body != null && body.get("submissionId") != null) {
+            sid = ((Number) body.get("submissionId")).longValue();
+        }
         byte[] data;
-        if (submissionId != null) {
-            data = exportService.exportSinglePdf(id, submissionId);
+        if (sid != null) {
+            data = exportService.exportSinglePdf(id, sid);
         } else {
             data = exportService.exportBatchPdf(id);
         }
-        log.info("[report-form] 打印: form={} submission={} size={}", id, submissionId, data.length);
+        log.info("[report-form] 打印: form={} submission={} size={}", id, sid, data.length);
         return ResponseEntity.ok()
             .header("Content-Type", "application/pdf")
             .header("Content-Disposition", "inline; filename=\"report-form-" + id + ".pdf\"")
@@ -209,11 +274,12 @@ public class ReportFillController {
     }
 
     private Long parseUserId(String id) {
-        if (id == null) return null;
+        if (id == null) return 0L;
         try {
             return Long.parseLong(id);
         } catch (NumberFormatException e) {
-            return null;
+            // 非数字 ID（如 admin 等），用 hashCode 映射到 Long 范围
+            return (long) Math.abs(id.hashCode() % 1_000_000);
         }
     }
 

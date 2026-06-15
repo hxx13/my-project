@@ -7,6 +7,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: SuperAdmin@2026
       MYSQL_DATABASE: twin_system
+      TZ: Asia/Shanghai
+    command: --default-time-zone='+08:00'
     ports:
       - "3306:3306"
     volumes:

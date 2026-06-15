@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminHttp } from '@/api/core/adminHttp';
+import { fetchWordTemplates, uploadWordTemplate, unbindWordTemplate, updateForm } from '../api/reportForm.api';
 import { Upload, Trash2, X, FileText, Link } from 'lucide-react';
 import type { WordTemplateBinding } from '../types';
 import toast from 'react-hot-toast';
@@ -21,26 +21,12 @@ export default function WordTemplateManager({ open, onClose, formId, fieldKeys }
 
   const { data: templates = [], isLoading } = useQuery<WordTemplateBinding[]>({
     queryKey: ['report-form-word-templates', formId],
-    queryFn: () => adminHttp.get(`/report-form/forms/${formId}/word-templates`)
-      .then(({ data }) => {
-        const raw = data.data;
-        if (typeof raw === 'string') {
-          try { return JSON.parse(raw) as WordTemplateBinding[]; } catch { return []; }
-        }
-        if (Array.isArray(raw)) return raw as WordTemplateBinding[];
-        return [];
-      }),
+    queryFn: () => fetchWordTemplates(formId),
     enabled: open,
   });
 
   const uploadMut = useMutation({
-    mutationFn: (file: File) => {
-      const fd = new FormData();
-      fd.append('file', file);
-      return adminHttp.post(`/report-form/forms/${formId}/word-templates`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-    },
+    mutationFn: (file: File) => uploadWordTemplate(formId, file),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['report-form-word-templates', formId] });
       toast.success('模板上传成功');
@@ -49,8 +35,7 @@ export default function WordTemplateManager({ open, onClose, formId, fieldKeys }
   });
 
   const deleteMut = useMutation({
-    mutationFn: (wtId: string) =>
-      adminHttp.delete(`/report-form/forms/${formId}/word-templates/${wtId}`),
+    mutationFn: (wtId: string) => unbindWordTemplate(formId, wtId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['report-form-word-templates', formId] });
       toast.success('已解绑');
@@ -105,14 +90,14 @@ export default function WordTemplateManager({ open, onClose, formId, fieldKeys }
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
-                {(tmpl as Record<string, unknown>).bookmarks && (
+                {tmpl.bookmarks && (
                   <div className="mt-2">
                     <div className="text-[10px] text-[var(--app-color-text-tertiary)] mb-1">
-                      书签 ({((tmpl as Record<string, unknown>).bookmarks as string[]).length})
+                      书签 ({tmpl.bookmarks.length})
                     </div>
                     {mappingTemplate === tmpl.id ? (
                       <div className="space-y-1.5">
-                        {((tmpl as Record<string, unknown>).bookmarks as string[]).map(bm => (
+                        {tmpl.bookmarks.map(bm => (
                           <div key={bm} className="flex items-center gap-2">
                             <Link className="w-3 h-3 text-[var(--app-color-text-tertiary)] shrink-0" />
                             <span className="text-[10px] text-[var(--app-color-text-secondary)] w-[100px] truncate">{bm}</span>
@@ -137,21 +122,16 @@ export default function WordTemplateManager({ open, onClose, formId, fieldKeys }
                             取消
                           </button>
                           <button
-                            onClick={() => {
-                              // 保存映射到后端
-                              adminHttp.put(`/report-form/forms/${formId}`, {
-                                wordTemplateIdsJson: JSON.stringify(
-                                  templates.map(t =>
-                                    t.id === tmpl.id
-                                      ? { ...t, bookmarkMapping: mappings }
-                                      : t
-                                  )
-                                ),
-                              }).then(() => {
+                            onClick={async () => {
+                              try {
+                                const updated = templates.map(t =>
+                                  t.id === tmpl.id ? { ...t, bookmarkMapping: mappings } : t
+                                );
+                                await updateForm(formId, { wordTemplateIdsJson: JSON.stringify(updated) });
                                 toast.success('映射已保存');
                                 setMappingTemplate(null);
                                 qc.invalidateQueries({ queryKey: ['report-form-word-templates', formId] });
-                              }).catch((e: Error) => toast.error('保存失败: ' + e.message));
+                              } catch (e) { toast.error('保存失败: ' + (e as Error).message); }
                             }}
                             className="px-3 py-1 rounded-[4px] text-[11px] font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90"
                           >
@@ -163,7 +143,7 @@ export default function WordTemplateManager({ open, onClose, formId, fieldKeys }
                       <button
                         onClick={() => {
                           setMappingTemplate(tmpl.id);
-                          setMappings((tmpl as Record<string, unknown>).bookmarkMapping as Record<string, string> || {});
+                          setMappings(tmpl.bookmarkMapping || {});
                         }}
                         className="text-[10px] text-[var(--app-color-accent)] hover:underline mt-1"
                       >

@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import { fetchAvailableForms, fetchFormSubmissions } from '../api/reportFill.api';
 import type { ReportFormDefinition, ReportFormSubmission } from '../types';
 import { ClipboardCheck, ChevronDown, ChevronRight, User, Clock } from 'lucide-react';
+
+function fmtTime(raw: string | undefined | null): string {
+  if (!raw) return '-';
+  return new Date(raw).toLocaleString('zh-CN');
+}
 
 export default function ReportFillHubPage() {
   const navigate = useNavigate();
@@ -13,6 +18,8 @@ export default function ReportFillHubPage() {
   const { data: forms = [], isLoading } = useQuery({
     queryKey: ['report-fill-available'],
     queryFn: fetchAvailableForms,
+    staleTime: 0,            // 每次进入填报中心都刷新，确保发布后立即可见
+    refetchOnMount: true,
   });
 
   const toggleExpand = (formId: number) => {
@@ -62,14 +69,26 @@ function FormCard({ form, expanded, onToggle, onOpen }: {
   onToggle: () => void;
   onOpen: () => void;
 }) {
-  const mode = form.fillPolicyJson?.mode || 'shared';
-  const fillPolicy = form.fillPolicyJson;
+  const fillPolicy = typeof form.fillPolicyJson === 'string'
+    ? JSON.parse(form.fillPolicyJson as string)
+    : (form.fillPolicyJson || {});
+  const mode = fillPolicy.mode || 'shared';
 
   const { data: submissions = [] } = useQuery({
     queryKey: ['report-fill-submissions', form.id],
     queryFn: () => fetchFormSubmissions(form.id),
     enabled: expanded,
   });
+
+  // 协同模式下取最新一条提交的更新时间
+  const latestSubTime = useMemo(() => {
+    if (submissions.length === 0) return null;
+    const times = submissions
+      .map(s => s.updatedAt)
+      .filter(Boolean)
+      .sort((a, b) => b!.localeCompare(a!));
+    return times[0] || null;
+  }, [submissions]);
 
   return (
     <div className="rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] overflow-hidden">
@@ -83,9 +102,20 @@ function FormCard({ form, expanded, onToggle, onOpen }: {
         </button>
         <div className="flex-1 min-w-0 cursor-pointer" onClick={onOpen}>
           <div className="text-[13px] font-semibold text-[var(--app-color-text-primary)]">{form.name}</div>
-          <div className="text-[11px] text-[var(--app-color-text-tertiary)] mt-0.5">
-            {mode === 'shared' ? '协同表' : '个人表'}
-            {form.description && ` · ${form.description}`}
+          <div className="text-[11px] text-[var(--app-color-text-tertiary)] mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+            <span>{mode === 'shared' ? '协同表' : '个人表'}</span>
+            {form.source && (
+              <span className="text-[10px] px-1 rounded bg-[var(--app-color-surface-container)]">{form.source === 'excel' ? '📊Excel' : form.source === 'word' ? '📝Word' : form.source === 'template' ? '📋模板' : '📄空白'}</span>
+            )}
+            {form.description && <span>{form.description}</span>}
+            {form.publishedAt && (
+              <span className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />发布 {fmtTime(form.publishedAt)}
+              </span>
+            )}
+            {form.updatedAt && form.updatedAt !== form.publishedAt && (
+              <span>模板更新 {fmtTime(form.updatedAt)}</span>
+            )}
           </div>
         </div>
         <button
@@ -101,8 +131,13 @@ function FormCard({ form, expanded, onToggle, onOpen }: {
       {expanded && (
         <div className="border-t border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)]">
           {mode === 'shared' ? (
-            <div className="px-4 py-3 text-xs text-[var(--app-color-text-secondary)]">
-              协同编辑模式 — 所有人共同填写同一份数据
+            <div className="px-4 py-3 text-xs text-[var(--app-color-text-secondary)] space-y-1">
+              <div>协同编辑模式 — 所有人共同填写同一份数据</div>
+              {latestSubTime && (
+                <div className="flex items-center gap-1 text-[var(--app-color-text-tertiary)]">
+                  <Clock className="w-3 h-3" />最新填报 {fmtTime(latestSubTime)}
+                </div>
+              )}
             </div>
           ) : submissions.length === 0 ? (
             <div className="px-4 py-3 text-xs text-[var(--app-color-text-tertiary)]">
@@ -123,7 +158,7 @@ function FormCard({ form, expanded, onToggle, onOpen }: {
                   </span>
                   <Clock className="w-3 h-3 text-[var(--app-color-text-tertiary)] ml-auto" />
                   <span className="text-[var(--app-color-text-tertiary)]">
-                    {sub.updatedAt ? new Date(sub.updatedAt).toLocaleDateString() : '-'}
+                    {fmtTime(sub.updatedAt)}
                   </span>
                 </div>
               ))}

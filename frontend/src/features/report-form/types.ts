@@ -3,7 +3,7 @@
 export type FormStatus = 'draft' | 'published' | 'archived';
 export type FillMode = 'shared' | 'individual';
 export type FieldType = 'TEXT' | 'NUMBER' | 'BOOLEAN' | 'SELECT'
-  | 'MULTI_SELECT' | 'DATETIME' | 'IMAGE' | 'FILE' | 'USER';
+  | 'MULTI_SELECT' | 'DATETIME' | 'IMAGE' | 'FILE' | 'USER' | 'AUTO_USER';
 export type CellKind = 'static' | 'field';
 export type CellAlign = 'left' | 'center' | 'right';
 export type SchedulePeriod = 'manual' | 'daily' | 'weekly' | 'monthly';
@@ -12,8 +12,8 @@ export interface CellStyle {
   align: CellAlign;
   bold?: boolean;
   fontSize?: number;
-  bg?: string;
-  color?: string;
+  bg?: string;      // 背景色
+  color?: string;   // 字体颜色
 }
 
 export interface GridCell {
@@ -93,14 +93,18 @@ export interface ScheduleJson {
 export interface WordTemplateBinding {
   id: string;
   name: string;
+  bookmarks?: string[];
   bookmarkMapping: Record<string, string>;
+  data?: string;
 }
 
 export interface ReportFormDefinition {
   id: number;
   name: string;
   description: string;
+  source?: string; // blank | excel | word | template
   status: FormStatus;
+  pinned?: boolean;
   layoutJson: LayoutJson;
   themeJson: ThemeJson;
   fillPolicyJson: FillPolicyJson;

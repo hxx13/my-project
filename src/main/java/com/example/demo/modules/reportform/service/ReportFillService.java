@@ -43,36 +43,69 @@ public class ReportFillService {
     /**
      * 获取当前用户可填报的已发布表单列表。
      */
+    /**
+     * 角色层级映射（数值越大权限越高）。
+     * 发布时选择"最低可见角色"，>= 该角色的用户可编辑。
+     */
+    private static final Map<String, Integer> ROLE_LEVEL = Map.of(
+        "STUDENT", 1,
+        "STAFF", 2,
+        "SENIOR", 3,
+        "ADMIN", 4,
+        "SUPER_ADMIN", 5,
+        "PLATFORM_OWNER", 6
+    );
+
+    /** 获取当前用户可查看的已发布表单（所有人可见，权限仅控制编辑） */
     public List<ReportFormDefinition> getAvailable(String role, Long userId) {
-        return definitionMapper.selectPage().stream()
+        List<ReportFormDefinition> all = definitionMapper.selectPage();
+        List<ReportFormDefinition> published = all.stream()
                 .filter(f -> "published".equals(f.getStatus()))
-                .filter(f -> userHasAccess(f, role, userId))
                 .collect(java.util.stream.Collectors.toList());
+        log.info("[report-form] getAvailable: total={} published={} role={} userId={}",
+                all.size(), published.size(), role, userId);
+        // 所有已发布表单均可见，编辑权限由 canEdit 控制
+        return published;
     }
 
-    private boolean userHasAccess(ReportFormDefinition form, String role, Long userId) {
+    /** 检查用户是否有编辑权限（角色 >= 表单配置的最低角色，或在指定用户列表中） */
+    public boolean canEdit(ReportFormDefinition form, String role, Long userId) {
         if (form.getPermissionJson() == null || form.getPermissionJson().isBlank()) {
             return true;
         }
         try {
             var perm = objectMapper.readTree(form.getPermissionJson());
             var roles = perm.get("visibleRoles");
-            if (roles != null) {
-                for (var r : roles) {
-                    if (r.asText().equals(role)) return true;
-                }
-            }
             var userIds = perm.get("visibleUserIds");
-            if (userIds != null) {
+            boolean rolesEmpty = roles == null || !roles.isArray() || roles.isEmpty();
+
+            // 平台所有者/超级管理员/管理员始终可编辑
+            Integer userLevel = ROLE_LEVEL.getOrDefault(role, 0);
+            if (userLevel >= 4) return true; // ADMIN=4, SUPER_ADMIN=5, PLATFORM_OWNER=6
+
+            // 指定用户列表中有该用户
+            if (userIds != null && userIds.isArray()) {
                 for (var u : userIds) {
                     if (u.asLong() == userId) return true;
                 }
             }
+
+            // 未设置最低角色 → 所有人可编辑
+            if (rolesEmpty) return true;
+
+            // 角色层级：>= 配置的最低角色即可编辑
+            int minLevel = Integer.MAX_VALUE;
+            for (var r : roles) {
+                Integer lv = ROLE_LEVEL.get(r.asText());
+                if (lv != null) minLevel = Math.min(minLevel, lv);
+            }
+            if (userLevel >= minLevel) return true;
+
+            return false;
         } catch (Exception e) {
             log.warn("Failed to parse permission JSON for form id={}", form.getId(), e);
             return false;
         }
-        return false;
     }
 
     /**
@@ -145,6 +178,10 @@ public class ReportFillService {
      * 保存草稿（含乐观锁 + 字段校验 + 日志）。
      */
     public ReportFormSubmission saveSubmission(Long formId, Long userId, String fieldValuesJson, Integer expectedVersion) {
+        return saveSubmission(formId, userId, fieldValuesJson, expectedVersion, null);
+    }
+
+    public ReportFormSubmission saveSubmission(Long formId, Long userId, String fieldValuesJson, Integer expectedVersion, String displayNickname) {
         ReportFormSubmission sub = submissionMapper.selectByFormAndUser(formId, userId);
         if (sub == null) {
             ReportFormDefinition form = definitionMapper.selectById(formId);
@@ -163,8 +200,10 @@ public class ReportFillService {
                     "数据冲突：报表已被他人修改，请刷新后重试");
         }
 
-        // 字段校验
+        // 获取表单定义（校验 + AUTO_USER 注入共用）
         ReportFormDefinition form = definitionMapper.selectById(formId);
+
+        // 字段校验
         if (form != null && form.getLayoutJson() != null) {
             try {
                 var layout = objectMapper.readTree(form.getLayoutJson());
@@ -177,7 +216,6 @@ public class ReportFillService {
                         String fk = entry.getKey();
                         if (valuesNode.has(fk) && !valuesNode.get(fk).isNull()) {
                             JsonNode valueNode = valuesNode.get(fk);
-                            // Pass appropriate Java type based on JSON node type
                             Object value;
                             if (valueNode.isBoolean()) value = valueNode.asBoolean();
                             else if (valueNode.isNumber()) value = valueNode.asDouble();
@@ -191,6 +229,40 @@ public class ReportFillService {
                 throw e;
             } catch (Exception e) {
                 log.warn("[report-form] 保存时字段校验异常 form={}: {}", formId, e.getMessage());
+            }
+        }
+
+        // AUTO_USER 字段自动注入：编辑人ID + 时间戳
+        if (form != null && form.getLayoutJson() != null) {
+            try {
+                var layout = objectMapper.readTree(form.getLayoutJson());
+                var fields = layout.get("fields");
+                if (fields != null) {
+                    var valuesNode = objectMapper.readTree(fieldValuesJson);
+                    com.fasterxml.jackson.databind.node.ObjectNode mutableValues =
+                        (com.fasterxml.jackson.databind.node.ObjectNode) valuesNode;
+                    boolean modified = false;
+                    var iter = fields.fields();
+                    while (iter.hasNext()) {
+                        var entry = iter.next();
+                        String fk = entry.getKey();
+                        JsonNode fieldDef = entry.getValue();
+                        if (fieldDef.has("type") && "AUTO_USER".equals(fieldDef.get("type").asText())) {
+                            String name = displayNickname != null && !displayNickname.isBlank()
+                                ? displayNickname
+                                : ("用户#" + userId);
+                            String autoValue = name + " · " + LocalDateTime.now()
+                                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+                            mutableValues.put(fk, autoValue);
+                            modified = true;
+                        }
+                    }
+                    if (modified) {
+                        fieldValuesJson = objectMapper.writeValueAsString(mutableValues);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[report-form] AUTO_USER 自动注入异常: {}", e.getMessage());
             }
         }
 
@@ -211,9 +283,10 @@ public class ReportFillService {
      * 提交（含必填校验 + 日志）。
      */
     public ReportFormSubmission submitSubmission(Long formId, Long userId) {
+        // 自动创建提交记录（首次提交无需先保存）
         ReportFormSubmission sub = submissionMapper.selectByFormAndUser(formId, userId);
         if (sub == null) {
-            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "请先保存再提交");
+            sub = getOrCreateSubmission(formId, userId);
         }
 
         // 校验必填字段

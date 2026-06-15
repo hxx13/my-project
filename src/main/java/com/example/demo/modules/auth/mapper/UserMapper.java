@@ -50,4 +50,7 @@ public interface UserMapper {
     int deleteById(@Param("id") String id);
 
     List<User> listEnabledUsersByMinRoleLevel(@Param("minRoleLevel") Integer minRoleLevel);
+
+    @org.apache.ibatis.annotations.Select("SELECT * FROM user WHERE username LIKE CONCAT('%', #{keyword}, '%') OR IFNULL(display_nickname, '') LIKE CONCAT('%', #{keyword}, '%') LIMIT 20")
+    List<User> searchByKeyword(@Param("keyword") String keyword);
 }
