@@ -234,6 +234,8 @@ export interface ViolationRule {
   unblockWindowStart?: string;
   /** 固定周期结束 (MM-DD 格式，如 07-01) */
   unblockWindowEnd?: string;
+  /** 达到上限时的替换公告文案（支持 ${name} ${dept} ${date}）；留空则沿用原违规文案 */
+  criticalNoticeText?: string;
   autoSignoutEnabled: number;
   whitelistDepts?: string;
   cronExpression?: string;

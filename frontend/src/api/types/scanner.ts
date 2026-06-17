@@ -128,6 +128,8 @@ export interface StudentViolationNotice {
     critical?: boolean;
     /** 当前是否允许自助解禁 */
     canSelfUnblock?: boolean;
+    /** 达到上限时的替换公告文案（null=沿用原违规文案） */
+    criticalNoticeText?: string;
 }
 
 export interface ExecutePayload {

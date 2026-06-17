@@ -31,6 +31,8 @@ public class TwinViolationRule {
     private String unblockWindowStart;
     /** 固定周期：窗口结束（MM-DD，如 "07-01"）；每年重复 */
     private String unblockWindowEnd;
+    /** 达到上限时的公告文案模板（替换原违规文案）；支持 ${name} ${dept} ${date} */
+    private String criticalNoticeText;
     private Integer autoSignoutEnabled;
     private String whitelistDepts;
     private String cronExpression;

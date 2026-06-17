@@ -284,7 +284,8 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
   const bodyHtmlSource =
     kind === "announcement"
       ? announcementCurrent?.contentHtml || ""
-      : notice?.violationText || "";
+      // 达到上限且配置了替换文案 → 优先用替换文案
+      : notice?.criticalNoticeText || notice?.violationText || "";
   const safeHtml = useMemo(() => prepareAnnouncementHtml(bodyHtmlSource), [bodyHtmlSource]);
 
   const dialogHeadline =

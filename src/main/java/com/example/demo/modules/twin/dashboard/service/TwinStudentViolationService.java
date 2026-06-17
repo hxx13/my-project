@@ -144,6 +144,10 @@ public class TwinStudentViolationService {
                 TwinViolationRuleService.UnblockDecision decision = ruleService.evaluate(targetUserId, row.getRuleId());
                 dto.setCritical(decision.isCritical());
                 dto.setCanSelfUnblock(ruleService.canSelfUnblock(row.getId(), targetUserId, row.getRuleId()));
+                // 达到上限且配置了替换文案 → 覆盖公告内容
+                if (decision.isCritical() && rule.getCriticalNoticeText() != null && !rule.getCriticalNoticeText().isBlank()) {
+                    dto.setCriticalNoticeText(applyTemplateVariables(rule.getCriticalNoticeText(), targetUserId));
+                }
             }
         }
         return dto;

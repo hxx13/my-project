@@ -41,3 +41,6 @@ VALUES ('MANUAL', '手动违规', 'MANUAL', 0, '仅工作人员', NULL, '滑动�
 -- 固定周期：窗口起止（MM-DD 格式，每年重复）
 ALTER TABLE twin_violation_rule ADD COLUMN unblock_window_start VARCHAR(5) NULL;
 ALTER TABLE twin_violation_rule ADD COLUMN unblock_window_end VARCHAR(5) NULL;
+
+-- 达到上限时的公告文案（留空沿用原违规文案）
+ALTER TABLE twin_violation_rule ADD COLUMN critical_notice_text TEXT NULL;

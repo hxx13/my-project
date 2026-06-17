@@ -35,4 +35,6 @@ public class ScanStudentViolationNoticeDTO {
     private Boolean critical;
     /** 当前是否允许自助解禁 */
     private Boolean canSelfUnblock;
+    /** 达到上限时的替换公告文案（null 则沿用原 violationText） */
+    private String criticalNoticeText;
 }

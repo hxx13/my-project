@@ -387,6 +387,25 @@ function RuleFormModal({
               </p>
             </div>
 
+            {/* 达到上限时的替换公告 */}
+            {form.unblockMaxCount != null && (
+              <label className="block">
+                <span className={labelClass}>达到上限时的替换公告（留空=沿用原违规文案）</span>
+                <textarea
+                  className={inputClass}
+                  rows={3}
+                  value={form.criticalNoticeText || ""}
+                  onChange={(e) =>
+                    setForm({ ...form, criticalNoticeText: e.target.value || undefined })
+                  }
+                  placeholder={`例如：${"${name}"}，你已累计违规 ${form.unblockMaxCount} 次，请立即联系管理员处理`}
+                />
+                <p className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">
+                  达到上限次数后，扫码弹窗的公告内容将替换为此文案。可用变量：{'${name} ${dept} ${date}'}
+                </p>
+              </label>
+            )}
+
             {/* 达到上限的说明 */}
             <div className="rounded-md border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] p-3">
               <p className="text-[11px] text-[var(--app-color-text-primary)] leading-snug">
