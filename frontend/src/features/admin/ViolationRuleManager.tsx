@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Pencil, Trash2, Plus } from "lucide-react";
@@ -211,7 +212,7 @@ function RuleFormModal({
 
   const labelClass = "text-xs font-semibold text-[var(--app-color-text-secondary)]";
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-[560px] max-h-[88vh] overflow-y-auto rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-6">
         <h3 className="text-lg font-bold text-[var(--app-color-text-primary)] mb-5">
@@ -497,5 +498,6 @@ function RuleFormModal({
         </div>
       </div>
     </div>
+    , document.body
   );
 }
