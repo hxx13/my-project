@@ -20,6 +20,7 @@ const RULE_CATEGORIES = [
   { value: "自定义", sourceTag: "", label: "自定义规则" },
 ] as const;
 
+/** 规则表单仅包含解禁管控字段；违规行为配置（文案/禁入/过期等）沿用各处原有的配置入口 */
 const emptyRule = (): ViolationRule => ({
   ruleCode: "",
   ruleName: "",
@@ -65,7 +66,6 @@ export function ViolationRuleManager() {
     setShowForm(true);
   };
 
-  // Detect category from sourceTag for editing
   const detectCategory = (sourceTag?: string) => {
     const found = RULE_CATEGORIES.find((c) => c.sourceTag === sourceTag);
     return found?.value ?? "自定义";
@@ -93,6 +93,7 @@ export function ViolationRuleManager() {
             <tr className="border-b border-[var(--app-color-border-default)] text-xs text-[var(--app-color-text-tertiary)]">
               <th className="py-2 px-3">规则名称</th>
               <th className="py-2 px-3" title="自动生成">编码</th>
+              <th className="py-2 px-3">对应类型</th>
               <th className="py-2 px-3">解禁方式</th>
               <th className="py-2 px-3">上限次数</th>
               <th className="py-2 px-3">窗口</th>
@@ -109,6 +110,9 @@ export function ViolationRuleManager() {
                 <td className="py-2 px-3 font-semibold">{r.ruleName}</td>
                 <td className="py-2 px-3 font-mono text-[10px] text-[var(--app-color-text-tertiary)]" title="自动生成">
                   {r.ruleCode}
+                </td>
+                <td className="py-2 px-3 text-xs text-[var(--app-color-text-secondary)]">
+                  {detectCategory(r.sourceTag)}
                 </td>
                 <td className="py-2 px-3">
                   {UNBLOCK_METHOD_LABEL[r.unblockMethod] || r.unblockMethod}
@@ -165,7 +169,7 @@ export function ViolationRuleManager() {
   );
 }
 
-/** 规则编辑弹窗 — 分区表单 */
+/** 规则编辑弹窗 — 仅解禁管控字段；违规行为配置沿用原有入口 */
 function RuleFormModal({
   rule,
   initialCategory,
@@ -180,7 +184,6 @@ function RuleFormModal({
   const isNew = !rule.id;
   const [form, setForm] = useState<ViolationRule>({ ...rule });
   const [category, setCategory] = useState(initialCategory);
-  const isStranded = category === "滞留未签退";
   const isCustom = category === "自定义";
 
   const saveMu = useMutation({
@@ -198,12 +201,7 @@ function RuleFormModal({
     setCategory(cat);
     const found = RULE_CATEGORIES.find((c) => c.value === cat);
     if (found) {
-      setForm((prev) => ({
-        ...prev,
-        sourceTag: found.sourceTag,
-        // 滞留类自动开启自动签退
-        autoSignoutEnabled: cat === "滞留未签退" ? 1 : 0,
-      }));
+      setForm((prev) => ({ ...prev, sourceTag: found.sourceTag }));
     }
   };
 
@@ -214,10 +212,16 @@ function RuleFormModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-[560px] max-h-[88vh] overflow-y-auto rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-6">
+      <div className="w-full max-w-[480px] max-h-[88vh] overflow-y-auto rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-6">
         <h3 className="text-lg font-bold text-[var(--app-color-text-primary)] mb-5">
           {isNew ? "新建触发规则" : "编辑触发规则"}
         </h3>
+
+        <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-5 leading-snug rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-3">
+          此表单仅配置<strong className="text-[var(--app-color-text-primary)]">解禁次数管控</strong>。
+          违规文案、禁入标记、过期天数等行为配置请在原有入口设置
+          （滞留类 → 滞留配置；手动类 → 新建违规时逐条设置）。
+        </p>
 
         {/* ═══ 基本信息 ═══ */}
         <fieldset className="mb-5">
@@ -239,6 +243,9 @@ function RuleFormModal({
                   </option>
                 ))}
               </select>
+              <p className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">
+                选择类型后自动关联对应的触发来源，违规记录将归入此规则计数
+              </p>
             </label>
 
             <label className="block">
@@ -250,7 +257,7 @@ function RuleFormModal({
                 placeholder="例如：滞留未签退"
               />
               <p className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">
-                编码将自动生成，无需手动填写
+                编码自动生成，无需手动填写
               </p>
             </label>
 
@@ -284,9 +291,14 @@ function RuleFormModal({
                     setForm({ ...form, unblockMethod: e.target.value as ViolationRule["unblockMethod"] })
                   }
                 >
-                  <option value="自助解禁">自助解禁（拼图验证）</option>
+                  <option value="自助解禁">自助解禁（用户拼图验证）</option>
                   <option value="仅工作人员">仅工作人员</option>
                 </select>
+                <p className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">
+                  {form.unblockMethod === "自助解禁"
+                    ? "用户可在扫码弹窗中完成拼图自行解除"
+                    : "用户无法自助操作，必须由管理员后台解除"}
+                </p>
               </label>
               <label className="block">
                 <span className={labelClass}>上限次数（空=不限）</span>
@@ -303,12 +315,17 @@ function RuleFormModal({
                   }
                   placeholder="不限制"
                 />
+                <p className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">
+                  {form.unblockMaxCount != null
+                    ? `窗口内达到 ${form.unblockMaxCount} 次后强制禁入，自助关闭`
+                    : "不限制解禁次数"}
+                </p>
               </label>
             </div>
 
             {/* 时间窗口 */}
             <div>
-              <span className={labelClass}>时间窗口</span>
+              <span className={labelClass}>计数时间窗口</span>
               <div className="mt-1.5 space-y-2">
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -319,7 +336,7 @@ function RuleFormModal({
                       setForm({ ...form, unblockWindowType: "滑动窗口", unblockWindowStart: undefined, unblockWindowEnd: undefined })
                     }
                   />
-                  滑动窗口：最近
+                  滑动：最近
                   <input
                     className="w-16 rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-2 py-0.5 text-sm text-center"
                     type="number"
@@ -341,15 +358,13 @@ function RuleFormModal({
                       setForm({ ...form, unblockWindowType: "固定周期", unblockWindowValue: undefined })
                     }
                   />
-                  固定周期：每年
+                  固定：每年
                   <input
                     className="w-20 rounded border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-2 py-0.5 text-sm text-center font-mono"
                     placeholder="03-01"
                     maxLength={5}
                     value={form.unblockWindowStart || ""}
-                    onChange={(e) =>
-                      setForm({ ...form, unblockWindowStart: e.target.value })
-                    }
+                    onChange={(e) => setForm({ ...form, unblockWindowStart: e.target.value })}
                     disabled={form.unblockWindowType !== "固定周期"}
                   />
                   至
@@ -358,9 +373,7 @@ function RuleFormModal({
                     placeholder="07-01"
                     maxLength={5}
                     value={form.unblockWindowEnd || ""}
-                    onChange={(e) =>
-                      setForm({ ...form, unblockWindowEnd: e.target.value })
-                    }
+                    onChange={(e) => setForm({ ...form, unblockWindowEnd: e.target.value })}
                     disabled={form.unblockWindowType !== "固定周期"}
                   />
                 </label>
@@ -368,117 +381,34 @@ function RuleFormModal({
               <p className="text-[10px] text-[var(--app-color-text-tertiary)] mt-1">
                 {form.unblockWindowType === "滑动窗口"
                   ? `从现在往前推 ${form.unblockWindowValue ?? 30} 天内的违规记录参与计数`
-                  : "每年此日期范围内的违规记录参与计数"}
+                  : form.unblockWindowStart && form.unblockWindowEnd
+                    ? `每年 ${form.unblockWindowStart} 至 ${form.unblockWindowEnd} 内的记录参与计数`
+                    : "请设置起止日期"}
               </p>
             </div>
 
-            {form.unblockMethod === "自助解禁" && (
-              <label className="block">
-                <span className={labelClass}>交互拼图短语（留空=无需拼图验证）</span>
-                <input
-                  className={inputClass}
-                  value={form.interactiveChallenge || ""}
-                  onChange={(e) =>
-                    setForm({ ...form, interactiveChallenge: e.target.value || undefined })
-                  }
-                  placeholder='例如："一人一卡，严禁尾随"'
-                />
-              </label>
-            )}
+            {/* 达到上限的说明 */}
+            <div className="rounded-md border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] p-3">
+              <p className="text-[11px] text-[var(--app-color-text-primary)] leading-snug">
+                <strong className="text-[var(--app-color-feedback-warning)]">上限行为：</strong>
+                窗口内违规次数达到上限后，<strong>强制禁止进入</strong>
+                {form.unblockMethod === "自助解禁" && "，自助拼图通道关闭"}
+                。此时只能由工作人员后台解除。
+              </p>
+            </div>
           </div>
         </fieldset>
 
-        {/* ═══ 违规行为 ═══ */}
-        <fieldset className="mb-5">
-          <legend className="text-xs font-bold uppercase tracking-wider text-[var(--app-color-text-tertiary)] mb-3">
-            违规行为
-          </legend>
-          <div className="space-y-3">
-            <label className="flex items-start gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                className="mt-0.5 accent-[var(--app-color-accent)]"
-                checked={form.forbidEnter === 1}
-                onChange={(e) => setForm({ ...form, forbidEnter: e.target.checked ? 1 : 0 })}
-              />
-              <div>
-                <span className="font-semibold text-[var(--app-color-text-primary)]">禁止进入</span>
-                <p className="text-[11px] text-[var(--app-color-text-tertiary)] leading-snug mt-0.5">
-                  勾选：每次触发违规都阻止进入，用户需逐个解除。
-                  <br />
-                  不勾选：仅弹窗警告，不阻止进入。
-                  <br />
-                  <strong className="text-[var(--app-color-feedback-warning)]">
-                    无论是否勾选，达到上限次数后强制禁止进入。
-                  </strong>
-                </p>
-              </div>
-            </label>
-
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.enabled === 1}
-                onChange={(e) => setForm({ ...form, enabled: e.target.checked ? 1 : 0 })}
-                className="accent-[var(--app-color-accent)]"
-              />
-              <span className="text-[var(--app-color-text-primary)]">启用此规则</span>
-            </label>
-
-            {/* ═══ 按类型专用配置 ═══ */}
-            {isStranded && (
-              <div className="rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-3 space-y-3">
-                <p className="text-[11px] font-bold text-[var(--app-color-text-secondary)]">
-                  滞留检测专用配置
-                </p>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={form.autoSignoutEnabled === 1}
-                    onChange={(e) =>
-                      setForm({ ...form, autoSignoutEnabled: e.target.checked ? 1 : 0 })
-                    }
-                    className="accent-[var(--app-color-accent)]"
-                  />
-                  <span className="text-[var(--app-color-text-primary)]">检测到滞留时自动签退</span>
-                </label>
-                <label className="block">
-                  <span className={labelClass}>违规文案模板</span>
-                  <textarea
-                    className={inputClass}
-                    rows={3}
-                    value={form.violationTextTpl || ""}
-                    onChange={(e) => setForm({ ...form, violationTextTpl: e.target.value })}
-                    placeholder={'${name}(${dept})滞留未签退，系统自动登记'}
-                  />
-                  <p className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">
-                    可用变量：{"${name}"} {"${dept}"} {"${date}"}
-                  </p>
-                </label>
-              </div>
-            )}
-
-            {category === "手动违规" && (
-              <div className="rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-3">
-                <p className="text-[11px] font-bold text-[var(--app-color-text-secondary)] mb-2">
-                  手动违规配置
-                </p>
-                <label className="block">
-                  <span className={labelClass}>过期天数（空=永不过期）</span>
-                  <input
-                    className={inputClass}
-                    type="number"
-                    min={0}
-                    value={form.expireAfterDays ?? ""}
-                    onChange={(e) =>
-                      setForm({ ...form, expireAfterDays: e.target.value ? Number(e.target.value) : undefined })
-                    }
-                  />
-                </label>
-              </div>
-            )}
-          </div>
-        </fieldset>
+        {/* 启用 */}
+        <label className="flex items-center gap-2 text-sm mb-5">
+          <input
+            type="checkbox"
+            checked={form.enabled === 1}
+            onChange={(e) => setForm({ ...form, enabled: e.target.checked ? 1 : 0 })}
+            className="accent-[var(--app-color-accent)]"
+          />
+          <span className="text-[var(--app-color-text-primary)]">启用此规则</span>
+        </label>
 
         {/* 操作按钮 */}
         <div className="flex justify-end gap-3 pt-4 border-t border-[var(--app-color-border-default)]">
