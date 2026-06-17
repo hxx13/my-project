@@ -8,10 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.time.DayOfWeek;
 import java.time.LocalDateTime;
-import java.time.Month;
-import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 
 @Service
@@ -41,11 +38,18 @@ public class TwinViolationRuleService {
 
     @Transactional(rollbackFor = Exception.class)
     public TwinViolationRule create(TwinViolationRule row) {
-        if (!StringUtils.hasText(row.getRuleCode())) {
-            throw new IllegalArgumentException("规则编码不能为空");
-        }
         if (!StringUtils.hasText(row.getRuleName())) {
             throw new IllegalArgumentException("规则名称不能为空");
+        }
+        // rule_code 自动生成：从 rule_name 取前20个可打印字符 + 时间戳，确保唯一
+        if (!StringUtils.hasText(row.getRuleCode())) {
+            String base = row.getRuleName().trim()
+                    .replaceAll("[^\\u4e00-\\u9fa5a-zA-Z0-9]", "")
+                    .replaceAll("\\s+", "");
+            if (base.length() > 20) base = base.substring(0, 20);
+            if (base.isEmpty()) base = "RULE";
+            String ts = String.valueOf(System.currentTimeMillis()).substring(7); // 后6位
+            row.setRuleCode(base + "_" + ts);
         }
         ruleMapper.insert(row);
         return ruleMapper.selectById(row.getId());
@@ -73,37 +77,58 @@ public class TwinViolationRuleService {
     // ═══ 时间窗口计算 ═══
 
     /**
-     * 根据规则配置计算时间窗口起点。
-     * 滑动窗口：NOW - unblock_window_value 天
-     * 固定周期：当前周期第一天 00:00:00
+     * 时间窗口起点计算。
+     * 滑动窗口：NOW - N 天
+     * 固定周期：根据 MM-DD 起止计算当前所在周期的起点。
+     *   若当前日期在 [start, end] 区间内 → 返回本年 start 的 00:00:00
+     *   若当前日期在 end 之后 → 返回本年 start（区间已过，仍计本年）
+     *   若当前日期在 start 之前 → 返回上年 start
      */
     public LocalDateTime computeWindowStart(TwinViolationRule rule) {
         if (rule == null) return LocalDateTime.now().minusDays(30);
         String type = rule.getUnblockWindowType();
-        Integer value = rule.getUnblockWindowValue();
         if (!StringUtils.hasText(type) || "滑动窗口".equals(type)) {
-            int days = (value != null && value > 0) ? value : 30;
+            int days = (rule.getUnblockWindowValue() != null && rule.getUnblockWindowValue() > 0)
+                    ? rule.getUnblockWindowValue() : 30;
             return LocalDateTime.now().minusDays(days);
         }
-        // 固定周期
-        int periodType = (value != null) ? value : 1;
+        // 固定周期：基于 unblockWindowStart / unblockWindowEnd
+        String startMMDD = rule.getUnblockWindowStart();
+        if (!StringUtils.hasText(startMMDD)) {
+            // 未配起止 → 默认自然月
+            return LocalDateTime.now().withDayOfMonth(1)
+                      .withHour(0).withMinute(0).withSecond(0).withNano(0);
+        }
+        int[] parts = parseMMDD(startMMDD);
+        if (parts == null) {
+            return LocalDateTime.now().withDayOfMonth(1)
+                      .withHour(0).withMinute(0).withSecond(0).withNano(0);
+        }
+        int startMonth = parts[0];
+        int startDay = parts[1];
         LocalDateTime now = LocalDateTime.now();
-        switch (periodType) {
-            case 2: // 自然周：本周一 00:00:00
-                return now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-                          .withHour(0).withMinute(0).withSecond(0).withNano(0);
-            case 3: // 学期（简化：1-6月→1月1日，7-12月→7月1日）
-                Month m = now.getMonth();
-                if (m.getValue() >= 7) {
-                    return now.withMonth(7).withDayOfMonth(1)
-                              .withHour(0).withMinute(0).withSecond(0).withNano(0);
-                } else {
-                    return now.withMonth(1).withDayOfMonth(1)
-                              .withHour(0).withMinute(0).withSecond(0).withNano(0);
-                }
-            default: // 1 = 自然月：本月1日 00:00:00
-                return now.withDayOfMonth(1)
-                          .withHour(0).withMinute(0).withSecond(0).withNano(0);
+        // 构造本年起始日期
+        LocalDateTime thisYearStart = LocalDateTime.of(now.getYear(), startMonth, startDay, 0, 0, 0);
+        // 如果今天已经过了今年的 start，返回今年 start；否则返回去年 start
+        if (!now.isBefore(thisYearStart)) {
+            return thisYearStart;
+        } else {
+            return LocalDateTime.of(now.getYear() - 1, startMonth, startDay, 0, 0, 0);
+        }
+    }
+
+    /** 解析 MM-DD 字符串 */
+    private static int[] parseMMDD(String mmdd) {
+        if (mmdd == null || mmdd.isBlank()) return null;
+        String[] parts = mmdd.trim().split("[-/]");
+        if (parts.length != 2) return null;
+        try {
+            int m = Integer.parseInt(parts[0]);
+            int d = Integer.parseInt(parts[1]);
+            if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+            return new int[]{m, d};
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 

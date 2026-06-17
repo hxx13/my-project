@@ -31,9 +31,13 @@ ALTER TABLE twin_student_violation ADD COLUMN rule_id BIGINT NULL;
 ALTER TABLE twin_student_violation ADD INDEX idx_tsv_rule (rule_id);
 
 -- 种子数据：滞留未签退规则
-INSERT IGNORE INTO twin_violation_rule (rule_code, rule_name, source_tag, violation_text_tpl, forbid_enter, expire_after_days, unblock_method, unblock_max_count, unblock_window_type, unblock_window_value, auto_signout_enabled)
-VALUES ('AUTO_STRANDED', '滞留未签退', 'AUTO_STRANDED', '${name}(${dept})滞留未签退，系统自动登记', 0, 30, '自助解禁', 3, '滑动窗口', 30, 1);
+INSERT IGNORE INTO twin_violation_rule (rule_code, rule_name, source_tag, violation_text_tpl, forbid_enter, expire_after_days, unblock_method, unblock_max_count, unblock_window_type, unblock_window_value, auto_signout_enabled, unblock_window_start, unblock_window_end)
+VALUES ('AUTO_STRANDED', '滞留未签退', 'AUTO_STRANDED', '${name}(${dept})滞留未签退，系统自动登记', 0, 30, '自助解禁', 3, '滑动窗口', 30, 1, NULL, NULL);
 
 -- 种子数据：手动违规规则
-INSERT IGNORE INTO twin_violation_rule (rule_code, rule_name, source_tag, forbid_enter, unblock_method, unblock_max_count, unblock_window_type, unblock_window_value)
-VALUES ('MANUAL', '手动违规', 'MANUAL', 0, '仅工作人员', NULL, '滑动窗口', 30);
+INSERT IGNORE INTO twin_violation_rule (rule_code, rule_name, source_tag, forbid_enter, unblock_method, unblock_max_count, unblock_window_type, unblock_window_value, unblock_window_start, unblock_window_end)
+VALUES ('MANUAL', '手动违规', 'MANUAL', 0, '仅工作人员', NULL, '滑动窗口', 30, NULL, NULL);
+
+-- 固定周期：窗口起止（MM-DD 格式，每年重复）
+ALTER TABLE twin_violation_rule ADD COLUMN unblock_window_start VARCHAR(5) NULL;
+ALTER TABLE twin_violation_rule ADD COLUMN unblock_window_end VARCHAR(5) NULL;

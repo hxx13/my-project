@@ -27,6 +27,10 @@ public class TwinViolationRule {
     private String unblockWindowType;
     /** 滑动天数 或 固定周期编号(1=自然月 2=自然周 3=学期) */
     private Integer unblockWindowValue;
+    /** 固定周期：窗口起始（MM-DD，如 "03-01"）；每年重复 */
+    private String unblockWindowStart;
+    /** 固定周期：窗口结束（MM-DD，如 "07-01"）；每年重复 */
+    private String unblockWindowEnd;
     private Integer autoSignoutEnabled;
     private String whitelistDepts;
     private String cronExpression;

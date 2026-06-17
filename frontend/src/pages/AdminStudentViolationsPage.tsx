@@ -28,6 +28,7 @@ import {
   getUnboundCardNoticeSettings,
   listStudentViolations,
   listViolationPersonnelByProjectGroup,
+  listViolationRules,
   saveUnboundCardNoticeSettings,
   searchViolationProjectGroups,
   UNBOUND_APPLY_ROLE_OPTIONS,
@@ -35,6 +36,7 @@ import {
   VIOLATION_STATUS_LABEL,
   type StudentViolationRow,
   type UnboundApplyRoleCode,
+  type ViolationRule,
 } from "@/api/domains/studentViolation.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { effectiveViolationForbidEnter } from "@/components/scanner/twinViolationInteractive";
@@ -276,6 +278,7 @@ export default function AdminStudentViolationsPage() {
   const [maxEnter, setMaxEnter] = useState("");
   const [showEvery, setShowEvery] = useState(true);
   const [expireDays, setExpireDays] = useState("");
+  const [selectedRuleId, setSelectedRuleId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
@@ -329,6 +332,12 @@ export default function AdminStudentViolationsPage() {
     queryKey: violationsQueryKey,
     queryFn: () => listStudentViolations({ targetUserId: picked?.userId || undefined, limit: 400 }),
     placeholderData: (prev) => prev,
+  });
+
+  const { data: violationRules = [] } = useQuery({
+    queryKey: ["violation-rules"],
+    queryFn: () => listViolationRules(),
+    staleTime: 60_000,
   });
 
   const { data: unboundSettings, isLoading: unboundLoading } = useQuery({
@@ -570,6 +579,7 @@ export default function AdminStudentViolationsPage() {
     setNewInteractiveChallenge("");
     setNewInteractiveUnlockOnVerify(true);
     setShowEvery(true);
+    setSelectedRuleId(null);
   };
 
   const submit = async () => {
@@ -583,6 +593,7 @@ export default function AdminStudentViolationsPage() {
         const interactiveChallenge = newInteractiveChallenge.trim() || null;
         await createStudentViolation({
           targetUserId: picked.userId,
+          ruleId: selectedRuleId,
           violationText: violationText.trim(),
           imageUrls,
           forbidEnter: effectiveViolationForbidEnter(forbidEnter, newInteractiveChallenge),
@@ -621,6 +632,7 @@ export default function AdminStudentViolationsPage() {
       const interactiveChallenge = newInteractiveChallenge.trim() || null;
       const summary = await batchCreateStudentViolations({
         targetUserIds: ids,
+        ruleId: selectedRuleId,
         violationText: violationText.trim(),
         imageUrls,
         forbidEnter: effectiveViolationForbidEnter(forbidEnter, newInteractiveChallenge),
@@ -1253,6 +1265,28 @@ export default function AdminStudentViolationsPage() {
               ) : null}
             </div>
           )}
+
+          {/* 选择触发规则 */}
+          <div>
+            <label className="block text-sm font-semibold text-[var(--twin-ink)] mb-1.5">
+              触发规则
+            </label>
+            <select
+              className={inputBase}
+              value={selectedRuleId ?? ""}
+              onChange={(e) => setSelectedRuleId(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">-- 不指定（默认手动规则） --</option>
+              {violationRules.filter(r => r.enabled === 1).map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.ruleName}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-[var(--twin-mute)] mt-1">
+              选择后将按该规则的解禁次数管控；不选则使用默认规则
+            </p>
+          </div>
 
           <div>
             <div className="flex items-center justify-between">

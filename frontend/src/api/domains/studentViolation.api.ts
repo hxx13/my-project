@@ -230,6 +230,10 @@ export interface ViolationRule {
   unblockWindowType?: '滑动窗口' | '固定周期';
   /** 滑动天数 / 固定周期编号(1=月 2=周 3=学期) */
   unblockWindowValue?: number;
+  /** 固定周期起始 (MM-DD 格式，如 03-01) */
+  unblockWindowStart?: string;
+  /** 固定周期结束 (MM-DD 格式，如 07-01) */
+  unblockWindowEnd?: string;
   autoSignoutEnabled: number;
   whitelistDepts?: string;
   cronExpression?: string;

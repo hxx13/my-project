@@ -18,6 +18,8 @@
         <result column="unblock_max_count" property="unblockMaxCount"/>
         <result column="unblock_window_type" property="unblockWindowType"/>
         <result column="unblock_window_value" property="unblockWindowValue"/>
+        <result column="unblock_window_start" property="unblockWindowStart"/>
+        <result column="unblock_window_end" property="unblockWindowEnd"/>
         <result column="auto_signout_enabled" property="autoSignoutEnabled"/>
         <result column="whitelist_depts" property="whitelistDepts"/>
         <result column="cron_expression" property="cronExpression"/>
@@ -45,12 +47,14 @@
             violation_text_tpl, forbid_enter, expire_after_days, show_notice_every_scan,
             interactive_challenge, interactive_unlock_on_verify,
             unblock_method, unblock_max_count, unblock_window_type, unblock_window_value,
+            unblock_window_start, unblock_window_end,
             auto_signout_enabled, whitelist_depts, cron_expression
         ) VALUES (
             #{ruleCode}, #{ruleName}, #{enabled}, #{sourceTag},
             #{violationTextTpl}, #{forbidEnter}, #{expireAfterDays}, #{showNoticeEveryScan},
             #{interactiveChallenge}, #{interactiveUnlockOnVerify},
             #{unblockMethod}, #{unblockMaxCount}, #{unblockWindowType}, #{unblockWindowValue},
+            #{unblockWindowStart}, #{unblockWindowEnd},
             #{autoSignoutEnabled}, #{whitelistDepts}, #{cronExpression}
         )
     </insert>
@@ -71,6 +75,8 @@
             unblock_max_count = #{unblockMaxCount},
             unblock_window_type = #{unblockWindowType},
             unblock_window_value = #{unblockWindowValue},
+            unblock_window_start = #{unblockWindowStart},
+            unblock_window_end = #{unblockWindowEnd},
             auto_signout_enabled = #{autoSignoutEnabled},
             whitelist_depts = #{whitelistDepts},
             cron_expression = #{cronExpression},
