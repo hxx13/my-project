@@ -196,11 +196,27 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
 
   const interactivePhrase =
     kind === "announcement" ? null : notice?.interactiveChallenge || null;
+
+  const unblockMethod: string | undefined =
+    kind !== "announcement" ? notice?.unblockMethod : undefined;
+  const canSelfUnblock: boolean | undefined =
+    kind !== "announcement" ? notice?.canSelfUnblock : undefined;
+
   const [interactiveDone, setInteractiveDone] = useState(
     Boolean(kind !== "announcement" && notice?.interactiveChallengeVerified)
   );
   const [interactiveSaving, setInteractiveSaving] = useState(false);
   const prevRecordIdRef = useRef<number | null | undefined>(null);
+
+  /** 是否因解禁方式为"仅工作人员"而不展示拼图 */
+  const interactiveBlockedByMethod =
+    Boolean(interactivePhrase) && !interactiveDone && unblockMethod === "仅工作人员";
+  /** 是否因已达自助解禁上限而不展示拼图 */
+  const interactiveBlockedByLimit =
+    Boolean(interactivePhrase) && !interactiveDone && unblockMethod === "自助解禁" && canSelfUnblock === false;
+  /** 是否展示交互拼图（未完成 + 未被上述两种原因屏蔽） */
+  const showInteractivePuzzle =
+    Boolean(interactivePhrase) && !interactiveDone && !interactiveBlockedByMethod && !interactiveBlockedByLimit;
 
   useEffect(() => {
     if (kind === "announcement") return;
@@ -241,14 +257,14 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
 
   const acknowledge = useCallback(() => {
     if (recordId == null || showEveryScan) return;
-    if (interactivePhrase && !interactiveDone) return;
+    if (showInteractivePuzzle) return;
     try {
       sessionStorage.setItem(noticeAckKey(kind, recordId), "1");
     } catch {
       /* ignore */
     }
     setPanelOpen(false);
-  }, [recordId, showEveryScan, interactivePhrase, interactiveDone, kind, setPanelOpen]);
+  }, [recordId, showEveryScan, showInteractivePuzzle, kind, setPanelOpen]);
 
   const closePanel = useCallback(() => setPanelOpen(false), [setPanelOpen]);
   const openPanel = useCallback(() => setPanelOpen(true), [setPanelOpen]);
@@ -362,9 +378,9 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                 </>
               }
               footerSlot={
-                interactivePhrase && !interactiveDone ? (
+                showInteractivePuzzle ? (
                   <InteractiveChallenge
-                    phrase={interactivePhrase}
+                    phrase={interactivePhrase!}
                     onComplete={() => {
                       if (
                         kind === "announcement" ||
@@ -392,16 +408,24 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                         .finally(() => setInteractiveSaving(false));
                     }}
                   />
+                ) : interactiveBlockedByMethod ? (
+                  <p className="text-[11px] text-center text-[var(--app-color-text-tertiary)] px-3 py-2">
+                    该违规需由工作人员解除，请联系管理员
+                  </p>
+                ) : interactiveBlockedByLimit ? (
+                  <p className="text-[11px] text-center text-[var(--app-color-feedback-danger)] px-3 py-2">
+                    已达自助解禁上限，请联系工作人员解除
+                  </p>
                 ) : null
               }
               primaryLabel={
                 kind === "announcement"
                   ? "知道了"
-                  : interactivePhrase && !interactiveDone
+                  : showInteractivePuzzle
                     ? "请先完成上方验证"
                     : "已知悉，关闭"
               }
-              primaryDisabled={Boolean(kind !== "announcement" && interactivePhrase && !interactiveDone)}
+              primaryDisabled={showInteractivePuzzle}
               showPrimary={kind === "announcement" || !showEveryScan}
               onPrimary={kind === "announcement" ? closeAnnouncementViaHeader : acknowledge}
               onClose={kind === "announcement" ? closeAnnouncementViaHeader : closePanel}

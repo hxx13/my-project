@@ -5,6 +5,7 @@ import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.dashboard.dto.DashboardViolationBoardItemDTO;
 import com.example.demo.modules.twin.dashboard.dto.ScanStudentViolationNoticeDTO;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
+import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
 import com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,6 +36,7 @@ public class TwinStudentViolationService {
     private final ObjectMapper objectMapper;
     private final UserDisplayNameService userDisplayNameService;
     private final TwinDashboardMapper dashboardMapper;
+    private final TwinViolationRuleService ruleService;
 
     /** 检测到表不存在后短路，避免每次扫码/列表都打库抛错（执行 DDL 后需重启应用或等后续扩展热恢复） */
     private final AtomicBoolean violationTableAbsent = new AtomicBoolean(false);
@@ -42,11 +44,13 @@ public class TwinStudentViolationService {
     public TwinStudentViolationService(TwinStudentViolationMapper violationMapper,
                                        ObjectMapper objectMapper,
                                        UserDisplayNameService userDisplayNameService,
-                                       TwinDashboardMapper dashboardMapper) {
+                                       TwinDashboardMapper dashboardMapper,
+                                       TwinViolationRuleService ruleService) {
         this.violationMapper = violationMapper;
         this.objectMapper = objectMapper;
         this.userDisplayNameService = userDisplayNameService;
         this.dashboardMapper = dashboardMapper;
+        this.ruleService = ruleService;
     }
 
     private static boolean isTwinStudentViolationTableMissing(Throwable e) {
@@ -131,6 +135,17 @@ public class TwinStudentViolationService {
         dto.setInteractiveChallengeVerified(row.getInteractiveChallengeVerifiedAt() != null);
         dto.setExpireAt(row.getExpireAt());
         dto.setPastExpireAwaitingInteractive(isPastExpireAwaitingInteractive(row));
+        // 规则解禁状态
+        if (row.getRuleId() != null && ruleService != null) {
+            TwinViolationRule rule = ruleService.getById(row.getRuleId());
+            if (rule != null) {
+                dto.setRuleName(rule.getRuleName());
+                dto.setUnblockMethod(rule.getUnblockMethod());
+                TwinViolationRuleService.UnblockDecision decision = ruleService.evaluate(targetUserId, row.getRuleId());
+                dto.setCritical(decision.isCritical());
+                dto.setCanSelfUnblock(ruleService.canSelfUnblock(row.getId(), targetUserId, row.getRuleId()));
+            }
+        }
         return dto;
     }
 
@@ -471,6 +486,81 @@ public class TwinStudentViolationService {
         row.setStatus(STATUS_ACTIVE);
         row.setCreatedByUserId(createdByUserId);
         row.setSource(source != null && !source.isBlank() ? source.trim() : "MANUAL");
+        try {
+            violationMapper.insert(row);
+        } catch (Exception e) {
+            if (isTwinStudentViolationTableMissing(e)) {
+                markTableAbsentOnce();
+                throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
+            }
+            throw e;
+        }
+        return row;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public TwinStudentViolation create(
+            String targetUserId,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String source,
+            String interactiveChallenge,
+            Boolean interactiveUnlockOnVerify,
+            Long ruleId
+    ) {
+        if (!StringUtils.hasText(targetUserId)) {
+            throw new IllegalArgumentException("缺少 targetUserId");
+        }
+        if (violationTableAbsent.get()) {
+            throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
+        }
+        String tid = targetUserId.trim();
+        touchExpireStale();
+        if (violationTableAbsent.get()) {
+            throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
+        }
+
+        // ──── 规则判定：如设上限则强制覆盖 forbid_enter ────
+        boolean effectiveForbidEnter = forbidEnter;
+        if (ruleId != null && ruleService != null) {
+            TwinViolationRuleService.UnblockDecision decision = ruleService.evaluate(tid, ruleId);
+            effectiveForbidEnter = decision.isForbidEnter();
+        }
+
+        try {
+            violationMapper.supersedeActiveByTargetUserId(tid);
+        } catch (Exception e) {
+            if (isTwinStudentViolationTableMissing(e)) {
+                markTableAbsentOnce();
+                throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
+            }
+            throw e;
+        }
+
+        TwinStudentViolation row = new TwinStudentViolation();
+        row.setTargetUserId(tid);
+        row.setViolationText(violationText);
+        row.setImageUrls(serializeImageUrls(imageUrls));
+        row.setInteractiveChallenge(normalizeInteractiveChallenge(interactiveChallenge));
+        row.setInteractiveUnlockOnVerify(resolveInteractiveUnlockOnVerify(row.getInteractiveChallenge(), interactiveUnlockOnVerify));
+        row.setForbidEnter(effectiveForbidEnter ? 1 : 0);
+        row.setMaxEnterSuccess(maxEnterSuccess);
+        row.setEnterSuccessCount(0);
+        row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
+        if (expireAfterDays != null && expireAfterDays > 0) {
+            row.setExpireAt(LocalDateTime.now().plusDays(expireAfterDays));
+        } else {
+            row.setExpireAt(null);
+        }
+        row.setStatus(STATUS_ACTIVE);
+        row.setCreatedByUserId(createdByUserId);
+        row.setSource(source != null && !source.isBlank() ? source.trim() : "MANUAL");
+        row.setRuleId(ruleId);
         try {
             violationMapper.insert(row);
         } catch (Exception e) {

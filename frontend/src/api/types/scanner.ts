@@ -13,6 +13,8 @@ export interface RoomInfo {
     /** 系统设置按校区禁用进入（不影响离开） */
     enterBlocked?: boolean;
     enterBlockReason?: string;
+    /** 非开放时段下该房间是否享有免冻结扫码进入豁免 */
+    scanEntryTimeExempt?: boolean;
 }
 
 export interface DisciplinaryRecord {
@@ -54,6 +56,8 @@ export interface AnalyzeResponse {
     scanPopupEntryWindowEnabled?: boolean;
     /** 当前时间是否允许扫码进入（仅进入；离开不受此字段限制） */
     scanPopupEntryAllowedNow?: boolean;
+    /** 该用户免冻结扫码进入授权房间 ID 列表（与 twin_card_mapping.freeze_exempt_room_ids 一致） */
+    scanPopupExemptRoomIds?: string[];
     /** 管理员下发的违规通告（扫码弹窗覆盖展示） */
     studentViolationNotice?: StudentViolationNotice;
     /** 未绑卡人员扫码提示（全局配置） */
@@ -68,6 +72,23 @@ export interface AnalyzeResponse {
     autoSignoutScheduledAt?: string | null;
     /** 距离自动签退剩余秒数 */
     autoSignoutSecondsRemaining?: number | null;
+    /** 扫码延迟免冻结总开关 */
+    scanDelayEnabled?: boolean;
+    /** 公用「延迟」载体按钮文案 */
+    scanDelayButtonLabel?: string;
+    /** 按房间分组的延迟二级菜单项 */
+    scanDelayOptionsByRoom?: Record<string, ScanDelayOptionSummary[]>;
+}
+
+export type ScanDelayOptionSummary = {
+    id: number;
+    roomId?: string;
+    optionLabel: string;
+    requireApproval: boolean;
+    reviewerUserIds?: string[];
+    exemptMode?: string;
+    durationMinutes?: number | null;
+    maxCount?: number | null;
 }
 
 export interface ScanPopupAnnouncementItem {
@@ -99,6 +120,14 @@ export interface StudentViolationNotice {
     expireAt?: string | null;
     /** 已超过违规期限且交互验证仍未完成 */
     pastExpireAwaitingInteractive?: boolean;
+    /** 触发规则名称 */
+    ruleName?: string;
+    /** 解禁方式：自助解禁 / 仅工作人员 */
+    unblockMethod?: string;
+    /** 是否关键记录（达到解禁上限，自助通道已关闭） */
+    critical?: boolean;
+    /** 当前是否允许自助解禁 */
+    canSelfUnblock?: boolean;
 }
 
 export interface ExecutePayload {

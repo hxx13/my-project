@@ -3,6 +3,19 @@ import type { ApiResponse } from "@/api/types/common";
 
 export type StudentViolationStatus = "ACTIVE" | "CLEARED" | "EXPIRED" | "SUPERSEDED" | "PROCESSED";
 
+export const VIOLATION_STATUS_LABEL: Record<StudentViolationStatus, string> = {
+  ACTIVE: '生效中',
+  CLEARED: '已解除',
+  EXPIRED: '已过期',
+  SUPERSEDED: '已替换',
+  PROCESSED: '已处理',
+};
+
+export const UNBLOCK_METHOD_LABEL: Record<string, string> = {
+  '自助解禁': '自助解禁',
+  '仅工作人员': '仅工作人员',
+};
+
 export interface StudentViolationRow {
   id: number;
   targetUserId: string;
@@ -26,6 +39,8 @@ export interface StudentViolationRow {
   /** 交互式确认短语；null 表示普通公告 */
   interactiveChallenge?: string | null;
   interactiveUnlockOnVerify?: number;
+  ruleId?: number | null;
+  ruleName?: string | null;
 }
 
 export interface CreateStudentViolationPayload {
@@ -40,6 +55,8 @@ export interface CreateStudentViolationPayload {
   interactiveChallenge?: string | null;
   /** 交互验证完成后是否自动解除禁入；默认 true */
   interactiveUnlockOnVerify?: boolean;
+  /** 关联触发规则ID（不传则自动使用 MANUAL 规则） */
+  ruleId?: number | null;
 }
 
 export type BatchCreateStudentViolationPayload = Omit<CreateStudentViolationPayload, "targetUserId"> & {
@@ -189,4 +206,65 @@ export async function saveUnboundCardNoticeSettings(body: UnboundCardNoticeSetti
     violationText: data?.violationText ?? "",
     imageUrls: Array.isArray(data?.imageUrls) ? data.imageUrls : [],
   };
+}
+
+// ═══ 触发规则 ═══
+
+export interface ViolationRule {
+  id?: number;
+  ruleCode: string;
+  ruleName: string;
+  enabled: number;
+  sourceTag?: string;
+  violationTextTpl?: string;
+  forbidEnter: number;
+  expireAfterDays?: number;
+  showNoticeEveryScan: number;
+  interactiveChallenge?: string;
+  interactiveUnlockOnVerify: number;
+  /** 解禁方式: 自助解禁 | 仅工作人员 */
+  unblockMethod: '自助解禁' | '仅工作人员';
+  /** 窗口内最大违规次数; null=不限制 */
+  unblockMaxCount?: number | null;
+  /** 滑动窗口 | 固定周期 */
+  unblockWindowType?: '滑动窗口' | '固定周期';
+  /** 滑动天数 / 固定周期编号(1=月 2=周 3=学期) */
+  unblockWindowValue?: number;
+  autoSignoutEnabled: number;
+  whitelistDepts?: string;
+  cronExpression?: string;
+}
+
+export async function listViolationRules(): Promise<ViolationRule[]> {
+  const res = await adminHttp.get<ApiResponse<ViolationRule[]>>(
+    "/twin/student-violations/rules"
+  );
+  return res.data?.data || [];
+}
+
+export async function getViolationRule(id: number): Promise<ViolationRule | null> {
+  const res = await adminHttp.get<ApiResponse<ViolationRule>>(
+    `/twin/student-violations/rules/${id}`
+  );
+  return res.data?.data ?? null;
+}
+
+export async function createViolationRule(body: ViolationRule): Promise<ViolationRule> {
+  const res = await adminHttp.post<ApiResponse<ViolationRule>>(
+    "/twin/student-violations/rules", body
+  );
+  return res.data?.data!;
+}
+
+export async function updateViolationRule(id: number, body: ViolationRule): Promise<ViolationRule> {
+  const res = await adminHttp.put<ApiResponse<ViolationRule>>(
+    `/twin/student-violations/rules/${id}`, body
+  );
+  return res.data?.data!;
+}
+
+export async function deleteViolationRule(id: number): Promise<void> {
+  await adminHttp.delete<ApiResponse<unknown>>(
+    `/twin/student-violations/rules/${id}`
+  );
 }

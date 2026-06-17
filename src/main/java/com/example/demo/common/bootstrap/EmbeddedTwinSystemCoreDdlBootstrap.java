@@ -52,6 +52,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
         runScript("db/bootstrap-twin-student-violation-interactive-challenge.sql", "twin_student_violation interactive_challenge列");
         runScript("db/bootstrap-twin-student-violation-interactive-verified.sql", "twin_student_violation interactive_challenge_verified_at列");
         runScript("db/bootstrap-twin-student-violation-interactive-unlock.sql", "twin_student_violation interactive_unlock_on_verify列");
+        runScript("db/bootstrap-twin-violation-rule.sql", "twin_violation_rule（违规触发规则）");
         runScript("db/bootstrap-stranded-config-interactive-unlock.sql", "stranded_violation_config interactive_unlock_on_verify列");
         runScript("db/bootstrap-stranded-config-interactive-challenge.sql", "stranded_violation_config 交互式确认字段");
         runScript("db/bootstrap-stranded-config-violation-text-tpl-text.sql", "stranded_violation_config violation_text_tpl TEXT");
@@ -66,6 +67,10 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
         runScript("db/bootstrap-twin-exp-record.sql", "twin_exp_record（经验值流水记录）");
         runScript("db/bootstrap-report-form.sql", "report_form_definition/submission/submission_log/option_set（填报报表4表）");
         runScript("db/bootstrap-report-form-source.sql", "report_form_definition source列（如已存在则跳过）");
+        runScript("db/migration/V20260615__face_recognition_tables.sql", "face_debug_photo + face_baseline（人脸识别调试+底库）");
+        runScript("db/migration/V20260615__face_baseline_multi.sql", "face_baseline 改为一对多（移除 uk_user_id 唯一约束）");
+        runScript("db/migration/V20260616__face_verify_audit.sql", "face_verify_audit（路线 B 人脸验证审计）");
+        // 抓拍/底库图列由 FaceVerifyAuditSchemaMigrator 在启动时幂等补列，避免 IDEA 已建表后 JAR 重复 ALTER 报 Duplicate column
     }
 
     /** @return 是否执行成功 */
@@ -79,13 +84,31 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
             log.info("[embedded-ddl] 已执行 classpath:{}（{}）", classpath, label);
             return true;
         } catch (Exception ex) {
+            String msg = ex.getMessage() != null ? ex.getMessage() : "";
+            if (isBenignDdlSkip(msg)) {
+                log.info("[embedded-ddl] 跳过 classpath:{}（{}）：结构已存在", classpath, label);
+                return true;
+            }
             log.warn(
                     "[embedded-ddl] 执行 {} 失败（{}）。请确认 spring.datasource 用户具备 DDL 权限，或改由 DBA 执行 scripts 下等价脚本：{}",
                     classpath,
                     label,
-                    ex.getMessage()
+                    msg
             );
             return false;
         }
+    }
+
+    /** 幂等 DDL：列/表/索引已存在时不视为失败 */
+    private static boolean isBenignDdlSkip(String message) {
+        if (message.isBlank()) {
+            return false;
+        }
+        String lower = message.toLowerCase();
+        return lower.contains("duplicate column")
+                || lower.contains("duplicate key name")
+                || lower.contains("already exists")
+                || message.contains("Duplicate column")
+                || message.contains("already exists");
     }
 }

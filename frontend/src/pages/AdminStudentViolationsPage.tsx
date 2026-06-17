@@ -12,6 +12,7 @@ import {
   Pencil,
   RefreshCw,
   Save,
+  Settings,
   ShieldAlert,
   Trash2,
   User,
@@ -31,6 +32,7 @@ import {
   searchViolationProjectGroups,
   UNBOUND_APPLY_ROLE_OPTIONS,
   updateStudentViolation,
+  VIOLATION_STATUS_LABEL,
   type StudentViolationRow,
   type UnboundApplyRoleCode,
 } from "@/api/domains/studentViolation.api";
@@ -52,6 +54,7 @@ import type { SwipeAlertRuleRow } from "@/api/domains/swipeAlert.api";
 import { SwipeAlertRuleList } from "@/features/swipe-alert/SwipeAlertRuleList";
 import { SwipeAlertRuleForm } from "@/features/swipe-alert/SwipeAlertRuleForm";
 import { DepartmentMultiSelect } from "@/features/swipe-alert/DepartmentMultiSelect";
+import { ViolationRuleManager } from "@/features/admin/ViolationRuleManager";
 import {
   SCAN_OPERATOR_ROLE_HINT_UNBOUND,
   SCAN_OPERATOR_ROLE_LABEL,
@@ -61,7 +64,7 @@ import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 
 type PickUser = { userId: string; name: string };
 type LockMode = "single" | "batch";
-type PageTabId = "unbound" | "announcement" | "create" | "records" | "swipe-alert";
+type PageTabId = "unbound" | "announcement" | "create" | "records" | "swipe-alert" | "rules";
 
 const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
   { id: "unbound", label: "未绑卡提示", icon: <CreditCard className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
@@ -69,6 +72,7 @@ const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
   { id: "create", label: "新建违规", icon: <UserPlus className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "records", label: "违规记录", icon: <ShieldAlert className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "swipe-alert", label: "刷卡失败告警", icon: <AlertTriangle className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
+  { id: "rules", label: "触发规则", icon: <Settings className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
 ];
 
 const LOCK_MODE_OPTIONS: { value: LockMode; label: string }[] = [
@@ -224,7 +228,7 @@ function ViolationTemplateQuickSelect({
 }
 
 function parsePageTab(raw: string | null): PageTabId {
-  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert") return raw;
+  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert" || raw === "rules") return raw;
   return "unbound";
 }
 
@@ -1614,6 +1618,7 @@ export default function AdminStudentViolationsPage() {
                 <tr>
                   <th className="whitespace-nowrap px-3 py-2">ID</th>
                   <th className="px-3 py-2">人员</th>
+                  <th className="whitespace-nowrap px-3 py-2">规则</th>
                   <th className="whitespace-nowrap px-3 py-2">状态</th>
                   <th className="whitespace-nowrap px-3 py-2">来源</th>
                   <th className="whitespace-nowrap px-3 py-2">禁入</th>
@@ -1642,9 +1647,12 @@ export default function AdminStudentViolationsPage() {
                           </div>
                         ) : null}
                       </td>
+                      <td className="px-3 py-2 text-xs text-[var(--twin-body)]">
+                        {r.ruleName || "—"}
+                      </td>
                       <td className="px-3 py-2 text-xs">
                         <span className={st.className} title={st.hint}>
-                          {st.text}
+                          {VIOLATION_STATUS_LABEL[r.status as keyof typeof VIOLATION_STATUS_LABEL] || st.text}
                         </span>
                       </td>
                       <td className="px-3 py-2 text-xs">
@@ -1713,6 +1721,15 @@ export default function AdminStudentViolationsPage() {
             }}
             onCancel={() => setEditingSwipeRule(null)}
           />
+        </AdminTabPanel>
+
+        <AdminTabPanel
+          id="violation-page-panel-rules"
+          tabId="rules"
+          activeTab={activeTab}
+          className="space-y-4"
+        >
+          <ViolationRuleManager />
         </AdminTabPanel>
       </div>
 

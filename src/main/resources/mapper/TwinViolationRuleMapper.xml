@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.dashboard.mapper.TwinViolationRuleMapper">
+
+    <resultMap id="TwinViolationRuleMap" type="com.example.demo.modules.twin.dashboard.entity.TwinViolationRule">
+        <id column="id" property="id"/>
+        <result column="rule_code" property="ruleCode"/>
+        <result column="rule_name" property="ruleName"/>
+        <result column="enabled" property="enabled"/>
+        <result column="source_tag" property="sourceTag"/>
+        <result column="violation_text_tpl" property="violationTextTpl"/>
+        <result column="forbid_enter" property="forbidEnter"/>
+        <result column="expire_after_days" property="expireAfterDays"/>
+        <result column="show_notice_every_scan" property="showNoticeEveryScan"/>
+        <result column="interactive_challenge" property="interactiveChallenge"/>
+        <result column="interactive_unlock_on_verify" property="interactiveUnlockOnVerify"/>
+        <result column="unblock_method" property="unblockMethod"/>
+        <result column="unblock_max_count" property="unblockMaxCount"/>
+        <result column="unblock_window_type" property="unblockWindowType"/>
+        <result column="unblock_window_value" property="unblockWindowValue"/>
+        <result column="auto_signout_enabled" property="autoSignoutEnabled"/>
+        <result column="whitelist_depts" property="whitelistDepts"/>
+        <result column="cron_expression" property="cronExpression"/>
+        <result column="last_execution_at" property="lastExecutionAt"/>
+        <result column="last_execution_result" property="lastExecutionResult"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <select id="selectAll" resultMap="TwinViolationRuleMap">
+        SELECT * FROM twin_violation_rule ORDER BY id ASC
+    </select>
+
+    <select id="selectById" resultMap="TwinViolationRuleMap">
+        SELECT * FROM twin_violation_rule WHERE id = #{id}
+    </select>
+
+    <select id="selectByCode" resultMap="TwinViolationRuleMap">
+        SELECT * FROM twin_violation_rule WHERE rule_code = #{ruleCode}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO twin_violation_rule (
+            rule_code, rule_name, enabled, source_tag,
+            violation_text_tpl, forbid_enter, expire_after_days, show_notice_every_scan,
+            interactive_challenge, interactive_unlock_on_verify,
+            unblock_method, unblock_max_count, unblock_window_type, unblock_window_value,
+            auto_signout_enabled, whitelist_depts, cron_expression
+        ) VALUES (
+            #{ruleCode}, #{ruleName}, #{enabled}, #{sourceTag},
+            #{violationTextTpl}, #{forbidEnter}, #{expireAfterDays}, #{showNoticeEveryScan},
+            #{interactiveChallenge}, #{interactiveUnlockOnVerify},
+            #{unblockMethod}, #{unblockMaxCount}, #{unblockWindowType}, #{unblockWindowValue},
+            #{autoSignoutEnabled}, #{whitelistDepts}, #{cronExpression}
+        )
+    </insert>
+
+    <update id="updateById">
+        UPDATE twin_violation_rule
+        SET rule_code = #{ruleCode},
+            rule_name = #{ruleName},
+            enabled = #{enabled},
+            source_tag = #{sourceTag},
+            violation_text_tpl = #{violationTextTpl},
+            forbid_enter = #{forbidEnter},
+            expire_after_days = #{expireAfterDays},
+            show_notice_every_scan = #{showNoticeEveryScan},
+            interactive_challenge = #{interactiveChallenge},
+            interactive_unlock_on_verify = #{interactiveUnlockOnVerify},
+            unblock_method = #{unblockMethod},
+            unblock_max_count = #{unblockMaxCount},
+            unblock_window_type = #{unblockWindowType},
+            unblock_window_value = #{unblockWindowValue},
+            auto_signout_enabled = #{autoSignoutEnabled},
+            whitelist_depts = #{whitelistDepts},
+            cron_expression = #{cronExpression},
+            updated_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM twin_violation_rule WHERE id = #{id}
+    </delete>
+
+    <select id="countViolationsByRuleId" resultType="int">
+        SELECT COUNT(1) FROM twin_student_violation WHERE rule_id = #{ruleId}
+    </select>
+
+    <select id="countViolationsInWindow" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_student_violation
+        WHERE target_user_id = #{targetUserId}
+          AND rule_id = #{ruleId}
+          AND created_at >= #{windowStart}
+    </select>
+</mapper>

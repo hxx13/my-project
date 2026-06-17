@@ -31,4 +31,6 @@ public class TwinStudentViolation {
     private LocalDateTime interactiveChallengeVerifiedAt;
     /** 交互验证完成后是否自动解除禁入；1=是 */
     private Integer interactiveUnlockOnVerify;
+    /** 关联触发规则ID */
+    private Long ruleId;
 }

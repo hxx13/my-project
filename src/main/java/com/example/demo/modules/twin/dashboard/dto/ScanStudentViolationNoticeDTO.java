@@ -27,4 +27,12 @@ public class ScanStudentViolationNoticeDTO {
     private LocalDateTime expireAt;
     /** 已超过违规期限且交互验证仍未完成（须先完成验证才能结束） */
     private Boolean pastExpireAwaitingInteractive;
+    /** 触发规则名称 */
+    private String ruleName;
+    /** 解禁方式：自助解禁 / 仅工作人员 */
+    private String unblockMethod;
+    /** 是否关键记录（达到解禁上限，自助通道已关闭） */
+    private Boolean critical;
+    /** 当前是否允许自助解禁 */
+    private Boolean canSelfUnblock;
 }

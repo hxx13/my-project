@@ -2,6 +2,7 @@ package com.example.demo.modules.twin.dashboard.service;
 
 import com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper;
 import com.example.demo.modules.twin.dahua.service.DahuaAutoSignoutService;
+import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
 import com.example.demo.modules.twin.dashboard.mapper.StrandedViolationConfigMapper;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.aro.service.AroService;
@@ -52,6 +53,7 @@ public class StrandedViolationService {
     private final TwinStudentViolationService violationService;
     private final TwinDashboardMapper personnelMapper;
     private final StrandedViolationConfigMapper configMapper;
+    private final TwinViolationRuleService ruleService;
     private final ObjectMapper objectMapper;
 
     public StrandedViolationService(
@@ -60,13 +62,15 @@ public class StrandedViolationService {
             DahuaAutoSignoutService autoSignoutService,
             TwinStudentViolationService violationService,
             TwinDashboardMapper personnelMapper,
-            StrandedViolationConfigMapper configMapper) {
+            StrandedViolationConfigMapper configMapper,
+            TwinViolationRuleService ruleService) {
         this.dahuaSwingMapper = dahuaSwingMapper;
         this.aroService = aroService;
         this.autoSignoutService = autoSignoutService;
         this.violationService = violationService;
         this.personnelMapper = personnelMapper;
         this.configMapper = configMapper;
+        this.ruleService = ruleService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -74,23 +78,49 @@ public class StrandedViolationService {
      * 由 {@code JobExecutionRegistry} 在 STRANDED_VIOLATION_CHECK 定时器触发时调用。
      */
     public void executeScheduledCheck() {
-        // 1. 读取配置
-        Map<String, Object> config = configMapper.selectConfig();
-        if (config == null || config.isEmpty()) {
-            log.info("[stranded-violation] 配置行不存在，跳过");
-            return;
-        }
-        // enabled 开关已由定时器 enable/disable 控制，此处不再二次判断
+        // 1. 读取配置：优先 twin_violation_rule，回退到旧 stranded_violation_config
+        TwinViolationRule rule = ruleService.getByCode("AUTO_STRANDED");
+        Long ruleId = null;
+        boolean autoSignout;
+        String tpl;
+        int forbidEnter;
+        int expireDays;
+        List<String> whitelistDepts;
+        boolean interactiveEnabled;
+        String interactivePhrase;
+        boolean interactiveUnlockOnVerify;
 
-        boolean autoSignout = Boolean.TRUE.equals(toBool(config.get("auto_signout_enabled")));
-        String tpl = Objects.toString(config.get("violation_text_tpl"), DEFAULT_VIOLATION_TPL);
-        int forbidEnter = Boolean.TRUE.equals(toBool(config.get("forbid_enter"))) ? 1 : 0;
-        int expireDays = toInt(config.get("expire_after_days"), 1);
-        List<String> whitelistDepts = parseJsonArray(
-                Objects.toString(config.get("whitelist_depts"), "[]"));
-        boolean interactiveEnabled = Boolean.TRUE.equals(toBool(config.get("interactive_challenge_enabled")));
-        String interactivePhrase = Objects.toString(config.get("interactive_challenge_phrase"), "");
-        boolean interactiveUnlockOnVerify = toInt(config.get("interactive_unlock_on_verify"), 1) != 0;
+        if (rule != null && (rule.getEnabled() == null || rule.getEnabled() == 1)) {
+            ruleId = rule.getId();
+            autoSignout = rule.getAutoSignoutEnabled() != null && rule.getAutoSignoutEnabled() == 1;
+            tpl = rule.getViolationTextTpl() != null && !rule.getViolationTextTpl().isBlank()
+                    ? rule.getViolationTextTpl() : DEFAULT_VIOLATION_TPL;
+            forbidEnter = rule.getForbidEnter() != null && rule.getForbidEnter() == 1 ? 1 : 0;
+            expireDays = rule.getExpireAfterDays() != null && rule.getExpireAfterDays() > 0
+                    ? rule.getExpireAfterDays() : 1;
+            whitelistDepts = parseJsonArray(rule.getWhitelistDepts());
+            interactiveEnabled = rule.getInteractiveChallenge() != null
+                    && !rule.getInteractiveChallenge().isBlank();
+            interactivePhrase = rule.getInteractiveChallenge();
+            interactiveUnlockOnVerify = rule.getInteractiveUnlockOnVerify() == null
+                    || rule.getInteractiveUnlockOnVerify() == 1;
+        } else {
+            // 回退到旧 stranded_violation_config
+            Map<String, Object> config = configMapper.selectConfig();
+            if (config == null || config.isEmpty()) {
+                log.info("[stranded-violation] 配置行不存在，跳过");
+                return;
+            }
+            autoSignout = Boolean.TRUE.equals(toBool(config.get("auto_signout_enabled")));
+            tpl = Objects.toString(config.get("violation_text_tpl"), DEFAULT_VIOLATION_TPL);
+            forbidEnter = Boolean.TRUE.equals(toBool(config.get("forbid_enter"))) ? 1 : 0;
+            expireDays = toInt(config.get("expire_after_days"), 1);
+            whitelistDepts = parseJsonArray(
+                    Objects.toString(config.get("whitelist_depts"), "[]"));
+            interactiveEnabled = Boolean.TRUE.equals(toBool(config.get("interactive_challenge_enabled")));
+            interactivePhrase = Objects.toString(config.get("interactive_challenge_phrase"), "");
+            interactiveUnlockOnVerify = toInt(config.get("interactive_unlock_on_verify"), 1) != 0;
+        }
 
         // 2. 查询当前 ACTIVATED 用户
         List<Map<String, Object>> activatedUsers = dahuaSwingMapper.listActivatedUsers();
@@ -162,7 +192,8 @@ public class StrandedViolationService {
                         "SYSTEM",
                         SOURCE_AUTO_STRANDED,
                         challenge,
-                        interactiveUnlockOnVerify);
+                        interactiveUnlockOnVerify,
+                        ruleId);
                 created++;
 
             } catch (Exception e) {
@@ -226,20 +257,45 @@ public class StrandedViolationService {
             return "缺少 userId";
         }
 
-        Map<String, Object> config = configMapper.selectConfig();
-        if (config == null || config.isEmpty()) {
-            return "配置不存在";
+        // 读取配置：优先 twin_violation_rule，回退到旧 stranded_violation_config
+        // NOTE: for testing, we always read even if rule.enabled=false
+        Long testRuleId = null;
+        String tpl;
+        int forbidEnter;
+        int expireDays;
+        List<String> whitelistDepts;
+        boolean interactiveEnabled;
+        String interactivePhrase;
+        boolean interactiveUnlockOnVerify;
+
+        TwinViolationRule testRule = ruleService.getByCode("AUTO_STRANDED");
+        if (testRule != null) {
+            testRuleId = testRule.getId();
+            tpl = testRule.getViolationTextTpl() != null && !testRule.getViolationTextTpl().isBlank()
+                    ? testRule.getViolationTextTpl() : DEFAULT_VIOLATION_TPL;
+            forbidEnter = testRule.getForbidEnter() != null && testRule.getForbidEnter() == 1 ? 1 : 0;
+            expireDays = testRule.getExpireAfterDays() != null && testRule.getExpireAfterDays() > 0
+                    ? testRule.getExpireAfterDays() : 1;
+            whitelistDepts = parseJsonArray(testRule.getWhitelistDepts());
+            interactiveEnabled = testRule.getInteractiveChallenge() != null
+                    && !testRule.getInteractiveChallenge().isBlank();
+            interactivePhrase = testRule.getInteractiveChallenge();
+            interactiveUnlockOnVerify = testRule.getInteractiveUnlockOnVerify() == null
+                    || testRule.getInteractiveUnlockOnVerify() == 1;
+        } else {
+            Map<String, Object> config = configMapper.selectConfig();
+            if (config == null || config.isEmpty()) {
+                return "配置不存在";
+            }
+            tpl = Objects.toString(config.get("violation_text_tpl"), DEFAULT_VIOLATION_TPL);
+            forbidEnter = Boolean.TRUE.equals(toBool(config.get("forbid_enter"))) ? 1 : 0;
+            expireDays = toInt(config.get("expire_after_days"), 1);
+            whitelistDepts = parseJsonArray(
+                    Objects.toString(config.get("whitelist_depts"), "[]"));
+            interactiveEnabled = Boolean.TRUE.equals(toBool(config.get("interactive_challenge_enabled")));
+            interactivePhrase = Objects.toString(config.get("interactive_challenge_phrase"), "");
+            interactiveUnlockOnVerify = toInt(config.get("interactive_unlock_on_verify"), 1) != 0;
         }
-        // NOTE: for testing, we allow execution even if master enabled=false
-        // (so admins can verify config before enabling globally)
-        String tpl = Objects.toString(config.get("violation_text_tpl"), DEFAULT_VIOLATION_TPL);
-        int forbidEnter = Boolean.TRUE.equals(toBool(config.get("forbid_enter"))) ? 1 : 0;
-        int expireDays = toInt(config.get("expire_after_days"), 1);
-        List<String> whitelistDepts = parseJsonArray(
-                Objects.toString(config.get("whitelist_depts"), "[]"));
-        boolean interactiveEnabled = Boolean.TRUE.equals(toBool(config.get("interactive_challenge_enabled")));
-        String interactivePhrase = Objects.toString(config.get("interactive_challenge_phrase"), "");
-        boolean interactiveUnlockOnVerify = toInt(config.get("interactive_unlock_on_verify"), 1) != 0;
 
         // 检查 ARO 是否仍在内
         List<?> noLeaveRooms = aroService.getNoLeaveRoom(userId);
@@ -299,7 +355,8 @@ public class StrandedViolationService {
                 userId, text, null, effectiveForbidEnter, null, true,
                 expireDays, "SYSTEM", SOURCE_AUTO_STRANDED,
                 challenge,
-                interactiveUnlockOnVerify);
+                interactiveUnlockOnVerify,
+                testRuleId);
 
         sb.append("已创建违规记录");
         return sb.toString();

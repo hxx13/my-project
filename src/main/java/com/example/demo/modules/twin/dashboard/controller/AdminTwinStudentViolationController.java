@@ -7,11 +7,13 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.twin.dashboard.dto.UnboundCardNoticeSettingsDTO;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
+import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
 import com.example.demo.modules.twin.common.service.TwinPersonnelArchiveQueryService;
 import com.example.demo.modules.twin.dashboard.entity.ViolationTextTemplate;
 import com.example.demo.modules.twin.dashboard.service.StrandedViolationService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationNoticeConfigService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
+import com.example.demo.modules.twin.dashboard.service.TwinViolationRuleService;
 import com.example.demo.modules.twin.dashboard.service.ViolationTextTemplateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,6 +41,7 @@ public class AdminTwinStudentViolationController {
     private final UserDisplayNameService userDisplayNameService;
     private final StrandedViolationService strandedViolationService;
     private final ViolationTextTemplateService templateService;
+    private final TwinViolationRuleService ruleService;
 
     public AdminTwinStudentViolationController(
             TwinStudentViolationService violationService,
@@ -47,7 +50,8 @@ public class AdminTwinStudentViolationController {
             AuthContextService authContextService,
             UserDisplayNameService userDisplayNameService,
             StrandedViolationService strandedViolationService,
-            ViolationTextTemplateService templateService
+            ViolationTextTemplateService templateService,
+            TwinViolationRuleService ruleService
     ) {
         this.violationService = violationService;
         this.unboundNoticeConfigService = unboundNoticeConfigService;
@@ -56,6 +60,7 @@ public class AdminTwinStudentViolationController {
         this.userDisplayNameService = userDisplayNameService;
         this.strandedViolationService = strandedViolationService;
         this.templateService = templateService;
+        this.ruleService = ruleService;
     }
 
     @GetMapping("/unbound-notice-settings")
@@ -257,6 +262,11 @@ public class AdminTwinStudentViolationController {
             return Result.error("进入次数上限不能为负数");
         }
         try {
+            Long effectiveRuleId = body.getRuleId();
+            if (effectiveRuleId == null && ruleService != null) {
+                TwinViolationRule manualRule = ruleService.getByCode("MANUAL");
+                if (manualRule != null) effectiveRuleId = manualRule.getId();
+            }
             TwinStudentViolation row = violationService.create(
                     body.getTargetUserId().trim(),
                     body.getViolationText() != null ? body.getViolationText() : "",
@@ -268,7 +278,8 @@ public class AdminTwinStudentViolationController {
                     admin.getId(),
                     "MANUAL",
                     body.getInteractiveChallenge(),
-                    body.getInteractiveUnlockOnVerify()
+                    body.getInteractiveUnlockOnVerify(),
+                    effectiveRuleId
             );
             return Result.success(toRow(row, null));
         } catch (IllegalArgumentException e) {
@@ -342,6 +353,13 @@ public class AdminTwinStudentViolationController {
         m.put("interactiveChallenge", v.getInteractiveChallenge());
         m.put("interactiveChallengeVerifiedAt", v.getInteractiveChallengeVerifiedAt());
         m.put("interactiveUnlockOnVerify", v.getInteractiveUnlockOnVerify());
+        m.put("ruleId", v.getRuleId());
+        if (v.getRuleId() != null && ruleService != null) {
+            TwinViolationRule rule = ruleService.getById(v.getRuleId());
+            m.put("ruleName", rule != null ? rule.getRuleName() : null);
+        } else {
+            m.put("ruleName", null);
+        }
         return m;
     }
 
@@ -406,6 +424,8 @@ public class AdminTwinStudentViolationController {
         private String interactiveChallenge;
         /** 交互验证完成后是否自动解除禁入；默认 true */
         private Boolean interactiveUnlockOnVerify;
+        /** 关联触发规则ID（不传则自动使用 MANUAL 规则） */
+        private Long ruleId;
     }
 
     @Data
@@ -513,6 +533,11 @@ public class AdminTwinStudentViolationController {
 
     // ---- 滞留自动违规配置 ----
 
+    /**
+     * @deprecated 使用 GET /api/admin/twin/student-violations/rules 代替。
+     *             配置已迁移至 twin_violation_rule 表（rule_code='AUTO_STRANDED'）。
+     */
+    @Deprecated
     @GetMapping("/stranded-config")
     @Operation(summary = "获取滞留自动违规配置")
     public Result<?> getStrandedConfig(
@@ -525,6 +550,11 @@ public class AdminTwinStudentViolationController {
         return Result.success(strandedViolationService.getConfig());
     }
 
+    /**
+     * @deprecated 使用 PUT /api/admin/twin/student-violations/rules/{id} 代替。
+     *             配置已迁移至 twin_violation_rule 表（rule_code='AUTO_STRANDED'）。
+     */
+    @Deprecated
     @PutMapping("/stranded-config")
     @Operation(summary = "保存滞留自动违规配置")
     public Result<?> saveStrandedConfig(
@@ -539,6 +569,12 @@ public class AdminTwinStudentViolationController {
         return Result.success(strandedViolationService.getConfig());
     }
 
+    /**
+     * @deprecated 测试逻辑已迁移至规则执行引擎。
+     *             请通过 POST /api/admin/twin/student-violations/rules 管理规则，
+     *             并通过触发条件验证行为。
+     */
+    @Deprecated
     @PostMapping("/stranded-config/test")
     @Operation(summary = "对单个用户测试滞留检测（不写回 config execution result）")
     public Result<?> testStrandedSingle(
@@ -556,5 +592,77 @@ public class AdminTwinStudentViolationController {
         boolean autoSignout = body != null && Boolean.TRUE.equals(toBool(body.get("autoSignout")));
         String summary = strandedViolationService.testSingleUser(userId, autoSignout);
         return Result.success(Map.of("userId", userId, "summary", summary));
+    }
+
+    // ═══ 违规触发规则 CRUD ═══
+
+    @GetMapping("/rules")
+    @Operation(summary = "触发规则列表")
+    public Result<?> listRules(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        return Result.success(ruleService.listAll());
+    }
+
+    @GetMapping("/rules/{id}")
+    @Operation(summary = "触发规则详情")
+    public Result<?> getRule(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") long id
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        TwinViolationRule rule = ruleService.getById(id);
+        return rule != null ? Result.success(rule) : Result.error("规则不存在");
+    }
+
+    @PostMapping("/rules")
+    @Operation(summary = "新建触发规则")
+    public Result<?> createRule(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody TwinViolationRule body
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        try {
+            return Result.success(ruleService.create(body));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PutMapping("/rules/{id}")
+    @Operation(summary = "编辑触发规则")
+    public Result<?> updateRule(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") long id,
+            @RequestBody TwinViolationRule body
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        body.setId(id);
+        try {
+            return Result.success(ruleService.update(body));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/rules/{id}")
+    @Operation(summary = "删除触发规则（有关联违规记录时禁止）")
+    public Result<?> deleteRule(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable("id") long id
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        try {
+            boolean ok = ruleService.delete(id);
+            return ok ? Result.success() : Result.error("规则不存在");
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
     }
 }
