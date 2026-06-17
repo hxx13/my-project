@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Keyboard, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   fetchScanCardMapping,
   studentDahuaBind,
@@ -10,7 +10,6 @@ import { DahuaCardMappingStatusPanel } from "./DahuaCardMappingStatusPanel";
 import {
   isValidStudentDahuaCardNo,
   sanitizeStudentDahuaCardNo,
-  STUDENT_DAHUA_CARD_DEBOUNCE_MS,
   STUDENT_DAHUA_CARD_LEN,
 } from "./studentDahuaCardInput";
 import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
@@ -32,12 +31,10 @@ export function StudentDahuaBindPanel({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [inputHint, setInputHint] = useState("");
-  const [showImeTip, setShowImeTip] = useState(false);
   const [issueResult, setIssueResult] = useState<StudentDahuaBindResult | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const validateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const composingRef = useRef(false);
+  const cardScanBufferRef = useRef("");
+  const cardScanResetTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const reloadMapping = async () => {
     setMappingLoading(true);
@@ -57,65 +54,86 @@ export function StudentDahuaBindPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅随 userId 刷新
   }, [userId]);
 
+  // 弹窗打开时聚焦输入框，重置 buffer
   useEffect(() => {
-    const t = window.setTimeout(() => inputRef.current?.focus(), 80);
+    cardScanBufferRef.current = "";
+    if (cardScanResetTimer.current) {
+      clearTimeout(cardScanResetTimer.current);
+      cardScanResetTimer.current = null;
+    }
+    const t = window.setTimeout(() => inputRef.current?.focus(), 0);
     return () => window.clearTimeout(t);
   }, []);
 
+  // 清理 timer
   useEffect(() => {
     return () => {
-      if (validateTimerRef.current) clearTimeout(validateTimerRef.current);
+      if (cardScanResetTimer.current) clearTimeout(cardScanResetTimer.current);
     };
   }, []);
 
-  const clearValidateTimer = useCallback(() => {
-    if (validateTimerRef.current) {
-      clearTimeout(validateTimerRef.current);
-      validateTimerRef.current = null;
+  /** 更新卡号 buffer + state，重置 1200ms 空闲后清空（适配读卡器连发后重新刷卡） */
+  const updateCardNoWithBuffer = useCallback((nextValue: string) => {
+    cardScanBufferRef.current = nextValue;
+    setCardNo(nextValue);
+    if (cardScanResetTimer.current) {
+      clearTimeout(cardScanResetTimer.current);
     }
+    cardScanResetTimer.current = window.setTimeout(() => {
+      cardScanBufferRef.current = "";
+      setCardNo("");
+      cardScanResetTimer.current = null;
+    }, 1200);
   }, []);
 
-  /** 防抖：停止输入后若非 8 位合法卡号则清空（避免读卡器连发残留） */
-  const scheduleLengthValidation = useCallback(
-    (value: string) => {
-      clearValidateTimer();
-      if (!value) {
-        setInputHint("");
+  /** 与 DebugCardMappingPage / 首页程序坞扫码一致：window capture 处理按键，避免中文输入法抢占读卡器字符 */
+  useEffect(() => {
+    const onWinKeyDown = (e: KeyboardEvent) => {
+      const el = inputRef.current;
+      if (!el || document.activeElement !== el) return;
+      if (e.isComposing || e.key === "Process" || (e as KeyboardEvent & { keyCode?: number }).keyCode === 229) {
         return;
       }
-      validateTimerRef.current = setTimeout(() => {
-        validateTimerRef.current = null;
-        if (isValidStudentDahuaCardNo(value)) {
-          setInputHint("");
-          return;
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      const key = e.key;
+      if (key === "Tab") return;
+      if (key === "Enter") {
+        e.preventDefault();
+        if (!confirmOpen && isValidStudentDahuaCardNo(cardScanBufferRef.current)) {
+          setError("");
+          setConfirmOpen(true);
         }
-        setCardNo("");
-        setInputHint(`卡号须为 ${STUDENT_DAHUA_CARD_LEN} 位字母或数字，已自动清空`);
-      }, STUDENT_DAHUA_CARD_DEBOUNCE_MS);
-    },
-    [clearValidateTimer]
-  );
-
-  const applyCardInput = useCallback(
-    (raw: string) => {
-      const clean = sanitizeStudentDahuaCardNo(raw);
-      setCardNo(clean);
-      if (clean && isValidStudentDahuaCardNo(clean)) {
-        clearValidateTimer();
-        setInputHint("");
         return;
       }
-      scheduleLengthValidation(clean);
-    },
-    [clearValidateTimer, scheduleLengthValidation]
-  );
+      if (key === "Backspace") {
+        e.preventDefault();
+        updateCardNoWithBuffer(cardScanBufferRef.current.slice(0, -1));
+        return;
+      }
+      if (key.length !== 1) {
+        e.preventDefault();
+        return;
+      }
+      if (!/[0-9A-Za-z]/.test(key)) {
+        e.preventDefault();
+        return;
+      }
+      if (cardScanBufferRef.current.length >= STUDENT_DAHUA_CARD_LEN) {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      updateCardNoWithBuffer(`${cardScanBufferRef.current}${key}`);
+    };
+    window.addEventListener("keydown", onWinKeyDown, true);
+    return () => window.removeEventListener("keydown", onWinKeyDown, true);
+  }, [confirmOpen]);
 
   const handleRequestConfirm = () => {
     const clean = sanitizeStudentDahuaCardNo(cardNo);
     if (!isValidStudentDahuaCardNo(clean)) {
       setCardNo("");
-      setError(`请先输入或刷入 ${STUDENT_DAHUA_CARD_LEN} 位字母或数字卡号`);
-      setInputHint("");
+      setError(`请先刷入 ${STUDENT_DAHUA_CARD_LEN} 位字母或数字卡号`);
       return;
     }
     setError("");
@@ -149,12 +167,6 @@ export function StudentDahuaBindPanel({
     }
   };
 
-  const focusCardInput = () => {
-    setShowImeTip(true);
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  };
-
   const cardReady = isValidStudentDahuaCardNo(cardNo);
 
   return (
@@ -173,67 +185,37 @@ export function StudentDahuaBindPanel({
           </p>
         </div>
 
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <label className="block text-[11px] font-bold text-[var(--app-color-text-tertiary)]">绑定卡号（请刷卡）</label>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-2 py-0.5 text-[10px] font-bold text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-active)]"
-            onClick={focusCardInput}
-            title="网页无法直接切换系统输入法，请手动切到英文后刷卡"
-          >
-            <Keyboard className="h-3 w-3" aria-hidden />
-            英文输入说明
-          </button>
-        </div>
-        {showImeTip ? (
-          <p className="mb-2 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] px-2 py-1.5 text-[10px] leading-relaxed text-[var(--app-color-text-secondary)]">
-            请先在系统任务栏将输入法切换为<strong className="font-bold">英文</strong>（Windows：Win+空格；Mac：Control+空格），再刷卡。
-            浏览器无法代您切换输入法；本框已尽量关闭中文联想。
-          </p>
-        ) : null}
+        <label className="mb-1 block text-[11px] font-bold text-[var(--app-color-text-tertiary)]">绑定卡号（请刷卡）</label>
+        <p className="mb-2 rounded-[var(--app-radius-element)] border border-[var(--app-color-feedback-warning)]/30 bg-[var(--app-color-feedback-warning-soft)] px-2 py-1.5 text-[10px] leading-relaxed text-[var(--app-color-text-secondary)]">
+          读卡器直接刷卡即可自动填入，无需点击输入框。卡号为 {STUDENT_DAHUA_CARD_LEN} 位字母或数字。
+        </p>
         <input
           ref={inputRef}
           type="text"
-          inputMode="text"
+          inputMode="none"
           lang="en"
           autoComplete="off"
           autoCorrect="off"
-          autoCapitalize="characters"
+          autoCapitalize="off"
           spellCheck={false}
-          maxLength={STUDENT_DAHUA_CARD_LEN}
           value={cardNo}
-          style={{ imeMode: "disabled" }}
-          onChange={(e) => {
-            if (composingRef.current) return;
-            applyCardInput(e.target.value);
-          }}
-          onCompositionStart={() => {
-            composingRef.current = true;
-          }}
-          onCompositionEnd={(e) => {
-            composingRef.current = false;
-            applyCardInput(e.currentTarget.value);
-          }}
-          onBlur={() => {
-            const clean = sanitizeStudentDahuaCardNo(cardNo);
-            if (clean && !isValidStudentDahuaCardNo(clean)) {
-              setCardNo("");
-              setInputHint(`卡号须为 ${STUDENT_DAHUA_CARD_LEN} 位字母或数字，已自动清空`);
+          readOnly
+          onPaste={(e) => {
+            e.preventDefault();
+            const pasted = sanitizeStudentDahuaCardNo(e.clipboardData.getData("text"));
+            if (pasted.length <= STUDENT_DAHUA_CARD_LEN) {
+              updateCardNoWithBuffer(pasted);
             }
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !confirmOpen && cardReady) handleRequestConfirm();
-          }}
-          className="mb-1 w-full rounded-[var(--app-radius-element)] border-2 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2.5 font-mono text-sm tracking-widest text-[var(--app-color-accent)] outline-none focus:border-[var(--app-color-accent)]"
-          placeholder={`${STUDENT_DAHUA_CARD_LEN} 位字母或数字`}
+          className="mb-1 w-full rounded-[var(--app-radius-element)] border-2 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2.5 font-mono text-sm tracking-widest text-[var(--app-color-accent)] outline-none focus:border-[var(--app-color-accent)] caret-transparent select-none"
+          placeholder={`等待读卡器输入…`}
           disabled={submitting}
           aria-invalid={cardNo.length > 0 && !cardReady}
         />
         <p className="mb-2 text-[10px] text-[var(--app-color-text-tertiary)]">
-          已输入 {cardNo.length}/{STUDENT_DAHUA_CARD_LEN} 位
-          {cardReady ? <span className="ml-1 text-[var(--app-color-feedback-success)]">· 格式正确</span> : null}
+          已刷卡 {cardNo.length}/{STUDENT_DAHUA_CARD_LEN} 位
+          {cardReady ? <span className="ml-1 text-[var(--app-color-feedback-success)]">· 格式正确，按 Enter 确认</span> : null}
         </p>
-        {inputHint ? <p className="mb-2 text-[11px] text-[var(--app-color-feedback-warning)]">{inputHint}</p> : null}
 
         <DahuaCardMappingStatusPanel mapping={mapping} loading={mappingLoading} compact />
 
