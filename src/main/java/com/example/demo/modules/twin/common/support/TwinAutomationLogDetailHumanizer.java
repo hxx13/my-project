@@ -33,6 +33,9 @@ public final class TwinAutomationLogDetailHumanizer {
             if (row == null) {
                 continue;
             }
+            if ("face".equals(row.getLogSource())) {
+                continue;
+            }
             String raw = row.getDetail();
             if (raw == null || raw.isBlank()) {
                 row.setDetailDisplayZh("");

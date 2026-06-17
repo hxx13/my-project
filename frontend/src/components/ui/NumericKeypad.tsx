@@ -48,7 +48,7 @@ const DeleteButton = memo(function DeleteButton({
 });
 
 export function NumericKeypad(props: NumericKeypadProps) {
-  const { mode, userId, userName, onSuccess, onCancel, className = "" } = props;
+  const { mode, userId, userName, onSuccess, onCancel, className = "", topSlot } = props;
   const kp = useNumericKeypad(mode, userId, onSuccess, onCancel);
 
   const title = mode === "set" ? "设置个人密码" : "验证个人密码";
@@ -78,9 +78,10 @@ export function NumericKeypad(props: NumericKeypadProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
-        className="fixed inset-0 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+        className="fixed inset-0 flex flex-col items-center justify-center gap-2 p-4 bg-black/60 backdrop-blur-sm"
         style={{ zIndex: Z_INDEX.keypad }}
       >
+        {topSlot}
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}

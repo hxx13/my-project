@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchStats } from "../api/student.api";
 import type { StatsData } from "../api/student.api";
+import { getStudentSessionScope, studentQueryKey } from "../utils/studentQueryScope";
 
 /**
  * 获取学生统计面板数据
@@ -9,9 +10,11 @@ import type { StatsData } from "../api/student.api";
  * staleTime 设为 5 分钟，统计数据变化较慢无需频繁刷新。
  */
 export function useStudentStats(period: string = "30d") {
+  const scope = getStudentSessionScope();
   return useQuery<StatsData>({
-    queryKey: ["student", "stats", period],
+    queryKey: studentQueryKey("stats", period),
     queryFn: () => fetchStats(period),
+    enabled: scope !== "anonymous",
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });

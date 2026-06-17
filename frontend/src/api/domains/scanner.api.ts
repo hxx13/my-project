@@ -100,6 +100,8 @@ const normalizeRoomInfo = (raw: unknown): RoomInfo => {
         disableReason: typeof r.disableReason === "string" ? r.disableReason : undefined,
         enterBlocked: asBool(r.enterBlocked),
         enterBlockReason: typeof r.enterBlockReason === "string" ? r.enterBlockReason : undefined,
+        scanEntryTimeExempt:
+            asBool(r.scanEntryTimeExempt) ?? asBool(r.scan_entry_time_exempt) ?? undefined,
     };
 };
 
@@ -175,6 +177,11 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             expireAt: asString(n.expireAt ?? n.expire_at) ?? null,
             pastExpireAwaitingInteractive:
                 asBooleanLike(n.pastExpireAwaitingInteractive ?? n.past_expire_awaiting_interactive) ?? false,
+            ruleName: asString(n.ruleName ?? n.rule_name),
+            unblockMethod: asString(n.unblockMethod ?? n.unblock_method),
+            critical: asBooleanLike(n.critical) ?? false,
+            canSelfUnblock: asBooleanLike(n.canSelfUnblock ?? n.can_self_unblock),
+            criticalNoticeText: asString(n.criticalNoticeText ?? n.critical_notice_text),
         };
     };
     const studentViolationNotice = parseViolationNotice(
@@ -241,6 +248,13 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             asBooleanLike(safe.scanPopupEntryAllowedNow) ??
             asBooleanLike(safe.scan_popup_entry_allowed_now) ??
             true,
+        scanPopupExemptRoomIds: (() => {
+            const raw = safe.scanPopupExemptRoomIds ?? safe.scan_popup_exempt_room_ids;
+            if (!Array.isArray(raw)) return undefined;
+            return raw
+                .map((id) => (id == null ? "" : String(id).trim()))
+                .filter((id) => id.length > 0);
+        })(),
         studentViolationNotice,
         unboundCardNotice,
         scanPopupAnnouncements,
@@ -255,6 +269,37 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             if (raw == null || raw === "") return null;
             const n = typeof raw === "number" ? raw : Number(raw);
             return Number.isFinite(n) && n > 0 ? n : null;
+        })(),
+        scanDelayEnabled:
+            asBooleanLike(safe.scanDelayEnabled) ??
+            asBooleanLike(safe.scan_delay_enabled) ??
+            false,
+        scanDelayButtonLabel:
+            asString(safe.scanDelayButtonLabel ?? safe.scan_delay_button_label) ?? "延迟",
+        scanDelayOptionsByRoom: (() => {
+            const raw = safe.scanDelayOptionsByRoom ?? safe.scan_delay_options_by_room;
+            if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+            const out: Record<string, import("@/api/types/scanner").ScanDelayOptionSummary[]> = {};
+            for (const [roomId, items] of Object.entries(raw as Record<string, unknown>)) {
+                if (!Array.isArray(items)) continue;
+                out[roomId] = items
+                    .filter((it): it is Record<string, unknown> => Boolean(it && typeof it === "object"))
+                    .map((it) => ({
+                        id: Number(it.id),
+                        roomId: String(it.roomId ?? it.room_id ?? roomId),
+                        optionLabel: String(it.optionLabel ?? it.option_label ?? ""),
+                        requireApproval: Boolean(it.requireApproval ?? it.require_approval),
+                        reviewerUserIds: (() => {
+                            const rawIds = it.reviewerUserIds ?? it.reviewer_user_ids;
+                            return Array.isArray(rawIds) ? rawIds.map((id) => String(id)) : [];
+                        })(),
+                        exemptMode: it.exemptMode != null ? String(it.exemptMode) : it.exempt_mode != null ? String(it.exempt_mode) : undefined,
+                        durationMinutes: it.durationMinutes != null ? Number(it.durationMinutes) : it.duration_minutes != null ? Number(it.duration_minutes) : null,
+                        maxCount: it.maxCount != null ? Number(it.maxCount) : it.max_count != null ? Number(it.max_count) : null,
+                    }))
+                    .filter((it) => Number.isFinite(it.id) && it.optionLabel);
+            }
+            return Object.keys(out).length > 0 ? out : undefined;
         })(),
     };
 };

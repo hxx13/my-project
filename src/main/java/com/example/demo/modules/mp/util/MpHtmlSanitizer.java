@@ -6,8 +6,15 @@ import org.jsoup.safety.Safelist;
 
 /**
  * 公告/版本等富文本入库前消毒，配合前端 DOMPurify；禁止 script 等危险标签。
+ * 保留 TipTap 字色与高亮色块（mark / span style）。
  */
 public final class MpHtmlSanitizer {
+
+    /** relaxed + mark + 行内 style（TipTap 字色 / 高亮色块） */
+    private static final Safelist RICH_TEXT_BODY = Safelist.relaxed()
+            .addTags("mark")
+            .addAttributes(":all", "style")
+            .addAttributes("mark", "data-color");
 
     private MpHtmlSanitizer() {
     }
@@ -18,7 +25,7 @@ public final class MpHtmlSanitizer {
         }
         String preserved = preserveEmptyParagraphs(html);
         Document.OutputSettings settings = new Document.OutputSettings().prettyPrint(false);
-        return Jsoup.clean(preserved, "", Safelist.relaxed(), settings);
+        return Jsoup.clean(preserved, "", RICH_TEXT_BODY, settings);
     }
 
     /**

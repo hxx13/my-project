@@ -54,7 +54,8 @@
       "Skill(deep-research)",
       "Skill(deep-research:*)",
       "Workflow(deep-research)",
-      "mcp__firecrawl__firecrawl_extract"
+      "mcp__firecrawl__firecrawl_extract",
+      "Bash(npm install *)"
     ],
     "additionalDirectories": [
       "d:\\codex\\verson.1.2\\20260416\\.claude",

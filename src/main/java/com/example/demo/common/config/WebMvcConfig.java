@@ -34,11 +34,13 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(apiAuthInterceptor)
                 .addPathPatterns("/api/v1/**", "/api/me/**", "/api/chat/**",
                         "/api/upload/**", "/api/notifications/**", "/api/supplies/**",
-                        "/api/repair/**", "/api/purchase/**", "/api/mp/**")
+                        "/api/repair/**", "/api/purchase/**", "/api/mp/**",
+                        "/api/face/**")
                 .excludePathPatterns("/api/auth/**", "/api/public/**",
                         "/api/event/**", "/api/upload/files/**",
                         "/api/upload/sync/**", "/api/upload/records/*",
                         "/api/upload/proxy-image",
+                        "/api/face/baseline/proxy-image",
                         "/api/upload/records/*/wechat-file-id",
                         "/api/upload/cloud-mappings",
                         "/api/upload/repair/**",

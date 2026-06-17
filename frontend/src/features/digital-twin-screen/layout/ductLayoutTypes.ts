@@ -1,6 +1,8 @@
 /** 自定义管道平面图布局（归一化 0–1，相对场景 sceneRef 矩形） */
 /** 后续可选：SceneLayoutDocumentV3 将风管点改为 layoutPlate 局部归一化，与房间共用 plate 坐标系（图层架构里程碑）。 */
 
+import { randomUUID } from "@/utils/randomUUID";
+
 export type DuctPlanPoint = {
   id: string;
   x: number;
@@ -24,17 +26,9 @@ export type DuctLayoutDocumentV1 = {
 export const DUCT_LAYOUT_STORAGE_KEY = "aro.digitalTwin.ductLayout.v1";
 
 export function newPointId(): string {
-  try {
-    return crypto.randomUUID();
-  } catch {
-    return `p-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  }
+  return randomUUID();
 }
 
 export function newPolylineId(): string {
-  try {
-    return `duct-${crypto.randomUUID().slice(0, 8)}`;
-  } catch {
-    return `duct-${Date.now()}`;
-  }
+  return `duct-${randomUUID().slice(0, 8)}`;
 }

@@ -284,8 +284,10 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
   const bodyHtmlSource =
     kind === "announcement"
       ? announcementCurrent?.contentHtml || ""
-      // 达到上限且配置了替换文案 → 优先用替换文案
-      : notice?.criticalNoticeText || notice?.violationText || "";
+      // 达到上限且配置了替换文案 → 优先用替换文案（需 critical=true）
+      : notice?.critical && notice?.criticalNoticeText
+        ? notice.criticalNoticeText
+        : notice?.violationText || "";
   const safeHtml = useMemo(() => prepareAnnouncementHtml(bodyHtmlSource), [bodyHtmlSource]);
 
   const dialogHeadline =
@@ -415,7 +417,7 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
                   </p>
                 ) : interactiveBlockedByLimit ? (
                   <p className="text-[11px] text-center text-[var(--app-color-feedback-danger)] px-3 py-2">
-                    已达自助解禁上限，请联系工作人员解除
+                    已达解禁上限
                   </p>
                 ) : null
               }

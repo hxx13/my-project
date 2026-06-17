@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.facerecognition.mapper.FaceVerifyAuditMapper">
+
+    <resultMap id="AdminMap" type="com.example.demo.modules.facerecognition.entity.FaceVerifyAuditRecord">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="sessionId" column="session_id"/>
+        <result property="matched" column="matched"/>
+        <result property="similarity" column="similarity"/>
+        <result property="matchThreshold" column="match_threshold"/>
+        <result property="rejectThreshold" column="reject_threshold"/>
+        <result property="modelVersion" column="model_version"/>
+        <result property="challengeAction" column="challenge_action"/>
+        <result property="source" column="source"/>
+        <result property="baselineCount" column="baseline_count"/>
+        <result property="bestBaselineId" column="best_baseline_id"/>
+        <result property="probeFaceDetected" column="probe_face_detected"/>
+        <result property="probeImageUrls" column="probe_image_urls"/>
+        <result property="bestBaselineImageUrl" column="best_baseline_image_url"/>
+        <result property="topSimsJson" column="top_sims_json"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="userName" column="user_name"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO face_verify_audit (
+            user_id, session_id, matched, similarity,
+            match_threshold, reject_threshold, model_version,
+            challenge_action, source, baseline_count,
+            best_baseline_id, probe_face_detected,
+            probe_image_urls, best_baseline_image_url, top_sims_json,
+            created_at
+        ) VALUES (
+            #{userId}, #{sessionId}, #{matched}, #{similarity},
+            #{matchThreshold}, #{rejectThreshold}, #{modelVersion},
+            #{challengeAction}, #{source}, #{baselineCount},
+            #{bestBaselineId}, #{probeFaceDetected},
+            #{probeImageUrls}, #{bestBaselineImageUrl}, #{topSimsJson},
+            NOW()
+        )
+    </insert>
+
+    <select id="findByUserIdAndSessionId" resultMap="AdminMap">
+        SELECT a.id, a.user_id, a.session_id, a.matched, a.similarity,
+               a.match_threshold, a.reject_threshold, a.model_version,
+               a.challenge_action, a.source, a.baseline_count,
+               a.best_baseline_id, a.probe_face_detected,
+               a.probe_image_urls, a.best_baseline_image_url, a.top_sims_json,
+               a.created_at, NULL AS user_name
+        FROM face_verify_audit a
+        WHERE a.user_id = #{userId} AND a.session_id = #{sessionId}
+        ORDER BY a.id DESC
+        LIMIT 1
+    </select>
+
+    <update id="updateMerged">
+        UPDATE face_verify_audit SET
+            matched = #{matched},
+            similarity = #{similarity},
+            match_threshold = #{matchThreshold},
+            reject_threshold = #{rejectThreshold},
+            model_version = #{modelVersion},
+            challenge_action = #{challengeAction},
+            source = #{source},
+            baseline_count = #{baselineCount},
+            best_baseline_id = #{bestBaselineId},
+            probe_face_detected = #{probeFaceDetected},
+            probe_image_urls = #{probeImageUrls},
+            best_baseline_image_url = #{bestBaselineImageUrl},
+            top_sims_json = #{topSimsJson}
+        WHERE id = #{id}
+    </update>
+
+    <sql id="AdminLatestJoin">
+        INNER JOIN (
+            SELECT MAX(id) AS keep_id
+            FROM face_verify_audit
+            GROUP BY user_id,
+                IF(CHAR_LENGTH(TRIM(IFNULL(session_id, ''))) > 0, session_id, CONCAT('__row__', id))
+        ) latest ON a.id = latest.keep_id
+    </sql>
+
+    <sql id="AdminWhere">
+        <where>
+            <if test="triggerType != null and triggerType != '' and triggerType != 'USER'">
+                AND 1 = 0
+            </if>
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    a.user_id LIKE CONCAT('%', #{keyword}, '%')
+                    OR a.session_id LIKE CONCAT('%', #{keyword}, '%')
+                    OR a.model_version LIKE CONCAT('%', #{keyword}, '%')
+                    OR a.source LIKE CONCAT('%', #{keyword}, '%')
+                    OR p.name LIKE CONCAT('%', #{keyword}, '%')
+                )
+            </if>
+            <if test="startTime != null">
+                AND a.created_at <![CDATA[>=]]> #{startTime}
+            </if>
+            <if test="endTime != null">
+                AND a.created_at <![CDATA[<=]]> #{endTime}
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectAdminPage" resultMap="AdminMap">
+        SELECT a.id, a.user_id, a.session_id, a.matched, a.similarity,
+               a.match_threshold, a.reject_threshold, a.model_version,
+               a.challenge_action, a.source, a.baseline_count,
+               a.best_baseline_id, a.probe_face_detected,
+               a.probe_image_urls, a.best_baseline_image_url, a.top_sims_json,
+               a.created_at, p.name AS user_name
+        FROM face_verify_audit a
+        <include refid="AdminLatestJoin"/>
+        LEFT JOIN aro_personnel p ON a.user_id = p.user_id
+        <include refid="AdminWhere"/>
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countAdminPage" resultType="long">
+        SELECT COUNT(1)
+        FROM face_verify_audit a
+        <include refid="AdminLatestJoin"/>
+        LEFT JOIN aro_personnel p ON a.user_id = p.user_id
+        <include refid="AdminWhere"/>
+    </select>
+
+</mapper>

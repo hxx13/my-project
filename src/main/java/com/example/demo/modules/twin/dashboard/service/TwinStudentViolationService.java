@@ -141,7 +141,8 @@ public class TwinStudentViolationService {
             if (rule != null) {
                 dto.setRuleName(rule.getRuleName());
                 dto.setUnblockMethod(rule.getUnblockMethod());
-                TwinViolationRuleService.UnblockDecision decision = ruleService.evaluate(targetUserId, row.getRuleId());
+                TwinViolationRuleService.UnblockDecision decision =
+                        ruleService.evaluateForExisting(targetUserId, row.getRuleId());
                 dto.setCritical(decision.isCritical());
                 dto.setCanSelfUnblock(ruleService.canSelfUnblock(row.getId(), targetUserId, row.getRuleId()));
                 // 达到上限且配置了替换文案 → 覆盖公告内容
@@ -178,6 +179,10 @@ public class TwinStudentViolationService {
         }
         if (!StringUtils.hasText(row.getInteractiveChallenge())) {
             throw new IllegalArgumentException("该违规无需交互确认");
+        }
+        if (row.getRuleId() != null && ruleService != null
+                && !ruleService.canSelfUnblock(violationId, targetUserId.trim(), row.getRuleId())) {
+            throw new IllegalArgumentException("已达解禁上限");
         }
         if (row.getInteractiveChallengeVerifiedAt() != null) {
             return finalizeAfterInteractiveAck(row);
@@ -603,6 +608,7 @@ public class TwinStudentViolationService {
                 expireAfterDays,
                 createdByUserId,
                 null,
+                null,
                 null);
     }
 
@@ -628,6 +634,7 @@ public class TwinStudentViolationService {
                 expireAfterDays,
                 createdByUserId,
                 interactiveChallenge,
+                null,
                 null);
     }
 
@@ -643,6 +650,34 @@ public class TwinStudentViolationService {
             String createdByUserId,
             String interactiveChallenge,
             Boolean interactiveUnlockOnVerify
+    ) {
+        return createBatch(
+                targetUserIds,
+                violationText,
+                imageUrls,
+                forbidEnter,
+                maxEnterSuccess,
+                showNoticeEveryScan,
+                expireAfterDays,
+                createdByUserId,
+                interactiveChallenge,
+                interactiveUnlockOnVerify,
+                null);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> createBatch(
+            List<String> targetUserIds,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String interactiveChallenge,
+            Boolean interactiveUnlockOnVerify,
+            Long ruleId
     ) {
         if (targetUserIds == null || targetUserIds.isEmpty()) {
             throw new IllegalArgumentException("缺少 targetUserIds");
@@ -674,7 +709,8 @@ public class TwinStudentViolationService {
                         createdByUserId,
                         "MANUAL",
                         interactiveChallenge,
-                        interactiveUnlockOnVerify
+                        interactiveUnlockOnVerify,
+                        ruleId
                 );
                 created++;
             } catch (Exception e) {

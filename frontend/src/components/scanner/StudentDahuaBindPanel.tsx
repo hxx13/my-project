@@ -34,7 +34,7 @@ export function StudentDahuaBindPanel({
   const [issueResult, setIssueResult] = useState<StudentDahuaBindResult | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const cardScanBufferRef = useRef("");
-  const cardScanResetTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const cardScanResetTimer = useRef<number | null>(null);
 
   const reloadMapping = async () => {
     setMappingLoading(true);

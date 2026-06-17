@@ -29,13 +29,13 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
                 "VALUES ('item-knowledge', 'system-security', 'ITEM', '知识库', '/admin/knowledge', 'BookOpen', 9)");
 
-            // 确保「审核」分组与「申领审核」入口始终存在
+            // 确保「学生审核」分组与入口始终存在
             jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) " +
-                "VALUES ('material-review', NULL, 'GROUP', '审核', 7)");
+                "VALUES ('material-review', NULL, 'GROUP', '学生审核', 7)");
             jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
-                "VALUES ('item-material-review', 'material-review', 'ITEM', '申领审核', '/admin/material/review', 'ClipboardCheck', 0)");
+                "VALUES ('item-material-review', 'material-review', 'ITEM', '学生审核', '/admin/material/review', 'ClipboardCheck', 0)");
             jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
                 "VALUES ('item-material-manage', 'material-review', 'ITEM', '物品管理', '/admin/material/manage', 'Package', 1)");
@@ -44,9 +44,14 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                 "VALUES ('item-material-audit-export', 'material-review', 'ITEM', '申领审计导出', '/admin/material/audit-export', 'Download', 2)");
             jdbcTemplate.update(
                 "UPDATE admin_nav_config SET item_badge_key = 'processMaterialText' WHERE id = 'item-material-review'");
+            jdbcTemplate.update(
+                "UPDATE admin_nav_config SET title = '学生审核' WHERE id = 'material-review'");
+            jdbcTemplate.update(
+                "UPDATE admin_nav_config SET title = '学生审核' WHERE id = 'item-material-review'");
 
 
             hideMergedDahuaSwingHubEntries();
+            hideObsoleteNavEntries();
 
             log.info("[admin-nav-config] 表结构已就绪，种子数据已检查");
         } catch (Exception e) {
@@ -70,6 +75,23 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                     path);
             if (n > 0) {
                 log.info("[admin-nav-config] 已隐藏合并入口: {}", path);
+            }
+        }
+    }
+
+    /** 扫码延迟配置已并入大华发卡页，移除独立侧栏入口 */
+    private void hideObsoleteNavEntries() {
+        String[] obsoletePaths = { "/admin/scan-delay-config" };
+        for (String path : obsoletePaths) {
+            int deleted = jdbcTemplate.update("DELETE FROM admin_nav_config WHERE item_path = ?", path);
+            if (deleted > 0) {
+                log.info("[admin-nav-config] 已删除废弃入口: {}", path);
+            }
+            int hiddenPerm = jdbcTemplate.update(
+                    "UPDATE page_permission_item SET entry_source = 'other' WHERE path_or_route = ? AND platform = 'WEB' AND entry_source = 'sidebar'",
+                    path);
+            if (hiddenPerm > 0) {
+                log.info("[admin-nav-config] 已隐藏页面权限侧栏入口: {}", path);
             }
         }
     }

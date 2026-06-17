@@ -153,6 +153,11 @@ public class TwinAuditService {
             person.put("dahuaSeq", mapping.getDahuaSeq());
             person.put("cardStatus", mapping.getCardStatus());
             person.put("freezeExemptFlag", mapping.getFreezeExemptFlag());
+            person.put("freezeExemptExpireAt", mapping.getFreezeExemptExpireAt());
+            person.put("freezeExemptMode", mapping.getFreezeExemptMode());
+            person.put("freezeExemptMaxCount", mapping.getFreezeExemptMaxCount());
+            person.put("freezeExemptUsedCount", mapping.getFreezeExemptUsedCount());
+            person.put("freezeExemptRoomIds", mapping.getFreezeExemptRoomIds());
             person.put("jobNumber", mapping.getJobNumber());
             if (mapping.getUserName() != null && !mapping.getUserName().isBlank()) {
                 person.put("mappingUserName", mapping.getUserName());
@@ -165,6 +170,11 @@ public class TwinAuditService {
             person.put("dahuaSeq", null);
             person.put("cardStatus", null);
             person.put("freezeExemptFlag", null);
+            person.put("freezeExemptExpireAt", null);
+            person.put("freezeExemptMode", null);
+            person.put("freezeExemptMaxCount", null);
+            person.put("freezeExemptUsedCount", null);
+            person.put("freezeExemptRoomIds", null);
             person.put("jobNumber", null);
             person.put("mappingUserName", null);
             person.put("hasMapping", false);

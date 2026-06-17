@@ -145,30 +145,33 @@ public class TwinViolationRuleService {
     // ═══ 解禁判定 ═══
 
     /**
-     * 违规创建/扫码分析时的解禁判定。
-     *
-     * @param targetUserId 人员ID
-     * @param ruleId       规则ID
-     * @return UnblockDecision 包含 forbidEnter / isCritical / remaining 等
+     * 违规创建时的解禁判定（K = 窗口内已有 COUNT + 1，含即将写入的这条）。
      */
     public UnblockDecision evaluate(String targetUserId, long ruleId) {
+        return evaluateInternal(targetUserId, ruleId, true);
+    }
+
+    /**
+     * 扫码展示已有违规时的解禁判定（K = 窗口内已有 COUNT，不再 +1）。
+     */
+    public UnblockDecision evaluateForExisting(String targetUserId, long ruleId) {
+        return evaluateInternal(targetUserId, ruleId, false);
+    }
+
+    private UnblockDecision evaluateInternal(String targetUserId, long ruleId, boolean includePendingCreate) {
         TwinViolationRule rule = getById(ruleId);
         if (rule == null) {
             return UnblockDecision.noLimit();
         }
-        // 窗口内已有记录数（此次创建前）
         int existingCount = countViolationsInWindow(targetUserId, ruleId);
-        // K = 含本次（即将创建的这条）
-        int k = existingCount + 1;
+        int k = existingCount + (includePendingCreate ? 1 : 0);
         Integer max = rule.getUnblockMaxCount();
 
-        // 未设上限：原样返回规则配置的 forbid_enter
         if (max == null) {
             boolean forbid = rule.getForbidEnter() != null && rule.getForbidEnter() == 1;
             return new UnblockDecision(forbid, false, null, Integer.MAX_VALUE);
         }
 
-        // 达到或超过上限 → 强制 forbid_enter = 1，标记为关键记录
         boolean isCritical = k >= max;
         boolean effectiveForbidEnter = isCritical
                 || (rule.getForbidEnter() != null && rule.getForbidEnter() == 1);

@@ -2,6 +2,8 @@ package com.example.demo.modules.reportform.service;
 
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.exception.TwinBusinessException;
+import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
 import com.example.demo.modules.reportform.entity.ReportFormSubmission;
 import com.example.demo.modules.reportform.entity.ReportFormSubmissionLog;
@@ -14,6 +16,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -29,15 +32,18 @@ public class ReportFillService {
     private final ReportFormSubmissionMapper submissionMapper;
     private final ReportFormSubmissionLogMapper logMapper;
     private final ObjectMapper objectMapper;
+    private final UserMapper userMapper;
 
     public ReportFillService(ReportFormDefinitionMapper definitionMapper,
                              ReportFormSubmissionMapper submissionMapper,
                              ReportFormSubmissionLogMapper logMapper,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             UserMapper userMapper) {
         this.definitionMapper = definitionMapper;
         this.submissionMapper = submissionMapper;
         this.logMapper = logMapper;
         this.objectMapper = objectMapper;
+        this.userMapper = userMapper;
     }
 
     /**
@@ -319,6 +325,69 @@ public class ReportFillService {
         writeLog(sub.getId(), userId, "submit", sub.getFieldValuesJson());
 
         return submissionMapper.selectById(sub.getId());
+    }
+
+    /** 提交列表附带填报人昵称（个人表展示用） */
+    public List<Map<String, Object>> listSubmissionsWithUserDisplay(Long formId) {
+        List<ReportFormSubmission> subs = submissionMapper.selectByFormId(formId);
+        Map<Long, String> nickByStoredUserId = buildStoredUserIdNicknameMap();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (ReportFormSubmission sub : subs) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", sub.getId());
+            row.put("formId", sub.getFormId());
+            row.put("userId", sub.getUserId());
+            row.put("status", sub.getStatus());
+            row.put("fieldValuesJson", sub.getFieldValuesJson());
+            row.put("version", sub.getVersion());
+            row.put("submittedAt", sub.getSubmittedAt());
+            row.put("createdAt", sub.getCreatedAt());
+            row.put("updatedAt", sub.getUpdatedAt());
+            row.put("displayNickname", resolveSubmissionDisplayName(sub.getUserId(), nickByStoredUserId));
+            out.add(row);
+        }
+        return out;
+    }
+
+    private Map<Long, String> buildStoredUserIdNicknameMap() {
+        Map<Long, String> map = new HashMap<>();
+        List<User> users = userMapper.listEnabledUsersByMinRoleLevel(0);
+        if (users == null) {
+            return map;
+        }
+        for (User user : users) {
+            if (user == null || !StringUtils.hasText(user.getId())) {
+                continue;
+            }
+            String label = StringUtils.hasText(user.getDisplayNickname())
+                    ? user.getDisplayNickname().trim()
+                    : (StringUtils.hasText(user.getUsername()) ? user.getUsername().trim() : user.getId());
+            map.put(parseStoredUserId(user.getId()), label);
+        }
+        return map;
+    }
+
+    private String resolveSubmissionDisplayName(Long storedUserId, Map<Long, String> nickByStoredUserId) {
+        if (storedUserId == null || storedUserId == 0L) {
+            return "协同填报";
+        }
+        String nick = nickByStoredUserId.get(storedUserId);
+        if (StringUtils.hasText(nick)) {
+            return nick;
+        }
+        return "用户 #" + storedUserId;
+    }
+
+    /** 与 ReportFillController.parseUserId 保持一致 */
+    private static Long parseStoredUserId(String id) {
+        if (id == null) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(id);
+        } catch (NumberFormatException e) {
+            return (long) Math.abs(id.hashCode() % 1_000_000);
+        }
     }
 
     // ──────────── 提交日志 ────────────

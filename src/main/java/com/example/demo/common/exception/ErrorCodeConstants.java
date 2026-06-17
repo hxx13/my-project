@@ -57,4 +57,11 @@ public final class ErrorCodeConstants {
     public static final int REPORT_FORM_FIELD_NO_PERMISSION = 1_008_008;
     public static final int REPORT_FORM_OPTION_SET_IN_USE = 1_008_009;
     public static final int REPORT_FORM_WORD_TEMPLATE_NOT_FOUND = 1_008_010;
+
+    /** 人脸识别 face 1-009-xxx */
+    public static final int FACE_VERIFY_NO_BASELINE = 1_009_001;
+    public static final int FACE_VERIFY_NO_FACE = 1_009_002;
+    public static final int FACE_MODEL_NOT_READY = 1_009_003;
+    public static final int FACE_VERIFY_TOKEN_INVALID = 1_009_004;
+    public static final int FACE_BASELINE_NO_FACE = 1_009_005;
 }

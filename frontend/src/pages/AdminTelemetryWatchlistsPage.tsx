@@ -42,6 +42,7 @@ import {
 } from "@/utils/watchlistTagManagementTree";
 import { TELEMETRY_ANIMAL_ROOM_QUERY_KEY_PREFIX } from "@/api/telemetryApi";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { randomUUID } from "@/utils/randomUUID";
 
 const ZONES_KEY = ["telemetry", "watchlists", "zones-with-tags"] as const;
 const METRIC_KINDS_KEY = ["telemetry", "watchlists", "metric-kinds"] as const;
@@ -195,9 +196,7 @@ function tagRowKey(r: TelemetryWatchlistTag): string {
 }
 
 function newDraftUid(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `d-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return randomUUID();
 }
 
 function createEmptyWatchlistDraftRow(existing: TelemetryWatchlistTag[]): TelemetryWatchlistTag {

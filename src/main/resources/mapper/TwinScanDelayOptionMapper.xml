@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayOptionMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayOption">
+        <id column="id" property="id"/>
+        <result column="room_id" property="roomId"/>
+        <result column="room_name" property="roomName"/>
+        <result column="option_label" property="optionLabel"/>
+        <result column="button_label" property="buttonLabel"/>
+        <result column="display_start" property="displayStart"/>
+        <result column="display_end" property="displayEnd"/>
+        <result column="require_approval" property="requireApproval"/>
+        <result column="reviewer_user_ids" property="reviewerUserIds"/>
+        <result column="exempt_mode" property="exemptMode"/>
+        <result column="duration_minutes" property="durationMinutes"/>
+        <result column="max_count" property="maxCount"/>
+        <result column="exempt_room_ids" property="exemptRoomIds"/>
+        <result column="enabled" property="enabled"/>
+        <result column="sort_order" property="sortOrder"/>
+    </resultMap>
+
+    <sql id="cols">
+        id, room_id, room_name, option_label, button_label, display_start, display_end,
+        require_approval, reviewer_user_ids, exempt_mode, duration_minutes, max_count,
+        exempt_room_ids, enabled, sort_order
+    </sql>
+
+    <select id="listAll" resultMap="BaseMap">
+        SELECT <include refid="cols"/> FROM twin_scan_delay_option
+        ORDER BY sort_order DESC, id ASC
+    </select>
+
+    <select id="listEnabledByRoomIds" resultMap="BaseMap">
+        SELECT <include refid="cols"/> FROM twin_scan_delay_option
+        WHERE enabled = 1
+        AND id IN (
+            SELECT option_id FROM twin_scan_delay_room_option
+            <if test="roomIds != null and roomIds.size() > 0">
+                WHERE room_id IN
+                <foreach collection="roomIds" item="rid" open="(" separator="," close=")">
+                    #{rid}
+                </foreach>
+            </if>
+        )
+        ORDER BY sort_order DESC, id ASC
+    </select>
+
+    <select id="findById" resultMap="BaseMap">
+        SELECT <include refid="cols"/> FROM twin_scan_delay_option WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_scan_delay_option (
+            room_id, room_name, option_label, button_label, display_start, display_end,
+            require_approval, reviewer_user_ids, exempt_mode, duration_minutes, max_count,
+            exempt_room_ids, enabled, sort_order
+        ) VALUES (
+            #{roomId}, #{roomName}, #{optionLabel}, #{buttonLabel}, #{displayStart}, #{displayEnd},
+            #{requireApproval}, #{reviewerUserIds}, #{exemptMode}, #{durationMinutes}, #{maxCount},
+            #{exemptRoomIds}, #{enabled}, #{sortOrder}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE twin_scan_delay_option SET
+            room_id = #{roomId},
+            room_name = #{roomName},
+            option_label = #{optionLabel},
+            button_label = #{buttonLabel},
+            display_start = #{displayStart},
+            display_end = #{displayEnd},
+            require_approval = #{requireApproval},
+            reviewer_user_ids = #{reviewerUserIds},
+            exempt_mode = #{exemptMode},
+            duration_minutes = #{durationMinutes},
+            max_count = #{maxCount},
+            exempt_room_ids = #{exemptRoomIds},
+            enabled = #{enabled},
+            sort_order = #{sortOrder}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM twin_scan_delay_option WHERE id = #{id}
+    </delete>
+</mapper>

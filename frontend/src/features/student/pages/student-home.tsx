@@ -23,11 +23,10 @@ import {
   Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
 import { useStudentDashboard } from "../hooks/use-student-dashboard";
 import { useStudentAiProfile } from "../hooks/use-student-ai-profile";
+import { useStudentRooms } from "../hooks/use-student-rooms";
 import { StudentActivityDashboard } from "../components/student-activity-dashboard";
-import { fetchRooms } from "../api/student.api";
 import type { AiPredictionRecord } from "../api/student.api";
 import {
   StudentCard,
@@ -238,11 +237,7 @@ export default function StudentHomePage() {
   const [showAiModal, setShowAiModal] = useState(false);
 
   // 常用房间：ARO API 匹配 + 手动收藏（与 /student/rooms 页同源）
-  const { data: myRoomsData } = useQuery({
-    queryKey: ["student", "rooms", { pinned: "1" }],
-    queryFn: () => fetchRooms({ pinned: "1", page: 1, size: 20 }),
-    staleTime: 60_000,
-  });
+  const { data: myRoomsData } = useStudentRooms({ pinned: "1", page: 1, size: 20 });
   const aroRooms = myRoomsData?.data ?? [];
   // 拆分为收藏和常用
   const { pinnedRoomsHome, frequentRoomsHome } = useMemo(() => {

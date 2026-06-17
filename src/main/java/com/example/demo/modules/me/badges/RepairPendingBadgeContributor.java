@@ -5,7 +5,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.me.dto.PendingBadgesView;
 import com.example.demo.modules.policy.BizDomains;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
-import com.example.demo.modules.notification.service.NotificationService;
+import com.example.demo.modules.me.service.WorkOrderPendingBadgeCounter;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -15,12 +15,12 @@ import java.util.Map;
 @Order(20)
 public class RepairPendingBadgeContributor implements PendingBadgeContributor {
 
-    private final NotificationService notificationService;
+    private final WorkOrderPendingBadgeCounter workOrderPendingBadgeCounter;
     private final CapabilityPolicyService capabilityPolicyService;
 
-    public RepairPendingBadgeContributor(NotificationService notificationService,
+    public RepairPendingBadgeContributor(WorkOrderPendingBadgeCounter workOrderPendingBadgeCounter,
                                          CapabilityPolicyService capabilityPolicyService) {
-        this.notificationService = notificationService;
+        this.workOrderPendingBadgeCounter = workOrderPendingBadgeCounter;
         this.capabilityPolicyService = capabilityPolicyService;
     }
 
@@ -30,13 +30,13 @@ public class RepairPendingBadgeContributor implements PendingBadgeContributor {
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             return;
         }
-        int applicant = notificationService.countUnreadWorkOrderForApplicant(user.getId(), "REPAIR");
+        int applicant = workOrderPendingBadgeCounter.countRepairApplicantPending(user.getId());
         view.setRepair(applicant);
         badgeCounters.put(BizDomains.REPAIR + "_APPLICANT", applicant);
         badgeCounters.put("repair", applicant);
 
         if (capabilityPolicyService.canProcess(user, BizDomains.REPAIR)) {
-            int proc = notificationService.countUnreadWorkOrderForProcessor(user.getId(), "REPAIR");
+            int proc = workOrderPendingBadgeCounter.countRepairProcessPending(user);
             view.setProcessRepair(proc);
             badgeCounters.put(BizDomains.REPAIR + "_PROCESS", proc);
             badgeCounters.put("processRepair", proc);

@@ -1,5 +1,6 @@
 package com.example.demo.modules.notification.service;
 
+import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.event.CredentialsChangedEvent;
 import com.example.demo.modules.notification.dto.UpdateNotifyRuleRequest;
 import com.example.demo.modules.notification.dto.UpdateNotifyTemplateRequest;
@@ -11,6 +12,7 @@ import com.example.demo.modules.notification.entity.SystemConfigDefinition;
 import com.example.demo.modules.notification.entity.SystemConfigItem;
 import com.example.demo.modules.notification.mapper.NotificationSettingsMapper;
 import com.example.demo.modules.telemetry.service.TelemetryFacilityLayoutRulesService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -22,6 +24,9 @@ public class NotificationSettingsService {
     private final NotificationSettingsMapper settingsMapper;
     private final TelemetryFacilityLayoutRulesService telemetryFacilityLayoutRulesService;
     private final ApplicationEventPublisher eventPublisher;
+
+    @Autowired(required = false)
+    private SocketIOServer socketServer;
 
     public NotificationSettingsService(NotificationSettingsMapper settingsMapper,
                                        TelemetryFacilityLayoutRulesService telemetryFacilityLayoutRulesService,
@@ -137,6 +142,17 @@ public class NotificationSettingsService {
             if ("credentials".equals(item.getModule()) || "integration".equals(item.getModule())) {
                 eventPublisher.publishEvent(new CredentialsChangedEvent(item.getModule(), item.getConfigKey()));
             }
+            // 公告/法典/惩戒配置变更 → WebSocket 实时广播，前端立即刷新无需等待轮询
+            if (item.getConfigKey() != null && item.getConfigKey().startsWith("dashboard.codex.")) {
+                try {
+                    if (socketServer != null) {
+                        socketServer.getBroadcastOperations().sendEvent("DASHBOARD_CODEX_REFRESH",
+                                java.util.Map.of("key", item.getConfigKey(), "at", java.time.LocalDateTime.now().toString()));
+                    }
+                } catch (Exception ignored) {
+                    // Socket.IO 广播失败不阻塞保存
+                }
+            }
             return true;
         }
         return false;
@@ -149,8 +165,9 @@ public class NotificationSettingsService {
                 module("capability", "业务能力策略")
         ));
         Set<String> exists = new HashSet<>(base.stream().map(it -> it.get("key")).toList());
+        Set<String> hiddenFromSettings = Set.of("twin_dahua_issue");
         for (String dynamicModule : settingsMapper.listConfigModules()) {
-            if (!StringUtils.hasText(dynamicModule) || exists.contains(dynamicModule)) {
+            if (!StringUtils.hasText(dynamicModule) || exists.contains(dynamicModule) || hiddenFromSettings.contains(dynamicModule)) {
                 continue;
             }
             base.add(module(dynamicModule, moduleLabel(dynamicModule)));
@@ -199,12 +216,13 @@ public class NotificationSettingsService {
         if ("dashboard_codex".equals(module)) return "主页公告/还卡说明";
         if ("telemetry_facility".equals(module)) return "动物房设施布局";
         if ("scanner".equals(module)) return "扫码终端";
-        if ("twin_scanner_popup".equals(module)) return "扫码进出提示";
+        if ("twin_dahua_issue".equals(module)) return "大华发卡 / 扫码延迟";
         if ("student_violation".equals(module)) return "学生违规/未绑卡提示";
         if ("credentials".equals(module)) return "外部系统凭证";
         if ("integration".equals(module)) return "外部集成配置";
         if ("llm".equals(module)) return "大模型（DeepSeek）";
         if ("logging".equals(module)) return "控制台日志管理";
+        if ("face".equals(module)) return "人脸识别";
         return module;
     }
 

@@ -9,6 +9,7 @@ import type {
   FeedbackTicketData,
   CreateFeedbackTicketBody,
 } from "../api/student.api";
+import { getStudentSessionScope, studentQueryKey } from "../utils/studentQueryScope";
 
 /**
  * 获取常见问题分组
@@ -16,9 +17,11 @@ import type {
  * staleTime 设为 10 分钟，FAQ 内容变化频率很低。
  */
 export function useFaqGroups() {
+  const scope = getStudentSessionScope();
   return useQuery<FaqGroup[]>({
-    queryKey: ["student", "faq"],
+    queryKey: studentQueryKey("faq"),
     queryFn: fetchFaqGroups,
+    enabled: scope !== "anonymous",
     staleTime: 10 * 60 * 1000,
     retry: 1,
   });
@@ -30,9 +33,11 @@ export function useFaqGroups() {
  * staleTime 设为 1 分钟。
  */
 export function useFeedbackTickets(page: number = 1, size: number = 10) {
+  const scope = getStudentSessionScope();
   return useQuery<{ data: FeedbackTicketData[]; total: number }>({
-    queryKey: ["student", "feedback", "tickets", { page, size }],
+    queryKey: studentQueryKey("feedback", "tickets", { page, size }),
     queryFn: () => fetchFeedbackTickets(page, size),
+    enabled: scope !== "anonymous",
     staleTime: 60 * 1000,
     retry: 1,
   });

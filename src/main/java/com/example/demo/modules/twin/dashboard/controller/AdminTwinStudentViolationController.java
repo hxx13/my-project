@@ -220,6 +220,11 @@ public class AdminTwinStudentViolationController {
             return Result.error("进入次数上限不能为负数");
         }
         try {
+            Long effectiveRuleId = body.getRuleId();
+            if (effectiveRuleId == null && ruleService != null) {
+                TwinViolationRule manualRule = ruleService.getByCode("MANUAL");
+                if (manualRule != null) effectiveRuleId = manualRule.getId();
+            }
             Map<String, Object> summary = violationService.createBatch(
                     body.getTargetUserIds(),
                     body.getViolationText() != null ? body.getViolationText() : "",
@@ -230,7 +235,8 @@ public class AdminTwinStudentViolationController {
                     body.getExpireAfterDays(),
                     admin.getId(),
                     body.getInteractiveChallenge(),
-                    body.getInteractiveUnlockOnVerify()
+                    body.getInteractiveUnlockOnVerify(),
+                    effectiveRuleId
             );
             return Result.success(summary);
         } catch (IllegalArgumentException e) {
@@ -439,6 +445,7 @@ public class AdminTwinStudentViolationController {
         private Integer expireAfterDays;
         private String interactiveChallenge;
         private Boolean interactiveUnlockOnVerify;
+        private Long ruleId;
     }
 
     @Data

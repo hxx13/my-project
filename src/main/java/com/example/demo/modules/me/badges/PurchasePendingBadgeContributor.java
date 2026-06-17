@@ -5,7 +5,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.me.dto.PendingBadgesView;
 import com.example.demo.modules.policy.BizDomains;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
-import com.example.demo.modules.notification.service.NotificationService;
+import com.example.demo.modules.me.service.WorkOrderPendingBadgeCounter;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -15,12 +15,12 @@ import java.util.Map;
 @Order(30)
 public class PurchasePendingBadgeContributor implements PendingBadgeContributor {
 
-    private final NotificationService notificationService;
+    private final WorkOrderPendingBadgeCounter workOrderPendingBadgeCounter;
     private final CapabilityPolicyService capabilityPolicyService;
 
-    public PurchasePendingBadgeContributor(NotificationService notificationService,
+    public PurchasePendingBadgeContributor(WorkOrderPendingBadgeCounter workOrderPendingBadgeCounter,
                                            CapabilityPolicyService capabilityPolicyService) {
-        this.notificationService = notificationService;
+        this.workOrderPendingBadgeCounter = workOrderPendingBadgeCounter;
         this.capabilityPolicyService = capabilityPolicyService;
     }
 
@@ -30,14 +30,13 @@ public class PurchasePendingBadgeContributor implements PendingBadgeContributor 
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             return;
         }
-        int applicant = notificationService.countUnreadWorkOrderForApplicant(user.getId(), "PURCHASE");
+        int applicant = workOrderPendingBadgeCounter.countPurchaseApplicantPending(user.getId());
         view.setPurchase(applicant);
         badgeCounters.put(BizDomains.PURCHASE + "_APPLICANT", applicant);
         badgeCounters.put("purchase", applicant);
 
-        /** 与列表接口 requireProcess 一致：按策略 canProcess，避免仅 role.level 与 DB 阈值不一致时漏掉处理角标 */
         if (capabilityPolicyService.canProcess(user, BizDomains.PURCHASE)) {
-            int proc = notificationService.countUnreadWorkOrderForProcessor(user.getId(), "PURCHASE");
+            int proc = workOrderPendingBadgeCounter.countPurchaseProcessPending(user);
             view.setProcessPurchase(proc);
             badgeCounters.put(BizDomains.PURCHASE + "_PROCESS", proc);
             badgeCounters.put("processPurchase", proc);

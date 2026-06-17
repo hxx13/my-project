@@ -30,6 +30,8 @@ const BIZ_TYPE_LABELS: Record<string, string> = {
   PURCHASE: "采购",
   SUPPLIES_CLAIM: "物资领用",
   SUPPLIES_ADMIN: "物资后台",
+  MATERIAL_REQUEST: "物资申领",
+  SCAN_DELAY: "延迟免冻结",
   notification: "通知",
   template: "通知模板",
   capability: "业务能力",
@@ -113,7 +115,7 @@ export type SettingsNavGroup = {
 const MODULE_GROUP_DEFS: Array<{ id: string; title: string; keys: string[] }> = [
   { id: "notify", title: "通知与权限", keys: ["notification", "template", "capability"] },
   { id: "experience", title: "界面与展示", keys: ["dashboard_codex", "telemetry_facility", "frontend_runtime", "scanner"] },
-  { id: "business", title: "业务扩展", keys: ["supplies", "mini_program", "llm", "material"] },
+  { id: "business", title: "业务扩展", keys: ["supplies", "mini_program", "llm", "material", "face"] },
   { id: "platform", title: "平台与网络", keys: ["network", "system", "logging", "credentials", "integration"] },
 ];
 
@@ -170,6 +172,8 @@ export function moduleDescription(moduleKey: string): string {
       return "外部集成与运维开关：WinCC/大华连接参数、调试开关、遥测归档、头像代理等。";
     case "logging":
       return "运行时控制台日志管理：调节 ROOT 级别和各业务模块日志开关，修改即时生效，重启恢复默认。";
+    case "face":
+      return "人脸识别功能开关与比对阈值。开关与阈值均可在本页保存后立即生效；环境变量仅作首次默认值。";
     default:
       return "按配置定义维护本模块参数，无需记忆英文键名。";
   }

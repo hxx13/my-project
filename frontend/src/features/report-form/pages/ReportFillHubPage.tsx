@@ -148,7 +148,9 @@ function FormCard({ form, expanded, onToggle, onOpen }: {
               {submissions.map(sub => (
                 <div key={sub.id} className="flex items-center gap-3 px-4 py-2 text-xs">
                   <User className="w-3.5 h-3.5 text-[var(--app-color-text-tertiary)]" />
-                  <span className="text-[var(--app-color-text-primary)]">用户 #{sub.userId}</span>
+                  <span className="text-[var(--app-color-text-primary)]">
+                    {sub.displayNickname?.trim() || `用户 #${sub.userId}`}
+                  </span>
                   <span className={`px-1.5 py-0 rounded text-[10px] ${
                     sub.status === 'submitted'
                       ? 'bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]'

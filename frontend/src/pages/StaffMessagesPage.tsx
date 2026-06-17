@@ -23,6 +23,7 @@ import {
   type StaffContact,
 } from "@/api/domains/chat.api";
 import { markNotificationRead } from "@/api/domains/notification.api";
+import { navigateStudentReviewFromBiz } from "@/features/notification/notificationReadSync";
 import { fetchPurchaseOrderDetail } from "@/api/domains/purchase.api";
 import { fetchRepairOrderDetail } from "@/api/domains/repair.api";
 import {
@@ -763,6 +764,8 @@ export default function StaffMessagesPage() {
     if (bizType === "REPAIR") return "报修";
     if (bizType === "PURCHASE") return "采购";
     if (bizType === "SUPPLIES_CLAIM") return "物资领用";
+    if (bizType === "MATERIAL_REQUEST") return "物资申领";
+    if (bizType === "SCAN_DELAY") return "延迟免冻结";
     return bizType || "-";
   };
 
@@ -870,10 +873,15 @@ export default function StaffMessagesPage() {
                       ref={noticeInboxRef}
                       stackedNotifyColumn
                       showWorkTabBar={false}
-                      onSelectNotificationRow={(row) => { setRightPanel({ kind: "notice", row }); }}
+                      onSelectNotificationRow={(row) => {
+                        if (navigateStudentReviewFromBiz(row.bizType)) return;
+                        setRightPanel({ kind: "notice", row });
+                      }}
                       onSelectWorkItemRow={(item) => {
-                        if (item.workKind === "material") {
-                          window.location.hash = "#/admin/material/review";
+                        if (item.workKind === "material" || item.workKind === "scanDelay") {
+                          window.location.hash = item.workKind === "scanDelay"
+                            ? "#/admin/material/review?tab=scanDelay"
+                            : "#/admin/material/review";
                           return;
                         }
                         setRightPanel({ kind: "work", item });
@@ -1004,6 +1012,17 @@ export default function StaffMessagesPage() {
                       {rightPanel.row.bizId || "—"}
                     </div>
                     <div className="flex flex-wrap gap-2">
+                      {rightPanel.row.bizType === "SCAN_DELAY" || rightPanel.row.bizType === "MATERIAL_REQUEST" ? (
+                        <button
+                          type="button"
+                          className="rounded-twin-lg bg-[var(--twin-primary)] px-3 py-2 text-xs font-medium text-[var(--twin-on-primary)]"
+                          onClick={() => {
+                            navigateStudentReviewFromBiz(rightPanel.row.bizType);
+                          }}
+                        >
+                          前往学生审核
+                        </button>
+                      ) : null}
                       {rightPanel.row.isRead === 0 ? (
                         <button
                           type="button"

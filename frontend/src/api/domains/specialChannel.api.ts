@@ -48,6 +48,18 @@ export async function specialChannelLogin(userId: string, pin: string): Promise<
   return res.data.data;
 }
 
+/** 人脸验证登录 — 走与 PIN 相同的 /login 接口，faceVerified=true */
+export async function specialChannelLoginByFace(userId: string): Promise<AuthData> {
+  const res = await axios.post<Result<AuthData>>(
+    "/api/auth/special-channel/login",
+    { userId, faceVerified: true }
+  );
+  if (!res.data?.success || !res.data?.data?.token) {
+    throw new Error(res.data?.message || "人脸验证登录失败");
+  }
+  return res.data.data;
+}
+
 /** 管理员重置学生 PIN */
 export async function resetStudentPin(userId: string): Promise<void> {
   const { authHttp } = await import("@/api/core/authHttp");

@@ -1,5 +1,4 @@
-import DOMPurify from "dompurify";
-import { looksLikeMarkdown, renderMarkdownToSafeHtml, stripSimpleHtml } from "@/utils/markdownHtml";
+import { looksLikeMarkdown, renderMarkdownToSafeHtml, stripSimpleHtml } from "@/utils/markdownHtml";import { sanitizeRichTextHtml } from "@/utils/richTextHtmlSanitize";
 
 export { looksLikeMarkdown, stripSimpleHtml } from "@/utils/markdownHtml";
 
@@ -21,7 +20,7 @@ export function prepareAnnouncementHtml(raw: string): string {
   if (!trimmed) return "";
   const plain = trimmed.includes("<") ? stripSimpleHtml(trimmed) : trimmed;
   if (!looksLikeMarkdown(trimmed)) {
-    return DOMPurify.sanitize(trimmed, { USE_PROFILES: { html: true } });
+    return sanitizeRichTextHtml(trimmed);
   }
   return renderMarkdownToSafeHtml(plain, "dark");
 }
@@ -34,12 +33,11 @@ export function prepareAnnouncementHtml(raw: string): string {
  */
 /** 扫码弹窗正文排版（公告、违规说明等共用） */
 export const SCAN_ANNOUNCEMENT_BODY_CLASS =
-  "scan-announcement-body text-lg leading-relaxed text-[var(--app-color-text-primary)] " +
+  "scan-announcement-body rich-text-content text-lg leading-relaxed text-[var(--app-color-text-primary)] " +
   /* 保留 pre/code 无背景适配暗色卡片 */
   "[&_pre]:m-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:whitespace-pre-wrap " +
   "[&_code]:bg-[var(--app-color-surface-hover)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[var(--app-color-text-primary)] [&_code]:font-mono [&_code]:text-[0.85em] " +
-  /* 图片居中 + 圆角 */
-  "[&_img]:mx-auto [&_img]:my-3 [&_img]:max-h-[min(50vh,400px)] [&_img]:rounded-[var(--app-radius-element)] " +
+  /* 图片排版见 rich-text-content.css（--rich-text-image-max-width） */
   /* 链接 + 强调 */
   "[&_a]:text-[var(--app-color-accent)] [&_a]:underline [&_a]:decoration-[var(--app-color-accent)]/40 " +
   /* 标题层次 */

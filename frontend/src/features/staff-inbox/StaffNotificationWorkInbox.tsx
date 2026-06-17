@@ -14,6 +14,7 @@ import {
   markAllNotificationsReadSynced,
   markBizNotificationsReadSynced,
   markNotificationReadSynced,
+  navigateStudentReviewFromBiz,
   NOTIFICATION_READ_CHANGED_EVENT,
   type NotificationReadChangedDetail,
 } from "@/features/notification/notificationReadSync";
@@ -39,6 +40,7 @@ import {
   type SupplyClaimPdfLinkItem,
 } from "@/api/domains/supplies.api";
 import { fetchPendingMaterialRequests, type MaterialRequest } from "@/api/domains/material.api";
+import { fetchPendingScanDelayRequests } from "@/api/domains/scanDelay.api";
 import { ADMIN_NOTIFICATION_SSE_PUSH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -47,7 +49,7 @@ import { webImageSrc } from "@/utils/mediaUrl";
 
 export type StaffInboxWorkTab = "notice" | "pending" | "done";
 
-type WorkKind = "claim" | "repair" | "purchase" | "material";
+type WorkKind = "claim" | "repair" | "purchase" | "material" | "scanDelay";
 
 export interface StaffInboxUnifiedItem {
   key: string;
@@ -250,9 +252,10 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
       if (showLoading) setPendingLoading(true);
       try {
         const wo = (st: string) => workOrderListParams(isAdmin, st);
-        const [claims, materials, rPen, rProc, pPen, pProc] = await Promise.all([
+        const [claims, materials, scanDelays, rPen, rProc, pPen, pProc] = await Promise.all([
           fetchSupplyPendingTasks(),
           fetchPendingMaterialRequests(),
+          fetchPendingScanDelayRequests().catch(() => []),
           fetchRepairOrders(wo("PENDING")),
           fetchRepairOrders(wo("PROCESSING")),
           fetchPurchaseOrders(wo("PENDING")),
@@ -280,6 +283,18 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
             kindLabel: "物资申领",
             title: materialApplicantLabel(o),
             sub: `${formatBeijingDateTimeMedium(o.createdAt)} · ${materialStatusText(o.status)}`,
+            sortAt: sortKeyFrom(o.createdAt),
+          });
+        });
+
+        (scanDelays || []).forEach((o) => {
+          merged.push({
+            key: `scanDelay_${o.id}`,
+            workKind: "scanDelay",
+            id: String(o.id),
+            kindLabel: "延迟免冻结",
+            title: `${o.roomName || o.roomId} · ${o.optionLabel || "申请"}`,
+            sub: `${o.subjectUserId} · 待审核`,
             sortAt: sortKeyFrom(o.createdAt),
           });
         });
@@ -518,8 +533,10 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
       void openWorkOrderModal(item.workKind, item.id);
       return;
     }
-    if (item.workKind === "material") {
-      window.location.hash = "#/admin/material/review";
+    if (item.workKind === "material" || item.workKind === "scanDelay") {
+      window.location.hash = item.workKind === "scanDelay"
+        ? "#/admin/material/review?tab=scanDelay"
+        : "#/admin/material/review";
     }
   };
 
@@ -613,6 +630,8 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
     if (bizType === "REPAIR") return "报修";
     if (bizType === "PURCHASE") return "采购";
     if (bizType === "SUPPLIES_CLAIM") return "物资领用";
+    if (bizType === "MATERIAL_REQUEST") return "物资申领";
+    if (bizType === "SCAN_DELAY") return "延迟免冻结";
     return bizType || "-";
   };
 
@@ -699,6 +718,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                     key={row.id}
                     type="button"
                     onClick={() => {
+                      if (navigateStudentReviewFromBiz(row.bizType)) return;
                       if (onSelectNotificationRow) {
                         onSelectNotificationRow(row);
                         return;
@@ -842,21 +862,43 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                 {rows.map((row) => (
                   <div
                     key={row.id}
-                    role={row.bizType === "SUPPLIES_CLAIM" && row.bizId ? "button" : undefined}
-                    tabIndex={row.bizType === "SUPPLIES_CLAIM" && row.bizId ? 0 : undefined}
+                    role={
+                      (row.bizType === "SUPPLIES_CLAIM" && row.bizId) ||
+                      row.bizType === "SCAN_DELAY" ||
+                      row.bizType === "MATERIAL_REQUEST"
+                        ? "button"
+                        : undefined
+                    }
+                    tabIndex={
+                      (row.bizType === "SUPPLIES_CLAIM" && row.bizId) ||
+                      row.bizType === "SCAN_DELAY" ||
+                      row.bizType === "MATERIAL_REQUEST"
+                        ? 0
+                        : undefined
+                    }
                     onClick={() => {
+                      if (navigateStudentReviewFromBiz(row.bizType)) return;
                       if (row.bizType === "SUPPLIES_CLAIM" && row.bizId) {
                         void openClaimModal(row.bizId);
                       }
                     }}
                     onKeyDown={(e) => {
-                      if (row.bizType === "SUPPLIES_CLAIM" && row.bizId && (e.key === "Enter" || e.key === " ")) {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      if (navigateStudentReviewFromBiz(row.bizType)) {
+                        e.preventDefault();
+                        return;
+                      }
+                      if (row.bizType === "SUPPLIES_CLAIM" && row.bizId) {
                         e.preventDefault();
                         void openClaimModal(row.bizId!);
                       }
                     }}
                     className={`rounded-lg border border-slate-200 bg-white p-3.5 ${row.isRead ? "opacity-80" : "border-blue-300"} ${
-                      row.bizType === "SUPPLIES_CLAIM" && row.bizId ? "cursor-pointer hover:border-blue-400" : ""
+                      (row.bizType === "SUPPLIES_CLAIM" && row.bizId) ||
+                      row.bizType === "SCAN_DELAY" ||
+                      row.bizType === "MATERIAL_REQUEST"
+                        ? "cursor-pointer hover:border-blue-400"
+                        : ""
                     }`}
                   >
                     <div className="mb-2 flex items-center justify-between gap-2">
@@ -868,6 +910,8 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                       <span>
                         业务: {bizTypeZh(row.bizType)} / 事件: {eventTypeZh(row.eventType)} / 单号: {row.bizId || "-"}
                         {row.bizType === "SUPPLIES_CLAIM" && row.bizId ? " · 点击查看明细" : ""}
+                        {row.bizType === "SCAN_DELAY" ? " · 点击前往学生审核" : ""}
+                        {row.bizType === "MATERIAL_REQUEST" ? " · 点击前往学生审核" : ""}
                       </span>
                       {row.isRead === 0 ? (
                         <button

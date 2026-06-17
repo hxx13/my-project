@@ -4,6 +4,7 @@
  */
 import type { DtWidgetGraphicAsset } from "@/features/digital-twin-screen/layout/sceneLayoutTypes";
 import { buildRasterThumbDataUrl } from "@/features/digital-twin-screen/layout/dtGraphicImport";
+import { randomUUID } from "@/utils/randomUUID";
 
 const DB_NAME = "aro.dt.graphicLibrary.v1";
 /** v3：再次跑 upgradeneeded，补齐极少数仅有 graphics、无 folders 的旧库，避免 folder 事务失败拖垮整页列表 */
@@ -72,19 +73,11 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 function newLibraryId(): string {
-  try {
-    return `gl-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
-  } catch {
-    return `gl-${Date.now()}`;
-  }
+  return `gl-${randomUUID().replace(/-/g, "").slice(0, 16)}`;
 }
 
 function newFolderId(): string {
-  try {
-    return `gf-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
-  } catch {
-    return `gf-${Date.now()}`;
-  }
+  return `gf-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 }
 
 export async function dtGraphicLibraryFolderList(): Promise<DtGraphicLibraryFolderListItem[]> {

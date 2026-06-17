@@ -15,6 +15,10 @@
         freeze_exempt_grant_date AS freezeExemptGrantDate,
         exempt_granted_at AS exemptGrantedAt,
         freeze_exempt_expire_at AS freezeExemptExpireAt,
+        freeze_exempt_room_ids AS freezeExemptRoomIds,
+        freeze_exempt_mode AS freezeExemptMode,
+        freeze_exempt_max_count AS freezeExemptMaxCount,
+        freeze_exempt_used_count AS freezeExemptUsedCount,
         last_modified_time AS lastModifiedTime
     </sql>
 
@@ -41,6 +45,10 @@
             freeze_exempt_grant_date = CASE WHEN #{flag} = 1 THEN CURDATE() ELSE NULL END,
             exempt_granted_at = CASE WHEN #{flag} = 1 THEN NOW() ELSE NULL END,
             freeze_exempt_expire_at = CASE WHEN #{flag} = 1 THEN #{expireAt} ELSE NULL END,
+            freeze_exempt_mode = CASE WHEN #{flag} = 1 THEN #{mode} ELSE NULL END,
+            freeze_exempt_max_count = CASE WHEN #{flag} = 1 THEN #{maxCount} ELSE NULL END,
+            freeze_exempt_used_count = CASE WHEN #{flag} = 1 THEN 0 ELSE 0 END,
+            freeze_exempt_room_ids = CASE WHEN #{flag} = 1 THEN #{roomIds} ELSE NULL END,
             last_modified_time = #{updateTime}
         WHERE card_no = #{cardNo}
     </update>
@@ -63,8 +71,13 @@
                m.freeze_exempt_grant_date AS freezeExemptGrantDate,
                m.exempt_granted_at AS exemptGrantedAt,
                m.freeze_exempt_expire_at AS freezeExemptExpireAt,
+               m.freeze_exempt_room_ids AS freezeExemptRoomIds,
+               m.freeze_exempt_mode AS freezeExemptMode,
+               m.freeze_exempt_max_count AS freezeExemptMaxCount,
+               m.freeze_exempt_used_count AS freezeExemptUsedCount,
                m.last_modified_time AS lastModifiedTime,
                p.name AS userName,
+               p.head AS head,
                p.job_number AS jobNumber,
                p.project_group_name AS projectGroupName
         FROM twin_card_mapping m
@@ -103,6 +116,10 @@
             freeze_exempt_grant_date = CASE WHEN #{flag} = 1 THEN CURDATE() ELSE NULL END,
             exempt_granted_at = CASE WHEN #{flag} = 1 THEN NOW() ELSE NULL END,
             freeze_exempt_expire_at = CASE WHEN #{flag} = 1 THEN #{expireAt} ELSE NULL END,
+            freeze_exempt_mode = CASE WHEN #{flag} = 1 THEN #{mode} ELSE NULL END,
+            freeze_exempt_max_count = CASE WHEN #{flag} = 1 THEN #{maxCount} ELSE NULL END,
+            freeze_exempt_used_count = CASE WHEN #{flag} = 1 THEN 0 ELSE 0 END,
+            freeze_exempt_room_ids = CASE WHEN #{flag} = 1 THEN #{roomIds} ELSE NULL END,
             last_modified_time = NOW()
         WHERE aro_user_id = #{aroUserId}
     </update>
@@ -187,6 +204,10 @@
                m.freeze_exempt_grant_date AS freezeExemptGrantDate,
                m.exempt_granted_at AS exemptGrantedAt,
                m.freeze_exempt_expire_at AS freezeExemptExpireAt,
+               m.freeze_exempt_room_ids AS freezeExemptRoomIds,
+               m.freeze_exempt_mode AS freezeExemptMode,
+               m.freeze_exempt_max_count AS freezeExemptMaxCount,
+               m.freeze_exempt_used_count AS freezeExemptUsedCount,
                m.last_modified_time AS lastModifiedTime,
                p.name AS userName,
                p.job_number AS jobNumber
@@ -207,6 +228,10 @@
                m.freeze_exempt_grant_date AS freezeExemptGrantDate,
                m.exempt_granted_at AS exemptGrantedAt,
                m.freeze_exempt_expire_at AS freezeExemptExpireAt,
+               m.freeze_exempt_room_ids AS freezeExemptRoomIds,
+               m.freeze_exempt_mode AS freezeExemptMode,
+               m.freeze_exempt_max_count AS freezeExemptMaxCount,
+               m.freeze_exempt_used_count AS freezeExemptUsedCount,
                m.last_modified_time AS lastModifiedTime,
                p.name AS userName,
                p.job_number AS jobNumber
@@ -228,6 +253,58 @@
             freeze_exempt_expire_at = NULL,
             last_modified_time = DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')
         WHERE freeze_exempt_flag = 1
+    </update>
+
+    <!-- ========== 免冻结增强：次数模式 ========== -->
+
+    <update id="incrementExemptUsedCount">
+        UPDATE twin_card_mapping
+        SET freeze_exempt_used_count = freeze_exempt_used_count + 1,
+            freeze_exempt_flag = CASE
+                WHEN freeze_exempt_mode IN ('COUNT','BOTH')
+                 AND freeze_exempt_max_count IS NOT NULL
+                 AND freeze_exempt_used_count + 1 >= freeze_exempt_max_count
+                THEN 0 ELSE freeze_exempt_flag END,
+            freeze_exempt_room_ids = CASE
+                WHEN freeze_exempt_mode IN ('COUNT','BOTH')
+                 AND freeze_exempt_max_count IS NOT NULL
+                 AND freeze_exempt_used_count + 1 >= freeze_exempt_max_count
+                THEN NULL ELSE freeze_exempt_room_ids END,
+            freeze_exempt_mode = CASE
+                WHEN freeze_exempt_mode IN ('COUNT','BOTH')
+                 AND freeze_exempt_max_count IS NOT NULL
+                 AND freeze_exempt_used_count + 1 >= freeze_exempt_max_count
+                THEN NULL ELSE freeze_exempt_mode END,
+            freeze_exempt_max_count = CASE
+                WHEN freeze_exempt_mode IN ('COUNT','BOTH')
+                 AND freeze_exempt_max_count IS NOT NULL
+                 AND freeze_exempt_used_count + 1 >= freeze_exempt_max_count
+                THEN NULL ELSE freeze_exempt_max_count END,
+            freeze_exempt_expire_at = CASE
+                WHEN freeze_exempt_mode IN ('COUNT','BOTH')
+                 AND freeze_exempt_max_count IS NOT NULL
+                 AND freeze_exempt_used_count + 1 >= freeze_exempt_max_count
+                THEN NULL ELSE freeze_exempt_expire_at END,
+            last_modified_time = NOW()
+        WHERE aro_user_id = #{aroUserId}
+          AND freeze_exempt_flag = 1
+    </update>
+
+    <update id="revokeExhaustedCountExemptions">
+        UPDATE twin_card_mapping
+        SET freeze_exempt_flag = 0,
+            freeze_exempt_grant_date = NULL,
+            exempt_granted_at = NULL,
+            freeze_exempt_expire_at = NULL,
+            freeze_exempt_room_ids = NULL,
+            freeze_exempt_mode = NULL,
+            freeze_exempt_max_count = NULL,
+            freeze_exempt_used_count = 0,
+            last_modified_time = NOW()
+        WHERE freeze_exempt_flag = 1
+          AND freeze_exempt_mode IN ('COUNT', 'BOTH')
+          AND freeze_exempt_max_count IS NOT NULL
+          AND freeze_exempt_used_count >= freeze_exempt_max_count
     </update>
 
 </mapper>

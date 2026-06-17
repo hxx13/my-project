@@ -19,6 +19,7 @@ import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { CapabilityPoliciesPanel } from "@/features/admin/settings/CapabilityPoliciesPanel";
 import { ClientReloadOpsPanel } from "@/features/admin/settings/ClientReloadOpsPanel";
 import { CredentialsTestPanel } from "@/features/admin/settings/CredentialsTestPanel";
+import { FaceSettingsPanel } from "@/features/admin/settings/FaceSettingsPanel";
 import { LlmSettingsPanel } from "@/features/admin/settings/LlmSettingsPanel";
 import { NotificationRulesPanel } from "@/features/admin/settings/NotificationRulesPanel";
 import { NotificationTemplatesPanel } from "@/features/admin/settings/NotificationTemplatesPanel";
@@ -30,7 +31,7 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 
 // ── 模块类型分类（单一数据源，loadData 和 JSX 渲染共用） ──
 
-type ModuleKind = "notification" | "capability" | "template" | "llm" | "credentials" | "config";
+type ModuleKind = "notification" | "capability" | "template" | "llm" | "credentials" | "face" | "config";
 
 /** 特殊模块：不走通用 SystemConfigsPanel */
 const SPECIAL_MODULES: Record<string, ModuleKind> = {
@@ -40,6 +41,7 @@ const SPECIAL_MODULES: Record<string, ModuleKind> = {
   llm: "llm",
   credentials: "credentials",
   integration: "credentials",
+  face: "face",
 };
 
 function classifyModule(key: string): ModuleKind {
@@ -82,14 +84,6 @@ export default function AdminSettingsPage() {
 
   const loadData = useCallback(async () => {
     const kind = classifyModule(activeModule);
-    console.log(
-      `%c[系统设置] %c切换到模块 %c"${activeModule}"%c · 类型: %c${kind}`,
-      "color:#0070f3;font-weight:bold",
-      "color:inherit",
-      "color:#0070f3;font-weight:600",
-      "color:inherit",
-      "color:#10b981;font-weight:600",
-    );
 
     setLoading(true);
     try {
@@ -97,24 +91,19 @@ export default function AdminSettingsPage() {
 
       switch (kind) {
         case "notification": {
-          console.log("[系统设置] → 加载通知规则 + 模板目录");
           const [r, tpl] = await Promise.all([fetchNotificationRules(), fetchNotificationTemplates()]);
           setRules(r);
           setTemplateCatalog(tpl);
-          console.log(`[系统设置] ✓ 通知规则 ${r.length} 条, 模板目录 ${tpl.length} 个`);
           break;
         }
 
         case "capability": {
-          console.log("[系统设置] → 加载能力策略");
           const cp = await fetchCapabilityPolicies();
           setCapabilityPolicies(cp);
-          console.log(`[系统设置] ✓ 能力策略 ${cp.length} 条`);
           break;
         }
 
         case "template": {
-          console.log("[系统设置] → 加载通知模板 + 物资推送配置");
           const [t, sc, sd] = await Promise.all([
             fetchNotificationTemplates(),
             fetchSystemConfigs("supplies"),
@@ -124,40 +113,40 @@ export default function AdminSettingsPage() {
           setTemplateCatalog(t);
           setSupplyPushConfigs(sc);
           setSupplyPushDefs(sd);
-          console.log(`[系统设置] ✓ 模板 ${t.length} 个, 物资配置 ${sc.length} 条, 物资定义 ${sd.length} 条`);
           break;
         }
 
         case "llm": {
-          console.log("[系统设置] → 加载 LLM 配置");
           const [c, d] = await Promise.all([fetchSystemConfigs("llm"), fetchConfigDefinitions("llm")]);
           setConfigs(c);
           setConfigDefs(d);
-          console.log(`[系统设置] ✓ LLM 配置 ${c.length} 条, 定义 ${d.length} 条`);
           break;
         }
 
         case "credentials": {
-          console.log(`[系统设置] → 加载 ${activeModule} 配置`);
           const [c, d] = await Promise.all([
             fetchSystemConfigs(activeModule),
             fetchConfigDefinitions(activeModule),
           ]);
           setConfigs(c);
           setConfigDefs(d);
-          console.log(`[系统设置] ✓ ${activeModule} 配置 ${c.length} 条, 定义 ${d.length} 条`);
+          break;
+        }
+
+        case "face": {
+          const [c, d] = await Promise.all([fetchSystemConfigs("face"), fetchConfigDefinitions("face")]);
+          setConfigs(c);
+          setConfigDefs(d);
           break;
         }
 
         case "config": {
-          console.log(`[系统设置] → 加载通用配置模块 "${activeModule}"`);
           const [c, d] = await Promise.all([
             fetchSystemConfigs(activeModule),
             fetchConfigDefinitions(activeModule),
           ]);
           setConfigs(c);
           setConfigDefs(d);
-          console.log(`[系统设置] ✓ 配置 ${c.length} 条, 定义 ${d.length} 条`);
           break;
         }
       }
@@ -175,7 +164,6 @@ export default function AdminSettingsPage() {
     void (async () => {
       try {
         const list = await fetchSettingsModules();
-        console.log(`[系统设置] 模块列表已加载: ${list.length} 个模块`, list.map((m) => m.key));
         setModules(list);
       } catch (error) {
         console.error("[系统设置] 加载模块列表失败:", error);
@@ -196,7 +184,6 @@ export default function AdminSettingsPage() {
     const m = (searchParams.get("module") || "").trim();
     if (!m || modules.length === 0) return;
     if (modules.some((x) => x.key === m)) {
-      console.log(`[系统设置] URL 参数切换模块 → "${m}"`);
       setActiveModule(m);
     }
   }, [searchParams, modules]);
@@ -252,6 +239,9 @@ export default function AdminSettingsPage() {
               )}
               {kind === "credentials" && (
                 <CredentialsTestPanel moduleKey={activeModule} configs={configs} configDefs={configDefs} onConfigsChange={setConfigs} />
+              )}
+              {kind === "face" && (
+                <FaceSettingsPanel configs={configs} configDefs={configDefs} onConfigsChange={setConfigs} />
               )}
               {kind === "config" && (
                 <SystemConfigsPanel

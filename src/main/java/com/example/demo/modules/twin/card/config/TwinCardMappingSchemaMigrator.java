@@ -32,6 +32,26 @@ public class TwinCardMappingSchemaMigrator {
                     "freeze_exempt_expire_at",
                     "ALTER TABLE twin_card_mapping ADD COLUMN freeze_exempt_expire_at DATETIME NULL COMMENT '豁免到期时间；到期自动收回'"
             );
+            ensureColumnExists(
+                    "twin_card_mapping",
+                    "freeze_exempt_room_ids",
+                    "ALTER TABLE twin_card_mapping ADD COLUMN freeze_exempt_room_ids TEXT NULL COMMENT '豁免房间权限ID JSON数组'"
+            );
+            ensureColumnExists(
+                    "twin_card_mapping",
+                    "freeze_exempt_mode",
+                    "ALTER TABLE twin_card_mapping ADD COLUMN freeze_exempt_mode VARCHAR(20) NULL DEFAULT 'TIME' COMMENT '豁免模式 TIME/COUNT/BOTH'"
+            );
+            ensureColumnExists(
+                    "twin_card_mapping",
+                    "freeze_exempt_max_count",
+                    "ALTER TABLE twin_card_mapping ADD COLUMN freeze_exempt_max_count INT NULL COMMENT '次数限制上限'"
+            );
+            ensureColumnExists(
+                    "twin_card_mapping",
+                    "freeze_exempt_used_count",
+                    "ALTER TABLE twin_card_mapping ADD COLUMN freeze_exempt_used_count INT NOT NULL DEFAULT 0 COMMENT '已使用次数'"
+            );
             log.info("[twin-mapping-schema] twin_card_mapping 结构已就绪");
         } catch (Exception e) {
             log.error("[twin-mapping-schema] 结构迁移失败: {}", e.getMessage());

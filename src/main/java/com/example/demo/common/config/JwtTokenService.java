@@ -71,6 +71,9 @@ public class JwtTokenService {
                 .compact();
     }
 
+    /** 人脸验证通过凭证 claim type */
+    public static final String CLAIM_FACE_VERIFY = "face_verify";
+
     private static final String LEGACY_MOCK_PREFIX = "jwt_mock_token_";
 
     public User validateTokenAndResolveUser(String token) {
@@ -125,6 +128,43 @@ public class JwtTokenService {
             String impersonatedBy = claims.get("impersonatedBy", String.class);
             return impersonatedBy != null && !impersonatedBy.isBlank();
         } catch (JwtException e) {
+            return false;
+        }
+    }
+
+    /** 签发人脸验证通过凭证（5 分钟有效，绑定 userId + sessionId） */
+    public String generateFaceVerifyToken(String userId, String sessionId, double similarity) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(userId)
+                .claim("typ", CLAIM_FACE_VERIFY)
+                .claim("sid", sessionId != null ? sessionId : "")
+                .claim("sim", similarity)
+                .issuedAt(Date.from(now))
+                .expiration(Date.from(now.plus(5, ChronoUnit.MINUTES)))
+                .signWith(secretKey)
+                .compact();
+    }
+
+    /** 校验人脸验证凭证是否有效且 userId 一致 */
+    public boolean validateFaceVerifyToken(String token, String expectedUserId) {
+        if (token == null || token.isBlank() || expectedUserId == null || expectedUserId.isBlank()) {
+            return false;
+        }
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(secretKey)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+            String typ = claims.get("typ", String.class);
+            if (!CLAIM_FACE_VERIFY.equals(typ)) {
+                return false;
+            }
+            String userId = claims.getSubject();
+            return expectedUserId.equals(userId);
+        } catch (JwtException e) {
+            log.debug("[JWT] 人脸验证 Token 无效: {}", e.getMessage());
             return false;
         }
     }

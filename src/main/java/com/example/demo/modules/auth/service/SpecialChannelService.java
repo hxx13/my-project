@@ -81,8 +81,15 @@ public class SpecialChannelService {
 
     // ---- Login ----
 
-    public AuthData login(String userId, String rawPin) {
+    public AuthData login(String userId, String rawPin, Boolean faceVerified) {
         requirePersonnelExists(userId);
+
+        if (Boolean.TRUE.equals(faceVerified)) {
+            failMap.remove(userId);
+            ensureAccountExists(userId);
+            log.info("[special-channel] face login ok userId={}", userId);
+            return generateAuthForUser(userId);
+        }
 
         // 检查锁定
         FailRecord record = failMap.computeIfAbsent(userId, k -> new FailRecord());

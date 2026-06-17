@@ -49,7 +49,14 @@
                 AND event_time <![CDATA[<=]]> #{endTime}
             </if>
             <if test="excludePenetrationPoll != null and excludePenetrationPoll == true">
-                AND NOT (automation_type = 'SCHEDULER' AND event_key = 'ARO_PENETRATION_POLL')
+                AND NOT (
+                    automation_type = 'SCHEDULER'
+                    AND event_key IN (
+                        'ARO_PENETRATION_POLL',
+                        'DASHBOARD_RANKING_ACTIVITY',
+                        'DASHBOARD_RANKING_ANIMAL'
+                    )
+                )
             </if>
         </where>
     </sql>
@@ -78,7 +85,14 @@
                 AND l.event_time <![CDATA[<=]]> #{endTime}
             </if>
             <if test="excludePenetrationPoll != null and excludePenetrationPoll == true">
-                AND NOT (l.automation_type = 'SCHEDULER' AND l.event_key = 'ARO_PENETRATION_POLL')
+                AND NOT (
+                    l.automation_type = 'SCHEDULER'
+                    AND l.event_key IN (
+                        'ARO_PENETRATION_POLL',
+                        'DASHBOARD_RANKING_ACTIVITY',
+                        'DASHBOARD_RANKING_ANIMAL'
+                    )
+                )
             </if>
         </where>
     </sql>
@@ -92,6 +106,17 @@
         <include refid="FilterWhereL"/>
         ORDER BY l.event_time DESC, l.id DESC
         LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="selectPageHead" resultMap="BaseMap">
+        SELECT l.id, l.automation_type, l.event_key, l.trigger_type, l.trigger_reason,
+               l.user_id, l.target_id, l.success, l.detail, l.event_time, l.created_by,
+               p.name AS user_name
+        FROM twin_automation_log l
+        LEFT JOIN aro_personnel p ON l.user_id = p.user_id
+        <include refid="FilterWhereL"/>
+        ORDER BY l.event_time DESC, l.id DESC
+        LIMIT #{limit}
     </select>
 
     <select id="countPage" resultType="long">
@@ -110,7 +135,14 @@
           AND l.event_time <![CDATA[>=]]> #{fromTime}
           AND l.event_time <![CDATA[<=]]> #{toTime}
           <if test="excludePenetrationPoll != null and excludePenetrationPoll == true">
-              AND NOT (l.automation_type = 'SCHEDULER' AND l.event_key = 'ARO_PENETRATION_POLL')
+              AND NOT (
+                  l.automation_type = 'SCHEDULER'
+                  AND l.event_key IN (
+                      'ARO_PENETRATION_POLL',
+                      'DASHBOARD_RANKING_ACTIVITY',
+                      'DASHBOARD_RANKING_ANIMAL'
+                  )
+              )
           </if>
         ORDER BY l.event_time DESC, l.id DESC
         LIMIT #{limit}

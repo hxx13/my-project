@@ -853,6 +853,7 @@
                e.room_name AS roomName,
                e.area_name AS areaName,
                e.is_borrowed_card,
+               e.project_group_names AS projectGroup,
                DATE_FORMAT(CAST(e.create_time AS DATETIME), '%H:%i:%s') AS entryTime,
                e.create_time AS enterTimeFull
         FROM aro_access_log e

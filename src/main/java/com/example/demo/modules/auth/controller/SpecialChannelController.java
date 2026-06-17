@@ -44,12 +44,19 @@ public class SpecialChannelController {
     }
 
     @PostMapping("/login")
-    @Operation(summary = "PIN 验证登录")
+    @Operation(summary = "PIN 验证登录（或 faceVerified=true 人脸验证登录）")
     public Result<?> login(@RequestBody SpecialChannelLoginRequest request) {
-        if (request == null || request.getUserId() == null || request.getPin() == null) {
+        if (request == null || request.getUserId() == null) {
             return Result.fail(ErrorCodeConstants.BAD_REQUEST, "参数不完整");
         }
-        return Result.success(specialChannelService.login(request.getUserId().trim(), request.getPin().trim()));
+        if (!Boolean.TRUE.equals(request.getFaceVerified())
+                && (request.getPin() == null || request.getPin().isBlank())) {
+            return Result.fail(ErrorCodeConstants.BAD_REQUEST, "参数不完整");
+        }
+        return Result.success(specialChannelService.login(
+                request.getUserId().trim(),
+                request.getPin() != null ? request.getPin().trim() : null,
+                request.getFaceVerified()));
     }
 
     @PostMapping("/admin/personnel/{userId}/reset-pin")

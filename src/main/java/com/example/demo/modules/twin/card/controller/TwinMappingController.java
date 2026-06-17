@@ -259,12 +259,25 @@ public class TwinMappingController {
             if (payload.get("durationMinutes") != null) {
                 durationMinutes = Integer.parseInt(payload.get("durationMinutes").toString());
             }
-            if (flag == 1 && durationMinutes == null) {
-                return Result.error("开启豁免须选择时效（durationMinutes）");
+            String mode = payload.get("mode") != null ? payload.get("mode").toString() : "TIME";
+            Integer maxCount = null;
+            if (payload.get("maxCount") != null) {
+                maxCount = Integer.parseInt(payload.get("maxCount").toString());
             }
-            Map<String, Object> updated = mappingService.updateExemptFlag(cardNo, flag, durationMinutes);
-            log.info("[twin] exempt cardNo={} flag={} durationMinutes={} by userId={}",
-                    cardNo, flag, durationMinutes, user.getId());
+            String roomIds = payload.get("roomIds") != null ? payload.get("roomIds").toString() : null;
+
+            if (flag == 1) {
+                if ((mode.equals("TIME") || mode.equals("BOTH")) && durationMinutes == null) {
+                    return Result.error("时长限制模式须选择时效（durationMinutes）");
+                }
+                if ((mode.equals("COUNT") || mode.equals("BOTH")) && maxCount == null) {
+                    return Result.error("次数限制模式须指定次数（maxCount）");
+                }
+            }
+            Map<String, Object> updated = mappingService.updateExemptFlag(
+                    cardNo, flag, durationMinutes, mode, maxCount, roomIds);
+            log.info("[twin] exempt cardNo={} flag={} mode={} maxCount={} by userId={}",
+                    cardNo, flag, mode, maxCount, user.getId());
             return Result.success(updated);
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());

@@ -1,8 +1,8 @@
-import DOMPurify from "dompurify";
+import { sanitizeRichTextHtml } from "@/utils/richTextHtmlSanitize";
 import { resolveApiMediaUrl } from "@/utils/mediaUrl";
 
 /** 帮助弹窗正文排版（教程预览、版本历史、首次介绍共用） */
-export const PAGE_HELP_PROSE_CLASS = "page-help-prose";
+export const PAGE_HELP_PROSE_CLASS = "page-help-prose rich-text-content";
 
 /** 帮助弹窗壳层（覆盖 Dialog 默认 bg-white，适配亮/暗主题） */
 export const PAGE_HELP_DIALOG_CLASS = "page-help-dialog";
@@ -41,6 +41,6 @@ function normalizePageHelpImages(html: string): string {
 export function preparePageHelpHtml(raw: string): string {
   const trimmed = (raw || "").trim();
   if (!trimmed) return "";
-  const sanitized = DOMPurify.sanitize(trimmed, { USE_PROFILES: { html: true } });
+  const sanitized = sanitizeRichTextHtml(trimmed);
   return normalizePageHelpImages(sanitized);
 }

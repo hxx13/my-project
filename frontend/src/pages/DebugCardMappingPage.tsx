@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { motion } from "framer-motion";
 import { Portal } from "@/components/Portal";
 import {
     fetchCardMappings, searchCardMappings, updateExemptFlag, updateCardStatus, searchPersonnel,
@@ -27,9 +29,10 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { authHttp } from "@/api/core/authHttp";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
-import {RefreshCw, ShieldCheck, Link, Ban, Plus, User, Check, Loader2, X, Trash2, Clock, MoreHorizontal, ShieldAlert} from "lucide-react";
+import {RefreshCw, ShieldCheck, Link, Ban, Plus, User, Check, Loader2, X, Trash2, Clock, MoreHorizontal, ShieldAlert, Camera, ImageUp} from "lucide-react";
 import {
     labelForChannelRow,
     normalizeChannelCode,
@@ -41,11 +44,22 @@ import {
     DAHUA_ISSUE_DEFAULT_DOOR_GROUP_IDS,
 } from "@/constants/dahuaIssueDefaults";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
+import { uploadBaselinePhoto, deleteBaselinePhoto, deleteBaselinePhotoById, fetchBaselinePhoto, type BaselinePhoto } from "@/api/domains/face.api";
+import { FaceEnrollment } from "@/components/face-verify";
+import { forceReleaseAllFaceCameras } from "@/components/face-verify/faceCameraExclusive";
+import {
+    FACE_MODAL_BACKDROP_CLASS,
+    FACE_MODAL_SHELL_CLASS,
+} from "@/components/face-verify/faceConfig";
+import { Z_INDEX } from "@/constants/zIndex";
 import {
     EXEMPT_DURATION_PRESETS,
     formatExemptExpireAt,
     formatExemptRemaining,
+    EXEMPT_MODE_OPTIONS,
+    formatExemptStatus,
 } from "@/constants/exemptDurationPresets";
+import { ScanDelayConfigPanel } from "@/components/scanner/ScanDelayConfigPanel";
 
 /** 自动冻结解释与保存均固定为中国时区 */
 const FREEZE_TIMEZONE_CN = "Asia/Shanghai";
@@ -112,8 +126,17 @@ export default function DebugCardMappingPage() {
     });
     /** 1=第一次定时 2=第二次定时 */
     const [freezeSlotModal, setFreezeSlotModal] = useState<null | 1 | 2>(null);
-    const [exemptModal, setExemptModal] = useState<{ cardNo: string; userName?: string } | null>(null);
+    const [exemptModal, setExemptModal] = useState<{
+        cardNo: string; userName?: string; aroUserId?: string;
+    } | null>(null);
+    const [exemptRoomOptions, setExemptRoomOptions] = useState<
+        { roomId: string; roomName: string; selected: boolean }[]
+    >([]);
+    const [exemptMode, setExemptMode] = useState<string>("TIME");
+    const [exemptMaxCount, setExemptMaxCount] = useState<string>("");
+    const [exemptRoomsLoading, setExemptRoomsLoading] = useState(false);
     const queryClient = useQueryClient();
+    const [scanDelayModalOpen, setScanDelayModalOpen] = useState(false);
     const [linkageModalOpen, setLinkageModalOpen] = useState(false);
     const [linkageLoading, setLinkageLoading] = useState(false);
     const [linkageSaving, setLinkageSaving] = useState(false);
@@ -607,14 +630,73 @@ export default function DebugCardMappingPage() {
     const mergeExemptRow = (cardNo: string, patch: Partial<CardMappingRow>) => (row: CardMappingRow) =>
         row.cardNo === cardNo ? { ...row, ...patch } : row;
 
+    const loadExemptRoomOptions = async (aroUserId: string) => {
+        setExemptRoomsLoading(true);
+        try {
+            const res = await authHttp.get(`/v1/twin/mappings/dahua-issue/access-prefill`, {
+                params: { aroUserId },
+            });
+            const data = res.data?.data;
+            const rooms = (data?.officialRooms || []).map((r: Record<string, unknown>) => ({
+                roomId: String(r.id || r.roomId || ''),
+                roomName: String(r.name || r.roomName || r.title || ''),
+                selected: false,
+            })).filter((r: { roomId: string }) => r.roomId);
+            setExemptRoomOptions(rooms);
+        } catch {
+            setExemptRoomOptions([]);
+        } finally {
+            setExemptRoomsLoading(false);
+        }
+    };
+
+    const parseExemptMaxCount = (): number | undefined => {
+        const raw = exemptMaxCount.trim();
+        if (!raw) return undefined;
+        const n = parseInt(raw, 10);
+        return Number.isNaN(n) || n < 1 ? undefined : n;
+    };
+
+    const submitExemptConfig = (durationMinutes?: number) => {
+        if (!exemptModal) return;
+        const selectedRooms = exemptRoomOptions.filter((r) => r.selected);
+        if (selectedRooms.length === 0) {
+            toast.error("请至少选择一个授权房间");
+            return;
+        }
+        let maxCount: number | undefined;
+        if (exemptMode === "COUNT" || exemptMode === "BOTH") {
+            maxCount = parseExemptMaxCount();
+            if (maxCount == null) {
+                toast.error("请填写可用次数");
+                return;
+            }
+        }
+        toggleExemptMutation.mutate({
+            cardNo: exemptModal.cardNo,
+            flag: 1,
+            durationMinutes,
+            mode: exemptMode,
+            maxCount,
+            roomIds: JSON.stringify(selectedRooms.map((r) => r.roomId)),
+        });
+    };
+
     const toggleExemptMutation = useMutation({
-        mutationFn: (variables: { cardNo: string; flag: number; durationMinutes?: number }) =>
-            updateExemptFlag(variables.cardNo, variables.flag, variables.durationMinutes),
+        mutationFn: (variables: {
+            cardNo: string; flag: number; durationMinutes?: number;
+            mode?: string; maxCount?: number; roomIds?: string;
+        }) => updateExemptFlag(variables.cardNo, variables.flag, variables.durationMinutes,
+            variables.mode, variables.maxCount, variables.roomIds),
         onSuccess: (updated, variables) => {
             // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
             const patch: Partial<CardMappingRow> = {
                 freezeExemptFlag: updated?.freezeExemptFlag ?? variables.flag,
                 freezeExemptExpireAt: updated?.freezeExemptExpireAt ?? (variables.flag === 0 ? null : undefined),
+                freezeExemptMode: updated?.freezeExemptMode ?? null,
+                freezeExemptMaxCount: updated?.freezeExemptMaxCount ?? null,
+                freezeExemptUsedCount: 0,
+                freezeExemptRoomIds: updated?.freezeExemptRoomIds ?? null,
                 lastModifiedTime: updated?.lastModifiedTime,
             };
             queryClient.setQueryData(
@@ -700,6 +782,13 @@ export default function DebugCardMappingPage() {
                                                 {runReaperMutation.isPending ? "跑批中…" : "触发自动冻结跑批"}
                                             </DropdownMenuItem>
                                         ) : null}
+                                        {canGrantExempt ? (
+                                            <DropdownMenuItem
+                                                onSelect={() => setScanDelayModalOpen(true)}
+                                            >
+                                                扫码延迟免冻结
+                                            </DropdownMenuItem>
+                                        ) : null}
                                         {canFreezeCfg ? (
                                             <>
                                                 <DropdownMenuSeparator />
@@ -753,6 +842,7 @@ export default function DebugCardMappingPage() {
                         <thead className="bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold border-b-2 border-[var(--app-color-border-strong)] sticky top-0 z-20 shadow-[var(--app-elevation-card)]">
                         <tr>
                             <th className="p-4 w-16 text-center">状态</th>
+                            <th className="p-4 w-16 text-center">照片</th>
                             <th className="p-4">绑定人员 (ARO)</th>
                             <th className="p-4">课题组</th>
                             <th className="p-4">物理卡号 (扫描头输入)</th>
@@ -783,6 +873,13 @@ export default function DebugCardMappingPage() {
                                         >
                                             {isFrozen ? <Ban className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
                                         </button>
+                                    </td>
+                                    <td className="p-3 text-center">
+                                        <FacePhotoCell
+                                            aroUserId={row.aroUserId}
+                                            headUrl={row.head}
+                                            onUpdated={() => refetch()}
+                                        />
                                     </td>
                                     <td className="p-3">
                                         <div className="font-black text-[var(--app-color-text-primary)] text-base">{row.userName || '（人员库未匹配）'}</div>
@@ -815,7 +912,11 @@ export default function DebugCardMappingPage() {
                                                     }
                                                     return;
                                                 }
-                                                setExemptModal({ cardNo: row.cardNo, userName: row.userName });
+                                                setExemptModal({ cardNo: row.cardNo, userName: row.userName, aroUserId: row.aroUserId });
+                                                setExemptMode("TIME");
+                                                setExemptMaxCount("");
+                                                setExemptRoomOptions([]);
+                                                if (row.aroUserId) loadExemptRoomOptions(row.aroUserId);
                                             }}
                                             disabled={toggleExemptMutation.isPending}
                                             className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${isExempt ? 'bg-amber-100 text-amber-700 border border-amber-300' : 'bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] border border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)]'}`}
@@ -825,9 +926,12 @@ export default function DebugCardMappingPage() {
                                         ) : (
                                             <span className="text-xs text-[var(--app-color-text-tertiary)]">{isExempt ? '已豁免' : '受控'}</span>
                                         )}
-                                        {isExempt && exemptRemain ? (
-                                            <div className="mt-1 text-[10px] text-amber-600 font-mono">{exemptRemain}</div>
-                                        ) : null}
+                                        {(() => {
+                                            const statusText = formatExemptStatus(row);
+                                            return statusText ? (
+                                                <div className="mt-1 text-[10px] text-amber-600 font-mono">{statusText}</div>
+                                            ) : null;
+                                        })()}
                                         {isExempt && row.freezeExemptExpireAt ? (
                                             <div className="mt-0.5 text-[10px] text-[var(--app-color-text-tertiary)] font-mono">
                                                 至 {formatExemptExpireAt(row.freezeExemptExpireAt)}
@@ -981,16 +1085,12 @@ export default function DebugCardMappingPage() {
                     role="presentation"
                 >
                     <div
-                        className="bg-[var(--app-color-surface-container)] rounded-2xl shadow-xl border border-[var(--app-color-border-default)] w-full max-w-sm p-6"
+                        className="bg-[var(--app-color-surface-container)] rounded-2xl shadow-xl border border-[var(--app-color-border-default)] w-full max-w-md p-6 max-h-[80vh] overflow-y-auto"
                         onClick={(e) => e.stopPropagation()}
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="exempt-duration-title"
+                        role="dialog" aria-modal="true"
                     >
                         <div className="flex justify-between items-start mb-4">
-                            <h3 id="exempt-duration-title" className="text-lg font-black text-[var(--app-color-text-primary)]">
-                                选择豁免时效
-                            </h3>
+                            <h3 className="text-lg font-black text-[var(--app-color-text-primary)]">设置豁免</h3>
                             <button type="button" onClick={() => setExemptModal(null)} className="p-1 rounded-full hover:bg-[var(--app-color-surface-hover)]" aria-label="关闭">
                                 <X className="w-5 h-5 text-[var(--app-color-text-tertiary)]" />
                             </button>
@@ -999,28 +1099,124 @@ export default function DebugCardMappingPage() {
                             卡号 <span className="font-mono font-bold text-indigo-600">{exemptModal.cardNo}</span>
                             {exemptModal.userName ? ` · ${exemptModal.userName}` : ""}
                         </p>
-                        <p className="text-xs text-[var(--app-color-text-tertiary)] mb-3">到期后将自动取消豁免。</p>
-                        <div className="flex flex-col gap-2">
-                            {EXEMPT_DURATION_PRESETS.map((preset) => (
-                                <button
-                                    key={preset.durationMinutes}
-                                    type="button"
-                                    disabled={toggleExemptMutation.isPending}
-                                    className="w-full px-4 py-2.5 rounded-xl text-sm font-bold text-[var(--app-color-text-secondary)] bg-[var(--app-color-surface-page)] border border-[var(--app-color-border-default)] hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800 disabled:opacity-50 transition-colors"
-                                    onClick={() =>
-                                        toggleExemptMutation.mutate({
-                                            cardNo: exemptModal.cardNo,
-                                            flag: 1,
-                                            durationMinutes: preset.durationMinutes,
-                                        })
-                                    }
-                                >
-                                    {preset.label}
-                                </button>
-                            ))}
+
+                        {/* 模式选择 */}
+                        <div className="mb-4">
+                            <label className="text-xs font-bold text-[var(--app-color-text-secondary)] mb-2 block">豁免模式</label>
+                            <div className="flex gap-2">
+                                {EXEMPT_MODE_OPTIONS.map(opt => (
+                                    <button key={opt.value} type="button"
+                                        className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                                            exemptMode === opt.value
+                                                ? 'bg-amber-100 border-amber-400 text-amber-800'
+                                                : 'bg-[var(--app-color-surface-page)] border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]'
+                                        }`}
+                                        onClick={() => setExemptMode(opt.value)}
+                                    >{opt.label}</button>
+                                ))}
+                            </div>
                         </div>
+
+                        {/* 时长选择（TIME/BOTH） */}
+                        {(exemptMode === 'TIME' || exemptMode === 'BOTH') && (
+                            <div className="mb-4">
+                                <label className="text-xs font-bold text-[var(--app-color-text-secondary)] mb-2 block">豁免时长</label>
+                                <div className="flex flex-col gap-1.5">
+                                    {EXEMPT_DURATION_PRESETS.map(preset => (
+                                        <button key={preset.durationMinutes} type="button"
+                                            disabled={toggleExemptMutation.isPending}
+                                            className="w-full px-4 py-2 rounded-lg text-sm font-bold text-[var(--app-color-text-secondary)] bg-[var(--app-color-surface-page)] border border-[var(--app-color-border-default)] hover:bg-amber-50 hover:border-amber-300 disabled:opacity-50 transition-colors"
+                                            onClick={() => submitExemptConfig(preset.durationMinutes)}
+                                        >{preset.label}</button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 次数输入（COUNT/BOTH） */}
+                        {(exemptMode === 'COUNT' || exemptMode === 'BOTH') && (
+                            <div className="mb-4">
+                                <label className="text-xs font-bold text-[var(--app-color-text-secondary)] mb-2 block">可用次数</label>
+                                <input type="number" min={1} placeholder="请填写次数"
+                                    value={exemptMaxCount}
+                                    onChange={e => setExemptMaxCount(e.target.value)}
+                                    className="w-full px-3 py-2 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] text-sm text-[var(--app-color-text-primary)]"
+                                />
+                            </div>
+                        )}
+
+                        {/* 房间权限选择 */}
+                        <div className="mb-4">
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="text-xs font-bold text-[var(--app-color-text-secondary)]">授权房间（免时段限制）</label>
+                                <button type="button"
+                                    className="text-xs text-indigo-600 hover:underline"
+                                    disabled={exemptRoomsLoading}
+                                    onClick={() => exemptModal.aroUserId && loadExemptRoomOptions(exemptModal.aroUserId)}
+                                >{exemptRoomsLoading ? '加载中...' : '刷新房间列表'}</button>
+                            </div>
+                            {exemptRoomOptions.length === 0 ? (
+                                <p className="text-xs text-[var(--app-color-text-tertiary)]">点击「刷新房间列表」获取人员房间权限</p>
+                            ) : (
+                                <div className="max-h-40 overflow-y-auto flex flex-col gap-1.5">
+                                    {exemptRoomOptions.map(r => (
+                                        <button
+                                            key={r.roomId}
+                                            type="button"
+                                            className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                                                r.selected
+                                                    ? 'bg-amber-100 border-amber-400 text-amber-800'
+                                                    : 'bg-[var(--app-color-surface-page)] border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-amber-50 hover:border-amber-300'
+                                            }`}
+                                            onClick={() => setExemptRoomOptions(prev =>
+                                                prev.map(x => x.roomId === r.roomId ? { ...x, selected: !x.selected } : x)
+                                            )}
+                                        >{r.roomName}</button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* COUNT/BOTH 模式的提交按钮 */}
+                        {(exemptMode === 'COUNT' || exemptMode === 'BOTH') && (
+                            <button type="button"
+                                disabled={toggleExemptMutation.isPending || exemptRoomOptions.filter(r => r.selected).length === 0 || !exemptMaxCount.trim()}
+                                className="w-full px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                                onClick={() => submitExemptConfig(
+                                    exemptMode === 'BOTH' ? EXEMPT_DURATION_PRESETS[0].durationMinutes : undefined,
+                                )}
+                            >确认设置</button>
+                        )}
                     </div>
                 </div></Portal>}
+
+            {scanDelayModalOpen && canGrantExempt && (
+                <Portal>
+                    <div
+                        className="fixed inset-0 z-[250] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                        onClick={() => setScanDelayModalOpen(false)}
+                        role="presentation"
+                    >
+                        <div
+                            className="bg-[var(--app-color-surface-container)] rounded-2xl shadow-xl border border-[var(--app-color-border-default)] w-full max-w-3xl p-6"
+                            onClick={(e) => e.stopPropagation()}
+                            role="dialog"
+                            aria-modal="true"
+                        >
+                            <div className="flex justify-between items-start mb-4">
+                                <h3 className="text-lg font-black text-[var(--app-color-text-primary)] flex items-center gap-2">
+                                    <Clock className="w-5 h-5 shrink-0 text-amber-600" />
+                                    扫码延迟免冻结
+                                </h3>
+                                <button type="button" onClick={() => setScanDelayModalOpen(false)} className="p-1 rounded-full hover:bg-[var(--app-color-surface-hover)]" aria-label="关闭">
+                                    <X className="w-5 h-5 text-[var(--app-color-text-tertiary)]" />
+                                </button>
+                            </div>
+                            <ScanDelayConfigPanel />
+                        </div>
+                    </div>
+                </Portal>
+            )}
 
             {linkageModalOpen && <Portal><div
                     className="fixed inset-0 z-[250] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
@@ -1617,5 +1813,240 @@ export default function DebugCardMappingPage() {
                     </div>
                 </div></Portal>}
         </AdminPageShell>
+    );
+}
+
+/** 人脸照片单元格：显示预览缩略图 + 角标计数，点击打开照片管理弹窗 */
+function FacePhotoCell({
+    aroUserId,
+    headUrl,
+    onUpdated,
+}: {
+    aroUserId?: string;
+    headUrl?: string;
+    onUpdated: () => void;
+}) {
+    const [enrollOpen, setEnrollOpen] = useState(false);
+    const [galleryOpen, setGalleryOpen] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [photos, setPhotos] = useState<BaselinePhoto[]>([]);
+    const [loadingPhotos, setLoadingPhotos] = useState(false);
+
+    const fallbackSrc = resolvePersonnelAvatarUrl(headUrl) ?? null;
+    const previewSrc = photos.length > 0 ? photos[0].url : fallbackSrc;
+    const photoCount = photos.length;
+
+    // 加载底库照片列表
+    const loadPhotos = useCallback(async () => {
+        if (!aroUserId) return;
+        setLoadingPhotos(true);
+        try {
+            const data = await fetchBaselinePhoto(aroUserId);
+            setPhotos(data.photos || []);
+        } catch { /* ignore */ }
+        setLoadingPhotos(false);
+    }, [aroUserId]);
+
+    useEffect(() => {
+        loadPhotos();
+    }, [loadPhotos]);
+
+    // 删除单张
+    const handleDeleteOne = async (id: number) => {
+        if (!aroUserId) return;
+        try {
+            await deleteBaselinePhotoById(aroUserId, id);
+            setPhotos(prev => prev.filter(p => p.id !== id));
+            toast.success('已删除');
+            onUpdated();
+        } catch (err: any) {
+            toast.error(err?.message || '删除失败');
+        }
+    };
+
+    // 录入前先清空旧照片 + 关闭画廊
+    const handleStartEnroll = async () => {
+        if (!aroUserId) return;
+        setGalleryOpen(false);
+        forceReleaseAllFaceCameras();
+        if (photos.length > 0) {
+            setUploading(true);
+            try {
+                await deleteBaselinePhoto(aroUserId);
+                setPhotos([]);
+            } catch (err: any) {
+                toast.error('清空旧照片失败: ' + (err?.message || '请检查登录权限'));
+                setUploading(false);
+                return;
+            }
+            setUploading(false);
+        }
+        setEnrollOpen(true);
+    };
+
+    if (uploading) {
+        return (
+            <div className="w-10 h-10 rounded-full mx-auto flex items-center justify-center bg-[var(--app-color-surface-hover)]">
+                <Loader2 className="w-5 h-5 animate-spin text-[var(--app-color-accent)]" />
+            </div>
+        );
+    }
+
+    return (
+        <>
+            {/* 录入弹窗 */}
+            {enrollOpen && aroUserId && (
+                <FaceEnrollment
+                    userId={aroUserId}
+                    replaceExisting
+                    uploadFn={async (file) => {
+                        const row = await uploadBaselinePhoto(aroUserId, file);
+                        return row;
+                    }}
+                    onCaptured={() => {
+                        setEnrollOpen(false);
+                        toast.success('人脸照片录入成功');
+                        loadPhotos();
+                        onUpdated();
+                    }}
+                    onCancel={() => { setEnrollOpen(false); forceReleaseAllFaceCameras(); }}
+                />
+            )}
+
+            {/* 照片管理弹窗 */}
+            {galleryOpen && (
+                <PhotoGalleryModal
+                    photos={photos}
+                    fallbackSrc={fallbackSrc}
+                    loading={loadingPhotos}
+                    onDelete={handleDeleteOne}
+                    onEnroll={handleStartEnroll}
+                    onClose={() => setGalleryOpen(false)}
+                />
+            )}
+
+            {/* 缩略图 + 角标 */}
+            <div className="relative group w-10 h-10 mx-auto">
+                <button
+                    onClick={() => aroUserId && setGalleryOpen(true)}
+                    className="w-10 h-10 block"
+                    title={photoCount > 0 ? `${photoCount} 张底库照片，点击管理` : '未录入，点击录入'}
+                >
+                    {previewSrc ? (
+                        <img
+                            src={previewSrc}
+                            alt=""
+                            className="w-10 h-10 rounded-full object-cover border-2 border-[var(--app-color-border-default)]
+                                group-hover:opacity-70 transition-opacity"
+                            referrerPolicy="no-referrer"
+                        />
+                    ) : (
+                        <div className="w-10 h-10 rounded-full mx-auto flex items-center justify-center
+                            border-2 border-dashed border-[var(--app-color-border-default)]
+                            bg-[var(--app-color-surface-page)]">
+                            <Camera className="w-4 h-4 text-[var(--app-color-text-tertiary)]" />
+                        </div>
+                    )}
+                </button>
+                {/* 角标计数 */}
+                {photoCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[var(--app-color-accent)] text-white
+                        text-[10px] font-bold flex items-center justify-center shadow-md pointer-events-none">
+                        {photoCount}
+                    </span>
+                )}
+            </div>
+        </>
+    );
+}
+
+/** 照片管理弹窗：浏览所有底库照片、删除、重新录入 */
+function PhotoGalleryModal({
+    photos,
+    fallbackSrc,
+    loading,
+    onDelete,
+    onEnroll,
+    onClose,
+}: {
+    photos: BaselinePhoto[];
+    fallbackSrc: string | null;
+    loading: boolean;
+    onDelete: (id: number) => void;
+    onEnroll: () => void;
+    onClose: () => void;
+}) {
+    return createPortal(
+        <div
+            className={`fixed inset-0 flex items-center justify-center ${FACE_MODAL_BACKDROP_CLASS}`}
+            style={{ zIndex: Z_INDEX.facePhotoGallery }}
+            onClick={onClose}
+        >
+            <motion.div
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={e => e.stopPropagation()}
+                className={`flex w-[min(420px,92vw)] max-h-[80vh] flex-col gap-4 rounded-[var(--app-radius-container)] p-5 shadow-[var(--app-elevation-modal)] ${FACE_MODAL_SHELL_CLASS}`}
+            >
+                <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-[var(--app-color-text-primary)]">
+                        底库照片 ({photos.length} 张)
+                    </h3>
+                    <button onClick={onClose} className="p-1 hover:bg-[var(--app-color-surface-hover)] rounded-full">
+                        <X className="w-4 h-4 text-[var(--app-color-text-secondary)]" />
+                    </button>
+                </div>
+
+                {loading ? (
+                    <div className="flex items-center justify-center py-12">
+                        <Loader2 className="w-6 h-6 animate-spin text-[var(--app-color-accent)]" />
+                    </div>
+                ) : photos.length === 0 ? (
+                    <div className="flex flex-col items-center gap-3 py-8">
+                        {fallbackSrc ? (
+                            <img src={fallbackSrc} alt="" className="w-24 h-24 rounded-full object-cover border-2 border-[var(--app-color-border-default)]" referrerPolicy="no-referrer" />
+                        ) : (
+                            <Camera className="w-12 h-12 text-[var(--app-color-text-tertiary)]" />
+                        )}
+                        <p className="text-xs text-[var(--app-color-text-tertiary)]">暂无底库照片</p>
+                        <button
+                            onClick={onEnroll}
+                            className="rounded-[var(--app-radius-element)] bg-[var(--app-color-accent)] px-4 py-2 text-sm font-medium text-[var(--app-color-text-inverse)] hover:opacity-90"
+                        >
+                            立即录入
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-3 gap-3 max-h-[300px] overflow-y-auto">
+                            {photos.map(p => (
+                                <div key={p.id} className="relative group/item">
+                                    <img
+                                        src={p.url}
+                                        alt=""
+                                        className="aspect-square w-full rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] object-cover"
+                                    />
+                                    <button
+                                        onClick={() => onDelete(p.id)}
+                                        className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--app-color-feedback-danger)] text-[var(--app-color-text-inverse)] opacity-0 transition-opacity group-hover/item:opacity-100"
+                                        title="删除此照片"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                        <button
+                            onClick={onEnroll}
+                            className="flex w-full items-center justify-center gap-2 rounded-[var(--app-radius-element)] border-2 border-dashed border-[var(--app-color-accent)] py-2 text-sm font-medium text-[var(--app-color-accent)] transition-colors hover:bg-[var(--app-color-accent-soft)]"
+                        >
+                            <Camera className="w-4 h-4" />
+                            重新录入（将删除现有照片）
+                        </button>
+                    </>
+                )}
+            </motion.div>
+        </div>,
+        document.body
     );
 }

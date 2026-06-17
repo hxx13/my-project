@@ -102,10 +102,13 @@ public class TwinDashboardAggregationService {
             Set<String> bindSet,
             String dictName) {
         String rid = statusRoomIdString(status.get("roomId"));
-        // 已配置流水 room_id 时仅按 id 精确对齐，禁止别名/名称兜底（避免跨校区同名后室如 301A 串房）
-        if (!bindSet.isEmpty()) {
-            return !rid.isEmpty() && bindSet.contains(rid);
+
+        // ID 精确匹配优先（避免跨校区同名后室如浦西/浦东 301A 串负载）
+        if (!bindSet.isEmpty() && !rid.isEmpty() && bindSet.contains(rid)) {
+            return true;
         }
+
+        // 名称匹配兜底：ID 未配置、ID 为空、或 ID 不匹配时降级
         String rawName = status.get("roomName") != null ? status.get("roomName").toString().trim() : "";
         if (rawName.equals(dictName)) {
             return true;

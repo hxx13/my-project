@@ -31,6 +31,7 @@ interface Occupant {
     userName: string;
     entryType: 'OWN_CARD' | 'BORROWED_CARD';
     entryTime: string;
+    projectGroup?: string;
 }
 
 interface RoomInventory {
@@ -63,10 +64,13 @@ function configMatchesTwinStatus(config: any, status: RoomInventory): boolean {
     const dictName = (config.roomName || "").trim();
     const sid = status.roomId != null && status.roomId !== "" ? String(status.roomId).trim() : "";
     const binds = splitCapacityBindRoomIds(config.capacityBindRoomId);
-    // 已配置流水 ID 时仅按 id 对齐，避免跨校区同名别名（如浦西/浦东 301A）串负载
-    if (binds.length > 0) {
-        return Boolean(sid && binds.includes(sid));
+
+    // ID 精确匹配优先（避免跨校区同名别名串负载，如浦西/浦东 301A）
+    if (binds.length > 0 && sid && binds.includes(sid)) {
+        return true;
     }
+
+    // 名称匹配兜底：ID 未配置、ID 为空、或 ID 不匹配时降级
     if (rawName === dictName) return true;
     if (config.mappingAliases) {
         const aliases = String(config.mappingAliases)
@@ -298,6 +302,11 @@ function RoomStatusCard({ config, activeStatus, activeTab }: { config: any, acti
                                             </div>
                                             <div className="flex flex-col overflow-hidden">
                                                 <span className="text-sm font-bold text-[var(--app-color-text-primary)] truncate">{occ.userName}</span>
+                                                {occ.projectGroup && (
+                                                    <span className="text-[10px] text-[var(--app-color-text-tertiary)] truncate max-w-[160px]" title={occ.projectGroup}>
+                                                        {occ.projectGroup}
+                                                    </span>
+                                                )}
                                                 <span className="text-[10px] text-[var(--app-color-text-tertiary)] font-mono flex items-center gap-1"><Clock className="w-3 h-3"/> {occ.entryTime}</span>
                                             </div>
                                         </div>
@@ -335,14 +344,14 @@ export default function DebugCardStatusPage() {
     // 🌟 1. 唤醒你的 Socket 长连接
     const socket = useSocket();
 
-    // 🌟 2. 移除暴力的 refetchInterval，回归安静的按需加载
+    // 🌟 2. WebSocket 实时驱动 + 30s 轮询兜底，双重保障
     const { data: twinRoomInventory = [], isLoading: isStatusLoading, refetch } = useQuery<RoomInventory[]>({
         queryKey: ['twinRoomInventory'],
         queryFn: async () => {
             const res = await authHttp.get('/v1/twin/cards/status');
             return res.data;
         },
-        // 🚨 已删除 refetchInterval: 5000
+        refetchInterval: 30_000, // 30 秒静默轮询兜底，防止 WebSocket 事件丢失
     });
 
     // 🌟 3. 缝合 React Query 与 Socket 推送 (核心架构之美)

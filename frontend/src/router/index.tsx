@@ -9,6 +9,7 @@ import DebugOrderPage from "@/pages/DebugOrderPage";
 import DebugHeatmapPage from "@/pages/DebugHeatmapPage.tsx";
 import DebugCardStatusPage from "@/pages/DebugCardStatusPage.tsx";
 import DebugCardMappingPage from "@/pages/DebugCardMappingPage.tsx";
+import FaceDebugPage from "@/pages/FaceDebugPage.tsx";
 import { TwinDebugRouteShell } from "@/features/twin-chrome/TwinDebugRouteShell";
 import LoginPage from "@/pages/LoginPage";
 import AuthGuard from "@/router/AuthGuard";
@@ -248,6 +249,7 @@ export const router = createHashRouter([
                                     { path: "access-rules", element: <AdminAccessRulesPage/>},
                                     { path: "department-storage", element: <AdminDepartmentStoragePage/>},
                                     { path: "dahua-issue", element: <DebugCardMappingPage/>},
+                                    { path: "face-debug", element: <FaceDebugPage/>},
                                     { path: "door-control", element: <AdminDoorControlPage/>},
                                     { path: "login-branding", element: <AdminLoginBrandingPage/>},
                                     { path: "registration-invites", element: <AdminInviteCodesPage/>},

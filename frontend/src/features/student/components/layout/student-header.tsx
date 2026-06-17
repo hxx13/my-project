@@ -1,12 +1,11 @@
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { Bell, ChevronDown, LogOut, Menu, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authStorage } from "@/features/auth/authStorage";
 import { getImpersonationState, returnToStaffView, fullLogout } from "@/features/auth/impersonation";
-import { fetchStudentProfile } from "../../api/student.api";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
+import { useStudentProfile } from "../../hooks/use-student-profile";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,20 +30,15 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
   const showReturnToScanner = fromScanPopup;
   const showLogout = !fromScanPopup;
 
-  // 独立拉取学生档案获取真实姓名和头像
-  const { data: profile } = useQuery({
-    queryKey: ["student", "profile", "header"],
-    queryFn: fetchStudentProfile,
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-  });
+  // 独立拉取学生档案获取真实姓名和头像（queryKey 含当前会话 userId）
+  const { data: profile, isFetching } = useStudentProfile();
 
   const realName = profile?.personnel?.name || "";
   const headUrl = profile?.personnel?.head
     ? resolvePersonnelAvatarUrl(profile.personnel.head)
     : null;
 
-  const displayName = realName || "学生";
+  const displayName = realName || (isFetching ? "加载中…" : "学生");
   const avatarLetter = realName ? realName.charAt(0) : "学";
 
   const handleReturnToStaff = () => {

@@ -25,6 +25,17 @@ public class TwinAutomationLog {
     private String triggerTypeLabel;
     private String triggerReasonLabel;
 
+    /** 行来源：twin 自动化表 | face 人脸验证审计 */
+    private String logSource;
+    /** 比对抓拍图（face 审计） */
+    private java.util.List<String> probeImageUrls;
+    /** 最佳匹配底库图（face 审计） */
+    private String baselineImageUrl;
+    /** 人脸相似度 0~1（face 审计） */
+    private Double faceSimilarity;
+    /** 人脸模型版本（face 审计） */
+    private String faceModelVersion;
+
     public Long getId() {
         return id;
     }
@@ -159,5 +170,45 @@ public class TwinAutomationLog {
 
     public void setTriggerReasonLabel(String triggerReasonLabel) {
         this.triggerReasonLabel = triggerReasonLabel;
+    }
+
+    public String getLogSource() {
+        return logSource;
+    }
+
+    public void setLogSource(String logSource) {
+        this.logSource = logSource;
+    }
+
+    public java.util.List<String> getProbeImageUrls() {
+        return probeImageUrls;
+    }
+
+    public void setProbeImageUrls(java.util.List<String> probeImageUrls) {
+        this.probeImageUrls = probeImageUrls;
+    }
+
+    public String getBaselineImageUrl() {
+        return baselineImageUrl;
+    }
+
+    public void setBaselineImageUrl(String baselineImageUrl) {
+        this.baselineImageUrl = baselineImageUrl;
+    }
+
+    public Double getFaceSimilarity() {
+        return faceSimilarity;
+    }
+
+    public void setFaceSimilarity(Double faceSimilarity) {
+        this.faceSimilarity = faceSimilarity;
+    }
+
+    public String getFaceModelVersion() {
+        return faceModelVersion;
+    }
+
+    public void setFaceModelVersion(String faceModelVersion) {
+        this.faceModelVersion = faceModelVersion;
     }
 }

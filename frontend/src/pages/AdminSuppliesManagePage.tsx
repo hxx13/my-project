@@ -414,8 +414,10 @@ export default function AdminSuppliesManagePage() {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        className="rounded-twin-sm bg-sky-600 px-3 py-1 text-xs font-medium text-white"
+                        disabled={inboundMut.isPending}
+                        className="rounded-twin-sm bg-sky-600 px-3 py-1 text-xs font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={() => {
+                          if (inboundMut.isPending) return;
                           const q = it.stockMode === "FLAG" ? 1 : Number(panelQty);
                           if (!q || q <= 0) return toast.error("数量无效");
                           inboundMut.mutate(
@@ -424,7 +426,7 @@ export default function AdminSuppliesManagePage() {
                           );
                         }}
                       >
-                        确认入库
+                        {inboundMut.isPending ? "入库中…" : "确认入库"}
                       </button>
                       <button type="button" className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs font-medium text-[var(--twin-body)]" onClick={closePanel}>
                         取消

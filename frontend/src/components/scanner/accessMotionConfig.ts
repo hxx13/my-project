@@ -7,8 +7,8 @@ export const ACCESS_MOTION_LOOP_SEC = ACCESS_MOTION_HAMSTER_REF_LOOP_SEC - 2;
 
 /** 中心停留时长（进入 / 离开减速段） */
 export const ACCESS_MOTION_CENTER_HOLD_MS = 2800;
-/** 中心 ↔ 锚点 飞行动画时长（进入） */
-export const ACCESS_MOTION_FLY_MS = 2400;
+/** 中心 ↔ 锚点 飞行动画时长（进入）；略慢以便与同时弹出的进入确认胶囊协调 */
+export const ACCESS_MOTION_FLY_MS = 3600;
 /** 离开：飞回中心（略短） */
 export const ACCESS_MOTION_EXIT_FLY_MS = 1800;
 /** 离开：中心展示「已离开」 */

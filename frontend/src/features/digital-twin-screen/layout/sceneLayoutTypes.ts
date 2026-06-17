@@ -1,5 +1,6 @@
 import type { DuctPlanPolyline } from "@/features/digital-twin-screen/layout/ductLayoutTypes";
 import type { AcZoneId } from "@/features/digital-twin-screen/types";
+import { randomUUID } from "@/utils/randomUUID";
 
 /** 房间在场景板上的轴对齐矩形（归一化 0–1，相对 layoutPlate） */
 export type RoomLayoutEntry = {
@@ -189,11 +190,7 @@ export const SCENE_LAYOUT_STORAGE_KEY_V3 = "aro.digitalTwin.sceneLayout.v3";
 export const SCENE_LAYOUT_STORAGE_KEY_V4 = "aro.digitalTwin.sceneLayout.v4";
 
 export function newDtSceneWidgetId(): string {
-  try {
-    return `dtw-${crypto.randomUUID().slice(0, 10)}`;
-  } catch {
-    return `dtw-${Date.now()}`;
-  }
+  return `dtw-${randomUUID().slice(0, 10)}`;
 }
 
 export function defaultWidgetStackLayers(): DtWidgetStackLayerRow[] {
@@ -210,19 +207,11 @@ export function effectiveWidgetStackLayerId(
 }
 
 export function newWidgetStackLayerId(): string {
-  try {
-    return `wl-${crypto.randomUUID().slice(0, 10)}`;
-  } catch {
-    return `wl-${Date.now()}`;
-  }
+  return `wl-${randomUUID().slice(0, 10)}`;
 }
 
 export function newDtBindingSlotId(): string {
-  try {
-    return `slot-${crypto.randomUUID().slice(0, 8)}`;
-  } catch {
-    return `slot-${Date.now()}`;
-  }
+  return `slot-${randomUUID().slice(0, 8)}`;
 }
 
 export const ROTATION_SNAP_SET = [0, 45, -45] as const;

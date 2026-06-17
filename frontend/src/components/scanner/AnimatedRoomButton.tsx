@@ -8,9 +8,14 @@ interface AnimatedRoomButtonProps {
     disabled?: boolean;
     /** 多房间时缩小，默认 normal */
     density?: RoomActionDensity;
+    /**
+     * 外部确认态控制：为 true 时按钮锁定在「确认」视觉态（.clicked），
+     * 即使失焦也不回退。取消确认时父级置 false 即可重置按钮。
+     */
+    confirming?: boolean;
 }
 
-export const AnimatedRoomButton: React.FC<AnimatedRoomButtonProps> = ({ text, onClick, disabled = false, density = 'normal' }) => {
+export const AnimatedRoomButton: React.FC<AnimatedRoomButtonProps> = ({ text, onClick, disabled = false, density = 'normal', confirming = false }) => {
 
     const chars = text.split('');
     // 💥 修复: 文案改简短，以适应缩小后的按钮尺寸
@@ -20,7 +25,7 @@ export const AnimatedRoomButton: React.FC<AnimatedRoomButtonProps> = ({ text, on
         <StyledWrapper $density={density}>
             <button
                 disabled={disabled}
-                className={`button ${disabled ? 'disabled-btn' : ''}`}
+                className={`button ${disabled ? 'disabled-btn' : ''} ${confirming ? 'clicked' : ''}`}
                 onClick={disabled ? undefined : onClick}
             >
                 <div className="outline" />

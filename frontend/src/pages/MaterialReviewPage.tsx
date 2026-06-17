@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { usePendingMaterialRequests, useAllMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useDeleteMaterialRequest } from "@/api/hooks/useMaterial";
 import { fetchAllMaterialDemands, resolveMaterialDemand, exportMaterialAuditTrail, type MaterialDemand } from "@/api/domains/material.api";
+import {
+  fetchPendingScanDelayRequests,
+  reviewScanDelayRequest,
+  type ScanDelayPendingRequest,
+} from "@/api/domains/scanDelay.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import type { MaterialRequest, MaterialRequestLine } from "@/api/domains/material.api";
@@ -10,7 +16,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authHttp } from "@/api/core/authHttp";
 import toast from "react-hot-toast";
 
-type TabKey = "pending" | "all" | "demands";
+type TabKey = "pending" | "all" | "demands" | "scanDelay";
 
 function statusLabel(s: string) {
   const m: Record<string, string> = { DRAFT: "草稿", PENDING: "待审核", FIRST_OK: "初审通过", APPROVED: "已通过", REJECTED: "已拒绝", FULFILLED: "已出库", RECEIVED: "已完成" };
@@ -29,8 +35,12 @@ function downloadBlob(blob: Blob, name: string) { const u = URL.createObjectURL(
 export default function MaterialReviewPage() {
   const role = authStorage.getRole() || "STUDENT";
   const canDelete = hasMinRole(role, "SUPER_ADMIN");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = (searchParams.get("tab") as TabKey) || "pending";
+  const [tab, setTab] = useState<TabKey>(
+    ["pending", "all", "demands", "scanDelay"].includes(initialTab) ? initialTab : "pending"
+  );
 
-  const [tab, setTab] = useState<TabKey>("pending");
   const { data: pendingData, isLoading: pendingLoading } = usePendingMaterialRequests();
   const { data: allData, isLoading: allLoading } = useAllMaterialRequests({ page: 1, size: 50 });
   const approve = useApproveMaterialRequest();
@@ -41,9 +51,24 @@ export default function MaterialReviewPage() {
     queryKey: ["material", "demands", "all"],
     queryFn: () => fetchAllMaterialDemands({ page: 1, size: 200 }),
   });
+  const { data: scanDelayPending = [], isLoading: scanDelayLoading } = useQuery({
+    queryKey: ["scan-delay", "pending"],
+    queryFn: fetchPendingScanDelayRequests,
+  });
   const demands = demandData?.data ?? [];
 
-  // 需求入口开关
+  useEffect(() => {
+    const t = searchParams.get("tab") as TabKey | null;
+    if (t && ["pending", "all", "demands", "scanDelay"].includes(t) && t !== tab) {
+      setTab(t);
+    }
+  }, [searchParams, tab]);
+
+  const switchTab = (k: TabKey) => {
+    setTab(k);
+    setSearchParams(k === "pending" ? {} : { tab: k }, { replace: true });
+  };
+
   const [demandVisible, setDemandVisible] = useState(true);
   const [toggleLoading, setToggleLoading] = useState(false);
   useEffect(() => {
@@ -53,25 +78,81 @@ export default function MaterialReviewPage() {
   const toggleDemand = async () => { setToggleLoading(true); try { const r = await authHttp.post<{ success: boolean; data: { visible: boolean } }>("/material/admin/config/toggle-demand-entry"); if (r.data?.success) setDemandVisible(r.data.data.visible); } finally { setToggleLoading(false); } };
 
   const list = tab === "pending" ? (pendingData ?? []) : (allData?.data ?? []);
-  const loading = tab === "pending" ? pendingLoading : tab === "all" ? allLoading : demandLoading;
+  const loading = tab === "pending" ? pendingLoading : tab === "all" ? allLoading : tab === "demands" ? demandLoading : scanDelayLoading;
 
   const handleExportPersonal = async (reqId: string) => {
     try { const blob = await exportMaterialAuditTrail({}); downloadBlob(blob, `material-request-${reqId}.xlsx`); toast.success("已导出"); }
     catch { toast.error("导出失败"); }
   };
 
+  const handleScanDelayReview = async (req: ScanDelayPendingRequest, approveFlag: boolean) => {
+    try {
+      await reviewScanDelayRequest(req.id, approveFlag, approveFlag ? undefined : "已拒绝");
+      // 保存后仅移除当前行，禁止整表 load；post-save-no-full-refresh.mdc
+      qc.setQueryData<ScanDelayPendingRequest[]>(["scan-delay", "pending"], (prev) =>
+        (prev ?? []).filter((r) => r.id !== req.id)
+      );
+      toast.success(approveFlag ? "已通过并授予免冻结" : "已拒绝");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "操作失败");
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <AdminSubPageHeader title="申领审核" fallbackTo="/admin" description="审核学生物资申领请求，查看需求建议。" />
-      <div className="flex gap-1">
-        {([["pending", `待审核${pendingData ? ` (${pendingData.length})` : ""}`], ["all", "全部记录"], ["demands", `需求建议${demands.length ? ` (${demands.filter((d: MaterialDemand) => d.status === 0).length})` : ""}`]] as [TabKey, string][]).map(([k, v]) => (
-          <button key={k} onClick={() => setTab(k)} className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${tab === k ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}>{v}</button>
+      <AdminSubPageHeader title="学生审核" fallbackTo="/admin" description="审核学生物资申领、延迟免冻结申请与需求建议。" />
+      <div className="flex flex-wrap gap-1">
+        {([
+          ["pending", `物资待审${pendingData ? ` (${pendingData.length})` : ""}`],
+          ["scanDelay", `延迟免冻结${scanDelayPending.length ? ` (${scanDelayPending.length})` : ""}`],
+          ["all", "物资全部"],
+          ["demands", `需求建议${demands.length ? ` (${demands.filter((d: MaterialDemand) => d.status === 0).length})` : ""}`],
+        ] as [TabKey, string][]).map(([k, v]) => (
+          <button key={k} onClick={() => switchTab(k)} className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${tab === k ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}>{v}</button>
         ))}
       </div>
 
-      {tab === "demands" ? (
+      {tab === "scanDelay" ? (
+        <div className="space-y-3">
+          {scanDelayLoading ? <DataSkeleton variant="card" rows={4} /> : null}
+          {scanDelayPending.map((req) => (
+            <div key={req.id} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-mono text-[var(--twin-mute)]">#{req.id}</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">待审核</span>
+              </div>
+              <p className="text-sm text-[var(--twin-ink)]">
+                <span className="font-medium">{req.roomName || req.roomId}</span>
+                <span className="text-[var(--twin-mute)]"> · {req.optionLabel || "延迟免冻结"}</span>
+              </p>
+              <p className="text-xs text-[var(--twin-mute)]">人员 ID：{req.subjectUserId}</p>
+              {req.createdAt ? (
+                <p className="text-xs text-[var(--twin-mute)]">{String(req.createdAt).replace("T", " ").slice(0, 19)}</p>
+              ) : null}
+              <div className="flex gap-2 pt-2 border-t border-[var(--twin-hairline)]">
+                <button
+                  type="button"
+                  onClick={() => void handleScanDelayReview(req, true)}
+                  className="rounded-twin-sm bg-green-600 px-4 py-1.5 text-sm font-medium text-white"
+                >
+                  通过并授予免冻结
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleScanDelayReview(req, false)}
+                  className="rounded-twin-sm bg-red-500 px-4 py-1.5 text-sm font-medium text-white"
+                >
+                  拒绝
+                </button>
+              </div>
+            </div>
+          ))}
+          {!scanDelayLoading && scanDelayPending.length === 0 && (
+            <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无待审核的延迟免冻结申请</p>
+          )}
+        </div>
+      ) : tab === "demands" ? (
         <div className="space-y-4">
-          {/* 开关 */}
           <div className="flex items-center gap-3 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-4 py-2.5 shadow-twin-level-1">
             <span className="text-sm text-[var(--twin-ink)]">学生端需求建议入口</span>
             <button onClick={toggleDemand} disabled={toggleLoading}
@@ -79,10 +160,9 @@ export default function MaterialReviewPage() {
               {demandVisible ? "已开启" : "已关闭"}
             </button>
           </div>
-          {/* 列表 */}
           <div className="space-y-3">
             {demandLoading ? <DataSkeleton variant="card" rows={5} /> : null}
-            {demands.map((d: any) => (
+            {demands.map((d: MaterialDemand) => (
               <div key={d.id} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1 flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">

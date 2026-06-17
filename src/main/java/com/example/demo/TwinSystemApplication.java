@@ -12,7 +12,12 @@ import javax.annotation.PostConstruct;
 import java.util.TimeZone;
 
 @SpringBootApplication
-@MapperScan({"com.example.demo.modules.*.mapper", "com.example.demo.modules.twin.*.mapper", "com.example.demo.modules.accessfusion.mapper"})
+@MapperScan({
+        "com.example.demo.modules.*.mapper",
+        "com.example.demo.modules.twin.*.mapper",
+        "com.example.demo.modules.twin.*.*.mapper",
+        "com.example.demo.modules.accessfusion.mapper"
+})
 @EnableScheduling
 @EnableAsync
 public class TwinSystemApplication {

@@ -88,6 +88,7 @@ public class TwinCardStatusController {
             occupant.put("userName", user.get("userName"));
             occupant.put("entryTime", user.get("entryTime"));
             occupant.put("entryType", entryType);
+            occupant.put("projectGroup", user.getOrDefault("projectGroup", ""));
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> occ = (List<Map<String, Object>>) room.get("occupants");

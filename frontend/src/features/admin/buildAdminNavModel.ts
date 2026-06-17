@@ -21,7 +21,7 @@ import {
   type AdminNavContext,
   type AdminNavRegistryItem,
 } from "@/features/admin/adminNavRegistry";
-import { isDahuaSwingHubMergedPath } from "@/features/admin/dahuaSwingHubPaths";
+import { shouldHideAdminSidebarPath } from "@/features/admin/hiddenAdminNavPaths";
 
 export type AdminSidebarNavItem = {
   key: string;
@@ -249,7 +249,7 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
   for (const n of ctx.permNodes) {
     if (!n || n.platform !== "WEB" || n.nodeType !== "ENTRY" || n.entrySource !== "sidebar") continue;
     const p = normalizeAdminPath(n.pathOrRoute);
-    if (!p || knownPaths.has(p) || seenAutoPath.has(p) || isDahuaSwingHubMergedPath(p)) continue;
+    if (!p || knownPaths.has(p) || seenAutoPath.has(p) || shouldHideAdminSidebarPath(p)) continue;
     seenAutoPath.add(p);
     const minRole = (n.minRole as MinRole) || "STUDENT";
     const roleOk = hasMinRole(ctx.role, minRole);
@@ -339,7 +339,7 @@ function nodeToSidebarItem(
   ctx: AdminNavContext,
 ): AdminSidebarNavItem | null {
   if (node.type !== "ITEM" || !node.itemPath) return null;
-  if (isDahuaSwingHubMergedPath(node.itemPath)) return null;
+  if (shouldHideAdminSidebarPath(node.itemPath)) return null;
   const effectiveMinRole = resolveEntryMinRole(ctx.permNodes, node.itemPath, "STAFF");
   const roleOk = hasMinRole(ctx.role, effectiveMinRole);
   const permOk = canShowWebEntry(ctx.permNodes, node.itemPath, "sidebar", ctx.role, effectiveMinRole);
@@ -404,7 +404,7 @@ function convertServerConfigToModel(
     const pushHomeEntry = (itemNode: AdminNavConfigNode) => {
       if (itemNode.type !== "ITEM" || !itemNode.visible) return;
       const path = itemNode.itemPath || "";
-      if (!path || isDahuaSwingHubMergedPath(path)) return;
+      if (!path || shouldHideAdminSidebarPath(path)) return;
       const effectiveMinRole = resolveEntryMinRole(ctx.permNodes, path, "STAFF");
       const roleOk = hasMinRole(ctx.role, effectiveMinRole);
       const permOk = canShowWebEntry(ctx.permNodes, path, "sidebar", ctx.role, effectiveMinRole);
@@ -545,7 +545,7 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
   for (const n of ctx.permNodes) {
     if (!n || n.platform !== "WEB" || n.nodeType !== "ENTRY" || n.entrySource !== "sidebar") continue;
     const p = normalizeAdminPath(n.pathOrRoute);
-    if (!p || knownPaths.has(p) || seenAutoPath.has(p) || isDahuaSwingHubMergedPath(p)) continue;
+    if (!p || knownPaths.has(p) || seenAutoPath.has(p) || shouldHideAdminSidebarPath(p)) continue;
     seenAutoPath.add(p);
     const minRole = (n.minRole as MinRole) || "STUDENT";
     const roleOk = hasMinRole(ctx.role, minRole);

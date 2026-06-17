@@ -18,7 +18,9 @@ public interface TwinCardMappingMapper {
     void insertMapping(TwinCardMapping mapping);
 
     void updateExemptFlag(@Param("cardNo") String cardNo, @Param("flag") Integer flag,
-                          @Param("expireAt") String expireAt, @Param("updateTime") String updateTime);
+                          @Param("expireAt") String expireAt, @Param("updateTime") String updateTime,
+                          @Param("mode") String mode, @Param("maxCount") Integer maxCount,
+                          @Param("roomIds") String roomIds);
 
     void updateCardStatus(@Param("cardNo") String cardNo, @Param("status") String status, @Param("updateTime") String updateTime);
 
@@ -36,7 +38,9 @@ public interface TwinCardMappingMapper {
     List<String> findTodayExemptedThenRevokedUserIds();
 
     int updateExemptFlagByUserId(@Param("aroUserId") String aroUserId, @Param("flag") int flag,
-                                 @Param("expireAt") String expireAt);
+                                 @Param("expireAt") String expireAt,
+                                 @Param("mode") String mode, @Param("maxCount") Integer maxCount,
+                                 @Param("roomIds") String roomIds);
 
     int resetDailyExemptions();
 
@@ -60,4 +64,12 @@ public interface TwinCardMappingMapper {
     List<String> findTodayStillInsideUserIdsByAccessLog(
             @Param("todayStart") String todayStart,
             @Param("todayEnd") String todayEnd);
+
+    // ========== 免冻结增强：次数模式 ==========
+
+    /** 递增免冻结已使用次数；达到上限时自动收回豁免 */
+    int incrementExemptUsedCount(@Param("aroUserId") String aroUserId, @Param("roomId") String roomId);
+
+    /** 收回次数已耗尽的 COUNT/BOTH 豁免（定时兜底） */
+    int revokeExhaustedCountExemptions();
 }

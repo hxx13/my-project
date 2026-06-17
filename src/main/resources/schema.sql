@@ -1309,5 +1309,98 @@ CREATE TABLE IF NOT EXISTS telemetry_archive_purge_config (
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='温湿度归档清理策略';
 
+-- 人脸识别调试 + 底库（一人多张，详见 scripts/face_baseline_multi.ddl.sql）
+CREATE TABLE IF NOT EXISTS face_debug_photo (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    label VARCHAR(255) COMMENT '标签',
+    storage_key VARCHAR(512) NOT NULL COMMENT '存储路径',
+    public_url VARCHAR(1024) COMMENT '公开访问URL',
+    original_name VARCHAR(512) COMMENT '原始文件名',
+    mime_type VARCHAR(128) COMMENT 'MIME类型',
+    size_bytes BIGINT COMMENT '文件大小',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人脸调试照片';
+
+CREATE TABLE IF NOT EXISTS face_baseline (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(128) NOT NULL COMMENT '人员ID',
+    face_image_url VARCHAR(1024) NOT NULL COMMENT '底库照片URL',
+    storage_key VARCHAR(512) NOT NULL COMMENT '存储路径',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人脸底库照片（一人多张）';
+
+CREATE TABLE IF NOT EXISTS face_verify_audit (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(128) NOT NULL COMMENT '人员ID',
+    session_id VARCHAR(128) COMMENT '验证会话ID',
+    matched TINYINT NOT NULL COMMENT '是否通过',
+    similarity DOUBLE COMMENT '最高相似度',
+    match_threshold DOUBLE COMMENT '通过阈值',
+    reject_threshold DOUBLE COMMENT '拒绝阈值',
+    model_version VARCHAR(64) COMMENT '模型版本',
+    challenge_action VARCHAR(32) COMMENT '活体动作',
+    source VARCHAR(32) COMMENT '来源 gate/personal/pip',
+    baseline_count INT COMMENT '底库张数',
+    best_baseline_id BIGINT COMMENT '最佳匹配底库ID',
+    probe_face_detected TINYINT COMMENT '抓拍是否检测到人脸',
+    probe_image_urls TEXT COMMENT '比对抓拍图 URL 列表 JSON',
+    best_baseline_image_url VARCHAR(512) COMMENT '最佳匹配底库图 URL',
+    top_sims_json VARCHAR(256) COMMENT 'Top 相似度 JSON 数组',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_user_id (user_id),
+    KEY idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人脸验证审计';
+
+CREATE TABLE IF NOT EXISTS twin_scan_delay_option (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    room_id VARCHAR(64) NOT NULL COMMENT 'ARO 房间 ID',
+    room_name VARCHAR(128) NOT NULL COMMENT '房间展示名（配置对照）',
+    option_label VARCHAR(64) NOT NULL COMMENT '展开菜单项文案',
+    button_label VARCHAR(32) NOT NULL DEFAULT '延迟' COMMENT '主按钮文案',
+    display_start VARCHAR(5) NULL COMMENT '显示时段起 HH:mm',
+    display_end VARCHAR(5) NULL COMMENT '显示时段止 HH:mm',
+    require_approval TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=需教职工审核',
+    reviewer_user_ids JSON NULL COMMENT '推荐审核人账号 ID 列表',
+    exempt_mode VARCHAR(20) NOT NULL DEFAULT 'TIME' COMMENT 'TIME/COUNT/BOTH',
+    duration_minutes INT NULL COMMENT '免冻结时长；-1=今日24:00',
+    max_count INT NULL COMMENT '次数上限',
+    exempt_room_ids JSON NULL COMMENT '免冻结房间 ID 列表，空则仅当前 room_id',
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_tsdo_room (room_id, enabled, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码延迟选项库（与房间无关）';
+
+CREATE TABLE IF NOT EXISTS twin_scan_delay_room_option (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    room_id VARCHAR(64) NOT NULL COMMENT 'ARO 房间 ID',
+    option_id BIGINT NOT NULL COMMENT 'twin_scan_delay_option.id',
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_sdro_room_option (room_id, option_id),
+    KEY idx_sdro_room (room_id, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='房间与延迟选项搭配';
+
+CREATE TABLE IF NOT EXISTS twin_scan_delay_request (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    subject_user_id VARCHAR(64) NOT NULL COMMENT '被申请人 ARO userId',
+    card_no VARCHAR(64) NOT NULL,
+    room_id VARCHAR(64) NOT NULL,
+    option_id BIGINT NOT NULL,
+    duration_minutes INT NULL,
+    reviewer_user_id VARCHAR(64) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/APPROVED/REJECTED',
+    requested_by VARCHAR(64) NULL COMMENT '发起扫码操作账号',
+    reviewed_by VARCHAR(64) NULL,
+    reviewed_at DATETIME NULL,
+    reject_reason VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_tsdr_status (status, created_at),
+    KEY idx_tsdr_reviewer (reviewer_user_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码延迟免冻结审核单';
+
 -- 填报报表模块
 SOURCE scripts/report_form.ddl.sql;

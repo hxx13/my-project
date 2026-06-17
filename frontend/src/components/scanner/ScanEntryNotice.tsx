@@ -1,15 +1,25 @@
 import { useState, useEffect, useRef } from "react";
 import { MinimizableNotice } from "@/components/ui/MinimizableNotice";
-import { resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
+import {
+  remainingSecondsFromScheduledAt,
+  resolveAutoSignoutCountdownCopy,
+} from "@/utils/formatCountdown";
 import type { PopupState } from "./components/types";
 import "./ScanEntryNotice.css";
 
 /* ═══════════════════════════════════════════════════════════
    ScanEntryNotice — 扫描弹窗进入确认适配器
 
-   动效落点后弹出居中确认弹窗。内部维护 dismissed 标记，
-   用户关闭/最小化后不再重复弹出，直到下一次新进入事件。
+   动效开始飞向右下角时弹出居中确认弹窗；文案在首次展示时冻结，
+   倒计时优先按 scheduledAt 实时推算，避免展开胶囊时回到 29:50。
    ═══════════════════════════════════════════════════════════ */
+
+type NoticeSnapshot = {
+  roomName: string;
+  autoSignoutState: string | null;
+  autoSignoutSecondsRemaining: number | null;
+  autoSignoutScheduledAt: string | null;
+};
 
 interface ScanEntryNoticeProps {
   state: PopupState;
@@ -17,55 +27,122 @@ interface ScanEntryNoticeProps {
   onDismiss: () => void;
 }
 
+function hasCountdownData(snapshot: NoticeSnapshot): boolean {
+  const fromDeadline = remainingSecondsFromScheduledAt(snapshot.autoSignoutScheduledAt);
+  if (fromDeadline != null && fromDeadline > 0) return true;
+  return (snapshot.autoSignoutSecondsRemaining ?? 0) > 0;
+}
+
 export function ScanEntryNotice({
   state,
   roomName,
   onDismiss,
 }: ScanEntryNoticeProps) {
-  /* ── 检测新进入事件：enterCornerReady false→true ── */
-  const prevReadyRef = useRef(false);
+  const sessionIdRef = useRef<string | null>(null);
+  const enrichedRef = useRef(false);
+  const pinnedRef = useRef(false);
   const [dismissed, setDismissed] = useState(false);
+  const [snapshot, setSnapshot] = useState<NoticeSnapshot | null>(null);
 
+  /* ── 新一轮进入：以 enterCelebrateRoomId 为会话键 ── */
   useEffect(() => {
-    const wasReady = prevReadyRef.current;
-    prevReadyRef.current = state.enterCornerReady;
-    /* 新一轮进入（动效落点）→ 重置 dismissed */
-    if (!wasReady && state.enterCornerReady) {
-      setDismissed(false);
-    }
-  }, [state.enterCornerReady]);
+    const sid = state.enterCelebrateRoomId;
+    if (!state.enterNoticeReady || !sid || state.exitCelebrateRoomId) return;
+    if (sessionIdRef.current === sid) return;
 
-  /* ── 可见性 ── */
+    sessionIdRef.current = sid;
+    enrichedRef.current = false;
+    pinnedRef.current = false;
+    setDismissed(false);
+    setSnapshot({
+      roomName,
+      autoSignoutState: state.autoSignoutState,
+      autoSignoutSecondsRemaining: state.autoSignoutSecondsRemaining,
+      autoSignoutScheduledAt: state.autoSignoutScheduledAt,
+    });
+  }, [
+    state.enterNoticeReady,
+    state.enterCelebrateRoomId,
+    state.exitCelebrateRoomId,
+    roomName,
+    state.autoSignoutState,
+    state.autoSignoutSecondsRemaining,
+    state.autoSignoutScheduledAt,
+  ]);
+
+  /* ── analyze 刷新稍晚：仅补一次缺失的倒计时字段，已最小化后不再改文案 ── */
+  useEffect(() => {
+    if (!snapshot || pinnedRef.current || enrichedRef.current) return;
+    const snapMissing =
+      !snapshot.autoSignoutScheduledAt &&
+      (snapshot.autoSignoutSecondsRemaining ?? 0) <= 0;
+    const liveScheduled = state.autoSignoutScheduledAt;
+    const liveSeconds = state.autoSignoutSecondsRemaining ?? 0;
+    if (!snapMissing || (!liveScheduled && liveSeconds <= 0)) return;
+
+    enrichedRef.current = true;
+    setSnapshot((prev) =>
+      prev
+        ? {
+            ...prev,
+            autoSignoutState: state.autoSignoutState,
+            autoSignoutSecondsRemaining: liveSeconds > 0 ? liveSeconds : prev.autoSignoutSecondsRemaining,
+            autoSignoutScheduledAt: liveScheduled ?? prev.autoSignoutScheduledAt,
+          }
+        : null
+    );
+  }, [
+    snapshot,
+    state.autoSignoutSecondsRemaining,
+    state.autoSignoutState,
+    state.autoSignoutScheduledAt,
+  ]);
+
   const open =
-    state.enterCornerReady &&
+    state.enterNoticeReady &&
+    Boolean(snapshot) &&
     !dismissed &&
     !state.exitCelebrateRoomId;
 
-  /* ── 关闭胶囊（用户点 ✕ 彻底关闭） ── */
   const handleDismiss = () => {
     setDismissed(true);
+    sessionIdRef.current = null;
+    enrichedRef.current = false;
+    pinnedRef.current = false;
+    setSnapshot(null);
     onDismiss();
   };
 
-  /* ── "知道了"：空操作，最小化由 MinimizableNotice 内部接管 ── */
   const handleAcknowledge = () => {
     /* do nothing — MinimizableNotice.handleAction 自己调 doMinimize() */
   };
 
-  if (!open) return null;
+  const handlePhaseChange = (phase: "modal" | "minimizing" | "minimized" | "expanding") => {
+    if (phase === "minimized" || phase === "minimizing") {
+      pinnedRef.current = true;
+    }
+  };
 
-  /* ── 数据映射 ── */
-  const hasCountdown = (state.autoSignoutSecondsRemaining ?? 0) > 0;
-  const copy = resolveAutoSignoutCountdownCopy(state.autoSignoutState);
-  const title = `已进入 ${roomName}`;
+  if (!open || !snapshot) return null;
+
+  const hasCountdown = hasCountdownData(snapshot);
+  const copy = resolveAutoSignoutCountdownCopy(snapshot.autoSignoutState);
+  const title = `已进入 ${snapshot.roomName}`;
 
   return (
     <MinimizableNotice
+      key={sessionIdRef.current ?? "scan-entry-notice"}
       open={open}
       onDismiss={handleDismiss}
+      onPhaseChange={handlePhaseChange}
       title={title}
       description={copy.hint}
-      countdownSeconds={hasCountdown ? state.autoSignoutSecondsRemaining : null}
+      countdownDeadlineAt={snapshot.autoSignoutScheduledAt}
+      countdownSeconds={
+        hasCountdown && !snapshot.autoSignoutScheduledAt
+          ? snapshot.autoSignoutSecondsRemaining
+          : null
+      }
       countdownLabel={hasCountdown ? copy.badge : undefined}
       variant="warning"
       minimizable

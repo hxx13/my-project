@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchNotifications, markNotificationRead } from "../api/student.api";
 import type { FetchNotificationsParams, NotificationData } from "../api/student.api";
+import { getStudentSessionScope, studentQueryKey } from "../utils/studentQueryScope";
 
 /**
  * 获取通知消息列表
@@ -9,9 +10,11 @@ import type { FetchNotificationsParams, NotificationData } from "../api/student.
  * staleTime 设为 30 秒，保证新通知及时送达。
  */
 export function useStudentNotifications(params: FetchNotificationsParams = {}) {
+  const scope = getStudentSessionScope();
   return useQuery<{ data: NotificationData[]; total: number; unreadCount: number }>({
-    queryKey: ["student", "notifications", params],
+    queryKey: studentQueryKey("notifications", params),
     queryFn: () => fetchNotifications(params),
+    enabled: scope !== "anonymous",
     staleTime: 30 * 1000,
     retry: 1,
   });

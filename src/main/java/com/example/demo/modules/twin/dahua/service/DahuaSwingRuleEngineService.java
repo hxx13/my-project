@@ -29,7 +29,7 @@ import java.util.Set;
  * <ul>
  *   <li>所有「自动离开」最终须走 {@link DahuaAutoSignoutService#autoSignout}：先 ARO 离开；是否再大华 revoke 与冻结由门禁联动规则 {@code autoRiskActionEnabled} 唯一控制。</li>
  *   <li>人工扫码离开(accessType=2) 成功后必须 {@link #clearActivationStatesForUser}，避免定时任务重复签退。</li>
- *   <li>{@link TwinCardMappingService#isLinkageRuleExempt(String)} 为 true 时跳过全部联动（不写入状态、不触发自动签退）；豁免标记不由联动消耗。</li>
+ *   <li>免冻结（{@code freeze_exempt_flag=1}）仅豁免最终「冻结卡片」步骤（见 {@link DahuaAutoSignoutService#runRiskActions}），不跳过待激活计时、刷卡激活与延时签退联动。</li>
  *   <li>同一物理门可同时出现在「激活卡片」与「激活后再刷门签退」：未激活时须先按激活门处理，不得因仅命中后者而丢弃刷卡。</li>
  *   <li>「刷门即签退」须在「激活卡片规则」已成功（userId 存在 ACTIVATED）后才可排延时签退；未激活时若门亦在激活组则走激活逻辑。</li>
  * </ul>
@@ -77,9 +77,6 @@ public class DahuaSwingRuleEngineService {
     public void startPendingActivationAfterAccessRuleGrant(String userId) {
         String uid = str(userId);
         if (uid.isBlank()) {
-            return;
-        }
-        if (twinCardMappingService.isLinkageRuleExempt(uid)) {
             return;
         }
         if (!twinCardMappingService.hasDahuaIssuedTwinMapping(uid)) {
@@ -151,10 +148,6 @@ public class DahuaSwingRuleEngineService {
 
         String userId = str(record.getMappingUserId());
         if (userId.isBlank()) {
-            return;
-        }
-        if (Integer.valueOf(1).equals(record.getFreezeExemptFlag())
-                || twinCardMappingService.isLinkageRuleExempt(userId)) {
             return;
         }
         String channelCode = str(record.getChannelCode());
@@ -372,12 +365,6 @@ public class DahuaSwingRuleEngineService {
         for (DahuaActivationState state : dueStates) {
             String userId = str(state.getUserId());
             if (userId.isBlank() || !processedUsers.add(userId)) {
-                continue;
-            }
-            if (twinCardMappingService.isLinkageRuleExempt(userId)) {
-                log.info("[swing-rule] due-skip-exempt userId={} state={} channel={} scheduledExitAt={}",
-                        userId, state.getState(), state.getChannelCode(), state.getScheduledExitAt());
-                dahuaSwingMapper.deleteActivationStatesByUserId(userId);
                 continue;
             }
             log.info("[swing-rule] due-auto-signout-trigger userId={} state={} channel={} scheduledExitAt={} lastSwipeAt={} lastRecordId={}",

@@ -5,6 +5,7 @@ import {
   refreshStudentCageShelf,
   type CageShelfFilterOptionsParams,
 } from "../api/student.api";
+import { getStudentSessionScope, studentQueryKey } from "../utils/studentQueryScope";
 
 /**
  * 笼架筛选选项（级联），支持按已选上级节点缩小范围
@@ -12,9 +13,11 @@ import {
  * placeholderData: keepPreviousData — 切换筛选时不闪骨架屏
  */
 export function useStudentCageShelfFilterOptions(params: CageShelfFilterOptionsParams = {}) {
+  const scope = getStudentSessionScope();
   return useQuery({
-    queryKey: ["student", "cage-shelf", "filter-options", params],
+    queryKey: studentQueryKey("cage-shelf", "filter-options", params),
     queryFn: () => fetchStudentCageShelfFilterOptions(params),
+    enabled: scope !== "anonymous",
     staleTime: 60 * 60 * 1000,
     placeholderData: keepPreviousData,
   });
@@ -31,10 +34,11 @@ export function useStudentCageShelfFilterOptions(params: CageShelfFilterOptionsP
  * 骨架屏（GridSkeleton）已通过 isLoading 守卫提供平稳的加载过渡。
  */
 export function useStudentCageShelfDetail(shelveId: string | null) {
+  const scope = getStudentSessionScope();
   return useQuery({
-    queryKey: ["student", "cage-shelf", "detail", shelveId],
+    queryKey: studentQueryKey("cage-shelf", "detail", shelveId),
     queryFn: () => fetchStudentCageShelfDetail(shelveId!),
-    enabled: !!shelveId,
+    enabled: !!shelveId && scope !== "anonymous",
     staleTime: 30 * 60 * 1000,
   });
 }

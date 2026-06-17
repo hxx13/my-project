@@ -5,6 +5,8 @@ import { AdminFormCard } from "@/components/admin/AdminPageShell";
 import { AdminToolbarSearchField } from "@/components/admin/AdminToolbarSearchField";
 import { adminHintClass } from "@/features/admin/adminFormUi";
 import { ConfigFieldEditor, validateConfigValue } from "@/features/admin/settings/ConfigFieldEditor";
+import { faceConfigGroupRank } from "@/features/admin/settings/faceSettingsGroups";
+import { invalidateFaceAuthConfigCache } from "@/components/face-verify/useFaceAuthConfig";
 import toast from "react-hot-toast";
 import { useMemo, useState } from "react";
 
@@ -37,6 +39,14 @@ type SystemConfigsPanelProps = {
   /** 搜索框右侧操作区（如大模型「测试连接」） */
   toolbarExtra?: ReactNode;
   description?: string;
+  /** 卡片标题覆盖 */
+  title?: string;
+  /** 仅展示指定键（保持 keys 顺序） */
+  configKeys?: readonly string[];
+  /** 父级统一搜索词（分组面板用） */
+  parentKeyword?: string;
+  /** 隐藏本卡片内搜索框 */
+  hideSearch?: boolean;
 };
 
 export function SystemConfigsPanel({
@@ -46,6 +56,10 @@ export function SystemConfigsPanel({
   onConfigsChange,
   toolbarExtra,
   description,
+  title,
+  configKeys,
+  parentKeyword,
+  hideSearch = false,
 }: SystemConfigsPanelProps) {
   const [keyword, setKeyword] = useState("");
   const [showSensitive, setShowSensitive] = useState<Record<string, boolean>>({});
@@ -53,24 +67,34 @@ export function SystemConfigsPanel({
 
   const defMap = useMemo(() => new Map(configDefs.map((d) => [d.configKey, d])), [configDefs]);
 
+  const scopedConfigs = useMemo(() => {
+    if (!configKeys?.length) return configs;
+    const map = new Map(configs.map((c) => [c.configKey, c]));
+    return configKeys.map((k) => map.get(k)).filter((c): c is SystemConfigRecord => c != null);
+  }, [configs, configKeys]);
+
   const sortedConfigs = useMemo(() => {
-    if (moduleKey !== "llm") return configs;
-    return [...configs].sort((a, b) => llmConfigSortRank(a.configKey) - llmConfigSortRank(b.configKey));
-  }, [configs, moduleKey]);
+    if (moduleKey === "llm") return [...scopedConfigs].sort((a, b) => llmConfigSortRank(a.configKey) - llmConfigSortRank(b.configKey));
+    if (moduleKey === "face" && !configKeys?.length) {
+      return [...scopedConfigs].sort((a, b) => faceConfigGroupRank(a.configKey) - faceConfigGroupRank(b.configKey));
+    }
+    return scopedConfigs;
+  }, [scopedConfigs, moduleKey, configKeys]);
+
+  const effectiveKeyword = (parentKeyword ?? keyword).trim().toLowerCase();
 
   const filtered = useMemo(() => {
-    const key = keyword.trim().toLowerCase();
     const base = sortedConfigs;
-    if (!key) return base;
+    if (!effectiveKeyword) return base;
     return base.filter((cfg) => {
       const def = defMap.get(cfg.configKey);
       return (
-        cfg.configKey.toLowerCase().includes(key) ||
-        (def?.labelZh || "").toLowerCase().includes(key) ||
-        (def?.description || "").toLowerCase().includes(key)
+        cfg.configKey.toLowerCase().includes(effectiveKeyword) ||
+        (def?.labelZh || "").toLowerCase().includes(effectiveKeyword) ||
+        (def?.description || "").toLowerCase().includes(effectiveKeyword)
       );
     });
-  }, [sortedConfigs, defMap, keyword]);
+  }, [sortedConfigs, defMap, effectiveKeyword]);
 
   const saveConfig = async (cfg: SystemConfigRecord) => {
     const def = defMap.get(cfg.configKey);
@@ -83,6 +107,9 @@ export function SystemConfigsPanel({
       await updateSystemConfig(cfg.id, cfg);
       // 保存后仅合并当前配置项，禁止整表 load（post-save-no-full-refresh.mdc）
       onConfigsChange((prev) => prev.map((x) => (x.id === cfg.id ? { ...cfg } : x)));
+      if (moduleKey === "face" || cfg.configKey.startsWith("face.")) {
+        invalidateFaceAuthConfigCache();
+      }
       toast.success(def?.requiresRestart ? "已保存（需重启服务后生效）" : "已保存");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
@@ -93,7 +120,7 @@ export function SystemConfigsPanel({
 
   return (
     <AdminFormCard
-      title={moduleKey === "llm" ? "大模型连接（通义 / DashScope）" : "配置项"}
+      title={title ?? (moduleKey === "llm" ? "大模型连接（通义 / DashScope）" : "配置项")}
       description={
         description ??
         (moduleKey === "llm"
@@ -101,18 +128,24 @@ export function SystemConfigsPanel({
           : "按中文名称与说明维护参数；布尔/枚举类请用下拉，无需手输 true/false 等英文。")
       }
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-        <AdminToolbarSearchField
-          className="max-w-md flex-1"
-          placeholder="搜索中文名、说明或键名…"
-          value={keyword}
-          onChange={setKeyword}
-          onSubmit={() => undefined}
-        />
-        {toolbarExtra}
-      </div>
+      {!hideSearch && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <AdminToolbarSearchField
+            className="max-w-md flex-1"
+            placeholder="搜索中文名、说明或键名…"
+            value={keyword}
+            onChange={setKeyword}
+            onSubmit={() => undefined}
+          />
+          {toolbarExtra}
+        </div>
+      )}
       {filtered.length === 0 ? (
-        <p className={adminHintClass}>当前模块「{moduleKey}」暂无配置项或未匹配搜索条件。</p>
+        <p className={adminHintClass}>
+          {configKeys?.length
+            ? "本分区暂无配置项或未匹配搜索条件。"
+            : `当前模块「${moduleKey}」暂无配置项或未匹配搜索条件。`}
+        </p>
       ) : (
         <div className="relative z-0 divide-y divide-neutral-100 rounded-lg border border-neutral-200/90 bg-white px-3">
           {filtered.map((cfg) => (

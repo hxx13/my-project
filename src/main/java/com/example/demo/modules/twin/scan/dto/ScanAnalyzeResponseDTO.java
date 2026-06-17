@@ -24,6 +24,8 @@ public class ScanAnalyzeResponseDTO {
     private Boolean scanPopupEntryWindowEnabled;
     /** 当前是否处于允许扫码进入的时段内（未启用限制时为 true；仅影响进入，不影响离开） */
     private Boolean scanPopupEntryAllowedNow;
+    /** 免冻结扫码进入授权房间 ID（来自 twin_card_mapping.freeze_exempt_room_ids，供前端按房间解锁） */
+    private List<String> scanPopupExemptRoomIds;
     /** 学生违规通告（管理员下发）；无则 null */
     private ScanStudentViolationNoticeDTO studentViolationNotice;
     /** 未绑卡扫码提示（全局配置）；无则 null */
@@ -38,4 +40,10 @@ public class ScanAnalyzeResponseDTO {
     private String autoSignoutScheduledAt;
     /** 距离自动签退剩余秒数；无计时器或已到期时为 null */
     private Integer autoSignoutSecondsRemaining;
+    /** 扫码延迟按钮总开关（与 scanner.delay.enabled 一致） */
+    private Boolean scanDelayEnabled;
+    /** 扫码弹窗公用「延迟」载体按钮文案 */
+    private String scanDelayButtonLabel;
+    /** 按房间 ID 分组的延迟二级菜单项 */
+    private Map<String, List<Map<String, Object>>> scanDelayOptionsByRoom;
 }

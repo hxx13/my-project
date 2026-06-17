@@ -77,6 +77,8 @@ type Props = {
     density?: RoomActionDensity;
     startAtCorner?: boolean;
     onComplete?: () => void;
+    /** 进入：中心停留结束、开始飞向右下角时 */
+    onFlyStart?: () => void;
     onCornerReady?: () => void;
     themeClassName?: string;
     isDark?: boolean;
@@ -90,6 +92,7 @@ export function ScanAccessMotionOverlay({
     density = "normal",
     startAtCorner = false,
     onComplete,
+    onFlyStart,
     onCornerReady,
     themeClassName = "",
     isDark = false,
@@ -114,6 +117,8 @@ export function ScanAccessMotionOverlay({
     const flyControlsRef = useRef<ReturnType<typeof animate>[]>([]);
     const onCompleteRef = useRef(onComplete);
     onCompleteRef.current = onComplete;
+    const onFlyStartRef = useRef(onFlyStart);
+    onFlyStartRef.current = onFlyStart;
     const onCornerReadyRef = useRef(onCornerReady);
     onCornerReadyRef.current = onCornerReady;
 
@@ -239,6 +244,7 @@ export function ScanAccessMotionOverlay({
 
         if (mode === "enter" && startAtCorner) {
             setPhase("landed-at-anchor");
+            onFlyStartRef.current?.();
             requestAnimationFrame(() => {
                 placeAtAnchor(roomId, offsetX, offsetY, scale);
                 syncAnchorLayout(true);
@@ -259,6 +265,7 @@ export function ScanAccessMotionOverlay({
                 setCaption(ACCESS_MOTION_TEXT.enterDone);
                 setCaptionDone(true);
                 setPhase("fly-to-anchor");
+                onFlyStartRef.current?.();
                 requestAnimationFrame(() => flyToCorner());
             }, ACCESS_MOTION_CENTER_HOLD_MS);
         } else {

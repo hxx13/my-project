@@ -50,8 +50,21 @@ export async function loadUnreadBizFlagMap(keys: BizKeyInput[]): Promise<Record<
   return out;
 }
 
-export function bizKeyFromWorkKind(workKind: "claim" | "repair" | "purchase" | "material", id: string): BizKeyInput | null {
+export function bizKeyFromWorkKind(workKind: "claim" | "repair" | "purchase" | "material" | "scanDelay", id: string): BizKeyInput | null {
   const bizType = workKindToBizType(workKind);
   if (!bizType || !id) return null;
   return { bizType, bizId: id };
+}
+
+/** 学生审核页：物资申领 / 延迟免冻结通知跳转 */
+export function navigateStudentReviewFromBiz(bizType?: string | null): boolean {
+  if (bizType === "SCAN_DELAY") {
+    window.location.hash = "#/admin/material/review?tab=scanDelay";
+    return true;
+  }
+  if (bizType === "MATERIAL_REQUEST") {
+    window.location.hash = "#/admin/material/review";
+    return true;
+  }
+  return false;
 }

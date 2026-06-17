@@ -23,12 +23,18 @@
     --doodle-mint: color-mix(in srgb, var(--scan-notice-soft, var(--app-color-feedback-success-soft)) 65%, var(--scan-accent, transparent));
     --doodle-lavender: color-mix(in srgb, var(--scan-notice-accent) 35%, var(--scan-accent-secondary, var(--app-color-scan-ai-accent)));
     --doodle-yellow: color-mix(in srgb, var(--app-color-feedback-warning) 45%, var(--scan-notice-accent));
+    --doodle-card-width: min(94vw, 34em);
+    --doodle-card-min-width: min(88vw, 16em);
+    --doodle-card-max-height: 80vh;
+    --doodle-card-min-height: min(28vh, 11.5em);
 
     position: relative;
-    width: min(94vw, 34em);
-    height: 80vh;
-    min-height: 80vh;
-    max-height: 80vh;
+    width: var(--doodle-card-width);
+    min-width: var(--doodle-card-min-width);
+    max-width: var(--doodle-card-width);
+    height: auto;
+    max-height: var(--doodle-card-max-height);
+    min-height: var(--doodle-card-min-height);
     display: flex;
     flex-direction: column;
     align-items: stretch;
@@ -221,10 +227,9 @@
 
   .scan-doodle-card__body {
     z-index: 2;
-    flex: 1 1 0%;
+    flex: 1 1 auto;
     width: 100%;
     min-height: 0;
-    max-height: 100%;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -267,6 +272,14 @@
     max-height: min(42vh, 320px);
     width: 100%;
     object-fit: contain;
+  }
+
+  .scan-doodle-card__image--zoomable {
+    cursor: zoom-in;
+  }
+
+  .scan-doodle-card__image--zoomable:hover {
+    opacity: 0.92;
   }
 
   .scan-doodle-card__footer-slot {

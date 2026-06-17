@@ -1,12 +1,29 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import toast from "react-hot-toast";
 import { FileText, Image as ImageIcon } from "lucide-react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
+import { TextStyle } from "@tiptap/extension-text-style";
+import { Color } from "@tiptap/extension-color";
+import Highlight from "@tiptap/extension-highlight";
 import { uploadRichImage } from "@/api/domains/mpContentHub.api";
 import { isRichTextEmpty } from "@/utils/announcementHtml";
 import { cn } from "@/lib/utils";
+import {
+  formatMaxWidthPercent,
+  parseMaxWidthPercent,
+  resolveRichTextImageConfig,
+  richTextImageConfigToCssVars,
+  richTextImageHelpText,
+  type RichTextImageConfigOverrides,
+} from "@/config/richTextImage";
+import {
+  RICH_TEXT_HIGHLIGHT_PRESETS,
+  RICH_TEXT_TEXT_COLOR_PRESETS,
+} from "@/config/richTextColorPresets";
+import { PageHelpImageLightbox } from "@/features/page-help/PageHelpImageLightbox";
+import { useRichTextImageLightbox } from "@/components/rich-text/useRichTextImageLightbox";
 import {
   collectClipboardImageFiles,
   convertMarkdownToEditorHtml,
@@ -20,32 +37,95 @@ type Props = {
   onChange: (html: string) => void;
   disabled?: boolean;
   className?: string;
-};
+} & RichTextImageConfigOverrides;
 
 const toolbarBtnClass =
   "rounded-[var(--app-radius-element)] px-2 py-1 text-xs font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] disabled:opacity-40";
 
-export function RichTextEditor({ value, onChange, disabled, className }: Props) {
+const swatchBtnClass =
+  "h-5 w-5 shrink-0 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] hover:ring-2 hover:ring-[var(--app-color-accent-secondary)] disabled:opacity-40";
+
+const toolbarInputClass =
+  "w-10 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-1 py-0.5 text-center text-xs text-[var(--app-color-text-primary)] disabled:opacity-40";
+
+export function RichTextEditor({ value, onChange, disabled, className, maxWidth, rowMax }: Props) {
   const lastEmittedHtmlRef = useRef<string | null>(null);
   const mdFileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
 
+  const initialImageLayout = useMemo(
+    () => resolveRichTextImageConfig({ maxWidth, rowMax }),
+    // 仅首屏：环境变量 / props 作为工具栏初值
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const [imageWidthPct, setImageWidthPct] = useState(() =>
+    parseMaxWidthPercent(initialImageLayout.maxWidth),
+  );
+  const [imageRowMax, setImageRowMax] = useState(() => initialImageLayout.rowMax);
+  const imageRowMaxRef = useRef(imageRowMax);
+  imageRowMaxRef.current = imageRowMax;
+
+  const imageConfig = useMemo(
+    () => ({
+      maxWidth: formatMaxWidthPercent(imageWidthPct),
+      rowMax: Math.min(8, Math.max(1, imageRowMax)),
+    }),
+    [imageWidthPct, imageRowMax],
+  );
+  const imageCssVars = useMemo(
+    () => richTextImageConfigToCssVars(imageConfig) as CSSProperties,
+    [imageConfig],
+  );
+  const helpText = useMemo(() => richTextImageHelpText(imageConfig), [imageConfig]);
+
   const insertUploadedImages = useCallback(async (editor: Editor, files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith("image/"));
     if (!imgs.length) return;
-    let ok = 0;
+    const srcs: string[] = [];
     for (const file of imgs) {
       try {
-        const src = await uploadRichImage(file);
-        editor.chain().focus().setImage({ src }).run();
-        ok += 1;
+        srcs.push(await uploadRichImage(file));
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "图片上传失败");
       }
     }
-    if (ok > 0) {
-      toast.success(ok > 1 ? `已插入 ${ok} 张图片` : "图片已插入");
+    if (!srcs.length) return;
+
+    const rowMax = imageRowMaxRef.current;
+
+    if (srcs.length === 1) {
+      editor.chain().focus().setImage({ src: srcs[0] }).run();
+      toast.success("图片已插入");
+      return;
     }
+
+    if (rowMax >= 2) {
+      // 用户已将「同行」设为 2 以上：多图插入同一段落，配合 flex 横排
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "paragraph",
+          content: srcs.map((src) => ({ type: "image", attrs: { src } })),
+        })
+        .run();
+      toast.success(`已插入 ${srcs.length} 张图片（同一行，最多 ${rowMax} 张并排）`);
+      return;
+    }
+
+    // 默认：每张单独段落，居中显示
+    editor
+      .chain()
+      .focus()
+      .insertContent(
+        srcs.map((src) => ({
+          type: "paragraph",
+          content: [{ type: "image", attrs: { src } }],
+        })),
+      )
+      .run();
+    toast.success(`已插入 ${srcs.length} 张图片（各一行居中）`);
   }, []);
 
   const applyMarkdownHtml = useCallback((editor: Editor, markdown: string, mode: "insert" | "replace") => {
@@ -67,6 +147,9 @@ export function RichTextEditor({ value, onChange, disabled, className }: Props) 
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      TextStyle,
+      Color.configure({ types: ["textStyle"] }),
+      Highlight.configure({ multicolor: true }),
       Image.configure({
         inline: true,
         allowBase64: false,
@@ -132,6 +215,8 @@ export function RichTextEditor({ value, onChange, disabled, className }: Props) 
     lastEmittedHtmlRef.current = null;
   }, [value, editor]);
 
+  const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([value, editor?.getHTML()]);
+
   const insertImage = useCallback(async () => {
     if (!editor || disabled) return;
     const input = document.createElement("input");
@@ -182,8 +267,13 @@ export function RichTextEditor({ value, onChange, disabled, className }: Props) 
   }
 
   return (
-    <div className={cn("page-help-rich-editor space-y-2", className)}>
-      <div className="flex flex-wrap gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
+    <div
+      ref={containerRef}
+      className={cn("page-help-rich-editor rich-text-content space-y-2", className)}
+      style={imageCssVars}
+    >
+      <div className="flex flex-col gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
+        <div className="flex flex-wrap gap-1">
         <button type="button" disabled={disabled} className={toolbarBtnClass} onClick={() => editor.chain().focus().toggleBold().run()}>
           粗体
         </button>
@@ -224,14 +314,100 @@ export function RichTextEditor({ value, onChange, disabled, className }: Props) 
           导入 MD
         </button>
         <input ref={mdFileInputRef} type="file" accept=".md,.markdown,.txt,text/plain" className="hidden" onChange={(e) => void onMarkdownFileChange(e)} />
+          <span className="mx-0.5 h-4 w-px bg-[var(--app-color-border-default)] self-center" aria-hidden />
+          <label className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--app-color-text-tertiary)]">
+            图宽
+            <input
+              type="number"
+              min={10}
+              max={100}
+              step={5}
+              disabled={disabled}
+              className={toolbarInputClass}
+              value={imageWidthPct}
+              title="单图最大宽度（%）"
+              onChange={(e) => {
+                const n = Number.parseInt(e.target.value, 10);
+                if (Number.isFinite(n)) setImageWidthPct(Math.min(100, Math.max(10, n)));
+              }}
+            />
+            <span>%</span>
+          </label>
+          <label className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--app-color-text-tertiary)]">
+            同行
+            <input
+              type="number"
+              min={1}
+              max={8}
+              step={1}
+              disabled={disabled}
+              className={toolbarInputClass}
+              value={imageRowMax}
+              title="设为 2 以上时，多选/Ctrl+V 多图才会插入同一行；默认 1 为每张单独一行居中"
+              onChange={(e) => {
+                const n = Number.parseInt(e.target.value, 10);
+                if (Number.isFinite(n)) setImageRowMax(Math.min(8, Math.max(1, n)));
+              }}
+            />
+            <span>张</span>
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-1 border-t border-[var(--app-color-border-default)] pt-1">
+          <span className="text-[10px] font-medium text-[var(--app-color-text-tertiary)] px-0.5">字色</span>
+          {RICH_TEXT_TEXT_COLOR_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              disabled={disabled}
+              title={preset.label}
+              aria-label={`字色：${preset.label}`}
+              className={cn(swatchBtnClass, !preset.value && "bg-[var(--app-color-surface-page)] text-[10px] font-bold text-[var(--app-color-text-secondary)]")}
+              style={preset.value ? { background: preset.value } : undefined}
+              onClick={() => {
+                if (!preset.value) {
+                  editor.chain().focus().unsetColor().run();
+                } else {
+                  editor.chain().focus().setColor(preset.value).run();
+                }
+              }}
+            >
+              {!preset.value ? "A" : null}
+            </button>
+          ))}
+          <span className="mx-1 h-4 w-px bg-[var(--app-color-border-default)]" aria-hidden />
+          <span className="text-[10px] font-medium text-[var(--app-color-text-tertiary)] px-0.5">色块</span>
+          {RICH_TEXT_HIGHLIGHT_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              disabled={disabled}
+              title={preset.label}
+              aria-label={`高亮：${preset.label}`}
+              className={cn(swatchBtnClass, !preset.value && "bg-[var(--app-color-surface-page)] text-[10px] text-[var(--app-color-text-tertiary)]")}
+              style={preset.value ? { background: preset.value } : undefined}
+              onClick={() => {
+                if (!preset.value) {
+                  editor.chain().focus().unsetHighlight().run();
+                } else {
+                  editor.chain().focus().setHighlight({ color: preset.value }).run();
+                }
+              }}
+            >
+              {!preset.value ? "×" : null}
+            </button>
+          ))}
+        </div>
       </div>
       <EditorContent
         editor={editor}
         className="min-h-[220px] rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2 text-sm text-[var(--app-color-text-primary)]"
       />
       <p className="text-[11px] leading-relaxed text-[var(--app-color-text-tertiary)]">
-        支持直接粘贴 Markdown（# 标题、**粗体**、- 列表）；截图或复制图片后 Ctrl+V 可上传插入；也可点「导入 MD」选择 .md 文件。
+        {helpText} 点击图片可放大预览。
       </p>
+      {lightbox ? (
+        <PageHelpImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
+      ) : null}
     </div>
   );
 }

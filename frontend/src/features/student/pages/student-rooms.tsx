@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Star, Building2, X, Clock, User, RefreshCw, ShieldCheck, DoorOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStudentRooms } from "../hooks/use-student-rooms";
+import { getStudentSessionScope, studentQueryKey } from "../utils/studentQueryScope";
 import { toggleRoomPin, fetchRoomStatusList, fetchRooms } from "../api/student.api";
 import type { RoomData, FetchRoomsParams, RoomStatusData } from "../api/student.api";
 import {
@@ -162,9 +163,11 @@ export default function StudentRoomsPage() {
   const [occupantRoom, setOccupantRoom] = useState<RoomData | null>(null);
 
   /* ---- 常用房间：ARO API 匹配（pinned=1 触发 getMyRooms） ---- */
+  const scope = getStudentSessionScope();
   const myRoomsQuery = useQuery({
-    queryKey: ["student", "rooms", { pinned: "1" }],
+    queryKey: studentQueryKey("rooms", { pinned: "1" }),
     queryFn: () => fetchRooms({ pinned: "1", page: 1, size: ALL_ROOMS_SIZE }),
+    enabled: scope !== "anonymous",
     staleTime: 30 * 1000,
     retry: 1,
     // 后台静默刷新

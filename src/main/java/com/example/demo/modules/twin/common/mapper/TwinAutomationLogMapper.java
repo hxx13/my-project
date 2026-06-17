@@ -22,6 +22,17 @@ public interface TwinAutomationLogMapper {
             @Param("pageSize") int pageSize
     );
 
+    /** 合并分页：从头部取 limit 条 */
+    List<TwinAutomationLog> selectPageHead(
+            @Param("automationType") String automationType,
+            @Param("triggerType") String triggerType,
+            @Param("keyword") String keyword,
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime,
+            @Param("excludePenetrationPoll") Boolean excludePenetrationPoll,
+            @Param("limit") int limit
+    );
+
     long countPage(
             @Param("automationType") String automationType,
             @Param("triggerType") String triggerType,

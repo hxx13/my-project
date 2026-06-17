@@ -1,4 +1,4 @@
-import {useState, useRef, useEffect} from 'react';
+import {useState, useRef, useEffect, useCallback} from 'react';
 import {useNavigate, useLocation} from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {motion, AnimatePresence} from 'framer-motion';
@@ -29,6 +29,23 @@ import {
     setScanPopupSession,
     tryBeginScanChannel,
 } from '@/components/scanner/scanSessionGuard';
+import {
+    FaceDynamicIsland,
+    FaceCameraWindow,
+    FacePipMonitor,
+    FaceResultToast,
+    FaceEnrollment,
+    useScanFaceVerify,
+    isGateFacePhase,
+    shouldKeepFaceCameraSession,
+    shouldGateFaceVerifyOnScan,
+} from '@/components/face-verify';
+import { PIP_LOST_SECONDS, FACE_MAX_RETRIES_PROMPT_MS, faceVerifyFailedLabel, isFaceVerifyExhausted } from '@/components/face-verify/faceConfig';
+import type { ScanStatus } from '@/components/face-verify';
+import { uploadBaselinePhoto } from '@/api/domains/face.api';
+import { specialChannelLoginByFace } from '@/components/scanner/specialChannel.api';
+import type { AuthData } from '@/api/domains/auth.api';
+import toast from 'react-hot-toast';
 
 const DEBUG_NAV_RUNTIME_STAMP = "debug-nav-runtime-2026-04-16-r4";
 
@@ -72,6 +89,38 @@ export default function DebugNav() {
     const [studentBindOpen, setStudentBindOpen] = useState(false);
     const [studentBindTarget, setStudentBindTarget] = useState<{ userId: string; userName: string } | null>(null);
     const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const studentCenterSuccessRef = useRef<((authData: AuthData) => void) | null>(null);
+
+    // ==================== 人脸验证（共享 hook） ====================
+    const fv = useScanFaceVerify();
+
+    const handleFaceDone = useCallback((success: boolean) => {
+        fv.handleFaceDone(success, (data) => {
+            setActiveResult(data);
+            setActiveAutoSignoutSeconds(data.autoSignoutSecondsRemaining ?? null);
+            resetCloseTimer();
+            const uid = data.userInfo?.userId ? String(data.userInfo.userId) : '';
+            setScanPopupSession(uid || null, lastScannedIdRef.current);
+            setAutoActionRoomId('');
+            const isBanned = Number(data.globalUserState) === 3;
+            if (
+                data.currentState === 'INSIDE'
+                && isHardwareScanRef.current
+                && !isBanned
+                && uid
+                && canScheduleAutoExit(uid, lastScannedIdRef.current)
+            ) {
+                const targetRoom = data.pendingRooms?.[0];
+                if (targetRoom) {
+                    const roomId = (targetRoom as RoomInfo).officialRoomId || targetRoom.id;
+                    setAutoActionRoomId(roomId);
+                    setAutoExitConfirm({ userId: data.userInfo.userId, roomId, action: 'EXIT', isSharedCard: false, isKeepCard: false, isBorrowedCard: false });
+                }
+            }
+            if (data.currentState === 'INSIDE') needsExitConfirmRef.current = true;
+            isHardwareScanRef.current = false;
+        });
+    }, [fv.handleFaceDone]);
 
     // =========================================================
     // 💥 核心修复：彻底抛弃“弹窗生命周期锁”，改为“网络级极速锁”！
@@ -98,6 +147,15 @@ export default function DebugNav() {
                 setErrorMsg(data.message || `系统档案库中未检索到: ${lastScannedId}`);
                 isHardwareScanRef.current = false;
                 return; // ⛔ 阻断执行，绝不调用 setActiveResult！
+            }
+            // 扫码阶段人脸验证（未绑物理卡人员跳过；pin_alternative 仅影响个人中心入口）
+            const userId = data.userInfo?.userId ? String(data.userInfo.userId) : '';
+            if (shouldGateFaceVerifyOnScan(data, fv.faceAuthRequired)) {
+                setActiveResult(null);
+                fv.beginGateFaceVerify(data);
+                setScanPopupSession(userId || null, lastScannedIdRef.current);
+                setAutoActionRoomId('');
+                return;
             }
             setActiveResult(data);
             setActiveAutoSignoutSeconds(data.autoSignoutSecondsRemaining ?? null);
@@ -312,35 +370,175 @@ export default function DebugNav() {
         }
     }
 
+    const closeScanPopup = useCallback(() => {
+        setStudentBindOpen(false);
+        setActiveResult(null);
+        fv.abortFaceVerifySession();
+        fv.dismissMaxRetriesPrompt();
+        analyzeMutation.reset();
+        executeMutation.reset();
+        if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+        setInputValue('');
+        setScanPopupSession(null, null);
+        cancelScheduledAutoExit();
+        setAutoActionRoomId('');
+        needsExitConfirmRef.current = false;
+    }, [analyzeMutation, executeMutation, fv]);
+
+    /** 收起程序坞扫码输入条并清空内容；若人脸验证进行中则一并中止 */
+    const collapseScannerDock = useCallback(() => {
+        if (fv.faceVerifyActive) {
+            fv.abortFaceVerifySession();
+        }
+        setInputValue('');
+        setLastScannedId('');
+        lastScannedIdRef.current = '';
+        setErrorMsg('');
+        setIsScannerOpen(false);
+    }, [fv]);
+
+    const handlePopupFaceVerifyRequest = useCallback(() => {
+        if (!activeResult) return;
+        fv.onFaceSuccessOverrideRef.current = (data) => {
+            const uid = data.userInfo?.userId ? String(data.userInfo.userId) : '';
+            if (!uid) return;
+            void specialChannelLoginByFace(uid)
+                .then((authData) => studentCenterSuccessRef.current?.(authData))
+                .catch((e) => setErrorMsg(e instanceof Error ? e.message : '人脸验证登录失败'));
+        };
+        fv.beginPersonalFaceVerify(activeResult);
+    }, [activeResult, fv]);
+
+    const handlePopupFaceVerifyCancel = useCallback(() => {
+        fv.abortFaceVerifySession();
+    }, [fv]);
+
+    const isGateFace = isGateFacePhase(fv.faceVerifyActive, fv.faceVerifyCompact);
+    const showScanPopup = Boolean(activeResult) && !isGateFace;
+    const showGateFaceCamera = isGateFace;
+    const pipUserId = activeResult?.userInfo?.userId ? String(activeResult.userInfo.userId) : '';
+    const pipMonitorActive = Boolean(pipUserId) && !fv.faceVerifyActive && fv.pipMonitorUrls.length > 0;
+
     return (
         <>
+            {/* 人脸验证 UI */}
+            {fv.faceVerifyActive && (
+                <>
+                    <FaceDynamicIsland
+                        status={fv.islandStatus}
+                        retryAttempt={fv.retryCount}
+                        failedLabel={faceVerifyFailedLabel(fv.faceStatus)}
+                        onStatusComplete={(s) => {
+                            if (s === 'success') handleFaceDone(true);
+                            else if (s === 'failed' && isFaceVerifyExhausted(fv.faceStatus, fv.retryCount)) {
+                                fv.handleFaceMaxRetriesExhausted();
+                            }
+                        }}
+                    />
+                    {showGateFaceCamera && (
+                    <FaceCameraWindow
+                        key="gate-face-camera"
+                        cameraOwner="gate"
+                        cameraWarm
+                        videoRef={fv.videoRef}
+                        open={shouldKeepFaceCameraSession(fv.islandStatus)}
+                        blinkPhase={fv.blinkPhase}
+                        serverVerifying={fv.serverVerifying}
+                        challengeAction={fv.challengeAction}
+                        onStreamReady={fv.notifyCameraReady}
+                        onClose={() => {
+                            fv.abortFaceVerifySession();
+                        }}
+                    />
+                    )}
+                </>
+            )}
+            {fv.baselineMissingPrompt?.open && (
+                <FaceResultToast
+                    message="该人员暂无人脸底库，请先录入人脸照片后再验证"
+                    type="error"
+                    duration={0}
+                    onDismiss={fv.dismissBaselineMissingPrompt}
+                    action={{
+                        label: '录入人脸照片',
+                        onClick: () => {
+                            fv.openReEnroll(
+                                fv.baselineMissingPrompt!.userId,
+                                fv.baselineMissingPrompt!.personal,
+                            );
+                            fv.dismissBaselineMissingPrompt();
+                        },
+                    }}
+                    open
+                />
+            )}
+            {fv.maxRetriesPrompt?.open && (
+                <FaceResultToast
+                    message="验证失败已达上限，请重新刷卡"
+                    type="error"
+                    duration={FACE_MAX_RETRIES_PROMPT_MS}
+                    onDismiss={fv.dismissMaxRetriesPrompt}
+                    open
+                />
+            )}
+            {fv.reEnrollOpen && fv.reEnrollUserIdRef.current && (
+                <FaceEnrollment
+                    userId={fv.reEnrollUserIdRef.current}
+                    replaceExisting
+                    uploadFn={async (file) => uploadBaselinePhoto(fv.reEnrollUserIdRef.current, file)}
+                    onCaptured={() => {
+                        const wasPersonal = fv.reEnrollRestartPersonalRef.current;
+                        const data = fv.pendingAnalyzeData;
+                        fv.closeReEnroll();
+                        fv.dismissMaxRetriesPrompt();
+                        fv.dismissBaselineMissingPrompt();
+                        fv.invalidateFaceBaselineCache();
+                        if (data) {
+                            if (wasPersonal) fv.beginPersonalFaceVerify(data);
+                            else fv.beginGateFaceVerify(data);
+                        } else {
+                            fv.abortFaceVerifySession();
+                            setInputValue('');
+                            setLastScannedId('');
+                            toast.success('人脸照片录入成功，请重新刷卡验证');
+                        }
+                    }}
+                    onCancel={() => {
+                        fv.closeReEnroll();
+                    }}
+                />
+            )}
+
+            {/* PIP 监测：仅在弹窗阶段、门禁/个人中心验证结束后启动（与门禁窗互斥） */}
+            <FacePipMonitor
+                active={pipMonitorActive}
+                userId={pipUserId}
+                lostWarningSeconds={PIP_LOST_SECONDS}
+                onTimeout={closeScanPopup}
+                onWrongPerson={closeScanPopup}
+            />
+
+            {!isGateFace && (
             <AnimatePresence>
-                {activeResult && (
-                    <PopupErrorBoundary onClose={() => {
-                        setStudentBindOpen(false);
-                        setActiveResult(null);
-                        analyzeMutation.reset();
-                        executeMutation.reset();
-                        if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
-                        setInputValue('');
-                        setAutoActionRoomId('');
-                    }}>
+                {showScanPopup && activeResult && (
+                    <PopupErrorBoundary onClose={closeScanPopup}>
                         <UiverseProfilePopup
                             result={activeResult}
-                            onClose={() => {
-                                setStudentBindOpen(false);
-                                setActiveResult(null);
-                                analyzeMutation.reset();
-                                executeMutation.reset();
-                                if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
-                                setInputValue('');
-                                setScanPopupSession(null, null);
-                                cancelScheduledAutoExit();
-
-                                // 💥 关窗时清空视觉钢印
-                                setAutoActionRoomId('');
-                                needsExitConfirmRef.current = false;
-                            }}
+                            pinAlternativeEnabled={fv.pinAlternativeEnabled}
+                            onFaceVerifyRequest={handlePopupFaceVerifyRequest}
+                            onFaceVerifyCancel={handlePopupFaceVerifyCancel}
+                            onBindStudentCenterSuccess={(handler) => { studentCenterSuccessRef.current = handler; }}
+                            personalCenterFace={fv.faceVerifyActive && fv.faceVerifyCompact ? {
+                                active: true,
+                                open: shouldKeepFaceCameraSession(fv.islandStatus),
+                                blinkPhase: fv.blinkPhase,
+                                serverVerifying: fv.serverVerifying,
+                                challengeAction: fv.challengeAction,
+                                videoRef: fv.videoRef,
+                                onStreamReady: fv.notifyCameraReady,
+                                onClose: handlePopupFaceVerifyCancel,
+                            } : undefined}
+                            onClose={closeScanPopup}
                             onExecute={(payload) => runExecute(payload)}
                             isWorking={executeMutation.isPending}
                             executeData={executeMutation.data}
@@ -372,6 +570,7 @@ export default function DebugNav() {
                     </PopupErrorBoundary>
                 )}
             </AnimatePresence>
+            )}
             {studentBindOpen && studentBindTarget ? (
                 <StudentDahuaBindPanel
                     userId={studentBindTarget.userId}
@@ -515,8 +714,11 @@ export default function DebugNav() {
                                     <Loader2 className="w-4 h-4 text-blue-400 animate-spin shrink-0 mr-1"/>
                                 ) : (
                                     <button
-                                        onClick={() => setIsScannerOpen(false)}
+                                        type="button"
+                                        onClick={collapseScannerDock}
                                         className="shrink-0 p-1 hover:bg-white/10 rounded-full transition-colors"
+                                        title="收起并清空"
+                                        aria-label="收起扫码输入并清空"
                                     >
                                         <X className="w-3.5 h-3.5 text-slate-400 hover:text-white"/>
                                     </button>

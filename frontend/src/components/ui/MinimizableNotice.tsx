@@ -14,7 +14,7 @@ import {
 } from "framer-motion";
 import { ChevronDown, X, CheckCircle2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatCountdown } from "@/utils/formatCountdown";
+import { formatCountdown, remainingSecondsFromScheduledAt } from "@/utils/formatCountdown";
 import "./MinimizableNotice.css";
 
 /* ═══════════════════════════════════════════════════════════
@@ -37,6 +37,8 @@ export interface MinimizableNoticeProps {
 
   /* ── 倒计时 ── */
   countdownSeconds?: number | null;
+  /** 计划截止时刻（yyyy-MM-dd HH:mm:ss）；优先于 countdownSeconds，每秒按当前时间推算 */
+  countdownDeadlineAt?: string | null;
   countdownLabel?: string;
   onCountdownExpired?: () => void;
 
@@ -53,6 +55,7 @@ export interface MinimizableNoticeProps {
   cornerOffset?: { x: number; y: number };
   className?: string;
   style?: React.CSSProperties;
+  onPhaseChange?: (phase: Phase) => void;
 }
 
 /* ── helpers ── */
@@ -73,6 +76,7 @@ export function MinimizableNotice({
   title,
   description,
   countdownSeconds,
+  countdownDeadlineAt,
   countdownLabel,
   onCountdownExpired,
   actionLabel,
@@ -83,6 +87,7 @@ export function MinimizableNotice({
   cornerOffset = { x: 24, y: 24 },
   className,
   style,
+  onPhaseChange,
 }: MinimizableNoticeProps) {
   /* ── phase（初始 'modal'，open=false 时由 guard 直接返回 null） ── */
   const [phase, setPhase] = useState<Phase>("modal");
@@ -92,22 +97,62 @@ export function MinimizableNotice({
   const [countdown, setCountdown] = useState<number | null>(null);
   const expiredRef = useRef(onCountdownExpired);
   expiredRef.current = onCountdownExpired;
+  const prevOpenRef = useRef(false);
+  const deadlineRef = useRef(countdownDeadlineAt);
+  deadlineRef.current = countdownDeadlineAt;
 
-  useEffect(() => {
-    if (countdownSeconds != null && countdownSeconds > 0) {
-      setCountdown(countdownSeconds);
-    } else {
-      setCountdown(null);
-    }
+  const resolveCountdown = useCallback((): number | null => {
+    const fromDeadline = remainingSecondsFromScheduledAt(deadlineRef.current);
+    if (fromDeadline != null) return fromDeadline > 0 ? fromDeadline : 0;
+    if (countdownSeconds != null && countdownSeconds > 0) return countdownSeconds;
+    return null;
   }, [countdownSeconds]);
 
+  /* 仅在通知首次打开或倒计时尚未启动时写入初值，展开胶囊不回溯到快照秒数 */
   useEffect(() => {
-    if (countdown == null || countdown <= 0) return;
-    const id = setInterval(() => {
-      setCountdown((prev) => (prev != null && prev > 1 ? prev - 1 : 0));
-    }, 1000);
+    if (!open) {
+      prevOpenRef.current = false;
+      return;
+    }
+    const justOpened = !prevOpenRef.current;
+    prevOpenRef.current = true;
+
+    setCountdown((prev) => {
+      if (!justOpened && prev != null) return prev;
+      return resolveCountdown();
+    });
+  }, [open, resolveCountdown]);
+
+  /* 截止时刻晚于弹窗到达：补一次初值 */
+  useEffect(() => {
+    if (!open || !countdownDeadlineAt) return;
+    setCountdown((prev) => {
+      if (prev != null && prev > 0) return prev;
+      const rem = remainingSecondsFromScheduledAt(countdownDeadlineAt);
+      return rem != null && rem > 0 ? rem : prev;
+    });
+  }, [open, countdownDeadlineAt]);
+
+  useEffect(() => {
+    onPhaseChange?.(phase);
+  }, [phase, onPhaseChange]);
+
+  useEffect(() => {
+    if (!open) return;
+    const tick = () => {
+      if (deadlineRef.current) {
+        const rem = remainingSecondsFromScheduledAt(deadlineRef.current);
+        setCountdown(rem != null && rem > 0 ? rem : 0);
+        return;
+      }
+      setCountdown((prev) =>
+        prev != null && prev > 1 ? prev - 1 : prev != null && prev === 1 ? 0 : prev
+      );
+    };
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [countdown]);
+  }, [open]);
 
   useEffect(() => {
     if (countdown === 0) expiredRef.current?.();

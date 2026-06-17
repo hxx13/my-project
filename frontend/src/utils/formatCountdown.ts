@@ -5,6 +5,19 @@ export function formatCountdown(totalSeconds: number): string {
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/** 解析后端 scheduled_exit_at（yyyy-MM-dd HH:mm:ss，本地时区）并返回剩余秒数 */
+export function remainingSecondsFromScheduledAt(
+    scheduledAt: string | null | undefined,
+    nowMs = Date.now()
+): number | null {
+    const raw = (scheduledAt ?? "").trim();
+    if (!raw) return null;
+    const target = Date.parse(raw.replace(" ", "T"));
+    if (!Number.isFinite(target)) return null;
+    const rem = Math.ceil((target - nowMs) / 1000);
+    return rem > 0 ? rem : 0;
+}
+
 /** 联动计时器文案：待激活 vs 延时签退 */
 export function resolveAutoSignoutCountdownCopy(state: string | null | undefined): {
     badge: string;

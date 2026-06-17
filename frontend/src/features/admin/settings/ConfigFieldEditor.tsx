@@ -3,18 +3,22 @@ import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminSelect } from "@/components/admin/AdminSelect";
 import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import { labelConfigOption } from "@/features/admin/settings/settingsLabels";
+import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { cn } from "@/lib/utils";
 
-const MULTILINE_KEYS = new Set([
+/** 多行纯文本（非 HTML） */
+const PLAIN_MULTILINE_KEYS = new Set([
+  "telemetry.facility.rules_json",
+]);
+
+/** 富文本（TipTap 编辑器，输出 HTML，前台通过 dangerouslySetInnerHTML 渲染） */
+const RICH_TEXT_KEYS = new Set([
   "dashboard.codex.notice_body",
   "dashboard.codex.return_rules",
   "dashboard.codex.discipline_body",
-  "telemetry.facility.rules_json",
-  "scanner.access.enter.own_text",
-  "scanner.access.enter.borrowed_text",
-  "scanner.access.exit.own_text",
-  "scanner.access.exit.borrowed_text",
 ]);
+
+const MULTILINE_KEYS = new Set([...PLAIN_MULTILINE_KEYS, ...RICH_TEXT_KEYS]);
 
 const COLOR_KEY_HINT = "color";
 
@@ -117,6 +121,15 @@ export function ConfigFieldEditor({
     }
 
     if (isMultilineConfigKey(cfg.configKey)) {
+      if (RICH_TEXT_KEYS.has(cfg.configKey)) {
+        return (
+          <RichTextEditor
+            value={cfg.configValue || ""}
+            onChange={onChange}
+            disabled={saving}
+          />
+        );
+      }
       return (
         <textarea
           value={cfg.configValue || ""}

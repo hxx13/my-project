@@ -24,6 +24,9 @@ public class TwinAutomationLogService {
     public static final String TYPE_AUTO_SIGNOUT = "AUTO_SIGNOUT";
     public static final String TYPE_SCHEDULER = "SCHEDULER";
     public static final String TYPE_EXEMPTION = "EXEMPTION";
+    /** 门禁人脸 1:1 验证（face_verify_audit） */
+    public static final String TYPE_FACE_VERIFY = "FACE_VERIFY";
+    public static final String TRIGGER_USER = "USER";
 
     /** 定时兜底收回单人豁免（无视时效/流水） */
     public static final String EVENT_EXEMPT_REVOKED = "EXEMPT_REVOKED";
@@ -61,19 +64,22 @@ public class TwinAutomationLogService {
     private final TwinAutomationDisplayMapMapper displayMapMapper;
     private final DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper;
     private final AroDatabaseMapper aroDatabaseMapper;
+    private final com.example.demo.modules.facerecognition.service.FaceVerifyAuditAdminService faceVerifyAuditAdminService;
 
     public TwinAutomationLogService(
             TwinAutomationLogMapper mapper,
             @Lazy JobExecutionRegistry jobExecutionRegistry,
             TwinAutomationDisplayMapMapper displayMapMapper,
             DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper,
-            AroDatabaseMapper aroDatabaseMapper
+            AroDatabaseMapper aroDatabaseMapper,
+            com.example.demo.modules.facerecognition.service.FaceVerifyAuditAdminService faceVerifyAuditAdminService
     ) {
         this.mapper = mapper;
         this.jobExecutionRegistry = jobExecutionRegistry;
         this.displayMapMapper = displayMapMapper;
         this.dahuaDeviceChannelCacheMapper = dahuaDeviceChannelCacheMapper;
         this.aroDatabaseMapper = aroDatabaseMapper;
+        this.faceVerifyAuditAdminService = faceVerifyAuditAdminService;
     }
 
     /**
@@ -163,10 +169,42 @@ public class TwinAutomationLogService {
     ) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(200, Math.max(10, pageSize));
+        String typeFilter = blankToNull(automationType);
+        Map<String, Map<String, String>> overrides = TwinAutomationLogDisplayHelper.toOverrideBucketsFromEntities(safeListDisplayMaps());
+        Map<String, String> jobNames = jobExecutionRegistry.jobNameMap();
+
+        if (TYPE_FACE_VERIFY.equalsIgnoreCase(typeFilter)) {
+            return faceVerifyAuditAdminService.listPage(
+                    triggerType, keyword, startTime, endTime, safePage, safeSize, overrides, jobNames);
+        }
+
+        if (typeFilter != null) {
+            return listTwinPageOnly(
+                    typeFilter, triggerType, keyword, startTime, endTime, safePage, safeSize,
+                    excludePenetrationPoll, overrides, jobNames);
+        }
+
+        return listMergedPage(
+                triggerType, keyword, startTime, endTime, safePage, safeSize,
+                excludePenetrationPoll, overrides, jobNames);
+    }
+
+    private Map<String, Object> listTwinPageOnly(
+            String automationType,
+            String triggerType,
+            String keyword,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int safePage,
+            int safeSize,
+            Boolean excludePenetrationPoll,
+            Map<String, Map<String, String>> overrides,
+            Map<String, String> jobNames
+    ) {
         int offset = (safePage - 1) * safeSize;
         boolean hidePen = excludePenetrationPoll == null || excludePenetrationPoll;
         List<TwinAutomationLog> list = mapper.selectPage(
-                blankToNull(automationType),
+                automationType,
                 blankToNull(triggerType),
                 blankToNull(keyword),
                 startTime,
@@ -176,21 +214,77 @@ public class TwinAutomationLogService {
                 safeSize
         );
         long total = mapper.countPage(
-                blankToNull(automationType),
+                automationType,
                 blankToNull(triggerType),
                 blankToNull(keyword),
                 startTime,
                 endTime,
                 hidePen
         );
-        Map<String, Map<String, String>> overrides = TwinAutomationLogDisplayHelper.toOverrideBucketsFromEntities(safeListDisplayMaps());
-        Map<String, String> jobNames = jobExecutionRegistry.jobNameMap();
         for (TwinAutomationLog row : list) {
+            row.setLogSource("twin");
             TwinAutomationLogDisplayHelper.applyLabels(row, jobNames, overrides);
         }
         enrichDetailDisplay(list);
         Map<String, Object> out = new HashMap<>();
         out.put("list", list);
+        out.put("total", total);
+        out.put("page", safePage);
+        out.put("pageSize", safeSize);
+        return out;
+    }
+
+    private Map<String, Object> listMergedPage(
+            String triggerType,
+            String keyword,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int safePage,
+            int safeSize,
+            Boolean excludePenetrationPoll,
+            Map<String, Map<String, String>> overrides,
+            Map<String, String> jobNames
+    ) {
+        int offset = (safePage - 1) * safeSize;
+        int fetchLimit = offset + safeSize;
+        boolean hidePen = excludePenetrationPoll == null || excludePenetrationPoll;
+
+        List<TwinAutomationLog> twinHead = mapper.selectPageHead(
+                null,
+                blankToNull(triggerType),
+                blankToNull(keyword),
+                startTime,
+                endTime,
+                hidePen,
+                fetchLimit
+        );
+        for (TwinAutomationLog row : twinHead) {
+            row.setLogSource("twin");
+        }
+
+        List<TwinAutomationLog> faceHead = faceVerifyAuditAdminService.fetchHeadForMerge(
+                triggerType, keyword, startTime, endTime, fetchLimit);
+
+        long twinTotal = mapper.countPage(null, blankToNull(triggerType), blankToNull(keyword), startTime, endTime, hidePen);
+        long faceTotal = faceVerifyAuditAdminService.countForMerge(triggerType, keyword, startTime, endTime);
+        long total = twinTotal + faceTotal;
+
+        List<TwinAutomationLog> merged = new ArrayList<>(twinHead.size() + faceHead.size());
+        merged.addAll(twinHead);
+        merged.addAll(faceHead);
+        com.example.demo.modules.facerecognition.service.FaceVerifyAuditAdminService.sortMergedByTimeDesc(merged);
+
+        int from = Math.min(offset, merged.size());
+        int to = Math.min(offset + safeSize, merged.size());
+        List<TwinAutomationLog> pageRows = merged.subList(from, to);
+
+        for (TwinAutomationLog row : pageRows) {
+            TwinAutomationLogDisplayHelper.applyLabels(row, jobNames, overrides);
+        }
+        enrichDetailDisplay(pageRows);
+
+        Map<String, Object> out = new HashMap<>();
+        out.put("list", pageRows);
         out.put("total", total);
         out.put("page", safePage);
         out.put("pageSize", safeSize);

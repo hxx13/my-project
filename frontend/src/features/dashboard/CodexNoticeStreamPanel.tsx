@@ -36,7 +36,7 @@ function SafeHtmlBlock({
   }
   return (
     <div
-      className={className}
+      className={`${className} [&_img]:max-w-[70%] [&_img]:h-auto [&_img]:block [&_img]:mx-auto [&_img]:my-2 [&_img]:rounded-[var(--app-radius-element)]`}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

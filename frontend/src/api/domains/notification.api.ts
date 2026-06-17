@@ -111,11 +111,12 @@ export function toBizCompositeKey(bizType: string, bizId: string) {
   return `${String(bizType || "").trim().toUpperCase()}|${String(bizId || "").trim()}`;
 }
 
-export function workKindToBizType(workKind: "claim" | "repair" | "purchase" | "material"): string | null {
+export function workKindToBizType(workKind: "claim" | "repair" | "purchase" | "material" | "scanDelay"): string | null {
   if (workKind === "repair") return "REPAIR";
   if (workKind === "purchase") return "PURCHASE";
   if (workKind === "claim") return "SUPPLIES_CLAIM";
   if (workKind === "material") return "MATERIAL_REQUEST";
+  if (workKind === "scanDelay") return "SCAN_DELAY";
   return null;
 }
 

@@ -99,6 +99,9 @@ public final class TwinAutomationLogDisplayHelper {
         if ("EXEMPTION".equalsIgnoreCase(v)) {
             return "豁免策略";
         }
+        if ("FACE_VERIFY".equalsIgnoreCase(v)) {
+            return "门禁人脸验证";
+        }
         return v.isEmpty() ? "-" : v;
     }
 
@@ -107,6 +110,7 @@ public final class TwinAutomationLogDisplayHelper {
             case "TIMER" -> "定时触发";
             case "MANUAL" -> "手动触发";
             case "SYSTEM" -> "系统触发";
+            case "USER" -> "用户触发";
             default -> v.isEmpty() ? "-" : v;
         };
     }
@@ -142,6 +146,10 @@ public final class TwinAutomationLogDisplayHelper {
             case "SCAN_EXECUTE_ENTER" -> "Web/终端扫码：进入登记成功";
             case "SCAN_EXECUTE_EXIT" -> "Web/终端扫码：离开登记成功";
             case "REAPER_USER_FROZEN" -> "冻结跑批：单人已物理冻结";
+            case "FACE_MATCH" -> "人脸比对通过";
+            case "FACE_REJECT" -> "低于拒绝线";
+            case "FACE_GRAY" -> "未达通过线";
+            case "FACE_NO_FACE" -> "抓拍未检测到人脸";
             default -> v.isEmpty() ? "-" : v;
         };
     }
@@ -159,6 +167,9 @@ public final class TwinAutomationLogDisplayHelper {
             case "DAILY_EXEMPT_RESET" -> "每日豁免重置";
             case "DAILY_EXEMPT_RESET_TIMER" -> "每日豁免重置（定时）";
             case "EXEMPT_REVOKED" -> "收回冻结豁免";
+            case "GATE" -> "门禁闸机验证";
+            case "PERSONAL" -> "个人中心验证";
+            case "PIP" -> "画中画持续监测";
             default -> v.isEmpty() ? "-" : v;
         };
     }

@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
-import {
-    ENTER_REFRESH_MS,
-    parseScanAccessNoticeSettings,
-} from "@/components/scanner/scanAccessNoticeConfig";
+import { useQueryClient } from "@tanstack/react-query";
+import { ENTER_REFRESH_MS } from "@/components/scanner/accessMotionConfig";
 import { fetchPredictionDashboard } from "@/api/domains/profile.api";
 import type { RoomOverviewItem } from "@/api/types/profile"; // 👈 去它真正的老家拿！
 import { useRoomOverviewQuery } from "@/api/hooks/useProfile";
 import { useUpdateUserStateMutation, useUserStatusQuery } from "@/api/hooks/useScanner";
 import type { RoomPrediction } from "@/components/scanner/AIPredictionCard";
 import type { RoomInfo } from "@/api/types/scanner";
+import type { ScanDelayOptionSummary } from "@/api/types/scanner";
 import {
     pickRandomAccessMotionVariant,
     type AccessMotionVariant,
@@ -111,10 +108,26 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         return sortScanRoomsPudongFirst(deduped);
     }, [result?.allowedRooms, result?.pendingRooms]);
     const action: "ENTER" | "EXIT" = currentState === "INSIDE" ? "EXIT" : "ENTER";
-    /** 与 analyze 返回对齐：仅限制「进入」；非开放时段前端锁按钮，避免误以为可点（与 post-save-no-full-refresh 无关） */
-    const entryTimeBlocked = Boolean(
-        result?.scanPopupEntryWindowEnabled && result?.scanPopupEntryAllowedNow === false
+    const scanPopupExemptRoomIdSet = useMemo(() => {
+        const ids = result?.scanPopupExemptRoomIds;
+        if (!Array.isArray(ids) || ids.length === 0) return null;
+        return new Set(ids.map((id) => String(id).trim()).filter(Boolean));
+    }, [result?.scanPopupExemptRoomIds]);
+    const isRoomScanEntryTimeExempt = useCallback(
+        (room: RoomInfo) => {
+            if (room.scanEntryTimeExempt) return true;
+            const roomId = String(room.officialRoomId || room.id || "").trim();
+            return Boolean(roomId && scanPopupExemptRoomIdSet?.has(roomId));
+        },
+        [scanPopupExemptRoomIdSet]
     );
+    /** 与 analyze 返回对齐：仅限制「进入」；非开放时段按房间锁按钮，免冻结授权房间见 scanEntryTimeExempt / scanPopupExemptRoomIds */
+    const isEntryTimeBlockedForRoom = (room: RoomInfo) =>
+        Boolean(
+            result?.scanPopupEntryWindowEnabled &&
+                result?.scanPopupEntryAllowedNow === false &&
+                !isRoomScanEntryTimeExempt(room)
+        );
     const violationEnterLocked = Boolean(result?.studentViolationNotice?.enterLocked);
     const unboundEnterLocked = Boolean(result?.unboundCardNotice?.enterLocked);
     const enterLocked = violationEnterLocked || unboundEnterLocked;
@@ -134,11 +147,11 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     const [enterCelebrateRoomId, setEnterCelebrateRoomId] = useState<string | null>(null);
     const [enterMotionAtCorner, setEnterMotionAtCorner] = useState(false);
     const [enterCornerReady, setEnterCornerReady] = useState(false);
+    const [enterNoticeReady, setEnterNoticeReady] = useState(false);
     /** 点击进入 → celebrateId 写入前：抢先卸载中央按钮，避免与动效叠影 */
     const [enterMotionPending, setEnterMotionPending] = useState(false);
     const [awaitingOutsideAfterExit, setAwaitingOutsideAfterExit] = useState(false);
     const [accessMotionVariant, setAccessMotionVariant] = useState<AccessMotionVariant | null>(null);
-    const [accessNotice, setAccessNotice] = useState<{ message: string } | null>(null);
     const [keepCardStates, setKeepCardStates] = useState<boolean[]>(new Array(targetRooms.length || 10).fill(false));
     const manualLockRef = useRef(false);
     const hasLoggedStampRef = useRef(false);
@@ -155,17 +168,11 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     /** 离开成功后 analyze 尚未切 OUTSIDE 前，禁止场内直出 effect 再次挂载右下角动效 */
     const suppressInsideCornerInitRef = useRef(false);
 
-    const { data: runtimeConfig = {} } = useQuery({
-        queryKey: ["public-runtime-config"],
-        queryFn: fetchPublicRuntimeConfig,
-        staleTime: 60_000,
-    });
-    const noticeSettings = useMemo(() => parseScanAccessNoticeSettings(runtimeConfig), [runtimeConfig]);
-    const dismissAccessNotice = useCallback(() => setAccessNotice(null), []);
     const dismissEnterCelebrate = useCallback(() => {
         setEnterCelebrateRoomId(null);
         setEnterMotionAtCorner(false);
         setEnterCornerReady(false);
+        setEnterNoticeReady(false);
         setEnterMotionPending(false);
         setAccessMotionVariant(null);
         insideCornerInitKeyRef.current = null;
@@ -174,11 +181,15 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         setEnterCornerReady(true);
         accessMotionLoopEpochRef.current = performance.now();
     }, []);
+    const markEnterNoticeReady = useCallback(() => {
+        setEnterNoticeReady(true);
+    }, []);
     const dismissExitCelebrate = useCallback(() => {
         setExitCelebrateRoomId(null);
         setEnterCelebrateRoomId(null);
         setEnterMotionAtCorner(false);
         setEnterCornerReady(false);
+        setEnterNoticeReady(false);
         setEnterMotionPending(false);
         setAccessMotionVariant(null);
         insideCornerInitKeyRef.current = null;
@@ -287,10 +298,10 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     useEffect(() => {
         const uid = user?.userId;
         if (prevPopupUserIdRef.current !== undefined && prevPopupUserIdRef.current !== uid) {
-            setAccessNotice(null);
             setEnterCelebrateRoomId(null);
             setEnterMotionAtCorner(false);
             setEnterCornerReady(false);
+            setEnterNoticeReady(false);
             setEnterMotionPending(false);
             setAwaitingOutsideAfterExit(false);
             setAccessMotionVariant(null);
@@ -414,6 +425,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             if (celebrateId) {
                 setEnterMotionAtCorner(false);
                 setEnterCornerReady(false);
+                setEnterNoticeReady(false);
                 setEnterMotionPending(false);
                 accessMotionLoopEpochRef.current = performance.now();
                 setAccessMotionVariant(pickRandomAccessMotionVariant());
@@ -445,6 +457,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         setEnterCelebrateRoomId(null);
         setEnterMotionAtCorner(false);
         setEnterCornerReady(false);
+        setEnterNoticeReady(false);
         setEnterMotionPending(false);
         insideCornerInitKeyRef.current = null;
         const targetId = actedRoomId || autoActionRoomId;
@@ -580,7 +593,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
                 room.isDisabled ||
                 globalUserState === 3 ||
                 isRoomFull(room) ||
-                entryTimeBlocked ||
+                isEntryTimeBlockedForRoom(room) ||
                 enterLocked
         );
     const isExitLocked = (room: RoomInfo) => Boolean(isStateUnknown);
@@ -595,13 +608,31 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         if (isStateUnknown) return "状态同步异常，请重试";
         if (action === "ENTER" && globalUserState === 3) return `[已封禁] 拒绝进入 ${room.displayName}`;
         if (action === "ENTER" && isRoomFull(room)) return `[满员] 无法进入 ${room.displayName}`;
-        if (action === "ENTER" && entryTimeBlocked) return `[非开放时段] 无法进入 ${room.displayName}`;
+        if (action === "ENTER" && isEntryTimeBlockedForRoom(room)) return `[非开放时段] 无法进入 ${room.displayName}`;
         if (action === "ENTER" && unboundEnterLocked) return `[未绑卡] 禁止进入 ${room.displayName}`;
         if (action === "ENTER" && violationEnterLocked) return `[违规处理] 禁止进入 ${room.displayName}`;
         if (action === "ENTER" && room.enterBlocked) return `[不在此校区] ${room.displayName}`;
         if (action === "ENTER" && room.isDisabled) return `[禁入] ${room.displayName}`;
         return action === "ENTER" ? `进入 ${room.displayName}` : `离开 ${room.displayName}`;
     };
+
+    const getDelayOptionsForRoom = useCallback(
+        (roomId: string): ScanDelayOptionSummary[] => {
+            if (!result?.scanDelayEnabled) return [];
+            const map = result.scanDelayOptionsByRoom;
+            if (!map) return [];
+            if (map[roomId]?.length) return map[roomId];
+            for (const items of Object.values(map)) {
+                if (items.some((it) => it.roomId === roomId)) return items;
+            }
+            return [];
+        },
+        [result?.scanDelayEnabled, result?.scanDelayOptionsByRoom]
+    );
+
+    const handleDelayGrantSuccess = useCallback(() => {
+        onRefresh?.();
+    }, [onRefresh]);
 
     /**
      * 进入闭环（enterCelebrateRoomId 存续）期间禁止在模块中央挂载 ActionButtons：
@@ -639,12 +670,15 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             enterCelebrateRoomId,
             enterMotionAtCorner,
             enterCornerReady,
+            enterNoticeReady,
             renderActionButtons,
             accessMotionVariant,
-            accessNotice,
-            accessNoticeDurationMs: noticeSettings.durationMs,
             autoSignoutState: result?.autoSignoutState ?? null,
             autoSignoutSecondsRemaining: result?.autoSignoutSecondsRemaining ?? null,
+            autoSignoutScheduledAt: result?.autoSignoutScheduledAt ?? null,
+            scanDelayEnabled: Boolean(result?.scanDelayEnabled),
+            scanDelayButtonLabel: result?.scanDelayButtonLabel?.trim() || "延迟",
+            scanDelayOptionsByRoom: result?.scanDelayOptionsByRoom ?? {},
         },
         actions: {
             setShowRiskModal,
@@ -659,10 +693,12 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             isExitLocked,
             isRoomLocked,
             getButtonText,
-            dismissAccessNotice,
             dismissEnterCelebrate,
             dismissExitCelebrate,
             markEnterCornerReady,
+            markEnterNoticeReady,
+            getDelayOptionsForRoom,
+            handleDelayGrantSuccess,
         },
     };
 };

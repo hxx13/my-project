@@ -16,7 +16,6 @@
   }
 
   .page-help-rich-editor {
-    --page-help-content-img-max-width: 100%;
     --page-help-content-img-max-height: min(36vh, 380px);
   }
 
@@ -182,13 +181,9 @@
     background: var(--app-color-surface-hover);
   }
 
-  .page-help-prose :where(img),
-  .page-help-prose :where(.page-help-content-img),
-  .page-help-rich-editor .ProseMirror :where(img) {
+  .page-help-prose :where(.page-help-content-img) {
     display: block;
     box-sizing: border-box;
-    max-width: var(--page-help-content-img-max-width);
-    max-height: var(--page-help-content-img-max-height);
     width: auto;
     height: auto;
     margin: 0.5rem auto;
@@ -198,19 +193,12 @@
     transition: opacity var(--app-motion-hover), box-shadow var(--app-motion-hover);
   }
 
-  .page-help-prose :where(img):hover,
   .page-help-prose :where(.page-help-content-img):hover {
     opacity: 0.92;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-color-accent-secondary) 35%, transparent);
   }
 
-  /* 粘贴/编辑器 inline 色值在暗色下强制跟随语义色，避免黑字不可见 */
-  .dark .page-help-prose :where([style*="color"]),
-  .theme-standard-dark .page-help-prose :where([style*="color"]) {
-    color: inherit !important;
-  }
-
-  /* TipTap 编辑区与预览排版一致 */
+  /* 高亮色块与图片排版见 rich-text-content.css */
   .page-help-rich-editor .ProseMirror {
     min-height: 200px;
     outline: none;

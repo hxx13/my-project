@@ -85,7 +85,7 @@ export function ViolationRuleManager() {
 
       <AdminTableShell
         loading={isLoading}
-        isEmpty={!isLoading && rules.length === 0}
+        empty={!isLoading && rules.length === 0}
         emptyMessage="暂无触发规则"
       >
         <table className="w-full text-left text-sm">

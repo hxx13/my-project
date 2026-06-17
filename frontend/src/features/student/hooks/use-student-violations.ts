@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchViolations } from "../api/student.api";
 import type { FetchViolationsParams, ViolationData } from "../api/student.api";
+import { getStudentSessionScope, studentQueryKey } from "../utils/studentQueryScope";
 
 /**
  * 获取违规记录列表
@@ -9,9 +10,11 @@ import type { FetchViolationsParams, ViolationData } from "../api/student.api";
  * staleTime 设为 5 分钟。
  */
 export function useStudentViolations(params: FetchViolationsParams = {}) {
+  const scope = getStudentSessionScope();
   return useQuery<{ data: ViolationData[]; total: number }>({
-    queryKey: ["student", "violations", params],
+    queryKey: studentQueryKey("violations", params),
     queryFn: () => fetchViolations(params),
+    enabled: scope !== "anonymous",
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });

@@ -1,7 +1,23 @@
-import type { AnalyzeResponse, AnalyzeUserInfo, DisciplinaryRecord, ExecutePayload, RoomInfo } from "@/api/types/scanner";
+import type { RefObject } from "react";
+import type { AnalyzeResponse, AnalyzeUserInfo, DisciplinaryRecord, ExecutePayload, RoomInfo, ScanDelayOptionSummary } from "@/api/types/scanner";
 import type { ExecuteResult } from "@/api/domains/scanner.api";
 import type { RoomPrediction } from "@/components/scanner/AIPredictionCard";
 import type { AccessMotionVariant } from "@/components/scanner/accessMotionVariants";
+
+import type { BlinkPhase } from '@/components/face-verify/useFaceVerification';
+import type { FaceChallengeAction } from '@/components/face-verify/faceChallenge';
+
+export interface PersonalCenterFaceVerifyProps {
+    active: boolean;
+    open: boolean;
+    blinkPhase?: BlinkPhase;
+    serverVerifying?: boolean;
+    challengeAction?: FaceChallengeAction;
+    videoRef: RefObject<HTMLVideoElement | null>;
+    onClose: () => void;
+    onStreamReady?: () => void;
+    onStreamError?: (message: string) => void;
+}
 
 export interface PopupProps {
     result: AnalyzeResponse | null;
@@ -23,6 +39,16 @@ export interface PopupProps {
         interactiveChallengeVerified: boolean;
         violationExpired?: boolean;
     }) => void;
+    /** PIN 码替代人脸：弹窗内显示"人脸验证"按钮 */
+    pinAlternativeEnabled?: boolean;
+    /** 弹窗内点击"人脸验证" → 触发外部验证流程 */
+    onFaceVerifyRequest?: () => void;
+    /** 关闭 PIN 键盘时取消个人中心人脸验证（清除外部 override） */
+    onFaceVerifyCancel?: () => void;
+    /** 个人中心 PIN/人脸二选一：紧凑人脸窗（仅键盘展开时由弹窗内渲染） */
+    personalCenterFace?: PersonalCenterFaceVerifyProps;
+    /** 绑定 PIN/人脸成功后统一回调（与 handleKeypadSuccess 相同） */
+    onBindStudentCenterSuccess?: (handler: (authData: import("@/api/domains/auth.api").AuthData) => void) => void;
 }
 
 export interface CapacityStat {
@@ -65,14 +91,19 @@ export interface PopupState {
     enterMotionAtCorner: boolean;
     /** 右下角动效已就绪，可点击触发离开 */
     enterCornerReady: boolean;
+    /** 进入确认胶囊：中心停留结束、开始飞向右下角时即为 true */
+    enterNoticeReady: boolean;
     /** 为 false 时 ActionButtons 完全不挂载（动效期间销毁，防止按钮闪现） */
     renderActionButtons: boolean;
-    accessNotice: { message: string } | null;
-    accessNoticeDurationMs: number;
     /** 自动签退计时器状态 */
     autoSignoutState: string | null;
     /** 距离自动签退剩余秒数 */
     autoSignoutSecondsRemaining: number | null;
+    /** 计划签退时刻（yyyy-MM-dd HH:mm:ss），用于客户端实时推算剩余秒数 */
+    autoSignoutScheduledAt: string | null;
+    scanDelayEnabled: boolean;
+    scanDelayButtonLabel: string;
+    scanDelayOptionsByRoom: Record<string, ScanDelayOptionSummary[]>;
 }
 
 export interface PopupActions {
@@ -89,8 +120,10 @@ export interface PopupActions {
     isExitLocked: (room: RoomInfo) => boolean;
     isRoomLocked: (room: RoomInfo) => boolean;
     getButtonText: (room: RoomInfo, roomId: string) => string;
-    dismissAccessNotice: () => void;
     dismissEnterCelebrate: () => void;
     dismissExitCelebrate: () => void;
     markEnterCornerReady: () => void;
+    markEnterNoticeReady: () => void;
+    getDelayOptionsForRoom: (roomId: string) => ScanDelayOptionSummary[];
+    handleDelayGrantSuccess: () => void;
 }

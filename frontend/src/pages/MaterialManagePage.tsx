@@ -129,7 +129,7 @@ export default function MaterialManagePage() {
   /* ── 渲染 ── */
   return (
     <div className="space-y-8">
-      <AdminSubPageHeader fallbackTo="/admin/material/review" backLabel="返回申领审核" title="物品管理"
+      <AdminSubPageHeader fallbackTo="/admin/material/review" backLabel="返回学生审核" title="物品管理"
         description="管理分类与物品上架。支持审核流程逐物品配置、审核人从人员库选择、图片拖拽粘贴上传。" />
 
       {/* ═══════════ 分类 + 创建（融合区） ═══════════ */}
@@ -304,7 +304,21 @@ export default function MaterialManagePage() {
                         </div>
                       </div>
                     </div>
-                    {inboundOpen && <InboundPanel item={it} qty={panelQty} setQty={setPanelQty} onConfirm={() => { const q = it.stockMode === "FLAG" ? 1 : Number(panelQty); if (!q || q <= 0) return toast.error("数量无效"); inboundMut.mutate({ itemId: it.id, qty: q }, { onSuccess: closePanel }); }} onCancel={closePanel} />}
+                    {inboundOpen && (
+                      <InboundPanel
+                        item={it}
+                        qty={panelQty}
+                        setQty={setPanelQty}
+                        pending={inboundMut.isPending}
+                        onConfirm={() => {
+                          if (inboundMut.isPending) return;
+                          const q = it.stockMode === "FLAG" ? 1 : Number(panelQty);
+                          if (!q || q <= 0) return toast.error("数量无效");
+                          inboundMut.mutate({ itemId: it.id, qty: q }, { onSuccess: closePanel });
+                        }}
+                        onCancel={closePanel}
+                      />
+                    )}
                     {stockOpen && <StockPanel qty={panelNewStock} setQty={setPanelNewStock} onConfirm={() => { const n = Number(panelNewStock); if (Number.isNaN(n) || n < 0) return toast.error("无效库存"); adjustMut.mutate({ id: it.id, newQty: n }, { onSuccess: closePanel }); }} onCancel={closePanel} />}
                   </div>
                 );
@@ -406,12 +420,12 @@ export default function MaterialManagePage() {
 }
 
 /* ────── 行内面板 ────── */
-function InboundPanel({ item, qty, setQty, onConfirm, onCancel }: { item: MaterialItem; qty: string; setQty: (v: string) => void; onConfirm: () => void; onCancel: () => void }) {
+function InboundPanel({ item, qty, setQty, pending, onConfirm, onCancel }: { item: MaterialItem; qty: string; setQty: (v: string) => void; pending?: boolean; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="border-t border-[var(--twin-hairline)] bg-sky-50/60 p-3 space-y-2">
       <div className="text-xs text-sky-900">{item.stockMode === "FLAG" ? "有无型入库标记为有货。" : "按数量增加库存。"}</div>
       {item.stockMode !== "FLAG" && <input className="w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-sm text-[var(--twin-ink)]" type="number" min={1} value={qty} onChange={e => setQty(e.target.value)} />}
-      <div className="flex gap-2"><button className="rounded-twin-sm bg-sky-600 px-4 py-1.5 text-xs font-medium text-white" onClick={onConfirm}>确认入库</button><button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs text-[var(--twin-body)]" onClick={onCancel}>取消</button></div>
+      <div className="flex gap-2"><button type="button" disabled={pending} className="rounded-twin-sm bg-sky-600 px-4 py-1.5 text-xs font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed" onClick={onConfirm}>{pending ? "入库中…" : "确认入库"}</button><button type="button" className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs text-[var(--twin-body)]" onClick={onCancel}>取消</button></div>
     </div>
   );
 }

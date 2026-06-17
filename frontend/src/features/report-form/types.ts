@@ -135,6 +135,8 @@ export interface ReportFormSubmission {
   id: number;
   formId: number;
   userId: number;
+  /** 填报人展示名（昵称优先，后端 listSubmissions 附带） */
+  displayNickname?: string;
   status: 'draft' | 'submitted';
   fieldValuesJson: Record<string, unknown>;
   version: number;

@@ -42,6 +42,7 @@ import {
   TrendingUp,
   Thermometer,
   Ticket,
+  ScanFace,
   Users,
   Wrench,
 } from "lucide-react";
@@ -288,6 +289,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-fuchsia-400 to-pink-500",
         fallbackMinRole: "ADMIN",
         sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/dahua-issue", "ADMIN"),
+      },
+      {
+        id: "face-debug",
+        path: "/admin/face-debug",
+        label: "人脸识别调试",
+        icon: ScanFace,
+        homeTone: "from-sky-400 to-blue-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => hasMinRole(ctx.role, "ADMIN"),
       },
       {
         id: "door-control",
@@ -622,12 +632,12 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
   },
   {
     id: "material-review",
-    title: "审核",
+    title: "学生审核",
     items: [
       {
         id: "material-review-pending",
         path: "/admin/material/review",
-        label: "申领审核",
+        label: "学生审核",
         icon: ClipboardCheck,
         homeTone: "from-rose-400 to-pink-500",
         fallbackMinRole: "STAFF",

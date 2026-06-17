@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { fetchDashboardViolationBoard, type DashboardViolationBoardItem } from "@/api/domains/dashboardViolationBoard.api";
+import { prepareAnnouncementHtml } from "@/utils/announcementHtml";
 
 function pick(cfg: Record<string, string> | undefined, key: string, fallback: string) {
   if (!cfg) return fallback;
@@ -12,20 +14,22 @@ function pick(cfg: Record<string, string> | undefined, key: string, fallback: st
 }
 
 export default function CodexSection() {
-  const [cfg, setCfg] = useState<Record<string, string> | null>(null);
   const [items, setItems] = useState<DashboardViolationBoardItem[]>([]);
   const [activePanel, setActivePanel] = useState(0);
+
+  const { data: cfg } = useQuery({
+    queryKey: ["public-runtime-config"],
+    queryFn: fetchPublicRuntimeConfig,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+  });
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
-        const [c, vb] = await Promise.all([
-          fetchPublicRuntimeConfig(),
-          fetchDashboardViolationBoard(),
-        ]);
+        const vb = await fetchDashboardViolationBoard();
         if (!cancelled) {
-          setCfg(c);
           setItems(vb?.items ?? []);
         }
       } catch {
@@ -211,13 +215,14 @@ export default function CodexSection() {
               fontSize: 15,
               lineHeight: 1.8,
               color: "rgba(255,255,255,0.7)",
-              whiteSpace: "pre-wrap",
               maxHeight: 160,
               overflowY: "auto",
             }}
-          >
-            {current.body}
-          </div>
+            className="[&_img]:max-w-[70%] [&_img]:h-auto [&_img]:block [&_img]:rounded-lg [&_img]:mx-auto [&_img]:my-2 [&_img]:max-h-32"
+            dangerouslySetInnerHTML={{
+              __html: prepareAnnouncementHtml(current.body),
+            }}
+          />
         </motion.div>
       </div>
 

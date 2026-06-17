@@ -219,7 +219,7 @@ export const fetchAutomationLogsNear = async (params: {
     anchorTime: string;
     windowMinutes?: number;
     limit?: number;
-    /** 默认 true：隐藏 ARO 穿甲轮询定时任务噪声 */
+    /** 默认 true：隐藏穿甲/大屏排行榜等高频定时轮询日志 */
     excludePenetrationPoll?: boolean;
 }): Promise<AutomationLogRow[]> => {
     const sp = new URLSearchParams();
@@ -533,11 +533,16 @@ export interface CardMappingRow {
     userName?: string;
     jobNumber?: string;
     projectGroupName?: string;
+    head?: string;
     dahuaSeq?: string;
     dahuaPersonCode?: string;
     cardStatus?: string;
     freezeExemptFlag?: number;
     freezeExemptExpireAt?: string | null;
+    freezeExemptRoomIds?: string | null;
+    freezeExemptMode?: string | null;
+    freezeExemptMaxCount?: number | null;
+    freezeExemptUsedCount?: number | null;
     lastModifiedTime?: string;
     [key: string]: any;
 }
@@ -555,19 +560,28 @@ export const searchCardMappings = async (keyword: string): Promise<CardMappingRo
     return res.data?.data || [];
 };
 
-// 3. 切换特权免死金牌 (1=豁免, 0=受控)；开启时须传 durationMinutes（-1=今日 24:00）
+// 3. 切换特权免死金牌 (1=豁免, 0=受控)；支持时长+次数+房间权限
 export const updateExemptFlag = async (
     cardNo: string,
     flag: number,
     durationMinutes?: number,
+    mode?: string,
+    maxCount?: number,
+    roomIds?: string,
 ): Promise<{
     freezeExemptFlag?: number;
     freezeExemptExpireAt?: string | null;
+    freezeExemptMode?: string | null;
+    freezeExemptMaxCount?: number | null;
+    freezeExemptRoomIds?: string | null;
     lastModifiedTime?: string;
 }> => {
-    const body: { cardNo: string; flag: number; durationMinutes?: number } = { cardNo, flag };
-    if (flag === 1 && durationMinutes != null) {
-        body.durationMinutes = durationMinutes;
+    const body: Record<string, unknown> = { cardNo, flag };
+    if (flag === 1) {
+        if (mode) body.mode = mode;
+        if (durationMinutes != null) body.durationMinutes = durationMinutes;
+        if (maxCount != null) body.maxCount = maxCount;
+        if (roomIds) body.roomIds = roomIds;
     }
     const res = await authHttp.post(`/v1/twin/mappings/exempt`, body);
     return res.data?.data ?? res.data;
@@ -1006,6 +1020,13 @@ export interface AutomationLogRow {
     eventKeyLabel?: string;
     triggerTypeLabel?: string;
     triggerReasonLabel?: string;
+    /** face 审计：抓拍图 URL */
+    probeImageUrls?: string[];
+    /** face 审计：最佳底库图 URL */
+    baselineImageUrl?: string;
+    faceSimilarity?: number;
+    faceModelVersion?: string;
+    logSource?: string;
 }
 
 export interface AutomationDisplayMapRow {
@@ -1045,7 +1066,7 @@ export const fetchAutomationLogs = async (params: {
     endTime?: string;
     page?: number;
     pageSize?: number;
-    /** 默认 true：列表隐藏 ARO_PENETRATION_POLL 穿甲轮询日志 */
+    /** 默认 true：列表隐藏穿甲/大屏排行榜等高频定时轮询日志 */
     excludePenetrationPoll?: boolean;
 }): Promise<{ list: AutomationLogRow[]; total: number; page: number; pageSize: number }> => {
     const res = await authHttp.get('/v1/twin/automation-logs', { params });

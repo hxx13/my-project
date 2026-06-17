@@ -2,6 +2,8 @@ import { useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, X, type LucideIcon } from "lucide-react";
 import { SCAN_ANNOUNCEMENT_BODY_CLASS } from "@/utils/announcementHtml";
+import { PageHelpImageLightbox } from "@/features/page-help/PageHelpImageLightbox";
+import { useRichTextImageLightbox } from "@/components/rich-text/useRichTextImageLightbox";
 import type { NoticeKind } from "./scanPopupTheme";
 
 export type ScanNoticeDoodleCardProps = {
@@ -58,6 +60,10 @@ export function ScanNoticeDoodleCard({
 }: ScanNoticeDoodleCardProps) {
   const [exiting, setExiting] = useState(false);
   const imgCount = imageUrls.length;
+  const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([
+    bodyHtml,
+    imageUrls.join("|"),
+  ]);
 
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
@@ -83,7 +89,7 @@ export function ScanNoticeDoodleCard({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`scan-doodle-card scan-doodle-card--${kind} flex min-h-0 flex-col`}
+        className={`scan-doodle-card scan-doodle-card--${kind} flex flex-col`}
         animate={
           exiting
             ? { scale: 0.12, opacity: 0, y: 24 }
@@ -141,7 +147,7 @@ export function ScanNoticeDoodleCard({
           ) : null}
         </div>
 
-        <div className="scan-doodle-card__body app-themed-scrollbar" data-modal-scroll>
+        <div ref={containerRef} className="scan-doodle-card__body app-themed-scrollbar" data-modal-scroll>
           {bodyHtml ? (
             <div
               className={SCAN_ANNOUNCEMENT_BODY_CLASS}
@@ -155,7 +161,12 @@ export function ScanNoticeDoodleCard({
             <div className={`scan-doodle-card__images ${imageGridClass(imgCount)}`}>
               {imageUrls.map((src) => (
                 <div key={src} className="scan-doodle-card__image-frame">
-                  <img src={src} alt={imageAlt} className="scan-doodle-card__image" referrerPolicy="no-referrer" />
+                  <img
+                    src={src}
+                    alt={imageAlt}
+                    className="scan-doodle-card__image scan-doodle-card__image--zoomable"
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
               ))}
             </div>
@@ -190,6 +201,9 @@ export function ScanNoticeDoodleCard({
           ) : null}
         </div>
       </motion.div>
+      {lightbox ? (
+        <PageHelpImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
+      ) : null}
     </div>
   );
 }

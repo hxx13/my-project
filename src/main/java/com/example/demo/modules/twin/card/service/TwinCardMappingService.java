@@ -137,8 +137,10 @@ public class TwinCardMappingService {
     }
 
     /**
-     * 冻结豁免：同时视为「门禁联动规则」豁免（不触发刷卡侧自动签退/激活倒计时等），且联动逻辑不会清除该标记。
+     * 是否持有有效免冻结标记（仅用于冻结跑批等；<b>不再</b>用于跳过大华激活/签退联动）。
+     * @deprecated 新代码请用 {@link #isFreezeExempt(TwinCardMapping)} 或 {@link #isRoomExemptForScanEntry(String, String)}。
      */
+    @Deprecated
     public boolean isLinkageRuleExempt(String aroUserId) {
         if (aroUserId == null || aroUserId.isBlank()) {
             return false;
@@ -148,7 +150,83 @@ public class TwinCardMappingService {
     }
 
     /**
-     * 物理冻结豁免（freeze_exempt_flag=1）：供滞留跑批 {@link #executeFreezeReaperTask} 与联动豁免 {@link #isLinkageRuleExempt} 使用；禁止对 null 做拆箱比较。
+     * 返回用户当前有效的免冻结扫码进入授权房间 ID（与 freeze_exempt_room_ids 同源）。
+     */
+    public List<String> listScanEntryExemptRoomIds(String userId) {
+        TwinCardMapping m = resolveMappingByAroUserId(userId);
+        if (!isFreezeExempt(m) || !hasScanEntryExemptCountRemaining(m)) {
+            return List.of();
+        }
+        return parseFreezeExemptRoomIds(m.getFreezeExemptRoomIds());
+    }
+
+    /**
+     * 检查免冻结用户是否对指定房间有扫码时段豁免。
+     * 条件：freeze_exempt_flag=1 未过期 AND freeze_exempt_room_ids JSON 数组包含 roomId。
+     */
+    public boolean isRoomExemptForScanEntry(String userId, String roomId) {
+        if (userId == null || userId.isBlank() || roomId == null || roomId.isBlank()) {
+            return false;
+        }
+        TwinCardMapping m = resolveMappingByAroUserId(userId);
+        if (!isFreezeExempt(m) || !hasScanEntryExemptCountRemaining(m)) {
+            return false;
+        }
+        return parseFreezeExemptRoomIds(m.getFreezeExemptRoomIds()).contains(roomId.trim());
+    }
+
+    private TwinCardMapping resolveMappingByAroUserId(String userId) {
+        if (userId == null) {
+            return null;
+        }
+        String key = userId.trim();
+        if (key.isEmpty()) {
+            return null;
+        }
+        return userIdCache.get(key);
+    }
+
+    private boolean hasScanEntryExemptCountRemaining(TwinCardMapping m) {
+        if (m == null) {
+            return false;
+        }
+        String mode = m.getFreezeExemptMode();
+        if (!"COUNT".equals(mode) && !"BOTH".equals(mode)) {
+            return true;
+        }
+        Integer max = m.getFreezeExemptMaxCount();
+        Integer used = m.getFreezeExemptUsedCount() != null ? m.getFreezeExemptUsedCount() : 0;
+        return max == null || max <= 0 || used < max;
+    }
+
+    private List<String> parseFreezeExemptRoomIds(String roomIdsJson) {
+        if (roomIdsJson == null || roomIdsJson.isBlank()) {
+            return List.of();
+        }
+        try {
+            com.alibaba.fastjson2.JSONArray arr = com.alibaba.fastjson2.JSON.parseArray(roomIdsJson);
+            if (arr == null || arr.isEmpty()) {
+                return List.of();
+            }
+            List<String> out = new ArrayList<>();
+            for (int i = 0; i < arr.size(); i++) {
+                Object item = arr.get(i);
+                if (item == null) {
+                    continue;
+                }
+                String id = String.valueOf(item).trim();
+                if (!id.isEmpty()) {
+                    out.add(id);
+                }
+            }
+            return out;
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * 物理冻结豁免（freeze_exempt_flag=1）：供滞留跑批 {@link #executeFreezeReaperTask} 使用；禁止对 null 做拆箱比较。
      */
     public boolean isFreezeExempt(TwinCardMapping mapping) {
         return isExemptCurrentlyActive(mapping);
@@ -233,25 +311,48 @@ public class TwinCardMappingService {
         }
     }
 
-    public synchronized Map<String, Object> updateExemptFlag(String cardNo, Integer flag, Integer durationMinutes) {
+    public synchronized Map<String, Object> updateExemptFlag(
+            String cardNo, Integer flag, Integer durationMinutes,
+            String mode, Integer maxCount, String roomIds) {
         if (flag == null || (flag != 0 && flag != 1)) {
             throw new IllegalArgumentException("flag 须为 0 或 1");
+        }
+        if (flag == 1) {
+            if (mode == null || mode.isBlank()) {
+                mode = "TIME";
+            }
+            if (!mode.equals("TIME") && !mode.equals("COUNT") && !mode.equals("BOTH")) {
+                throw new IllegalArgumentException("mode 须为 TIME / COUNT / BOTH");
+            }
+            if ((mode.equals("COUNT") || mode.equals("BOTH")) && (maxCount == null || maxCount <= 0)) {
+                throw new IllegalArgumentException("次数限制模式须指定 maxCount");
+            }
+            if ((mode.equals("TIME") || mode.equals("BOTH")) && durationMinutes == null) {
+                throw new IllegalArgumentException("时长限制模式须指定 durationMinutes");
+            }
         }
         TwinCardMapping cacheItem = resolveMappingByCardNo(cardNo);
         String dbCardNo = cacheItem != null ? cacheItem.getCardNo() : (cardNo == null ? "" : cardNo.trim());
         String updateTime = getCurrentTime();
         String expireAt = null;
-        if (flag == 1) {
+        if (flag == 1 && (mode.equals("TIME") || mode.equals("BOTH"))) {
             expireAt = computeExemptExpireAt(durationMinutes);
         }
-        mappingMapper.updateExemptFlag(dbCardNo, flag, expireAt, updateTime);
+        mappingMapper.updateExemptFlag(dbCardNo, flag, expireAt, updateTime, mode, maxCount, roomIds);
         if (cacheItem != null) {
             applyExemptFieldsToMapping(cacheItem, flag, expireAt, updateTime);
+            cacheItem.setFreezeExemptMode(flag == 1 ? mode : null);
+            cacheItem.setFreezeExemptMaxCount(flag == 1 ? maxCount : null);
+            cacheItem.setFreezeExemptUsedCount(0);
+            cacheItem.setFreezeExemptRoomIds(flag == 1 ? roomIds : null);
         }
         Map<String, Object> out = new HashMap<>();
         out.put("cardNo", dbCardNo);
         out.put("freezeExemptFlag", flag);
         out.put("freezeExemptExpireAt", expireAt);
+        out.put("freezeExemptMode", flag == 1 ? mode : null);
+        out.put("freezeExemptMaxCount", flag == 1 ? maxCount : null);
+        out.put("freezeExemptRoomIds", flag == 1 ? roomIds : null);
         out.put("lastModifiedTime", updateTime);
         return out;
     }
@@ -267,6 +368,40 @@ public class TwinCardMappingService {
             m.setFreezeExemptGrantDate(null);
             m.setExemptGrantedAt(null);
             m.setFreezeExemptExpireAt(null);
+        }
+    }
+
+    /**
+     * 用户扫码进入授权房间时调用。
+     * 若免冻结模式为 COUNT/BOTH，则 usedCount+1。
+     * 若 usedCount 达到 maxCount，自动收回免冻结。
+     */
+    public void incrementExemptUsedCount(String userId, String roomId) {
+        if (userId == null || userId.isBlank()) {
+            return;
+        }
+        try {
+            int affected = mappingMapper.incrementExemptUsedCount(userId.trim(), roomId);
+            if (affected > 0) {
+                TwinCardMapping m = userIdCache.get(userId.trim());
+                if (m != null && m.getFreezeExemptFlag() != null && m.getFreezeExemptFlag() == 1) {
+                    int newUsed = (m.getFreezeExemptUsedCount() != null ? m.getFreezeExemptUsedCount() : 0) + 1;
+                    m.setFreezeExemptUsedCount(newUsed);
+                    Integer max = m.getFreezeExemptMaxCount();
+                    if (max != null && max > 0 && newUsed >= max) {
+                        m.setFreezeExemptFlag(0);
+                        m.setFreezeExemptGrantDate(null);
+                        m.setFreezeExemptExpireAt(null);
+                        m.setFreezeExemptMode(null);
+                        m.setFreezeExemptMaxCount(null);
+                        m.setFreezeExemptUsedCount(0);
+                        m.setFreezeExemptRoomIds(null);
+                        log.info("[豁免次数] 用户 {} 次数耗尽({}/{})，自动收回豁免", userId, newUsed, max);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[豁免次数] incrementExemptUsedCount 失败 userId={} err={}", userId, e.getMessage());
         }
     }
 
@@ -496,19 +631,31 @@ public class TwinCardMappingService {
      */
     @Transactional(rollbackFor = Exception.class)
     public synchronized void updateExemptFlagByUserId(String aroUserId, int flag) {
-        updateExemptFlagByUserId(aroUserId, flag, flag == 1 ? -1 : null);
+        updateExemptFlagByUserId(aroUserId, flag, flag == 1 ? -1 : null, "TIME", null, null);
     }
 
-    public synchronized void updateExemptFlagByUserId(String aroUserId, int flag, Integer durationMinutes) {
+    public synchronized void updateExemptFlagByUserId(
+            String aroUserId, int flag, Integer durationMinutes,
+            String mode, Integer maxCount, String roomIds) {
         try {
-            String expireAt = flag == 1 ? computeExemptExpireAt(durationMinutes != null ? durationMinutes : -1) : null;
-            int affected = mappingMapper.updateExemptFlagByUserId(aroUserId, flag, expireAt);
+            if (flag == 1 && mode == null) {
+                mode = "TIME";
+            }
+            String expireAt = null;
+            if (flag == 1 && (mode.equals("TIME") || mode.equals("BOTH"))) {
+                expireAt = computeExemptExpireAt(durationMinutes != null ? durationMinutes : -1);
+            }
+            int affected = mappingMapper.updateExemptFlagByUserId(aroUserId, flag, expireAt, mode, maxCount, roomIds);
             if (affected > 0) {
                 TwinCardMapping m = userIdCache.get(aroUserId.trim());
                 if (m != null) {
                     applyExemptFieldsToMapping(m, flag, expireAt, getCurrentTime());
+                    m.setFreezeExemptMode(flag == 1 ? mode : null);
+                    m.setFreezeExemptMaxCount(flag == 1 ? maxCount : null);
+                    m.setFreezeExemptUsedCount(0);
+                    m.setFreezeExemptRoomIds(flag == 1 ? roomIds : null);
                 }
-                log.info("[映射底盘] 人员 {} 豁免={} 到期={}", aroUserId, flag == 1 ? "开" : "关", expireAt);
+                log.info("[映射底盘] 人员 {} 豁免={} mode={} maxCount={}", aroUserId, flag == 1 ? "开" : "关", mode, maxCount);
             }
         } catch (Exception e) {
             log.error("[映射底盘] 修改豁免权失败 aroUserId={}: {}", aroUserId, e.getMessage());
@@ -522,6 +669,12 @@ public class TwinCardMappingService {
             if (rows > 0) {
                 syncCacheClearedExemptFlags();
                 log.info("[豁免时效] 已自动收回 {} 份到期豁免", rows);
+            }
+            // 免冻结增强：同时收回次数已耗尽的 COUNT/BOTH 豁免（兜底，主路径在 incrementExemptUsedCount 中已处理）
+            int countExhausted = mappingMapper.revokeExhaustedCountExemptions();
+            if (countExhausted > 0) {
+                syncCacheClearedExemptFlags();
+                log.info("[豁免时效] 已自动收回 {} 份次数耗尽豁免", countExhausted);
             }
         } catch (Exception e) {
             log.warn("[豁免时效] 到期收回失败: {}", e.getMessage());

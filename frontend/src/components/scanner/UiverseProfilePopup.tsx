@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
+import { FaceCameraWindow } from "@/components/face-verify/FaceCameraWindow";
 import { createPortal } from "react-dom";
 import { ExpToaster } from "./ExpToaster";
 import AIPredictionCard from "./AIPredictionCard";
@@ -12,7 +13,6 @@ import { ProfileHeader } from "./components/ProfileHeader";
 import { StudentEntryCard } from "./StudentEntryCard";
 import { ActionButtons } from "./components/ActionButtons";
 import { DisciplinaryModal } from "./components/DisciplinaryModal";
-import { ScanAccessNoticeOverlay } from "./ScanAccessNoticeOverlay";
 import { ScanAccessMotionOverlay } from "./ScanAccessMotionOverlay";
 import { resolveRoomActionDensity } from "./roomActionDensity";
 import { ACCESS_MOTION_CORNER_MODULE_RATIO } from "./accessMotionLoaderScale";
@@ -25,6 +25,7 @@ import { BizOverlayShell } from "./BizOverlayShell";
 import { useBizRegistry } from "./useBizRegistry";
 import MaterialBizPanel from "./MaterialBizPanel";
 import { checkPinStatus } from "./specialChannel.api";
+import { commitStudentCenterEntryFromScan } from "./studentCenterEntry";
 import {
   resolveScanAccentVariant,
   SCAN_MODAL_LAYER_PROPS,
@@ -105,7 +106,7 @@ const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
 };
 
 export function UiverseProfilePopup(props: PopupProps) {
-    const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind, onViolationInteractiveVerified } = props;
+    const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind, onViolationInteractiveVerified, pinAlternativeEnabled, onFaceVerifyRequest, onFaceVerifyCancel, personalCenterFace, onBindStudentCenterSuccess } = props;
     const { state, actions } = useProfilePopup(props);
     const canOperateRiskState = hasMinRole(authStorage.getRole(), "STAFF");
     const { theme } = useTheme();
@@ -128,6 +129,7 @@ export function UiverseProfilePopup(props: PopupProps) {
     const [showKeypad, setShowKeypad] = useState<"set" | "verify" | null>(null);
     const [showQuickActions, setShowQuickActions] = useState(false);
     const [keypadUserId, setKeypadUserId] = useState("");
+    const pendingPersonalFaceVerifyRef = useRef(false);
     const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
 
     // 注册快捷业务
@@ -146,6 +148,10 @@ export function UiverseProfilePopup(props: PopupProps) {
 
     const handleEnterStudentCenter = async () => {
       if (!studentUserId) return;
+      // 人脸验证须在 PIN 键盘（含紧凑摄像头）挂载后再启动，见下方 useEffect
+      if (pinAlternativeEnabled && onFaceVerifyRequest) {
+        pendingPersonalFaceVerifyRef.current = true;
+      }
       try {
         const hasPin = await checkPinStatus(studentUserId);
         setKeypadUserId(studentUserId);
@@ -156,30 +162,40 @@ export function UiverseProfilePopup(props: PopupProps) {
       }
     };
 
-    const handleKeypadSuccess = (authData: { token: string; role: string; userInfo: unknown }) => {
-      // 进入学生中心前保存当前终端操作员的登录态，
-      // 以便学生点击"返回扫码页"时恢复教职工身份，避免角色泄露或被迫重新登录。
-      authStorage.savePreviousSession();
-      authStorage.markStudentEntryFromScan();
-      authStorage.setAuth(authData.token, authData.role, authData.userInfo as Parameters<typeof authStorage.setAuth>[2]);
-      setShowKeypad(null);
-      onClose();
-      navigate("/student/home");
-    };
+    // 个人中心：键盘展开后再启人脸验证，避免摄像头未挂载即 faceStart → 光速超时
+    useEffect(() => {
+      if (!showKeypad || !pendingPersonalFaceVerifyRef.current || !onFaceVerifyRequest) return;
+      pendingPersonalFaceVerifyRef.current = false;
+      onFaceVerifyRequest();
+    }, [showKeypad, onFaceVerifyRequest]);
+
+    const handleKeypadSuccess = useCallback((authData: { token: string; role: string; userInfo: unknown }) => {
+      commitStudentCenterEntryFromScan(
+        authData as Parameters<typeof commitStudentCenterEntryFromScan>[0],
+        () => {
+          setShowKeypad(null);
+          onClose();
+        },
+        navigate,
+      );
+    }, [navigate, onClose]);
+
+    useEffect(() => {
+      onBindStudentCenterSuccess?.(handleKeypadSuccess);
+    }, [onBindStudentCenterSuccess, handleKeypadSuccess]);
 
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
                 if (state.enterCelebrateRoomId) actions.dismissEnterCelebrate();
                 else if (state.exitCelebrateRoomId) actions.dismissExitCelebrate();
-                else if (state.accessNotice) actions.dismissAccessNotice();
                 else if (state.showRiskModal) actions.setShowRiskModal(false);
                 else onClose();
             }
         };
         window.addEventListener("keydown", handleEsc);
         return () => window.removeEventListener("keydown", handleEsc);
-    }, [actions, onClose, state.accessNotice, state.enterCelebrateRoomId, state.exitCelebrateRoomId, state.showRiskModal]);
+    }, [actions, onClose, state.enterCelebrateRoomId, state.exitCelebrateRoomId, state.showRiskModal]);
 
     if (!result) return null;
 
@@ -215,6 +231,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                 themeClassName={theme.className}
                 isDark={isDark}
                 onCornerReady={actions.markEnterCornerReady}
+                onFlyStart={actions.markEnterNoticeReady}
             />
             <ScanAccessMotionOverlay
                 mode="exit"
@@ -225,17 +242,6 @@ export function UiverseProfilePopup(props: PopupProps) {
                 themeClassName={theme.className}
                 isDark={isDark}
                 onComplete={actions.dismissExitCelebrate}
-            />
-            <ScanAccessNoticeOverlay
-                open={Boolean(
-                    state.accessNotice?.message &&
-                        !state.enterCelebrateRoomId &&
-                        !state.exitCelebrateRoomId
-                )}
-                message={state.accessNotice?.message ?? ""}
-                durationMs={state.accessNoticeDurationMs}
-                accentVariant={accentVariant}
-                onDismiss={actions.dismissAccessNotice}
             />
             <AnimatePresence>
                 <DisciplinaryModal
@@ -394,6 +400,12 @@ export function UiverseProfilePopup(props: PopupProps) {
                                         setKeepCardState={actions.setKeepCardState}
                                         autoSignoutSecondsRemaining={state.autoSignoutSecondsRemaining}
                                         autoSignoutState={state.autoSignoutState}
+                                        scanDelayEnabled={state.scanDelayEnabled}
+                                        scanDelayButtonLabel={state.scanDelayButtonLabel}
+                                        getDelayOptions={actions.getDelayOptionsForRoom}
+                                        subjectUserId={state.user?.userId}
+                                        onDelaySuccess={actions.handleDelayGrantSuccess}
+                                        userName={state.user?.name}
                                     />
                                 ) : (
                                     <div className="flex-1 min-h-[120px] w-full shrink-0" aria-hidden />
@@ -417,8 +429,28 @@ export function UiverseProfilePopup(props: PopupProps) {
                     mode={showKeypad}
                     userId={keypadUserId}
                     userName={state.user?.name}
+                    topSlot={personalCenterFace?.active ? (
+                        <FaceCameraWindow
+                            embedded
+                            compact
+                            cameraOwner="personal"
+                            cameraWarm
+                            videoRef={personalCenterFace.videoRef}
+                            open={personalCenterFace.open}
+                            blinkPhase={personalCenterFace.blinkPhase}
+                            serverVerifying={personalCenterFace.serverVerifying}
+                            challengeAction={personalCenterFace.challengeAction}
+                            onStreamReady={personalCenterFace.onStreamReady}
+                            onStreamError={personalCenterFace.onStreamError}
+                            onClose={personalCenterFace.onClose}
+                        />
+                    ) : undefined}
                     onSuccess={handleKeypadSuccess}
-                    onCancel={() => setShowKeypad(null)}
+                    onCancel={() => {
+                        pendingPersonalFaceVerifyRef.current = false;
+                        setShowKeypad(null);
+                        onFaceVerifyCancel?.();
+                    }}
                 />
             )}
             {/* Quick actions overlay */}

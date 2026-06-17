@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import toast from "react-hot-toast";
 import { FileText } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAutomationLogs, type AutomationLogRow } from "@/api/twinApi";
@@ -14,6 +13,7 @@ const TYPE_OPTIONS = [
   { value: "AUTO_SIGNOUT", label: "离开自动化" },
   { value: "SCHEDULER", label: "定时器自动化" },
   { value: "EXEMPTION", label: "豁免自动化" },
+  { value: "FACE_VERIFY", label: "门禁人脸验证" },
 ];
 
 const TRIGGER_OPTIONS = [
@@ -21,6 +21,7 @@ const TRIGGER_OPTIONS = [
   { value: "TIMER", label: "定时触发" },
   { value: "MANUAL", label: "手动触发" },
   { value: "SYSTEM", label: "系统触发" },
+  { value: "USER", label: "用户触发" },
 ];
 
 function toTime(value?: string) {
@@ -36,6 +37,62 @@ function toApiTime(value: string, tail: "00:00:00" | "23:59:59") {
 }
 
 const PAGE_SIZE = 50;
+
+function AuditImageThumb({ url, label }: { url: string; label: string }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group block shrink-0"
+      title={`${label}（点击查看原图）`}
+    >
+      <img
+        src={url}
+        alt={label}
+        className="h-14 w-14 rounded-md border border-[var(--app-color-border-subtle)] object-cover transition group-hover:opacity-90"
+        loading="lazy"
+      />
+      <span className="mt-0.5 block max-w-[3.5rem] truncate text-[10px] text-[var(--twin-mute)]">{label}</span>
+    </a>
+  );
+}
+
+function FaceCompareImages({ row }: { row: AutomationLogRow }) {
+  const [expanded, setExpanded] = useState(false);
+  const probes = row.probeImageUrls ?? [];
+  const baseline = row.baselineImageUrl;
+  const previewLimit = 2;
+  const hiddenCount = Math.max(0, probes.length - previewLimit);
+  const visibleProbes = expanded || hiddenCount === 0 ? probes : probes.slice(0, previewLimit);
+
+  if (probes.length === 0 && !baseline) {
+    return <span className="text-[var(--twin-mute)]">—</span>;
+  }
+
+  return (
+    <div className="max-w-[11rem] space-y-1">
+      <div className="flex flex-wrap items-start gap-1.5">
+        {visibleProbes.map((url, i) => (
+          <AuditImageThumb key={`p-${url}`} url={url} label={probes.length > 1 ? `${i + 1}` : "抓拍"} />
+        ))}
+        {baseline ? <AuditImageThumb url={baseline} label="底库" /> : null}
+      </div>
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          className="text-[10px] text-[var(--twin-link-deep)] hover:underline"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "收起抓拍" : `展开抓拍 +${hiddenCount}`}
+        </button>
+      ) : null}
+      {probes.length > 0 ? (
+        <div className="text-[10px] text-[var(--twin-mute)]">共 {probes.length} 张抓拍</div>
+      ) : null}
+    </div>
+  );
+}
 
 const compactInputClass =
   "h-8 min-w-0 w-full rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-900 shadow-sm outline-none transition placeholder:text-neutral-400 focus-visible:border-neutral-300 focus-visible:ring-2 focus-visible:ring-[#0070f3]/25";
@@ -91,7 +148,7 @@ export default function AdminAutomationLogsPage() {
           自动化日志
         </span>
       }
-      description="查看门禁联动、定时任务等自动化执行流水；可按类型、触发方式与时间筛选。"
+      description="查看门禁联动、定时任务、人脸验证等自动化执行流水；可按类型、触发方式与时间筛选。"
     >
       <div className="flex flex-col gap-3">
         <AdminFormCard title="筛选" className="p-3 [&>div:first-child]:mb-2 [&>div:first-child]:pb-1.5">
@@ -159,7 +216,7 @@ export default function AdminAutomationLogsPage() {
                 重置
               </AdminButton>
             </div>
-            <label className={`flex shrink-0 cursor-pointer items-center gap-1.5 self-end whitespace-nowrap pb-1 ${adminHintClass}`}>
+            <label className={`flex shrink-0 cursor-pointer items-center gap-1.5 self-end whitespace-nowrap pb-1 ${adminHintClass}`} title="含 ARO 穿甲同步、大屏排行榜刷新等高频定时任务">
               <input
                 type="checkbox"
                 className="h-3.5 w-3.5 rounded border-neutral-300"
@@ -169,7 +226,7 @@ export default function AdminAutomationLogsPage() {
                   setPage(1);
                 }}
               />
-              穿甲轮询日志
+              定时轮询日志
             </label>
           </div>
         </AdminFormCard>
@@ -191,13 +248,14 @@ export default function AdminAutomationLogsPage() {
                 <th className="px-2 py-1.5">用户ID</th>
                 <th className="px-2 py-1.5">姓名</th>
                 <th className="px-2 py-1.5">结果</th>
+                <th className="px-2 py-1.5">比对图片</th>
                 <th className="px-2 py-1.5">触发原因</th>
                 <th className="px-2 py-1.5">详情</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b align-top hover:bg-[var(--twin-canvas-soft)]">
+                <tr key={`${r.logSource ?? "twin"}-${r.id}`} className="border-b align-top hover:bg-[var(--twin-canvas-soft)]">
                   <td className="px-2 py-1.5 whitespace-nowrap">{toTime(r.eventTime)}</td>
                   <td className="px-2 py-1.5">
                     <div>{r.automationTypeLabel || r.automationType || "-"}</div>
@@ -215,6 +273,13 @@ export default function AdminAutomationLogsPage() {
                   <td className="px-2 py-1.5">{r.userName || "-"}</td>
                   <td className="px-2 py-1.5">
                     {r.success === 1 ? <span className="text-emerald-600">成功</span> : <span className="text-rose-600">失败</span>}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {r.automationType === "FACE_VERIFY" || r.logSource === "face" ? (
+                      <FaceCompareImages row={r} />
+                    ) : (
+                      <span className="text-[var(--twin-mute)]">—</span>
+                    )}
                   </td>
                   <td className="px-2 py-1.5">
                     <div>{r.triggerReasonLabel || r.triggerReason || "-"}</div>

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchStudentAccessRecords } from "../api/student.api";
 import type { StudentAccessRecord } from "../api/student.api";
+import { getStudentSessionScope, studentQueryKey } from "../utils/studentQueryScope";
 
 interface UseStudentAccessRecordsOptions {
   page?: number;
@@ -16,9 +17,11 @@ interface UseStudentAccessRecordsOptions {
 export function useStudentAccessRecords(options: UseStudentAccessRecordsOptions = {}) {
   const { page = 1, size = 20 } = options;
 
+  const scope = getStudentSessionScope();
   return useQuery<{ data: StudentAccessRecord[]; total: number }>({
-    queryKey: ["student", "access-records", { page, size }],
+    queryKey: studentQueryKey("access-records", { page, size }),
     queryFn: () => fetchStudentAccessRecords(page, size),
+    enabled: scope !== "anonymous",
     staleTime: 60 * 1000, // 1 分钟
     retry: 1,
   });

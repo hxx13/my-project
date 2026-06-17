@@ -32,3 +32,31 @@ export function formatExemptRemaining(expireAt?: string | null): string {
     const days = Math.floor(hours / 24);
     return `剩余 ${days} 天`;
 }
+
+export const EXEMPT_MODE_OPTIONS: { label: string; value: string }[] = [
+    { label: '时长限制', value: 'TIME' },
+    { label: '次数限制', value: 'COUNT' },
+    { label: '时长+次数', value: 'BOTH' },
+];
+
+export function formatExemptStatus(row: {
+    freezeExemptFlag?: number;
+    freezeExemptMode?: string | null;
+    freezeExemptExpireAt?: string | null;
+    freezeExemptMaxCount?: number | null;
+    freezeExemptUsedCount?: number | null;
+}): string {
+    if (!row.freezeExemptFlag || row.freezeExemptFlag !== 1) return '';
+    const mode = row.freezeExemptMode || 'TIME';
+    const parts: string[] = [];
+    if (mode === 'TIME' || mode === 'BOTH') {
+        const remain = formatExemptRemaining(row.freezeExemptExpireAt);
+        if (remain) parts.push(remain);
+    }
+    if (mode === 'COUNT' || mode === 'BOTH') {
+        const used = row.freezeExemptUsedCount ?? 0;
+        const max = row.freezeExemptMaxCount ?? 0;
+        parts.push(`剩余 ${max - used}/${max} 次`);
+    }
+    return parts.join(' · ');
+}

@@ -17,7 +17,7 @@ const SECONDARY_ROUTE_TITLE: Record<string, string> = {
   "/admin/supplies/claim-export": "领用单导出",
   "/admin/supplies/manage": "物资管理",
   "/admin/supplies/process": "领用出库处理",
-  "/admin/material/review": "申领审核",
+  "/admin/material/review": "学生审核",
   "/admin/material/manage": "物品管理",
   "/admin/material/audit": "物资申领统计",
   "/admin/material/audit-export": "申领审计导出",

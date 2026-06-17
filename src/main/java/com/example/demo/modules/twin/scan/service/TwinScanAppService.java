@@ -15,6 +15,8 @@ import com.example.demo.modules.twin.dashboard.service.TwinScanPopupAnnouncement
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationNoticeConfigService;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 import com.example.demo.modules.twin.rpg.service.RpgEngineService;
+import com.example.demo.modules.twin.scan.delay.dto.ScanDelayOptionDTO;
+import com.example.demo.modules.twin.scan.delay.service.ScanDelayConfigService;
 import com.example.demo.modules.twin.scan.support.ScanAnalyzeTimingTrace;
 import com.example.demo.modules.twin.scan.support.ScanPopupEntryWindowEvaluator;
 import com.example.demo.modules.twin.scan.support.ScanPopupFlowLog;
@@ -70,6 +72,9 @@ public class TwinScanAppService {
 
     @Autowired
     private DahuaSwingMapper dahuaSwingMapper;
+
+    @Autowired
+    private ScanDelayConfigService scanDelayConfigService;
 
     @Value("${app.business-timezone:Asia/Shanghai}")
     private String businessTimeZone;
@@ -213,11 +218,17 @@ public class TwinScanAppService {
             }
             result.setScanPopupEntryWindowEnabled(ScanPopupEntryWindowEvaluator.isWindowEnabled(swingCfg));
             boolean entryAllowedNow = ScanPopupEntryWindowEvaluator.isEntryAllowedNow(swingCfg, winZone);
-            // 风控豁免：非开放时段仍允许扫码进入（与联动豁免同源）
-            if (!entryAllowedNow && twinCardMappingService.isLinkageRuleExempt(realPhysicalId)) {
-                entryAllowedNow = true;
-            }
+            // 全局时段仍返回 scanPopupEntryAllowedNow；非开放时段下按房间标注 scanEntryTimeExempt（与 execute 一致）
             result.setScanPopupEntryAllowedNow(entryAllowedNow);
+            java.util.List<String> exemptRoomIds =
+                    twinCardMappingService.listScanEntryExemptRoomIds(realPhysicalId);
+            if (!exemptRoomIds.isEmpty()) {
+                result.setScanPopupExemptRoomIds(exemptRoomIds);
+            }
+            if (!entryAllowedNow) {
+                annotateScanEntryTimeExempt(realPhysicalId, result.getPendingRooms(), exemptRoomIds);
+                annotateScanEntryTimeExempt(realPhysicalId, result.getAllowedRooms(), exemptRoomIds);
+            }
             try {
                 long tViol = System.currentTimeMillis();
                 result.setStudentViolationNotice(twinStudentViolationService.buildNotice(realPhysicalId));
@@ -280,6 +291,7 @@ public class TwinScanAppService {
                             traceId, realPhysicalId, e.getMessage());
                 }
             }
+            annotateScanDelayOptions(result);
             result.setSuccess(true);
         } catch (Exception e) {
             log.error("[扫码·解析] trace={} 异常 {}", traceId, e.getMessage(), e);
@@ -308,5 +320,85 @@ public class TwinScanAppService {
                     result.getMessage());
         }
         return result;
+    }
+
+    /** 非开放时段：为已配置免冻结授权的房间打上 scanEntryTimeExempt，供扫码弹窗按房间解锁「进入」。 */
+    private void annotateScanEntryTimeExempt(
+            String userId,
+            List<Map<String, Object>> rooms,
+            java.util.List<String> exemptRoomIds) {
+        if (userId == null || userId.isBlank() || rooms == null || rooms.isEmpty()) {
+            return;
+        }
+        java.util.Set<String> exemptSet = exemptRoomIds == null || exemptRoomIds.isEmpty()
+                ? java.util.Collections.emptySet()
+                : new java.util.LinkedHashSet<>(exemptRoomIds);
+        for (Map<String, Object> room : rooms) {
+            if (room == null) {
+                continue;
+            }
+            String roomId = resolveScanRoomId(room);
+            if (roomId != null
+                    && (exemptSet.contains(roomId)
+                    || twinCardMappingService.isRoomExemptForScanEntry(userId, roomId))) {
+                room.put("scanEntryTimeExempt", true);
+            }
+        }
+    }
+
+    private static String resolveScanRoomId(Map<String, Object> room) {
+        Object official = room.get("officialRoomId");
+        if (official != null && !String.valueOf(official).isBlank()) {
+            return String.valueOf(official).trim();
+        }
+        if (room.get("id") != null && !String.valueOf(room.get("id")).isBlank()) {
+            return String.valueOf(room.get("id")).trim();
+        }
+        return null;
+    }
+
+    private void annotateScanDelayOptions(ScanAnalyzeResponseDTO result) {
+        boolean enabled = scanDelayConfigService.isMasterEnabled();
+        result.setScanDelayEnabled(enabled);
+        if (!enabled) {
+            result.setScanDelayOptionsByRoom(java.util.Collections.emptyMap());
+            return;
+        }
+        result.setScanDelayButtonLabel(scanDelayConfigService.getButtonLabel());
+        java.util.List<String> roomIds = new java.util.ArrayList<>();
+        collectScanRoomIds(result.getPendingRooms(), roomIds);
+        collectScanRoomIds(result.getAllowedRooms(), roomIds);
+        if (roomIds.isEmpty()) {
+            result.setScanDelayOptionsByRoom(java.util.Collections.emptyMap());
+            return;
+        }
+        Map<String, java.util.List<ScanDelayOptionDTO>> grouped =
+                scanDelayConfigService.listVisibleOptionsByRoomIds(roomIds);
+        Map<String, java.util.List<Map<String, Object>>> out = new java.util.LinkedHashMap<>();
+        for (Map.Entry<String, java.util.List<ScanDelayOptionDTO>> e : grouped.entrySet()) {
+            java.util.List<Map<String, Object>> items = new java.util.ArrayList<>();
+            for (ScanDelayOptionDTO dto : e.getValue()) {
+                Map<String, Object> m = new java.util.LinkedHashMap<>();
+                m.put("id", dto.getId());
+                m.put("roomId", dto.getRoomId());
+                m.put("optionLabel", dto.getOptionLabel());
+                m.put("requireApproval", dto.isRequireApproval());
+                m.put("reviewerUserIds", dto.getReviewerUserIds());
+                m.put("exemptMode", dto.getExemptMode());
+                m.put("durationMinutes", dto.getDurationMinutes());
+                m.put("maxCount", dto.getMaxCount());
+                items.add(m);
+            }
+            out.put(e.getKey(), items);
+        }
+        result.setScanDelayOptionsByRoom(out);
+    }
+
+    private void collectScanRoomIds(List<Map<String, Object>> rooms, java.util.List<String> sink) {
+        if (rooms == null) return;
+        for (Map<String, Object> room : rooms) {
+            String id = resolveScanRoomId(room);
+            if (id != null && !sink.contains(id)) sink.add(id);
+        }
     }
 }

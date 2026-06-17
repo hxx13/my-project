@@ -11,6 +11,7 @@ import {
   SCENE_LAYOUT_STORAGE_KEY_V4,
 } from "@/features/digital-twin-screen/layout/sceneLayoutTypes";
 import { cloneSceneLayoutDocument } from "@/features/digital-twin-screen/layout/sceneLayoutClone";
+import { randomUUID } from "@/utils/randomUUID";
 
 const DRAFT_KEY = "aro.dt.editor.draft.v1";
 const PRESETS_KEY = "aro.dt.editor.presets.v1";
@@ -30,11 +31,7 @@ export type DtEditorPresetV1 = {
 };
 
 function newPresetId(): string {
-  try {
-    return `pre-${crypto.randomUUID().slice(0, 12)}`;
-  } catch {
-    return `pre-${Date.now()}`;
-  }
+  return `pre-${randomUUID().slice(0, 12)}`;
 }
 
 export function isSceneDocumentEmpty(doc: SceneLayoutDocumentV4): boolean {

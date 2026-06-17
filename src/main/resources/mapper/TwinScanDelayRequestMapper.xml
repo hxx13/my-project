@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayRequestMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayRequest">
+        <id column="id" property="id"/>
+        <result column="subject_user_id" property="subjectUserId"/>
+        <result column="card_no" property="cardNo"/>
+        <result column="room_id" property="roomId"/>
+        <result column="option_id" property="optionId"/>
+        <result column="duration_minutes" property="durationMinutes"/>
+        <result column="reviewer_user_id" property="reviewerUserId"/>
+        <result column="status" property="status"/>
+        <result column="requested_by" property="requestedBy"/>
+        <result column="reviewed_by" property="reviewedBy"/>
+        <result column="reviewed_at" property="reviewedAt"/>
+        <result column="reject_reason" property="rejectReason"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_scan_delay_request (
+            subject_user_id, card_no, room_id, option_id, duration_minutes,
+            reviewer_user_id, status, requested_by, created_at
+        ) VALUES (
+            #{subjectUserId}, #{cardNo}, #{roomId}, #{optionId}, #{durationMinutes},
+            #{reviewerUserId}, #{status}, #{requestedBy}, NOW()
+        )
+    </insert>
+
+    <select id="findById" resultMap="BaseMap">
+        SELECT * FROM twin_scan_delay_request WHERE id = #{id}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE twin_scan_delay_request SET
+            status = #{status},
+            reviewed_by = #{reviewedBy},
+            reviewed_at = NOW(),
+            reject_reason = #{rejectReason}
+        WHERE id = #{id} AND status = 'PENDING'
+    </update>
+
+    <select id="listPendingByReviewer" resultMap="BaseMap">
+        SELECT * FROM twin_scan_delay_request
+        WHERE status = 'PENDING' AND reviewer_user_id = #{reviewerUserId}
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

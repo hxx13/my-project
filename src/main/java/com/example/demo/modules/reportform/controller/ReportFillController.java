@@ -164,7 +164,7 @@ public class ReportFillController {
     public Result<?> listSubmissions(@PathVariable Long id, HttpServletRequest request) {
         Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
         if (denied != null) return denied;
-        return Result.success(submissionMapper.selectByFormId(id));
+        return Result.success(reportFillService.listSubmissionsWithUserDisplay(id));
     }
 
     @GetMapping("/forms/{id}/export")

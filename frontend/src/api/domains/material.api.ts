@@ -362,6 +362,7 @@ export async function exportMaterialAuditTrail(params: {
 export interface MaterialDemand {
   id: number;
   userId: string;
+  userName?: string;
   suggestion: string;
   status: number;
   createdAt: string;

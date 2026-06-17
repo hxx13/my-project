@@ -146,6 +146,13 @@ function GlobalSocketListener() {
             }
         });
 
+        // 📡 监听：公告/法典/惩戒配置变更 → 实时刷新大屏公告栏
+        const onCodexRefresh = (payload: { key?: string; at?: string }) => {
+            console.log("📋 公告配置已更新:", payload?.key);
+            queryClient.invalidateQueries({ queryKey: ["public-runtime-config"] });
+        };
+        socket.on("DASHBOARD_CODEX_REFRESH", onCodexRefresh);
+
         /** 强制登出时立即断开 WebSocket，停止重连 */
         const handleForceLogout = () => {
             console.log("[数字孪生基站] 收到强制登出信号，断开 WebSocket");
@@ -161,6 +168,7 @@ function GlobalSocketListener() {
             socket.off(SOCKET_SWIPE_FAILURE_ALERT);
             socket.off(SOCKET_SWIPE_FAILURE_ALERT_DISMISS);
             socket.off("DASHBOARD_RANKING_REFRESH");
+            socket.off("DASHBOARD_CODEX_REFRESH", onCodexRefresh);
             delete (window as any).__swipeAlertSocket;
             socket.disconnect();
         };

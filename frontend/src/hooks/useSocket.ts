@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
 import { authStorage } from "@/features/auth/authStorage";
 
 export const useSocket = () => {
-    const socketRef = useRef<Socket | null>(null);
+    const [socket, setSocket] = useState<Socket | null>(null);
 
     useEffect(() => {
         const token = authStorage.getToken();
@@ -13,7 +13,7 @@ export const useSocket = () => {
             ...SOCKET_IO_CLIENT_OPTIONS,
             query: { token },
         });
-        socketRef.current = socketInstance;
+        setSocket(socketInstance);
 
         socketInstance.on('connect', () => {
             console.log('🟢 [WebSocket] 成功接入孪生事件总线! ID:', socketInstance.id);
@@ -39,5 +39,5 @@ export const useSocket = () => {
         };
     }, []);
 
-    return socketRef.current;
+    return socket;
 };

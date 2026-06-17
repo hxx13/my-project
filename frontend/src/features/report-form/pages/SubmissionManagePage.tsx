@@ -13,6 +13,10 @@ import toast from 'react-hot-toast';
 
 type ViewMode = 'table' | 'detail';
 
+function submissionUserLabel(sub: ReportFormSubmission): string {
+  return sub.displayNickname?.trim() || `用户 #${sub.userId}`;
+}
+
 export default function SubmissionManagePage() {
   const { id } = useParams<{ id: string }>();
   const formId = Number(id);
@@ -125,7 +129,7 @@ export default function SubmissionManagePage() {
               {submissions.map(sub => (
                 <tr key={sub.id} className="hover:bg-[var(--app-color-surface-hover)] cursor-pointer"
                   onClick={() => { setSelectedSub(sub); setViewMode('detail'); }}>
-                  <td className="px-3 py-2 text-[var(--app-color-text-primary)]">用户 #{sub.userId}</td>
+                  <td className="px-3 py-2 text-[var(--app-color-text-primary)]">{submissionUserLabel(sub)}</td>
                   {fieldCells.map(cell => (
                     <td key={cell.id} className="px-3 py-2 text-xs text-[var(--app-color-text-secondary)] max-w-[150px] truncate">
                       {String(sub.fieldValuesJson?.[cell.fieldKey!] ?? '—')}
@@ -160,7 +164,7 @@ export default function SubmissionManagePage() {
               >
                 <div className="flex items-center gap-2">
                   <User className="w-3 h-3" />
-                  用户 #{sub.userId}
+                  {submissionUserLabel(sub)}
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 ml-5">
                   {statusBadge(sub.status)}
@@ -178,7 +182,7 @@ export default function SubmissionManagePage() {
                 <div className="flex items-center gap-3 mb-3">
                   <CheckCircle className={`w-4 h-4 ${selectedSub.status === 'submitted' ? 'text-[var(--app-color-accent)]' : 'text-[var(--app-color-text-tertiary)]'}`} />
                   <span className="text-xs text-[var(--app-color-text-secondary)]">
-                    用户 #{selectedSub.userId} · {statusBadge(selectedSub.status)}
+                    {submissionUserLabel(selectedSub)} · {statusBadge(selectedSub.status)}
                   </span>
                   <span className="text-[10px] text-[var(--app-color-text-tertiary)]">
                     v{selectedSub.version}

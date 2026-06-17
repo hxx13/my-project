@@ -216,7 +216,7 @@ public class TwinScanController {
             }
             if (accessType == 1
                     && !ScanPopupEntryWindowEvaluator.isEntryAllowedNow(swingCfg, winZone)
-                    && !twinCardMappingService.isLinkageRuleExempt(userId)) {
+                    && !twinCardMappingService.isRoomExemptForScanEntry(userId, roomId)) {
                 result.setSuccess(false);
                 result.setMessage("当前不在允许扫码进入的时段内，请稍后再试");
                 flowLog.fail("非开放时段");
@@ -291,10 +291,10 @@ public class TwinScanController {
             try {
                 if (accessType == 1) {
                     dispatchResult = accessRuleDispatchService.tryApplyAccessForScanEnter(effectiveRoomId, userId);
-                    // 待激活倒计时：与 enter_dispatch 是否 batch 无关；仅对已大华发卡落库（twin_card_mapping 完整）且未豁免者起算（见 DahuaSwingRuleEngineService）
-                    if (!twinCardMappingService.isLinkageRuleExempt(userId)) {
-                        dahuaSwingRuleEngineService.startPendingActivationAfterAccessRuleGrant(userId);
-                    }
+                    // 待激活倒计时：对所有已发卡用户起算（免冻结增强：不再豁免激活规则）
+                    dahuaSwingRuleEngineService.startPendingActivationAfterAccessRuleGrant(userId);
+                    // 免冻结增强：递增 COUNT/BOTH 模式已使用次数，达到上限自动收回豁免
+                    twinCardMappingService.incrementExemptUsedCount(userId, effectiveRoomId);
                 } else if (accessType == 2) {
                     deferSec = webScanExitDahuaLinkageService.resolveDeferSeconds();
                     dispatchResult = webScanExitDahuaLinkageService.revokeAndFreezeAfterExit(
