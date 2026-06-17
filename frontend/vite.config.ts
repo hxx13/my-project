@@ -1,9 +1,33 @@
 import path from "path"
 import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
+import { defineConfig, type Plugin } from "vite"
+import fs from "fs"
+
+// 仅在 dev 时提供人脸模型文件（41MB），生产构建不打包
+function serveModelsPlugin(): Plugin {
+    return {
+        name: "serve-models-dev-only",
+        configureServer(server) {
+            server.middlewares.use("/models", (req, res, next) => {
+                const filePath = path.resolve(__dirname, "models", (req.url || "/").replace(/^\//, ""))
+                if (fs.existsSync(filePath)) {
+                    const ext = path.extname(filePath)
+                    const mime: Record<string, string> = {
+                        ".wasm": "application/wasm", ".task": "application/octet-stream",
+                        ".js": "application/javascript", ".json": "application/json",
+                    }
+                    res.setHeader("Content-Type", mime[ext] || "application/octet-stream")
+                    fs.createReadStream(filePath).pipe(res)
+                    return
+                }
+                next()
+            })
+        },
+    }
+}
 
 export default defineConfig({
-    plugins: [react()],
+    plugins: [react(), serveModelsPlugin()],
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "./src"),
@@ -26,7 +50,9 @@ export default defineConfig({
                 target: 'http://localhost:8081',
                 changeOrigin: true,
             }
-        }
+        },
+        // 人脸模型不打包到生产 JAR（41MB）；dev 时 Vite 自动从 public/models 提供
+        // 生产构建时 public/models/ 已删除，仅保留在 frontend/models/
     },
 
     build: {
