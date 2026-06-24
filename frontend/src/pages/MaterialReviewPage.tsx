@@ -245,14 +245,19 @@ export default function MaterialReviewPage() {
   return (
     <div className="space-y-6">
       <AdminSubPageHeader title="学生审核" fallbackTo="/admin" description="审核学生物资申领、延迟免冻结申请与需求建议。" />
-      <div className="flex flex-wrap gap-1">
-        {([
-          ["material", `物资审核${(pendingData ?? []).length + (finishedData?.data ?? []).length > 0 ? ` (${(pendingData ?? []).length + (finishedData?.data ?? []).length})` : ""}`],
-          ["scanDelay", `延迟免冻结${scanDelayPending.length ? ` (${scanDelayPending.length})` : ""}`],
-          ["demands", `需求建议${demands.length ? ` (${demands.filter((d: MaterialDemand) => d.status === 0).length})` : ""}`],
-        ] as [TabKey, string][]).map(([k, v]) => (
-          <button key={k} onClick={() => switchTab(k)} className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${tab === k ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}>{v}</button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-1">
+        <div className="flex flex-wrap gap-1">
+          {([
+            ["material", `物资审核${(pendingData ?? []).length + (finishedData?.data ?? []).length > 0 ? ` (${(pendingData ?? []).length + (finishedData?.data ?? []).length})` : ""}`],
+            ["scanDelay", `延迟免冻结${scanDelayPending.length ? ` (${scanDelayPending.length})` : ""}`],
+            ["demands", `需求建议${demands.length ? ` (${demands.filter((d: MaterialDemand) => d.status === 0).length})` : ""}`],
+          ] as [TabKey, string][]).map(([k, v]) => (
+            <button key={k} onClick={() => switchTab(k)} className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${tab === k ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}>{v}</button>
+          ))}
+        </div>
+        {(tab === "material" || tab === "scanDelay") && (
+          <button type="button" onClick={() => tab === "material" ? setMaterialAutoApproveOpen(true) : setAutoApproveOpen(true)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">自动审批</button>
+        )}
       </div>
 
       {tab === "scanDelay" ? (
@@ -263,9 +268,6 @@ export default function MaterialReviewPage() {
               <p className="mt-1 text-xs text-amber-800/90">请核对姓名、课题组与历史通过次数后审批；新申请到达时页面顶部也会出现强提醒横幅。</p>
             </div>
           ) : null}
-          <div className="flex justify-end">
-            <button type="button" onClick={() => setAutoApproveOpen(true)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-sm text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">自动审批</button>
-          </div>
           {scanDelayLoading && scanDelayHistoryLoading ? <DataSkeleton variant="card" rows={4} /> : null}
           {allScanDelay.length === 0 && !scanDelayLoading && !scanDelayHistoryLoading ? (
             <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无你负责审核的延迟免冻结记录</p>
@@ -324,9 +326,6 @@ export default function MaterialReviewPage() {
         </div>
       ) : (
         <>
-          <div className="flex justify-end">
-            <button type="button" onClick={() => setMaterialAutoApproveOpen(true)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-sm text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">自动审批</button>
-          </div>
           {loading ? <DataSkeleton variant="card" rows={5} /> : null}
           {filteredMaterialRequests.length === 0 && !loading ? (
             <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无你负责审核的物资申领</p>
