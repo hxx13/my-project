@@ -129,7 +129,7 @@ export default function MaterialReviewPage() {
     return map;
   }, [scanDelayOptions]);
 
-  const currentUserId = authStorage.getUserIdFromToken() ?? "";
+  const currentUserId = authStorage.getUserInfo()?.id?.trim() || authStorage.getUserIdFromToken()?.trim() || "";
 
   const isMyItem = useCallback(
     (itemId: number) => {
