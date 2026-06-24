@@ -364,56 +364,85 @@ function TimeGroup({ label, count, children, defaultOpen = true }: { label: stri
         <span className={`transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
         {label} ({count})
       </button>
-      {open && <div className="space-y-3">{children}</div>}
+      {open && <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{children}</div>}
     </div>
   );
 }
 
 function MaterialRequestCard({ req, canDelete, approve, reject, deleteReq, handleExportPersonal }: { req: MaterialRequest; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void }) {
+  const isPending = req.status === "PENDING" || req.status === "FIRST_OK";
   return (
-    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-[var(--twin-mute)] font-mono">{req.id}</span>
-        <div className="flex items-center gap-2">
-          <span className={`text-[11px] px-2.5 py-0.5 rounded-full border font-medium ${statusBadge(req.status)}`}>{statusLabel(req.status)}</span>
-          <button onClick={() => handleExportPersonal(req.id)} className="text-[11px] text-blue-600 hover:underline">导出</button>
-          {canDelete && <button onClick={() => { if (!window.confirm("删除此申领？")) return; deleteReq.mutate(req.id); }} className="text-[11px] text-red-500 hover:underline">删除</button>}
+    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2">
+      {/* 顶栏：ID + 状态 + 操作 */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-[var(--twin-mute)] font-mono">{req.id}</span>
+        <div className="flex items-center gap-1.5">
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${statusBadge(req.status)}`}>{statusLabel(req.status)}</span>
+          <button onClick={() => handleExportPersonal(req.id)} className="text-[10px] text-blue-600 hover:underline shrink-0">导出</button>
+          {canDelete && <button onClick={() => { if (!window.confirm("删除此申领？")) return; deleteReq.mutate(req.id); }} className="text-[10px] text-red-500 hover:underline shrink-0">删除</button>}
         </div>
       </div>
-      <div>
-        <span className="font-medium text-[var(--twin-ink)]">{req.applicantName || req.userId}</span>
-        {req.applicantGroup && <span className="text-[var(--twin-mute)] ml-2">({req.applicantGroup})</span>}
-      </div>
-      <div className="space-y-1">{req.lines?.map((l: MaterialRequestLine, i: number) => (<div key={i} className="flex items-center justify-between text-sm"><span className="text-[var(--twin-body)]">{l.snapshotName} × {l.qty}</span>{l.fulfilledQty > 0 && <span className="text-xs text-green-600">已出库 {l.fulfilledQty}</span>}</div>))}</div>
-      <div className="text-xs text-[var(--twin-mute)]">{req.createdAt ? formatBeijingDateTimeFull(req.createdAt) : "—"}</div>
-      {(req.status === "PENDING" || req.status === "FIRST_OK") && (
-        <div className="flex gap-2 pt-1 border-t border-[var(--twin-hairline)]">
-          <button onClick={() => approve.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "审核失败") })} className="rounded-twin-sm bg-green-600 px-4 py-1.5 text-sm font-medium text-white">
-            {req.status === "FIRST_OK" ? "复审通过并出库" : req.workflowType === "DUAL_REVIEW" ? "初审通过" : "通过并出库"}
-          </button>
-          <button onClick={() => reject.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "操作失败") })} className="rounded-twin-sm bg-red-500 px-4 py-1.5 text-sm font-medium text-white">拒绝</button>
+      {/* 主体：横向双栏 — 左：人员+物品 | 右：时间+操作 */}
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-medium text-sm text-[var(--twin-ink)]">{req.applicantName || req.userId}</span>
+            {req.applicantGroup && <span className="text-[11px] text-[var(--twin-mute)]">({req.applicantGroup})</span>}
+          </div>
+          <div className="space-y-0.5">{req.lines?.map((l: MaterialRequestLine, i: number) => (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <span className="text-[var(--twin-body)] truncate">{l.snapshotName}</span>
+              <span className="text-[var(--twin-mute)] shrink-0">×{l.qty}</span>
+              {l.fulfilledQty > 0 && <span className="text-[10px] text-green-600 shrink-0">已出库 {l.fulfilledQty}</span>}
+            </div>
+          ))}</div>
         </div>
-      )}
+        <div className="shrink-0 flex flex-col items-end gap-1.5 min-w-[120px]">
+          <span className="text-[11px] text-[var(--twin-mute)] text-right">{req.createdAt ? formatBeijingDateTimeFull(req.createdAt) : "—"}</span>
+          {isPending && (
+            <div className="flex gap-1.5">
+              <button onClick={() => approve.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "审核失败") })} className="rounded-twin-sm bg-green-600 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">
+                {req.status === "FIRST_OK" ? "复审通过" : req.workflowType === "DUAL_REVIEW" ? "初审通过" : "通过"}
+              </button>
+              <button onClick={() => reject.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "操作失败") })} className="rounded-twin-sm bg-red-500 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">拒绝</button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 function ScanDelayPendingCard({ req, highlightRequestId, onReview }: { req: ScanDelayPendingRequest; highlightRequestId: string | null; onReview: (req: ScanDelayPendingRequest, approve: boolean) => Promise<void> }) {
   return (
-    <div className={`rounded-twin-lg border bg-[var(--twin-canvas)] p-4 shadow-twin-level-1 space-y-2 ${highlightRequestId && String(req.id) === highlightRequestId ? "border-[var(--twin-primary)] ring-2 ring-[var(--twin-primary)]/30" : "border-[var(--twin-hairline)]"}`}>
+    <div className={`rounded-twin-lg border bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2 ${highlightRequestId && String(req.id) === highlightRequestId ? "border-[var(--twin-primary)] ring-2 ring-[var(--twin-primary)]/30" : "border-[var(--twin-hairline)]"}`}>
+      {/* 顶栏：ID + 状态 */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-mono text-[var(--twin-mute)]">#{req.id}</span>
-        <span className="text-[11px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">待审核</span>
+        <span className="text-[11px] font-mono text-[var(--twin-mute)]">#{req.id}</span>
+        <span className="text-[10px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200 shrink-0">待审核</span>
       </div>
-      <p className="text-sm text-[var(--twin-ink)]"><span className="font-medium">{req.roomName || req.roomId}</span><span className="text-[var(--twin-mute)]"> · {req.optionLabel || "延迟免冻结"}</span></p>
-      <p className="text-sm font-medium text-[var(--twin-ink)]">
-        {req.subjectDisplayName || req.subjectUserId}
-        <span className="font-normal text-[var(--twin-mute)]"> · {req.subjectGroupName || "未标注课题组"} · 历史已通过 {req.approvedCount ?? 0} 次{(req.referenceSeq ?? 0) > 0 ? `（本次为第 ${req.referenceSeq} 次）` : ""}</span>
-      </p>
-      {req.createdAt ? (<p className="text-xs text-[var(--twin-mute)]">申请于 {formatBeijingDateTimeFull(req.createdAt)}</p>) : null}
-      <div className="flex gap-2 pt-2 border-t border-[var(--twin-hairline)]">
-        <button type="button" onClick={() => void onReview(req, true)} className="rounded-twin-sm bg-green-600 px-4 py-1.5 text-sm font-medium text-white">通过并授予免冻结</button>
-        <button type="button" onClick={() => void onReview(req, false)} className="rounded-twin-sm bg-red-500 px-4 py-1.5 text-sm font-medium text-white">拒绝</button>
+      {/* 主体：横向双栏 — 左：人员+房间 | 右：统计+操作 */}
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-medium text-sm text-[var(--twin-ink)]">{req.subjectDisplayName || req.subjectUserId}</span>
+            <span className="text-[11px] text-[var(--twin-mute)]">{req.subjectGroupName || "未标注课题组"}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-[var(--twin-body)]">
+            <span>{req.roomName || req.roomId}</span>
+            <span className="text-[var(--twin-mute)]">· {req.optionLabel || "延迟免冻结"}</span>
+          </div>
+          <p className="text-[11px] text-[var(--twin-mute)]">
+            历史通过 {req.approvedCount ?? 0} 次{(req.referenceSeq ?? 0) > 0 ? ` · 第 ${req.referenceSeq} 次` : ""}
+          </p>
+        </div>
+        <div className="shrink-0 flex flex-col items-end gap-1.5 min-w-[140px]">
+          {req.createdAt && <span className="text-[11px] text-[var(--twin-mute)] text-right">{formatBeijingDateTimeFull(req.createdAt)}</span>}
+          <div className="flex gap-1.5">
+            <button type="button" onClick={() => void onReview(req, true)} className="rounded-twin-sm bg-green-600 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">通过</button>
+            <button type="button" onClick={() => void onReview(req, false)} className="rounded-twin-sm bg-red-500 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">拒绝</button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -421,15 +450,34 @@ function ScanDelayPendingCard({ req, highlightRequestId, onReview }: { req: Scan
 
 function ScanDelayHistoryCard({ req }: { req: ScanDelayHistoryRequest }) {
   return (
-    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1 space-y-2">
+    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2">
+      {/* 顶栏：ID + 状态 */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-mono text-[var(--twin-mute)]">#{req.id}</span>
-        <span className={`text-[11px] px-2 py-0.5 rounded-full border ${req.status === "APPROVED" ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>{req.status === "APPROVED" ? "已通过" : "已拒绝"}</span>
+        <span className="text-[11px] font-mono text-[var(--twin-mute)]">#{req.id}</span>
+        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${req.status === "APPROVED" ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>{req.status === "APPROVED" ? "已通过" : "已拒绝"}</span>
       </div>
-      <p className="text-sm text-[var(--twin-ink)]"><span className="font-medium">{req.roomName || req.roomId}</span><span className="text-[var(--twin-mute)]"> · {req.optionLabel || "延迟免冻结"}</span></p>
-      <p className="text-sm font-medium text-[var(--twin-ink)]">{req.subjectDisplayName || req.subjectUserId}<span className="font-normal text-[var(--twin-mute)]"> · {req.subjectGroupName || "未标注课题组"}</span></p>
-      {req.createdAt ? (<p className="text-xs text-[var(--twin-mute)]">申请于 {formatBeijingDateTimeFull(req.createdAt)}</p>) : null}
-      {req.reviewedAt ? (<p className="text-xs text-[var(--twin-mute)]">处理于 {formatBeijingDateTimeFull(req.reviewedAt)}{req.reviewedBy ? <span> · 审核人 {req.reviewedBy}</span> : null}</p>) : null}
+      {/* 主体：横向双栏 — 左：人员+房间 | 右：时间+审核人 */}
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-medium text-sm text-[var(--twin-ink)]">{req.subjectDisplayName || req.subjectUserId}</span>
+            <span className="text-[11px] text-[var(--twin-mute)]">{req.subjectGroupName || "未标注课题组"}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-[var(--twin-body)]">
+            <span>{req.roomName || req.roomId}</span>
+            <span className="text-[var(--twin-mute)]">· {req.optionLabel || "延迟免冻结"}</span>
+          </div>
+        </div>
+        <div className="shrink-0 flex flex-col items-end gap-1 min-w-[140px]">
+          {req.createdAt && <span className="text-[11px] text-[var(--twin-mute)] text-right">申请 {formatBeijingDateTimeFull(req.createdAt)}</span>}
+          {req.reviewedAt && (
+            <span className="text-[11px] text-[var(--twin-mute)] text-right">
+              处理 {formatBeijingDateTimeFull(req.reviewedAt)}
+              {req.reviewedBy && <span className="text-[var(--twin-ink)]"> · {req.reviewedBy}</span>}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
