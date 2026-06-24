@@ -108,6 +108,23 @@ export default function MaterialReviewPage() {
     staleTime: 60_000,
   });
 
+  const { data: reviewerList = [] } = useQuery<{ id: string; username?: string; displayNickname?: string }[]>({
+    queryKey: ["material", "admin", "eligible-reviewers"],
+    queryFn: async () => {
+      const res = await authHttp.get<{ success: boolean; data: { id: string; username?: string; displayNickname?: string }[] }>("/material/admin/eligible-reviewers");
+      return res.data?.data ?? [];
+    },
+    staleTime: 120_000,
+  });
+
+  const reviewerNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of reviewerList) {
+      map.set(r.id, r.displayNickname || r.username || r.id);
+    }
+    return map;
+  }, [reviewerList]);
+
   const demands = demandData?.data ?? [];
 
   const itemReviewerMap = useMemo(() => {
@@ -278,7 +295,7 @@ export default function MaterialReviewPage() {
                   {scanDelayToday.map(item => item._kind === "pending" ? (
                     <ScanDelayPendingCard key={`p-${item.id}`} req={item} highlightRequestId={highlightRequestId} onReview={handleScanDelayReview} />
                   ) : (
-                    <ScanDelayHistoryCard key={`h-${item.id}`} req={item} />
+                    <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} />
                   ))}
                 </TimeGroup>
               )}
@@ -287,7 +304,7 @@ export default function MaterialReviewPage() {
                   {scanDelayHistoryFiltered.map(item => item._kind === "pending" ? (
                     <ScanDelayPendingCard key={`p-${item.id}`} req={item} highlightRequestId={highlightRequestId} onReview={handleScanDelayReview} />
                   ) : (
-                    <ScanDelayHistoryCard key={`h-${item.id}`} req={item} />
+                    <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} />
                   ))}
                 </TimeGroup>
               )}
@@ -447,7 +464,8 @@ function ScanDelayPendingCard({ req, highlightRequestId, onReview }: { req: Scan
   );
 }
 
-function ScanDelayHistoryCard({ req }: { req: ScanDelayHistoryRequest }) {
+function ScanDelayHistoryCard({ req, reviewerNameMap }: { req: ScanDelayHistoryRequest; reviewerNameMap: Map<string, string> }) {
+  const reviewerDisplay = req.reviewedBy ? (reviewerNameMap.get(req.reviewedBy) || req.reviewedBy) : null;
   return (
     <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2">
       {/* 顶栏：ID + 状态 */}
@@ -455,7 +473,7 @@ function ScanDelayHistoryCard({ req }: { req: ScanDelayHistoryRequest }) {
         <span className="text-[11px] font-mono text-[var(--twin-mute)]">#{req.id}</span>
         <span className={`text-[10px] px-2 py-0.5 rounded-full border ${req.status === "APPROVED" ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>{req.status === "APPROVED" ? "已通过" : "已拒绝"}</span>
       </div>
-      {/* 主体：横向双栏 — 左：人员+房间 | 右：时间+审核人 */}
+      {/* 主体 */}
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -472,7 +490,7 @@ function ScanDelayHistoryCard({ req }: { req: ScanDelayHistoryRequest }) {
           {req.reviewedAt && (
             <span className="text-[11px] text-[var(--twin-mute)] text-right">
               处理 {formatBeijingDateTimeFull(req.reviewedAt)}
-              {req.reviewedBy && <span className="text-[var(--twin-ink)]"> · {req.reviewedBy}</span>}
+              {reviewerDisplay && <span className="text-[var(--twin-ink)]"> · {reviewerDisplay}</span>}
             </span>
           )}
         </div>
