@@ -80,6 +80,8 @@ export function formatExemptStatus(row: {
     if (mode === "TIME" || mode === "BOTH") {
         const remain = formatExemptRemaining(row.freezeExemptExpireAt);
         if (remain) parts.push(remain);
+        const until = formatExemptExpireAt(row.freezeExemptExpireAt);
+        if (until) parts.push(until);
     }
     if (mode === "COUNT" || mode === "BOTH") {
         const used = row.freezeExemptUsedCount ?? 0;
