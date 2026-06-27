@@ -53,12 +53,14 @@ import {
 } from "@/components/face-verify/faceConfig";
 import { Z_INDEX } from "@/constants/zIndex";
 import {
-    EXEMPT_DURATION_PRESETS,
+    DEFAULT_EXEMPT_UNTIL_TIME,
     formatExemptExpireAt,
     formatExemptRemaining,
     EXEMPT_MODE_OPTIONS,
     formatExemptStatus,
+    parseExemptRoomNames,
 } from "@/constants/exemptDurationPresets";
+import { ExemptUntilTimePicker } from "@/components/admin/ExemptUntilTimePicker";
 import { ScanDelayConfigPanel } from "@/components/scanner/ScanDelayConfigPanel";
 
 /** 自动冻结解释与保存均固定为中国时区 */
@@ -134,7 +136,9 @@ export default function DebugCardMappingPage() {
     >([]);
     const [exemptMode, setExemptMode] = useState<string>("TIME");
     const [exemptMaxCount, setExemptMaxCount] = useState<string>("");
+    const [exemptUntilTime, setExemptUntilTime] = useState<string>(DEFAULT_EXEMPT_UNTIL_TIME);
     const [exemptRoomsLoading, setExemptRoomsLoading] = useState(false);
+    const [exemptFilter, setExemptFilter] = useState<"all" | "exempt" | "controlled">("all");
     const queryClient = useQueryClient();
     const [scanDelayModalOpen, setScanDelayModalOpen] = useState(false);
     const [linkageModalOpen, setLinkageModalOpen] = useState(false);
@@ -657,7 +661,7 @@ export default function DebugCardMappingPage() {
         return Number.isNaN(n) || n < 1 ? undefined : n;
     };
 
-    const submitExemptConfig = (durationMinutes?: number) => {
+    const submitExemptConfig = (untilTime?: string) => {
         if (!exemptModal) return;
         const selectedRooms = exemptRoomOptions.filter((r) => r.selected);
         if (selectedRooms.length === 0) {
@@ -672,22 +676,26 @@ export default function DebugCardMappingPage() {
                 return;
             }
         }
+        const extendUntilTime =
+            exemptMode === "TIME" || exemptMode === "BOTH"
+                ? (untilTime ?? exemptUntilTime ?? DEFAULT_EXEMPT_UNTIL_TIME)
+                : undefined;
         toggleExemptMutation.mutate({
             cardNo: exemptModal.cardNo,
             flag: 1,
-            durationMinutes,
+            extendUntilTime,
             mode: exemptMode,
             maxCount,
-            roomIds: JSON.stringify(selectedRooms.map((r) => r.roomId)),
+            roomIds: JSON.stringify(selectedRooms.map((r) => ({ roomId: r.roomId, roomName: r.roomName }))),
         });
     };
 
     const toggleExemptMutation = useMutation({
         mutationFn: (variables: {
-            cardNo: string; flag: number; durationMinutes?: number;
+            cardNo: string; flag: number; durationMinutes?: number; extendUntilTime?: string;
             mode?: string; maxCount?: number; roomIds?: string;
         }) => updateExemptFlag(variables.cardNo, variables.flag, variables.durationMinutes,
-            variables.mode, variables.maxCount, variables.roomIds),
+            variables.mode, variables.maxCount, variables.roomIds, variables.extendUntilTime),
         onSuccess: (updated, variables) => {
             // 保存后仅合并当前行，禁止整表 load — post-save-no-full-refresh.mdc
             const patch: Partial<CardMappingRow> = {
@@ -729,7 +737,17 @@ export default function DebugCardMappingPage() {
         onSuccess: () => refetch()
     });
 
-    const displayData: CardMappingRow[] = isSearching ? searchResults : (data?.list || []);
+    const displayData: CardMappingRow[] = (() => {
+        const raw: CardMappingRow[] = isSearching ? searchResults : (data?.list || []);
+        if (exemptFilter === "all") return raw;
+        return raw.filter(row => {
+            const isExempt =
+                row.freezeExemptFlag === 1 &&
+                (!row.freezeExemptExpireAt ||
+                    Date.parse(String(row.freezeExemptExpireAt).replace(/-/g, "/")) > Date.now());
+            return exemptFilter === "exempt" ? isExempt : !isExempt;
+        });
+    })();
 
     const timeOptionsWithCurrent = (current: string) => {
         if (current && !FREEZE_TIME_OPTIONS.includes(current)) {
@@ -738,7 +756,7 @@ export default function DebugCardMappingPage() {
         return FREEZE_TIME_OPTIONS;
     };
 
-    const role = authStorage.getRole() || "STUDENT";
+    const role = authStorage.getRole() || "MEMBER";
     const canCardIssue = hasMinRole(role, "STAFF");
     const canReaper = hasMinRole(role, "SUPER_ADMIN");
     const canGrantExempt = hasMinRole(role, "ADMIN");
@@ -813,6 +831,27 @@ export default function DebugCardMappingPage() {
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             ) : null}
+                            {/* 豁免筛选 */}
+                            <div className="flex shrink-0 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-0.5 shadow-[var(--app-elevation-card)]">
+                                {([
+                                    { key: "all", label: "全部" },
+                                    { key: "exempt", label: "已豁免" },
+                                    { key: "controlled", label: "未豁免" },
+                                ] as const).map((opt) => (
+                                    <button
+                                        key={opt.key}
+                                        type="button"
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-[10px] transition-colors ${
+                                            exemptFilter === opt.key
+                                                ? "bg-[var(--app-color-accent)] text-[var(--app-color-text-inverse)] shadow-sm"
+                                                : "text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-text-primary)]"
+                                        }`}
+                                        onClick={() => setExemptFilter(opt.key)}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
                             {freezeLoading ? <span className="hidden shrink-0 text-xs text-[var(--app-color-text-tertiary)] sm:inline">配置加载中…</span> : null}
                             <AdminToolbarSearchField
                                 className="w-[min(42vw,14rem)] shrink-0 sm:w-56"
@@ -913,6 +952,7 @@ export default function DebugCardMappingPage() {
                                                     return;
                                                 }
                                                 setExemptModal({ cardNo: row.cardNo, userName: row.userName, aroUserId: row.aroUserId });
+                                                setExemptUntilTime(DEFAULT_EXEMPT_UNTIL_TIME);
                                                 setExemptMode("TIME");
                                                 setExemptMaxCount("");
                                                 setExemptRoomOptions([]);
@@ -930,6 +970,14 @@ export default function DebugCardMappingPage() {
                                             const statusText = formatExemptStatus(row);
                                             return statusText ? (
                                                 <div className="mt-1 text-[10px] text-amber-600 font-mono">{statusText}</div>
+                                            ) : null;
+                                        })()}
+                                        {isExempt && (() => {
+                                            const roomNames = parseExemptRoomNames(row.freezeExemptRoomIds);
+                                            return roomNames.length > 0 ? (
+                                                <div className="mt-0.5 text-[10px] text-[var(--app-color-accent)] font-medium leading-tight">
+                                                    房间: {roomNames.join(', ')}
+                                                </div>
                                             ) : null;
                                         })()}
                                         {isExempt && row.freezeExemptExpireAt ? (
@@ -1120,16 +1168,17 @@ export default function DebugCardMappingPage() {
                         {/* 时长选择（TIME/BOTH） */}
                         {(exemptMode === 'TIME' || exemptMode === 'BOTH') && (
                             <div className="mb-4">
-                                <label className="text-xs font-bold text-[var(--app-color-text-secondary)] mb-2 block">豁免时长</label>
-                                <div className="flex flex-col gap-1.5">
-                                    {EXEMPT_DURATION_PRESETS.map(preset => (
-                                        <button key={preset.durationMinutes} type="button"
-                                            disabled={toggleExemptMutation.isPending}
-                                            className="w-full px-4 py-2 rounded-lg text-sm font-bold text-[var(--app-color-text-secondary)] bg-[var(--app-color-surface-page)] border border-[var(--app-color-border-default)] hover:bg-amber-50 hover:border-amber-300 disabled:opacity-50 transition-colors"
-                                            onClick={() => submitExemptConfig(preset.durationMinutes)}
-                                        >{preset.label}</button>
-                                    ))}
-                                </div>
+                                <label className="text-xs font-bold text-[var(--app-color-text-secondary)] mb-2 block">延长至（当日）</label>
+                                <ExemptUntilTimePicker
+                                    value={exemptUntilTime}
+                                    onChange={(t) => setExemptUntilTime(t)}
+                                    disabled={toggleExemptMutation.isPending}
+                                />
+                                {exemptMode === "TIME" ? (
+                                    <p className="mt-2 text-[11px] text-[var(--app-color-text-tertiary)]">
+                                        选择延长至时点与授权房间后，点击下方「确认设置」生效；默认 {DEFAULT_EXEMPT_UNTIL_TIME}
+                                    </p>
+                                ) : null}
                             </div>
                         )}
 
@@ -1177,16 +1226,15 @@ export default function DebugCardMappingPage() {
                             )}
                         </div>
 
-                        {/* COUNT/BOTH 模式的提交按钮 */}
-                        {(exemptMode === 'COUNT' || exemptMode === 'BOTH') && (
-                            <button type="button"
-                                disabled={toggleExemptMutation.isPending || exemptRoomOptions.filter(r => r.selected).length === 0 || !exemptMaxCount.trim()}
-                                className="w-full px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
-                                onClick={() => submitExemptConfig(
-                                    exemptMode === 'BOTH' ? EXEMPT_DURATION_PRESETS[0].durationMinutes : undefined,
-                                )}
-                            >确认设置</button>
-                        )}
+                        <button type="button"
+                            disabled={
+                                toggleExemptMutation.isPending
+                                || exemptRoomOptions.filter((r) => r.selected).length === 0
+                                || ((exemptMode === "COUNT" || exemptMode === "BOTH") && !exemptMaxCount.trim())
+                            }
+                            className="w-full px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                            onClick={() => submitExemptConfig(exemptUntilTime)}
+                        >确认设置</button>
                     </div>
                 </div></Portal>}
 
