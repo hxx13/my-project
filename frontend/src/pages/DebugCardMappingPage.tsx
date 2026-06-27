@@ -739,7 +739,18 @@ export default function DebugCardMappingPage() {
 
     const displayData: CardMappingRow[] = (() => {
         const raw: CardMappingRow[] = isSearching ? searchResults : (data?.list || []);
-        if (exemptFilter === "all") return raw;
+        if (exemptFilter === "all") {
+            // 已豁免置顶，其余保持服务器排序
+            return [...raw].sort((a, b) => {
+                const aEx = a.freezeExemptFlag === 1 &&
+                    (!a.freezeExemptExpireAt || Date.parse(String(a.freezeExemptExpireAt).replace(/-/g, "/")) > Date.now());
+                const bEx = b.freezeExemptFlag === 1 &&
+                    (!b.freezeExemptExpireAt || Date.parse(String(b.freezeExemptExpireAt).replace(/-/g, "/")) > Date.now());
+                if (aEx && !bEx) return -1;
+                if (!aEx && bEx) return 1;
+                return 0;
+            });
+        }
         return raw.filter(row => {
             const isExempt =
                 row.freezeExemptFlag === 1 &&
