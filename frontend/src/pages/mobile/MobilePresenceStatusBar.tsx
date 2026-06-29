@@ -163,74 +163,99 @@ export default function MobilePresenceStatusBar({
         </div>
       </div>
 
-      {/* 豁免状态行 */}
+      {/* 豁免状态行 — 与上方进出状态行保持一致的布局 */}
       {snapshot.exemptStatus && snapshot.exemptStatus.phase !== "none" && (() => {
         const exempt = snapshot.exemptStatus;
-        const theme = EXEMPT_THEME[exempt.phase];
-        const ExemptIcon = theme.icon;
+        const exTheme = EXEMPT_THEME[exempt.phase];
+        const ExemptIcon = exTheme.icon;
 
         const roomText = exempt.roomNames && exempt.roomNames.length > 0
           ? exempt.roomNames.join(" · ")
           : "—";
 
-        let rightPill: string | null = null;
+        let rightPillText: string | null = null;
         if (exempt.phase === "pending_review") {
-          rightPill = exempt.extendUntilTime
+          rightPillText = exempt.extendUntilTime
             ? `延长至 ${exempt.extendUntilTime}`
             : null;
         } else if (exempt.phase === "approved_active") {
           if (exempt.mode === "COUNT") {
-            const count = exempt.maxCount != null
+            rightPillText = exempt.maxCount != null
               ? `剩余 ${Math.max(0, exempt.maxCount - exempt.usedCount)}/${exempt.maxCount} 次`
               : null;
-            rightPill = count;
           } else if (exempt.mode === "BOTH") {
             const time = exempt.remainingText || "";
-            const count = exempt.maxCount != null
+            const cnt = exempt.maxCount != null
               ? `剩余 ${Math.max(0, exempt.maxCount - exempt.usedCount)}/${exempt.maxCount} 次`
               : "";
-            rightPill = [time, count].filter(Boolean).join(" · ");
+            rightPillText = [time, cnt].filter(Boolean).join(" · ");
           } else {
-            // TIME mode (default)
-            rightPill = exempt.remainingText && exempt.expireAt
+            rightPillText = exempt.remainingText && exempt.expireAt
               ? `${exempt.remainingText} · 至 ${exempt.expireAt.slice(11, 16)}`
               : exempt.remainingText || null;
           }
         } else if (exempt.phase === "approved_expired") {
-          rightPill = exempt.expireAt
+          rightPillText = exempt.expireAt
             ? `已到期（至 ${exempt.expireAt.slice(11, 16)}）`
             : "已到期";
         }
-        // rejected: no right pill
+
+        const showRoom =
+          exempt.phase === "pending_review" ||
+          exempt.phase === "approved_active" ||
+          exempt.phase === "approved_expired";
 
         return (
           <>
             <div
-              className="mt-2 pt-2 flex items-center gap-1.5 flex-wrap"
-              style={{ borderTop: `1px dashed ${theme.border}` }}
-            >
-              <ExemptIcon className="size-[15px] shrink-0" style={{ color: theme.accent }} strokeWidth={2.2} />
-              <span
-                className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold shrink-0"
-                style={{ background: theme.soft, color: theme.text }}
+              className="mt-2 pt-2"
+              style={{ borderTop: `1px dashed ${exTheme.border}` }}
+            />
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className="size-9 shrink-0 rounded-full flex items-center justify-center"
+                style={{ background: exTheme.soft }}
               >
-                {theme.badge}
-              </span>
-              <span className="text-[11px] truncate min-w-0" style={{ color: exempt.phase === "pending_review" ? theme.accent : "#64748b", fontSize: exempt.phase === "pending_review" ? "14px" : "11px", fontWeight: exempt.phase === "pending_review" ? 700 : 400 }}>
-                {exempt.phase === "rejected" ? `已申请 · ${roomText} · 已拒绝` : roomText}
-              </span>
-              {rightPill && (
-                <span
-                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold tabular-nums whitespace-nowrap shrink-0 ml-auto"
-                  style={{
-                    background: theme.soft,
-                    border: `1px solid ${theme.border}`,
-                    color: theme.text,
-                  }}
-                >
-                  {rightPill}
-                </span>
-              )}
+                <ExemptIcon className="size-[17px]" style={{ color: exTheme.accent }} strokeWidth={2.4} />
+              </div>
+
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                  <span
+                    className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-bold shrink-0"
+                    style={{ background: exTheme.accent, color: "#ffffff" }}
+                  >
+                    {exTheme.badge}
+                  </span>
+
+                  {showRoom && (
+                    <span
+                      className="text-[21px] font-bold truncate min-w-0 leading-tight tracking-tight"
+                      style={{ color: exTheme.accent }}
+                      title={roomText}
+                    >
+                      {roomText}
+                    </span>
+                  )}
+
+                  {exempt.phase === "rejected" && (
+                    <span className="text-[12px] truncate min-w-0" style={{ color: exTheme.accent }}>
+                      已申请 · {roomText} · 已拒绝
+                    </span>
+                  )}
+                </div>
+
+                {rightPillText && (
+                  <PresencePill theme={{
+                    accent: exTheme.accent,
+                    soft: exTheme.soft,
+                    border: exTheme.border,
+                    text: exTheme.text,
+                  }}>
+                    {rightPillText}
+                  </PresencePill>
+                )}
+              </div>
             </div>
           </>
         );
