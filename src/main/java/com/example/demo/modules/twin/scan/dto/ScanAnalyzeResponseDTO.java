@@ -46,4 +46,6 @@ public class ScanAnalyzeResponseDTO {
     private String scanDelayButtonLabel;
     /** 按房间 ID 分组的延迟二级菜单项 */
     private Map<String, List<Map<String, Object>>> scanDelayOptionsByRoom;
+    /** H5 首页豁免状态（综合 twin_card_mapping + 延迟申请推导） */
+    private ExemptStatusDTO exemptStatus;
 }
