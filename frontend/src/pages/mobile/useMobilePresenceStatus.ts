@@ -215,7 +215,7 @@ export function useMobilePresenceStatus(
     if (jwtMode) {
       exempt = exemptState;
     } else {
-      const raw = (analyze as any).exemptStatus;
+      const raw = analyze.exemptStatus;
       exempt = (raw && raw.phase && raw.phase !== "none") ? (raw as ExemptStatus) : null;
     }
 
