@@ -346,3 +346,9 @@ export async function fetchStudentMobileGroupActivityRoomUsage(
   if (!resp.data.success) throw new Error(resp.data.message || "加载失败");
   return resp.data.data ?? [];
 }
+
+// ======================== Mark Read ========================
+
+export async function markStudentMobileAlertsReadAll(): Promise<void> {
+  await authHttp.post(`/student/mobile/alerts/read-all`);
+}

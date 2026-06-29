@@ -699,3 +699,10 @@ export async function generateMobileToken(
   }>("/scan/student-mobile-token/generate", { userId, durationDays });
   return unwrapApiResponse(resp.data as any);
 }
+
+// ======================== 标记已读 ========================
+
+/** 将所有反馈类通知标记为已读（公开 token 接口） */
+export async function markMobileAlertsReadAll(token: string): Promise<void> {
+  await publicHttp.post(`/public/mobile-center/${encodeURIComponent(token)}/alerts/read-all`);
+}
