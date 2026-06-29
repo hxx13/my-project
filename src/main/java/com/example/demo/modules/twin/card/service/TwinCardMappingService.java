@@ -50,6 +50,9 @@ public class TwinCardMappingService {
     @Autowired
     private DahuaAutoSignoutService dahuaAutoSignoutService;
 
+    @Autowired
+    private com.example.demo.modules.student.service.MobilePresenceNotifyService mobilePresenceNotifyService;
+
     // 🚨 核心防爆盾：双向极速索引缓存 (ConcurrentHashMap 保证线程安全)
     private final Map<String, TwinCardMapping> cardNoCache = new ConcurrentHashMap<>();
     private final Map<String, TwinCardMapping> userIdCache = new ConcurrentHashMap<>();
@@ -433,6 +436,12 @@ public class TwinCardMappingService {
         out.put("freezeExemptMaxCount", flag == 1 ? maxCount : null);
         out.put("freezeExemptRoomIds", flag == 1 ? roomIds : null);
         out.put("lastModifiedTime", updateTime);
+        // WebSocket 推送：H5 首页实时更新豁免状态
+        if (cacheItem != null && cacheItem.getAroUserId() != null && !cacheItem.getAroUserId().isBlank()) {
+            mobilePresenceNotifyService.notifyPresenceChanged(
+                    cacheItem.getAroUserId().trim(),
+                    flag == 1 ? "exempt_granted" : "exempt_revoked");
+        }
         return out;
     }
 
@@ -449,6 +458,11 @@ public class TwinCardMappingService {
             int affected = mappingMapper.incrementExemptUsedCount(userId.trim(), roomId);
             if (affected > 0) {
                 refreshMappingCacheAfterExemptWrite(userId.trim(), null);
+                // 检查次数是否已耗尽（COUNT/BOTH 模式）
+                TwinCardMapping mapping = getByAroUserId(userId.trim());
+                if (mapping != null && (mapping.getFreezeExemptFlag() == null || mapping.getFreezeExemptFlag() == 0)) {
+                    mobilePresenceNotifyService.notifyPresenceChanged(userId.trim(), "exempt_exhausted");
+                }
             }
         } catch (Exception e) {
             log.warn("[豁免次数] incrementExemptUsedCount 失败 userId={} err={}", userId, e.getMessage());
@@ -708,10 +722,19 @@ public class TwinCardMappingService {
     @Scheduled(fixedDelay = 60_000, initialDelay = 45_000)
     public void revokeExpiredTimedExemptions() {
         try {
+            // 收前快照：查询即将被收回的用户，推送 WebSocket 通知
+            List<String> expiredUserIds = mappingMapper.findExpiredExemptUserIds();
             int rows = mappingMapper.revokeExpiredExemptionsByExpireAt();
             if (rows > 0) {
                 syncCacheClearedExemptFlags();
                 log.info("[豁免时效] 已自动收回 {} 份到期豁免", rows);
+                if (expiredUserIds != null) {
+                    for (String uid : expiredUserIds) {
+                        if (uid != null && !uid.isBlank()) {
+                            mobilePresenceNotifyService.notifyPresenceChanged(uid.trim(), "exempt_expired");
+                        }
+                    }
+                }
             }
             // 免冻结增强：同时收回次数已耗尽的 COUNT/BOTH 豁免（兜底，主路径在 incrementExemptUsedCount 中已处理）
             int countExhausted = mappingMapper.revokeExhaustedCountExemptions();

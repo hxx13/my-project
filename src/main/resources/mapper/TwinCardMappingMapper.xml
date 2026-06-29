@@ -307,4 +307,11 @@
           AND freeze_exempt_used_count >= freeze_exempt_max_count
     </update>
 
+    <select id="findExpiredExemptUserIds" resultType="string">
+        SELECT aro_user_id FROM twin_card_mapping
+        WHERE freeze_exempt_flag = 1
+          AND freeze_exempt_expire_at IS NOT NULL
+          AND freeze_exempt_expire_at &lt;= NOW()
+    </select>
+
 </mapper>

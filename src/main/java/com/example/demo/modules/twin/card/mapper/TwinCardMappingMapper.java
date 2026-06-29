@@ -72,4 +72,7 @@ public interface TwinCardMappingMapper {
 
     /** 收回次数已耗尽的 COUNT/BOTH 豁免（定时兜底） */
     int revokeExhaustedCountExemptions();
+
+    /** 查询即将被定时任务收回的到期豁免用户 ID（用于 WebSocket 推送） */
+    List<String> findExpiredExemptUserIds();
 }
