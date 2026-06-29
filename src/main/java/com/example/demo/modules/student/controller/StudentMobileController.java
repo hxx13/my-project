@@ -20,6 +20,7 @@ import com.example.demo.modules.student.dto.StudentDashboardResponse.RecentNotic
 import com.example.demo.modules.student.service.MobileCenterAlertService;
 import com.example.demo.modules.student.service.StudentCageShelfService;
 import com.example.demo.modules.student.service.StudentDashboardService;
+import com.example.demo.modules.student.service.StudentNotificationService;
 import com.example.demo.modules.student.service.StudentRoomService;
 import com.example.demo.modules.student.service.StudentViolationService;
 import com.example.demo.modules.student.support.StudentMobileHtml5Privilege;
@@ -63,6 +64,7 @@ public class StudentMobileController {
     private final StudentViolationService studentViolationService;
     private final MobileCenterAlertService mobileCenterAlertService;
     private final StudentActivityService studentActivityService;
+    private final StudentNotificationService studentNotificationService;
 
     public StudentMobileController(AuthContextService authContextService,
                                    UserMapper userMapper,
@@ -77,7 +79,8 @@ public class StudentMobileController {
                                    StudentCageShelfService cageShelfService,
                                    StudentViolationService studentViolationService,
                                    MobileCenterAlertService mobileCenterAlertService,
-                                   StudentActivityService studentActivityService) {
+                                   StudentActivityService studentActivityService,
+                                   StudentNotificationService studentNotificationService) {
         this.authContextService = authContextService;
         this.userMapper = userMapper;
         this.dashboardService = dashboardService;
@@ -92,6 +95,7 @@ public class StudentMobileController {
         this.studentViolationService = studentViolationService;
         this.mobileCenterAlertService = mobileCenterAlertService;
         this.studentActivityService = studentActivityService;
+        this.studentNotificationService = studentNotificationService;
     }
 
     // ============================================================
@@ -416,6 +420,14 @@ public class StudentMobileController {
         resolveAnnouncementImages(resp.get("announcements"));
         resolveAnnouncementImages(resp.get("items"));
         return Result.success(resp);
+    }
+
+    @PostMapping("/alerts/read-all")
+    @Operation(summary = "将所有反馈类通知标记为已读（JWT）")
+    public Result<Void> markAlertsReadAll(HttpServletRequest request) {
+        User user = requireCurrentUser(request);
+        studentNotificationService.markAllRead(user);
+        return Result.success(null);
     }
 
     @PostMapping("/notice-auto-suppress")
