@@ -100,6 +100,9 @@ public class TwinScanAppService {
     @Autowired
     private com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper roomMappingRoomMapper;
 
+    @Autowired
+    private com.example.demo.modules.twin.common.service.RoomDictionaryManager roomDictionaryManager;
+
     @Value("${app.business-timezone:Asia/Shanghai}")
     private String businessTimeZone;
 
@@ -605,13 +608,24 @@ public class TwinScanAppService {
     /** Resolve a room ID to a human-readable room name. Returns null if not found. */
     private String resolveRoomName(String roomId) {
         if (roomId == null || roomId.isBlank()) return null;
+        String rid = roomId.trim();
+        // 1. Try dictionary (maps shelf IDs → display names)
         try {
-            var catalog = roomMappingRoomMapper.selectByRoomId(roomId.trim());
+            var mapped = roomDictionaryManager.translate(rid);
+            if (mapped != null && org.springframework.util.StringUtils.hasText(mapped.displayName)) {
+                return mapped.displayName.trim();
+            }
+        } catch (Exception e) {
+            log.debug("[扫码·豁免] dictionary lookup failed roomId={}: {}", rid, e.getMessage());
+        }
+        // 2. Try room mapping catalog
+        try {
+            var catalog = roomMappingRoomMapper.selectByRoomId(rid);
             if (catalog != null && org.springframework.util.StringUtils.hasText(catalog.getRoomName())) {
                 return catalog.getRoomName().trim();
             }
         } catch (Exception e) {
-            log.debug("[扫码·豁免] room name lookup failed for roomId={}: {}", roomId, e.getMessage());
+            log.debug("[扫码·豁免] room catalog lookup failed roomId={}: {}", rid, e.getMessage());
         }
         return null;
     }
