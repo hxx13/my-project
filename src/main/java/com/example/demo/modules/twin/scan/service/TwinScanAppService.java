@@ -33,10 +33,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -45,6 +50,7 @@ import java.util.regex.Pattern;
 public class TwinScanAppService {
     private static final Logger log = LoggerFactory.getLogger(TwinScanAppService.class);
     private static final Pattern CARD_INPUT_PATTERN = Pattern.compile("^[A-Za-z0-9]{4,32}$");
+    private static final ObjectMapper EXEMPT_ROOM_OBJECT_MAPPER = new ObjectMapper();
 
     @Autowired
     private TwinScanService twinScanService;
@@ -438,6 +444,13 @@ public class TwinScanAppService {
         dto.setUsedCount(0);
 
         try {
+            ZoneId zone;
+            try {
+                zone = ZoneId.of(businessTimeZone != null ? businessTimeZone : "Asia/Shanghai");
+            } catch (Exception e) {
+                zone = ZoneId.systemDefault();
+            }
+
             // 1. 查询用户卡片映射（含豁免字段）
             TwinCardMapping mapping = twinCardMappingService.getByAroUserId(userId);
             boolean hasActiveExempt = mapping != null
@@ -450,7 +463,7 @@ public class TwinScanAppService {
 
             TwinScanDelayRequest latestTodayRequest = null;
             if (recentRequests != null && !recentRequests.isEmpty()) {
-                java.time.LocalDate today = java.time.LocalDate.now();
+                LocalDate today = ZonedDateTime.now(zone).toLocalDate();
                 for (TwinScanDelayRequest req : recentRequests) {
                     if (req.getCreatedAt() != null && req.getCreatedAt().toLocalDate().equals(today)) {
                         latestTodayRequest = req;
@@ -501,10 +514,10 @@ public class TwinScanAppService {
                 String expireAt = mapping.getFreezeExemptExpireAt();
                 if (expireAt != null && !expireAt.isBlank()) {
                     try {
-                        java.time.LocalDateTime expireTime = java.time.LocalDateTime.parse(
+                        LocalDateTime expireTime = LocalDateTime.parse(
                                 expireAt.replace(" ", "T"),
-                                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd['T']HH:mm:ss"));
-                        if (expireTime.isAfter(java.time.LocalDateTime.now())) {
+                                DateTimeFormatter.ofPattern("yyyy-MM-dd['T']HH:mm:ss"));
+                        if (expireTime.isAfter(ZonedDateTime.now(zone).toLocalDateTime())) {
                             dto.setPhase("approved_active");
                         } else {
                             dto.setPhase("approved_expired");
@@ -525,7 +538,7 @@ public class TwinScanAppService {
 
             return dto;
         } catch (Exception e) {
-            log.warn("[analyzeScan] buildExemptStatus failed for userId={}: {}", userId, e.getMessage());
+            log.warn("[扫码·豁免] buildExemptStatus failed for userId={}: {}", userId, e.getMessage());
             dto.setPhase("none");
             return dto;
         }
@@ -535,20 +548,19 @@ public class TwinScanAppService {
     private List<String> parseExemptRoomNames(String roomIdsJson) {
         if (roomIdsJson == null || roomIdsJson.isBlank()) return List.of();
         try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            List<?> arr = mapper.readValue(roomIdsJson, List.class);
+            List<?> arr = EXEMPT_ROOM_OBJECT_MAPPER.readValue(roomIdsJson, List.class);
             if (arr == null || arr.isEmpty()) return List.of();
-            List<String> names = new java.util.ArrayList<>();
+            List<String> names = new ArrayList<>();
             for (Object item : arr) {
-                if (item instanceof java.util.Map) {
+                if (item instanceof Map) {
                     @SuppressWarnings("unchecked")
-                    java.util.Map<String, Object> map = (java.util.Map<String, Object>) item;
+                    Map<String, Object> map = (Map<String, Object>) item;
                     Object name = map.get("roomName");
                     if (name != null && !String.valueOf(name).isBlank()) {
                         names.add(String.valueOf(name).trim());
                     } else {
                         Object id = map.get("roomId");
-                        if (id != null) names.add(String.valueOf(id));
+                        if (id != null && !String.valueOf(id).isBlank()) names.add(String.valueOf(id));
                     }
                 } else if (item instanceof String) {
                     names.add((String) item);
@@ -556,6 +568,7 @@ public class TwinScanAppService {
             }
             return names;
         } catch (Exception e) {
+            log.debug("parseExemptRoomNames failed: {}", e.getMessage());
             return List.of();
         }
     }
