@@ -163,7 +163,7 @@ export default function MobilePresenceStatusBar({
         </div>
       </div>
 
-      {/* 豁免状态行 — 与上方进出状态行保持一致的布局 */}
+      {/* 豁免状态行 */}
       {snapshot.exemptStatus && snapshot.exemptStatus.phase !== "none" && (() => {
         const exempt = snapshot.exemptStatus;
         const exTheme = EXEMPT_THEME[exempt.phase];
@@ -200,62 +200,34 @@ export default function MobilePresenceStatusBar({
             : "已到期";
         }
 
-        const showRoom =
-          exempt.phase === "pending_review" ||
-          exempt.phase === "approved_active" ||
-          exempt.phase === "approved_expired";
-
         return (
           <>
             <div
-              className="mt-2 pt-2"
+              className="mt-2 pt-2 flex items-center gap-1.5 flex-wrap"
               style={{ borderTop: `1px dashed ${exTheme.border}` }}
-            />
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div
-                className="size-9 shrink-0 rounded-full flex items-center justify-center"
-                style={{ background: exTheme.soft }}
+            >
+              <ExemptIcon className="size-[15px] shrink-0" style={{ color: exTheme.accent }} strokeWidth={2.2} />
+              <span
+                className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold shrink-0"
+                style={{ background: exTheme.soft, color: exTheme.text }}
               >
-                <ExemptIcon className="size-[17px]" style={{ color: exTheme.accent }} strokeWidth={2.4} />
-              </div>
-
-              <div className="flex-1 min-w-0 flex items-center gap-2">
-                <div className="flex-1 min-w-0 flex items-center gap-1.5">
-                  <span
-                    className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-bold shrink-0"
-                    style={{ background: exTheme.accent, color: "#ffffff" }}
-                  >
-                    {exTheme.badge}
-                  </span>
-
-                  {showRoom && (
-                    <span
-                      className="text-[21px] font-bold truncate min-w-0 leading-tight tracking-tight"
-                      style={{ color: exTheme.accent }}
-                      title={roomText}
-                    >
-                      {roomText}
-                    </span>
-                  )}
-
-                  {exempt.phase === "rejected" && (
-                    <span className="text-[12px] truncate min-w-0" style={{ color: exTheme.accent }}>
-                      已申请 · {roomText} · 已拒绝
-                    </span>
-                  )}
-                </div>
-
-                {rightPillText && (
-                  <PresencePill theme={{
-                    accent: exTheme.accent,
-                    soft: exTheme.soft,
-                    border: exTheme.border,
-                    text: exTheme.text,
-                  }}>
-                    {rightPillText}
-                  </PresencePill>
-                )}
-              </div>
+                {exTheme.badge}
+              </span>
+              <span className="text-[12px] font-semibold truncate min-w-0" style={{ color: "#323233" }}>
+                {exempt.phase === "rejected" ? `已申请 · ${roomText} · 已拒绝` : roomText}
+              </span>
+              {rightPillText && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold tabular-nums whitespace-nowrap shrink-0 ml-auto"
+                  style={{
+                    background: exTheme.soft,
+                    border: `1px solid ${exTheme.border}`,
+                    color: exTheme.text,
+                  }}
+                >
+                  {rightPillText}
+                </span>
+              )}
             </div>
           </>
         );
