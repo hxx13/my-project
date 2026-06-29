@@ -17,6 +17,11 @@ import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationServi
 import com.example.demo.modules.twin.rpg.service.RpgEngineService;
 import com.example.demo.modules.twin.scan.delay.dto.ScanDelayOptionDTO;
 import com.example.demo.modules.twin.scan.delay.service.ScanDelayConfigService;
+import com.example.demo.modules.twin.scan.dto.ExemptStatusDTO;
+import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayRequest;
+import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayOption;
+import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayRequestMapper;
+import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayOptionMapper;
 import com.example.demo.modules.twin.scan.support.ScanAnalyzeTimingTrace;
 import com.example.demo.modules.twin.scan.support.ScanPopupEntryWindowEvaluator;
 import com.example.demo.modules.twin.scan.support.ScanPopupFlowLog;
@@ -26,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -75,6 +81,15 @@ public class TwinScanAppService {
 
     @Autowired
     private ScanDelayConfigService scanDelayConfigService;
+
+    @Autowired
+    private TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService;
+
+    @Autowired
+    private TwinScanDelayRequestMapper scanDelayRequestMapper;
+
+    @Autowired
+    private TwinScanDelayOptionMapper scanDelayOptionMapper;
 
     @Value("${app.business-timezone:Asia/Shanghai}")
     private String businessTimeZone;
@@ -259,6 +274,11 @@ public class TwinScanAppService {
             } catch (Exception e) {
                 log.debug("[扫码·解析] trace={} 公告加载失败 id={} err={}", traceId, realPhysicalId, e.getMessage());
             }
+            try {
+                scanNoticeAutoSuppressService.applyAutoOpenSuppressFlags(realPhysicalId, result);
+            } catch (Exception e) {
+                log.debug("[扫码·解析] trace={} 通告免弹标记失败 id={} err={}", traceId, realPhysicalId, e.getMessage());
+            }
             // 自动签退倒计时：仅 INSIDE 状态有意义（OUTSIDE 无计时器）
             if ("INSIDE".equals(result.getCurrentState()) && realPhysicalId != null && !realPhysicalId.isBlank()) {
                 try {
@@ -292,6 +312,8 @@ public class TwinScanAppService {
                 }
             }
             annotateScanDelayOptions(result);
+            // H5 首页豁免状态
+            result.setExemptStatus(buildExemptStatus(realPhysicalId));
             result.setSuccess(true);
         } catch (Exception e) {
             log.error("[扫码·解析] trace={} 异常 {}", traceId, e.getMessage(), e);
@@ -380,12 +402,15 @@ public class TwinScanAppService {
             for (ScanDelayOptionDTO dto : e.getValue()) {
                 Map<String, Object> m = new java.util.LinkedHashMap<>();
                 m.put("id", dto.getId());
+                m.put("carrierId", dto.getCarrierId());
                 m.put("roomId", dto.getRoomId());
                 m.put("optionLabel", dto.getOptionLabel());
+                m.put("buttonLabel", StringUtils.hasText(dto.getButtonLabel()) ? dto.getButtonLabel().trim() : scanDelayConfigService.getButtonLabel());
                 m.put("requireApproval", dto.isRequireApproval());
                 m.put("reviewerUserIds", dto.getReviewerUserIds());
                 m.put("exemptMode", dto.getExemptMode());
                 m.put("durationMinutes", dto.getDurationMinutes());
+                m.put("extendUntilTime", dto.getExtendUntilTime());
                 m.put("maxCount", dto.getMaxCount());
                 items.add(m);
             }
@@ -399,6 +424,139 @@ public class TwinScanAppService {
         for (Map<String, Object> room : rooms) {
             String id = resolveScanRoomId(room);
             if (id != null && !sink.contains(id)) sink.add(id);
+        }
+    }
+
+    /**
+     * 构建 H5 首页豁免状态。综合 twin_card_mapping + 当日延迟申请记录推导 phase。
+     */
+    private ExemptStatusDTO buildExemptStatus(String userId) {
+        if (userId == null || userId.isBlank()) return null;
+
+        ExemptStatusDTO dto = new ExemptStatusDTO();
+        dto.setPhase("none");
+        dto.setUsedCount(0);
+
+        try {
+            // 1. 查询用户卡片映射（含豁免字段）
+            TwinCardMapping mapping = twinCardMappingService.getByAroUserId(userId);
+            boolean hasActiveExempt = mapping != null
+                    && mapping.getFreezeExemptFlag() != null
+                    && mapping.getFreezeExemptFlag() == 1;
+
+            // 2. 查询当日延迟申请记录（取最新一条）
+            List<TwinScanDelayRequest> recentRequests =
+                    scanDelayRequestMapper.listRecentBySubjectUserId(userId, 5);
+
+            TwinScanDelayRequest latestTodayRequest = null;
+            if (recentRequests != null && !recentRequests.isEmpty()) {
+                java.time.LocalDate today = java.time.LocalDate.now();
+                for (TwinScanDelayRequest req : recentRequests) {
+                    if (req.getCreatedAt() != null && req.getCreatedAt().toLocalDate().equals(today)) {
+                        latestTodayRequest = req;
+                        break;
+                    }
+                }
+            }
+
+            // 3. Determine delay option room names + extendUntilTime
+            List<String> requestRoomNames = List.of();
+            String extendUntilTime = null;
+            if (latestTodayRequest != null && latestTodayRequest.getOptionId() != null) {
+                try {
+                    TwinScanDelayOption option =
+                            scanDelayOptionMapper.findById(latestTodayRequest.getOptionId());
+                    if (option != null) {
+                        extendUntilTime = option.getExtendUntilTime();
+                        if (option.getExemptRoomIds() != null && !option.getExemptRoomIds().isBlank()) {
+                            requestRoomNames = parseExemptRoomNames(option.getExemptRoomIds());
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // delay option lookup failed, continue without it
+                }
+            }
+
+            // 4. Derive phase
+            if (latestTodayRequest != null) {
+                String status = latestTodayRequest.getStatus();
+                if ("PENDING".equalsIgnoreCase(status)) {
+                    dto.setPhase("pending_review");
+                    dto.setRequestId(latestTodayRequest.getId());
+                    dto.setExtendUntilTime(extendUntilTime);
+                    dto.setRoomNames(requestRoomNames);
+                    dto.setRemainingText("");
+                    return dto;
+                } else if ("REJECTED".equalsIgnoreCase(status)) {
+                    dto.setPhase("rejected");
+                    dto.setRequestId(latestTodayRequest.getId());
+                    dto.setRoomNames(requestRoomNames);
+                    dto.setRemainingText("");
+                    return dto;
+                }
+                // APPROVED: fall through to check exemption status
+            }
+
+            if (hasActiveExempt && mapping != null) {
+                String expireAt = mapping.getFreezeExemptExpireAt();
+                if (expireAt != null && !expireAt.isBlank()) {
+                    try {
+                        java.time.LocalDateTime expireTime = java.time.LocalDateTime.parse(
+                                expireAt.replace(" ", "T"),
+                                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd['T']HH:mm:ss"));
+                        if (expireTime.isAfter(java.time.LocalDateTime.now())) {
+                            dto.setPhase("approved_active");
+                        } else {
+                            dto.setPhase("approved_expired");
+                        }
+                    } catch (Exception e) {
+                        dto.setPhase("approved_expired");
+                    }
+                } else {
+                    dto.setPhase("approved_active");
+                }
+                dto.setExpireAt(expireAt);
+                dto.setMode(mapping.getFreezeExemptMode());
+                dto.setMaxCount(mapping.getFreezeExemptMaxCount());
+                dto.setUsedCount(mapping.getFreezeExemptUsedCount() != null ? mapping.getFreezeExemptUsedCount() : 0);
+                dto.setRoomNames(parseExemptRoomNames(mapping.getFreezeExemptRoomIds()));
+                dto.setRemainingText("");
+            }
+
+            return dto;
+        } catch (Exception e) {
+            log.warn("[analyzeScan] buildExemptStatus failed for userId={}: {}", userId, e.getMessage());
+            dto.setPhase("none");
+            return dto;
+        }
+    }
+
+    /** Parse freezeExemptRoomIds JSON -> room name list. Supports old ["id"] and new [{"roomId":"x","roomName":"y"}] formats. */
+    private List<String> parseExemptRoomNames(String roomIdsJson) {
+        if (roomIdsJson == null || roomIdsJson.isBlank()) return List.of();
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            List<?> arr = mapper.readValue(roomIdsJson, List.class);
+            if (arr == null || arr.isEmpty()) return List.of();
+            List<String> names = new java.util.ArrayList<>();
+            for (Object item : arr) {
+                if (item instanceof java.util.Map) {
+                    @SuppressWarnings("unchecked")
+                    java.util.Map<String, Object> map = (java.util.Map<String, Object>) item;
+                    Object name = map.get("roomName");
+                    if (name != null && !String.valueOf(name).isBlank()) {
+                        names.add(String.valueOf(name).trim());
+                    } else {
+                        Object id = map.get("roomId");
+                        if (id != null) names.add(String.valueOf(id));
+                    }
+                } else if (item instanceof String) {
+                    names.add((String) item);
+                }
+            }
+            return names;
+        } catch (Exception e) {
+            return List.of();
         }
     }
 }
