@@ -147,12 +147,15 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const openFeedback = useCallback(() => {
     setShowFeedback(true);
     void loadAlerts();
-    // 后台标记所有反馈通知为已读（fire-and-forget）
-    if (token) {
-      markMobileAlertsReadAll(token).catch(() => {});
-    } else {
-      markStudentMobileAlertsReadAll().catch(() => {});
-    }
+    // 后台标记所有反馈通知为已读，同时更新本地状态让角标即时消失
+    const markPromise = token
+      ? markMobileAlertsReadAll(token)
+      : markStudentMobileAlertsReadAll();
+    markPromise
+      .then(() => {
+        setFeedbacks((prev) => prev.map((f) => ({ ...f, isRead: true })));
+      })
+      .catch(() => {});
   }, [loadAlerts, token]);
 
   /** 保存后仅合并当前条，禁止整表 load — post-save-no-full-refresh.mdc */
@@ -351,7 +354,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             jwtMode={jwtMode}
             presenceRefresh={presenceRefresh}
             announcements={announcements}
-            feedbackCount={feedbacks.length}
+            feedbackCount={feedbacks.filter(f => !f.isRead).length}
             html5PrivilegeBypass={
               data.html5PrivilegeBypass === true || html5PrivilegeBypass
             }
