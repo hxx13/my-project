@@ -410,6 +410,14 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         onClose={() => setShowFeedback(false)}
         items={feedbacks}
         wsConnected={wsConnected}
+        onMarkAllRead={async () => {
+          if (token) {
+            await markMobileAlertsReadAll(token);
+          } else {
+            await markStudentMobileAlertsReadAll();
+          }
+          setFeedbacks((prev) => prev.map((f) => ({ ...f, isRead: true })));
+        }}
       />
       {showTabBar && !showAnnouncements && !showFeedback && (
         <MobileBottomTabBar

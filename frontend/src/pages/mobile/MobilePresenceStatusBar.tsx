@@ -216,7 +216,7 @@ export default function MobilePresenceStatusBar({
               >
                 {theme.badge}
               </span>
-              <span className="text-[11px] truncate min-w-0" style={{ color: "#64748b" }}>
+              <span className="text-[11px] truncate min-w-0" style={{ color: exempt.phase === "pending_review" ? theme.accent : "#64748b", fontSize: exempt.phase === "pending_review" ? "14px" : "11px", fontWeight: exempt.phase === "pending_review" ? 700 : 400 }}>
                 {exempt.phase === "rejected" ? `已申请 · ${roomText} · 已拒绝` : roomText}
               </span>
               {rightPill && (
