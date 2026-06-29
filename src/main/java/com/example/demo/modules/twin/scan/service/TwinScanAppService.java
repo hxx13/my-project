@@ -433,6 +433,11 @@ public class TwinScanAppService {
         }
     }
 
+    /** Public entry point for JWT-mode H5 exempt status query. */
+    public ExemptStatusDTO buildExemptStatusForUser(String userId) {
+        return buildExemptStatus(userId);
+    }
+
     /**
      * 构建 H5 首页豁免状态。综合 twin_card_mapping + 当日延迟申请记录推导 phase。
      */
