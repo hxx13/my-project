@@ -24,7 +24,7 @@ public class ExemptStatusDTO {
     private Integer maxCount;
 
     /** 已用次数 */
-    private int usedCount;
+    private Integer usedCount;
 
     /** 申请单号（pending/rejected 时填充） */
     private Long requestId;
