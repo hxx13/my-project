@@ -97,6 +97,9 @@ public class TwinScanAppService {
     @Autowired
     private TwinScanDelayOptionMapper scanDelayOptionMapper;
 
+    @Autowired
+    private com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper roomMappingRoomMapper;
+
     @Value("${app.business-timezone:Asia/Shanghai}")
     private String businessTimeZone;
 
@@ -486,9 +489,11 @@ public class TwinScanAppService {
                             scanDelayOptionMapper.findById(latestTodayRequest.getOptionId());
                     if (option != null) {
                         extendUntilTime = option.getExtendUntilTime();
-                        if (option.getExemptRoomIds() != null && !option.getExemptRoomIds().isBlank()) {
-                            requestRoomNames = parseExemptRoomNames(option.getExemptRoomIds());
-                        }
+                        // Use resolveExemptRoomIdsJson to get the proper room IDs JSON
+                        // (falls back to request's roomId when option.exemptRoomIds is not set)
+                        String roomIdsJson = scanDelayConfigService.resolveExemptRoomIdsJson(
+                                option, latestTodayRequest.getRoomId());
+                        requestRoomNames = parseExemptRoomNamesWithLookup(roomIdsJson);
                     }
                 } catch (Exception ignored) {
                     // delay option lookup failed, continue without it
@@ -576,5 +581,38 @@ public class TwinScanAppService {
             log.debug("parseExemptRoomNames failed: {}", e.getMessage());
             return List.of();
         }
+    }
+
+    /** Parse room IDs JSON and resolve room names via RoomMappingRoomMapper fallback.
+     *  For entries that look like raw IDs (not human-readable names), query the room catalog. */
+    private List<String> parseExemptRoomNamesWithLookup(String roomIdsJson) {
+        List<String> raw = parseExemptRoomNames(roomIdsJson);
+        if (raw.isEmpty()) return raw;
+        List<String> resolved = new ArrayList<>();
+        for (String item : raw) {
+            // If it already looks like a display name (contains CJK), use as-is
+            if (item != null && item.codePoints().anyMatch(cp -> Character.isIdeographic(cp))) {
+                resolved.add(item);
+            } else {
+                // Try to resolve room ID -> room name via catalog
+                String roomName = resolveRoomName(item);
+                resolved.add(roomName != null ? roomName : item);
+            }
+        }
+        return resolved;
+    }
+
+    /** Resolve a room ID to a human-readable room name. Returns null if not found. */
+    private String resolveRoomName(String roomId) {
+        if (roomId == null || roomId.isBlank()) return null;
+        try {
+            var catalog = roomMappingRoomMapper.selectByRoomId(roomId.trim());
+            if (catalog != null && org.springframework.util.StringUtils.hasText(catalog.getRoomName())) {
+                return catalog.getRoomName().trim();
+            }
+        } catch (Exception e) {
+            log.debug("[扫码·豁免] room name lookup failed for roomId={}: {}", roomId, e.getMessage());
+        }
+        return null;
     }
 }
