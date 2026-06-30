@@ -75,7 +75,7 @@ public class StartupPhaseRunner implements ApplicationRunner {
         entries.sort(Comparator.comparingInt(PhaseEntry::order));
 
         // 3. 动画执行
-        StartupBanner banner = StartupBanner.create(System.err)
+        StartupBanner banner = StartupBanner.create(System.out)
                 .title("🧬 TWIN SYSTEM v" + appVersion)
                 .subtitle("Neuro-Synced Infrastructure");
 

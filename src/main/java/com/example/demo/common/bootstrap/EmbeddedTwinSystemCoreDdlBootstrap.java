@@ -140,8 +140,11 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements StartupRunner {
                     || lower.contains("column already exists")
                     || lower.contains("unknow column")
                     || lower.contains("doesn't exist")
+                    || lower.contains("command denied")     // DDL 权限不足但表已存在
+                    || lower.contains("access denied")      // DDL 权限不足
+                    || lower.contains("insufficient privileges")
                     || (lower.contains("syntax") && lower.contains("near ''"))  // PREPARE with NULL @sql
-                    || (lower.contains("syntax") && lower.contains("near 'declare"))  // DECLARE 重复
+                    || (lower.contains("syntax") && lower.contains("near 'declare"))
             ) {
                 return true;
             }
