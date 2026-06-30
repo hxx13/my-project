@@ -112,6 +112,8 @@ export default function DebugPersonnelPage() {
       await recalculateRpgExp();
       toast.success("全量经验值重算完毕");
       await refetch();
+      await queryClient.invalidateQueries({ queryKey: ["expSummary"] });
+      await queryClient.invalidateQueries({ queryKey: ["expRecords"] });
     } catch {
       toast.error("重算失败，请检查后端状态");
     } finally {

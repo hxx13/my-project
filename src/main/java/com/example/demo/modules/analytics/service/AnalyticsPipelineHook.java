@@ -38,7 +38,7 @@ public class AnalyticsPipelineHook {
             try {
                 var result = workspaceService.forceMergeAllChannelsForWindow(
                         startTime, endTime, "PIPELINE_SAFETY_NET");
-                log.info("[analytics-pipeline] safety net clean done: ok={} fail={} included={}",
+                log.warn("[analytics-pipeline] safety net clean done: ok={} fail={} included={}",
                         result.get("ok"), result.get("fail"), result.get("totalIncluded"));
             } catch (Exception e) {
                 log.warn("[analytics-pipeline] safety net clean failed (non-fatal): {}", e.getMessage());
@@ -46,7 +46,7 @@ public class AnalyticsPipelineHook {
 
             auditService.runAuditForAllSubscribed(AnalyticsReportRegistry.REPORT_ISOLATION_USAGE);
             auditService.runAuditForAllSubscribed(AnalyticsReportRegistry.REPORT_CAGE_OCCUPANCY);
-            log.info("[analytics-pipeline] 已刷新隔离服/笼架订阅统计快照");
+            log.warn("[analytics-pipeline] 已刷新隔离服/笼架订阅统计快照");
         } catch (Exception e) {
             log.warn("[analytics-pipeline] 订阅统计刷新失败: {}", e.getMessage());
         }

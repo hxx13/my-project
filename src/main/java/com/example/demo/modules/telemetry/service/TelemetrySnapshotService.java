@@ -233,7 +233,7 @@ public class TelemetrySnapshotService {
      */
     public void refreshFromWinCc() {
         if (!properties.isEnabled()) {
-            log.info("[WinCC遥测] refreshFromWinCc 跳过：未启用 app.wincc.enabled");
+            log.debug("[WinCC遥测] refreshFromWinCc 跳过：未启用 app.wincc.enabled");
             return;
         }
         synchronized (winCcRefreshLock) {
@@ -250,7 +250,7 @@ public class TelemetrySnapshotService {
             }
             int chunk = Math.max(1, properties.getValuesChunkSize());
             int batches = (names.size() + chunk - 1) / chunk;
-            log.info("[WinCC测量] 开始拉取 {} 点，每批 {}，共 {} 批", names.size(), chunk, batches);
+            log.debug("[WinCC测量] 拉取 {} 点，每批 {}，共 {} 批", names.size(), chunk, batches);
             try {
                 List<Map<String, Object>> raw = readWinCcInOrderedChunks(names, "测量");
                 List<TelemetryTagItemDto> readings = mapRows(raw);
@@ -306,7 +306,7 @@ public class TelemetrySnapshotService {
                 lastSuccessAt.set(Instant.now());
                 lastError.set(null);
                 lastReachable.set(true);
-                log.info("[WinCC测量] 拉取完毕，解析 {} 行", mapped.size());
+                log.debug("[WinCC测量] 拉取完毕，解析 {} 行", mapped.size());
                 // 与 GET /animal-room（pollIntervalMs 周期拉）同源：通知 Web 重新读内存快照组装页
                 snapshotBroadcastService.broadcastFullSnapshotRefreshed();
                 jobScheduleConfigMapper.markSuccess(JobExecutionRegistry.JOB_TELEMETRY_WINCC_UI, LocalDateTime.now(), SCHED_TRACE);
@@ -445,14 +445,14 @@ public class TelemetrySnapshotService {
     public void warmUpAfterReady() {
         if (properties.isEnabled()) {
             boolean pwdOk = StringUtils.hasText(properties.getPassword());
-            log.info("[WinCC遥测] 应用就绪，baseUrl={} user={} passwordConfigured={}，异步执行首次 WinCC 拉取",
+            log.debug("[WinCC遥测] 应用就绪，baseUrl={} user={} passwordConfigured={}，异步执行首次 WinCC 拉取",
                     properties.getBaseUrl(), properties.getUsername(), pwdOk);
             if (!pwdOk) {
                 log.warn("[WinCC遥测] app.wincc.password 为空，拉取将认证失败；请设置 WINCC_PASSWORD 或 application-local.properties");
             }
             CompletableFuture.runAsync(this::refreshFromWinCc);
         } else {
-            log.info("[WinCC遥测] 应用就绪，WinCC 未启用（仅返回占位快照）。需在运行 Spring 的机器上配置 app.wincc.* 且该机器能访问 WinCC 主机）");
+            log.debug("[WinCC遥测] 应用就绪，WinCC 未启用（仅返回占位快照）。需在运行 Spring 的机器上配置 app.wincc.* 且该机器能访问 WinCC 主机）");
         }
     }
 

@@ -217,13 +217,10 @@ public class TwinScanAppService {
             userInfo.setMobilePhone(matchedUser.get("mobile_phone"));
             userInfo.setUserTypeNames(matchedUser.get("user_type_names"));
 
-            double historicalExp = matchedUser.get("total_exp") != null
-                    ? Double.parseDouble(matchedUser.get("total_exp").toString())
-                    : 0.0;
             long tRpg = System.currentTimeMillis();
             com.example.demo.modules.aro.dto.RpgStatsDto rpgDto =
-                    rpgEngineService.calculateRealtimeExp(realPhysicalId, historicalExp);
-            analyzeTimingTrace.step("mysql.rpg.calculateRealtimeExp",
+                    rpgEngineService.calculateFullExpFromAccessLogs(realPhysicalId);
+            analyzeTimingTrace.step("mysql.rpg.calculateFullExpFromAccessLogs",
                     System.currentTimeMillis() - tRpg, "level=" + rpgDto.getLevel());
             userInfo.setRpg(new ScanUserRpgDTO(
                     rpgDto.getExp().intValue(),

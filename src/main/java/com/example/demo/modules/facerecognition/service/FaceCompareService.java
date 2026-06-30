@@ -10,7 +10,7 @@ import ai.djl.ndarray.types.DataType;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ModelZoo;
 import ai.djl.repository.zoo.ZooModel;
-import ai.djl.training.util.ProgressBar;
+import com.example.demo.common.logging.banner.LoadingSpinner;
 import com.example.demo.modules.facerecognition.support.PredictorPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -114,10 +114,9 @@ public class FaceCompareService {
 
     @PostConstruct
     public void init() {
+        final long t0 = System.currentTimeMillis();
         String embedUrl = modelPathResolver.resolveFaceFeatureModel();
-        log.info("[FaceCompare] 后台加载人脸模型… embed={}", embedUrl);
         new Thread(() -> {
-            long t0 = System.currentTimeMillis();
             try {
                 faceDetectService.waitUntilReady(120_000);
                 synchronized (initLock) {
@@ -125,21 +124,21 @@ public class FaceCompareService {
                             .setTypes(NDList.class, NDList.class)
                             .optModelUrls(embedUrl)
                             .optModelName("face_feature")
-                            .optProgress(new ProgressBar())
                             .optEngine("PyTorch")
                             .build();
-                    embedModel = ModelZoo.loadModel(embCriteria);
-                    embedderPool = new PredictorPool<>(predictorPoolSize, embedModel::newPredictor);
-
-                    initialized = true;
-                    long totalMs = System.currentTimeMillis() - t0;
-                    log.info("[FaceCompare] 模型加载完成 version={} pool={} 耗时={}ms",
-                            MODEL_VERSION, predictorPoolSize, totalMs);
+                    LoadingSpinner.run("人脸特征模型 (face_feature)", () -> {
+                        try {
+                            embedModel = ModelZoo.loadModel(embCriteria);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                        embedderPool = new PredictorPool<>(predictorPoolSize, embedModel::newPredictor);
+                        initialized = true;
+                    });
                 }
             } catch (Exception e) {
                 initError = e.getMessage();
-                consoleError("模型加载失败（" + (System.currentTimeMillis() - t0) + " ms）: "
-                        + e.getClass().getSimpleName() + " — " + e.getMessage(), e);
+                consoleError("模型加载失败: " + e.getClass().getSimpleName() + " — " + e.getMessage(), e);
             } finally {
                 synchronized (initLock) {
                     initLock.notifyAll();

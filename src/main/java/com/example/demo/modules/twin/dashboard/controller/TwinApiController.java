@@ -370,10 +370,10 @@ public class TwinApiController {
         return Result.success(data);
     }
 
-    // 💥 核武器：全量洗刷并重算所有人的经验值！(已极致解耦)
+    // 💥 核武器：已废弃，请使用 GET /api/v1/twin/rpg/recalculate-all
+    @Deprecated
     @GetMapping("/debug/recalc-exp")
     public Result<MapDataResponseDTO> recalculateAllExp() {
-        // Controller 恢复纯净，只做一件事：接化发！
         return Result.success(new MapDataResponseDTO(rpgEngineService.recalculateAllExp()));
     }
 

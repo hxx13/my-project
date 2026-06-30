@@ -799,7 +799,7 @@ public class AccessSwingCleanWorkspaceService {
         out.put("totalIncluded", totalIncluded);
         out.put("channelResults", channelResults);
         out.put("errors", errors);
-        log.info("[force-merge] {}: {} ok, {} fail, {} skipped, {} total included",
+        log.warn("[force-merge] {}: {} ok, {} fail, {} skipped, {} total included",
                 triggerType, ok, fail, skipped, totalIncluded);
         return out;
     }

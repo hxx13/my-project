@@ -10,6 +10,7 @@ export interface ExpSummary {
     userName: string;
     totalExp: number;
     todayExp: number;
+    level?: number;
   }>;
   anomalyCount?: Array<{ anomaly_types: string; cnt: number }>;
   pendingReviewCount?: number;

@@ -58,10 +58,10 @@ public class AnalyticsAuditAsyncService {
             return;
         }
         try {
-            log.info("[analytics-audit] force-recalc start viewId={} subscribed={}",
+            log.warn("[analytics-audit] force-recalc start viewId={} subscribed={}",
                     viewId, view.getIsSubscribed());
             auditService.refreshAllSnapshotsForView(view);
-            log.info("[analytics-audit] force-recalc done viewId={}", viewId);
+            log.warn("[analytics-audit] force-recalc done viewId={}", viewId);
         } catch (Exception e) {
             log.warn("[analytics-audit] force-recalc failed viewId={}: {}", viewId, e.getMessage(), e);
         }

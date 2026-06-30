@@ -75,4 +75,13 @@ public interface TwinExpRecordMapper {
 
     /** 待审核数量 */
     int countPendingReview();
+
+    /** 全量重算前清空流水（方案 A） */
+    int deleteAll();
+
+    /** 按业务日删除流水（单日对账幂等） */
+    int deleteByEventDate(@Param("eventDate") String eventDate);
+
+    /** 删除截止日期前的经验流水 */
+    int deleteBeforeCutoff(@Param("cutoffStart") String cutoffStart);
 }

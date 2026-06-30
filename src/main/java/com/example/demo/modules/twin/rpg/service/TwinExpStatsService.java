@@ -1,7 +1,6 @@
 package com.example.demo.modules.twin.rpg.service;
 
 import com.example.demo.modules.twin.rpg.entity.TwinExpRecord;
-import com.example.demo.modules.twin.rpg.mapper.RpgMapper;
 import com.example.demo.modules.twin.rpg.mapper.TwinExpRecordMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,10 +21,10 @@ public class TwinExpStatsService {
     @Autowired
     private TwinExpRecordMapper twinExpRecordMapper;
 
-    @Autowired
-    private RpgMapper rpgMapper;
-
-    /** 写入经验流水（实时路径） */
+    /**
+     * @deprecated 方案 A 下扫码不写流水；仅保留供内部/测试调用。
+     */
+    @Deprecated
     public void recordExp(String userId, String userName, int expAmount,
                           String sourceType, int accessType,
                           String roomId, String roomName) {
@@ -52,13 +51,7 @@ public class TwinExpStatsService {
         record.setSessionDurationMinutes(sessionDurationMinutes);
         twinExpRecordMapper.insert(record);
 
-        // 🎯 实时增量追加 personnel.total_exp（不覆盖历史值，避免旧数据丢失）
-        try {
-            rpgMapper.addPersonnelTotalExp(userId, expAmount);
-        } catch (Exception syncEx) {
-            log.warn("[XP流水] 追加 personnel.total_exp 失败 userId={} err={}", userId, syncEx.getMessage());
-        }
-
+        // 方案 A：不在扫码时写 personnel.total_exp，由慢轨对账统一汇总
         log.info("[XP流水] 写入成功 userId={} exp={} source={} accessType={} feedSource={}",
                 userId, expAmount, sourceType, accessType, feedSource);
     }
@@ -69,7 +62,7 @@ public class TwinExpStatsService {
         summary.put("todayExp", twinExpRecordMapper.countTodayExp());
         summary.put("activeUsers", twinExpRecordMapper.countActiveUsers());
         summary.put("todayActiveUsers", twinExpRecordMapper.countTodayActiveUsers());
-        summary.put("topEarners", twinExpRecordMapper.getTopEarners(10));
+        summary.put("topEarners", twinExpRecordMapper.getTopEarners(50));
         summary.put("anomalyCount", twinExpRecordMapper.countAnomaliesByType(
                 LocalDate.now().minusDays(30).toString() + " 00:00:00",
                 LocalDate.now().toString() + " 23:59:59"));

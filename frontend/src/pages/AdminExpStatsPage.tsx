@@ -280,7 +280,7 @@ export default function AdminExpStatsPage() {
         </div>
 
         {/* Top Earners Table */}
-        <AdminFormCard title="经验值排行 (Top 10)">
+        <AdminFormCard title="今日经验排行 (Top 50)">
           {!summary?.topEarners || summary.topEarners.length === 0 ? (
             <div className="flex min-h-[120px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">
               暂无排行数据
@@ -322,7 +322,7 @@ export default function AdminExpStatsPage() {
                       )}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-[var(--app-color-text-secondary)]">
-                      <span className="font-bold text-[var(--app-color-accent)]">Lv.{expLevel(earner.totalExp ?? 0)}</span>
+                      <span className="font-bold text-[var(--app-color-accent)]">Lv.{earner.level ?? expLevel(earner.totalExp ?? 0)}</span>
                       <span className="ml-1.5 font-mono text-[var(--app-color-text-primary)]">{earner.totalExp?.toLocaleString() ?? 0}</span>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums font-mono text-[var(--app-color-feedback-success)]">

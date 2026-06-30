@@ -5,6 +5,7 @@ import ai.djl.modality.cv.output.DetectedObjects;
 import ai.djl.repository.zoo.Criteria;
 import ai.djl.repository.zoo.ModelZoo;
 import ai.djl.repository.zoo.ZooModel;
+import com.example.demo.common.logging.banner.LoadingSpinner;
 import ai.djl.training.util.ProgressBar;
 import com.example.demo.modules.facerecognition.djl.FaceDetectionTranslator;
 import com.example.demo.modules.facerecognition.support.PredictorPool;
@@ -43,7 +44,6 @@ public class FaceDetectService {
     @PostConstruct
     public void init() {
         new Thread(() -> {
-            long t0 = System.currentTimeMillis();
             try {
                 synchronized (initLock) {
                     String modelUrl = modelPathResolver.resolveUltraNetModel();
@@ -51,13 +51,14 @@ public class FaceDetectService {
                             .setTypes(Image.class, DetectedObjects.class)
                             .optModelUrls(modelUrl)
                             .optTranslator(FaceDetectionTranslator.ultraLightDefaults())
-                            .optProgress(new ProgressBar())
                             .optEngine("PyTorch")
                             .build();
-                    detectModel = ModelZoo.loadModel(criteria);
-                    detectorPool = new PredictorPool<>(predictorPoolSize, detectModel::newPredictor);
-                    initialized = true;
-                    log.info("[FaceDetect] UltraNet 加载成功，耗时 {} ms，predictorPool={}", System.currentTimeMillis() - t0, predictorPoolSize);
+                    LoadingSpinner.run("人脸检测模型 (UltraNet)", () -> {
+                        try { detectModel = ModelZoo.loadModel(criteria); }
+                        catch (Exception e) { throw new RuntimeException(e); }
+                        detectorPool = new PredictorPool<>(predictorPoolSize, detectModel::newPredictor);
+                        initialized = true;
+                    });
                 }
             } catch (Exception e) {
                 initError = e.getMessage();

@@ -39,14 +39,16 @@
 
     <select id="getTopEarners" resultType="map">
         SELECT r.user_id AS userId,
-               COALESCE(p.name, r.user_name, r.user_id) AS userName,
-               COALESCE(p.total_exp, 0) AS totalExp,
-               COALESCE(SUM(CASE WHEN DATE(r.create_time) = CURDATE() THEN r.exp_amount ELSE 0 END), 0) AS todayExp
+               COALESCE(p.name, MAX(r.user_name), r.user_id) AS userName,
+               COALESCE(SUM(r.exp_amount), 0) AS totalExp,
+               COALESCE(SUM(CASE WHEN DATE(r.create_time) = CURDATE() THEN r.exp_amount ELSE 0 END), 0) AS todayExp,
+               FLOOR(SQRT(GREATEST(COALESCE(SUM(r.exp_amount), 0), 0) / 50)) + 1 AS level
         FROM twin_exp_record r
         LEFT JOIN aro_personnel p ON p.user_id = r.user_id
-        WHERE r.review_status != 2
-        GROUP BY r.user_id, p.name, r.user_name, p.total_exp
-        ORDER BY todayExp DESC
+        WHERE (r.review_status IS NULL OR r.review_status != 2)
+        GROUP BY r.user_id, p.name
+        HAVING todayExp > 0
+        ORDER BY todayExp DESC, totalExp DESC
         LIMIT #{limit}
     </select>
 
@@ -178,5 +180,19 @@
         FROM twin_exp_record
         WHERE review_status = 0
     </select>
+
+    <delete id="deleteAll">
+        DELETE FROM twin_exp_record
+    </delete>
+
+    <delete id="deleteByEventDate">
+        DELETE FROM twin_exp_record
+        WHERE DATE(create_time) = #{eventDate}
+    </delete>
+
+    <delete id="deleteBeforeCutoff">
+        DELETE FROM twin_exp_record
+        WHERE create_time &lt; #{cutoffStart}
+    </delete>
 
 </mapper>

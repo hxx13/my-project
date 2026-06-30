@@ -73,12 +73,6 @@ public class TwinScanService {
     @Autowired
     private ScanAnalyzeTimingTrace analyzeTimingTrace;
 
-    @Autowired
-    private com.example.demo.modules.twin.rpg.service.RpgEngineService rpgEngineService;
-
-    @Autowired
-    private com.example.demo.modules.twin.rpg.service.TwinExpStatsService twinExpStatsService;
-
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -308,20 +302,6 @@ public class TwinScanService {
                     log.error("[扫码·流水] id={} 同步失败 err={}", userId, e.getMessage(), e);
                 }
             });
-        }
-
-        // 🎯 XP 经验值：所有成功执行的进出动作，在核心层统一计算并写入流水
-        if (success) {
-            try {
-                var predictResult = rpgEngineService.predictActionReward(userId, accessType);
-                if (predictResult.getExpAdded() > 0 && predictResult.getExpSource() != null) {
-                    twinExpStatsService.recordExp(userId, null, predictResult.getExpAdded(),
-                            predictResult.getExpSource(), accessType, officialRoomId, null);
-                }
-            } catch (Exception xpEx) {
-                log.warn("[scan·core] XP record failed userId={} accessType={} err={}",
-                        userId, accessType, xpEx.getMessage());
-            }
         }
 
         return success;

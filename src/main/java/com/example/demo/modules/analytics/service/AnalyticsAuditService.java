@@ -144,7 +144,7 @@ public class AnalyticsAuditService {
         }
         List<AnalyticsAuditLog> existing =
                 auditLogMapper.selectAllByView(view.getUserId(), view.getId(), 500);
-        log.info(
+        log.warn(
                 "[analytics-audit] force refresh viewId={} existingSnapshots={} subscribed={}",
                 view.getId(),
                 existing.size(),
@@ -171,7 +171,7 @@ public class AnalyticsAuditService {
         }
 
         // Step 3: 历史回溯 — 覆盖从 backfillFrom 到 yesterday 的所有天
-        log.info(
+        log.warn(
                 "[analytics-audit] force refresh viewId={} backfill range=[{} -> {}]",
                 view.getId(), backfillFrom, yesterday);
         backfillAuditForView(view, backfillFrom);
@@ -194,7 +194,7 @@ public class AnalyticsAuditService {
 
         // Step 5: 写最新周期（昨天/上周/上月）
         runAuditForView(view);
-        log.info("[analytics-audit] force refresh complete viewId={}", view.getId());
+        log.warn("[analytics-audit] force refresh complete viewId={}", view.getId());
     }
 
     /** 从已有快照列表中找到最早的日期 */
@@ -215,38 +215,17 @@ public class AnalyticsAuditService {
      */
     private void preCleanForForceRecalc(AnalyticsUserView view, List<AnalyticsAuditLog> existing) {
         try {
-            LocalDate rangeStart = null;
-            LocalDate rangeEnd = null;
-            if (existing != null) {
-                for (AnalyticsAuditLog log : existing) {
-                    if (!StringUtils.hasText(log.getPeriodLabel())) {
-                        continue;
-                    }
-                    LocalDate d = parsePeriodDate(log.getPeriodType(), log.getPeriodLabel());
-                    if (d != null) {
-                        if (rangeStart == null || d.isBefore(rangeStart)) {
-                            rangeStart = d;
-                        }
-                        if (rangeEnd == null || d.isAfter(rangeEnd)) {
-                            rangeEnd = d;
-                        }
-                    }
-                }
-            }
-            if (rangeStart == null) {
-                rangeStart = LocalDate.now().minusDays(1);
-            }
-            if (rangeEnd == null) {
-                rangeEnd = LocalDate.now().minusDays(1);
-            }
+            // pre-clean 仅覆盖最近 7 天，作为安全网。历史回溯走 backfillAuditForView 查已有清洗库。
+            LocalDate rangeEnd = LocalDate.now().minusDays(1);
+            LocalDate rangeStart = rangeEnd.minusDays(7);
             String startTime = rangeStart.atStartOfDay().format(DT_FMT);
             String endTime = rangeEnd.atTime(23, 59, 59).format(DT_FMT);
-            log.info(
+            log.warn(
                     "[analytics-audit] force-recalc pre-clean viewId={} range=[{}, {}]",
                     view.getId(), startTime, endTime);
             Map<String, Object> result = workspaceService.forceMergeAllChannelsForWindow(
                     startTime, endTime, "FORCE_RECALC");
-            log.info(
+            log.warn(
                     "[analytics-audit] force-recalc pre-clean done viewId={}: ok={} fail={} included={}",
                     view.getId(),
                     result.get("ok"), result.get("fail"), result.get("totalIncluded"));
@@ -365,11 +344,11 @@ public class AnalyticsAuditService {
      * 笼架占用统计不支持历史回填（仅按订阅周期落库快照并环比）。
      */
     public void backfillAuditForView(AnalyticsUserView view, LocalDate until) {
-        if (view == null || view.getIsSubscribed() == null || view.getIsSubscribed() != 1) {
+        if (view == null) {
             return;
         }
         if (isCageReport(view)) {
-            log.info("[analytics-audit] cage_occupancy skip history backfill viewId={}", view.getId());
+            log.warn("[analytics-audit] cage_occupancy skip history backfill viewId={}", view.getId());
             return;
         }
         if (until == null) {
@@ -420,8 +399,26 @@ public class AnalyticsAuditService {
             start = endDay.minusDays(MAX_BACKFILL_DAYS - 1L);
             log.warn("[analytics-audit] viewId={} day backfill capped to {} days", view.getId(), MAX_BACKFILL_DAYS);
         }
+        int zeroDays = 0;
+        int totalDays = 0;
+        long lastLog = System.currentTimeMillis();
         for (LocalDate d = start; !d.isAfter(endDay); d = d.plusDays(1)) {
-            writeDayPeriod(view, d);
+            totalDays++;
+            long events = writeDayPeriod(view, d);
+            if (events == 0) {
+                zeroDays++;
+            }
+            // 每10天或每10秒输出一次进度
+            long now = System.currentTimeMillis();
+            if (totalDays % 10 == 0 || now - lastLog > 10_000) {
+                log.warn("[analytics-audit] viewId={} backfill progress: {}/{} days done, {} zero-event days so far",
+                        view.getId(), totalDays, span, zeroDays);
+                lastLog = now;
+            }
+        }
+        if (zeroDays > 0) {
+            log.warn("[analytics-audit] viewId={} day backfill done: {} total, {} zero-event days",
+                    view.getId(), totalDays, zeroDays);
         }
     }
 
@@ -455,8 +452,8 @@ public class AnalyticsAuditService {
         }
     }
 
-    private void writeDayPeriod(AnalyticsUserView view, LocalDate day) {
-        writeDayPeriod(view, day, 1, 1);
+    private long writeDayPeriod(AnalyticsUserView view, LocalDate day) {
+        return writeDayPeriod(view, day, 1, 1);
     }
 
     private void writeWeekPeriod(AnalyticsUserView view, LocalDate weekMonday) {
@@ -467,9 +464,9 @@ public class AnalyticsAuditService {
         writeMonthPeriod(view, monthStart, 1, 1);
     }
 
-    private void writeDayPeriod(AnalyticsUserView view, LocalDate day, int cycleIndex, int cycleTotal) {
+    private long writeDayPeriod(AnalyticsUserView view, LocalDate day, int cycleIndex, int cycleTotal) {
         LocalDate prev = day.minusDays(1);
-        writePeriodLog(
+        return writePeriodLog(
                 view,
                 "day",
                 day.format(DateTimeFormatter.ISO_LOCAL_DATE),
@@ -535,7 +532,7 @@ public class AnalyticsAuditService {
         }
     }
 
-    private void writePeriodLog(
+    private long writePeriodLog(
             AnalyticsUserView view,
             String periodType,
             String periodLabel,
@@ -630,7 +627,7 @@ public class AnalyticsAuditService {
                         periodLabel,
                         curRounds);
             } else {
-                log.debug(
+                log.warn(
                         "[analytics-audit] snapshot refreshed viewId={} {} {} events={}",
                         view.getId(),
                         periodType,
@@ -648,6 +645,7 @@ public class AnalyticsAuditService {
                         curRounds);
             }
         }
+        return curRounds;
     }
 
     private String writeSnapshot(

@@ -8,9 +8,10 @@ import java.util.Map;
 
 @Mapper
 public interface RpgMapper {
-    List<String> getDistinctAccessLogUserIds();
+    List<String> getDistinctAccessLogUserIds(@Param("cutoffStart") String cutoffStart);
 
-    List<Map<String, Object>> getUserLogsForRecalc(@Param("userId") String userId);
+    List<Map<String, Object>> getUserLogsForRecalc(@Param("userId") String userId,
+                                                    @Param("cutoffStart") String cutoffStart);
 
     int updatePersonnelTotalExp(@Param("userId") String userId, @Param("totalExp") long totalExp);
 
@@ -30,5 +31,11 @@ public interface RpgMapper {
                                                   @Param("dateEnd") String dateEnd);
 
     /** 获取 aro_access_log 中所有不重复的日期（yyyy-MM-dd），用于全量历史重算 */
-    List<String> getDistinctAccessLogDates();
+    List<String> getDistinctAccessLogDates(@Param("cutoffStart") String cutoffStart);
+
+    /** 全量重算前重置人员总经验 */
+    int resetAllPersonnelTotalExp();
+
+    /** 删除截止日期前的进出流水 */
+    int deleteAccessLogsBefore(@Param("cutoffStart") String cutoffStart);
 }
