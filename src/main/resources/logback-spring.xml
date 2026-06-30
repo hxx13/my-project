@@ -26,10 +26,13 @@
     <!-- 环形缓冲区 Appender（所有 profile 激活，Web 管理端日志查看器数据源） -->
     <appender name="RING_BUFFER" class="com.example.demo.common.support.RingBufferAppender"/>
 
-    <!-- ————————— local 控制台 ————————— -->
+    <!-- ————————— local 控制台 (WARN+ only) ————————— -->
     <springProfile name="local">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <target>System.out</target>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>WARN</level>
+            </filter>
             <encoder>
                 <pattern>%d{HH:mm:ss} %highlight(%-5level) %msg%n</pattern>
                 <charset>UTF-8</charset>
@@ -39,9 +42,12 @@
 
     <!-- ————————— prod 控制台 + 文件 ————————— -->
     <springProfile name="prod">
-        <!-- 控制台：纯文本，无颜色 -->
+        <!-- 控制台：纯文本，WARN+ only -->
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <target>System.out</target>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>WARN</level>
+            </filter>
             <encoder>
                 <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level [%logger{36}] %msg%n</pattern>
                 <charset>UTF-8</charset>
