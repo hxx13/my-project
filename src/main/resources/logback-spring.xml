@@ -30,7 +30,6 @@
     <springProfile name="local">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <target>System.out</target>
-            <withJansi>true</withJansi>
             <encoder>
                 <pattern>%d{HH:mm:ss} %highlight(%-5level) %msg%n</pattern>
                 <charset>UTF-8</charset>
@@ -114,19 +113,25 @@
     <logger name="io.netty" level="ERROR"/>
     <logger name="com.corundumstudio.socketio" level="ERROR"/>
 
-    <!-- Spring 框架启动细节 -->
+    <!-- Spring Boot 自身启动日志（Starting/Started/profile/mapping 等） -->
+    <logger name="org.springframework.boot" level="WARN"/>
     <logger name="org.springframework.boot.web" level="WARN"/>
     <logger name="org.springframework.jdbc.datasource" level="WARN"/>
+    <logger name="org.springframework.web.servlet" level="WARN"/>
+
+    <!-- MySQL Connector — 连接建立/关闭细节 -->
+    <logger name="com.mysql" level="WARN"/>
+    <logger name="com.mysql.cj" level="WARN"/>
 
     <!-- DJL 引擎加载细节（通过 StartupBanner 阶段报告，无需逐行日志） -->
     <logger name="ai.djl" level="WARN"/>
 
-    <!-- ============================== 业务模块默认级别 ============================== -->
+    <!-- ============================== 业务模块 ============================== -->
     <!--
-      默认 WARN → 正常运行时控制台几乎空白，只输出 WARN+。
-      运行时通过 LogCategoryRegistry / LoggingAdminController 动态切换。
+      WARN → 控制台只输出 WARN/ERROR。INFO/DEBUG 全部进 RingBuffer 供 Web 管理端查看。
+      想临时看 INFO：POST /api/admin/logging/level {loggerName:"com.example.demo", level:"INFO"}
     -->
-    <logger name="com.example.demo" level="INFO"/>
+    <logger name="com.example.demo" level="WARN"/>
 
     <!-- ============================== ROOT ============================== -->
     <!--

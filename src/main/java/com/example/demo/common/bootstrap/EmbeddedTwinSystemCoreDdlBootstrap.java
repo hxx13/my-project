@@ -109,10 +109,10 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements StartupRunner {
             DatabasePopulatorUtils.execute(populator, dataSource);
             return true;
         } catch (Exception ex) {
-            String msg = ex.getMessage() != null ? ex.getMessage() : "";
-            if (isBenignDdlSkip(msg)) {
+            if (isBenignInChain(ex)) {
                 return true; // 幂等：列/表/索引已存在
             }
+            String msg = ex.getMessage() != null ? ex.getMessage() : "";
             ctx.warn(scriptLabel(classpath) + ": " + truncate(msg, 120));
             return false;
         }
@@ -127,14 +127,24 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements StartupRunner {
         return name.length() > 40 ? name.substring(0, 37) + "..." : name;
     }
 
-    private static boolean isBenignDdlSkip(String message) {
-        if (message.isBlank()) return false;
-        String lower = message.toLowerCase();
-        return lower.contains("duplicate column")
-                || lower.contains("duplicate key name")
-                || lower.contains("already exists")
-                || message.contains("Duplicate column")
-                || message.contains("already exists");
+    /** 递归检查异常链中是否包含幂等 DDL 信号（列/表/索引已存在 ≠ 失败）。 */
+    private static boolean isBenignInChain(Throwable ex) {
+        if (ex == null) return false;
+        String msg = ex.getMessage();
+        if (msg != null && !msg.isBlank()) {
+            String lower = msg.toLowerCase();
+            if (lower.contains("duplicate column")
+                    || lower.contains("duplicate key")
+                    || lower.contains("already exists")
+                    || lower.contains("table already exists")
+                    || lower.contains("column already exists")
+                    || lower.contains("unknow column")  // MySQL 某些版本的 "Unknown column" 拼写
+                    || lower.contains("doesn't exist")  // DROP COLUMN IF EXISTS 等安全语句
+            ) {
+                return true;
+            }
+        }
+        return isBenignInChain(ex.getCause());
     }
 
     private static String truncate(String s, int maxLen) {
