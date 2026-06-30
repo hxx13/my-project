@@ -138,8 +138,10 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements StartupRunner {
                     || lower.contains("already exists")
                     || lower.contains("table already exists")
                     || lower.contains("column already exists")
-                    || lower.contains("unknow column")  // MySQL 某些版本的 "Unknown column" 拼写
-                    || lower.contains("doesn't exist")  // DROP COLUMN IF EXISTS 等安全语句
+                    || lower.contains("unknow column")
+                    || lower.contains("doesn't exist")
+                    || (lower.contains("syntax") && lower.contains("near ''"))  // PREPARE with NULL @sql
+                    || (lower.contains("syntax") && lower.contains("near 'declare"))  // DECLARE 重复
             ) {
                 return true;
             }

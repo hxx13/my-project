@@ -1,43 +1,29 @@
 package com.example.demo.common.logging.banner;
 
-import com.example.demo.common.logging.model.PhaseResult;
 import com.example.demo.common.logging.model.StartupContext;
 import com.example.demo.common.logging.model.StartupResult;
 import com.example.demo.common.logging.model.StartupRunner;
 
 import java.io.PrintStream;
 import java.util.*;
-import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 赛博朋克启动动画引擎。
+ * 赛博朋克启动动画引擎 —— Claude Code 风格实时终端动画。
  *
- * <h3>使用方式</h3>
- * <pre>{@code
- * StartupBanner banner = StartupBanner.create(System.err)
- *     .title("🧬 TWIN SYSTEM v2.0")
- *     .subtitle("Neuro-Synced Infrastructure");
- *
- * banner.phase("数据库迁移", "28 个 DDL 脚本", ctx -> {
- *     ctx.subtask("login-branding", () -> runScript("..."));
- *     // ...
- *     return StartupResult.success("28/28 就绪");
- * });
- *
- * banner.finish(":8081", "local");
- * }</pre>
+ * <p>后台线程以 80ms 帧率刷新旋转指示器 + 进度文本，
+ * 使用 {@code \r} 回车覆盖当前行实现原地动画。
  */
 public class StartupBanner {
+
+    private static final long FRAME_MS = 80;
 
     private final PrintStream out;
     private String title;
     private String subtitle;
     private final List<PhaseDef> phases = new ArrayList<>();
     private final long startNanos;
-    private boolean finished = false;
 
     private StartupBanner(PrintStream out) {
         this.out = out;
@@ -48,19 +34,10 @@ public class StartupBanner {
         return new StartupBanner(out);
     }
 
-    public StartupBanner title(String title) {
-        this.title = title;
-        return this;
-    }
+    public StartupBanner title(String title) { this.title = title; return this; }
+    public StartupBanner subtitle(String subtitle) { this.subtitle = subtitle; return this; }
 
-    public StartupBanner subtitle(String subtitle) {
-        this.subtitle = subtitle;
-        return this;
-    }
-
-    /**
-     * 注册并立即同步执行一个启动阶段。
-     */
+    /** 注册并立即同步执行一个启动阶段。 */
     public StartupBanner phase(String name, String description, StartupRunner runner) {
         PhaseDef def = new PhaseDef(name, description, runner);
         phases.add(def);
@@ -68,105 +45,86 @@ public class StartupBanner {
         return this;
     }
 
-    /**
-     * 注册一个阶段但不立即执行（延迟到 {@link #runAll()} 时批量执行）。
-     */
-    public StartupBanner register(String name, String description, StartupRunner runner) {
-        phases.add(new PhaseDef(name, description, runner));
-        return this;
-    }
-
-    /**
-     * 批量执行所有已注册的阶段。
-     */
-    public void runAll() {
-        for (PhaseDef def : phases) {
-            if (!def.executed) {
-                executePhase(def);
-            }
-        }
-    }
-
-    /**
-     * 打印标题横幅 + 启动摘要框，标记启动完成。
-     */
+    /** 打印标题横幅 + 启动摘要框。 */
     public void finish(String port, String profile) {
-        finished = true;
         double elapsed = (System.nanoTime() - startNanos) / 1_000_000_000.0;
 
         // 标题横幅
-        if (title != null) {
-            out.println();
-            out.println(PhaseFrame.banner(title, subtitle));
-            out.println();
-        }
+        out.println();
+        out.println(PhaseFrame.banner(title != null ? title : "TWIN SYSTEM", subtitle));
+        out.println();
 
-        // 重放所有已完成阶段的最终状态
+        // 最终状态
         for (PhaseDef def : phases) {
-            if (def.state == PhaseState.SUCCESS) {
-                out.println(PhaseFrame.phaseLine(PhaseState.SUCCESS, null, def.name, def.finalDetail));
-            } else if (def.state == PhaseState.FAILED) {
-                out.println(PhaseFrame.phaseLine(PhaseState.FAILED, null, def.name, def.finalDetail));
-            } else if (def.state == PhaseState.SKIPPED) {
-                out.println(PhaseFrame.phaseLine(PhaseState.SKIPPED, null, def.name, def.finalDetail));
+            switch (def.state) {
+                case SUCCESS -> out.println(PhaseFrame.phaseLine(
+                        PhaseState.SUCCESS, null, def.name, def.finalDetail));
+                case FAILED -> out.println(PhaseFrame.phaseLine(
+                        PhaseState.FAILED, null, def.name, def.finalDetail));
+                case SKIPPED -> out.println(PhaseFrame.phaseLine(
+                        PhaseState.SKIPPED, null, def.name, def.finalDetail));
             }
         }
 
-        // 结果框
         out.println();
-        long failedCount = phases.stream().filter(p -> p.state == PhaseState.FAILED).count();
-        boolean allOk = failedCount == 0;
+        long failed = phases.stream().filter(p -> p.state == PhaseState.FAILED).count();
+        boolean allOk = failed == 0;
         String line1 = "TWIN SYSTEM " + (allOk ? "READY" : "DEGRADED")
                 + "  ·  :" + port + "  ·  " + String.format("%.1f", elapsed) + "s";
         String line2 = "http://localhost:5173  ·  profile: " + profile;
-        if (!allOk) {
-            line2 += "  ·  " + failedCount + " phase(s) failed";
-        }
+        if (!allOk) line2 += "  ·  " + failed + " phase(s) failed";
         out.println(PhaseFrame.resultBox(allOk, line1, line2));
         out.println();
     }
 
-    // --- internal ---
+    // ─────────────────────────── internal ───────────────────────────
 
     private void executePhase(PhaseDef def) {
-        def.executed = true;
-        Spinner spinner = new Spinner();
-        AtomicInteger subtaskCurrent = new AtomicInteger(0);
+        // 共享状态：后台渲染线程读取
+        AtomicReference<String> runningDetail = new AtomicReference<>("");
+        AtomicInteger subtaskDone = new AtomicInteger(0);
         AtomicInteger subtaskTotal = new AtomicInteger(0);
+
+        Spinner spinner = new Spinner();
+        AtomicReference<Thread> animatorRef = new AtomicReference<>();
+        animatorRef.set(startAnimator(def, spinner, runningDetail, subtaskDone, subtaskTotal));
         long phaseStart = System.nanoTime();
 
-        // 构建上下文
         StartupContext ctx = new StartupContext() {
+            private Thread anim() { return animatorRef.get(); }
+
             @Override
             public void subtask(String label, Runnable task) {
                 subtaskTotal.incrementAndGet();
-                if (label != null) {
-                    renderRunning(def, spinner, label);
-                }
+                if (label != null) runningDetail.set(label);
                 try {
                     task.run();
                 } finally {
-                    subtaskCurrent.incrementAndGet();
+                    subtaskDone.incrementAndGet();
+                    if (label != null) runningDetail.set(label);
                 }
             }
 
             @Override
             public void progress(int current, int total, String detail) {
-                subtaskCurrent.set(current);
+                subtaskDone.set(current);
                 subtaskTotal.set(total);
-                renderRunning(def, spinner, detail);
+                if (detail != null) runningDetail.set(detail);
             }
 
             @Override
             public void warn(String message) {
-                if (!finished) {
-                    out.println(CyberColor.AMBER + "  ! " + def.name + ": " + message + CyberColor.RESET);
-                }
+                // 暂停动画，打印警告，然后恢复
+                Thread a = anim();
+                if (a != null) { a.interrupt(); try { a.join(200); } catch (InterruptedException ignored) {} }
+                out.print("\r" + " ".repeat(120) + "\r");
+                out.println(CyberColor.AMBER + "  ! " + def.name + ": " + message + CyberColor.RESET);
+                out.flush();
+                animatorRef.set(startAnimator(def, spinner, runningDetail, subtaskDone, subtaskTotal));
             }
         };
 
         // 执行
-        def.state = PhaseState.RUNNING;
         try {
             StartupResult result = def.runner.run(ctx);
             def.state = result.success() ? PhaseState.SUCCESS : PhaseState.FAILED;
@@ -177,38 +135,56 @@ public class StartupBanner {
                 detail += (detail.isEmpty() ? "" : " ") + String.format("(%.1fs)", elapsed);
             }
             def.finalDetail = detail;
-
-            if (result.success() && !finished) {
-                // 不在 finish 中——立即打印完成行
-                out.println(PhaseFrame.phaseLine(PhaseState.SUCCESS, null, def.name, def.finalDetail));
-            } else if (!result.success()) {
-                String errDetail = def.finalDetail;
-                if (result.error() != null) {
-                    String msg = result.error().getMessage();
-                    if (msg != null && !msg.isBlank()) {
-                        errDetail = truncate(msg, 60);
-                    }
-                }
-                out.println(PhaseFrame.phaseLine(PhaseState.FAILED, null, def.name, errDetail));
-                if (result.error() != null) {
-                    out.println(CyberColor.RED + "       " + result.error().getClass().getSimpleName()
-                            + ": " + result.error().getMessage() + CyberColor.RESET);
-                }
+            if (!result.success() && result.error() != null) {
+                def.finalDetail = detail + " — " + truncate(result.error().getMessage(), 50);
             }
         } catch (Exception e) {
             def.state = PhaseState.FAILED;
             def.finalDetail = truncate(e.getMessage(), 60);
+        } finally {
+            // 停止动画线程
+            Thread a = animatorRef.get();
+            if (a != null) { a.interrupt(); try { a.join(500); } catch (InterruptedException ignored) {} }
+        }
+
+        // 打印最终行
+        out.print("\r" + " ".repeat(120) + "\r"); // 清行
+        if (def.state == PhaseState.SUCCESS) {
+            out.println(PhaseFrame.phaseLine(PhaseState.SUCCESS, null, def.name, def.finalDetail));
+        } else {
             out.println(PhaseFrame.phaseLine(PhaseState.FAILED, null, def.name, def.finalDetail));
-            out.println(CyberColor.RED + "       " + e.getClass().getSimpleName()
-                    + ": " + e.getMessage() + CyberColor.RESET);
         }
     }
 
-    private void renderRunning(PhaseDef def, Spinner spinner, String detail) {
-        if (finished) return;
-        // 回车覆盖当前行（动画中）
-        out.print("\r" + PhaseFrame.phaseLine(PhaseState.RUNNING, spinner.tick(), def.name, detail));
-        out.flush();
+    /** 启动后台动画线程 */
+    private Thread startAnimator(PhaseDef def, Spinner spinner,
+                                  AtomicReference<String> detail,
+                                  AtomicInteger done, AtomicInteger total) {
+        Thread t = new Thread(() -> {
+            while (!Thread.currentThread().isInterrupted()) {
+                String frame = spinner.tick();
+                String detailText = detail.get();
+                int d = done.get(), ttl = total.get();
+
+                StringBuilder line = new StringBuilder();
+                line.append('\r').append(PhaseFrame.phaseLine(
+                        PhaseState.RUNNING, frame, def.name, detailText));
+
+                // 附加进度条（若有 subtask）
+                if (ttl > 0) {
+                    line.append(' ').append(ProgressBar.render(d, ttl, null));
+                }
+
+                // 清到行尾
+                out.print(line.toString());
+                out.flush();
+
+                try { Thread.sleep(FRAME_MS); } catch (InterruptedException e) { break; }
+            }
+        }, "banner-" + def.name);
+        t.setDaemon(true);
+        t.start();
+        return t;
     }
 
     private static String truncate(String s, int maxLen) {
@@ -216,15 +192,14 @@ public class StartupBanner {
         return s.length() <= maxLen ? s : s.substring(0, maxLen - 3) + "...";
     }
 
-    // --- data class ---
+    // ─────────────────────────── data class ───────────────────────────
 
     static class PhaseDef {
         final String name;
         final String description;
         final StartupRunner runner;
-        PhaseState state = PhaseState.RUNNING;
-        String finalDetail = "";
-        boolean executed = false;
+        volatile PhaseState state = PhaseState.RUNNING;
+        volatile String finalDetail = "";
 
         PhaseDef(String name, String description, StartupRunner runner) {
             this.name = name;
