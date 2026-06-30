@@ -99,6 +99,15 @@
   max-width: 36ch;
 }
 
+/* ── 自定义内容插槽（extra slot）── */
+.mn-extra {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  overflow: hidden;
+}
+
 /* ── 倒计时行 ── */
 .mn-countdown-row {
   display: flex;
@@ -158,6 +167,15 @@
 .mn-btn--ghost:hover {
   background: var(--app-color-surface-hover);
   color: var(--mn-text-primary);
+}
+
+.mn-btn--secondary {
+  background: transparent;
+  color: var(--mn-warning);
+  border: 1px solid var(--mn-warning);
+}
+.mn-btn--secondary:hover {
+  background: var(--mn-warning-soft);
 }
 
 /* ── 关闭 & 最小化按钮 ── */

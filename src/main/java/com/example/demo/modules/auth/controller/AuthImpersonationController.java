@@ -62,7 +62,7 @@ public class AuthImpersonationController {
             aroUser = new User();
             aroUser.setId(aroUserId);
             aroUser.setUsername(aroUserId);
-            aroUser.setRole(RoleEnum.STUDENT);
+            aroUser.setRole(RoleEnum.MEMBER);
             aroUser.setStatus(1);
             aroUser.setAuthProfile("ARO_BOUND");
             userMapper.insertUser(aroUser);

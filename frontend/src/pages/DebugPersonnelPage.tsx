@@ -43,7 +43,7 @@ export default function DebugPersonnelPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const personnelSyncAbortRef = useRef<AbortController | null>(null);
 
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const myUserId = authStorage.getUserIdFromToken();
   const canStaffChatOps = hasMinRole(role, "STAFF");
 

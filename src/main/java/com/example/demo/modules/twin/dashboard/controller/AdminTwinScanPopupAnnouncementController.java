@@ -137,7 +137,7 @@ public class AdminTwinScanPopupAnnouncementController {
             return denied;
         }
         try {
-            TwinScanPopupAnnouncement row = announcementService.update(
+            var outcome = announcementService.update(
                     id,
                     body.getTitle(),
                     body.getContentHtml(),
@@ -145,12 +145,43 @@ public class AdminTwinScanPopupAnnouncementController {
                     body.getSortOrder() != null ? body.getSortOrder() : 0,
                     body.getStatus(),
                     parseDateTime(body.getPublishAt()),
-                    parseDateTime(body.getExpireAt())
+                    parseDateTime(body.getExpireAt()),
+                    Boolean.TRUE.equals(body.getClearAutoSuppress())
             );
-            if (row == null) {
+            if (outcome.row() == null) {
                 return Result.error("公告不存在");
             }
-            return Result.success(toRow(row));
+            Map<String, Object> out = toRow(outcome.row());
+            out.put("clearedAutoSuppressCount", outcome.clearedAutoSuppressCount());
+            return Result.success(out);
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/clear-auto-suppress")
+    @Operation(summary = "清空该公告的全部「不再弹出」记录（与保存时勾选 clearAutoSuppress 等效）")
+    public Result<?> clearAutoSuppress(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable long id
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        try {
+            TwinScanPopupAnnouncement existing = announcementService.getById(id);
+            if (existing == null) {
+                return Result.error("公告不存在");
+            }
+            int cleared = announcementService.clearAutoSuppressRecords(id);
+            Map<String, Object> out = new HashMap<>();
+            out.put("announcementId", id);
+            out.put("clearedCount", cleared);
+            out.put("clearedAutoSuppressCount", cleared);
+            return Result.success(out);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
@@ -185,6 +216,7 @@ public class AdminTwinScanPopupAnnouncementController {
         m.put("createdByUserId", row.getCreatedByUserId());
         m.put("createdAt", row.getCreatedAt());
         m.put("updatedAt", row.getUpdatedAt());
+        m.put("autoSuppressCount", announcementService.countAutoSuppressRecords(row.getId()));
         return m;
     }
 
@@ -208,7 +240,7 @@ public class AdminTwinScanPopupAnnouncementController {
         if (user == null) {
             return Result.error("未登录");
         }
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() < RoleEnum.ADMIN.getLevel()) {
             return Result.error("无权限访问（需管理员及以上）");
         }
@@ -224,5 +256,7 @@ public class AdminTwinScanPopupAnnouncementController {
         private String status;
         private String publishAt;
         private String expireAt;
+        /** 为 true 时清空该公告全部「不再弹出」记录，被扫码人员下次扫码将重新自动弹出 */
+        private Boolean clearAutoSuppress;
     }
 }

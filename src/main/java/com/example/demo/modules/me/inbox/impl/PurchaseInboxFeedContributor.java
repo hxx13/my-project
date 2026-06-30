@@ -41,7 +41,7 @@ public class PurchaseInboxFeedContributor implements InboxFeedContributor {
     @Override
     public List<InboxItemDto> contribute(InboxFeedQuery query) {
         User user = query.getUser();
-        RoleEnum role = user.getRole() == null ? RoleEnum.STUDENT : user.getRole();
+        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             return List.of();
         }

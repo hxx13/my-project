@@ -9,6 +9,8 @@ import java.util.List;
 public interface MaterialCategoryMapper {
     List<MaterialCategory> selectEnabled();
     List<MaterialCategory> selectAll();
+    /** 按课题组过滤分类（仅返回该组有记录的物品所属分类） */
+    List<MaterialCategory> selectByApplicantGroup(@Param("applicantGroup") String applicantGroup);
     MaterialCategory selectById(@Param("id") Long id);
     int insert(MaterialCategory category);
     int updateById(MaterialCategory category);

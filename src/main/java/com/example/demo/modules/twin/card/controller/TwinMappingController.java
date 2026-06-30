@@ -259,6 +259,12 @@ public class TwinMappingController {
             if (payload.get("durationMinutes") != null) {
                 durationMinutes = Integer.parseInt(payload.get("durationMinutes").toString());
             }
+            String extendUntilTime = payload.get("extendUntilTime") != null
+                    ? payload.get("extendUntilTime").toString().trim()
+                    : null;
+            if (extendUntilTime != null && extendUntilTime.isEmpty()) {
+                extendUntilTime = null;
+            }
             String mode = payload.get("mode") != null ? payload.get("mode").toString() : "TIME";
             Integer maxCount = null;
             if (payload.get("maxCount") != null) {
@@ -267,15 +273,16 @@ public class TwinMappingController {
             String roomIds = payload.get("roomIds") != null ? payload.get("roomIds").toString() : null;
 
             if (flag == 1) {
-                if ((mode.equals("TIME") || mode.equals("BOTH")) && durationMinutes == null) {
-                    return Result.error("时长限制模式须选择时效（durationMinutes）");
+                boolean hasUntil = extendUntilTime != null && !extendUntilTime.isBlank();
+                if ((mode.equals("TIME") || mode.equals("BOTH")) && durationMinutes == null && !hasUntil) {
+                    return Result.error("时长限制模式须选择延长至时点（extendUntilTime）");
                 }
                 if ((mode.equals("COUNT") || mode.equals("BOTH")) && maxCount == null) {
                     return Result.error("次数限制模式须指定次数（maxCount）");
                 }
             }
             Map<String, Object> updated = mappingService.updateExemptFlag(
-                    cardNo, flag, durationMinutes, mode, maxCount, roomIds);
+                    cardNo, flag, durationMinutes, mode, maxCount, roomIds, extendUntilTime);
             log.info("[twin] exempt cardNo={} flag={} mode={} maxCount={} by userId={}",
                     cardNo, flag, mode, maxCount, user.getId());
             return Result.success(updated);
@@ -397,7 +404,7 @@ public class TwinMappingController {
         if (user.getStatus() != null && user.getStatus() == 0) {
             return Result.error("账号已禁用");
         }
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() < RoleEnum.SENIOR.getLevel()) {
             return Result.error("无权限访问");
         }
@@ -412,7 +419,7 @@ public class TwinMappingController {
         if (user.getStatus() != null && user.getStatus() == 0) {
             return Result.error("账号已禁用");
         }
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() < RoleEnum.ADMIN.getLevel()) {
             return Result.error("无权限访问");
         }

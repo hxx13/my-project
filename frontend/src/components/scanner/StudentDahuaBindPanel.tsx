@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Loader2 } from "lucide-react";
 import {
   fetchScanCardMapping,
@@ -12,7 +13,7 @@ import {
   sanitizeStudentDahuaCardNo,
   STUDENT_DAHUA_CARD_LEN,
 } from "./studentDahuaCardInput";
-import { SCAN_NESTED_BACKDROP, SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
+import { SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
 
 export function StudentDahuaBindPanel({
   userId,
@@ -35,6 +36,8 @@ export function StudentDahuaBindPanel({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const cardScanBufferRef = useRef("");
   const cardScanResetTimer = useRef<number | null>(null);
+  const confirmOpenRef = useRef(confirmOpen);
+  confirmOpenRef.current = confirmOpen;
 
   const reloadMapping = async () => {
     setMappingLoading(true);
@@ -99,7 +102,12 @@ export function StudentDahuaBindPanel({
       if (key === "Tab") return;
       if (key === "Enter") {
         e.preventDefault();
-        if (!confirmOpen && isValidStudentDahuaCardNo(cardScanBufferRef.current)) {
+        if (!confirmOpenRef.current && isValidStudentDahuaCardNo(cardScanBufferRef.current)) {
+          // 进入确认状态时取消自动清空定时器，防止确认界面卡号消失
+          if (cardScanResetTimer.current) {
+            clearTimeout(cardScanResetTimer.current);
+            cardScanResetTimer.current = null;
+          }
           setError("");
           setConfirmOpen(true);
         }
@@ -127,7 +135,7 @@ export function StudentDahuaBindPanel({
     };
     window.addEventListener("keydown", onWinKeyDown, true);
     return () => window.removeEventListener("keydown", onWinKeyDown, true);
-  }, [confirmOpen]);
+  }, []);
 
   const handleRequestConfirm = () => {
     const clean = sanitizeStudentDahuaCardNo(cardNo);
@@ -135,6 +143,11 @@ export function StudentDahuaBindPanel({
       setCardNo("");
       setError(`请先刷入 ${STUDENT_DAHUA_CARD_LEN} 位字母或数字卡号`);
       return;
+    }
+    // 进入确认状态时取消自动清空定时器，防止确认界面卡号消失
+    if (cardScanResetTimer.current) {
+      clearTimeout(cardScanResetTimer.current);
+      cardScanResetTimer.current = null;
     }
     setError("");
     setConfirmOpen(true);
@@ -169,8 +182,8 @@ export function StudentDahuaBindPanel({
 
   const cardReady = isValidStudentDahuaCardNo(cardNo);
 
-  return (
-    <div {...SCAN_MODAL_LAYER_PROPS} className={`fixed inset-0 top-16 z-[var(--z-modal)] flex items-center justify-center p-4 ${SCAN_NESTED_BACKDROP}`}>
+  return createPortal(
+    <div {...SCAN_MODAL_LAYER_PROPS} className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-[var(--app-elevation-modal)] text-[var(--app-color-text-primary)]">
         <h3 className="mb-1 text-base font-black">绑定校园卡</h3>
         <p className="mb-4 text-[11px] text-[var(--app-color-text-tertiary)]">
@@ -277,6 +290,7 @@ export function StudentDahuaBindPanel({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -16,7 +16,7 @@ public class User {
 
     private String openId;
 
-    private RoleEnum role = RoleEnum.STUDENT;
+    private RoleEnum role = RoleEnum.MEMBER;
 
     /**
      * 账号状态: 1 启用, 0 禁用。
@@ -47,6 +47,11 @@ public class User {
      * 认证来源：WECHAT_ARO（微信+ARO 学号/工号绑定）、WEB_PASSWORD（Web 账号密码体系）。
      */
     private String authProfile;
+
+    /**
+     * 账号来源库：STUDENT（学生视角创建）/ STAFF（教职工视角创建）。
+     */
+    private String accountSource;
 
     private String createTime;
 }

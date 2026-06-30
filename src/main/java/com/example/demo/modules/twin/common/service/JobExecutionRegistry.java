@@ -19,6 +19,7 @@ import com.example.demo.modules.telemetry.service.TelemetrySnapshotService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,17 +71,26 @@ public class JobExecutionRegistry {
     /** 笼架·特殊状态全量扫描（每周一次，数万笼位级） */
     public static final String JOB_CAGE_SPECIAL_STATUS_SCAN = "CAGE_SPECIAL_STATUS_SCAN";
     public static final String JOB_STRANDED_VIOLATION_CHECK = "STRANDED_VIOLATION_CHECK";
+    /** 第二道滞留检测：口径与 {@link #JOB_STRANDED_VIOLATION_CHECK} 相同，仅签退、不创建违规 */
+    public static final String JOB_STRANDED_SIGNOUT_CHECK = "STRANDED_SIGNOUT_CHECK";
     /** 大屏排行榜·进出活跃度刷新（根据 pollIntervalSeconds 向大屏 WebSocket 推送刷新信号） */
     public static final String JOB_DASHBOARD_RANKING_ACTIVITY = "DASHBOARD_RANKING_ACTIVITY";
     /** 大屏排行榜·动物消耗刷新（同上） */
     public static final String JOB_DASHBOARD_RANKING_ANIMAL = "DASHBOARD_RANKING_ANIMAL";
+    /** 延迟免冻结·自动审批（信任名单 + 批量规则） */
+    public static final String JOB_SCAN_DELAY_AUTO_APPROVE = "SCAN_DELAY_AUTO_APPROVE";
+    /** 物资申领·自动审批（信任名单 + 批量规则） */
+    public static final String JOB_MATERIAL_AUTO_APPROVE = "MATERIAL_AUTO_APPROVE";
+    /** 经验值·每日流水对账（扫描昨日 aro_access_log 配对进出记录并写入 twin_exp_record） */
+    public static final String JOB_EXP_RECONCILE = "EXP_RECONCILE";
 
     private static final Set<String> DEPRECATED_JOB_KEYS =
             Set.of(
                     JOB_ACCESS_RAW_BACKFILL,
                     JOB_ACCESS_EVENT_CLEAN_DAILY,
                     JOB_ACCESS_EVENT_CLEAN_INCREMENTAL,
-                    JOB_DAHUA_SWING_STATS_PULL);
+                    JOB_DAHUA_SWING_STATS_PULL,
+                    JOB_RPG_RECALC);
 
     public static boolean isDeprecatedJob(String jobKey) {
         return jobKey != null && DEPRECATED_JOB_KEYS.contains(jobKey);
@@ -112,6 +122,12 @@ public class JobExecutionRegistry {
     private final com.example.demo.modules.twin.dashboard.service.RankingSnapshotService rankingSnapshotService;
     @Autowired(required = false)
     private com.corundumstudio.socketio.SocketIOServer socketServer;
+    @Autowired(required = false)
+    private com.example.demo.modules.twin.scan.delay.service.ScanDelayAutoApproveService scanDelayAutoApproveService;
+    @Autowired(required = false)
+    private com.example.demo.modules.material.service.MaterialAutoApproveService materialAutoApproveService;
+    @Autowired(required = false)
+    private com.example.demo.modules.twin.rpg.service.TwinExpReconcileService twinExpReconcileService;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
     public JobExecutionRegistry(
@@ -173,7 +189,10 @@ public class JobExecutionRegistry {
         jobs.put(JOB_ROOM_MAPPING_REFRESH, "房间映射·ARO落库刷新");
         jobs.put(JOB_ARO_PENETRATION_POLL, "ARO·在馆流水增量同步");
         jobs.put(JOB_DAILY_EXEMPT_RESET, "冻结·每日豁免权回收");
-        jobs.put(JOB_STRANDED_VIOLATION_CHECK, "滞留·未豁免人员自动违规");
+        jobs.put(JOB_STRANDED_VIOLATION_CHECK, "滞留·未豁免人员自动违规（一道）");
+        jobs.put(JOB_STRANDED_SIGNOUT_CHECK, "滞留·未豁免人员自动签退（二道）");
+        jobs.put(JOB_SCAN_DELAY_AUTO_APPROVE, "延迟免冻结·自动审批");
+        jobs.put(JOB_MATERIAL_AUTO_APPROVE, "物资申领·自动审批");
         jobs.put(JOB_TELEMETRY_WINCC_UI, "动物房·WinCC温湿度测量值（窗口内轮询）");
         jobs.put(JOB_TELEMETRY_WINCC_LIMITS_UI, "动物房·WinCC限值同步（窗口内轮询）");
         jobs.put(
@@ -190,6 +209,7 @@ public class JobExecutionRegistry {
         jobs.put(JOB_CAGE_SPECIAL_STATUS_SCAN, "笼架·特殊状态全量扫描（每周）");
         jobs.put(JOB_DASHBOARD_RANKING_ACTIVITY, "大屏·进出活跃排行榜刷新");
         jobs.put(JOB_DASHBOARD_RANKING_ANIMAL, "大屏·动物消耗排行榜刷新");
+        jobs.put(JOB_EXP_RECONCILE, "经验值·每日流水对账重算");
         return jobs;
     }
 
@@ -279,7 +299,25 @@ public class JobExecutionRegistry {
                 }
                 case JOB_STRANDED_VIOLATION_CHECK -> {
                     strandedViolationService.executeScheduledCheck();
-                    yield JobRunOutcome.ok(jobKey, "滞留检测完成");
+                    yield JobRunOutcome.ok(jobKey, "滞留违规检测完成");
+                }
+                case JOB_STRANDED_SIGNOUT_CHECK -> {
+                    strandedViolationService.executeScheduledSignoutCheck();
+                    yield JobRunOutcome.ok(jobKey, "滞留签退检测完成");
+                }
+                case JOB_SCAN_DELAY_AUTO_APPROVE -> {
+                    if (scanDelayAutoApproveService == null) {
+                        throw new IllegalStateException("ScanDelayAutoApproveService 未就绪");
+                    }
+                    var summary = scanDelayAutoApproveService.runScheduledJob();
+                    yield JobRunOutcome.ok(jobKey, "自动审批完成 approved=" + summary.get("approved"), summary);
+                }
+                case JOB_MATERIAL_AUTO_APPROVE -> {
+                    if (materialAutoApproveService == null) {
+                        throw new IllegalStateException("MaterialAutoApproveService 未就绪");
+                    }
+                    var summary = materialAutoApproveService.runScheduledJob();
+                    yield JobRunOutcome.ok(jobKey, "物资自动审批 approved=" + summary.get("approved"), summary);
                 }
                 case JOB_TELEMETRY_WINCC_UI -> {
                     telemetrySnapshotService.refreshFromWinCc();
@@ -336,6 +374,17 @@ public class JobExecutionRegistry {
                     int cws = cagesWithStatus instanceof Number n ? n.intValue() : 0;
                     yield JobRunOutcome.ok(jobKey,
                             "全量笼架特殊状态扫描完成，发现 " + cws + " 个特殊状态笼位", result);
+                }
+                case JOB_EXP_RECONCILE -> {
+                    if (twinExpReconcileService == null) {
+                        throw new IllegalStateException("TwinExpReconcileService 未就绪");
+                    }
+                    var metrics = twinExpReconcileService.reconcileDate(LocalDate.now().minusDays(1));
+                    yield JobRunOutcome.ok(jobKey,
+                            "经验对账完成：处理 " + metrics.get("usersProcessed") + " 人，"
+                                    + "写入 " + metrics.get("recordsCreated") + " 条，"
+                                    + "标记异常 " + metrics.get("anomaliesFlagged") + " 条",
+                            metrics);
                 }
                 case JOB_DASHBOARD_RANKING_ACTIVITY -> {
                     int baselineCreated = rankingSnapshotService.captureAllActivityBaselinesIfAbsent();

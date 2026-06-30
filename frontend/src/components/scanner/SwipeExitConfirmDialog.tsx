@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, LogOut } from "lucide-react";
+import { X, LogOut, Smartphone } from "lucide-react";
 import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
 import { SCAN_MODAL_LAYER_PROPS } from "./scanPopupTheme";
 import { useTheme } from "@/features/theme/ThemeProvider";
+import { MobileQrCard } from "./MobileQrCard";
 
 interface SwipeExitConfirmDialogProps {
     open: boolean;
@@ -18,6 +19,8 @@ interface SwipeExitConfirmDialogProps {
     autoSignoutState?: string | null;
     /** 倒计时归零回调：关闭弹窗 + 刷新状态 */
     onCountdownEnd?: () => void;
+    /** 当前扫码人 userId，用于生成手机端直达二维码 */
+    studentUserId?: string;
 }
 
 export function SwipeExitConfirmDialog({
@@ -29,6 +32,7 @@ export function SwipeExitConfirmDialog({
     autoSignoutSeconds,
     autoSignoutState,
     onCountdownEnd,
+    studentUserId,
 }: SwipeExitConfirmDialogProps) {
     const { theme } = useTheme();
     const isDark = theme.mode === 'dark';
@@ -156,9 +160,22 @@ export function SwipeExitConfirmDialog({
                             <div className="mb-6 border-t border-[var(--app-color-border-default)]" />
 
                             {/* Warning */}
-                            <p className="mb-6 text-center text-[11px] leading-snug text-[var(--app-color-text-tertiary)]">
+                            <p className="mb-5 text-center text-[11px] leading-snug text-[var(--app-color-text-tertiary)]">
                                 离开后门禁权限将被回收，如需再次进入请重新扫码
                             </p>
+
+                            {/* QR 底部横条 */}
+                            {studentUserId ? (
+                                <div className="scan-entry-qr-strip mb-5">
+                                    <div className="scan-entry-qr-strip__info">
+                                        <Smartphone className="size-[18px] shrink-0 text-[var(--app-color-text-tertiary)]" strokeWidth={1.5} />
+                                        <span>扫描二维码可实时查看当前状态</span>
+                                    </div>
+                                    <div className="scan-entry-qr-strip__qr">
+                                        <MobileQrCard userId={studentUserId} adaptive />
+                                    </div>
+                                </div>
+                            ) : null}
 
                             {/* Buttons */}
                             <div className="flex gap-3">

@@ -54,7 +54,7 @@ function VersionBadge({ version }: { version: AdminPageHelpVersion }) {
 }
 
 export function AdminPageHelpDialog({ open, onOpenChange, pagePath }: Props) {
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const canEditTutorial = hasMinRole(role, "ADMIN");
 
   const [tab, setTab] = useState<TabKey>("tutorial");

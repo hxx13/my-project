@@ -129,6 +129,7 @@ public class AssetController {
                     payload.get("status") == null ? null : String.valueOf(payload.get("status")),
                     payload.get("location") == null ? null : String.valueOf(payload.get("location")),
                     payload.get("note") == null ? null : String.valueOf(payload.get("note")),
+                    payload.get("photoUrls") == null ? null : String.valueOf(payload.get("photoUrls")),
                     dynamicValues
             ));
         } catch (Exception e) {
@@ -152,14 +153,35 @@ public class AssetController {
         try {
             return Result.success(assetService.patchAsset(
                     id,
+                    payload.get("assetName") == null ? null : String.valueOf(payload.get("assetName")),
                     payload.get("note") == null ? null : String.valueOf(payload.get("note")),
                     payload.get("status") == null ? null : String.valueOf(payload.get("status")),
                     payload.get("location") == null ? null : String.valueOf(payload.get("location")),
+                    payload.get("photoUrls") == null ? null : String.valueOf(payload.get("photoUrls")),
                     dynamicValues
             ));
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
+    }
+
+    @GetMapping("/assets/by-code")
+    @Operation(summary = "按资产编号精确查找资产")
+    public Result<?> getAssetByCode(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @RequestParam String code) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        return Result.success(assetService.findByCode(code));
+    }
+
+    @GetMapping("/assets/locations")
+    @Operation(summary = "获取所有已存储的存放地点（去重，用于输入提示）")
+    public Result<?> assetLocations(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        return Result.success(assetService.listDistinctLocations());
     }
 
     @GetMapping("/assets/search")
@@ -461,7 +483,7 @@ public class AssetController {
     private User resolveUser(String authorization) {
         User user = authContextService.resolveUserFromBearer(authorization);
         if (user == null) return null;
-        if (user.getRole() == null) user.setRole(RoleEnum.STUDENT);
+        if (user.getRole() == null) user.setRole(RoleEnum.MEMBER);
         return user;
     }
 

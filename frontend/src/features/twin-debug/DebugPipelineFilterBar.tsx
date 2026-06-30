@@ -5,6 +5,7 @@ import { BlacklistManageModal } from "@/components/admin/BlacklistManageModal";
 import { AdminToolbar } from "@/components/admin/AdminToolbar";
 import type { DebugPipelineFilter } from "@/features/twin-debug/debugPipelineFilter";
 import { cn } from "@/lib/utils";
+import { calendarDayKeyBeijing } from "@/utils/beijingTime";
 import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 
 type Props = {
@@ -34,7 +35,7 @@ export function DebugPipelineFilterBar({ filters, onChange, onClear, invalidateK
   };
 
   const setToday = () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = calendarDayKeyBeijing(new Date());
     onChange({ ...filters, startTime: today, endTime: today });
   };
 

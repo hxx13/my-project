@@ -34,7 +34,7 @@ export function PageHelpHost({
   enableFullHelpDialog = variant === "admin",
   suppressAutoIntro = false,
 }: Props) {
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const staffLike = hasMinRole(role, "STAFF");
   const { introOpen, setIntroOpen, bundle, deferIntro, acknowledgeIntro, openIntroManually } =
     usePageHelpIntro(pagePath, { suppressAutoIntro });

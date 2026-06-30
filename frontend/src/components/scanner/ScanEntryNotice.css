@@ -22,3 +22,29 @@
   --mn-z-modal:      305;
   --mn-z-pill:       315;
 }
+
+/* ── QR 底部横条（居中竖排）── */
+.scan-entry-qr-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--app-color-border-default);
+}
+
+.scan-entry-qr-strip__info {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.6875rem;
+  color: var(--app-color-text-secondary);
+}
+
+.scan-entry-qr-strip__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125rem;
+}

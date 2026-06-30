@@ -5,16 +5,23 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.reportform.entity.ReportFormDefinition;
+import com.example.demo.modules.auth.AuthProfileConstants;
 import com.example.demo.modules.reportform.entity.ReportFormOptionSet;
 import com.example.demo.modules.reportform.service.ReportFormImportService;
 import com.example.demo.modules.reportform.service.ReportFormService;
+import com.example.demo.modules.reportform.service.ReportFormExportService;
 import com.example.demo.modules.reportform.service.ReportFormWordService;
+import com.example.demo.modules.reportform.service.ReportFillService;
 import com.example.demo.modules.reportform.mapper.ReportFormDefinitionMapper;
+import com.example.demo.modules.reportform.util.ReportFormExportFilename;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -29,20 +36,27 @@ import java.util.Objects;
 public class ReportFormController {
 
     private static final Logger log = LoggerFactory.getLogger(ReportFormController.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final ReportFormService reportFormService;
     private final ReportFormImportService importService;
+    private final ReportFormExportService exportService;
     private final ReportFormDefinitionMapper definitionMapper;
     private final ReportFormWordService wordService;
+    private final ReportFillService reportFillService;
 
     public ReportFormController(ReportFormService reportFormService,
                                 ReportFormImportService importService,
+                                ReportFormExportService exportService,
                                 ReportFormDefinitionMapper definitionMapper,
-                                ReportFormWordService wordService) {
+                                ReportFormWordService wordService,
+                                ReportFillService reportFillService) {
         this.reportFormService = reportFormService;
         this.importService = importService;
+        this.exportService = exportService;
         this.definitionMapper = definitionMapper;
         this.wordService = wordService;
+        this.reportFillService = reportFillService;
     }
 
     @GetMapping("/forms/page")
@@ -62,6 +76,53 @@ public class ReportFormController {
         Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
         if (denied != null) return Result.error(denied.getMessage());
         return Result.success(reportFormService.getById(id));
+    }
+
+    @GetMapping("/forms/{id}/export-excel")
+    @Operation(summary = "导出报表模板为 Excel（不含填报数据）")
+    public ResponseEntity<byte[]> exportExcelTemplate(@PathVariable Long id, HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) {
+            throw new IllegalArgumentException(denied.getMessage());
+        }
+        try {
+            ReportFormDefinition form = definitionMapper.selectById(id);
+            if (form == null) throw new IllegalArgumentException("表单不存在");
+            byte[] data = exportService.exportTemplate(id);
+            String filename = ReportFormExportFilename.build(form, null, false, "xlsx");
+            return ResponseEntity.ok()
+                    .headers(ReportFormExportFilename.attachmentHeaders(filename))
+                    .header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .body(data);
+        } catch (Exception e) {
+            log.error("[report-form] 模板 Excel 导出失败: form={}", id, e);
+            throw new IllegalArgumentException("Excel 导出失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/forms/{id}/export-word-filled/{wtId}")
+    @Operation(summary = "导出 Word（注入设计器 layout 静态内容，无需发布/填报）")
+    public ResponseEntity<byte[]> exportWordFilledTemplate(@PathVariable Long id,
+                                                           @PathVariable String wtId,
+                                                           HttpServletRequest request) {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) {
+            throw new IllegalArgumentException(denied.getMessage());
+        }
+        try {
+            ReportFormDefinition form = definitionMapper.selectById(id);
+            if (form == null) throw new IllegalArgumentException("表单不存在");
+            byte[] data = wordService.exportWordLayoutPreview(id, wtId);
+            String wtName = resolveWordTemplateName(form, wtId);
+            String filename = ReportFormExportFilename.buildWordTemplate(form, wtName, "docx");
+            return ResponseEntity.ok()
+                    .headers(ReportFormExportFilename.attachmentHeaders(filename))
+                    .header("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                    .body(data);
+        } catch (Exception e) {
+            log.error("[report-form] Word 布局导出失败: form={} wtId={}", id, wtId, e);
+            throw new IllegalArgumentException("Word 导出失败: " + e.getMessage());
+        }
     }
 
     @PostMapping("/forms/create-blank")
@@ -121,7 +182,7 @@ public class ReportFormController {
     @PostMapping("/forms/{id}/publish")
     @Operation(summary = "发布报表表单")
     public Result<?> publish(@PathVariable Long id, HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        Result<?> denied = requireFormManager(request, id);
         if (denied != null) return denied;
         try {
             String username = getCurrentUsername(request);
@@ -136,7 +197,7 @@ public class ReportFormController {
     @PostMapping("/forms/{id}/unpublish")
     @Operation(summary = "撤回已发布报表")
     public Result<?> unpublish(@PathVariable Long id, HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        Result<?> denied = requireFormManager(request, id);
         if (denied != null) return denied;
         try {
             String username = getCurrentUsername(request);
@@ -153,10 +214,10 @@ public class ReportFormController {
     @PostMapping("/forms/{id}/archive")
     @Operation(summary = "归档报表表单")
     public Result<?> archive(@PathVariable Long id, HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        Result<?> denied = requireFormManager(request, id);
         if (denied != null) return denied;
         try {
-            reportFormService.archive(id);
+            reportFormService.archive(id, getCurrentUsername(request));
             return Result.success(null);
         } catch (Exception e) {
             log.error("归档失败 form={}: {}", id, e.getMessage());
@@ -167,10 +228,10 @@ public class ReportFormController {
     @PostMapping("/forms/{id}/unarchive")
     @Operation(summary = "取消归档报表表单")
     public Result<?> unarchive(@PathVariable Long id, HttpServletRequest request) {
-        Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
+        Result<?> denied = requireFormManager(request, id);
         if (denied != null) return denied;
         try {
-            reportFormService.unarchive(id);
+            reportFormService.unarchive(id, getCurrentUsername(request));
             return Result.success(null);
         } catch (Exception e) {
             log.error("取消归档失败 form={}: {}", id, e.getMessage());
@@ -324,6 +385,7 @@ public class ReportFormController {
             String username = getCurrentUsername(request);
             var form = reportFormService.duplicateForm(templateId, username);
             form.setName(form.getName().replace(" (副本)", ""));
+            form.setUpdatedAt(java.time.LocalDateTime.now());
             definitionMapper.update(form);
             return Result.success(form);
         } catch (Exception e) {
@@ -345,8 +407,9 @@ public class ReportFormController {
             var form = reportFormService.getById(id);
             if (form == null) return Result.error("报表不存在");
 
-            // 解析书签
+            // 解析书签，并按 layout fieldKey 自动建立映射
             var bookmarks = wordService.parseBookmarks(file.getBytes());
+            Map<String, String> autoMapping = wordService.suggestBookmarkMapping(form.getLayoutJson(), bookmarks);
             String name = templateName != null ? templateName
                 : Objects.requireNonNullElse(file.getOriginalFilename(), "未命名模板")
                     .replaceAll("\\.(docx|doc)$", "");
@@ -357,7 +420,7 @@ public class ReportFormController {
             binding.put("id", wtId);
             binding.put("name", name);
             binding.put("bookmarks", bookmarks);
-            binding.put("bookmarkMapping", new java.util.HashMap<String, String>());
+            binding.put("bookmarkMapping", autoMapping);
 
             // 追加到 word_template_ids_json
             var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -424,11 +487,15 @@ public class ReportFormController {
     // ──────────────── 选项集 CRUD ────────────────
 
     @GetMapping("/option-sets")
-    @Operation(summary = "查询所有选项集")
-    public Result<List<ReportFormOptionSet>> listOptionSets(HttpServletRequest request) {
+    @Operation(summary = "查询可见选项集（按账号体系与创建人过滤）")
+    public Result<List<ReportFormOptionSet>> listOptionSets(
+            @RequestParam(required = false) Long formId,
+            HttpServletRequest request) {
         Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
         if (denied != null) return Result.error(denied.getMessage());
-        return Result.success(reportFormService.listOptionSets());
+        String username = getCurrentUsername(request);
+        String authProfile = resolveAuthProfile(request);
+        return Result.success(reportFormService.listOptionSets(username, authProfile, formId));
     }
 
     @GetMapping("/option-sets/{id}")
@@ -450,7 +517,9 @@ public class ReportFormController {
             String scope = (String) body.getOrDefault("scope", "global");
             Long formId = body.containsKey("formId") ? ((Number) body.get("formId")).longValue() : null;
             String itemsJson = (String) body.get("itemsJson");
-            var os = reportFormService.createOptionSet(name, scope, formId, itemsJson);
+            String username = getCurrentUsername(request);
+            String authProfile = resolveAuthProfile(request);
+            var os = reportFormService.createOptionSet(name, scope, formId, itemsJson, username, authProfile);
             return Result.success(os);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -467,7 +536,8 @@ public class ReportFormController {
         try {
             String name = (String) body.get("name");
             String itemsJson = (String) body.get("itemsJson");
-            reportFormService.updateOptionSet(id, name, itemsJson);
+            String username = getCurrentUsername(request);
+            reportFormService.updateOptionSet(id, name, itemsJson, username);
             return Result.success(null);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -481,7 +551,8 @@ public class ReportFormController {
         Result<?> denied = requireMinRole(request, RoleEnum.ADMIN);
         if (denied != null) return denied;
         try {
-            reportFormService.deleteOptionSet(id);
+            String username = getCurrentUsername(request);
+            reportFormService.deleteOptionSet(id, username);
             return Result.success(null);
         } catch (Exception e) {
             return Result.error(e.getMessage());
@@ -493,11 +564,38 @@ public class ReportFormController {
         if (!(attr instanceof User currentUser)) {
             return Result.error("当前登录信息无效");
         }
-        RoleEnum currentRole = currentUser.getRole() == null ? RoleEnum.STUDENT : currentUser.getRole();
+        RoleEnum currentRole = currentUser.getRole() == null ? RoleEnum.MEMBER : currentUser.getRole();
         if (currentRole.getLevel() < minRole.getLevel()) {
             return Result.error("无权限访问");
         }
         return null;
+    }
+
+    /** 管理员或该报表发布者/创建者可操作 */
+    private Result<?> requireFormManager(HttpServletRequest request, Long formId) {
+        Result<?> denied = requireMinRole(request, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        User currentUser = getCurrentUser(request);
+        RoleEnum currentRole = currentUser.getRole() == null ? RoleEnum.MEMBER : currentUser.getRole();
+        if (currentRole.getLevel() >= RoleEnum.ADMIN.getLevel()) {
+            return null;
+        }
+        ReportFormDefinition form = definitionMapper.selectById(formId);
+        if (form == null) {
+            return Result.error("报表不存在");
+        }
+        if (reportFillService.isFormPublisher(form, currentUser)) {
+            return null;
+        }
+        return Result.error("仅发布者或管理员可执行此操作");
+    }
+
+    private User getCurrentUser(HttpServletRequest request) {
+        Object attr = request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
+        if (attr instanceof User user) {
+            return user;
+        }
+        throw new IllegalStateException("当前登录信息无效");
     }
 
     private String getCurrentUsername(HttpServletRequest request) {
@@ -508,11 +606,40 @@ public class ReportFormController {
         return "unknown";
     }
 
+    private String resolveAuthProfile(HttpServletRequest request) {
+        Object attr = request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
+        if (attr instanceof User user) {
+            String p = user.getAuthProfile();
+            if (p != null && !p.isBlank()) {
+                return p.trim();
+            }
+        }
+        return AuthProfileConstants.WEB_PASSWORD;
+    }
+
     private String getCurrentUserRole(HttpServletRequest request) {
         Object attr = request.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
         if (attr instanceof User user && user.getRole() != null) {
             return user.getRole().name();
         }
-        return "STUDENT";
+        return "MEMBER";
+    }
+
+    private String resolveWordTemplateName(ReportFormDefinition form, String wtId) {
+        if (form == null || form.getWordTemplateIdsJson() == null || form.getWordTemplateIdsJson().isBlank()) {
+            return "";
+        }
+        try {
+            JsonNode templates = OBJECT_MAPPER.readTree(form.getWordTemplateIdsJson());
+            if (!templates.isArray()) return "";
+            for (JsonNode node : templates) {
+                if (wtId.equals(node.path("id").asText(""))) {
+                    return node.path("name").asText("");
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        return "";
     }
 }

@@ -254,7 +254,7 @@
                  INNER JOIN sys_notification n ON n.id = r.notification_id
         WHERE r.recipient_user_id = #{userId}
           AND (r.is_read IS NULL OR r.is_read = 0)
-          AND UPPER(TRIM(n.biz_type)) IN ('REPAIR', 'PURCHASE', 'SUPPLIES_CLAIM', 'MATERIAL_REQUEST')
+          AND UPPER(TRIM(n.biz_type)) IN ('REPAIR', 'PURCHASE', 'SUPPLIES_CLAIM', 'MATERIAL_REQUEST', 'SCAN_DELAY')
     </select>
 
     <select id="countUnreadWorkOrderForApplicant" resultType="int">

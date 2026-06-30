@@ -1,4 +1,5 @@
 import { authHttp } from "@/api/core/authHttp";
+import { uploadSingleImage } from "@/api/domains/upload.api";
 import type { LoginBranding } from "@/api/domains/publicSite.api";
 
 interface Result<T> {
@@ -20,15 +21,10 @@ export async function putAdminLoginBranding(body: LoginBranding): Promise<LoginB
   return res.data.data;
 }
 
-/** 上传单张轮播图；返回相对站点根的 URL（如 /api/public/login-branding/files/xxx.jpg），可直接写入 URL 列表 */
+/** 上传单张轮播图；走统一 /api/upload，返回 /api/upload/files/...（与报修/物资附图同源） */
 export async function uploadAdminLoginBrandingImage(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await authHttp.post<Result<{ url: string }>>("/admin/site/login-branding/upload", fd, {
-    timeout: 120000,
-  });
-  if (!res.data?.success || !res.data?.data?.url) throw new Error(res.data?.message || "上传失败");
-  return res.data.data.url;
+  const result = await uploadSingleImage(file);
+  return result.url;
 }
 
 export type RegistrationInviteRow = {

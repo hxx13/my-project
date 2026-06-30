@@ -21,7 +21,7 @@ public class NotifyPendingBadgeContributor implements PendingBadgeContributor {
 
     @Override
     public void contribute(User user, PendingBadgesView view, Map<String, Integer> badgeCounters) {
-        RoleEnum role = user.getRole() == null ? RoleEnum.STUDENT : user.getRole();
+        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
         int n = notificationService.countUnreadForSidebarBadge(user.getId(), role);
         view.setNotify(n);
         badgeCounters.put("NOTIFY_UNREAD", n);

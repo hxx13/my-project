@@ -10,10 +10,12 @@ import com.example.demo.modules.notification.mapper.StudentNotificationMapper;
 import com.example.demo.modules.notification.service.NotificationService;
 import com.example.demo.modules.student.dto.StudentActivityResponse;
 import com.example.demo.modules.student.dto.StudentDashboardResponse;
+import com.example.demo.modules.student.dto.StudentProfilePersonnelInfo;
 import com.example.demo.modules.student.dto.StudentProfileResponse;
 import com.example.demo.modules.student.mapper.StudentRoomPinMapper;
 import com.example.demo.modules.student.service.StudentRoomService;
 import com.example.demo.modules.twin.common.dto.RoomDashboardRenderDTO;
+import com.example.demo.modules.twin.common.util.RoomFloorPrefixUtil;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper;
@@ -75,7 +77,7 @@ public class StudentDashboardService {
         StudentProfileResponse profile = studentProfileService.buildProfile(user);
         StudentDashboardResponse.ProfileSummary profileSummary = new StudentDashboardResponse.ProfileSummary();
         if (profile.getPersonnel() != null) {
-            StudentProfileResponse.PersonnelInfo personnel = profile.getPersonnel();
+            StudentProfilePersonnelInfo personnel = profile.getPersonnel();
             profileSummary.setName(personnel.getName());
             profileSummary.setDepartmentName(personnel.getDepartmentName());
             profileSummary.setProjectGroupName(personnel.getProjectGroupName());
@@ -209,7 +211,7 @@ public class StudentDashboardService {
                 StudentDashboardResponse.PinnedRoom pr = new StudentDashboardResponse.PinnedRoom();
                 pr.setRoomId(roomId);
                 pr.setRoomName(room.getRoomName() != null ? room.getRoomName() : "");
-                pr.setFloor(deriveFloor(room.getRoomName()));
+                pr.setFloor(RoomFloorPrefixUtil.deriveFloorLabel(room.getRoomName()));
                 pr.setZone(room.getCampus() != null ? room.getCampus() : "");
 
                 int occupants = room.getOccupants() != null ? room.getOccupants().size() : 0;
@@ -232,21 +234,6 @@ public class StudentDashboardService {
             log.warn("Failed to build pinnedRooms for user {}", user.getId(), e);
             return Collections.emptyList();
         }
-    }
-
-    private String deriveFloor(String roomName) {
-        if (roomName == null) return "";
-        for (int i = 0; i < roomName.length(); i++) {
-            char c = roomName.charAt(i);
-            if (c >= '0' && c <= '9') {
-                int end = i;
-                while (end < roomName.length() && roomName.charAt(end) >= '0' && roomName.charAt(end) <= '9') {
-                    end++;
-                }
-                return roomName.substring(i, end) + "F";
-            }
-        }
-        return "";
     }
 
     /**

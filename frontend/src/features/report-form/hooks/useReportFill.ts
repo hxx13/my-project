@@ -1,7 +1,9 @@
 // hooks/useReportFill.ts — fetch-or-create, debounce auto-save, periodic sync
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchFormById } from '../api/reportForm.api';
+import { parseLayoutJson } from '../components/FormGridRenderer';
+import { sanitizeFieldValuesForSave, sanitizeFieldValuesForDisplay } from '../utils/reportFormFieldValue';
 import {
   fetchMySubmission,
   saveMySubmission,
@@ -10,31 +12,40 @@ import {
 import type { ReportFormDefinition, ReportFormSubmission } from '../types';
 import toast from 'react-hot-toast';
 
-export function useReportFill(formId: number) {
+export function useReportFill(formId: number, submissionId?: number) {
+  const queryClient = useQueryClient();
   const [values, setValues] = useState<Record<string, unknown>>({});
   const pendingRef = useRef<Record<string, unknown>>({});
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const submissionRef = useRef<ReportFormSubmission | null>(null);
+  const valuesRef = useRef<Record<string, unknown>>({});
 
-  // Fetch form definition
+  const invalidateFillLists = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['report-fill-available'] });
+    queryClient.invalidateQueries({ queryKey: ['report-fill-submissions', formId] });
+    queryClient.invalidateQueries({ queryKey: ['report-fill-my-submissions', formId] });
+    queryClient.invalidateQueries({ queryKey: ['report-fill-publisher-overview', formId] });
+  }, [queryClient, formId]);
+
   const { data: form, isLoading: formLoading } = useQuery<ReportFormDefinition>({
     queryKey: ['report-fill-form', formId],
     queryFn: () => fetchFormById(formId),
     enabled: !!formId,
   });
 
-  // Fetch or create submission
   const { data: submission, isLoading: subLoading, refetch } = useQuery<ReportFormSubmission>({
-    queryKey: ['report-fill-submission', formId],
-    queryFn: () => fetchMySubmission(formId),
+    queryKey: ['report-fill-submission', formId, submissionId ?? 'default'],
+    queryFn: () => fetchMySubmission(formId, submissionId),
     enabled: !!formId,
   });
 
-  // Sync submission ref
+  useEffect(() => {
+    valuesRef.current = values;
+  }, [values]);
+
   useEffect(() => {
     if (submission) {
       submissionRef.current = submission;
-      // Parse fieldValuesJson — 后端返回的是 JSON 字符串，需解析
       let parsed: Record<string, unknown> = {};
       const raw = submission.fieldValuesJson;
       if (typeof raw === 'string') {
@@ -42,15 +53,14 @@ export function useReportFill(formId: number) {
       } else if (raw && typeof raw === 'object') {
         parsed = raw as Record<string, unknown>;
       }
-      // Only set values if not currently editing (avoid overwriting local changes)
       const pendingKeys = Object.keys(pendingRef.current);
       if (pendingKeys.length === 0) {
-        setValues(parsed);
+        const layout = form?.layoutJson ? parseLayoutJson(form.layoutJson) : null;
+        setValues(sanitizeFieldValuesForDisplay(layout?.fields, parsed));
       }
     }
-  }, [submission]);
+  }, [submission, form?.layoutJson]);
 
-  // Periodic sync (every 5s)
   useEffect(() => {
     const iv = setInterval(() => {
       if (pendingRef.current && Object.keys(pendingRef.current).length === 0) {
@@ -60,7 +70,18 @@ export function useReportFill(formId: number) {
     return () => clearInterval(iv);
   }, [refetch]);
 
-  // Debounced save (600ms)
+  const buildSavePayload = useCallback((fieldValues: Record<string, unknown>) => {
+    const sub = submissionRef.current;
+    const sid = submissionId ?? sub?.id;
+    const layout = form?.layoutJson ? parseLayoutJson(form.layoutJson) : null;
+    const sanitized = sanitizeFieldValuesForSave(layout?.fields, fieldValues);
+    return {
+      submissionId: sid,
+      fieldValuesJson: JSON.stringify(sanitized),
+      expectedVersion: sub?.version ?? 0,
+    };
+  }, [submissionId, form?.layoutJson]);
+
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
@@ -69,58 +90,77 @@ export function useReportFill(formId: number) {
       const keys = Object.keys(pending);
       if (keys.length === 0) return;
 
-      const sub = submissionRef.current;
       const fieldValues = { ...values, ...pending };
       try {
-        const saved = await saveMySubmission(formId, {
-          fieldValuesJson: JSON.stringify(fieldValues),
-          expectedVersion: sub?.version ?? 0,
-        });
+        const saved = await saveMySubmission(formId, buildSavePayload(fieldValues));
         submissionRef.current = saved;
+        invalidateFillLists();
       } catch (e) {
-        // Restore pending changes on failure
         Object.assign(pendingRef.current, pending);
         toast.error('自动保存失败: ' + (e as Error).message);
       }
     }, 600);
-  }, [formId, values]);
+  }, [formId, values, buildSavePayload, invalidateFillLists]);
 
-  // Update a field value
   const updateValue = useCallback((fieldKey: string, value: unknown) => {
     pendingRef.current[fieldKey] = value;
     setValues(prev => ({ ...prev, [fieldKey]: value }));
     scheduleSave();
   }, [scheduleSave]);
 
-  // Submit
   const submitMut = useMutation({
-    mutationFn: () => submitMySubmission(formId),
+    mutationFn: async () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      const pending = { ...pendingRef.current };
+      pendingRef.current = {};
+      const sub = submissionRef.current;
+      const fieldValues = { ...values, ...pending };
+      if (Object.keys(pending).length > 0 || Object.keys(fieldValues).length > 0) {
+        const saved = await saveMySubmission(formId, buildSavePayload(fieldValues));
+        submissionRef.current = saved;
+        setValues(fieldValues);
+      }
+      const sid = submissionId ?? submissionRef.current?.id;
+      return submitMySubmission(formId, sid);
+    },
     onSuccess: () => {
       toast.success('已提交');
       refetch();
+      invalidateFillLists();
     },
     onError: (e: Error) => toast.error('提交失败: ' + e.message),
   });
 
-  // Flush pending saves immediately
-  const flushSave = useCallback(async () => {
+  const flushSave = useCallback(async (): Promise<ReportFormSubmission | null> => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
     const pending = { ...pendingRef.current };
     pendingRef.current = {};
-    const keys = Object.keys(pending);
-    if (keys.length === 0) return;
-    const sub = submissionRef.current;
-    const fieldValues = { ...values, ...pending };
+    const fieldValues = { ...valuesRef.current, ...pending };
     try {
-      const saved = await saveMySubmission(formId, {
-        fieldValuesJson: JSON.stringify(fieldValues),
-        expectedVersion: sub?.version ?? 0,
-      });
+      const saved = await saveMySubmission(formId, buildSavePayload(fieldValues));
       submissionRef.current = saved;
+      setValues(fieldValues);
+      invalidateFillLists();
+      return saved;
     } catch (e) {
       Object.assign(pendingRef.current, pending);
+      throw e;
     }
-  }, [formId, values]);
+  }, [formId, buildSavePayload, invalidateFillLists]);
+
+  const flushSaveForExport = useCallback(async (): Promise<Record<string, unknown>> => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    const pending = { ...pendingRef.current };
+    pendingRef.current = {};
+    const fieldValues = { ...valuesRef.current, ...pending };
+    const saved = await saveMySubmission(formId, buildSavePayload(fieldValues));
+    submissionRef.current = saved;
+    setValues(fieldValues);
+    invalidateFillLists();
+    return fieldValues;
+  }, [formId, buildSavePayload, invalidateFillLists]);
 
   return {
     form,
@@ -131,5 +171,6 @@ export function useReportFill(formId: number) {
     updateValue,
     submitMut,
     flushSave,
+    flushSaveForExport,
   };
 }

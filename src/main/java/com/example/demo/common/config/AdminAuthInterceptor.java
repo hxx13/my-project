@@ -36,7 +36,7 @@ public class AdminAuthInterceptor implements HandlerInterceptor {
             return false;
         }
         RoleEnum role = user.getRole();
-        int level = role == null ? RoleEnum.STUDENT.getLevel() : role.getLevel();
+        int level = role == null ? RoleEnum.MEMBER.getLevel() : role.getLevel();
         if (level < ADMIN_BASE_MIN_LEVEL) {
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
             response.setContentType("application/json;charset=UTF-8");

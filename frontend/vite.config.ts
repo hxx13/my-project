@@ -63,17 +63,18 @@ export default defineConfig({
         rollupOptions: {
             output: {
                 manualChunks(id) {
-                    // 所有 node_modules 包按包名自动拆成独立 chunk
                     if (id.includes('node_modules')) {
                         const m = id.match(/node_modules\/((?:@[^/]+\/)?[^/]+)/)
                         if (m) {
                             const pkg = m[1].replace('@', '').replace('/', '-')
-                            // 小包合并到大类
-                            if (['react','react-dom','react-router','react-router-dom','@tanstack/react-query','@tanstack/query-core','scheduler'].includes(pkg) || id.includes('react')) return 'react-vendor'
+                            if (['react','react-dom','react-router','react-router-dom','@tanstack/react-query','@tanstack/query-core','scheduler'].includes(pkg) || id.includes('/react/')) return 'react-vendor'
                             if (pkg.includes('visactor') || pkg.includes('vtable') || pkg.includes('vrender') || pkg.includes('vutils') || pkg.includes('vscale') || pkg.includes('vdataset')) return 'vtable-vendor'
                             if (pkg.includes('radix') || pkg.includes('framer') || pkg.includes('lucide')) return 'ui-vendor'
-                            // 其他包按大小自动分配
-                            return 'vendor-' + pkg
+                            if (pkg.includes('tiptap') || pkg.includes('prosemirror') || pkg.includes('linkify')) return 'editor-vendor'
+                            if (pkg.includes('d3') || pkg.includes('recharts')) return 'chart-vendor'
+                            if (pkg.includes('face-api') || pkg.includes('mediapipe')) return 'face-vendor'
+                            // 穿透/高延迟环境：合并小包，避免 50+ 串行 RTT
+                            return 'vendor-misc'
                         }
                     }
                 },

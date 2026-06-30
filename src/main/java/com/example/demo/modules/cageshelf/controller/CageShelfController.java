@@ -9,6 +9,7 @@ import com.example.demo.modules.cageshelf.mapper.CageEventLogMapper;
 import com.example.demo.modules.cageshelf.mapper.UserCageColorConfigMapper;
 import com.example.demo.modules.cageshelf.service.CageScanProgressService;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
+import com.example.demo.modules.student.service.StudentCageShelfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,17 +33,20 @@ import java.util.Map;
 public class CageShelfController {
     private final AuthContextService authContextService;
     private final CageShelfService cageShelfService;
+    private final StudentCageShelfService studentCageShelfService;
     private final CageScanProgressService cageScanProgressService;
     private final UserCageColorConfigMapper colorConfigMapper;
     private final CageEventLogMapper eventLogMapper;
 
     public CageShelfController(AuthContextService authContextService,
                                CageShelfService cageShelfService,
+                               StudentCageShelfService studentCageShelfService,
                                CageScanProgressService cageScanProgressService,
                                UserCageColorConfigMapper colorConfigMapper,
                                CageEventLogMapper eventLogMapper) {
         this.authContextService = authContextService;
         this.cageShelfService = cageShelfService;
+        this.studentCageShelfService = studentCageShelfService;
         this.cageScanProgressService = cageScanProgressService;
         this.colorConfigMapper = colorConfigMapper;
         this.eventLogMapper = eventLogMapper;
@@ -79,7 +83,11 @@ public class CageShelfController {
         if (denied != null) {
             return denied;
         }
-        return Result.success(cageShelfService.filterOptions(campusId, areaId, areaName, floorId, floorName, roomId, roomName));
+        if (user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel()) {
+            return Result.success(cageShelfService.filterOptions(campusId, areaId, areaName, floorId, floorName, roomId, roomName));
+        }
+        Integer campusIdParam = campusId;
+        return Result.success(studentCageShelfService.getFilterOptions(user, campusIdParam, areaId, floorId, roomId));
     }
 
     @GetMapping("/{shelveId}/detail")
@@ -229,7 +237,7 @@ public class CageShelfController {
             return null;
         }
         if (user.getRole() == null) {
-            user.setRole(RoleEnum.STUDENT);
+            user.setRole(RoleEnum.MEMBER);
         }
         return user;
     }

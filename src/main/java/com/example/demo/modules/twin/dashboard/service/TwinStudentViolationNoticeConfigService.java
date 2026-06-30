@@ -33,7 +33,7 @@ public class TwinStudentViolationNoticeConfigService {
     private static final String KEY_FORBID_ENTER = "student.violation.unbound.notice.forbid_enter";
     private static final String KEY_APPLY_ROLE_CODES = "student.violation.unbound.notice.apply_role_codes";
 
-    private static final List<String> DEFAULT_APPLY_ROLE_CODES = List.of(RoleEnum.STUDENT.getCode());
+    private static final List<String> DEFAULT_APPLY_ROLE_CODES = List.of(RoleEnum.MEMBER.getCode());
 
     private final NotificationSettingsService notificationSettingsService;
     private final ObjectMapper objectMapper;
@@ -174,7 +174,7 @@ public class TwinStudentViolationNoticeConfigService {
             return new ArrayList<>(DEFAULT_APPLY_ROLE_CODES);
         }
         Set<String> valid = Set.of(
-                RoleEnum.STUDENT.getCode(),
+                RoleEnum.MEMBER.getCode(),
                 RoleEnum.STAFF.getCode(),
                 RoleEnum.SENIOR.getCode(),
                 RoleEnum.ADMIN.getCode(),

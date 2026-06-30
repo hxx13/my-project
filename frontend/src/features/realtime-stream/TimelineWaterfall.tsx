@@ -289,7 +289,7 @@ export function TimelineWaterfall() {
     const visual = useDashboardVisual();
     const sf = visual.sciFi;
     /** 学生首页仅浏览流水；人员预检与单条「溯源详情」仅员工及以上 */
-    const showStaffFeedTools = hasMinRole(authStorage.getRole() || "STUDENT", "STAFF");
+    const showStaffFeedTools = hasMinRole(authStorage.getRole() || "MEMBER", "STAFF");
 
     const openProvenance = useCallback((evt: UniversalEvent, el: HTMLElement | null) => {
         if (!el) return;

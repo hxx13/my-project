@@ -148,6 +148,11 @@ public class AssetService {
                 resolveKeys(columns, List.of("校区"), List.of(), "col_校区"),
                 List.of("col_校区", "col_所属校区")
         );
+        // 校区筛选也要覆盖 EAV "存放地点" 列（小程序端 campus 由此判定）
+        String locationColKey = pickStorageLocationColumnKey(columns);
+        if (StringUtils.hasText(locationColKey)) {
+            campusKeys = mergeKeys(campusKeys, List.of(locationColKey));
+        }
         List<String> userKeys = mergeKeys(
                 resolveKeys(columns, List.of("使用人"), List.of("工号"), "col_使用人"),
                 List.of("col_使用人", "col_使用者", "col_领用人", "col_保管人")
@@ -226,6 +231,7 @@ public class AssetService {
         row.put("latestTransferPhotoUrl", latestReq == null ? null : latestReq.getPhotoUrl());
         row.put("latestTransferPhotoUrlsBefore", latestReq == null ? List.of() : photoUrlsFromRequest(latestReq, true));
         row.put("latestTransferPhotoUrlsAfter", latestReq == null ? List.of() : photoUrlsFromRequest(latestReq, false));
+        row.put("photoUrls", readPhotoUrlList(r.getPhotoUrls()));
         row.put("updateTime", r.getUpdateTime());
         row.put("dynamicValues", valuesByAssetId.getOrDefault(r.getId(), Map.of()));
         return row;
@@ -269,7 +275,7 @@ public class AssetService {
             int locationIdx = findHeader(headers, List.of("当前位置", "存放地点", "位置"));
             int noteIdx = findHeader(headers, List.of("标注", "备注"));
             if (codeIdx < 0 || nameIdx < 0) {
-                throw new IllegalArgumentException("Excel 必须包含“资产编码”和“资产名称”列");
+                throw new IllegalArgumentException("Excel 必须包含【资产编码】和【资产名称】列");
             }
 
             Map<Integer, String> dynamicColumnByIndex = new HashMap<>();
@@ -371,7 +377,7 @@ public class AssetService {
             int locationIdx = findHeader(headers, List.of("当前位置", "存放地点", "位置"));
             int noteIdx = findHeader(headers, List.of("标注", "备注"));
             if (codeIdx < 0 || nameIdx < 0) {
-                throw new IllegalArgumentException("CSV 必须包含“资产编码”和“资产名称”列");
+                throw new IllegalArgumentException("CSV 必须包含【资产编码】和【资产名称】列");
             }
             Map<Integer, String> dynamicColumnByIndex = new HashMap<>();
             for (int i = 0; i < headers.size(); i++) {
@@ -452,11 +458,45 @@ public class AssetService {
     }
 
     public byte[] exportAssetsAsExcel(String keyword, String assetName, String campus, String user, String model, Integer lockStatus, String status) {
-        Map<String, Object> page = listAssets(keyword, assetName, campus, user, model, lockStatus, status, 1, 100000, "updateTime", "desc", null);
-        @SuppressWarnings("unchecked")
-        List<AssetColumnDef> columnDefs = (List<AssetColumnDef>) page.getOrDefault("columns", List.of());
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) page.getOrDefault("rows", List.of());
+        String keywordVal = trimOrNull(keyword);
+        String assetNameVal = trimOrNull(assetName);
+        String campusVal = trimOrNull(campus);
+        String userVal = trimOrNull(user);
+        String modelVal = trimOrNull(model);
+        String statusVal = trimOrNull(status);
+
+        List<AssetColumnDef> columnDefs = assetMapper.listColumnDefs();
+        Map<String, String> columnLabelByKey = new LinkedHashMap<>();
+        for (AssetColumnDef c : columnDefs) {
+            columnLabelByKey.put(c.getColumnKey(), c.getColumnLabel());
+        }
+        List<String> campusKeys = mergeKeys(
+                resolveKeys(columnDefs, List.of("校区"), List.of(), "col_校区"),
+                List.of("col_校区", "col_所属校区"));
+        List<String> userKeys = mergeKeys(
+                resolveKeys(columnDefs, List.of("使用人"), List.of("工号"), "col_使用人"),
+                List.of("col_使用人", "col_使用者", "col_领用人", "col_保管人"));
+        List<String> modelKeys = mergeKeys(
+                resolveKeys(columnDefs, List.of("规格型号", "型号"), List.of(), "col_型号"),
+                List.of("col_规格型号", "col_型号", "col_规格"));
+
+        // 使用 listAssetsAll 不截断，导出全部数据
+        List<AssetRecord> allRecords = assetMapper.listAssetsAll(
+                keywordVal, assetNameVal, campusVal, userVal, modelVal,
+                campusKeys, userKeys, modelKeys, lockStatus, statusVal);
+
+        Map<String, Map<String, String>> valuesByAssetId = buildValueMap(extractIds(allRecords));
+        List<String> requestIds = allRecords.stream()
+                .map(AssetRecord::getLatestTransferRequestId).filter(StringUtils::hasText).toList();
+        Map<String, AssetTransferRequest> requestById = new HashMap<>();
+        if (!requestIds.isEmpty()) {
+            List<AssetTransferRequest> reqRows = assetMapper.listTransferRequestsByIds(requestIds);
+            for (AssetTransferRequest req : reqRows) { requestById.put(req.getId(), req); }
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (AssetRecord r : allRecords) {
+            rows.add(toAssetListRowView(r, requestById, valuesByAssetId));
+        }
         List<AssetTransferRequest> allRequests = assetMapper.listTransferRequests(trimOrNull(keyword), 100000, 0);
         Map<String, AssetTransferRequest> latestByAssetId = new HashMap<>();
         for (AssetTransferRequest r : allRequests) {
@@ -507,13 +547,18 @@ public class AssetService {
     }
 
     public Map<String, Object> patchAsset(String id,
+                                          String assetName,
                                           String note,
                                           String status,
                                           String location,
+                                          String photoUrls,
                                           Map<String, String> dynamicValues) {
         AssetRecord record = assetMapper.findAssetById(id);
         if (record == null) {
             throw new IllegalArgumentException("资产不存在");
+        }
+        if (assetName != null) {
+            record.setAssetName(assetName.trim());
         }
         if (note != null) {
             record.setNote(note.trim());
@@ -524,8 +569,14 @@ public class AssetService {
         if (location != null) {
             record.setLocation(location.trim());
         }
+        if (photoUrls != null) {
+            record.setPhotoUrls(photoUrls.trim());
+        }
         record.setUpdateBy("system");
         assetMapper.updateAssetBase(record);
+        if (photoUrls != null) {
+            assetMapper.updateAssetPhotoUrls(id, photoUrls.trim());
+        }
         // 同步更新 EAV "存放地点" 动态值（与 completeTransfer 保持一致）
         if (location != null) {
             String storageColKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
@@ -539,9 +590,18 @@ public class AssetService {
             for (AssetColumnDef d : defs) {
                 validKeys.add(d.getColumnKey());
             }
+            String campusColKey = pickCampusColumnKey(defs);
             for (Map.Entry<String, String> e : dynamicValues.entrySet()) {
-                if (validKeys.contains(e.getKey())) {
-                    assetMapper.upsertAssetValue(id, e.getKey(), e.getValue());
+                if (!validKeys.contains(e.getKey())) {
+                    continue;
+                }
+                String val = e.getValue() == null ? "" : e.getValue().trim();
+                if (StringUtils.hasText(campusColKey) && campusColKey.equals(e.getKey()) && !StringUtils.hasText(val)) {
+                    assetMapper.upsertAssetValue(id, e.getKey(), "");
+                    continue;
+                }
+                if (StringUtils.hasText(val)) {
+                    assetMapper.upsertAssetValue(id, e.getKey(), val);
                 }
             }
         }
@@ -554,6 +614,7 @@ public class AssetService {
                                            String status,
                                            String location,
                                            String note,
+                                           String photoUrls,
                                            Map<String, String> dynamicValues) {
         String code = trimOrNull(assetCode);
         String name = trimOrNull(assetName);
@@ -572,6 +633,7 @@ public class AssetService {
         record.setLocation(trimOrNull(location));
         record.setLocked(0);
         record.setNote(trimOrNull(note));
+        record.setPhotoUrls(trimOrNull(photoUrls));
         record.setCreateBy(operatorId);
         record.setUpdateBy(operatorId);
         assetMapper.insertAsset(record);
@@ -607,6 +669,53 @@ public class AssetService {
             result.add(row);
         }
         return result;
+    }
+
+    /**
+     * 按资产编号精确查找，返回完整资产信息（含动态列值）
+     */
+    public Map<String, Object> findByCode(String code) {
+        String codeVal = trimOrNull(code);
+        if (!StringUtils.hasText(codeVal)) {
+            throw new IllegalArgumentException("资产编号不能为空");
+        }
+        AssetRecord record = assetMapper.findAssetByCode(codeVal);
+        if (record == null) {
+            return null;
+        }
+        List<AssetColumnDef> columns = assetMapper.listColumnDefs();
+        Map<String, Map<String, String>> vals = buildValueMap(List.of(record.getId()));
+        Map<String, AssetTransferRequest> requestById = new HashMap<>();
+        if (StringUtils.hasText(record.getLatestTransferRequestId())) {
+            AssetTransferRequest tr = assetMapper.findTransferRequestById(record.getLatestTransferRequestId());
+            if (tr != null) {
+                requestById.put(tr.getId(), tr);
+            }
+        }
+        return toAssetListRowView(record, requestById, vals);
+    }
+
+    /**
+     * 获取所有已存储的存放地点（合并 asset_record.location + EAV 存放地点列，去重排序）
+     */
+    public List<String> listDistinctLocations() {
+        List<String> fromRecords = assetMapper.listDistinctLocationValues();
+        String storageColKey = pickStorageLocationColumnKey(assetMapper.listColumnDefs());
+        List<String> fromEav = StringUtils.hasText(storageColKey)
+                ? assetMapper.listDistinctDynamicValuesByKey(storageColKey)
+                : List.of();
+        TreeSet<String> merged = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        if (fromRecords != null) {
+            for (String s : fromRecords) {
+                if (StringUtils.hasText(s)) merged.add(s.trim());
+            }
+        }
+        if (fromEav != null) {
+            for (String s : fromEav) {
+                if (StringUtils.hasText(s)) merged.add(s.trim());
+            }
+        }
+        return new ArrayList<>(merged);
     }
 
     public void lockAsset(String id, String operatorId) {
@@ -717,6 +826,9 @@ public class AssetService {
         row.setTransferTime(transferTime);
         row.setTransferLocation(request.getTransferLocation().trim());
         row.setFromLocation(StringUtils.hasText(asset.getLocation()) ? asset.getLocation().trim() : null);
+        // 捕获转移前使用人
+        String oldUser = pickCurrentDynamicValue(asset.getId(), "使用人");
+        row.setFromUserName(StringUtils.hasText(oldUser) ? oldUser.trim() : null);
         row.setRemark(trimOrNull(request.getRemark()));
         row.setPhotoUrl(legacyPhoto);
         row.setPhotoUrlsBefore(beforeJson);
@@ -735,7 +847,54 @@ public class AssetService {
         );
         assetMapper.updateAssetLock(asset.getId(), 1, operatorId);
         assetMapper.updateLatestTransferRequest(asset.getId(), reqId, operatorId);
+
+        // 同步更新使用人/工号到资产 EAV 列
+        if (StringUtils.hasText(request.getUserName()) || StringUtils.hasText(request.getUserEmployeeId())) {
+            List<AssetColumnDef> defs = assetMapper.listColumnDefs();
+            if (StringUtils.hasText(request.getUserName())) {
+                String userKey = pickColumnKeyByLabel(defs, "使用人", "col_使用人");
+                if (StringUtils.hasText(userKey)) {
+                    assetMapper.upsertAssetValue(asset.getId(), userKey, request.getUserName().trim());
+                }
+            }
+            if (StringUtils.hasText(request.getUserEmployeeId())) {
+                String empIdKey = pickColumnKeyByLabel(defs, "工号", "col_工号");
+                if (StringUtils.hasText(empIdKey)) {
+                    assetMapper.upsertAssetValue(asset.getId(), empIdKey, request.getUserEmployeeId().trim());
+                }
+            }
+        }
+
         return Map.of("requestId", reqId, "status", "IN_PROGRESS");
+    }
+
+    private String pickCurrentDynamicValue(String assetId, String keyword) {
+        if (!StringUtils.hasText(assetId) || !StringUtils.hasText(keyword)) return null;
+        List<AssetColumnDef> defs = assetMapper.listColumnDefs();
+        for (AssetColumnDef d : defs) {
+            if (d == null || !StringUtils.hasText(d.getColumnKey())) continue;
+            if (str(d.getColumnLabel()).contains(keyword)) {
+                List<Map<String, Object>> vals = assetMapper.listAssetValuesByAssetId(assetId);
+                if (vals != null) {
+                    for (Map<String, Object> row : vals) {
+                        if (d.getColumnKey().equals(str(row.get("column_key")))) {
+                            return str(row.get("column_value"));
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private String pickColumnKeyByLabel(List<AssetColumnDef> defs, String keyword, String fallbackKey) {
+        if (defs == null) return fallbackKey;
+        for (AssetColumnDef d : defs) {
+            if (d == null || !StringUtils.hasText(d.getColumnKey())) continue;
+            String label = str(d.getColumnLabel()).trim();
+            if (label.contains(keyword)) return d.getColumnKey();
+        }
+        return fallbackKey;
     }
 
     @Transactional
@@ -1148,6 +1307,10 @@ public class AssetService {
                 resolveKeys(defs, List.of("校区"), List.of(), "col_校区"),
                 List.of("col_校区", "col_所属校区")
         );
+        String locKey = pickStorageLocationColumnKey(defs);
+        if (StringUtils.hasText(locKey)) {
+            campusKeys = mergeKeys(campusKeys, List.of(locKey));
+        }
         List<String> userKeys = mergeKeys(
                 resolveKeys(defs, List.of("使用人"), List.of("工号"), "col_使用人"),
                 List.of("col_使用人", "col_使用者", "col_领用人", "col_保管人")
@@ -1180,6 +1343,10 @@ public class AssetService {
                 resolveKeys(defs, List.of("校区"), List.of(), "col_校区"),
                 List.of("col_校区", "col_所属校区")
         );
+        String locKey2 = pickStorageLocationColumnKey(defs);
+        if (StringUtils.hasText(locKey2)) {
+            campusKeys = mergeKeys(campusKeys, List.of(locKey2));
+        }
         List<String> userKeys = mergeKeys(
                 resolveKeys(defs, List.of("使用人"), List.of("工号"), "col_使用人"),
                 List.of("col_使用人", "col_使用者", "col_领用人", "col_保管人")
@@ -1189,7 +1356,7 @@ public class AssetService {
                 List.of("col_规格型号", "col_型号", "col_规格")
         );
 
-        // 维度联动：每个维度的可选项都由“其他维度 + 关键词”共同约束，不包含本维度自身过滤。
+        // 维度联动：每个维度的可选项都由"其他维度 + 关键词"共同约束，不包含本维度自身过滤。
         List<AssetRecord> forAssetNames = assetMapper.listAssetsAll(
                 keywordVal, null, campusVal, userVal, modelVal,
                 campusKeys, userKeys, modelKeys,
@@ -1510,6 +1677,11 @@ public class AssetService {
     private String sanitizePdfText(String text) {
         if (text == null) return "";
         return text.replace('\r', ' ').replace('\n', ' ');
+    }
+
+    private String pickCampusColumnKey(List<AssetColumnDef> defs) {
+        List<String> keys = resolveKeys(defs, List.of("校区"), List.of(), "col_校区");
+        return keys.isEmpty() ? null : keys.get(0);
     }
 
     private String pickStorageLocationColumnKey(List<AssetColumnDef> defs) {

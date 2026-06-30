@@ -67,7 +67,7 @@ export function StudentActivityReportPanel() {
   const [sortBy, setSortBy] = useState<SortKey>("entries");
   const [order, setOrder] = useState<"desc" | "asc">("desc");
   const [memberPage, setMemberPage] = useState(1);
-  const [memberSize, setMemberSize] = useState(20);
+  const [memberSize, setMemberSize] = useState(10);
   const [campus, setCampus] = useState("all");
   const [recalculating, setRecalculating] = useState(false);
 

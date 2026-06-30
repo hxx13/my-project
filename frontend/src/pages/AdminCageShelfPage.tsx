@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, memo } from "react";
 import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
 import { useNavigate } from "react-router-dom";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
 import { LayoutGrid, Upload, AlertTriangle, Star } from "lucide-react";
@@ -333,7 +334,7 @@ function AdminCageShelfInner() {
       actions={<>
         <input ref={importInputRef} type="file" accept=".csv" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; void onImport(f); e.currentTarget.value = ""; }} />
         <AdminButton type="button" tone="secondary" size="sm" className="gap-1.5" onClick={() => importInputRef.current?.click()}><Upload className="h-3.5 w-3.5" aria-hidden />导入 CSV</AdminButton>
-        <AdminButton type="button" tone="secondary" size="sm" className="gap-1.5" onClick={() => navigate("/admin/cage-shelves/special-status")}><AlertTriangle className="h-3.5 w-3.5" aria-hidden />特殊状态总览</AdminButton>
+        <AdminButton type="button" tone="secondary" size="sm" className="gap-1.5" onClick={() => navigate(toAdminRoutePath("/admin/cage-shelves/special-status"))}><AlertTriangle className="h-3.5 w-3.5" aria-hidden />特殊状态总览</AdminButton>
       </>}
     >
       <div className="min-h-0 space-y-4">

@@ -1,6 +1,7 @@
 package com.example.demo.modules.mp.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.mp.dto.MiniProgramReleaseUpsertRequest;
@@ -58,7 +59,7 @@ public class MiniProgramReleaseController {
     public Result<?> create(@RequestHeader(value = "Authorization", required = false) String authorization,
                             @RequestBody MiniProgramReleaseUpsertRequest body) {
         User user = authContextService.resolveUserFromBearer(authorization);
-        Result<?> denied = denyIfBadUser(user);
+        Result<?> denied = requirePlatformOwner(user);
         if (denied != null) {
             return denied;
         }
@@ -75,7 +76,7 @@ public class MiniProgramReleaseController {
                             @PathVariable String id,
                             @RequestBody MiniProgramReleaseUpsertRequest body) {
         User user = authContextService.resolveUserFromBearer(authorization);
-        Result<?> denied = denyIfBadUser(user);
+        Result<?> denied = requirePlatformOwner(user);
         if (denied != null) {
             return denied;
         }
@@ -91,7 +92,7 @@ public class MiniProgramReleaseController {
     public Result<?> delete(@RequestHeader(value = "Authorization", required = false) String authorization,
                             @PathVariable String id) {
         User user = authContextService.resolveUserFromBearer(authorization);
-        Result<?> denied = denyIfBadUser(user);
+        Result<?> denied = requirePlatformOwner(user);
         if (denied != null) {
             return denied;
         }
@@ -109,6 +110,18 @@ public class MiniProgramReleaseController {
         }
         if (user.getStatus() != null && user.getStatus() == 0) {
             return Result.error("账号已禁用");
+        }
+        return null;
+    }
+
+    private static Result<?> requirePlatformOwner(User user) {
+        Result<?> denied = denyIfBadUser(user);
+        if (denied != null) {
+            return denied;
+        }
+        RoleEnum r = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
+        if (r.getLevel() < RoleEnum.PLATFORM_OWNER.getLevel()) {
+            return Result.error("无权限访问，仅平台所有者可操作");
         }
         return null;
     }

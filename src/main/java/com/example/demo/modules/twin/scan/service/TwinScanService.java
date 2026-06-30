@@ -73,6 +73,12 @@ public class TwinScanService {
     @Autowired
     private ScanAnalyzeTimingTrace analyzeTimingTrace;
 
+    @Autowired
+    private com.example.demo.modules.twin.rpg.service.RpgEngineService rpgEngineService;
+
+    @Autowired
+    private com.example.demo.modules.twin.rpg.service.TwinExpStatsService twinExpStatsService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -220,6 +226,15 @@ public class TwinScanService {
      */
     // 💥 方法入参增加了 isShared 和 isKeep
     public boolean executeAccessAction(String userId, String officialRoomId, int accessType, boolean isShared, boolean isKeep, String dahuaSeq, boolean isBorrowedCard) {
+        // 0. 离开前预同步本地流水，确保后续 predictActionReward 能找到今日 ENTER 记录
+        if (accessType == 2) {
+            try {
+                miniPenetrationSyncService.syncLatestForUser(userId, null, 20, false);
+            } catch (Exception syncEx) {
+                log.debug("[scan·core] pre-exit sync failed userId={} err={}", userId, syncEx.getMessage());
+            }
+        }
+
         // 1. 发送打卡指令给官方
         boolean success = aroService.submitAccessRecord(userId, officialRoomId, accessType);
         if (!success && accessType == 2 && aroService.isNoLeaveRoomError()) {
@@ -293,6 +308,20 @@ public class TwinScanService {
                     log.error("[扫码·流水] id={} 同步失败 err={}", userId, e.getMessage(), e);
                 }
             });
+        }
+
+        // 🎯 XP 经验值：所有成功执行的进出动作，在核心层统一计算并写入流水
+        if (success) {
+            try {
+                var predictResult = rpgEngineService.predictActionReward(userId, accessType);
+                if (predictResult.getExpAdded() > 0 && predictResult.getExpSource() != null) {
+                    twinExpStatsService.recordExp(userId, null, predictResult.getExpAdded(),
+                            predictResult.getExpSource(), accessType, officialRoomId, null);
+                }
+            } catch (Exception xpEx) {
+                log.warn("[scan·core] XP record failed userId={} accessType={} err={}",
+                        userId, accessType, xpEx.getMessage());
+            }
         }
 
         return success;

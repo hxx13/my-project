@@ -10,7 +10,7 @@ function normalizePath(path: string) {
 }
 
 function roleAllowed(currentRole: string | undefined, minRole: string | undefined) {
-  const target = minRole || "STUDENT";
+  const target = minRole || "MEMBER";
   return getRoleLevel(currentRole) >= getRoleLevel(target);
 }
 
@@ -18,7 +18,7 @@ export function canAccessWebPage(
   nodes: PublicPagePermissionNode[],
   pathname: string,
   currentRole: string | undefined,
-  fallbackMinRole = "STUDENT"
+  fallbackMinRole = "MEMBER"
 ) {
   const path = normalizePath(pathname);
   const matched = nodes.find((x) => x.platform === "WEB" && x.nodeType === "PAGE" && normalizePath(x.pathOrRoute) === path);
@@ -32,7 +32,7 @@ export function canShowWebEntry(
   pathOrRoute: string,
   entrySource: EntrySource,
   currentRole: string | undefined,
-  fallbackMinRole = "STUDENT"
+  fallbackMinRole = "MEMBER"
 ) {
   const path = normalizePath(pathOrRoute);
   const matched = nodes.find(

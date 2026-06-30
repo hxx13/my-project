@@ -26,27 +26,40 @@
         <if test="applicantUserId != null and applicantUserId != ''">AND user_id = #{applicantUserId}</if>
         <if test="applicantGroup != null and applicantGroup != ''">AND applicant_group = #{applicantGroup}</if>
     </select>
+    <select id="selectFinished" resultType="com.example.demo.modules.material.entity.MaterialRequest">
+        SELECT * FROM material_request WHERE deleted = 0
+        AND status IN ('APPROVED', 'REJECTED', 'FULFILLED', 'RECEIVED')
+        <if test="applicantUserId != null and applicantUserId != ''">AND user_id = #{applicantUserId}</if>
+        <if test="applicantGroup != null and applicantGroup != ''">AND applicant_group = #{applicantGroup}</if>
+        ORDER BY created_at DESC LIMIT #{offset}, #{size}
+    </select>
+    <select id="countFinished" resultType="int">
+        SELECT COUNT(1) FROM material_request WHERE deleted = 0
+        AND status IN ('APPROVED', 'REJECTED', 'FULFILLED', 'RECEIVED')
+        <if test="applicantUserId != null and applicantUserId != ''">AND user_id = #{applicantUserId}</if>
+        <if test="applicantGroup != null and applicantGroup != ''">AND applicant_group = #{applicantGroup}</if>
+    </select>
     <insert id="insert">
-        INSERT INTO material_request (id, user_id, applicant_name, applicant_group, status, workflow_type)
-        VALUES (#{id}, #{userId}, #{applicantName}, #{applicantGroup}, #{status}, #{workflowType})
+        INSERT INTO material_request (id, user_id, applicant_name, applicant_group, status, workflow_type, created_at, updated_at)
+        VALUES (#{id}, #{userId}, #{applicantName}, #{applicantGroup}, #{status}, #{workflowType}, #{createdAt}, #{updatedAt})
     </insert>
     <update id="updateStatus">
-        UPDATE material_request SET status = #{status} WHERE id = #{id}
+        UPDATE material_request SET status = #{status}, updated_at = #{updatedAt} WHERE id = #{id}
     </update>
     <update id="updateReview">
-        UPDATE material_request SET status = #{status}
-        <if test="status == 'FIRST_OK'">, first_reviewer_id = #{reviewerId}, first_review_time = NOW()</if>
-        <if test="status == 'APPROVED'">, first_reviewer_id = COALESCE(first_reviewer_id, #{reviewerId}), first_review_time = COALESCE(first_review_time, NOW()), second_reviewer_id = #{reviewerId}, second_review_time = NOW()</if>
+        UPDATE material_request SET status = #{status}, updated_at = #{reviewTime}
+        <if test="status == 'FIRST_OK'">, first_reviewer_id = #{reviewerId}, first_review_time = #{reviewTime}</if>
+        <if test="status == 'APPROVED'">, first_reviewer_id = COALESCE(first_reviewer_id, #{reviewerId}), first_review_time = COALESCE(first_review_time, #{reviewTime}), second_reviewer_id = #{reviewerId}, second_review_time = #{reviewTime}</if>
         WHERE id = #{id}
     </update>
     <update id="updateFulfill">
-        UPDATE material_request SET status = 'FULFILLED', fulfilled_at = NOW(), fulfilled_by = #{fulfilledBy} WHERE id = #{id}
+        UPDATE material_request SET status = 'FULFILLED', fulfilled_at = #{fulfilledAt}, fulfilled_by = #{fulfilledBy}, updated_at = #{fulfilledAt} WHERE id = #{id}
     </update>
     <update id="updateReceived">
-        UPDATE material_request SET status = 'RECEIVED', received_at = NOW() WHERE id = #{id}
+        UPDATE material_request SET status = 'RECEIVED', received_at = #{receivedAt}, updated_at = #{receivedAt} WHERE id = #{id}
     </update>
     <update id="softDelete">
-        UPDATE material_request SET deleted = 1, deleted_time = NOW(), deleted_by = #{deletedBy}, purge_after_time = #{purgeAfter} WHERE id = #{id} AND deleted = 0
+        UPDATE material_request SET deleted = 1, deleted_time = #{deletedTime}, deleted_by = #{deletedBy}, purge_after_time = #{purgeAfter}, updated_at = #{deletedTime} WHERE id = #{id} AND deleted = 0
     </update>
     <update id="restoreById">
         UPDATE material_request SET deleted = 0, deleted_time = NULL, deleted_by = NULL, purge_after_time = NULL WHERE id = #{id} AND deleted = 1
@@ -66,21 +79,34 @@
         SELECT COUNT(1) FROM material_request WHERE deleted = 1
     </select>
     <select id="selectDistinctGroups" resultType="java.lang.String">
-        SELECT DISTINCT applicant_group FROM material_request WHERE applicant_group IS NOT NULL AND applicant_group != '' AND deleted = 0 ORDER BY applicant_group
+        SELECT DISTINCT applicant_group FROM material_request
+        WHERE applicant_group IS NOT NULL AND applicant_group != '' AND deleted = 0
+          AND status != 'DRAFT'
+        <if test="from != null and from != '' and to != null and to != ''">
+          AND DATE(created_at) BETWEEN #{from} AND #{to}
+        </if>
+        ORDER BY applicant_group
     </select>
     <select id="selectDistinctApplicants" resultType="java.util.HashMap">
         SELECT user_id AS userId, MAX(applicant_name) AS applicantName
-        FROM material_request WHERE deleted = 0
-        GROUP BY user_id ORDER BY user_id
+        FROM material_request WHERE deleted = 0 AND status != 'DRAFT'
+        <if test="from != null and from != '' and to != null and to != ''">
+          AND DATE(created_at) BETWEEN #{from} AND #{to}
+        </if>
+        GROUP BY user_id ORDER BY MAX(applicant_name), user_id
     </select>
     <select id="selectClaimLinesByItemId" resultType="java.util.HashMap">
         SELECT r.id AS requestId, r.user_id AS userId, r.applicant_name AS applicantName,
                r.applicant_group AS applicantGroup, r.status AS status,
-               r.created_at AS createdAt, r.fulfilled_at AS fulfilledAt,
+               DATE_FORMAT(r.created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
+               DATE_FORMAT(r.fulfilled_at, '%Y-%m-%d %H:%i:%s') AS fulfilledAt,
                l.qty AS qty, l.fulfilled_qty AS fulfilledQty, l.snapshot_name AS itemName
         FROM material_request_line l
         JOIN material_request r ON l.request_id = r.id
         WHERE r.deleted = 0 AND l.item_id = #{itemId}
+        <if test="applicantGroup != null and applicantGroup != ''">
+            AND r.applicant_group = #{applicantGroup}
+        </if>
         <if test="from != null and from != '' and to != null and to != ''">
             AND (
                 (l.fulfilled_qty > 0 AND r.fulfilled_at IS NOT NULL AND DATE(r.fulfilled_at) BETWEEN #{from} AND #{to})
@@ -96,6 +122,9 @@
         FROM material_request_line l
         JOIN material_request r ON l.request_id = r.id
         WHERE r.deleted = 0 AND l.item_id = #{itemId}
+        <if test="applicantGroup != null and applicantGroup != ''">
+            AND r.applicant_group = #{applicantGroup}
+        </if>
         <if test="from != null and from != '' and to != null and to != ''">
             AND (
                 (l.fulfilled_qty > 0 AND r.fulfilled_at IS NOT NULL AND DATE(r.fulfilled_at) BETWEEN #{from} AND #{to})

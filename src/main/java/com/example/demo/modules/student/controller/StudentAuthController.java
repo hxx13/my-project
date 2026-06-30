@@ -2,6 +2,7 @@ package com.example.demo.modules.student.controller;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.modules.student.dto.StudentRegisterRequest;
+import com.example.demo.modules.student.dto.StudentActivateRequest;
 import com.example.demo.modules.student.dto.StudentQrVerifyResponse;
 import com.example.demo.modules.student.service.StudentRegistrationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,5 +35,11 @@ public class StudentAuthController {
     @Operation(summary = "学生注册（免邀请码）")
     public Result<?> register(@RequestBody StudentRegisterRequest request) {
         return studentRegistrationService.register(request);
+    }
+
+    @PostMapping("/activate")
+    @Operation(summary = "学生激活（已有账号设密码，UPDATE sys_user）")
+    public Result<?> activate(@RequestBody StudentActivateRequest request) {
+        return studentRegistrationService.activate(request);
     }
 }

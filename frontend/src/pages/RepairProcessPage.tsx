@@ -18,6 +18,7 @@ import { WorkorderNotificationReadButton } from "@/components/WorkorderNotificat
 import { useWorkorderUnreadFlags } from "@/features/notification/useWorkorderUnreadFlags";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 
 const STATUS_TEXT: Record<string, string> = {
   PENDING: "待处理",
@@ -145,7 +146,7 @@ export default function RepairProcessPage() {
                   {(row.processorName && row.processorName.trim()) || row.processorId
                     ? ` | 处理人：${(row.processorName && row.processorName.trim()) || row.processorId}`
                     : ""}{" "}
-                  | 提交：{row.createTime || "-"} | 开始：{row.startTime || "-"} | 完成：{row.finishTime || "-"}
+                  | 提交：{formatDateTimeAsiaShanghai(row.createTime)} | 开始：{formatDateTimeAsiaShanghai(row.startTime)} | 完成：{formatDateTimeAsiaShanghai(row.finishTime)}
                 </div>
                 {row.status === "PENDING" && (
                   <button

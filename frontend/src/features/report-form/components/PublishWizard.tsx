@@ -1,10 +1,10 @@
 // components/PublishWizard.tsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation } from '@tanstack/react-query';
 import { Send, X, ChevronRight, ChevronLeft } from 'lucide-react';
 import { adminHttp } from '@/api/core/adminHttp';
-import type { FillMode, PermissionJson, ScheduleJson } from '../types';
+import type { FillMode, PermissionJson, ScheduleJson, FillPolicyJson } from '../types';
 import PermissionPanel from './PermissionPanel';
 import type { LayoutJson } from '../types';
 import toast from 'react-hot-toast';
@@ -14,6 +14,13 @@ interface Props {
   onClose: () => void;
   formId: number;
   layout: LayoutJson;
+  /** initial：首次发布；reset：修改发布条件后重新发布 */
+  intent?: 'initial' | 'reset';
+  initialFillPolicy?: FillPolicyJson;
+  initialPermission?: PermissionJson;
+  initialSchedule?: ScheduleJson;
+  /** 发布成功后刷新列表/详情 */
+  onPublished?: () => void;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -27,10 +34,22 @@ const ROLE_LABELS: Record<string, string> = {
 const inputClass = "w-full rounded-[6px] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-2 py-1 text-xs text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)]";
 const labelClass = "text-[11px] font-medium text-[var(--app-color-text-secondary)] mb-0.5 block";
 
-export default function PublishWizard({ open, onClose, formId, layout }: Props) {
-  const [mode, setMode] = useState<'quick' | 'wizard' | null>(null);
+export default function PublishWizard({
+  open,
+  onClose,
+  formId,
+  layout,
+  intent = 'initial',
+  initialFillPolicy,
+  initialPermission,
+  initialSchedule,
+  onPublished,
+}: Props) {
+  const isReset = intent === 'reset';
+  const [mode, setMode] = useState<'quick' | 'wizard' | null>(isReset ? 'wizard' : null);
   const [step, setStep] = useState(0);
   const [fillMode, setFillMode] = useState<FillMode>('shared');
+  const [allowMultipleInstances, setAllowMultipleInstances] = useState(false);
   const [permission, setPermission] = useState<PermissionJson>({
     visibleRoles: ['STAFF'],
     visibleUserIds: [],
@@ -41,11 +60,40 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
     period: 'manual',
   });
 
+  useEffect(() => {
+    if (!open) return;
+    if (!isReset) {
+      setMode(null);
+      setStep(0);
+      setFillMode('shared');
+      setAllowMultipleInstances(false);
+      setPermission({
+        visibleRoles: ['STAFF'],
+        visibleUserIds: [],
+        fieldRoleBindings: {},
+        allowUnboundView: true,
+      });
+      setSchedule({ period: 'manual' });
+      return;
+    }
+    setMode('wizard');
+    setStep(0);
+    const fp = initialFillPolicy;
+    setFillMode(fp?.mode === 'individual' ? 'individual' : 'shared');
+    setAllowMultipleInstances(!!fp?.allowMultipleInstances);
+    if (initialPermission) setPermission(initialPermission);
+    if (initialSchedule) setSchedule(initialSchedule);
+  }, [open, isReset, initialFillPolicy, initialPermission, initialSchedule]);
+
   const minEditRole = permission.visibleRoles?.[0] || '';
 
   const publishMut = useMutation({
     mutationFn: () => adminHttp.post(`/report-form/forms/${formId}/publish`),
-    onSuccess: () => { toast.success('发布成功'); onClose(); },
+    onSuccess: () => {
+      toast.success(isReset ? '发布条件已更新并重新发布' : '发布成功');
+      onPublished?.();
+      onClose();
+    },
     onError: (e: Error) => toast.error('发布失败: ' + e.message),
   });
 
@@ -53,7 +101,12 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
 
   const handleWizardPublish = () => {
     const body = {
-      fillPolicyJson: JSON.stringify({ mode: fillMode, submitLabel: '提交', allowEditAfterSubmit: true }),
+      fillPolicyJson: JSON.stringify({
+        mode: fillMode,
+        submitLabel: '提交',
+        allowEditAfterSubmit: true,
+        allowMultipleInstances: fillMode === 'individual' && allowMultipleInstances,
+      }),
       permissionJson: JSON.stringify(permission),
       scheduleJson: JSON.stringify(schedule),
     };
@@ -66,14 +119,16 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
     <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 800 }} onClick={onClose}>
       <div className="w-full max-w-2xl rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-elevated)] p-5 shadow-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-[var(--app-color-text-primary)]">发布报表</h2>
+          <h2 className="text-sm font-semibold text-[var(--app-color-text-primary)]">
+            {isReset ? '重置发布条件' : '发布报表'}
+          </h2>
           <button onClick={onClose} className="p-1 rounded-[6px] hover:bg-[var(--app-color-surface-hover)]">
             <X className="w-4 h-4 text-[var(--app-color-text-secondary)]" />
           </button>
         </div>
 
         {!mode ? (
-          /* Mode selection */
+          /* Mode selection — 仅首次发布 */
           <div className="space-y-3">
             <p className="text-xs text-[var(--app-color-text-secondary)]">选择发布方式：</p>
             <button
@@ -147,6 +202,17 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
                   <button onClick={() => setFillMode('individual')}
                     className={`flex-1 px-3 py-2 rounded-[6px] text-[12px] font-medium transition-colors ${fillMode === 'individual' ? 'bg-[var(--app-color-accent)] text-white' : 'border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]'}`}>个人表</button>
                 </div>
+                {fillMode === 'individual' && (
+                  <label className="flex items-center gap-2 text-[12px] text-[var(--app-color-text-secondary)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={allowMultipleInstances}
+                      onChange={e => setAllowMultipleInstances(e.target.checked)}
+                      className="rounded border-[var(--app-color-border-default)]"
+                    />
+                    允许每人创建多份子文件（如多份实验记录、多份申请）
+                  </label>
+                )}
                 <div>
                   <label className={labelClass}>周期</label>
                   <select value={schedule.period} onChange={e => setSchedule({ ...schedule, period: e.target.value as ScheduleJson['period'] })}
@@ -181,7 +247,7 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
             {step === 2 && (
               <div className="space-y-2">
                 <div className="p-3 rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-container)]">
-                  <div className="text-[11px] text-[var(--app-color-text-secondary)]">模式：{fillMode === 'shared' ? '协同表（多人同表）' : '个人表（每人一份）'}</div>
+                  <div className="text-[11px] text-[var(--app-color-text-secondary)]">模式：{fillMode === 'shared' ? '协同表（多人同表）' : `个人表（每人${allowMultipleInstances ? '可多份' : '一份'}）`}</div>
                   <div className="text-[11px] text-[var(--app-color-text-secondary)] mt-1">
                     最低可编辑角色：{ROLE_LABELS[minEditRole] || minEditRole || '所有人'} 及以上
                   </div>
@@ -204,7 +270,7 @@ export default function PublishWizard({ open, onClose, formId, layout }: Props) 
               ) : (
                 <button onClick={handleWizardPublish} disabled={publishMut.isPending}
                   className="px-4 py-1.5 rounded-[6px] text-[12px] font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90 disabled:opacity-50 flex items-center gap-1">
-                  <Send className="w-3.5 h-3.5" /> {publishMut.isPending ? '发布中...' : '确认发布'}
+                  <Send className="w-3.5 h-3.5" /> {publishMut.isPending ? '发布中...' : (isReset ? '确认并重新发布' : '确认发布')}
                 </button>
               )}
             </div>

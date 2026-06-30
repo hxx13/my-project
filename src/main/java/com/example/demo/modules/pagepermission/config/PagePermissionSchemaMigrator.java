@@ -220,6 +220,56 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         min_role, default_min_role, enabled, parent_node_key, chain_key,
                         auto_discovered, manual_override
                     ) VALUES (
+                        'MINI', 'page:mini:student-material', 'PAGE', '学生申领', '/pages/studentMaterial/index', NULL,
+                        'STUDENT', 'STUDENT', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'page:mini:student-material-requests', 'PAGE', '我的申领', '/pages/studentMaterialRequests/index', NULL,
+                        'STUDENT', 'STUDENT', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'entry:mini:mine:student-material', 'ENTRY', '学生申领', '/pages/studentMaterial/index', 'mine',
+                        'STUDENT', 'STUDENT', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            log.info("[page-permission-schema] 已种子 MINI：学生申领 PAGE + mine 入口（INSERT IGNORE）");
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'page:mini:material-admin', 'PAGE', '物品管理', '/pages/materialAdmin/index', NULL,
+                        'STAFF', 'STAFF', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            log.info("[page-permission-schema] 已种子 MINI：物品管理 PAGE（INSERT IGNORE）");
+        } catch (Exception e) {
+            log.debug("[page-permission-schema] MINI student-material 入口种子跳过: {}", e.getMessage());
+        }
+        try {
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
                         'WEB', 'entry:web:twin:animal-room-telemetry', 'ENTRY', '动物房温湿度监测', '/animal-room-telemetry', 'sidebar',
                         'ADMIN', 'ADMIN', 1, NULL, NULL,
                         0, 0

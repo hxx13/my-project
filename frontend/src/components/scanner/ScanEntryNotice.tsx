@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from "react";
+import { Smartphone } from "lucide-react";
 import { MinimizableNotice } from "@/components/ui/MinimizableNotice";
 import {
+  hasActiveAutoSignoutCountdown,
   remainingSecondsFromScheduledAt,
   resolveAutoSignoutCountdownCopy,
 } from "@/utils/formatCountdown";
 import type { PopupState } from "./components/types";
+import { MobileQrCard } from "./MobileQrCard";
 import "./ScanEntryNotice.css";
 
 /* ═══════════════════════════════════════════════════════════
@@ -25,18 +28,22 @@ interface ScanEntryNoticeProps {
   state: PopupState;
   roomName: string;
   onDismiss: () => void;
+  /** 当前扫码人 userId，用于生成手机端直达二维码 */
+  studentUserId?: string;
+  /** 用户点击"我要离开"时的回调（仅场内+倒计时时显示此按钮） */
+  onRequestExit?: () => void;
 }
 
 function hasCountdownData(snapshot: NoticeSnapshot): boolean {
-  const fromDeadline = remainingSecondsFromScheduledAt(snapshot.autoSignoutScheduledAt);
-  if (fromDeadline != null && fromDeadline > 0) return true;
-  return (snapshot.autoSignoutSecondsRemaining ?? 0) > 0;
+  return hasActiveAutoSignoutCountdown(snapshot);
 }
 
 export function ScanEntryNotice({
   state,
   roomName,
   onDismiss,
+  studentUserId: studentUserIdProp,
+  onRequestExit,
 }: ScanEntryNoticeProps) {
   const sessionIdRef = useRef<string | null>(null);
   const enrichedRef = useRef(false);
@@ -100,9 +107,11 @@ export function ScanEntryNotice({
 
   const open =
     state.enterNoticeReady &&
-    Boolean(snapshot) &&
+    snapshot != null &&
+    hasCountdownData(snapshot) &&
     !dismissed &&
-    !state.exitCelebrateRoomId;
+    !state.exitCelebrateRoomId &&
+    !state.confirmingExitRoom;
 
   const handleDismiss = () => {
     setDismissed(true);
@@ -127,7 +136,27 @@ export function ScanEntryNotice({
 
   const hasCountdown = hasCountdownData(snapshot);
   const copy = resolveAutoSignoutCountdownCopy(snapshot.autoSignoutState);
-  const title = `已进入 ${snapshot.roomName}`;
+  const isAlreadyInside = state.enterMotionAtCorner;
+  const title = isAlreadyInside
+    ? `当前已在 ${snapshot.roomName} 内`
+    : `已进入 ${snapshot.roomName}`;
+  const studentUserId = studentUserIdProp || state.user?.userId || "";
+
+  // QR 底部横条（仅当 studentUserId 存在时渲染）
+  const extraContent = studentUserId ? (
+    <div className="scan-entry-qr-strip">
+      <div className="scan-entry-qr-strip__info">
+        <Smartphone className="size-[18px] shrink-0 text-[var(--app-color-text-tertiary)]" strokeWidth={1.5} />
+        <span>扫描二维码可实时查看当前状态</span>
+      </div>
+      <div className="scan-entry-qr-strip__qr">
+        <MobileQrCard userId={studentUserId} adaptive />
+      </div>
+    </div>
+  ) : undefined;
+
+  // "我要离开"按钮：仅场内已有+有倒计时+有回调时显示
+  const showExitButton = isAlreadyInside && hasCountdown && onRequestExit;
 
   return (
     <MinimizableNotice
@@ -146,8 +175,11 @@ export function ScanEntryNotice({
       countdownLabel={hasCountdown ? copy.badge : undefined}
       variant="warning"
       minimizable
+      extra={extraContent}
       actionLabel="知道了"
       onAction={handleAcknowledge}
+      secondaryActionLabel={showExitButton ? "我要离开" : undefined}
+      onSecondaryAction={showExitButton ? onRequestExit : undefined}
       cornerOffset={{ x: 24, y: 120 }}
       className="scan-entry-notice"
     />

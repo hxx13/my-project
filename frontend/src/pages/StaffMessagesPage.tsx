@@ -140,7 +140,7 @@ function peerFromConversation(conv: ConvRow, unread: number): StaffContact {
 }
 
 export default function StaffMessagesPage() {
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const canStaff = hasMinRole(role, "STAFF");
   const isAdmin = hasMinRole(role, "ADMIN");
   const [searchParams, setSearchParams] = useSearchParams();

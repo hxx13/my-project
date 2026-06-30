@@ -13,6 +13,7 @@ import {UiverseProfilePopup} from '@/components/scanner/UiverseProfilePopup';
 import { StudentDahuaBindPanel } from '@/components/scanner/StudentDahuaBindPanel';
 import { PopupErrorBoundary } from '@/components/scanner/PopupErrorBoundary';
 import { SwipeExitConfirmDialog } from '@/components/scanner/SwipeExitConfirmDialog';
+import { RepeatedSwipeWarningBanner } from '@/components/scanner/RepeatedSwipeWarningBanner';
 import { fetchAccessRuleScanLinkageConfig } from '@/api/twinApi';
 import {CreditCard } from 'lucide-react';
 import { authStorage } from '@/features/auth/authStorage';
@@ -29,6 +30,7 @@ import {
     setScanPopupSession,
     tryBeginScanChannel,
 } from '@/components/scanner/scanSessionGuard';
+import { mergeViolationInteractiveAckIntoResult } from '@/components/scanner/twinViolationInteractive';
 import {
     FaceDynamicIsland,
     FaceCameraWindow,
@@ -45,6 +47,7 @@ import type { ScanStatus } from '@/components/face-verify';
 import { uploadBaselinePhoto } from '@/api/domains/face.api';
 import { specialChannelLoginByFace } from '@/components/scanner/specialChannel.api';
 import type { AuthData } from '@/api/domains/auth.api';
+import { useCardReaderEnterGuard } from '@/components/scanner/useCardReaderEnterGuard';
 import toast from 'react-hot-toast';
 
 const DEBUG_NAV_RUNTIME_STAMP = "debug-nav-runtime-2026-04-16-r4";
@@ -69,6 +72,33 @@ export default function DebugNav() {
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
+    const errorDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const inputClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    /** 设置错误消息并在 5 秒后自动消失 */
+    const setAutoDismissError = useCallback((msg: string) => {
+        if (errorDismissTimerRef.current) clearTimeout(errorDismissTimerRef.current);
+        setErrorMsg(msg);
+        errorDismissTimerRef.current = setTimeout(() => {
+            setErrorMsg('');
+        }, 5000);
+    }, []);
+
+    /** 清除错误消息和定时器 */
+    const clearErrorMsg = useCallback(() => {
+        if (errorDismissTimerRef.current) clearTimeout(errorDismissTimerRef.current);
+        setErrorMsg('');
+    }, []);
+
+    /** 延迟清空输入框（2 秒后） */
+    const scheduleClearInput = useCallback(() => {
+        if (inputClearTimerRef.current) clearTimeout(inputClearTimerRef.current);
+        inputClearTimerRef.current = setTimeout(() => {
+            setInputValue('');
+            setErrorMsg('');
+        }, 2000);
+    }, []);
+
     const [executeErrorMessage, setExecuteErrorMessage] = useState('');
     const [lastScannedId, setLastScannedId] = useState('');
     const lastScannedIdRef = useRef('');
@@ -85,6 +115,10 @@ export default function DebugNav() {
     const swipeExitSkipConfirm = (linkageCfg as any).swipeExitSkipConfirm === true;
 
     const [autoExitConfirm, setAutoExitConfirm] = useState<ExecutePayload | null>(null);
+
+    // 重复刷卡全屏脉冲警告
+    const [swipeWarning, setSwipeWarning] = useState<string | null>(null);
+    const [swipeWarningKey, setSwipeWarningKey] = useState(0);
 
     const [studentBindOpen, setStudentBindOpen] = useState(false);
     const [studentBindTarget, setStudentBindTarget] = useState<{ userId: string; userName: string } | null>(null);
@@ -103,10 +137,12 @@ export default function DebugNav() {
             setScanPopupSession(uid || null, lastScannedIdRef.current);
             setAutoActionRoomId('');
             const isBanned = Number(data.globalUserState) === 3;
+            const autoSignoutActive = data.autoSignoutSecondsRemaining != null && data.autoSignoutSecondsRemaining > 0;
             if (
                 data.currentState === 'INSIDE'
                 && isHardwareScanRef.current
                 && !isBanned
+                && !autoSignoutActive
                 && uid
                 && canScheduleAutoExit(uid, lastScannedIdRef.current)
             ) {
@@ -123,17 +159,20 @@ export default function DebugNav() {
     }, [fv.handleFaceDone]);
 
     // =========================================================
-    // 💥 核心修复：彻底抛弃“弹窗生命周期锁”，改为“网络级极速锁”！
+    // 💥 核心修复：彻底抛弃”弹窗生命周期锁”，改为”网络级极速锁”！
     // 只要接口返回数据（弹窗展现），扫码枪瞬间释放！支持无缝连扫，后扫的人直接覆盖前一个人！
     // =========================================================
     const scannerLockRef = useRef(false);
-    // 💥 新增：物理硬件锁。用于区分“扫码枪扫入”和“后台自动刷新”
+    // 💥 新增：物理硬件锁。用于区分”扫码枪扫入”和”后台自动刷新”
     const isHardwareScanRef = useRef(false);
     // 💥 1. 新增：视觉钢印。用来告诉底下的弹窗，现在是哪个房间在全自动离开
     const [autoActionRoomId, setAutoActionRoomId] = useState<string>('');
     const hasLoggedStampRef = useRef(false);
     // 仅硬件刷卡/手动扫码/输入回车这三种方式触发的离开需确认弹窗
     const needsExitConfirmRef = useRef(false);
+    // 弹窗是否已打开（ref 版：全局 keydown 监听器因 [] deps 捕获过期闭包，必须用 ref 保持最新值）
+    const activeResultRef = useRef<AnalyzeResponse | null>(null);
+    useEffect(() => { activeResultRef.current = activeResult; }, [activeResult]);
 
     useEffect(() => {
         if (hasLoggedStampRef.current) return;
@@ -144,7 +183,8 @@ export default function DebugNav() {
     const analyzeMutation = useAnalyzeScanMutation({
         onSuccess: (data) => {
             if (data && data.success === false) {
-                setErrorMsg(data.message || `系统档案库中未检索到: ${lastScannedId}`);
+                setAutoDismissError(data.message || `未检索到该人员信息：${lastScannedId}`);
+                scheduleClearInput();
                 isHardwareScanRef.current = false;
                 return; // ⛔ 阻断执行，绝不调用 setActiveResult！
             }
@@ -169,13 +209,17 @@ export default function DebugNav() {
             // 💥 核心防爆锁：解析后端传来的风控状态 (3 代表被封禁)
             // =========================================================
             const isBanned = Number(data.globalUserState) === 3;
+            // 自动签退计时器运行中时，ProfilePopup 已在展示倒计时 + 离开入口，
+            // 此时不应再弹出 DebugNav 的确认离开弹窗，避免两个同 z=800 弹窗冲突
+            const autoSignoutActive = data.autoSignoutSecondsRemaining != null && data.autoSignoutSecondsRemaining > 0;
 
-            // 💥 终极拦截：只有真实硬件扫码 + 在馆内 + 【绝对没有被封禁】，才允许触发全自动签退！
+            // 💥 终极拦截：只有真实硬件扫码 + 在馆内 + 【绝对没有被封禁】+ 无活跃自动签退计时器
             // 刚完成「进入」或弹窗内重复扫：canScheduleAutoExit / tryBeginScanChannel 已拦截，避免手抖连扫误离开
             if (
                 data.currentState === 'INSIDE'
                 && isHardwareScanRef.current
                 && !isBanned
+                && !autoSignoutActive
                 && uid
                 && canScheduleAutoExit(uid, lastScannedIdRef.current)
             ) {
@@ -205,7 +249,20 @@ export default function DebugNav() {
             isHardwareScanRef.current = false;
         },
         onError: (error) => {
-            setErrorMsg(error.message || '无法解析该人员');
+            // 区分错误类型给出更明确的提示
+            const axiosError = error as any;
+            let message: string;
+            if (axiosError?.response?.status === 404) {
+                message = '未找到该人员，请检查卡号/ID';
+            } else if (axiosError?.response?.status === 500) {
+                message = '系统异常，请稍后重试';
+            } else if (axiosError?.code === 'ERR_NETWORK' || axiosError?.message?.includes('Network')) {
+                message = '网络异常，请检查连接后重试';
+            } else {
+                message = error.message || '无法解析该人员';
+            }
+            setAutoDismissError(message);
+            scheduleClearInput();
             isHardwareScanRef.current = false;
         }
     });
@@ -215,7 +272,7 @@ export default function DebugNav() {
             const failedMessage = data.success === false ? (data.message || data.msg || '操作被拒绝') : '';
             setExecuteErrorMessage(failedMessage);
             if (failedMessage) {
-                setErrorMsg(failedMessage);
+                setAutoDismissError(failedMessage);
                 return;
             }
             if (variables?.userId && variables?.action) {
@@ -226,8 +283,8 @@ export default function DebugNav() {
         onError: (error) => {
             // 💥 加上这行错误日志
             console.error("❌ [DebugNav - 报错了] 请求失败:", error);
-            const message = error.message || '无法解析该人员';
-            setErrorMsg(message);
+            const message = error.message || '操作失败';
+            setAutoDismissError(message);
             setExecuteErrorMessage(message);
             isHardwareScanRef.current = false;
         },
@@ -241,11 +298,8 @@ export default function DebugNav() {
     };
 
     const runExecute = (payload: ExecutePayload) => {
-        // 仅硬件刷卡/手动扫码/输入回车触发的离开受开关控制
-        if (payload.action === 'EXIT' && needsExitConfirmRef.current && !swipeExitSkipConfirm) {
-            setAutoExitConfirm(payload);
-            return;
-        }
+        // UiverseProfilePopup 已通过自身的 SwipeExitConfirmDialog 完成确认，
+        // 此处不再重复弹窗，直接执行进出操作
         needsExitConfirmRef.current = false;
         doExecute(payload);
     };
@@ -254,16 +308,24 @@ export default function DebugNav() {
         const cleanValue = String(code).trim();
         if (!cleanValue) return;
 
-        const guard = tryBeginScanChannel(cleanValue, activeResult?.userInfo?.userId);
+        // 使用 ref 而非 state：全局 keydown 监听器因 [] deps 捕获过期闭包，ref 始终是最新值
+        const currentPopupUser = activeResultRef.current?.userInfo?.userId;
+        const guard = tryBeginScanChannel(cleanValue, currentPopupUser);
         if (!guard.allow) {
-            setErrorMsg(guard.message);
+            // 弹窗已打开时重复刷卡 → 全屏红色脉冲警告；否则 → 底部 error toast
+            if (activeResultRef.current !== null) {
+                setSwipeWarning(guard.message);
+                setSwipeWarningKey((k) => k + 1);
+            } else {
+                setAutoDismissError(guard.message);
+            }
             isHardwareScanRef.current = false;
             return;
         }
 
         lastScannedIdRef.current = cleanValue;
         setLastScannedId(cleanValue);
-        setErrorMsg('');
+        clearErrorMsg();
         setExecuteErrorMessage('');
 
         // 三种手动输入方式都需要离开确认弹窗检查
@@ -282,12 +344,16 @@ export default function DebugNav() {
         scannerLockRef.current = isWorking;
     }, [isWorking]);
 
+    // 🔒 读卡器 Enter 键防护：capture 阶段拦截，防止连续刷卡时意外触发聚焦按钮
+    useCardReaderEnterGuard("debug-scanner-input");
+
     const resetCloseTimer = () => {
         if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
         closeTimeoutRef.current = setTimeout(() => {
             setInputValue('');
             setLastScannedId('');
             setActiveResult(null);
+            setSwipeWarning(null);
             analyzeMutation.reset();
             executeMutation.reset();
             setIsScannerOpen(false);
@@ -373,6 +439,7 @@ export default function DebugNav() {
     const closeScanPopup = useCallback(() => {
         setStudentBindOpen(false);
         setActiveResult(null);
+        setSwipeWarning(null);
         fv.abortFaceVerifySession();
         fv.dismissMaxRetriesPrompt();
         analyzeMutation.reset();
@@ -393,7 +460,8 @@ export default function DebugNav() {
         setInputValue('');
         setLastScannedId('');
         lastScannedIdRef.current = '';
-        setErrorMsg('');
+        clearErrorMsg();
+        if (inputClearTimerRef.current) clearTimeout(inputClearTimerRef.current);
         setIsScannerOpen(false);
     }, [fv]);
 
@@ -404,7 +472,7 @@ export default function DebugNav() {
             if (!uid) return;
             void specialChannelLoginByFace(uid)
                 .then((authData) => studentCenterSuccessRef.current?.(authData))
-                .catch((e) => setErrorMsg(e instanceof Error ? e.message : '人脸验证登录失败'));
+                .catch((e) => setAutoDismissError(e instanceof Error ? e.message : '人脸验证登录失败'));
         };
         fv.beginPersonalFaceVerify(activeResult);
     }, [activeResult, fv]);
@@ -518,6 +586,9 @@ export default function DebugNav() {
                 onWrongPerson={closeScanPopup}
             />
 
+            {/* 重复刷卡全屏红色脉冲警告 — 弹窗打开后同一人再次刷卡时触发，z=820 覆盖所有子窗 */}
+            <RepeatedSwipeWarningBanner message={swipeWarning} triggerKey={swipeWarningKey} />
+
             {!isGateFace && (
             <AnimatePresence>
                 {showScanPopup && activeResult && (
@@ -566,6 +637,19 @@ export default function DebugNav() {
                             }}
                             // 💥 3. 核心修复：把钢印通过 Props 传给弹窗
                             autoActionRoomId={autoActionRoomId}
+                            onViolationInteractiveVerified={(patch) => {
+                                setActiveResult((prev) => mergeViolationInteractiveAckIntoResult(prev, patch));
+                                const cardId = lastScannedIdRef.current;
+                                if (cardId && !patch.violationExpired) {
+                                    isHardwareScanRef.current = false;
+                                    analyzeMutation.mutate(cardId, {
+                                        onSuccess: (data) =>
+                                            setActiveResult(
+                                                mergeViolationInteractiveAckIntoResult(data, patch) ?? data
+                                            ),
+                                    });
+                                }
+                            }}
                         />
                     </PopupErrorBoundary>
                 )}
@@ -703,7 +787,7 @@ export default function DebugNav() {
                                     value={inputValue}
                                     onChange={(e) => {
                                         setInputValue(e.target.value);
-                                        setErrorMsg('');
+                                        clearErrorMsg();
                                     }}
                                     onKeyDown={(e) => e.key === 'Enter' && handleScanAction(inputValue)}
                                     placeholder={isWorking ? "系统通讯中..." : "键入 ID 或刷卡..."}

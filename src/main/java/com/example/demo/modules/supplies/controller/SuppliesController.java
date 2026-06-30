@@ -352,7 +352,7 @@ public class SuppliesController {
     private User resolveUser(String authorization) {
         User user = authContextService.resolveUserFromBearer(authorization);
         if (user == null) return null;
-        if (user.getRole() == null) user.setRole(RoleEnum.STUDENT);
+        if (user.getRole() == null) user.setRole(RoleEnum.MEMBER);
         return user;
     }
 

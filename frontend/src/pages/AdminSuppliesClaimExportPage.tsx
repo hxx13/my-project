@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
 import { downloadPersonalClaimExcel, fetchSupplyClaimDetail } from "@/api/domains/supplies.api";
@@ -62,7 +63,7 @@ export default function AdminSuppliesClaimExportPage() {
         <p className="text-sm text-[var(--twin-body)]">
           请在 URL 中提供 <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1.5 py-0.5 font-mono text-xs">claimId</code>
           ，或从
-          <Link className="ml-1 font-medium text-[var(--twin-link-deep)] underline underline-offset-2" to="/admin/supplies/mine">
+          <Link className="ml-1 font-medium text-[var(--twin-link-deep)] underline underline-offset-2" to={toAdminRoutePath("/admin/supplies/mine")}>
             我的记录
           </Link>
           打开「导出/预览」。
@@ -97,6 +98,7 @@ export default function AdminSuppliesClaimExportPage() {
                 <th className="border-b border-[var(--twin-hairline)] px-3 py-2">物品</th>
                 <th className="border-b border-[var(--twin-hairline)] px-3 py-2">申请</th>
                 <th className="border-b border-[var(--twin-hairline)] px-3 py-2">实发</th>
+                <th className="border-b border-[var(--twin-hairline)] px-3 py-2">备注</th>
               </tr>
             </thead>
             <tbody>
@@ -105,6 +107,7 @@ export default function AdminSuppliesClaimExportPage() {
                   <td className="border-b border-[var(--twin-hairline)] px-3 py-2 text-[var(--twin-ink)]">{line.snapshotName}</td>
                   <td className="border-b border-[var(--twin-hairline)] px-3 py-2">{line.qty}</td>
                   <td className="border-b border-[var(--twin-hairline)] px-3 py-2">{line.fulfilledQty ?? 0}</td>
+                  <td className="border-b border-[var(--twin-hairline)] px-3 py-2 text-xs text-[var(--twin-mute)]">{line.remark || "-"}</td>
                 </tr>
               ))}
             </tbody>

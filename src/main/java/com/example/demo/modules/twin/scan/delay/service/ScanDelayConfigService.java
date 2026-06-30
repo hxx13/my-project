@@ -1,10 +1,17 @@
 package com.example.demo.modules.twin.scan.delay.service;
 
+import com.example.demo.modules.twin.scan.delay.dto.ScanDelayCarrierDTO;
 import com.example.demo.modules.twin.scan.delay.dto.ScanDelayOptionDTO;
 import com.example.demo.modules.twin.scan.delay.dto.ScanDelayRoomBindingDTO;
+import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayCarrier;
 import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayOption;
+import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayCarrierOption;
+import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayRoomCarrier;
 import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayRoomOption;
+import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayCarrierMapper;
+import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayCarrierOptionMapper;
 import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayOptionMapper;
+import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayRoomCarrierMapper;
 import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayRoomOptionMapper;
 import com.example.demo.modules.twin.scan.delay.config.DahuaIssueScanDelayConfigSeed;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -35,6 +42,15 @@ public class ScanDelayConfigService {
     private TwinScanDelayOptionMapper optionMapper;
 
     @Autowired
+    private TwinScanDelayCarrierMapper carrierMapper;
+
+    @Autowired
+    private TwinScanDelayCarrierOptionMapper carrierOptionMapper;
+
+    @Autowired
+    private TwinScanDelayRoomCarrierMapper roomCarrierMapper;
+
+    @Autowired
     private TwinScanDelayRoomOptionMapper roomOptionMapper;
 
     @Autowired
@@ -60,7 +76,51 @@ public class ScanDelayConfigService {
         upsertConfig(KEY_BUTTON_LABEL, StringUtils.hasText(label) ? label.trim() : "延迟");
     }
 
-    /** 延迟选项库（与房间无关） */
+    /** 载体按钮列表（含已分配菜单项） */
+    public List<ScanDelayCarrierDTO> listAllCarriers() {
+        return carrierMapper.listAll().stream().map(row -> {
+            ScanDelayCarrierDTO dto = toCarrierDto(row);
+            List<Long> optionIds = carrierOptionMapper.listOptionIdsByCarrierId(row.getId());
+            dto.setOptionIds(optionIds);
+            dto.setOptionCount(optionIds.size());
+            return dto;
+        }).collect(Collectors.toList());
+    }
+
+    public ScanDelayCarrierDTO saveCarrier(ScanDelayCarrierDTO dto) {
+        if (dto == null || !StringUtils.hasText(dto.getButtonLabel())) {
+            throw new IllegalArgumentException("请填写载体按钮文案");
+        }
+        TwinScanDelayCarrier row = new TwinScanDelayCarrier();
+        row.setId(dto.getId());
+        row.setButtonLabel(dto.getButtonLabel().trim());
+        row.setEnabled(dto.isEnabled() ? 1 : 0);
+        row.setSortOrder(dto.getSortOrder());
+        if (row.getId() == null) {
+            if (row.getEnabled() == null) row.setEnabled(1);
+            if (row.getSortOrder() == null) row.setSortOrder(0);
+            carrierMapper.insert(row);
+        } else {
+            carrierMapper.update(row);
+        }
+        if (dto.getOptionIds() != null) {
+            replaceCarrierOptions(row.getId(), dto.getOptionIds());
+        }
+        ScanDelayCarrierDTO out = toCarrierDto(carrierMapper.findById(row.getId()));
+        List<Long> optionIds = carrierOptionMapper.listOptionIdsByCarrierId(row.getId());
+        out.setOptionIds(optionIds);
+        out.setOptionCount(optionIds.size());
+        return out;
+    }
+
+    public void deleteCarrier(Long id) {
+        if (id == null) return;
+        carrierOptionMapper.deleteByCarrierId(id);
+        roomCarrierMapper.deleteByCarrierId(id);
+        carrierMapper.deleteById(id);
+    }
+
+    /** 延迟菜单项库（与载体、房间无关） */
     public List<ScanDelayOptionDTO> listAllOptions() {
         return optionMapper.listAll().stream().map(this::toTemplateDto).collect(Collectors.toList());
     }
@@ -83,47 +143,51 @@ public class ScanDelayConfigService {
 
     public void deleteOption(Long id) {
         if (id == null) return;
-        roomOptionMapper.deleteByOptionId(id);
+        carrierOptionMapper.deleteByOptionId(id);
         optionMapper.deleteById(id);
     }
 
     public List<ScanDelayRoomBindingDTO> listRoomBindings() {
         Map<String, List<Long>> grouped = new LinkedHashMap<>();
-        for (TwinScanDelayRoomOption row : roomOptionMapper.listAll()) {
-            grouped.computeIfAbsent(row.getRoomId(), k -> new ArrayList<>()).add(row.getOptionId());
+        for (TwinScanDelayRoomCarrier row : roomCarrierMapper.listAll()) {
+            grouped.computeIfAbsent(row.getRoomId(), k -> new ArrayList<>()).add(row.getCarrierId());
         }
         return grouped.entrySet().stream()
                 .map(e -> {
                     ScanDelayRoomBindingDTO dto = new ScanDelayRoomBindingDTO();
                     dto.setRoomId(e.getKey());
-                    dto.setOptionIds(e.getValue());
+                    dto.setCarrierIds(e.getValue());
                     return dto;
                 })
                 .sorted(Comparator.comparing(ScanDelayRoomBindingDTO::getRoomId))
                 .collect(Collectors.toList());
     }
 
-    /** 保存后仅替换指定房间绑定，禁止整表 load；post-save-no-full-refresh.mdc */
-    public ScanDelayRoomBindingDTO saveRoomBinding(String roomId, List<Long> optionIds) {
+    /** 保存房间绑定的载体；该载体下全部二级菜单项对学生可见 */
+    public ScanDelayRoomBindingDTO saveRoomBinding(String roomId, List<Long> carrierIds) {
         if (!StringUtils.hasText(roomId)) {
             throw new IllegalArgumentException("请选择房间");
         }
         String rid = roomId.trim();
-        roomOptionMapper.deleteByRoomId(rid);
-        if (optionIds != null) {
-            int order = optionIds.size();
-            for (Long optionId : optionIds) {
-                if (optionId == null) continue;
-                TwinScanDelayRoomOption bind = new TwinScanDelayRoomOption();
+        roomCarrierMapper.deleteByRoomId(rid);
+        if (carrierIds != null) {
+            int order = carrierIds.size();
+            for (Long carrierId : carrierIds) {
+                if (carrierId == null) continue;
+                TwinScanDelayCarrier carrier = carrierMapper.findById(carrierId);
+                if (carrier == null) {
+                    throw new IllegalArgumentException("载体不存在: " + carrierId);
+                }
+                TwinScanDelayRoomCarrier bind = new TwinScanDelayRoomCarrier();
                 bind.setRoomId(rid);
-                bind.setOptionId(optionId);
+                bind.setCarrierId(carrierId);
                 bind.setSortOrder(order--);
-                roomOptionMapper.insert(bind);
+                roomCarrierMapper.insert(bind);
             }
         }
         ScanDelayRoomBindingDTO out = new ScanDelayRoomBindingDTO();
         out.setRoomId(rid);
-        out.setOptionIds(optionIds == null ? List.of() : optionIds.stream().filter(id -> id != null).collect(Collectors.toList()));
+        out.setCarrierIds(carrierIds == null ? List.of() : carrierIds.stream().filter(id -> id != null).collect(Collectors.toList()));
         return out;
     }
 
@@ -142,13 +206,20 @@ public class ScanDelayConfigService {
         if (ids.isEmpty()) return Collections.emptyMap();
 
         Map<String, List<ScanDelayOptionDTO>> out = new LinkedHashMap<>();
-        for (TwinScanDelayRoomOption bind : roomOptionMapper.listByRoomIds(ids)) {
-            TwinScanDelayOption opt = optionMapper.findById(bind.getOptionId());
-            if (opt == null || opt.getEnabled() == null || opt.getEnabled() != 1) continue;
-            if (!isWithinDisplayWindow(opt)) continue;
-            ScanDelayOptionDTO dto = toTemplateDto(opt);
-            dto.setRoomId(bind.getRoomId());
-            out.computeIfAbsent(bind.getRoomId(), k -> new ArrayList<>()).add(dto);
+        for (TwinScanDelayRoomCarrier bind : roomCarrierMapper.listByRoomIds(ids)) {
+            TwinScanDelayCarrier carrier = carrierMapper.findById(bind.getCarrierId());
+            if (carrier == null || carrier.getEnabled() == null || carrier.getEnabled() != 1) continue;
+            String buttonLabel = StringUtils.hasText(carrier.getButtonLabel()) ? carrier.getButtonLabel().trim() : getButtonLabel();
+            for (Long optionId : carrierOptionMapper.listOptionIdsByCarrierId(bind.getCarrierId())) {
+                TwinScanDelayOption opt = optionMapper.findById(optionId);
+                if (opt == null || opt.getEnabled() == null || opt.getEnabled() != 1) continue;
+                if (!isWithinDisplayWindow(opt)) continue;
+                ScanDelayOptionDTO dto = toTemplateDto(opt);
+                dto.setCarrierId(bind.getCarrierId());
+                dto.setRoomId(bind.getRoomId());
+                dto.setButtonLabel(buttonLabel);
+                out.computeIfAbsent(bind.getRoomId(), k -> new ArrayList<>()).add(dto);
+            }
         }
         for (List<ScanDelayOptionDTO> list : out.values()) {
             list.sort(Comparator.comparingInt(ScanDelayOptionDTO::getSortOrder).reversed()
@@ -158,12 +229,18 @@ public class ScanDelayConfigService {
     }
 
     public TwinScanDelayOption requireOption(Long id) {
-        TwinScanDelayOption opt = optionMapper.findById(id);
-        if (opt == null || opt.getEnabled() == null || opt.getEnabled() != 1) {
-            throw new IllegalArgumentException("延迟选项不存在或已禁用");
-        }
+        TwinScanDelayOption opt = requireOptionEnabled(id);
         if (!isWithinDisplayWindow(opt)) {
             throw new IllegalArgumentException("当前不在该延迟选项的显示时段内");
+        }
+        return opt;
+    }
+
+    /** 审核/自动审批/直批授予：仅校验选项存在且启用，不受 displayStart/displayEnd 限制 */
+    public TwinScanDelayOption requireOptionEnabled(Long id) {
+        TwinScanDelayOption opt = id == null ? null : optionMapper.findById(id);
+        if (opt == null || opt.getEnabled() == null || opt.getEnabled() != 1) {
+            throw new IllegalArgumentException("延迟选项不存在或已禁用");
         }
         return opt;
     }
@@ -173,14 +250,13 @@ public class ScanDelayConfigService {
         return optionMapper.findById(id);
     }
 
-    /** 校验房间是否绑定了该延迟选项（选项库 + 房间搭配模型） */
+    /** 校验房间是否绑定了包含该菜单项的载体 */
     public boolean isOptionBoundToRoom(String roomId, Long optionId) {
         if (!StringUtils.hasText(roomId) || optionId == null) {
             return false;
         }
-        String rid = roomId.trim();
-        for (TwinScanDelayRoomOption bind : roomOptionMapper.listByRoomId(rid)) {
-            if (optionId.equals(bind.getOptionId())) {
+        for (TwinScanDelayRoomCarrier bind : roomCarrierMapper.listByRoomId(roomId.trim())) {
+            if (carrierOptionMapper.listOptionIdsByCarrierId(bind.getCarrierId()).contains(optionId)) {
                 return true;
             }
         }
@@ -233,13 +309,16 @@ public class ScanDelayConfigService {
         if (row == null) return null;
         ScanDelayOptionDTO dto = new ScanDelayOptionDTO();
         dto.setId(row.getId());
+        dto.setCarrierId(row.getCarrierId());
         dto.setOptionLabel(row.getOptionLabel());
+        dto.setButtonLabel(StringUtils.hasText(row.getButtonLabel()) ? row.getButtonLabel().trim() : "延迟");
         dto.setDisplayStart(row.getDisplayStart());
         dto.setDisplayEnd(row.getDisplayEnd());
         dto.setRequireApproval(row.getRequireApproval() != null && row.getRequireApproval() == 1);
         dto.setReviewerUserIds(parseStringList(row.getReviewerUserIds()));
         dto.setExemptMode(row.getExemptMode());
         dto.setDurationMinutes(row.getDurationMinutes());
+        dto.setExtendUntilTime(row.getExtendUntilTime());
         dto.setMaxCount(row.getMaxCount());
         dto.setExemptRoomIds(parseStringList(row.getExemptRoomIds()));
         dto.setEnabled(row.getEnabled() != null && row.getEnabled() == 1);
@@ -250,9 +329,10 @@ public class ScanDelayConfigService {
     private TwinScanDelayOption fromTemplateDto(ScanDelayOptionDTO dto) {
         TwinScanDelayOption row = new TwinScanDelayOption();
         row.setId(dto.getId());
+        row.setCarrierId(null);
         row.setRoomId("");
         row.setRoomName("");
-        row.setButtonLabel("");
+        row.setButtonLabel(getButtonLabel());
         row.setOptionLabel(dto.getOptionLabel());
         row.setDisplayStart(dto.getDisplayStart());
         row.setDisplayEnd(dto.getDisplayEnd());
@@ -260,11 +340,41 @@ public class ScanDelayConfigService {
         row.setReviewerUserIds(writeJson(dto.getReviewerUserIds()));
         row.setExemptMode(StringUtils.hasText(dto.getExemptMode()) ? dto.getExemptMode() : "TIME");
         row.setDurationMinutes(dto.getDurationMinutes());
+        row.setExtendUntilTime(StringUtils.hasText(dto.getExtendUntilTime()) ? dto.getExtendUntilTime().trim() : null);
         row.setMaxCount(dto.getMaxCount());
         row.setExemptRoomIds(writeJson(dto.getExemptRoomIds()));
         row.setEnabled(dto.isEnabled() ? 1 : 0);
         row.setSortOrder(dto.getSortOrder());
         return row;
+    }
+
+    private void replaceCarrierOptions(Long carrierId, List<Long> optionIds) {
+        if (carrierId == null) return;
+        carrierOptionMapper.deleteByCarrierId(carrierId);
+        if (optionIds == null || optionIds.isEmpty()) return;
+        int order = optionIds.size();
+        for (Long optionId : optionIds) {
+            if (optionId == null) continue;
+            TwinScanDelayOption opt = optionMapper.findById(optionId);
+            if (opt == null) {
+                throw new IllegalArgumentException("菜单项不存在: " + optionId);
+            }
+            TwinScanDelayCarrierOption bind = new TwinScanDelayCarrierOption();
+            bind.setCarrierId(carrierId);
+            bind.setOptionId(optionId);
+            bind.setSortOrder(order--);
+            carrierOptionMapper.insert(bind);
+        }
+    }
+
+    private ScanDelayCarrierDTO toCarrierDto(TwinScanDelayCarrier row) {
+        if (row == null) return null;
+        ScanDelayCarrierDTO dto = new ScanDelayCarrierDTO();
+        dto.setId(row.getId());
+        dto.setButtonLabel(row.getButtonLabel());
+        dto.setEnabled(row.getEnabled() != null && row.getEnabled() == 1);
+        dto.setSortOrder(row.getSortOrder() == null ? 0 : row.getSortOrder());
+        return dto;
     }
 
     private List<String> parseStringList(String json) {

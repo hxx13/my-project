@@ -179,6 +179,14 @@
   cursor: pointer;
 }
 
+/* 公告/通告前置：微微半透明，拦截下层扫码按钮；须点卡片内关闭/知道了 */
+.scan-notice-scrim--blocking {
+  pointer-events: auto;
+  cursor: default;
+  background: color-mix(in srgb, var(--app-color-text-primary) 22%, transparent);
+  backdrop-filter: blur(5px);
+}
+
 /* ── 立体公告面板 ── */
 .scan-notice-panel {
   position: relative;

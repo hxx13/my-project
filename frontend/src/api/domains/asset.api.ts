@@ -35,6 +35,7 @@ export interface AssetRow {
   latestTransferPhotoUrl?: string;
   latestTransferPhotoUrlsBefore?: string[];
   latestTransferPhotoUrlsAfter?: string[];
+  photoUrls?: string[];
   updateTime?: string;
   dynamicValues: Record<string, string>;
 }
@@ -67,6 +68,8 @@ export interface AssetTransferRecord {
   transferLocation: string;
   /** 提交申请时资产所在地（管理员删除已完成记录时可回滚） */
   fromLocation?: string | null;
+  /** 转移前使用人姓名（用于对比展示） */
+  fromUserName?: string | null;
   remark?: string;
   photoUrl?: string;
   photoUrlsBefore?: string | null;
@@ -147,6 +150,7 @@ export async function importAssetExcel(file: File) {
 export async function exportAssetExcel(params: {
   keyword?: string;
   assetName?: string;
+  campus?: string;
   user?: string;
   model?: string;
   lockStatus?: number;
@@ -164,7 +168,7 @@ export async function createAssetColumn(columnLabel: string) {
   return res.data.data;
 }
 
-export async function patchAssetRecord(id: string, payload: { note?: string; status?: string; location?: string; dynamicValues?: Record<string, string> }) {
+export async function patchAssetRecord(id: string, payload: { assetName?: string; note?: string; status?: string; location?: string; photoUrls?: string; dynamicValues?: Record<string, string> }) {
   const res = await authHttp.patch<Result<{ id: string }>>(`/v1/assets/${encodeURIComponent(id)}`, payload);
   return res.data.data;
 }
@@ -188,6 +192,8 @@ export async function submitTransferRequest(payload: {
   photoUrl?: string;
   photoUrlsBefore?: string[];
   photoUrlsAfter?: string[];
+  userName?: string;
+  userEmployeeId?: string;
 }) {
   const res = await authHttp.post<Result<{ requestId: string; status?: string }>>("/v1/asset-transfer-requests", payload);
   return res.data.data;
@@ -249,7 +255,7 @@ export async function listTransferPdfLinks(requestId: string) {
   return res.data.data;
 }
 
-export async function fetchAssetFacets(params?: { keyword?: string; assetName?: string; user?: string; model?: string }) {
+export async function fetchAssetFacets(params?: { keyword?: string; campus?: string; assetName?: string; user?: string; model?: string }) {
   const res = await authHttp.get<Result<AssetFacets>>("/v1/assets/facets", { params });
   return res.data.data;
 }
@@ -271,6 +277,7 @@ export async function createAssetRecord(payload: {
   status?: string;
   location?: string;
   note?: string;
+  photoUrls?: string;
   dynamicValues?: Record<string, string>;
 }) {
   const res = await authHttp.post<Result<{ id: string }>>("/v1/assets", payload);

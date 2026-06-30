@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS `report_form_submission` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
   `form_id` BIGINT NOT NULL COMMENT 'FK→definition',
   `user_id` BIGINT NOT NULL COMMENT '填写人ID，协同模式=0',
+  `instance_label` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '个人多份填报子文件名称，空=默认单份',
   `status` VARCHAR(16) NOT NULL DEFAULT 'draft' COMMENT 'draft|submitted',
   `field_values_json` MEDIUMTEXT COMMENT '{fieldKey:value}',
   `version` INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本号',
@@ -36,7 +37,7 @@ CREATE TABLE IF NOT EXISTS `report_form_submission` (
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_form_user` (`form_id`, `user_id`),
+  UNIQUE KEY `uk_form_user_instance` (`form_id`, `user_id`, `instance_label`),
   KEY `idx_submission_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='填报记录';
 
@@ -57,9 +58,13 @@ CREATE TABLE IF NOT EXISTS `report_form_option_set` (
   `scope` VARCHAR(16) NOT NULL DEFAULT 'global' COMMENT 'global|form',
   `form_id` BIGINT DEFAULT NULL COMMENT '表单私有选项集',
   `items_json` MEDIUMTEXT NOT NULL COMMENT '[{label,sortOrder}]',
+  `created_by` VARCHAR(64) DEFAULT NULL COMMENT '创建人登录名',
+  `auth_profile` VARCHAR(32) DEFAULT NULL COMMENT '账号体系: WECHAT_ARO|WEB_PASSWORD',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_opt_scope` (`scope`),
-  KEY `idx_opt_form` (`form_id`)
+  KEY `idx_opt_form` (`form_id`),
+  KEY `idx_opt_auth_profile` (`auth_profile`),
+  KEY `idx_opt_created_by` (`created_by`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='选项集';

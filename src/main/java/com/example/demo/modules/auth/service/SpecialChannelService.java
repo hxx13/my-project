@@ -143,9 +143,12 @@ public class SpecialChannelService {
     @Transactional
     public void resetPin(String userId, String adminId) {
         requirePersonnelExists(userId);
-        aroPersonnelMapper.clearPersonalPin(userId);
+        int cleared = aroPersonnelMapper.clearPersonalPin(userId);
+        if (cleared == 0) {
+            log.warn("[special-channel] PIN reset no row updated userId={} admin={}", userId, adminId);
+        }
         failMap.remove(userId);
-        log.warn("[special-channel] PIN reset by admin={} for userId={}", adminId, userId);
+        log.warn("[special-channel] PIN reset by admin={} for personnelUserId={}", adminId, userId);
     }
 
     // ---- Private helpers ----
@@ -174,7 +177,7 @@ public class SpecialChannelService {
         User user = new User();
         user.setId(userId);
         user.setUsername(userId);
-        user.setRole(RoleEnum.STUDENT);
+        user.setRole(RoleEnum.MEMBER);
         user.setStatus(1);
         user.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
         userMapper.insertUser(user);

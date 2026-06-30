@@ -1,4 +1,4 @@
-import { normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import { isAdminAreaPath, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 
 export type AdminNavContextMenuTarget = {
   path: string;
@@ -22,14 +22,14 @@ export type AdminFriendRowContextMenuTarget = {
 function parseAdminPathFromHref(href: string): string | null {
   const trimmed = (href || "").trim();
   if (!trimmed) return null;
-  const hashMatch = trimmed.match(/#(\/admin[^?#]*)/);
+  const hashMatch = trimmed.match(/#(\/(?:console\/)?admin[^?#]*)/);
   if (hashMatch) return normalizeAdminPath(hashMatch[1]);
-  const relMatch = trimmed.match(/^(\/admin[^?#]*)/);
+  const relMatch = trimmed.match(/^(\/(?:console\/)?admin[^?#]*)/);
   if (relMatch) return normalizeAdminPath(relMatch[1]);
   try {
     const pathname = new URL(trimmed, window.location.href).pathname;
     const p = normalizeAdminPath(pathname);
-    if (p.startsWith("/admin")) return p;
+    if (isAdminAreaPath(p)) return p;
   } catch {
     /* ignore */
   }
@@ -47,7 +47,7 @@ export function parseAdminNavLinkFromEventTarget(target: EventTarget | null): Ad
 
   if (sidebarItem && navRoot?.contains(sidebarItem)) {
     const path = normalizeAdminPath(sidebarItem.getAttribute("data-admin-nav-path") || "");
-    if (!path.startsWith("/admin")) return null;
+    if (!isAdminAreaPath(path)) return null;
     const label =
       (sidebarItem.getAttribute("data-admin-nav-label") || "").trim() ||
       path;
@@ -57,7 +57,7 @@ export function parseAdminNavLinkFromEventTarget(target: EventTarget | null): Ad
   const a = target.closest("a[href]");
   if (!a) return null;
   const path = parseAdminPathFromHref(a.getAttribute("href") || "");
-  if (!path || !path.startsWith("/admin")) return null;
+  if (!path || !isAdminAreaPath(path)) return null;
   const label =
     (a.getAttribute("data-admin-nav-label") || "").trim() ||
     (a.getAttribute("title") || "").trim() ||

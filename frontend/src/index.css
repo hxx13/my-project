@@ -8,6 +8,7 @@
 @import "@/styles/semantic.css";
 
 @import "@/styles/scan-notice-theme.css";
+@import "@/styles/admin-dynamic-island.css";
 @import "@/styles/scan-announcement-doodle.css";
 @import "@/styles/scan-access-motion.css";
 @import "@/styles/scanPopupNotice.css";
@@ -93,6 +94,10 @@
     --twin-warning-soft: #ffefcf;
     --twin-success: #0070f3;
     --twin-page-bg: #fafafa;
+    /* 审核卡片状态色 — 亮色对齐现有 soft token 体系 */
+    --twin-card-pending: var(--twin-warning-soft);
+    --twin-card-approved: #eaf5ed;
+    --twin-card-rejected: var(--twin-error-soft);
   }
   /* 暗色模式下 shadcn 变量跟随语义令牌自动切换（无需手动覆盖） */
   /* Twin dark tokens — 保留与旧系统的兼容 */
@@ -115,6 +120,10 @@
     --twin-warning-soft: #3b2e0a;
     --twin-success: #27a644;
     --twin-page-bg: #010102;
+    /* 审核卡片状态色 — 暗色：保留明确色相，与画布 #0f1011 形成可见差异 */
+    --twin-card-pending: #4a2c16;
+    --twin-card-approved: #1a3a28;
+    --twin-card-rejected: #4a1a20;
   }
   .theme {
     --font-sans: 'Figtree Variable', sans-serif

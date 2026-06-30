@@ -81,7 +81,7 @@ public class AdminService {
         if (roleEnum == RoleEnum.PLATFORM_OWNER) {
             throw new IllegalArgumentException("禁止通过此接口创建平台所有者账号");
         }
-        if (roleEnum == RoleEnum.STUDENT) {
+        if (roleEnum == RoleEnum.MEMBER) {
             throw new IllegalArgumentException("员工账号不可为学生角色，请使用人员库同步学生");
         }
         String nick = request.getDisplayNickname() != null ? request.getDisplayNickname().trim() : "";
@@ -104,6 +104,7 @@ public class AdminService {
         u.setMiniBindType(null);
         u.setMiniPreferencesJson(null);
         u.setAuthProfile("WEB_PASSWORD");
+        u.setAccountSource("STAFF");
         userMapper.insertUser(u);
         Map<String, Object> out = new HashMap<>();
         out.put("id", id);

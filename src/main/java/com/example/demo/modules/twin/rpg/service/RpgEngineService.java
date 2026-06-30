@@ -22,9 +22,10 @@ public class RpgEngineService {
     @Autowired
     private RpgDatabaseService rpgDatabaseService;
 
-    // 💥 换装新数值体系：首签 50，每分钟 1 点经验
+    // 💥 换装新数值体系：首签 50，每分钟 1 点经验，单次最高 8 小时
     private static final double DAILY_FIRST_ENTER_EXP = 50.0;
     private static final double EXP_PER_MINUTE = 1.0;
+    private static final int MAX_SESSION_MINUTES = 480; // 8 小时上限
 
     /**
      * ⚡ 快轨引擎：提供给前端的实时查询接口 (只算不存，绝对实时)
@@ -71,10 +72,8 @@ public class RpgEngineService {
                 currentEnterTime = recordTime;
             }
             else if (isExit && currentEnterTime != null) {
-                // 自动签退的离开不计入时长结算，但正确关闭 ENTER 会话
-                if (!isStrandedViolationExit(record)) {
-                    todayExp += calculateTimeExp(currentEnterTime, recordTime);
-                }
+                // 所有 aro_access_log 中的离开记录均计入时长结算
+                todayExp += calculateTimeExp(currentEnterTime, recordTime);
                 currentEnterTime = null;
             }
         }
@@ -88,19 +87,16 @@ public class RpgEngineService {
         return buildDto(realTotalExp);
     }
 
-    /** 判断一条 access_log 记录是否为滞留违规自动签退（不计入时长 XP） */
-    private boolean isStrandedViolationExit(Map<String, Object> record) {
-        Object fs = record.get("feed_source");
-        return fs != null && "TWIN_AUTO_SIGNOUT_VIOLATION".equals(String.valueOf(fs).trim());
-    }
-
     /**
-     * 💥 核心防挂机时间算法
+     * 💥 核心防挂机时间算法：单次停留最高计算 8 小时 (480分钟)，严禁跨天
      */
     private double calculateTimeExp(LocalDateTime enter, LocalDateTime exit) {
+        // 跨天检查 —— 进入和离开必须在同一天
+        if (!enter.toLocalDate().equals(exit.toLocalDate())) {
+            return 0;
+        }
         long minutes = Duration.between(enter, exit).toMinutes();
-        // 💥 防挂机机制：单次停留最高计算 12 小时 (720分钟)
-        minutes = Math.min(minutes, 720);
+        minutes = Math.min(minutes, MAX_SESSION_MINUTES);
         return Math.max(0, minutes) * EXP_PER_MINUTE;
     }
 
@@ -120,12 +116,22 @@ public class RpgEngineService {
     @Autowired
     private RpgMapper rpgMapper;
 
-    /**
-     * 🛡️ 慢轨重算引擎：一键触发，用新规则洗刷过去所有的历史数据！
-     */
-    public String recalculateAllHistoricalExp() {
-        log.info("[RPG 引擎] 开始执行新版规则的历史数据大结算...");
+    @Autowired(required = false)
+    private TwinExpReconcileService twinExpReconcileService;
 
+    /**
+     * 🛡️ 慢轨重算引擎：委托给 TwinExpReconcileService 执行全量历史对账。
+     *
+     * @deprecated 新代码请直接调用 {@link TwinExpReconcileService#reconcileAllHistorical()}
+     */
+    @Deprecated
+    public String recalculateAllHistoricalExp() {
+        if (twinExpReconcileService != null) {
+            Map<String, Object> result = twinExpReconcileService.reconcileAllHistorical();
+            return "✅ 历史经验追溯完毕！" + result.getOrDefault("message", "");
+        }
+        // 降级：旧逻辑
+        log.info("[RPG 引擎] 降级使用旧版重算逻辑...");
         List<String> userIds = rpgMapper.getDistinctAccessLogUserIds();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         int updatedCount = 0;
@@ -177,10 +183,8 @@ public class RpgEngineService {
                     }
                     currentEnterTime = recordTime;
                 } else if (isExit && currentEnterTime != null) {
-                    // 自动签退的离开不计入时长结算，但正确关闭 ENTER 会话
-                    if (!isStrandedViolationExit(log)) {
-                        userTotalExp += calculateTimeExp(currentEnterTime, recordTime);
-                    }
+                    // 所有 aro_access_log 的离开记录均计入时长结算
+                    userTotalExp += calculateTimeExp(currentEnterTime, recordTime);
                     currentEnterTime = null;
                 }
             }
@@ -237,9 +241,14 @@ public class RpgEngineService {
             }
 
             if (lastEnterTime != null) {
+                LocalDateTime now = LocalDateTime.now();
+                // 跨天检查 —— 上次进入和当前必须在同一天
+                if (!lastEnterTime.toLocalDate().equals(now.toLocalDate())) {
+                    return new PredictResult(0, null);
+                }
                 // 💥 核心算法：算出从上次进入到现在的时长！
-                long minutes = Duration.between(lastEnterTime, LocalDateTime.now()).toMinutes();
-                minutes = Math.min(minutes, 720); // 防挂机机制：封顶 12 小时
+                long minutes = Duration.between(lastEnterTime, now).toMinutes();
+                minutes = Math.min(minutes, MAX_SESSION_MINUTES);
                 int exp = (int) (Math.max(0, minutes) * EXP_PER_MINUTE);
                 return new PredictResult(exp, exp > 0 ? "TIME_BASED" : null);
             }

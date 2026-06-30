@@ -5,8 +5,13 @@ import com.example.demo.modules.pagepermission.dto.BatchUpdatePagePermissionRequ
 import com.example.demo.modules.pagepermission.dto.UpdatePagePermissionRequest;
 import com.example.demo.modules.pagepermission.entity.PagePermissionItem;
 import com.example.demo.modules.pagepermission.mapper.PagePermissionMapper;
+import com.example.demo.modules.pagepermission.support.AdminNavManifestLoader;
+import com.example.demo.modules.pagepermission.support.AdminNavManifestLoader.ManifestEntry;
+import com.example.demo.modules.pagepermission.support.AdminNavManifestLoader.ManifestPage;
+import com.example.demo.modules.pagepermission.support.AdminNavManifestLoader.ManifestSnapshot;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -35,10 +40,17 @@ public class PagePermissionService {
 
     private final PagePermissionMapper mapper;
     private final ObjectMapper objectMapper;
+    private final AdminNavManifestLoader adminNavManifestLoader;
+    private final JdbcTemplate jdbcTemplate;
 
-    public PagePermissionService(PagePermissionMapper mapper, ObjectMapper objectMapper) {
+    public PagePermissionService(PagePermissionMapper mapper,
+                                 ObjectMapper objectMapper,
+                                 AdminNavManifestLoader adminNavManifestLoader,
+                                 JdbcTemplate jdbcTemplate) {
         this.mapper = mapper;
         this.objectMapper = objectMapper;
+        this.adminNavManifestLoader = adminNavManifestLoader;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public List<PagePermissionItem> listByPlatform(String platform) {
@@ -57,6 +69,7 @@ public class PagePermissionService {
 
     @Transactional
     public Map<String, Object> scanAll() {
+        adminNavManifestLoader.invalidateCache();
         int web = scanPlatform("WEB");
         int mini = scanPlatform("MINI");
         return Map.of("web", web, "mini", mini);
@@ -144,6 +157,123 @@ public class PagePermissionService {
     }
 
     private List<NodeSeed> discoverWeb() {
+        Optional<ManifestSnapshot> manifestOpt = adminNavManifestLoader.load();
+        if (manifestOpt.isPresent()) {
+            return discoverWebFromManifest(manifestOpt.get());
+        }
+        return discoverWebLegacy();
+    }
+
+    private List<NodeSeed> discoverWebFromManifest(ManifestSnapshot manifest) {
+        List<NodeSeed> out = new ArrayList<>();
+        Set<String> pagePaths = new LinkedHashSet<>();
+        Set<String> entryPaths = new LinkedHashSet<>();
+
+        for (ManifestPage page : manifest.pages()) {
+            String path = normalizeWebPath(page.path());
+            if (!StringUtils.hasText(path)) continue;
+            pagePaths.add(path);
+            String role = resolveWebMinRole(path, page.fallbackMinRole());
+            String label = StringUtils.hasText(page.label()) ? page.label().trim() : path;
+            out.add(NodeSeed.webPage(webPageKey(path), path, label, role));
+        }
+
+        for (ManifestEntry entry : manifest.sidebarEntries()) {
+            String path = normalizeWebPath(entry.path());
+            if (!StringUtils.hasText(path)) continue;
+            entryPaths.add(path);
+            if (!pagePaths.contains(path)) {
+                pagePaths.add(path);
+                String pageRole = resolveWebMinRole(path, entry.fallbackMinRole());
+                String pageLabel = StringUtils.hasText(entry.label()) ? entry.label().trim() : path;
+                out.add(NodeSeed.webPage(webPageKey(path), path, pageLabel, pageRole));
+            }
+            String role = resolveWebMinRole(path, entry.fallbackMinRole());
+            String label = StringUtils.hasText(entry.label()) ? entry.label().trim() : path;
+            String source = StringUtils.hasText(entry.entrySource()) ? entry.entrySource().trim() : "sidebar";
+            out.add(NodeSeed.webEntry(source, path, label, role, webPageKey(path)));
+        }
+
+        for (DbNavItem dbItem : loadAdminNavConfigItems()) {
+            String path = normalizeWebPath(dbItem.path());
+            if (!StringUtils.hasText(path)) continue;
+            ManifestPage mp = manifest.pageByPath().get(path);
+            ManifestEntry me = manifest.sidebarByPath().get(path);
+            String fallback = me != null ? me.fallbackMinRole() : (mp != null ? mp.fallbackMinRole() : null);
+            if (!pagePaths.contains(path)) {
+                pagePaths.add(path);
+                String role = resolveWebMinRole(path, fallback);
+                String label = StringUtils.hasText(dbItem.label()) ? dbItem.label().trim() : path;
+                out.add(NodeSeed.webPage(webPageKey(path), path, label, role));
+            }
+            if (entryPaths.contains(path)) continue;
+            entryPaths.add(path);
+            String role = resolveWebMinRole(path, fallback);
+            String label = StringUtils.hasText(dbItem.label()) ? dbItem.label().trim() : path;
+            out.add(NodeSeed.webEntry("sidebar", path, label, role, webPageKey(path)));
+        }
+
+        mergeLegacyWebEntryPaths(out, pagePaths, entryPaths, manifest.pageByPath(), manifest.sidebarByPath());
+        return dedup(out);
+    }
+
+    private void mergeLegacyWebEntryPaths(List<NodeSeed> out,
+                                          Set<String> pagePaths,
+                                          Set<String> entryPaths,
+                                          Map<String, ManifestPage> pageByPath,
+                                          Map<String, ManifestEntry> sidebarByPath) {
+        Path root = Path.of("").toAbsolutePath().normalize();
+        String layout = readText(root.resolve("frontend/src/layouts/AdminLayout.tsx"));
+        String debugNav = readText(root.resolve("frontend/src/features/dev-tools/DebugNav.tsx"));
+
+        Set<String> extraEntryPaths = new LinkedHashSet<>();
+        Matcher navMatcher = NAV_TO.matcher(layout);
+        while (navMatcher.find()) {
+            String path = normalizeWebPath(navMatcher.group(1));
+            if (StringUtils.hasText(path)) extraEntryPaths.add(path);
+        }
+        Matcher debugMatcher = Pattern.compile("path:\\s*'([^']+)'").matcher(debugNav);
+        while (debugMatcher.find()) {
+            String path = normalizeWebPath(debugMatcher.group(1));
+            if (StringUtils.hasText(path)) extraEntryPaths.add(path);
+        }
+
+        for (String path : extraEntryPaths) {
+            ManifestPage mp = pageByPath.get(path);
+            ManifestEntry me = sidebarByPath.get(path);
+            String fallback = me != null ? me.fallbackMinRole() : (mp != null ? mp.fallbackMinRole() : null);
+            if (!pagePaths.contains(path)) {
+                pagePaths.add(path);
+                String role = resolveWebMinRole(path, fallback);
+                String label = mp != null && StringUtils.hasText(mp.label()) ? mp.label().trim() : path;
+                out.add(NodeSeed.webPage(webPageKey(path), path, label, role));
+            }
+            if (entryPaths.contains(path)) continue;
+            entryPaths.add(path);
+            String role = resolveWebMinRole(path, fallback);
+            String label = me != null && StringUtils.hasText(me.label()) ? me.label().trim() : path;
+            out.add(NodeSeed.webEntry("sidebar", path, label, role, webPageKey(path)));
+        }
+    }
+
+    private List<DbNavItem> loadAdminNavConfigItems() {
+        try {
+            return jdbcTemplate.query(
+                    "SELECT title, item_path FROM admin_nav_config WHERE type = 'ITEM' AND item_path IS NOT NULL AND TRIM(item_path) <> ''",
+                    (rs, rowNum) -> new DbNavItem(rs.getString("title"), rs.getString("item_path")));
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    private String resolveWebMinRole(String path, String fallbackMinRole) {
+        String normalized = normalizeRole(fallbackMinRole);
+        if (normalized != null) return normalized;
+        return inferWebMinRole(path);
+    }
+
+    /** manifest 不可用时的旧版文件扫描（开发兜底） */
+    private List<NodeSeed> discoverWebLegacy() {
         List<NodeSeed> out = new ArrayList<>();
         Path root = Path.of("").toAbsolutePath().normalize();
         String router = readText(root.resolve("frontend/src/router/index.tsx"));
@@ -152,14 +282,7 @@ public class PagePermissionService {
         String adminNavRegistry = readText(root.resolve("frontend/src/features/admin/adminNavRegistry.ts"));
         Map<String, String> registryPathToLabel = discoverWebRegistryPathToLabel(adminNavRegistry);
 
-        Set<String> paths = new LinkedHashSet<>();
-        Matcher m = ROUTE_PATH.matcher(router);
-        while (m.find()) {
-            String raw = normalizeWebPath(m.group(1));
-            if (!StringUtils.hasText(raw)) continue;
-            paths.add(raw);
-        }
-        paths.add("/admin");
+        Set<String> paths = discoverAdminRoutePaths(router);
         for (String path : paths) {
             String role = inferWebMinRole(path);
             String pageKey = webPageKey(path);
@@ -187,6 +310,27 @@ public class PagePermissionService {
             out.add(NodeSeed.webEntry("sidebar", path, entryTitle, role, webPageKey(path)));
         }
         return dedup(out);
+    }
+
+    private Set<String> discoverAdminRoutePaths(String router) {
+        Set<String> paths = new LinkedHashSet<>();
+        paths.add("/admin");
+        int adminIdx = router.indexOf("path: \"/admin\"");
+        if (adminIdx < 0) return paths;
+        String slice = router.substring(adminIdx);
+        Matcher m = ROUTE_PATH.matcher(slice);
+        while (m.find()) {
+            String raw = m.group(1).trim();
+            if (!StringUtils.hasText(raw) || "/admin".equals(raw)) continue;
+            if (raw.startsWith("/admin")) {
+                String normalized = normalizeWebPath(raw);
+                if (StringUtils.hasText(normalized)) paths.add(normalized);
+            } else if (!raw.startsWith("/")) {
+                String normalized = normalizeWebPath("/admin/" + raw);
+                if (StringUtils.hasText(normalized)) paths.add(normalized);
+            }
+        }
+        return paths;
     }
 
     private Map<String, String> discoverWebRegistryPathToLabel(String adminNavRegistryTs) {
@@ -310,7 +454,7 @@ public class PagePermissionService {
             if (!StringUtils.hasText(path)) continue;
             Matcher roleM = MINI_ROLE.matcher(body);
             String role = roleM.find() ? normalizeRole(roleM.group(1)) : inferMiniMinRole(path);
-            out.put(name, new FunctionRoute(path, role == null ? "STUDENT" : role));
+            out.put(name, new FunctionRoute(path, role == null ? "MEMBER" : role));
         }
         return out;
     }
@@ -333,10 +477,34 @@ public class PagePermissionService {
             node.put("chainKey", row.getChainKey());
             node.put("autoDiscovered", row.getAutoDiscovered());
             node.put("manualOverride", row.getManualOverride());
+            String groupTitle = resolveGroupTitle(row);
+            if (StringUtils.hasText(groupTitle)) {
+                node.put("groupTitle", groupTitle);
+            }
             node.put("children", buildTree(row.getNodeKey(), byParent));
             out.add(node);
         }
         return out;
+    }
+
+    private String resolveGroupTitle(PagePermissionItem row) {
+        if (row == null || !"WEB".equalsIgnoreCase(row.getPlatform())) return null;
+        Optional<ManifestSnapshot> manifestOpt = adminNavManifestLoader.load();
+        if (manifestOpt.isEmpty()) return null;
+        ManifestSnapshot manifest = manifestOpt.get();
+        String path = normalizeWebPath(row.getPathOrRoute());
+        if (!StringUtils.hasText(path)) return null;
+        if ("ENTRY".equalsIgnoreCase(row.getNodeType())) {
+            ManifestEntry entry = manifest.sidebarByPath().get(path);
+            if (entry != null && StringUtils.hasText(entry.groupTitle())) {
+                return entry.groupTitle();
+            }
+        }
+        ManifestPage page = manifest.pageByPath().get(path);
+        if (page != null && StringUtils.hasText(page.groupTitle())) {
+            return page.groupTitle();
+        }
+        return null;
     }
 
     private Map<String, Object> toPublicView(PagePermissionItem row) {
@@ -362,21 +530,21 @@ public class PagePermissionService {
 
     private int roleLevel(String role) {
         String normalized = normalizeRole(role);
-        if (normalized == null) return RoleEnum.STUDENT.getLevel();
+        if (normalized == null) return RoleEnum.MEMBER.getLevel();
         return switch (normalized) {
             case "STAFF" -> RoleEnum.STAFF.getLevel();
             case "SENIOR" -> RoleEnum.SENIOR.getLevel();
             case "ADMIN" -> RoleEnum.ADMIN.getLevel();
             case "SUPER_ADMIN" -> RoleEnum.SUPER_ADMIN.getLevel();
             case "PLATFORM_OWNER" -> RoleEnum.PLATFORM_OWNER.getLevel();
-            default -> RoleEnum.STUDENT.getLevel();
+            default -> RoleEnum.MEMBER.getLevel();
         };
     }
 
     private String normalizeRole(String role) {
-        if (!StringUtils.hasText(role)) return "STUDENT";
+        if (!StringUtils.hasText(role)) return "MEMBER";
         String up = role.trim().toUpperCase(Locale.ROOT);
-        if (Set.of("STUDENT", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER").contains(up)) return up;
+        if (Set.of("MEMBER", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER").contains(up)) return up;
         return null;
     }
 
@@ -402,7 +570,7 @@ public class PagePermissionService {
     }
 
     private String inferWebMinRole(String path) {
-        if (!StringUtils.hasText(path)) return "STUDENT";
+        if (!StringUtils.hasText(path)) return "MEMBER";
         if (path.startsWith("/admin/personnel")
                 || path.startsWith("/admin/settings")
                 || path.startsWith("/admin/external-comm-config")
@@ -439,11 +607,11 @@ public class PagePermissionService {
             return "ADMIN";
         }
         if (path.startsWith("/admin")) return "STAFF";
-        return "STUDENT";
+        return "MEMBER";
     }
 
     private String inferMiniMinRole(String path) {
-        if (!StringUtils.hasText(path)) return "STUDENT";
+        if (!StringUtils.hasText(path)) return "MEMBER";
         if (path.startsWith("/pages/adminPersonnel")) return "SUPER_ADMIN";
         if (path.startsWith("/pages/suppliesAdmin")) return "SUPER_ADMIN";
         if (path.startsWith("/pages/repairProcess")
@@ -453,10 +621,12 @@ public class PagePermissionService {
         }
         if (path.startsWith("/pages/suppliesMine")) return "STAFF";
         if (path.startsWith("/pages/suppliesClaimExport")) return "STAFF";
+        if (path.startsWith("/pages/materialAdmin")) return "STAFF";
+        if (path.startsWith("/pages/studentMaterial")) return "MEMBER";
         if (path.startsWith("/pages/supplies")) return "ADMIN";
         if (path.startsWith("/pages/announcementAdmin")) return "ADMIN";
         if (path.startsWith("/pages/releaseNotesAdmin")) return "PLATFORM_OWNER";
-        if (path.startsWith("/pages/settingsRoomWatch")) return "STUDENT";
+        if (path.startsWith("/pages/settingsRoomWatch")) return "MEMBER";
         if (path.startsWith("/pages/fileTemplates")) return "STAFF";
         if (path.startsWith("/pages/facilityMaintenance")) return "STAFF";
         if (path.startsWith("/pages/repairRequest")
@@ -465,7 +635,7 @@ public class PagePermissionService {
                 || path.startsWith("/pages/assetTransferRecord")) {
             return "STAFF";
         }
-        return "STUDENT";
+        return "MEMBER";
     }
 
     private String webPageKey(String path) {
@@ -494,6 +664,8 @@ public class PagePermissionService {
     }
 
     private record FunctionRoute(String path, String minRole) {}
+
+    private record DbNavItem(String label, String path) {}
 
     private record NodeSeed(String platform,
                             String nodeKey,

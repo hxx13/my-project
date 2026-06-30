@@ -152,7 +152,7 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
     },
     ref
   ) {
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const isAdmin = hasMinRole(role, "ADMIN");
   const canStaff = hasMinRole(role, "STAFF");
 

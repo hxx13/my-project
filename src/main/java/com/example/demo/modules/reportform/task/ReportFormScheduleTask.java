@@ -92,7 +92,7 @@ public class ReportFormScheduleTask {
 
             if ("shared".equals(fillMode)) {
                 // 协同模式：确保存在一条 user_id=0 的记录
-                ReportFormSubmission existing = submissionMapper.selectByFormAndUser(form.getId(), 0L);
+                ReportFormSubmission existing = submissionMapper.selectDefaultByFormAndUser(form.getId(), 0L);
                 if (existing == null) {
                     ReportFormSubmission sub = new ReportFormSubmission();
                     sub.setFormId(form.getId());

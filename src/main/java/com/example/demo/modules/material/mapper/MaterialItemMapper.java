@@ -9,6 +9,8 @@ import java.util.List;
 public interface MaterialItemMapper {
     List<MaterialItem> selectPublished(@Param("categoryId") Long categoryId);
     List<MaterialItem> selectAll(@Param("categoryId") Long categoryId);
+    /** 按课题组过滤物品（仅返回有申领记录或库存流水的物品） */
+    List<MaterialItem> selectByApplicantGroup(@Param("categoryId") Long categoryId, @Param("applicantGroup") String applicantGroup);
     MaterialItem selectById(@Param("id") Long id);
     int insert(MaterialItem item);
     int updateById(MaterialItem item);

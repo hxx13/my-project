@@ -16,6 +16,7 @@ import {
   resolveRichTextImageConfig,
   richTextImageConfigToCssVars,
   richTextImageHelpText,
+  richTextImageInlineStyle,
   type RichTextImageConfigOverrides,
 } from "@/config/richTextImage";
 import {
@@ -48,6 +49,33 @@ const swatchBtnClass =
 const toolbarInputClass =
   "w-10 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-1 py-0.5 text-center text-xs text-[var(--app-color-text-primary)] disabled:opacity-40";
 
+/** 保留 style 属性，便于图宽百分比写入 HTML；忽略 width/height 以免高度被锁死 */
+const RichTextImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: () => null,
+        renderHTML: () => ({}),
+      },
+      height: {
+        default: null,
+        parseHTML: () => null,
+        renderHTML: () => ({}),
+      },
+      style: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("style"),
+        renderHTML: (attributes) => {
+          if (!attributes.style) return {};
+          return { style: attributes.style };
+        },
+      },
+    };
+  },
+});
+
 export function RichTextEditor({ value, onChange, disabled, className, maxWidth, rowMax }: Props) {
   const lastEmittedHtmlRef = useRef<string | null>(null);
   const mdFileInputRef = useRef<HTMLInputElement>(null);
@@ -65,6 +93,8 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
   const [imageRowMax, setImageRowMax] = useState(() => initialImageLayout.rowMax);
   const imageRowMaxRef = useRef(imageRowMax);
   imageRowMaxRef.current = imageRowMax;
+  const imageWidthPctRef = useRef(imageWidthPct);
+  imageWidthPctRef.current = imageWidthPct;
 
   const imageConfig = useMemo(
     () => ({
@@ -78,6 +108,10 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
     [imageConfig],
   );
   const helpText = useMemo(() => richTextImageHelpText(imageConfig), [imageConfig]);
+
+  const singleImageStyle = useCallback(() => {
+    return richTextImageInlineStyle(formatMaxWidthPercent(imageWidthPctRef.current));
+  }, []);
 
   const insertUploadedImages = useCallback(async (editor: Editor, files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith("image/"));
@@ -93,9 +127,17 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
     if (!srcs.length) return;
 
     const rowMax = imageRowMaxRef.current;
+    const imgStyle = singleImageStyle();
 
     if (srcs.length === 1) {
-      editor.chain().focus().setImage({ src: srcs[0] }).run();
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: "paragraph",
+          content: [{ type: "image", attrs: { src: srcs[0], style: imgStyle } }],
+        })
+        .run();
       toast.success("图片已插入");
       return;
     }
@@ -121,15 +163,21 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
       .insertContent(
         srcs.map((src) => ({
           type: "paragraph",
-          content: [{ type: "image", attrs: { src } }],
+          content: [{ type: "image", attrs: { src, style: imgStyle } }],
         })),
       )
       .run();
     toast.success(`已插入 ${srcs.length} 张图片（各一行居中）`);
-  }, []);
+  }, [singleImageStyle]);
 
   const applyMarkdownHtml = useCallback((editor: Editor, markdown: string, mode: "insert" | "replace") => {
-    const html = convertMarkdownToEditorHtml(markdown);
+    const style = singleImageStyle();
+    let html = convertMarkdownToEditorHtml(markdown);
+    // Markdown 导入的图片无 inline style，补上当前图宽以便保存后在扫码端生效
+    html = html.replace(/<img([^>]*?)>/gi, (match, attrs: string) => {
+      if (/style\s*=/i.test(attrs)) return match;
+      return `<img${attrs} style="${style}">`;
+    });
     if (!html) {
       toast.error("无法解析 Markdown");
       return;
@@ -140,7 +188,7 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
       editor.chain().focus().insertContent(html).run();
     }
     toast.success(mode === "replace" ? "已导入 Markdown" : "已粘贴 Markdown");
-  }, []);
+  }, [singleImageStyle]);
 
   const editor = useEditor({
     extensions: [
@@ -150,7 +198,7 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
       TextStyle,
       Color.configure({ types: ["textStyle"] }),
       Highlight.configure({ multicolor: true }),
-      Image.configure({
+      RichTextImage.configure({
         inline: true,
         allowBase64: false,
       }),
@@ -201,6 +249,29 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
     editor.setEditable(!disabled);
   }, [editor, disabled]);
 
+  /** 调整图宽 % 时同步单图段落的 inline style（同行横排多图由 flex 规则控制） */
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const style = singleImageStyle();
+    const { tr } = editor.state;
+    let changed = false;
+
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name !== "image") return;
+      const parent = editor.state.doc.resolve(pos).parent;
+      let imgCount = 0;
+      parent.forEach((child) => {
+        if (child.type.name === "image") imgCount += 1;
+      });
+      if (imgCount > 1 && imageRowMaxRef.current >= 2) return;
+      if (node.attrs.style === style) return;
+      tr.setNodeMarkup(pos, undefined, { ...node.attrs, style });
+      changed = true;
+    });
+
+    if (changed) editor.view.dispatch(tr);
+  }, [editor, imageWidthPct, singleImageStyle]);
+
   useEffect(() => {
     if (!editor) return;
     const incoming = value || "";
@@ -213,6 +284,16 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
       editor.commands.setContent(incoming, { emitUpdate: false });
     }
     lastEmittedHtmlRef.current = null;
+
+    // 从正文中提取第一张图片的 max-width 百分比，同步到工具栏"图宽"输入框
+    // 避免切换不同公告/违规时工具栏仍显示上一次的宽度值
+    const match = incoming.match(/<img[^>]*style="[^"]*max-width:\s*(\d+)%/i);
+    if (match) {
+      const pct = parseMaxWidthPercent(match[1] + "%");
+      if (pct !== imageWidthPctRef.current) {
+        setImageWidthPct(pct);
+      }
+    }
   }, [value, editor]);
 
   const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([value, editor?.getHTML()]);

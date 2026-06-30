@@ -83,11 +83,15 @@ export interface AnalyzeResponse {
 export type ScanDelayOptionSummary = {
     id: number;
     roomId?: string;
+    carrierId?: number;
     optionLabel: string;
+    /** 载体按钮文案；未配置时前端回退全局兜底 */
+    buttonLabel?: string;
     requireApproval: boolean;
     reviewerUserIds?: string[];
     exemptMode?: string;
     durationMinutes?: number | null;
+    extendUntilTime?: string | null;
     maxCount?: number | null;
 }
 
@@ -95,6 +99,10 @@ export interface ScanPopupAnnouncementItem {
     id: number;
     title?: string;
     contentHtml?: string;
+    /** 公告内容更新时间（服务端用于校验「不再弹出」是否过期） */
+    updatedAt?: string | null;
+    /** 被扫码人员已选择「下次不再自动弹出」 */
+    autoOpenSuppressed?: boolean;
 }
 
 export interface ScanPopupAnnouncementBundle {
@@ -130,6 +138,8 @@ export interface StudentViolationNotice {
     canSelfUnblock?: boolean;
     /** 达到上限时的替换公告文案（null=沿用原违规文案） */
     criticalNoticeText?: string;
+    /** 被扫码人员已选择「下次不再自动弹出」 */
+    autoOpenSuppressed?: boolean;
 }
 
 export interface ExecutePayload {

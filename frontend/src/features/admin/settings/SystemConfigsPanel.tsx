@@ -120,7 +120,7 @@ export function SystemConfigsPanel({
 
   return (
     <AdminFormCard
-      title={title ?? (moduleKey === "llm" ? "大模型连接（通义 / DashScope）" : "配置项")}
+      title={title ?? (moduleKey === "llm" ? "AI 大模型连接（DeepSeek）" : "配置项")}
       description={
         description ??
         (moduleKey === "llm"

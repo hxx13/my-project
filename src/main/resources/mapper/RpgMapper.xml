@@ -22,6 +22,12 @@
         WHERE user_id = #{userId}
     </update>
 
+    <update id="addPersonnelTotalExp">
+        UPDATE aro_personnel
+        SET total_exp = total_exp + #{delta}
+        WHERE user_id = #{userId}
+    </update>
+
     <update id="recalculateAllExpByEntryCount">
         UPDATE aro_personnel p
         LEFT JOIN (
@@ -42,6 +48,29 @@
           AND success = 1
           AND DATE(event_time) = CURDATE()
         LIMIT 1
+    </select>
+
+    <select id="getDistinctUserIdsByDate" resultType="string">
+        SELECT DISTINCT user_id
+        FROM aro_access_log
+        WHERE create_time >= #{dateStart}
+          AND create_time &lt; #{dateEnd}
+    </select>
+
+    <select id="getUserLogsForDate" resultType="map">
+        SELECT id, create_time, accessType AS action, feed_source AS feed_source,
+               room_id, room_name, name AS person_name
+        FROM aro_access_log
+        WHERE user_id = #{userId}
+          AND create_time >= #{dateStart}
+          AND create_time &lt; #{dateEnd}
+        ORDER BY create_time ASC
+    </select>
+
+    <select id="getDistinctAccessLogDates" resultType="string">
+        SELECT DISTINCT SUBSTRING(create_time, 1, 10) AS log_date
+        FROM aro_access_log
+        ORDER BY log_date ASC
     </select>
 
 </mapper>

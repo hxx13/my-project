@@ -80,6 +80,7 @@ export default function StudentRegisterPage() {
         password
       );
       authStorage.setAuth(result.data.token, result.data.role, result.data.userInfo as AuthUserInfo);
+      authStorage.markLoginPortal("student");
       setStep("success");
     } catch (err) {
       const message = err instanceof Error ? err.message : "注册失败，请重试";
@@ -113,7 +114,7 @@ export default function StudentRegisterPage() {
             <p className="mt-6 text-sm text-[var(--student-mute)]">
               已有账号？
               <Link
-                to="/student/login"
+                to="/login"
                 className="ml-1 font-medium text-[var(--student-primary)] hover:underline"
               >
                 去登录

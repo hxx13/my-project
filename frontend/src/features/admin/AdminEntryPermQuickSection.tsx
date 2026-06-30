@@ -8,10 +8,10 @@ import {
   type PagePlatform,
 } from "@/api/domains/pagePermission.api";
 
-const ROLE_OPTIONS: MinRole[] = ["STUDENT", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
+const ROLE_OPTIONS: MinRole[] = ["MEMBER", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
 
 const ROLE_LABEL: Record<MinRole, string> = {
-  STUDENT: "学生",
+  MEMBER: "学生",
   STAFF: "教职工",
   SENIOR: "高级职工",
   ADMIN: "管理员",
@@ -42,7 +42,7 @@ export function AdminEntryPermQuickSection({
 }: AdminEntryPermQuickSectionProps) {
   const [loading, setLoading] = useState(false);
   const [row, setRow] = useState<PagePermissionLookupRow | null>(null);
-  const [draftMinRole, setDraftMinRole] = useState<MinRole>("STUDENT");
+  const [draftMinRole, setDraftMinRole] = useState<MinRole>("MEMBER");
   const [draftEnabled, setDraftEnabled] = useState(1);
   const [saving, setSaving] = useState(false);
 
@@ -54,7 +54,7 @@ export function AdminEntryPermQuickSection({
       const data = await fetchPagePermissionLookup(platform, path);
       if (!data?.nodeKey) throw new Error("未找到对应权限节点");
       setRow(data);
-      setDraftMinRole((data.minRole || "STUDENT") as MinRole);
+      setDraftMinRole((data.minRole || "MEMBER") as MinRole);
       setDraftEnabled(data.enabled === 1 ? 1 : 0);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "加载权限节点失败");

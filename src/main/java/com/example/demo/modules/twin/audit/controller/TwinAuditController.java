@@ -41,6 +41,9 @@ public class TwinAuditController {
     private final TwinScanService twinScanService;
     private final TwinCardMappingService twinCardMappingService;
     private final WebScanExitDahuaLinkageService webScanExitDahuaLinkageService;
+    private final com.example.demo.modules.twin.rpg.service.RpgEngineService rpgEngineService;
+    private final com.example.demo.modules.twin.rpg.service.TwinExpStatsService twinExpStatsService;
+    private final com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService aroMiniPenetrationSyncService;
 
     public TwinAuditController(
             AuthContextService authContextService,
@@ -49,7 +52,10 @@ public class TwinAuditController {
             DahuaSwingRuleEngineService dahuaSwingRuleEngineService,
             TwinScanService twinScanService,
             TwinCardMappingService twinCardMappingService,
-            WebScanExitDahuaLinkageService webScanExitDahuaLinkageService) {
+            WebScanExitDahuaLinkageService webScanExitDahuaLinkageService,
+            com.example.demo.modules.twin.rpg.service.RpgEngineService rpgEngineService,
+            com.example.demo.modules.twin.rpg.service.TwinExpStatsService twinExpStatsService,
+            com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService aroMiniPenetrationSyncService) {
         this.authContextService = authContextService;
         this.twinAuditService = twinAuditService;
         this.aroService = aroService;
@@ -57,6 +63,9 @@ public class TwinAuditController {
         this.twinScanService = twinScanService;
         this.twinCardMappingService = twinCardMappingService;
         this.webScanExitDahuaLinkageService = webScanExitDahuaLinkageService;
+        this.rpgEngineService = rpgEngineService;
+        this.twinExpStatsService = twinExpStatsService;
+        this.aroMiniPenetrationSyncService = aroMiniPenetrationSyncService;
     }
 
     @GetMapping("/pending-by-floor")
@@ -102,7 +111,7 @@ public class TwinAuditController {
         String dahuaSeq = mapping != null ? mapping.getDahuaSeq() : null;
         String physicalCardNo = mapping != null ? mapping.getCardNo() : null;
 
-        // 对齐 web 扫码离开：ARO 登记 + 流水异步同步
+        // 对齐 web 扫码离开：ARO 登记 + 预同步 + 经验值计算（全部在 executeAccessAction 核心层完成）
         boolean ok = twinScanService.executeAccessAction(userId, officialRoomId, 2, false, false, dahuaSeq, false);
         if (!ok) {
             log.warn("[twin] audit manual-exit rejected by aro operator={} userId={} officialRoomId={} roomName={}",
@@ -115,6 +124,7 @@ public class TwinAuditController {
                 userId, officialRoomId, physicalCardNo, false, defer);
         // 文档约束：所有离开成功入口必须清理联动状态，避免后续定时任务重复签退
         dahuaSwingRuleEngineService.clearActivationStatesForUser(userId);
+
         log.info("[twin] audit manual-exit success operator={} userId={} officialRoomId={} roomId={} roomName={} userName={}",
                 operator.getId(), userId, officialRoomId, roomId, roomName, userName);
         Map<String, Object> resp = new HashMap<>();
@@ -176,7 +186,7 @@ public class TwinAuditController {
         if (user.getStatus() != null && user.getStatus() == 0) {
             return Result.error("账号已禁用");
         }
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() < RoleEnum.SENIOR.getLevel()) {
             return Result.error("无权限访问");
         }

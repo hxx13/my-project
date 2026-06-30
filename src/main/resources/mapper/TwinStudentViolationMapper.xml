@@ -191,4 +191,12 @@
             OR (<include refid="pendingInteractivePastExpireClause"/>)
           )
     </select>
+
+    <select id="tryAcquireLock" resultType="java.lang.Integer">
+        SELECT GET_LOCK(#{lockName}, #{timeoutSeconds})
+    </select>
+
+    <select id="releaseLock" resultType="java.lang.Integer">
+        SELECT RELEASE_LOCK(#{lockName})
+    </select>
 </mapper>

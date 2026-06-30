@@ -7,11 +7,19 @@ type Props = {
   src: string;
   alt?: string;
   onClose: () => void;
+  /** 打开后自动关闭的毫秒数；未设置则不自动关闭 */
+  autoCloseMs?: number;
 };
 
 /** 帮助正文图片全屏预览（Portal 层，避免嵌套 Dialog 触发 Radix ref 死循环） */
-export function PageHelpImageLightbox({ src, alt = "", onClose }: Props) {
+export function PageHelpImageLightbox({ src, alt = "", onClose, autoCloseMs }: Props) {
   const handleClose = useCallback(() => onClose(), [onClose]);
+
+  useEffect(() => {
+    if (autoCloseMs == null || autoCloseMs <= 0) return;
+    const id = window.setTimeout(handleClose, autoCloseMs);
+    return () => window.clearTimeout(id);
+  }, [autoCloseMs, handleClose, src]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

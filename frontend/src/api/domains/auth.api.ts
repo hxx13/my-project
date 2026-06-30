@@ -15,6 +15,8 @@ export interface AuthUserInfo {
   authProfile?: string | null;
   /** 小程序首页默认分栏：news | announcements */
   miniHomeDefaultTab?: string | null;
+  /** 账号来源库：STUDENT（学生库）/ STAFF（教职工库） */
+  accountSource?: string | null;
 }
 
 export interface AuthData {

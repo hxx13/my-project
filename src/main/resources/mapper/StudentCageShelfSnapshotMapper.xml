@@ -80,14 +80,16 @@
           AND snapshot_batch_id = #{latestBatchId}
           <if test="groupNames != null and groupNames.size() > 0">
               AND (
-                  department_name IN
-                  <foreach collection="groupNames" item="g" open="(" close=")" separator=",">
-                      #{g}
-                  </foreach>
-                  OR project_pi_name IN
-                  <foreach collection="groupNames" item="g" open="(" close=")" separator=",">
-                      #{g}
-                  </foreach>
+              <foreach collection="groupNames" item="g" separator=" OR ">
+                  (
+                      department_name = #{g}
+                      OR project_pi_name = #{g}
+                      OR (project_pi_name != '' AND #{g} LIKE CONCAT('%', project_pi_name, '%'))
+                      OR (department_name != '' AND #{g} LIKE CONCAT('%', department_name, '%'))
+                      OR (project_pi_name != '' AND project_pi_name = SUBSTRING_INDEX(#{g}, '的', 1))
+                      OR (project_pi_name != '' AND project_pi_name LIKE CONCAT(SUBSTRING_INDEX(#{g}, '的', 1), '%'))
+                  )
+              </foreach>
               )
           </if>
           <if test="groupNames == null or groupNames.size() == 0">
@@ -128,14 +130,16 @@
         WHERE 1 = 1
           <if test="groupNames != null and groupNames.size() > 0">
               AND (
-                  department_name IN
-                  <foreach collection="groupNames" item="g" open="(" close=")" separator=",">
-                      #{g}
-                  </foreach>
-                  OR project_pi_name IN
-                  <foreach collection="groupNames" item="g" open="(" close=")" separator=",">
-                      #{g}
-                  </foreach>
+              <foreach collection="groupNames" item="g" separator=" OR ">
+                  (
+                      department_name = #{g}
+                      OR project_pi_name = #{g}
+                      OR (project_pi_name != '' AND #{g} LIKE CONCAT('%', project_pi_name, '%'))
+                      OR (department_name != '' AND #{g} LIKE CONCAT('%', department_name, '%'))
+                      OR (project_pi_name != '' AND project_pi_name = SUBSTRING_INDEX(#{g}, '的', 1))
+                      OR (project_pi_name != '' AND project_pi_name LIKE CONCAT(SUBSTRING_INDEX(#{g}, '的', 1), '%'))
+                  )
+              </foreach>
               )
           </if>
           <if test="groupNames == null or groupNames.size() == 0">

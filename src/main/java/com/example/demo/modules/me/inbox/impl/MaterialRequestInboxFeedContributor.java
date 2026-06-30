@@ -5,6 +5,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.material.entity.MaterialRequest;
 import com.example.demo.modules.material.mapper.MaterialRequestMapper;
+import com.example.demo.modules.material.service.MaterialService;
 import com.example.demo.modules.me.inbox.InboxDisplayHelper;
 import com.example.demo.modules.me.inbox.InboxFeedContributor;
 import com.example.demo.modules.me.inbox.InboxFeedQuery;
@@ -23,25 +24,29 @@ import java.util.List;
 public class MaterialRequestInboxFeedContributor implements InboxFeedContributor {
 
     private final MaterialRequestMapper requestMapper;
+    private final MaterialService materialService;
     private final UserDisplayNameService userDisplayNameService;
 
     public MaterialRequestInboxFeedContributor(MaterialRequestMapper requestMapper,
+                                                MaterialService materialService,
                                                 UserDisplayNameService userDisplayNameService) {
         this.requestMapper = requestMapper;
+        this.materialService = materialService;
         this.userDisplayNameService = userDisplayNameService;
     }
 
     @Override
     public List<InboxItemDto> contribute(InboxFeedQuery query) {
         User user = query.getUser();
-        RoleEnum role = user.getRole() == null ? RoleEnum.STUDENT : user.getRole();
+        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) return List.of();
 
         LocalDateTime before = query.getBeforeTime();
         int cap = query.getPerSourceCap();
-        List<MaterialRequest> rows = requestMapper.selectPendingByReviewer(null); // all pending
+        List<MaterialRequest> rows = requestMapper.selectPendingByReviewer(user.getId());
         ZoneId z = ZoneId.systemDefault();
         return rows.stream()
+                .filter(o -> materialService.canUserReview(user, o.getId()))
                 .filter(o -> o.getCreatedAt() != null && (before == null || o.getCreatedAt().isBefore(before)))
                 .sorted(Comparator.comparing(MaterialRequest::getCreatedAt).reversed())
                 .limit(cap)

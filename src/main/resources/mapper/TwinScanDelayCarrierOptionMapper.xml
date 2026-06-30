@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayCarrierOptionMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayCarrierOption">
+        <id column="id" property="id"/>
+        <result column="carrier_id" property="carrierId"/>
+        <result column="option_id" property="optionId"/>
+        <result column="sort_order" property="sortOrder"/>
+    </resultMap>
+
+    <select id="listOptionIdsByCarrierId" resultType="long">
+        SELECT option_id FROM twin_scan_delay_carrier_option
+        WHERE carrier_id = #{carrierId}
+        ORDER BY sort_order DESC, id ASC
+    </select>
+
+    <select id="listByCarrierIds" resultMap="BaseMap">
+        SELECT id, carrier_id, option_id, sort_order
+        FROM twin_scan_delay_carrier_option
+        <if test="carrierIds != null and carrierIds.size() > 0">
+            WHERE carrier_id IN
+            <foreach collection="carrierIds" item="cid" open="(" separator="," close=")">
+                #{cid}
+            </foreach>
+        </if>
+        ORDER BY carrier_id, sort_order DESC, id ASC
+    </select>
+
+    <select id="countByCarrierId" resultType="int">
+        SELECT COUNT(1) FROM twin_scan_delay_carrier_option WHERE carrier_id = #{carrierId}
+    </select>
+
+    <delete id="deleteByCarrierId">
+        DELETE FROM twin_scan_delay_carrier_option WHERE carrier_id = #{carrierId}
+    </delete>
+
+    <delete id="deleteByOptionId">
+        DELETE FROM twin_scan_delay_carrier_option WHERE option_id = #{optionId}
+    </delete>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_scan_delay_carrier_option (carrier_id, option_id, sort_order)
+        VALUES (#{carrierId}, #{optionId}, #{sortOrder})
+    </insert>
+</mapper>

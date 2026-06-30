@@ -42,6 +42,7 @@ import {
   toggleAdminNavLock,
   toggleAdminNavStar,
 } from "@/features/admin/adminNavPersonalization";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import type {
   AdminFriendRowContextMenuTarget,
   AdminNavContextMenuTarget,
@@ -597,7 +598,7 @@ export function AdminChromeContextMenu({
                 icon={BookOpen}
                 label="打开接口中心"
                 onClick={() => {
-                  navigate("/admin/api-docs");
+                  navigate(toAdminRoutePath("/admin/api-docs"));
                   onClose();
                 }}
               />
@@ -605,7 +606,7 @@ export function AdminChromeContextMenu({
                 icon={KeyRound}
                 label="打开页面权限设置"
                 onClick={() => {
-                  navigate("/admin/page-permissions");
+                  navigate(toAdminRoutePath("/admin/page-permissions"));
                   onClose();
                 }}
               />

@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchWordTemplates, uploadWordTemplate, unbindWordTemplate, updateForm } from '../api/reportForm.api';
+import { fetchWordTemplates, uploadWordTemplate, unbindWordTemplate, updateForm, fetchFormById } from '../api/reportForm.api';
+import { parseWordTemplateBindings } from '../utils/reportFormExportOptions';
 import { Upload, Trash2, X, FileText, Link } from 'lucide-react';
 import type { WordTemplateBinding } from '../types';
 import toast from 'react-hot-toast';
@@ -124,8 +125,13 @@ export default function WordTemplateManager({ open, onClose, formId, fieldKeys }
                           <button
                             onClick={async () => {
                               try {
-                                const updated = templates.map(t =>
-                                  t.id === tmpl.id ? { ...t, bookmarkMapping: mappings } : t
+                                // 从服务端拉完整模板（含 base64 data），合并映射后保存 — post-save-no-full-refresh.mdc
+                                const form = await fetchFormById(formId);
+                                const fullTemplates = parseWordTemplateBindings(form.wordTemplateIdsJson);
+                                const updated = fullTemplates.map(t =>
+                                  t.id === tmpl.id
+                                    ? { ...t, bookmarkMapping: { ...(t.bookmarkMapping || {}), ...mappings } }
+                                    : t
                                 );
                                 await updateForm(formId, { wordTemplateIdsJson: JSON.stringify(updated) });
                                 toast.success('映射已保存');

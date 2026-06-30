@@ -1,6 +1,5 @@
 package com.example.demo.modules.reportform.entity;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -22,10 +21,7 @@ public class ReportFormDefinition {
     private String updatedBy;
     private Boolean pinned = false;
     private String publishedBy;
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss+08:00")
     private LocalDateTime publishedAt;
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss+08:00")
     private LocalDateTime createdAt;
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss+08:00")
     private LocalDateTime updatedAt;
 }

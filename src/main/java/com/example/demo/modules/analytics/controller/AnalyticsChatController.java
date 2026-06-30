@@ -136,7 +136,7 @@ public class AnalyticsChatController {
         if (user == null) {
             throw new IllegalArgumentException("未登录");
         }
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             throw new IllegalArgumentException("需要教职工及以上权限");
         }

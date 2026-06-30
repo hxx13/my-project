@@ -1,1 +1,0 @@
-import"./authHttp-BfqgU8hK.js";import"./adminHttp-hpt4sHyv.js";import{g as e}from"./index-Ckjp9_M6.js";export{e as fetchPublicRuntimeConfig};

@@ -10,6 +10,7 @@ import com.example.demo.modules.twin.scan.dto.ScanAnalyzeResponseDTO;
 import com.example.demo.modules.twin.scan.dto.ScanExecuteResponseDTO;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.twin.scan.service.TwinScanAppService;
+import com.example.demo.modules.twin.scan.service.TwinScanNoticeAutoSuppressService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleEngineService;
 import com.example.demo.modules.twin.rpg.service.RpgEngineService;
@@ -31,6 +32,7 @@ import com.example.demo.modules.twin.scan.support.ScanPopupEntryWindowEvaluator;
 import com.example.demo.modules.twin.scan.support.ScanPopupFlowLog;
 import com.example.demo.common.time.BusinessTimeWindow;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
+import com.example.demo.modules.student.service.MobilePresenceNotifyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -88,6 +90,9 @@ public class TwinScanController {
     private TwinAccessRuleScanConfigService twinAccessRuleScanConfigService;
 
     @Autowired
+    private MobilePresenceNotifyService mobilePresenceNotifyService;
+
+    @Autowired
     private TwinStudentViolationService twinStudentViolationService;
 
     @Autowired
@@ -103,7 +108,13 @@ public class TwinScanController {
     private AuthContextService authContextService;
 
     @Autowired
+    private com.example.demo.modules.twin.common.service.AroMiniPenetrationSyncService aroMiniPenetrationSyncService;
+
+    @Autowired
     private com.example.demo.common.config.DebugToggleService debugToggleService;
+
+    @Autowired
+    private TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService;
 
     private static final long STUDENT_DAHUA_BIND_DEPT_ID = 26L;
     private static final java.util.List<Long> STUDENT_DAHUA_BIND_DOOR_GROUP_IDS = java.util.List.of(58L, 59L);
@@ -163,6 +174,36 @@ public class TwinScanController {
         } catch (Exception e) {
             log.warn("[scan] violation-interactive-ack failed: {}", e.getMessage());
             return Result.error("交互确认失败: " + e.getMessage());
+        }
+    }
+
+    /** 被扫码人员对某条通告选择「下次不再自动弹出」（服务端持久化，仅作用于 targetUserId） */
+    @PostMapping("/notice-auto-suppress")
+    public Result<Map<String, Object>> suppressNoticeAutoOpen(
+            @RequestBody com.example.demo.modules.twin.scan.dto.ScanNoticeAutoSuppressRequest body
+    ) {
+        try {
+            if (body == null) {
+                return Result.error("缺少请求体");
+            }
+            String targetUserId = body.getTargetUserId() != null ? body.getTargetUserId().trim() : "";
+            String noticeKind = body.getNoticeKind() != null ? body.getNoticeKind().trim() : "";
+            Long recordId = body.getRecordId();
+            if (recordId == null || recordId <= 0) {
+                return Result.error("缺少有效的 recordId");
+            }
+            scanNoticeAutoSuppressService.suppressForScannedUser(targetUserId, noticeKind, recordId);
+            Map<String, Object> out = new HashMap<>();
+            out.put("targetUserId", targetUserId);
+            out.put("noticeKind", noticeKind);
+            out.put("recordId", recordId);
+            out.put("autoOpenSuppressed", true);
+            return Result.success(out);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            log.warn("[scan] notice-auto-suppress failed: {}", e.getMessage());
+            return Result.error("保存失败: " + e.getMessage());
         }
     }
 
@@ -238,7 +279,7 @@ public class TwinScanController {
             }
 
             // =================================================================
-            // 💥 第一关：先让 ARO 官方系统确认并落库！
+            // 💥 第一关：ARO 官方登记 + 预同步本地流水 + 经验值计算（全部在 executeAccessAction 内完成）
             // =================================================================
             boolean aroSuccess = twinScanService.executeAccessAction(userId, roomId, accessType, isSharedCard, isKeepCard, dahuaSeq, isBorrowedCard);
             boolean healedNoLeaveConflict = (accessType == 2 && aroService.isNoLeaveRoomError());
@@ -334,22 +375,12 @@ public class TwinScanController {
             }
 
             // =================================================================
-            // 🎯 第三关：使用 RPG 引擎返回本次操作真实经验增量
+            // 🎯 第三关：读取经验增量用于前端展示（实际写入已在 executeAccessAction 核心层完成）
             // =================================================================
             com.example.demo.modules.twin.rpg.service.PredictResult predictResult = rpgEngineService.predictActionReward(userId, accessType);
             int expAdded = Math.max(0, predictResult.getExpAdded());
             result.setExpAdded(expAdded);
             result.setExpSource(predictResult.getExpSource());
-
-            // Write XP record
-            if (predictResult.getExpAdded() > 0 && predictResult.getExpSource() != null) {
-                try {
-                    twinExpStatsService.recordExp(userId, userName, predictResult.getExpAdded(),
-                            predictResult.getExpSource(), accessType, effectiveRoomId, roomName);
-                } catch (Exception e) {
-                    log.warn("[扫码·登记] XP流水写入失败 id={} err={}", userId, e.getMessage());
-                }
-            }
 
             // EXIT：大华回收 + 豁免关闭 + 冻结已由 WebScanExitDahuaLinkageService 处理（可配置延迟）；ENTER 无此处冻结
 
@@ -425,6 +456,8 @@ public class TwinScanController {
                             "twin-scan-execute"
                     );
                 }
+                mobilePresenceNotifyService.notifyPresenceChanged(
+                        userId, accessType == 1 ? "scan_enter" : "scan_exit");
             }
 
         } catch (Exception e) {
@@ -579,7 +612,7 @@ public class TwinScanController {
         String dahuaSeq = mapping != null ? mapping.getDahuaSeq() : null;
         String physicalCardNo = mapping != null ? mapping.getCardNo() : null;
 
-        // 对齐 web 扫码离开：ARO 登记 + 流水异步同步
+        // 对齐 web 扫码离开：ARO 登记 + 预同步 + 经验值计算（全部在 executeAccessAction 核心层完成）
         boolean ok = twinScanService.executeAccessAction(userId, officialRoomId, 2, false, false, dahuaSeq, false);
         if (!ok) {
             return Result.error("离开登记失败，官方系统拒绝操作");

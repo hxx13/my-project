@@ -1,7 +1,9 @@
 package com.example.demo.modules.material.service;
 
 import com.example.demo.common.excel.ExcelExportColumnAutosizer;
+import com.example.demo.modules.material.dto.MaterialAuditGridRow;
 import com.example.demo.modules.material.dto.MaterialAuditTrailView;
+import com.example.demo.modules.material.dto.MaterialItemFlowExportRow;
 import com.example.demo.modules.material.dto.MaterialRequestView;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -16,6 +18,66 @@ import java.util.function.Function;
 
 @Service
 public class MaterialExcelExportService {
+
+    /**
+     * 申领审计导出页表格（列顺序与 Web 预览一致）。
+     */
+    public byte[] buildAuditGridSheet(List<MaterialAuditGridRow> rows) {
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("申领审计"));
+            int r = 0;
+            Row head = sh.createRow(r++);
+            String[] cols = { "单号", "物品", "数量", "状态", "申领人", "课题组", "时间" };
+            for (int i = 0; i < cols.length; i++) head.createCell(i).setCellValue(cols[i]);
+
+            for (MaterialAuditGridRow row : rows) {
+                Row data = sh.createRow(r++);
+                data.createCell(0).setCellValue(safe(row.getRequestId()));
+                data.createCell(1).setCellValue(safe(row.getItemName()));
+                data.createCell(2).setCellValue(safe(row.getQty()));
+                data.createCell(3).setCellValue(safe(row.getStatus()));
+                data.createCell(4).setCellValue(safe(row.getApplicantName()));
+                data.createCell(5).setCellValue(safe(row.getApplicantGroup()));
+                data.createCell(6).setCellValue(safe(row.getTime()));
+            }
+            ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);
+            wb.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("导出申领审计表格 Excel 失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 按物品来去流水导出（列顺序与 Web 预览一致）。
+     */
+    public byte[] buildItemFlowSheet(List<MaterialItemFlowExportRow> rows) {
+        try (Workbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("物品来去流水"));
+            int r = 0;
+            Row head = sh.createRow(r++);
+            String[] cols = { "时间", "类型", "物品", "变动数量", "库存", "申领人", "课题组", "关联单号", "备注" };
+            for (int i = 0; i < cols.length; i++) head.createCell(i).setCellValue(cols[i]);
+
+            for (MaterialItemFlowExportRow row : rows) {
+                Row data = sh.createRow(r++);
+                data.createCell(0).setCellValue(safe(row.getTime()));
+                data.createCell(1).setCellValue(safe(row.getEventType()));
+                data.createCell(2).setCellValue(safe(row.getItemName()));
+                data.createCell(3).setCellValue(safe(row.getQty()));
+                data.createCell(4).setCellValue(safe(row.getStockAfter()));
+                data.createCell(5).setCellValue(safe(row.getApplicantName()));
+                data.createCell(6).setCellValue(safe(row.getApplicantGroup()));
+                data.createCell(7).setCellValue(safe(row.getRequestId()));
+                data.createCell(8).setCellValue(safe(row.getRemark()));
+            }
+            ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);
+            wb.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("导出物品来去流水 Excel 失败: " + e.getMessage(), e);
+        }
+    }
 
     /**
      * 审计流水导出为单工作表 Excel。

@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ADMIN_NAV_REGISTRY } from "@/features/admin/adminNavRegistry";
-import { appendAdminNavRecent } from "@/features/admin/adminNavPersonalization";
+import { appendAdminNavRecent, resolveAdminNavUserId } from "@/features/admin/adminNavPersonalization";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY } from "@/features/admin/adminTelemetryNav";
 import type { AdminCommandPaletteItem } from "@/features/admin/buildAdminNavModel";
 
@@ -88,15 +89,16 @@ export function AdminCommandPalette({
   }, [open]);
 
   const run = (it: AdminCommandPaletteItem) => {
-    appendAdminNavRecent(it.path);
+    if (resolveAdminNavUserId()) appendAdminNavRecent(it.path);
+    const dest = toAdminRoutePath(it.path);
     if (it.telemetry) {
       try {
         const returnKey = it.telemetryReturnStorageKey ?? ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY;
         sessionStorage.setItem(returnKey, `${pathname}${search}`);
       } catch { /* ignore */ }
-      void navigate(it.path, { state: { returnTo: `${pathname}${search}` } });
+      void navigate(dest, { state: { returnTo: `${pathname}${search}` } });
     } else {
-      void navigate(it.path);
+      void navigate(dest);
     }
     onOpenChange(false);
   };

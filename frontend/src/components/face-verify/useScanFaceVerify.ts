@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react';
 import { useFaceAuthConfig } from './useFaceAuthConfig';
-import { useFaceModels } from './useFaceModels';
+import { useFaceModels, ensureModelsLoaded } from './useFaceModels';
 import { useFaceVerification } from './useFaceVerification';
 import type { ScanStatus } from './types';
 import type { AnalyzeResponse } from '@/api/types/scanner';
@@ -130,7 +130,8 @@ export function useScanFaceVerify(): UseScanFaceVerifyReturn {
   const faceAuthRequired = masterEnabled && isEnabled('face.scan_popup.enabled');
   const pinAlternativeEnabled = isEnabled('face.pin_alternative.enabled');
 
-  useFaceModels();
+  // 扫码 dock 常驻时不预拉模型（~8MB）；仅在真正进入人脸验证时再加载
+  useFaceModels({ autoLoad: false });
 
   const faceVerifyOptions = useMemo(() => ({
     userId: pendingAnalyzeData?.userInfo?.userId ? String(pendingAnalyzeData.userInfo.userId) : undefined,
@@ -317,6 +318,7 @@ export function useScanFaceVerify(): UseScanFaceVerifyReturn {
   }, [faceStop, faceReset, resetFaceVerifyRuntime]);
 
   const beginGateFaceVerify = useCallback((data: AnalyzeResponse) => {
+    void ensureModelsLoaded().catch(() => { /* useFaceVerification 会提示模型错误 */ });
     prepareFaceVerifySession();
     onFaceSuccessOverrideRef.current = null;
     pipBaselineUrlsRef.current = [];
@@ -327,6 +329,7 @@ export function useScanFaceVerify(): UseScanFaceVerifyReturn {
   }, [prepareFaceVerifySession]);
 
   const beginPersonalFaceVerify = useCallback((data: AnalyzeResponse) => {
+    void ensureModelsLoaded().catch(() => { /* useFaceVerification 会提示模型错误 */ });
     prepareFaceVerifySession();
     setPendingAnalyzeData(data);
     setFaceVerifyCompact(true);

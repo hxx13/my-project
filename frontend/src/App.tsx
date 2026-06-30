@@ -7,7 +7,9 @@ import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 
 import { Toaster } from "react-hot-toast";
 import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
 import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS } from "@/config/socketEvents";
-import { SwipeFailureBanner } from "@/features/swipe-alert/SwipeFailureBanner";
+import { AdminGlobalDynamicIslandLayer } from "@/components/admin/AdminGlobalDynamicIslandLayer";
+import { useCardReaderEnterGuard } from "@/components/scanner/useCardReaderEnterGuard";
+import { ScanDelayPendingAlertSync } from "@/features/scan-delay-alert/ScanDelayPendingAlertSync";
 import { useSwipeAlertStore } from "@/store/useSwipeAlertStore";
 import { authStorage } from "@/features/auth/authStorage";
 import { ThemeProvider } from "@/features/theme/ThemeProvider";
@@ -58,6 +60,11 @@ function GlobalSocketListener() {
     useEffect(() => {
         const token = authStorage.getToken();
         if (!token) return; // 未登录不建立连接，避免服务端拒绝
+
+        // 仅教职工视角路由 (/console) 建立 WebSocket 连接
+        // 学生端、手机端等非教职工路由不连接
+        if (!window.location.hash.startsWith('#/console')) return;
+
         const socketUrl = resolveSocketUrl();
         const socket = io(socketUrl, {
             ...SOCKET_IO_CLIENT_OPTIONS,
@@ -177,17 +184,28 @@ function GlobalSocketListener() {
     return null; // 它是个幽灵基站，不需要渲染任何 UI
 }
 
+/** 🔒 读卡器 Enter 键全局防护：capture 阶段拦截，防止读卡器连续刷卡时意外触发聚焦按钮。
+ *  在 DebugNav 未挂载的页面（如学生中心物品页）提供底层防护。
+ *  DebugNav 页面有自己独立的 useCardReaderEnterGuard 实例（含扫码框 id）。 */
+function GlobalCardReaderGuard() {
+    useCardReaderEnterGuard();
+    return null;
+}
+
 function App() {
     return (
         <QueryClientProvider client={queryClient}>
             <ThemeProvider>
                 {/* 💥 将基站挂载在 React 根节点，只要网页开着就永远在线！ */}
                 <GlobalSocketListener />
+                {/* 🔒 读卡器 Enter 键全局防护（capture 阶段） */}
+                <GlobalCardReaderGuard />
                 <DiagnosticErrorBoundary>
                     <RouterProvider router={router} />
                 </DiagnosticErrorBoundary>
                 <Toaster position="top-right" />
-                <SwipeFailureBanner />
+                <AdminGlobalDynamicIslandLayer />
+                <ScanDelayPendingAlertSync />
             </ThemeProvider>
         </QueryClientProvider>
     );

@@ -51,16 +51,19 @@ public class AnalyticsAuditAsyncService {
 
     @Async("heavyCalcExecutor")
     public void refreshSnapshotsAsync(long viewId, String userId) {
-        AnalyticsUserView view = loadSubscribedView(viewId, userId);
+        // 强制重算不要求视图已订阅 — 用户主动触发即应执行
+        AnalyticsUserView view = userViewMapper.selectByIdAndUser(viewId, userId);
         if (view == null) {
+            log.warn("[analytics-audit] force-recalc: view not found viewId={} userId={}", viewId, userId);
             return;
         }
         try {
-            log.debug("[analytics-audit] async refresh start viewId={}", viewId);
+            log.info("[analytics-audit] force-recalc start viewId={} subscribed={}",
+                    viewId, view.getIsSubscribed());
             auditService.refreshAllSnapshotsForView(view);
-            log.debug("[analytics-audit] async refresh done viewId={}", viewId);
+            log.info("[analytics-audit] force-recalc done viewId={}", viewId);
         } catch (Exception e) {
-            log.warn("[analytics-audit] async refresh failed viewId={}: {}", viewId, e.getMessage(), e);
+            log.warn("[analytics-audit] force-recalc failed viewId={}: {}", viewId, e.getMessage(), e);
         }
     }
 

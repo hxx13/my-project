@@ -9,11 +9,17 @@ interface PageTransitionProps {
   duration?: number;
   delay?: number;
   className?: string;
+  /**
+   * When provided, the enter animation re-fires each time this value changes.
+   * Use location.pathname to animate on route change without unmounting children.
+   */
+  animateKey?: string;
 }
 
 /**
  * Wraps page content with a GSAP entrance animation.
- * Use inside each page or as an Outlet wrapper for route-level transitions.
+ * Use <PageTransition animateKey={location.pathname}> around <Outlet />
+ * to animate route changes WITHOUT unmounting/remounting the page tree.
  */
 export function PageTransition({
   children,
@@ -21,6 +27,7 @@ export function PageTransition({
   duration = 0.35,
   delay = 0,
   className,
+  animateKey,
 }: PageTransitionProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -37,7 +44,7 @@ export function PageTransition({
         gsap.fromTo(el, { opacity: 0, x: -24 }, { opacity: 1, x: 0, duration, delay, ease: "power2.out", clearProps: "willChange" });
       }
     },
-    { scope: containerRef },
+    { scope: containerRef, dependencies: animateKey ? [animateKey] : [] },
   );
 
   return (

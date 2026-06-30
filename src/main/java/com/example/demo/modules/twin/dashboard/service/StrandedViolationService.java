@@ -1,11 +1,13 @@
 package com.example.demo.modules.twin.dashboard.service;
 
-import com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper;
+import com.example.demo.modules.twin.card.mapper.TwinCardMappingMapper;
+import com.example.demo.modules.twin.card.service.TwinCardMappingService;
+import com.example.demo.modules.twin.common.service.AroOccupancyAuthorityService;
 import com.example.demo.modules.twin.dahua.service.DahuaAutoSignoutService;
+import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
 import com.example.demo.modules.twin.dashboard.mapper.StrandedViolationConfigMapper;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
-import com.example.demo.modules.aro.service.AroService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -13,26 +15,32 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.annotation.PostConstruct;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * 每日定时检测：滞留未签退人员自动生成违规记录。
  *
- * <p>由 {@code JobExecutionRegistry} 在 {@code STRANDED_VIOLATION_CHECK} 定时器触发时调用
- * {@link #executeScheduledCheck()}。
+ * <p>由 {@code JobExecutionRegistry} 在 {@code STRANDED_VIOLATION_CHECK}（一道·违规）或
+ * {@code STRANDED_SIGNOUT_CHECK}（二道·仅签退）定时器触发。
  *
- * <p>流程：
+ * <p>流程（与冻结跑批 / AI 雷达滞留口径一致）：
  * <ol>
- *   <li>读取 {@code stranded_violation_config} (id=1)，若 disabled 则跳过</li>
- *   <li>查询 {@code dahua_activation_state} 中 state='ACTIVATED' 的用户</li>
- *   <li>通过 ARO {@code noLeaveRoom} 二次确认仍在内</li>
+ *   <li>读取 {@code stranded_violation_config} (id=1)</li>
+ *   <li>从 {@code aro_access_log} 取今日流水判定仍在馆的用户（与 {@link TwinCardMappingService#executeFreezeReaperTask} 同源）</li>
+ *   <li>跳过 {@code twin_card_mapping} 中仍有效的免冻结豁免（{@link TwinCardMappingService#isFreezeExemptForPolicy}，以 DB 为准）</li>
+ *   <li>通过 ARO {@code noLeaveRoom} 二次确认仍在内（官方权威；查询失败则跳过该用户）</li>
  *   <li>按部门白名单过滤</li>
- *   <li>去重：跳过已有 ACTIVE source='AUTO_STRANDED' 违规的用户</li>
+ *   <li>去重：跳过已有 ACTIVE source='AUTO_STRANDED' 违规的用户；创建时 per-user MySQL 命名锁防并发重复</li>
  *   <li>可选自动签退</li>
  *   <li>创建违规记录</li>
  *   <li>更新配置行的执行结果</li>
@@ -43,12 +51,12 @@ public class StrandedViolationService {
 
     private static final Logger log = LoggerFactory.getLogger(StrandedViolationService.class);
 
-    private static final String SOURCE_AUTO_STRANDED = "AUTO_STRANDED";
     private static final String DEFAULT_VIOLATION_TPL =
             "${name}(${dept})滞留未签退，系统自动登记";
 
-    private final DahuaSwingMapper dahuaSwingMapper;
-    private final AroService aroService;
+    private final TwinCardMappingMapper mappingMapper;
+    private final TwinCardMappingService cardMappingService;
+    private final AroOccupancyAuthorityService occupancyAuthorityService;
     private final DahuaAutoSignoutService autoSignoutService;
     private final TwinStudentViolationService violationService;
     private final TwinDashboardMapper personnelMapper;
@@ -57,21 +65,33 @@ public class StrandedViolationService {
     private final ObjectMapper objectMapper;
 
     public StrandedViolationService(
-            DahuaSwingMapper dahuaSwingMapper,
-            AroService aroService,
+            TwinCardMappingMapper mappingMapper,
+            TwinCardMappingService cardMappingService,
+            AroOccupancyAuthorityService occupancyAuthorityService,
             DahuaAutoSignoutService autoSignoutService,
             TwinStudentViolationService violationService,
             TwinDashboardMapper personnelMapper,
             StrandedViolationConfigMapper configMapper,
             TwinViolationRuleService ruleService) {
-        this.dahuaSwingMapper = dahuaSwingMapper;
-        this.aroService = aroService;
+        this.mappingMapper = mappingMapper;
+        this.cardMappingService = cardMappingService;
+        this.occupancyAuthorityService = occupancyAuthorityService;
         this.autoSignoutService = autoSignoutService;
         this.violationService = violationService;
         this.personnelMapper = personnelMapper;
         this.configMapper = configMapper;
         this.ruleService = ruleService;
         this.objectMapper = new ObjectMapper();
+    }
+
+    /** 启动时幂等补全第二道签退配置行（无需手工执行 scripts/stranded_signout_config_row.ddl.sql） */
+    @PostConstruct
+    public void ensureSignoutConfigRowOnStartup() {
+        try {
+            configMapper.ensureSignoutConfigRow();
+        } catch (Exception e) {
+            log.warn("[stranded-signout] 自动补全 config id=2 失败: {}", e.getMessage());
+        }
     }
 
     /**
@@ -100,41 +120,53 @@ public class StrandedViolationService {
         Long ruleId = (rule != null && (rule.getEnabled() == null || rule.getEnabled() == 1))
                 ? rule.getId() : null;
 
-        // 2. 查询当前 ACTIVATED 用户
-        List<Map<String, Object>> activatedUsers = dahuaSwingMapper.listActivatedUsers();
-        log.info("[stranded-violation] 发现 {} 名 ACTIVATED 用户", activatedUsers.size());
+        // 2. 今日流水判定仍在馆（与冻结跑批 / 雷达口径一致）
+        Set<String> candidates = loadTodayStrandedCandidates();
+        log.info("[stranded-violation] 今日流水滞留候选 {} 人", candidates.size());
 
         int created = 0;
         int signedOut = 0;
+        int skippedExempt = 0;
+        int skippedNotInside = 0;
+        int skippedAroFailed = 0;
         List<String> errors = new ArrayList<>();
 
-        for (Map<String, Object> user : activatedUsers) {
-            String userId = Objects.toString(user.get("user_id"), "");
-            if (userId.isBlank()) {
-                continue;
-            }
-
+        for (String userId : candidates) {
             try {
-                // 3. ARO 二次确认：是否仍在内
-                List<?> noLeaveRooms = aroService.getNoLeaveRoom(userId);
-                if (noLeaveRooms == null || noLeaveRooms.isEmpty()) {
-                    // 官方已无滞留，跳过
+                // 3. 跳过仍有效的免冻结豁免（读 DB，与冻结跑批同源 isFreezeExemptForPolicy）
+                if (cardMappingService.isFreezeExemptForPolicy(userId)) {
+                    skippedExempt++;
+                    log.info("[stranded-violation] 用户 {} 仍享有免冻结豁免(DB)，跳过", userId);
                     continue;
                 }
 
-                // 4. 部门白名单过滤
+                // 4. ARO 官方二次确认：是否仍在内
+                AroOccupancyAuthorityService.OfficialPresence presence =
+                        occupancyAuthorityService.queryOfficialPresence(userId);
+                if (presence == AroOccupancyAuthorityService.OfficialPresence.QUERY_FAILED) {
+                    skippedAroFailed++;
+                    log.warn("[stranded-violation] ARO 查询失败，跳过 userId={}", userId);
+                    errors.add("aro:" + userId);
+                    continue;
+                }
+                if (presence == AroOccupancyAuthorityService.OfficialPresence.NOT_INSIDE) {
+                    skippedNotInside++;
+                    continue;
+                }
+
+                // 5. 部门白名单过滤
                 String dept = lookupDepartment(userId);
                 if (!whitelistDepts.isEmpty() && whitelistDepts.contains(dept)) {
                     log.debug("[stranded-violation] 用户 {} 在白名单部门 {}，跳过", userId, dept);
                     continue;
                 }
 
-                // 5. 去重：是否已有 ACTIVE 的 AUTO_STRANDED 违规
+                // 6. 已有生效滞留违规则跳过（含签退与创建；并发时由 createAutoStrandedIfAbsent 二次兜底）
                 if (violationService.hasActiveAutoViolation(userId)) {
                     continue;
                 }
 
-                // 6. 可选自动签退
+                // 7. 可选自动签退
                 if (autoSignout) {
                     try {
                         autoSignoutService.autoSignout(
@@ -149,8 +181,8 @@ public class StrandedViolationService {
                     }
                 }
 
-                // 7. 创建违规记录
-                String name = Objects.toString(user.getOrDefault("name", userId), userId);
+                // 8. 命名锁内去重并创建，避免并发重复插入
+                String name = lookupName(userId);
                 String text = tpl
                         .replace("${name}", name)
                         .replace("${dept}", dept)
@@ -158,21 +190,21 @@ public class StrandedViolationService {
                                 LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
 
                 String challenge = interactiveEnabled && !interactivePhrase.isBlank() ? interactivePhrase.trim() : null;
-                boolean effectiveForbidEnter = forbidEnter == 1 || challenge != null;
-                violationService.create(
+                TwinStudentViolation newViolation = violationService.createAutoStrandedIfAbsent(
                         userId,
                         text,
                         null,  // no images
-                        effectiveForbidEnter,
+                        forbidEnter == 1,
                         null,  // maxEnterSuccess
                         true,  // showNoticeEveryScan
                         expireDays,
                         "SYSTEM",
-                        SOURCE_AUTO_STRANDED,
                         challenge,
                         interactiveUnlockOnVerify,
                         ruleId);
-                created++;
+                if (newViolation != null) {
+                    created++;
+                }
 
             } catch (Exception e) {
                 log.warn("[stranded-violation] 处理失败 userId={}: {}", userId, e.getMessage());
@@ -180,9 +212,10 @@ public class StrandedViolationService {
             }
         }
 
-        // 8. 写回执行结果
-        String result = String.format("创建%d条违规, 签退%d人, 失败%d人",
-                created, signedOut, errors.size());
+        // 9. 写回执行结果
+        String result = String.format(
+                "候选%d人, 创建%d条违规, 签退%d人, 豁免跳过%d, 官方已离开%d, ARO失败%d, 失败%d人",
+                candidates.size(), created, signedOut, skippedExempt, skippedNotInside, skippedAroFailed, errors.size());
         if (!errors.isEmpty()) {
             result += " 失败:" + String.join(",", errors);
         }
@@ -190,7 +223,122 @@ public class StrandedViolationService {
         log.info("[stranded-violation] 执行完成: {}", result);
     }
 
+    /**
+     * 第二道定时：与 {@link #executeScheduledCheck()} 相同滞留口径，仅签退、不创建违规。
+     * 签退开关读 {@code stranded_violation_config} id=2；部门白名单与一道共用 id=1。
+     */
+    public void executeScheduledSignoutCheck() {
+        try {
+            configMapper.ensureSignoutConfigRow();
+        } catch (Exception e) {
+            log.warn("[stranded-signout] 自动补全 config id=2 失败: {}", e.getMessage());
+        }
+        Map<String, Object> signoutCfg = configMapper.selectSignoutConfig();
+        if (signoutCfg == null || signoutCfg.isEmpty()) {
+            log.info("[stranded-signout] 配置行 id=2 不存在，跳过");
+            return;
+        }
+        if (!Boolean.TRUE.equals(toBool(signoutCfg.get("auto_signout_enabled")))) {
+            String offResult = "签退开关未开启，未执行";
+            configMapper.updateSignoutExecutionResult(LocalDateTime.now(), offResult);
+            log.info("[stranded-signout] {}", offResult);
+            return;
+        }
+
+        Map<String, Object> primaryCfg = configMapper.selectConfig();
+        List<String> whitelistDepts = primaryCfg == null || primaryCfg.isEmpty()
+                ? List.of()
+                : parseJsonArray(Objects.toString(primaryCfg.get("whitelist_depts"), "[]"));
+
+        Set<String> candidates = loadTodayStrandedCandidates();
+        log.info("[stranded-signout] 今日流水滞留候选 {} 人", candidates.size());
+
+        int signedOut = 0;
+        int skippedExempt = 0;
+        int skippedNotInside = 0;
+        int skippedAroFailed = 0;
+        List<String> errors = new ArrayList<>();
+
+        for (String userId : candidates) {
+            try {
+                if (cardMappingService.isFreezeExemptForPolicy(userId)) {
+                    skippedExempt++;
+                    continue;
+                }
+
+                AroOccupancyAuthorityService.OfficialPresence presence =
+                        occupancyAuthorityService.queryOfficialPresence(userId);
+                if (presence == AroOccupancyAuthorityService.OfficialPresence.QUERY_FAILED) {
+                    skippedAroFailed++;
+                    log.warn("[stranded-signout] ARO 查询失败，跳过 userId={}", userId);
+                    errors.add("aro:" + userId);
+                    continue;
+                }
+                if (presence == AroOccupancyAuthorityService.OfficialPresence.NOT_INSIDE) {
+                    skippedNotInside++;
+                    continue;
+                }
+
+                String dept = lookupDepartment(userId);
+                if (!whitelistDepts.isEmpty() && whitelistDepts.contains(dept)) {
+                    continue;
+                }
+
+                autoSignoutService.autoSignout(
+                        userId,
+                        "STRANDED_VIOLATION",
+                        "滞留未签退，第二道定时任务自动签退",
+                        "stranded_signout_check");
+                signedOut++;
+            } catch (Exception e) {
+                log.warn("[stranded-signout] 签退失败 userId={}: {}", userId, e.getMessage());
+                errors.add("signout:" + userId);
+            }
+        }
+
+        String result = String.format(
+                "候选%d人, 签退%d人, 豁免跳过%d, 官方已离开%d, ARO失败%d, 失败%d人",
+                candidates.size(), signedOut, skippedExempt, skippedNotInside, skippedAroFailed, errors.size());
+        if (!errors.isEmpty()) {
+            result += " 失败:" + String.join(",", errors);
+        }
+        configMapper.updateSignoutExecutionResult(LocalDateTime.now(), result);
+        log.info("[stranded-signout] 执行完成: {}", result);
+    }
+
     // ---- config helpers ----
+
+    public Map<String, Object> getSignoutConfig() {
+        try {
+            configMapper.ensureSignoutConfigRow();
+        } catch (Exception ignored) {
+            // migrate 已尝试；读取仍可能为空
+        }
+        return configMapper.selectSignoutConfig();
+    }
+
+    @Transactional
+    public void saveSignoutConfig(Map<String, Object> body) {
+        int autoSignout = toTinyIntFlag(body.get("auto_signout_enabled"), 1);
+        configMapper.updateSignoutOnlyConfig(autoSignout);
+        log.info("[stranded-signout] config saved: autoSignout={}", autoSignout);
+    }
+
+    private Set<String> loadTodayStrandedCandidates() {
+        String todayPrefix = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + "%";
+        List<String> strandedUserIds = mappingMapper.findTodayStrandedUserIds(todayPrefix);
+        Set<String> candidates = new LinkedHashSet<>();
+        if (strandedUserIds != null) {
+            for (String uid : strandedUserIds) {
+                if (uid != null && !uid.isBlank()) {
+                    candidates.add(uid.trim());
+                }
+            }
+        }
+        return candidates;
+    }
+
+    // ---- config helpers (一道) ----
 
     public Map<String, Object> getConfig() {
         return configMapper.selectConfig();
@@ -209,7 +357,7 @@ public class StrandedViolationService {
         int interactiveUnlockOnVerify = toInt(body.get("interactive_unlock_on_verify"), 1);
 
         configMapper.updateConfig(
-                toInt(body.get("auto_signout_enabled"), 1),
+                toTinyIntFlag(body.get("auto_signout_enabled"), 1),
                 tpl,
                 toInt(body.get("forbid_enter"), 0),
                 toInt(body.get("expire_after_days"), 1),
@@ -218,7 +366,7 @@ public class StrandedViolationService {
                 interactivePhrase,
                 interactiveUnlockOnVerify);
         log.info("[stranded-violation] config saved: autoSignout={}, tpl={}, forbidEnter={}, expireDays={}, interactive={}",
-                toInt(body.get("auto_signout_enabled"), 1),
+                toTinyIntFlag(body.get("auto_signout_enabled"), 1),
                 tpl,
                 toInt(body.get("forbid_enter"), 0),
                 toInt(body.get("expire_after_days"), 1),
@@ -253,12 +401,23 @@ public class StrandedViolationService {
         TwinViolationRule testRule = ruleService.getByCode("AUTO_STRANDED");
         Long testRuleId = (testRule != null) ? testRule.getId() : null;
 
-        // 检查 ARO 是否仍在内
-        List<?> noLeaveRooms = aroService.getNoLeaveRoom(userId);
-        if (noLeaveRooms == null) {
+        // 本地流水是否仍判定在馆
+        if (!occupancyAuthorityService.isLocallyStrandedToday(userId)) {
+            return "该用户今日流水未判定为滞留，无需处理";
+        }
+
+        // 免冻结豁免（读 DB，与定时任务同源）
+        if (cardMappingService.isFreezeExemptForPolicy(userId)) {
+            return "该用户仍享有免冻结豁免，跳过";
+        }
+
+        // ARO 官方是否仍在内
+        AroOccupancyAuthorityService.OfficialPresence presence =
+                occupancyAuthorityService.queryOfficialPresence(userId);
+        if (presence == AroOccupancyAuthorityService.OfficialPresence.QUERY_FAILED) {
             return "ARO 查询失败（网络或上游异常），无法判定";
         }
-        if (noLeaveRooms.isEmpty()) {
+        if (presence == AroOccupancyAuthorityService.OfficialPresence.NOT_INSIDE) {
             return "该用户官方已无滞留房间，无需处理";
         }
 
@@ -268,7 +427,7 @@ public class StrandedViolationService {
             return "该用户所属部门 " + dept + " 在白名单中，跳过";
         }
 
-        // 去重
+        // 去重 + 创建（与定时任务同源：命名锁内判定）
         if (violationService.hasActiveAutoViolation(userId)) {
             return "该用户已有 ACTIVE 的 AUTO_STRANDED 违规，跳过（去重）";
         }
@@ -290,14 +449,7 @@ public class StrandedViolationService {
         }
 
         // 创建违规
-        String name = userId; // 从人员库查
-        try {
-            List<Map<String, Object>> hits = personnelMapper.searchPersonnel(userId, 1);
-            if (hits != null && !hits.isEmpty()) {
-                name = Objects.toString(hits.get(0).getOrDefault("name", userId), userId);
-            }
-        } catch (Exception ignored) {
-        }
+        String name = lookupName(userId);
 
         String text = tpl
                 .replace("${name}", name)
@@ -306,13 +458,16 @@ public class StrandedViolationService {
                         LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")));
 
         String challenge = interactiveEnabled && !interactivePhrase.isBlank() ? interactivePhrase.trim() : null;
-        boolean effectiveForbidEnter = forbidEnter == 1 || challenge != null;
-        violationService.create(
-                userId, text, null, effectiveForbidEnter, null, true,
-                expireDays, "SYSTEM", SOURCE_AUTO_STRANDED,
+        TwinStudentViolation newViolation = violationService.createAutoStrandedIfAbsent(
+                userId, text, null, forbidEnter == 1, null, true,
+                expireDays, "SYSTEM",
                 challenge,
                 interactiveUnlockOnVerify,
                 testRuleId);
+
+        if (newViolation == null) {
+            return sb.append("该用户已有 ACTIVE 的 AUTO_STRANDED 违规，跳过（去重）").toString();
+        }
 
         sb.append("已创建违规记录");
         return sb.toString();
@@ -329,6 +484,17 @@ public class StrandedViolationService {
         } catch (Exception ignored) {
         }
         return "";
+    }
+
+    private String lookupName(String userId) {
+        try {
+            List<Map<String, Object>> hits = personnelMapper.searchPersonnel(userId, 1);
+            if (hits != null && !hits.isEmpty()) {
+                return Objects.toString(hits.get(0).getOrDefault("name", userId), userId);
+            }
+        } catch (Exception ignored) {
+        }
+        return userId;
     }
 
     private List<String> parseJsonArray(String raw) {
@@ -371,6 +537,31 @@ public class StrandedViolationService {
             return Integer.parseInt(String.valueOf(v));
         } catch (Exception e) {
             return def;
+        }
+    }
+
+    /** TINYINT 开关：兼容 Boolean、0/1、\"true\"/\"false\" 字符串；null 时用 defaultWhenNull */
+    private static int toTinyIntFlag(Object v, int defaultWhenNull) {
+        if (v == null) {
+            return defaultWhenNull;
+        }
+        if (v instanceof Boolean b) {
+            return b ? 1 : 0;
+        }
+        if (v instanceof Number n) {
+            return n.intValue() != 0 ? 1 : 0;
+        }
+        String s = String.valueOf(v).trim();
+        if ("1".equals(s) || "true".equalsIgnoreCase(s)) {
+            return 1;
+        }
+        if ("0".equals(s) || "false".equalsIgnoreCase(s)) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(s) != 0 ? 1 : 0;
+        } catch (Exception e) {
+            return defaultWhenNull;
         }
     }
 }

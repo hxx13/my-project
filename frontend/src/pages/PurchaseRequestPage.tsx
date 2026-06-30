@@ -10,6 +10,7 @@ import { useWorkorderUnreadFlags } from "@/features/notification/useWorkorderUnr
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
+import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 
 const STATUS_TEXT: Record<string, string> = {
   PENDING: "待处理",
@@ -184,7 +185,7 @@ export default function PurchaseRequestPage() {
                   </div>
                 )}
                 <div className="mt-2 text-xs text-[var(--twin-mute)]">
-                  时间线：提交 {row.createTime || "-"} / 开始 {row.startTime || "-"} / 完成 {row.finishTime || "-"}
+                  时间线：提交 {formatDateTimeAsiaShanghai(row.createTime)} / 开始 {formatDateTimeAsiaShanghai(row.startTime)} / 完成 {formatDateTimeAsiaShanghai(row.finishTime)}
                 </div>
                 <div className="mt-1 text-xs text-[var(--twin-mute)]">
                   可见范围：{row.isPublic === 1 ? "公开" : "个人"}

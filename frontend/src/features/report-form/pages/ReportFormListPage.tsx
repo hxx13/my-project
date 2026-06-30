@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FileSpreadsheet, Plus, Trash2, Copy, Pencil, Eye, MoreVertical, Upload,
-  Download, Printer, Link, Pin, PinOff, FileJson, FileText, Send, RefreshCw,
+  Printer, Link, Pin, PinOff, FileJson, FileText, Send, RefreshCw, FileUp, Settings2,
 } from 'lucide-react';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import {
@@ -15,8 +15,10 @@ import {
   fetchTemplates, updateForm, createFormFromWord, togglePin,
 } from '../api/reportForm.api';
 import { createFromTemplate, exportPdf } from '../api/reportFill.api';
+import FormExportActions from '../components/FormExportActions';
 import PublishWizard from '../components/PublishWizard';
 import type { ReportFormDefinition } from '../types';
+import { formatDateTimeAsiaShanghaiShort, compareApiDateTime } from '@/lib/formatDateTimeAsiaShanghai';
 import toast from 'react-hot-toast';
 
 export default function ReportFormListPage() {
@@ -86,7 +88,7 @@ export default function ReportFormListPage() {
 
   const publishMut = useMutation({
     mutationFn: publishForm,
-    onSuccess: () => { invalidate(); toast.success('已发布'); },
+    onSuccess: () => { invalidate(); toast.success('已重新发布（沿用上次发布条件）'); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -121,6 +123,7 @@ export default function ReportFormListPage() {
   });
 
   const [publishWizardFormId, setPublishWizardFormId] = useState<number | null>(null);
+  const [publishWizardIntent, setPublishWizardIntent] = useState<'initial' | 'reset'>('initial');
   const [versionFormId, setVersionFormId] = useState<number | null>(null);
   const [versions, setVersions] = useState<unknown[]>([]);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
@@ -149,7 +152,7 @@ export default function ReportFormListPage() {
           invalidate();
           navigate(`/admin/report-form/${form.id}/design`);
         }),
-        { loading: '导入中...', success: '已从 Word 创建', error: 'Word 导入失败' },
+        { loading: '导入中...', success: '已从 Word 创建（已绑定打印模板，书签格已转为可编辑字段）', error: 'Word 导入失败' },
       );
     };
     input.click();
@@ -188,9 +191,20 @@ export default function ReportFormListPage() {
           disabled={createFromExcelMut.isPending}
           className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium bg-app-accent text-white hover:opacity-90 flex items-center gap-1 disabled:opacity-50 transition-opacity"
         >
-          <Upload className="w-3.5 h-3.5" />
-          {createFromExcelMut.isPending ? '导入中...' : 'Excel 创建'}
+          <FileUp className="w-3.5 h-3.5" />
+          {createFromExcelMut.isPending ? '导入中...' : 'Excel 导入'}
         </button>
+        {selected.size === 1 && (() => {
+          const form = rawList.find(f => f.id === [...selected][0]);
+          if (!form) return null;
+          return (
+            <FormExportActions
+              form={form}
+              context="admin-template"
+              buttonClassName="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-app-border hover:bg-app-surface-hover flex items-center gap-1 transition-colors"
+            />
+          );
+        })()}
         <button
           onClick={handleWordCreate}
           className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-app-border hover:bg-app-surface-hover flex items-center gap-1 transition-colors"
@@ -304,7 +318,15 @@ export default function ReportFormListPage() {
               }}
               onRename={name => renameMut.mutate({ id: form.id, name })}
               onDuplicate={() => duplicateMut.mutate(form.id)}
-              onPublish={() => setPublishWizardFormId(form.id)}
+              onPublish={() => {
+                setPublishWizardIntent('initial');
+                setPublishWizardFormId(form.id);
+              }}
+              onRepublish={() => publishMut.mutate(form.id)}
+              onResetPublishConditions={() => {
+                setPublishWizardIntent('reset');
+                setPublishWizardFormId(form.id);
+              }}
               onUnpublish={() => unpublishMut.mutate(form.id)}
               onSaveTemplate={() => saveTemplateMut.mutate(form.id)}
               onArchive={() => archiveMut.mutate(form.id)}
@@ -337,6 +359,32 @@ export default function ReportFormListPage() {
             onClose={() => setPublishWizardFormId(null)}
             formId={publishWizardFormId}
             layout={layout}
+            intent={publishWizardIntent}
+            onPublished={invalidate}
+            initialFillPolicy={(() => {
+              const raw = form?.fillPolicyJson;
+              if (!raw) return { mode: 'shared' as const, submitLabel: '提交', allowEditAfterSubmit: true };
+              if (typeof raw === 'string') {
+                try { return JSON.parse(raw); } catch { return { mode: 'shared' as const, submitLabel: '提交', allowEditAfterSubmit: true }; }
+              }
+              return raw as { mode: 'shared' | 'individual'; submitLabel: string; allowEditAfterSubmit: boolean; allowMultipleInstances?: boolean };
+            })()}
+            initialPermission={(() => {
+              const raw = form?.permissionJson;
+              if (!raw) return { visibleRoles: ['STAFF'], visibleUserIds: [], fieldRoleBindings: {}, allowUnboundView: true };
+              if (typeof raw === 'string') {
+                try { return JSON.parse(raw); } catch { return { visibleRoles: ['STAFF'], visibleUserIds: [], fieldRoleBindings: {}, allowUnboundView: true }; }
+              }
+              return raw;
+            })()}
+            initialSchedule={(() => {
+              const raw = form?.scheduleJson;
+              if (!raw) return { period: 'manual' as const };
+              if (typeof raw === 'string') {
+                try { return JSON.parse(raw); } catch { return { period: 'manual' as const }; }
+              }
+              return raw;
+            })()}
           />
         );
       })()}
@@ -399,7 +447,7 @@ export default function ReportFormListPage() {
                   <div key={i} className="p-3 rounded-[var(--app-radius-container)] border border-[var(--app-color-border)] bg-[var(--app-color-surface-container)]">
                     <div className="text-[12px] font-medium text-[var(--app-color-text-primary)]">版本 {v.version}</div>
                     <div className="text-[11px] text-[var(--app-color-text-tertiary)] mt-0.5">
-                      发布于 {v.publishedAt} · {v.publishedBy}
+                      发布于 {formatDateTimeAsiaShanghaiShort(v.publishedAt)} · {v.publishedBy}
                     </div>
                   </div>
                 ))}
@@ -414,7 +462,7 @@ export default function ReportFormListPage() {
 
 function FormRow({
   form, selected, onToggleSel, onOpen, onEdit, onDelete, onRename,
-  onDuplicate, onPublish, onUnpublish, onSaveTemplate,
+  onDuplicate, onPublish, onRepublish, onResetPublishConditions, onUnpublish, onSaveTemplate,
   onArchive, onUnarchive, onTogglePin, onViewVersions, onPreview, status,
 }: {
   form: ReportFormDefinition;
@@ -426,6 +474,8 @@ function FormRow({
   onRename: (name: string) => void;
   onDuplicate: () => void;
   onPublish: () => void;
+  onRepublish: () => void;
+  onResetPublishConditions: () => void;
   onUnpublish: () => void;
   onSaveTemplate: () => void;
   onArchive: () => void;
@@ -445,7 +495,19 @@ function FormRow({
   // 检测已发布表单是否有未同步的更新
   const hasPendingChanges = form.status === 'published'
     && form.publishedAt
-    && new Date(form.updatedAt).getTime() > new Date(form.publishedAt).getTime();
+    && compareApiDateTime(form.updatedAt, form.publishedAt) > 0;
+
+  const statusBadge = (() => {
+    if (form.status === 'archived') {
+      return { label: '已归档', warn: false, archived: true };
+    }
+    if (form.status === 'published') {
+      return hasPendingChanges
+        ? { label: '有更新', warn: true, archived: false }
+        : { label: '已发布', warn: false, archived: false };
+    }
+    return { label: '草稿', warn: false, archived: false };
+  })();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -492,26 +554,32 @@ function FormRow({
         ) : (
           <button onClick={onOpen} className="text-left w-full">
             <div className="text-[13px] font-semibold text-app-text-primary truncate">{form.name}</div>
-            <div className="text-[11px] text-app-text-tertiary flex gap-2 mt-0.5 items-center">
+            <div className="text-[11px] text-app-text-tertiary flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 items-center">
               <span
                 className={`px-1.5 py-0 rounded text-[10px] border inline-flex items-center gap-1 ${
-                  hasPendingChanges
+                  statusBadge.warn
                     ? 'border-[var(--app-color-feedback-warning)] text-[var(--app-color-feedback-warning)] bg-[var(--app-color-feedback-warning-soft)]'
                     : form.status === 'published'
                       ? 'border-app-accent text-app-accent'
-                      : 'border-app-border text-app-text-tertiary'
+                      : statusBadge.archived
+                        ? 'border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] bg-[var(--app-color-surface-page)]'
+                        : 'border-app-border text-app-text-tertiary'
                 }`}
               >
-                {form.status === 'published'
-                  ? (hasPendingChanges ? <><RefreshCw className="w-2.5 h-2.5" />有更新</> : '已发布')
-                  : '草稿'}
+                {statusBadge.warn ? <><RefreshCw className="w-2.5 h-2.5" />{statusBadge.label}</> : statusBadge.label}
               </span>
               {form.source && (
                 <span className="text-[10px] text-[var(--app-color-text-tertiary)] px-1 rounded bg-[var(--app-color-surface-container)]">
                   {form.source === 'excel' ? '📊Excel' : form.source === 'word' ? '📝Word' : form.source === 'template' ? '📋模板' : '📄空白'}
                 </span>
               )}
-              <span>更新于 {new Date(form.updatedAt).toLocaleString('zh-CN')}</span>
+              {form.status === 'published' && form.publishedBy && (
+                <span>发布 {form.publishedBy} · {formatDateTimeAsiaShanghaiShort(form.publishedAt)}</span>
+              )}
+              {hasPendingChanges && (
+                <span className="text-[var(--app-color-feedback-warning)]">设计已改，待重新发布</span>
+              )}
+              <span>设计更新 {formatDateTimeAsiaShanghaiShort(form.updatedAt)}</span>
             </div>
           </button>
         )}
@@ -537,10 +605,13 @@ function FormRow({
             {form.status === 'published' ? (
               <>
                 {hasPendingChanges && (
-                  <MenuItem icon={RefreshCw} label="重新发布" onClick={() => { onPublish(); setMenuOpen(false); }} />
+                  <MenuItem icon={RefreshCw} label="重新发布" onClick={() => { onRepublish(); setMenuOpen(false); }} />
                 )}
+                <MenuItem icon={Settings2} label="重置发布条件" onClick={() => { onResetPublishConditions(); setMenuOpen(false); }} />
                 <MenuItem icon={Eye} label="撤回发布" onClick={() => { onUnpublish(); setMenuOpen(false); }} />
               </>
+            ) : form.status === 'archived' ? (
+              <MenuItem icon={Send} label="重新发布" onClick={() => { onPublish(); setMenuOpen(false); }} />
             ) : (
               <MenuItem icon={Send} label="发布" onClick={() => { onPublish(); setMenuOpen(false); }} />
             )}
@@ -562,6 +633,12 @@ function FormRow({
               setMenuOpen(false);
             }} />
             <MenuItem icon={Printer} label="打印" onClick={() => { exportPdf(form.id); setMenuOpen(false); }} />
+            <FormExportActions
+              form={form}
+              context="admin-template"
+              variant="menu"
+              onDone={() => setMenuOpen(false)}
+            />
             <MenuItem icon={form.pinned ? PinOff : Pin} label={form.pinned ? '取消置顶' : '置顶'} onClick={() => {
               onTogglePin(); setMenuOpen(false);
             }} />

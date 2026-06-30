@@ -46,4 +46,9 @@ public interface TwinStudentViolationMapper {
 
     /** 检查用户是否已有 ACTIVE 的自动滞留违规（用于去重） */
     int countActiveAutoStrandedByUserId(@Param("targetUserId") String targetUserId);
+
+    /** MySQL 命名锁：与当前事务/连接绑定，跨实例互斥 AUTO_STRANDED 创建 */
+    Integer tryAcquireLock(@Param("lockName") String lockName, @Param("timeoutSeconds") int timeoutSeconds);
+
+    Integer releaseLock(@Param("lockName") String lockName);
 }

@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Eye, X } from "lucide-react";
 import { Portal } from "@/components/Portal";
@@ -215,7 +216,7 @@ export default function AdminSpecialStatusOverviewPage() {
           <button
             type="button"
             className="hover:bg-[var(--twin-canvas-soft)] rounded-twin-md p-1 -ml-1 transition"
-            onClick={() => navigate("/admin/cage-shelves")}
+            onClick={() => navigate(toAdminRoutePath("/admin/cage-shelves"))}
             title="返回笼架信息"
           >
             <ArrowLeft className="h-5 w-5 text-[var(--twin-link-deep)]" />

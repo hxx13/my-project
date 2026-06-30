@@ -3,6 +3,12 @@ import { authStorage } from "@/features/auth/authStorage";
 
 /** 学生中心 Query 分片键：特殊通道/PIN 换人后必须与上一会话隔离 */
 export function getStudentSessionScope(): string {
+  // Mirror mode: scope cache to the target student, not the staff user
+  if (authStorage.isMirrorMode()) {
+    const mirrorId = authStorage.getMirrorUserId();
+    if (mirrorId) return `mirror:${mirrorId}`;
+  }
+
   const infoId = authStorage.getUserInfo()?.id?.trim();
   if (infoId) return infoId;
   const tokenId = authStorage.getUserIdFromToken();

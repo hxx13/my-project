@@ -47,7 +47,7 @@ public class StudentActivityController {
 
     /** 若为学生角色，自动解析其课题组名覆盖传入的 groupName */
     private String resolveGroupForStudent(User user, String requestedGroup) {
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() >= RoleEnum.STAFF.getLevel()) {
             return requestedGroup; // 教职工可直接指定课题组
         }
@@ -74,7 +74,7 @@ public class StudentActivityController {
             @RequestParam(defaultValue = "all") String campus) {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         // 学生：自动用课题组名作为 keyword，只返回自己的组
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             try {
@@ -98,7 +98,7 @@ public class StudentActivityController {
             @RequestParam(defaultValue = "entries") String sortBy,
             @RequestParam(defaultValue = "desc") String order,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "10") int size) {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
         groupName = resolveGroupForStudent(user, groupName);
@@ -167,7 +167,7 @@ public class StudentActivityController {
             @RequestParam(defaultValue = "30") int daysBack) {
         User user = resolveUser(auth);
         if (user == null) return Result.error("未登录");
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             return Result.error("需要教职工及以上权限");
         }

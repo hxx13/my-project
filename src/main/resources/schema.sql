@@ -156,13 +156,14 @@ CREATE TABLE IF NOT EXISTS sys_user (
     username VARCHAR(64) UNIQUE COMMENT '登录账号',
     password VARCHAR(255) COMMENT '登录密码',
     open_id VARCHAR(128) UNIQUE COMMENT '微信OpenID',
-    role VARCHAR(32) NOT NULL DEFAULT 'STUDENT' COMMENT '角色编码',
+    role VARCHAR(32) NOT NULL DEFAULT 'MEMBER' COMMENT '角色编码',
     status TINYINT NOT NULL DEFAULT 1 COMMENT '账号状态:1启用,0禁用',
     password_reset_required TINYINT NOT NULL DEFAULT 0 COMMENT '是否需在个人中心改密:1是,0否',
     display_nickname VARCHAR(64) NULL COMMENT '展示昵称（无人员库姓名时用于报修/采购/物资等申请人展示）',
     mini_bind_type VARCHAR(16) NULL COMMENT '微信小程序绑定方式:STUDENT|STAFF',
     mini_preferences_json LONGTEXT NULL COMMENT '小程序个人配置JSON（房间关注区域等）',
     auth_profile VARCHAR(32) NULL COMMENT '认证来源:WECHAT_ARO微信+ARO绑定|WEB_PASSWORD Web账号密码',
+    account_source VARCHAR(16) NULL COMMENT '账号来源库: STUDENT | STAFF',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='统一认证用户表';
@@ -266,6 +267,22 @@ SET @ap_sql := IF(
 PREPARE stmt_ap FROM @ap_sql;
 EXECUTE stmt_ap;
 DEALLOCATE PREPARE stmt_ap;
+
+SET @as_col_exists := (
+    SELECT COUNT(1)
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'sys_user'
+      AND COLUMN_NAME = 'account_source'
+);
+SET @as_sql := IF(
+    @as_col_exists = 0,
+    'ALTER TABLE sys_user ADD COLUMN account_source VARCHAR(16) NULL COMMENT ''账号来源库: STUDENT | STAFF''',
+    'SELECT 1'
+);
+PREPARE stmt_as FROM @as_sql;
+EXECUTE stmt_as;
+DEALLOCATE PREPARE stmt_as;
 
 -- 预设超级管理员（仅开发/首次初始化；生产环境请改密或删除后自行开户）
 -- Web 登录：POST /api/auth/login/web 使用 username + password
@@ -898,6 +915,9 @@ CREATE TABLE IF NOT EXISTS stranded_violation_config (
 INSERT INTO stranded_violation_config (id, enabled) VALUES (1, 0)
 ON DUPLICATE KEY UPDATE id=id;
 
+INSERT INTO stranded_violation_config (id, enabled, auto_signout_enabled) VALUES (2, 0, 1)
+ON DUPLICATE KEY UPDATE id=id;
+
 CREATE TABLE IF NOT EXISTS twin_scan_popup_announcement (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(200) NOT NULL COMMENT '公告标题',
@@ -913,6 +933,18 @@ CREATE TABLE IF NOT EXISTS twin_scan_popup_announcement (
     KEY idx_tspa_status_enabled (status, enabled, sort_order),
     KEY idx_tspa_publish (publish_at, expire_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码弹窗公告（多条翻页）';
+
+CREATE TABLE IF NOT EXISTS twin_scan_notice_auto_suppress (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    target_user_id VARCHAR(64) NOT NULL COMMENT '被扫码人员 ARO user_id',
+    notice_kind VARCHAR(20) NOT NULL COMMENT 'violation|unbound|announcement',
+    record_id BIGINT NOT NULL COMMENT '违规/公告 id；未绑卡固定 1',
+    source_updated_at DATETIME NULL COMMENT 'suppress 时被扫通告 updated_at 快照',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_tsna_suppress (target_user_id, notice_kind, record_id),
+    KEY idx_tsna_target (target_user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码通告：被扫人员下次不再自动弹出';
 
 CREATE TABLE IF NOT EXISTS analytics_user_view (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -1353,8 +1385,29 @@ CREATE TABLE IF NOT EXISTS face_verify_audit (
     KEY idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人脸验证审计';
 
+CREATE TABLE IF NOT EXISTS twin_scan_delay_carrier (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    button_label VARCHAR(32) NOT NULL DEFAULT '延迟' COMMENT '载体按钮文案',
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码延迟载体按钮';
+
+CREATE TABLE IF NOT EXISTS twin_scan_delay_carrier_option (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    carrier_id BIGINT NOT NULL COMMENT 'twin_scan_delay_carrier.id',
+    option_id BIGINT NOT NULL COMMENT 'twin_scan_delay_option.id',
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_sdco_carrier_option (carrier_id, option_id),
+    KEY idx_sdco_carrier (carrier_id, sort_order),
+    KEY idx_sdco_option (option_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='载体与延迟菜单项分配';
+
 CREATE TABLE IF NOT EXISTS twin_scan_delay_option (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    carrier_id BIGINT NULL COMMENT 'twin_scan_delay_carrier.id',
     room_id VARCHAR(64) NOT NULL COMMENT 'ARO 房间 ID',
     room_name VARCHAR(128) NOT NULL COMMENT '房间展示名（配置对照）',
     option_label VARCHAR(64) NOT NULL COMMENT '展开菜单项文案',
@@ -1364,7 +1417,8 @@ CREATE TABLE IF NOT EXISTS twin_scan_delay_option (
     require_approval TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=需教职工审核',
     reviewer_user_ids JSON NULL COMMENT '推荐审核人账号 ID 列表',
     exempt_mode VARCHAR(20) NOT NULL DEFAULT 'TIME' COMMENT 'TIME/COUNT/BOTH',
-    duration_minutes INT NULL COMMENT '免冻结时长；-1=今日24:00',
+    duration_minutes INT NULL COMMENT '免冻结时长（旧规则，分钟）；-1=今日24:00',
+    extend_until_time VARCHAR(5) NULL COMMENT '延长至当日 HH:mm（优先于 duration_minutes）',
     max_count INT NULL COMMENT '次数上限',
     exempt_room_ids JSON NULL COMMENT '免冻结房间 ID 列表，空则仅当前 room_id',
     enabled TINYINT(1) NOT NULL DEFAULT 1,
@@ -1373,6 +1427,16 @@ CREATE TABLE IF NOT EXISTS twin_scan_delay_option (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_tsdo_room (room_id, enabled, sort_order)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码延迟选项库（与房间无关）';
+
+CREATE TABLE IF NOT EXISTS twin_scan_delay_room_carrier (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    room_id VARCHAR(64) NOT NULL COMMENT 'ARO 房间 ID',
+    carrier_id BIGINT NOT NULL COMMENT 'twin_scan_delay_carrier.id',
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_sdrc_room_carrier (room_id, carrier_id),
+    KEY idx_sdrc_room (room_id, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='房间与延迟载体搭配';
 
 CREATE TABLE IF NOT EXISTS twin_scan_delay_room_option (
     id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -1401,6 +1465,50 @@ CREATE TABLE IF NOT EXISTS twin_scan_delay_request (
     KEY idx_tsdr_status (status, created_at),
     KEY idx_tsdr_reviewer (reviewer_user_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='扫码延迟免冻结审核单';
+
+CREATE TABLE IF NOT EXISTS twin_scan_delay_auto_trust (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    owner_user_id VARCHAR(64) NOT NULL COMMENT '配置人（通常为审核教职工）',
+    subject_user_id VARCHAR(64) NOT NULL COMMENT '被信任申请人',
+    option_id BIGINT NOT NULL COMMENT 'twin_scan_delay_option.id，必填',
+    room_id VARCHAR(64) NULL COMMENT '可选；空=该 option 下所有 room',
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    trigger_mode VARCHAR(20) NOT NULL DEFAULT 'ON_SUBMIT' COMMENT 'ON_SUBMIT/SCHEDULED',
+    schedule_cron VARCHAR(64) NULL COMMENT 'trigger_mode=SCHEDULED 时 Cron',
+    note VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_sd_trust (owner_user_id, subject_user_id, option_id, room_id),
+    KEY idx_sd_trust_owner (owner_user_id, enabled),
+    KEY idx_sd_trust_subject (subject_user_id, option_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='延迟免冻结按人信任自动审批';
+
+CREATE TABLE IF NOT EXISTS twin_scan_delay_auto_batch (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    owner_user_id VARCHAR(64) NOT NULL COMMENT '配置人',
+    name VARCHAR(128) NOT NULL DEFAULT '批量自动审批',
+    option_ids JSON NOT NULL COMMENT 'option id 数组，至少一项',
+    room_ids JSON NULL COMMENT '可选 room 过滤',
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    schedule_cron VARCHAR(64) NOT NULL DEFAULT '0 */15 * * * *' COMMENT '默认定时每15分钟',
+    max_per_run INT NOT NULL DEFAULT 20,
+    only_if_reviewer_match TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_sd_batch_owner (owner_user_id, enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='延迟免冻结批量自动审批';
+
+CREATE TABLE IF NOT EXISTS twin_scan_delay_auto_approve_log (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    rule_type VARCHAR(16) NOT NULL COMMENT 'trust/batch',
+    rule_id BIGINT NULL,
+    request_id BIGINT NOT NULL,
+    result VARCHAR(32) NOT NULL COMMENT 'APPROVED/SKIPPED/FAILED',
+    message VARCHAR(255) NULL,
+    executed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_sd_auto_log_req (request_id),
+    KEY idx_sd_auto_log_at (executed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='延迟免冻结自动审批执行日志';
 
 -- 填报报表模块
 SOURCE scripts/report_form.ddl.sql;

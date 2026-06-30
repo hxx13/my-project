@@ -1,0 +1,26 @@
+/* 手机 H5 公告详情全屏 — 滚动与富文本大图 */
+.mobile-notice-panel-root {
+  height: 100dvh;
+  max-height: 100dvh;
+  touch-action: pan-y;
+}
+
+.mobile-notice-panel-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-notice-detail-body {
+  --rich-text-image-max-width: 100%;
+}
+
+.mobile-notice-detail-body.rich-text-content :where(p > img),
+.mobile-notice-detail-body.rich-text-content :where(img:not(p > img)) {
+  max-width: 100% !important;
+  width: auto !important;
+  height: auto !important;
+}

@@ -1,6 +1,7 @@
 package com.example.demo.modules.analytics.service;
 
 import com.example.demo.modules.accessfusion.service.AccessAudienceConstants;
+import com.example.demo.modules.accessfusion.service.AccessSwingCleanWorkspaceService;
 import com.example.demo.modules.analytics.dto.AnalyticsAuditLogDto;
 import com.example.demo.modules.analytics.entity.AnalyticsAuditLog;
 import com.example.demo.modules.analytics.entity.AnalyticsUserView;
@@ -42,6 +43,7 @@ public class AnalyticsAuditService {
     private final IsolationUsageReportService isolationUsageReportService;
     private final CageOccupancyReportService cageOccupancyReportService;
     private final AnalyticsCageAuditProgressService cageAuditProgressService;
+    private final AccessSwingCleanWorkspaceService workspaceService;
     private final ObjectMapper objectMapper;
 
     public AnalyticsAuditService(
@@ -50,12 +52,14 @@ public class AnalyticsAuditService {
             IsolationUsageReportService isolationUsageReportService,
             CageOccupancyReportService cageOccupancyReportService,
             AnalyticsCageAuditProgressService cageAuditProgressService,
+            AccessSwingCleanWorkspaceService workspaceService,
             ObjectMapper objectMapper) {
         this.userViewMapper = userViewMapper;
         this.auditLogMapper = auditLogMapper;
         this.isolationUsageReportService = isolationUsageReportService;
         this.cageOccupancyReportService = cageOccupancyReportService;
         this.cageAuditProgressService = cageAuditProgressService;
+        this.workspaceService = workspaceService;
         this.objectMapper = objectMapper;
     }
 
@@ -127,10 +131,11 @@ public class AnalyticsAuditService {
     }
 
     /**
-     * 强制重算：按当前 filter 覆盖写入该视图下已有全部周期快照（与配置 JSON 是否变更无关）。
+     * 强制重算：回源清洗 + 历史回溯 + 刷新已有快照 + 写最新周期。
+     * 不要求视图已订阅 — 用户主动触发强制重算即应执行。
      */
     public void refreshAllSnapshotsForView(AnalyticsUserView view) {
-        if (view == null || view.getIsSubscribed() == null || view.getIsSubscribed() != 1) {
+        if (view == null) {
             return;
         }
         if (isCageReport(view)) {
@@ -140,13 +145,38 @@ public class AnalyticsAuditService {
         List<AnalyticsAuditLog> existing =
                 auditLogMapper.selectAllByView(view.getUserId(), view.getId(), 500);
         log.info(
-                "[analytics-audit] force refresh viewId={} existingSnapshots={}",
+                "[analytics-audit] force refresh viewId={} existingSnapshots={} subscribed={}",
                 view.getId(),
-                existing.size());
-        if (existing.isEmpty()) {
-            runAuditForView(view);
-            return;
+                existing.size(),
+                view.getIsSubscribed());
+
+        // Step 1: 回源清洗 — 确保 access_clean_package_item 有数据
+        preCleanForForceRecalc(view, existing);
+
+        // Step 2: 找出需要覆盖的日期范围
+        LocalDate today = LocalDate.now();
+        LocalDate yesterday = today.minusDays(1);
+        LocalDate backfillFrom;
+        if (!existing.isEmpty()) {
+            // 从最早快照日期开始回溯，覆盖所有历史缺失
+            LocalDate earliest = findEarliestSnapshotDate(existing);
+            backfillFrom = earliest.isBefore(yesterday.minusDays(30))
+                    ? yesterday.minusDays(30) : earliest;
+        } else {
+            // 无已有快照：回溯最近 30 天
+            backfillFrom = yesterday.minusDays(30);
         }
+        if (backfillFrom.isAfter(yesterday)) {
+            backfillFrom = yesterday;
+        }
+
+        // Step 3: 历史回溯 — 覆盖从 backfillFrom 到 yesterday 的所有天
+        log.info(
+                "[analytics-audit] force refresh viewId={} backfill range=[{} -> {}]",
+                view.getId(), backfillFrom, yesterday);
+        backfillAuditForView(view, backfillFrom);
+
+        // Step 4: 刷新已有快照中可能未被 backfill 覆盖的周/月周期
         int idx = 0;
         for (AnalyticsAuditLog auditLog : existing) {
             idx++;
@@ -161,7 +191,96 @@ public class AnalyticsAuditService {
                         e.getMessage());
             }
         }
+
+        // Step 5: 写最新周期（昨天/上周/上月）
         runAuditForView(view);
+        log.info("[analytics-audit] force refresh complete viewId={}", view.getId());
+    }
+
+    /** 从已有快照列表中找到最早的日期 */
+    private static LocalDate findEarliestSnapshotDate(List<AnalyticsAuditLog> logs) {
+        LocalDate earliest = null;
+        for (AnalyticsAuditLog log : logs) {
+            LocalDate d = parsePeriodDate(log.getPeriodType(), log.getPeriodLabel());
+            if (d != null && (earliest == null || d.isBefore(earliest))) {
+                earliest = d;
+            }
+        }
+        return earliest != null ? earliest : LocalDate.now().minusDays(1);
+    }
+
+    /**
+     * 强制重算前置步骤：回源清洗门禁原表数据到清洗库。
+     * 从已有快照中提取日期范围，对所有已启用通道执行全量（非增量）合并。
+     */
+    private void preCleanForForceRecalc(AnalyticsUserView view, List<AnalyticsAuditLog> existing) {
+        try {
+            LocalDate rangeStart = null;
+            LocalDate rangeEnd = null;
+            if (existing != null) {
+                for (AnalyticsAuditLog log : existing) {
+                    if (!StringUtils.hasText(log.getPeriodLabel())) {
+                        continue;
+                    }
+                    LocalDate d = parsePeriodDate(log.getPeriodType(), log.getPeriodLabel());
+                    if (d != null) {
+                        if (rangeStart == null || d.isBefore(rangeStart)) {
+                            rangeStart = d;
+                        }
+                        if (rangeEnd == null || d.isAfter(rangeEnd)) {
+                            rangeEnd = d;
+                        }
+                    }
+                }
+            }
+            if (rangeStart == null) {
+                rangeStart = LocalDate.now().minusDays(1);
+            }
+            if (rangeEnd == null) {
+                rangeEnd = LocalDate.now().minusDays(1);
+            }
+            String startTime = rangeStart.atStartOfDay().format(DT_FMT);
+            String endTime = rangeEnd.atTime(23, 59, 59).format(DT_FMT);
+            log.info(
+                    "[analytics-audit] force-recalc pre-clean viewId={} range=[{}, {}]",
+                    view.getId(), startTime, endTime);
+            Map<String, Object> result = workspaceService.forceMergeAllChannelsForWindow(
+                    startTime, endTime, "FORCE_RECALC");
+            log.info(
+                    "[analytics-audit] force-recalc pre-clean done viewId={}: ok={} fail={} included={}",
+                    view.getId(),
+                    result.get("ok"), result.get("fail"), result.get("totalIncluded"));
+        } catch (Exception e) {
+            log.warn(
+                    "[analytics-audit] force-recalc pre-clean failed viewId={}: {}",
+                    view.getId(), e.getMessage());
+        }
+    }
+
+    /** 从快照 periodLabel 解析日期（日/周取周一/月取1日） */
+    private static LocalDate parsePeriodDate(String periodType, String periodLabel) {
+        if (!StringUtils.hasText(periodLabel)) {
+            return null;
+        }
+        try {
+            return switch (periodType) {
+                case "day" -> LocalDate.parse(periodLabel, DateTimeFormatter.ISO_LOCAL_DATE);
+                case "week" -> {
+                    int dash = periodLabel.indexOf("-W");
+                    if (dash < 0) yield null;
+                    int year = Integer.parseInt(periodLabel.substring(0, dash));
+                    int week = Integer.parseInt(periodLabel.substring(dash + 2));
+                    yield LocalDate.of(year, 1, 4)
+                            .with(WeekFields.ISO.weekBasedYear(), year)
+                            .with(WeekFields.ISO.weekOfWeekBasedYear(), week)
+                            .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+                }
+                case "month" -> LocalDate.parse(periodLabel + "-01");
+                default -> null;
+            };
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private void refreshSnapshotPeriod(

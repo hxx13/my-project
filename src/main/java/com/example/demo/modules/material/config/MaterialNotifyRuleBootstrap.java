@@ -28,7 +28,11 @@ public class MaterialNotifyRuleBootstrap implements ApplicationRunner {
             // CREATED 规则：学生提交申领后通知审核人
             jdbcTemplate.update("""
                 INSERT IGNORE INTO sys_notify_rule (event_type, biz_type, enabled, recipient_mode, min_role_level, template_key, update_time)
-                VALUES ('CREATED', 'MATERIAL_REQUEST', 1, 'HYBRID', 1, 'work_order_created_v1', NOW())
+                VALUES ('CREATED', 'MATERIAL_REQUEST', 1, 'RELATED', 1, 'work_order_created_v1', NOW())
+                """);
+            jdbcTemplate.update("""
+                UPDATE sys_notify_rule SET recipient_mode = 'RELATED', enabled = 1, update_time = NOW()
+                WHERE event_type = 'CREATED' AND biz_type = 'MATERIAL_REQUEST'
                 """);
 
             // COMPLETED 规则：出库完成后通知申请人

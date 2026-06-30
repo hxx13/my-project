@@ -9,7 +9,7 @@ interface Result<T> {
 }
 
 export type PagePlatform = "WEB" | "MINI";
-export type MinRole = "STUDENT" | "STAFF" | "SENIOR" | "ADMIN" | "SUPER_ADMIN" | "PLATFORM_OWNER";
+export type MinRole = "MEMBER" | "STAFF" | "SENIOR" | "ADMIN" | "SUPER_ADMIN" | "PLATFORM_OWNER";
 
 export interface PagePermissionNode {
   nodeKey: string;
@@ -25,6 +25,8 @@ export interface PagePermissionNode {
   chainKey?: string;
   autoDiscovered?: number;
   manualOverride?: number;
+  /** 注册表分组（manifest 注入，仅 WEB 管理端） */
+  groupTitle?: string;
   children?: PagePermissionNode[];
 }
 

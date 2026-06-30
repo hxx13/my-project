@@ -4,6 +4,7 @@
 
     <resultMap id="BaseMap" type="com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayOption">
         <id column="id" property="id"/>
+        <result column="carrier_id" property="carrierId"/>
         <result column="room_id" property="roomId"/>
         <result column="room_name" property="roomName"/>
         <result column="option_label" property="optionLabel"/>
@@ -14,6 +15,7 @@
         <result column="reviewer_user_ids" property="reviewerUserIds"/>
         <result column="exempt_mode" property="exemptMode"/>
         <result column="duration_minutes" property="durationMinutes"/>
+        <result column="extend_until_time" property="extendUntilTime"/>
         <result column="max_count" property="maxCount"/>
         <result column="exempt_room_ids" property="exemptRoomIds"/>
         <result column="enabled" property="enabled"/>
@@ -21,8 +23,8 @@
     </resultMap>
 
     <sql id="cols">
-        id, room_id, room_name, option_label, button_label, display_start, display_end,
-        require_approval, reviewer_user_ids, exempt_mode, duration_minutes, max_count,
+        id, carrier_id, room_id, room_name, option_label, button_label, display_start, display_end,
+        require_approval, reviewer_user_ids, exempt_mode, duration_minutes, extend_until_time, max_count,
         exempt_room_ids, enabled, sort_order
     </sql>
 
@@ -52,18 +54,19 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO twin_scan_delay_option (
-            room_id, room_name, option_label, button_label, display_start, display_end,
-            require_approval, reviewer_user_ids, exempt_mode, duration_minutes, max_count,
+            carrier_id, room_id, room_name, option_label, button_label, display_start, display_end,
+            require_approval, reviewer_user_ids, exempt_mode, duration_minutes, extend_until_time, max_count,
             exempt_room_ids, enabled, sort_order
         ) VALUES (
-            #{roomId}, #{roomName}, #{optionLabel}, #{buttonLabel}, #{displayStart}, #{displayEnd},
-            #{requireApproval}, #{reviewerUserIds}, #{exemptMode}, #{durationMinutes}, #{maxCount},
+            #{carrierId}, #{roomId}, #{roomName}, #{optionLabel}, #{buttonLabel}, #{displayStart}, #{displayEnd},
+            #{requireApproval}, #{reviewerUserIds}, #{exemptMode}, #{durationMinutes}, #{extendUntilTime}, #{maxCount},
             #{exemptRoomIds}, #{enabled}, #{sortOrder}
         )
     </insert>
 
     <update id="update">
         UPDATE twin_scan_delay_option SET
+            carrier_id = #{carrierId},
             room_id = #{roomId},
             room_name = #{roomName},
             option_label = #{optionLabel},
@@ -74,12 +77,23 @@
             reviewer_user_ids = #{reviewerUserIds},
             exempt_mode = #{exemptMode},
             duration_minutes = #{durationMinutes},
+            extend_until_time = #{extendUntilTime},
             max_count = #{maxCount},
             exempt_room_ids = #{exemptRoomIds},
             enabled = #{enabled},
             sort_order = #{sortOrder}
         WHERE id = #{id}
     </update>
+
+    <select id="listByCarrierId" resultMap="BaseMap">
+        SELECT <include refid="cols"/> FROM twin_scan_delay_option
+        WHERE carrier_id = #{carrierId}
+        ORDER BY sort_order DESC, id ASC
+    </select>
+
+    <select id="countByCarrierId" resultType="int">
+        SELECT COUNT(1) FROM twin_scan_delay_option WHERE carrier_id = #{carrierId}
+    </select>
 
     <delete id="deleteById">
         DELETE FROM twin_scan_delay_option WHERE id = #{id}

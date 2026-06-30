@@ -3,7 +3,7 @@ package com.example.demo.common.enums;
 import java.util.Arrays;
 
 public enum RoleEnum {
-    STUDENT("STUDENT", "学生", 1),
+    MEMBER("MEMBER", "学生", 1),
     STAFF("STAFF", "普通员工", 2),
     SENIOR("SENIOR", "高级员工", 3),
     ADMIN("ADMIN", "管理员", 4),
@@ -36,6 +36,6 @@ public enum RoleEnum {
         return Arrays.stream(values())
                 .filter(item -> item.code.equalsIgnoreCase(code))
                 .findFirst()
-                .orElse(STUDENT);
+                .orElse(MEMBER);
     }
 }

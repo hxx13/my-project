@@ -606,8 +606,7 @@ public class JobSchedulerService {
         if (!StringUtils.hasText(jobKey)) {
             return false;
         }
-        return JobExecutionRegistry.JOB_RPG_RECALC.equals(jobKey)
-                || JobExecutionRegistry.JOB_PERSONNEL_SYNC.equals(jobKey)
+        return JobExecutionRegistry.JOB_PERSONNEL_SYNC.equals(jobKey)
                 || JobExecutionRegistry.JOB_MODEL_RECALC.equals(jobKey)
                 || JobExecutionRegistry.JOB_GROUP_RECALC.equals(jobKey)
                 || JobExecutionRegistry.JOB_ORDER_SYNC.equals(jobKey)
@@ -624,7 +623,10 @@ public class JobSchedulerService {
                 || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_PREVIOUS_WEEK.equals(jobKey)
                 || JobExecutionRegistry.JOB_DAHUA_SWING_STATS_PULL_SINCE_LAST.equals(jobKey)
                 || JobExecutionRegistry.JOB_TELEMETRY_ARCHIVE_PURGE.equals(jobKey)
-                || JobExecutionRegistry.JOB_CAGE_SPECIAL_STATUS_SCAN.equals(jobKey);
+                || JobExecutionRegistry.JOB_CAGE_SPECIAL_STATUS_SCAN.equals(jobKey)
+                || JobExecutionRegistry.JOB_STRANDED_VIOLATION_CHECK.equals(jobKey)
+                || JobExecutionRegistry.JOB_STRANDED_SIGNOUT_CHECK.equals(jobKey)
+                || JobExecutionRegistry.JOB_EXP_RECONCILE.equals(jobKey);
     }
 
     private void ensureTable() {

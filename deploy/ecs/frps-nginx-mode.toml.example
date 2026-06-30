@@ -1,0 +1,12 @@
+# ECS 服务端 — Nginx 前置模式（frp 隧道只绑本机，不对公网暴露 8080/18080）
+# 路径：/etc/frp/frps.toml 或你现有 frps 配置目录
+# 启动：./frps -c frps.toml
+
+bindAddr = "0.0.0.0"
+bindPort = 7000
+
+# 关键：映射端口只监听 127.0.0.1，由 Nginx 反代，公网只开 80/443
+proxyBindAddr = "127.0.0.1"
+
+auth.method = "token"
+auth.token = "change_me_to_a_long_random_secret"

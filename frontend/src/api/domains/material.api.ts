@@ -1,3 +1,4 @@
+import axios from "axios";
 import { authHttp } from "@/api/core/authHttp";
 
 interface Result<T> {
@@ -77,7 +78,7 @@ export interface MaterialStockMovementRow {
   createdAt?: string;
 }
 
-export async function fetchItemStockMovements(itemId: number, params: { page: number; size: number }) {
+export async function fetchItemStockMovements(itemId: number, params: { page: number; size: number; applicantGroup?: string }) {
   const res = await authHttp.get<Result<{ data: MaterialStockMovementRow[]; total: number }>>(`/material/admin/audit/item/${itemId}/movements`, { params });
   return res.data.data;
 }
@@ -95,17 +96,29 @@ export interface MaterialItemClaimRow {
   fulfilledAt?: string;
 }
 
-export async function fetchApplicantsWithRecords() {
-  const res = await authHttp.get<Result<Array<{ userId: string; applicantName: string }>>>("/material/admin/applicants-with-records");
+export async function fetchAuditExportRequests(params: {
+  from?: string;
+  to?: string;
+  page?: number;
+  size?: number;
+  applicantUserId?: string;
+  applicantGroup?: string;
+}) {
+  const res = await authHttp.get<Result<{ data: MaterialRequest[]; total: number }>>("/material/admin/audit/requests", { params });
+  return res.data.data;
+}
+
+export async function fetchApplicantsWithRecords(params?: { from?: string; to?: string }) {
+  const res = await authHttp.get<Result<Array<{ userId: string; applicantName: string }>>>("/material/admin/applicants-with-records", { params });
   return res.data.data ?? [];
 }
 
-export async function fetchGroupsWithRecords() {
-  const res = await authHttp.get<Result<string[]>>("/material/admin/groups-with-records");
+export async function fetchGroupsWithRecords(params?: { from?: string; to?: string }) {
+  const res = await authHttp.get<Result<string[]>>("/material/admin/groups-with-records", { params });
   return res.data.data ?? [];
 }
 
-export async function fetchItemClaimLines(itemId: number, params: { from?: string; to?: string; page: number; size: number }) {
+export async function fetchItemClaimLines(itemId: number, params: { from?: string; to?: string; applicantGroup?: string; page: number; size: number }) {
   const res = await authHttp.get<Result<{ data: MaterialItemClaimRow[]; total: number }>>(`/material/admin/audit/item/${itemId}/claims`, { params });
   return res.data.data;
 }
@@ -206,6 +219,30 @@ export async function createMaterialRequest(lines: { itemId: number; qty: number
   return res.data.data;
 }
 
+/** 扫码快捷业务：PIN 验证后以被扫人员 token 提交，避免误用操作员身份 */
+function getMaterialRequestSubmitErrorMessage(data: unknown): string {
+  if (!data || typeof data !== "object") return "提交失败";
+  const body = data as Record<string, unknown>;
+  if (typeof body.message === "string" && body.message.trim()) return body.message;
+  return "提交失败";
+}
+
+export async function createMaterialRequestWithToken(
+  bearerToken: string,
+  lines: { itemId: number; qty: number }[],
+  applicantGroup?: string,
+) {
+  const res = await axios.post<Result<MaterialRequest[]>>(
+    "/api/material/requests",
+    { lines, applicantGroup },
+    { headers: { Authorization: `Bearer ${bearerToken}` } },
+  );
+  if (!res.data?.success) {
+    throw new Error(getMaterialRequestSubmitErrorMessage(res.data));
+  }
+  return res.data.data;
+}
+
 export async function fetchMyMaterialRequests(params: { page: number; size: number; status?: string }) {
   const res = await authHttp.get<Result<{ data: MaterialRequest[]; total: number }>>("/material/requests/mine", { params });
   return res.data.data;
@@ -231,8 +268,10 @@ export async function fetchMyMaterialStats() {
 
 // ---- admin API ----
 
-export async function fetchAdminMaterialCategories() {
-  const res = await authHttp.get<Result<MaterialCategory[]>>("/material/admin/categories");
+export async function fetchAdminMaterialCategories(applicantGroup?: string) {
+  const res = await authHttp.get<Result<MaterialCategory[]>>("/material/admin/categories", {
+    params: applicantGroup ? { applicantGroup } : {},
+  });
   return res.data.data;
 }
 
@@ -250,9 +289,9 @@ export async function deleteAdminMaterialCategory(id: number) {
   await authHttp.delete(`/material/admin/categories/${id}`);
 }
 
-export async function fetchAdminMaterialItems(categoryId?: number) {
+export async function fetchAdminMaterialItems(categoryId?: number, applicantGroup?: string) {
   const res = await authHttp.get<Result<MaterialItem[]>>("/material/admin/items", {
-    params: categoryId != null ? { categoryId } : {},
+    params: { ...(categoryId != null ? { categoryId } : {}), ...(applicantGroup ? { applicantGroup } : {}) },
   });
   return res.data.data;
 }
@@ -310,6 +349,11 @@ export async function fetchAllMaterialRequests(params: { page: number; size: num
   return res.data.data;
 }
 
+export async function fetchFinishedMaterialRequests(params: { page: number; size: number; applicantUserId?: string; applicantGroup?: string }) {
+  const res = await authHttp.get<Result<{ data: MaterialRequest[]; total: number }>>("/material/admin/requests/finished", { params });
+  return res.data.data;
+}
+
 export async function approveMaterialRequest(id: string) {
   const res = await authHttp.post<Result<MaterialRequest>>(`/material/admin/requests/${id}/approve`);
   return res.data.data;
@@ -349,9 +393,21 @@ export async function fetchMaterialAuditTrail(params: {
 
 export async function exportMaterialAuditTrail(params: {
   from?: string; to?: string; categoryId?: number; groupId?: string;
+  applicantUserId?: string; applicantGroup?: string; exportLabel?: string;
 }): Promise<Blob> {
   const res = await authHttp.get("/material/admin/stats/export", {
     params,
+    responseType: "blob",
+  });
+  return res.data as Blob;
+}
+
+export async function exportMaterialItemFlow(params: {
+  itemId: number; from?: string; to?: string; applicantGroup?: string; exportLabel?: string;
+}): Promise<Blob> {
+  const { itemId, ...rest } = params;
+  const res = await authHttp.get(`/material/admin/audit/item/${itemId}/export`, {
+    params: rest,
     responseType: "blob",
   });
   return res.data as Blob;

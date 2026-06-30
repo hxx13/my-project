@@ -16,6 +16,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PageTransition } from "@/components/animation/PageTransition";
 import { BackfillAutoGlobalBanner } from "@/features/dahua-swing-stats/BackfillAutoGlobalBanner";
@@ -28,6 +29,10 @@ import {
   type PublicPagePermissionNode,
 } from "@/api/domains/pagePermission.api";
 import { fetchPendingBadges, type PendingBadges } from "@/api/domains/me.api";
+import { fetchPendingMaterialRequests } from "@/api/domains/material.api";
+import { fetchPendingScanDelayRequests } from "@/api/domains/scanDelay.api";
+import { materialQueryKeys } from "@/api/hooks/queryKeys";
+import { studentReviewPendingQueryOptions } from "@/features/student-review/studentReviewPoll";
 import { refreshAuthSession } from "@/api/domains/auth.api";
 import {
   ADMIN_NOTIFICATION_SSE_PUSH_EVENT,
@@ -36,12 +41,17 @@ import {
   STAFF_CHAT_SSE_EVENT,
   type StaffChatSsePayload,
 } from "@/features/admin/adminPendingBadgesEvents";
+import { handleScanDelayNotificationSse } from "@/store/useScanDelayReviewAlertStore";
 import { cn } from "@/lib/utils";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import {
   createAdminNavContext,
   buildAdminNavModel,
+  formatStudentReviewBadgeCount,
+  isAdminAreaPath,
   normalizeAdminPath,
+  patchStudentReviewNavBadges,
+  toAdminRoutePath,
   type AdminSidebarNavGroup,
   type AdminSidebarNavItem,
 } from "@/features/admin/buildAdminNavModel";
@@ -57,6 +67,7 @@ import {
   appendAdminNavRecent,
   clearAdminNavLock,
   collectAdminSidebarVisiblePaths,
+  hydrateAdminNavPersonalization,
   isAdminNavLocked,
   isAdminNavStarred,
   isFriendsSidebarGroupId,
@@ -65,6 +76,8 @@ import {
   readAdminNavLock,
   readAdminNavRecent,
   readAdminNavStars,
+  resolveAdminNavUserId,
+  FRIENDS_GROUP_ID,
   RECENT_GROUP_ID,
   splitPersonalizedPaletteItems,
   STARS_GROUP_ID,
@@ -110,8 +123,10 @@ import { NightSkyBackdropDecor } from "@/features/night-sky/NightSkyBackdropDeco
 const SIDEBAR_COLLAPSED_KEY = "aro-admin-sidebar-collapsed";
 
 function routeMatches(pathname: string, to: string, end?: boolean) {
-  if (end) return pathname === to || pathname === `${to}/`;
-  return pathname === to || pathname.startsWith(`${to}/`);
+  const p = normalizeAdminPath(pathname);
+  const t = normalizeAdminPath(to);
+  if (end) return p === t || p === `${t}/`;
+  return p === t || p.startsWith(`${t}/`);
 }
 
 function sidebarGroupAllItems(g: AdminSidebarNavGroup): AdminSidebarNavItem[] {
@@ -126,19 +141,6 @@ function NavPendingBadge({ text }: { text?: string }) {
       {t}
     </span>
   );
-}
-
-/** 分组内各入口待办角标汇总（纯数字则相加，否则每条计 1） */
-function sidebarGroupPendingTotal(items: { badgeText?: string }[]): number {
-  let sum = 0;
-  for (const it of items) {
-    const raw = (it.badgeText || "").trim();
-    if (!raw) continue;
-    const n = parseInt(raw, 10);
-    if (!Number.isNaN(n) && String(n) === raw) sum += n;
-    else sum += 1;
-  }
-  return sum;
 }
 
 /** 从图片文件中解码二维码，返回文本内容或 null */
@@ -173,7 +175,7 @@ export default function AdminLayout() {
   const { theme, effectiveMode } = useTheme();
   const isDark = effectiveMode === "dark";
   const [pendingBadges, setPendingBadges] = useState<PendingBadges | null>(null);
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const [permNodes, setPermNodes] = useState<PublicPagePermissionNode[]>([]);
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -184,7 +186,7 @@ export default function AdminLayout() {
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [sidebarLogoBroken, setSidebarLogoBroken] = useState(false);
 
-  /** ARO account binding — SUPER_ADMIN only */
+  /** ARO account binding — STAFF and above */
   const [aroBinding, setAroBinding] = useState<null | false | { aroUserId: string; name: string; departmentName: string; createdAt: string }>(null);
   const [aroBindDialogOpen, setAroBindDialogOpen] = useState(false);
   const [aroBindUserId, setAroBindUserId] = useState("");
@@ -198,8 +200,17 @@ export default function AdminLayout() {
     }
   });
 
-  /** 分组展开：从 session 恢复（全屏 Twin 子路由卸载本布局后返回时保留文件夹展开位置） */
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(readAdminSidebarOpenGroupsSession);
+  /** 分组展开：从 session 恢复（全屏 Twin 子路由卸载本布局后返回时保留文件夹展开位置）。
+   *  个性化分组（常用/收藏/消息）始终默认展开，防止 session 遗留的折叠状态导致空分组。 */
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const fromSession = readAdminSidebarOpenGroupsSession();
+    // 强制个性化分组默认展开
+    if (fromSession[RECENT_GROUP_ID] === false) delete fromSession[RECENT_GROUP_ID];
+    if (fromSession[STARS_GROUP_ID] === false) delete fromSession[STARS_GROUP_ID];
+    if (fromSession[FRIENDS_GROUP_ID] === false) delete fromSession[FRIENDS_GROUP_ID];
+    return fromSession;
+  });
+
 
   /** 全屏 Twin 子路由会卸载本布局；持久化分组展开态以便「返回」后仍定位到原文件夹 */
   useEffect(() => {
@@ -255,9 +266,9 @@ export default function AdminLayout() {
     };
   }, [role]);
 
-  /** Fetch ARO account binding status for SUPER_ADMIN */
+  /** Fetch ARO account binding status for STAFF and above */
   useEffect(() => {
-    if (!hasMinRole(role, "ADMIN")) return;
+    if (!hasMinRole(role, "STAFF")) return;
     const token = authStorage.getToken();
     if (!token) return;
     fetch("/api/admin/account/binding", {
@@ -282,9 +293,14 @@ export default function AdminLayout() {
   }, []);
 
   useEffect(() => {
+    if (!resolveAdminNavUserId() || !authStorage.hasToken()) return;
+    void hydrateAdminNavPersonalization().then(() => setPersonalBump((n) => n + 1));
+  }, [sessionUser?.id]);
+
+  useEffect(() => {
     const sync = () => {
       setSessionUser(authStorage.getUserInfo());
-      if (authStorage.hasToken() && pathname.startsWith("/admin")) {
+      if (authStorage.hasToken() && isAdminAreaPath(pathname)) {
         void pullPendingBadges();
       }
     };
@@ -319,18 +335,44 @@ export default function AdminLayout() {
     return () => window.removeEventListener(ADMIN_PENDING_BADGES_REFRESH_EVENT, onRefreshBadges);
   }, [pullPendingBadges]);
 
+  /** 与 MaterialReviewPage 共用 React Query 缓存，避免 /api/me/pending-badges 与待审列表不同步 */
+  const studentReviewBadgeQueriesEnabled = hasMinRole(role, "STAFF") && authStorage.hasToken();
+  const { data: liveMaterialPending = [] } = useQuery({
+    queryKey: materialQueryKeys.pendingRequests(),
+    queryFn: fetchPendingMaterialRequests,
+    enabled: studentReviewBadgeQueriesEnabled,
+    ...studentReviewPendingQueryOptions,
+  });
+  const { data: liveScanDelayPending = [] } = useQuery({
+    queryKey: ["scan-delay", "pending"],
+    queryFn: fetchPendingScanDelayRequests,
+    enabled: studentReviewBadgeQueriesEnabled,
+    ...studentReviewPendingQueryOptions,
+  });
+  const liveStudentReviewBadgeText = useMemo(
+    () => formatStudentReviewBadgeCount(liveMaterialPending.length, liveScanDelayPending.length),
+    [liveMaterialPending.length, liveScanDelayPending.length],
+  );
+
   /** 全后台常驻一条通知 SSE：新消息/站内通知到达即刷新角标；此前仅子页订阅时，不点进通知页侧栏不会更新 */
-  const inAdminShell = pathname.startsWith("/admin");
+  const inAdminShell = isAdminAreaPath(pathname);
   useEffect(() => {
     if (!inAdminShell || !authStorage.hasToken()) return;
     const token = authStorage.getToken();
     const url = `/api/notifications/stream?token=${encodeURIComponent(token)}`;
     const source = new EventSource(url);
-    const onNotification = () => {
+    const onNotification = (ev: Event) => {
       void pullPendingBadges();
       window.dispatchEvent(new Event(ADMIN_NOTIFICATION_SSE_PUSH_EVENT));
-      /** 消息页等子组件自行拉 /api/me/pending-badges，与侧栏同源 */
       window.dispatchEvent(new Event(ADMIN_PENDING_BADGES_REFRESH_EVENT));
+      try {
+        const me = ev as MessageEvent;
+        const raw = me.data;
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        handleScanDelayNotificationSse(parsed);
+      } catch {
+        /* ignore malformed SSE payload */
+      }
     };
     const onStaffChat = (ev: Event) => {
       void pullPendingBadges();
@@ -359,7 +401,7 @@ export default function AdminLayout() {
   /** 与侧栏一级入口一致的路径集合（注册表 ∪ 权限 sidebar ENTRY），供顶栏「返回」判定；视觉规范见 `frontend/docs/ADMIN_UI_STYLE.md` */
   const permSidebarPaths = useMemo(() => collectSidebarEntryPathsFromPerm(permNodes), [permNodes]);
   const showAdminShellBack = useMemo(
-    () => pathname !== "/admin" || shouldShowAdminShellBack(pathname, permSidebarPaths),
+    () => normalizeAdminPath(pathname) !== "/admin" || shouldShowAdminShellBack(pathname, permSidebarPaths),
     [pathname, permSidebarPaths]
   );
   const adminHeaderTitle = useMemo(() => adminChromeTitle(pathname), [pathname]);
@@ -412,17 +454,26 @@ export default function AdminLayout() {
   const baseSidebarGroups = navModel?.sidebarGroups ?? [];
   const flatNavigableItems = navModel?.flatNavigableItems ?? [];
 
-  const sidebarGroups = useMemo(
-    () =>
-      prependPersonalNavSidebarGroups(
-        baseSidebarGroups,
-        readAdminNavRecent(),
-        readAdminNavStars(),
-        showFriendsSidebarShortcut,
-        friendsNavBadgeText
-      ),
-    [baseSidebarGroups, personalBump, showFriendsSidebarShortcut, friendsNavBadgeText]
-  );
+  // 确保 nav model 加载完成后强制刷新个性化分组
+  // （baseSidebarGroups 首次从 [] 变为有内容时，需保证 recent/stars 重新查找 pathToItem）
+  useEffect(() => {
+    if (baseSidebarGroups.length > 0) {
+      setPersonalBump((n) => n + 1);
+    }
+    // 仅首次加载时触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!navModel]);
+
+  const sidebarGroups = useMemo(() => {
+    const groups = prependPersonalNavSidebarGroups(
+      baseSidebarGroups,
+      readAdminNavRecent(),
+      readAdminNavStars(),
+      showFriendsSidebarShortcut,
+      friendsNavBadgeText,
+    );
+    return patchStudentReviewNavBadges(groups, liveStudentReviewBadgeText);
+  }, [baseSidebarGroups, personalBump, showFriendsSidebarShortcut, friendsNavBadgeText, liveStudentReviewBadgeText]);
 
   const { starredItems, recentItems, registryItems } = useMemo(() => {
     void personalBump;
@@ -453,11 +504,11 @@ export default function AdminLayout() {
   /** 锁定入口：仅引导阶段 replace 至锁定页（含 nav 未就绪时的乐观跳转） */
   const lockRedirectTarget = useMemo(() => {
     if (lockBootstrapDone) return null;
-    if (!adminNavLockPath || !pathname.startsWith("/admin")) return null;
+    if (!adminNavLockPath || !isAdminAreaPath(pathname)) return null;
     if (normalizeAdminPath(pathname) === adminNavLockPath) return null;
-    if (!navModel) return adminNavLockPath;
+    if (!navModel) return toAdminRoutePath(adminNavLockPath);
     if (!collectAdminSidebarVisiblePaths(sidebarGroups).has(adminNavLockPath)) return null;
-    return adminNavLockPath;
+    return toAdminRoutePath(adminNavLockPath);
   }, [lockBootstrapDone, adminNavLockPath, pathname, navModel, sidebarGroups]);
 
   const pendingLockRedirect = lockRedirectTarget !== null;
@@ -471,9 +522,12 @@ export default function AdminLayout() {
   }, [navModel, adminNavLockPath, sidebarGroups]);
 
   useEffect(() => {
-    if (pendingLockRedirect || !pathname.startsWith("/admin")) return;
+    // 必须等用户 ID 加载完毕，否则 scopedKey 返回不带 UID 的 key，
+    // 导致写入与读取的 localStorage key 不一致，常用/最近完全失效。
+    if (pendingLockRedirect || !isAdminAreaPath(pathname)) return;
+    if (!resolveAdminNavUserId()) return;
     appendAdminNavRecent(pathname);
-  }, [pathname, pendingLockRedirect]);
+  }, [pathname, pendingLockRedirect, sessionUser?.id]);
 
   useEffect(() => {
     setOpenGroups((prev) => {
@@ -687,8 +741,6 @@ export default function AdminLayout() {
             const open = openGroups[g.id] === true;
             const personal = isPersonalSidebarGroupId(g.id);
             const friends = isFriendsSidebarGroupId(g.id);
-            const allItems = sidebarGroupAllItems(g);
-            const pendingTotal = sidebarGroupPendingTotal(allItems);
             return (
               <div
                 key={g.id}
@@ -714,19 +766,6 @@ export default function AdminLayout() {
                     ) : null
                   ) : null}
                   <span className="min-w-0 flex-1 truncate">{g.title}</span>
-                  <span className="flex shrink-0 items-center gap-1" aria-label={`${g.title}：${allItems.length} 个入口`}>
-                    {pendingTotal > 0 ? (
-                      <span className="min-w-[1.25rem] rounded-full bg-rose-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white shadow-sm tabular-nums">
-                        {pendingTotal > 99 ? "99+" : pendingTotal}
-                      </span>
-                    ) : null}
-                    <span
-                      className="min-w-[1.25rem] rounded-full bg-white/[0.08] px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-neutral-400 ring-1 ring-white/10 tabular-nums"
-                      title="分组内入口数量"
-                    >
-                      {allItems.length > 99 ? "99+" : allItems.length}
-                    </span>
-                  </span>
                 </button>
                 {open ? (
                   <div className="space-y-1 border-t border-white/[0.06] px-2 pb-2 pt-1">
@@ -734,7 +773,6 @@ export default function AdminLayout() {
                     {(g.subgroups ?? []).map((sg) => {
                       const sgKey = adminNavSubgroupOpenKey(g.id, sg.id);
                       const sgOpen = openGroups[sgKey] === true;
-                      const sgPending = sidebarGroupPendingTotal(sg.items);
                       return (
                         <div key={sgKey} className="rounded-lg border border-white/[0.05] bg-black/10">
                           <button
@@ -749,11 +787,6 @@ export default function AdminLayout() {
                               <ChevronRight className="h-3 w-3 shrink-0" />
                             )}
                             <span className="min-w-0 flex-1 truncate">{sg.title}</span>
-                            {sgPending > 0 ? (
-                              <span className="min-w-[1.1rem] rounded-full bg-rose-600/90 px-1 py-0.5 text-center text-[9px] font-bold text-white tabular-nums">
-                                {sgPending > 99 ? "99+" : sgPending}
-                              </span>
-                            ) : null}
                           </button>
                           {sgOpen ? (
                             <div className="space-y-0.5 px-1 pb-1.5">
@@ -845,7 +878,7 @@ export default function AdminLayout() {
             </NavLink>
           </div>
           <NavLink
-            to="/admin"
+            to={toAdminRoutePath("/admin")}
             end
             title={collapsed ? "后台工作台" : undefined}
             onClick={() => onAfterNav?.()}
@@ -1003,9 +1036,13 @@ export default function AdminLayout() {
                 title="返回上一页"
                 aria-label="返回上一页"
                 onClick={() => {
-                  // Go back to previous page in browser history, fallback to home
+                  const stateReturn = (location.state as { returnTo?: unknown } | null)?.returnTo;
+                  if (typeof stateReturn === 'string' && stateReturn.startsWith('/') && !stateReturn.startsWith('//')) {
+                    navigate(stateReturn);
+                    return;
+                  }
                   if (window.history.length > 1) navigate(-1);
-                  else navigate("/admin");
+                  else navigate(resolveAdminShellBackTo(pathname, location.state));
                 }}
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)]"
               >
@@ -1030,7 +1067,7 @@ export default function AdminLayout() {
               {hasMinRole(role, "SUPER_ADMIN") ? (
                 <button
                   type="button"
-                  onClick={() => navigate("/admin/nav-manager")}
+                  onClick={() => navigate(toAdminRoutePath("/admin/nav-manager"))}
                   className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
                   title="管理侧边栏文件夹"
                   aria-label="管理侧边栏文件夹"
@@ -1070,13 +1107,13 @@ export default function AdminLayout() {
                 </div>
                 <div className="px-2 py-1 text-[10px] text-[var(--twin-mute)] sm:block">当前角色 · {role}</div>
                 <DropdownMenuSeparator />
-                {hasMinRole(role, "ADMIN") && aroBinding === false && (
+                {hasMinRole(role, "STAFF") && aroBinding === false && (
                   <DropdownMenuItem onSelect={() => setAroBindDialogOpen(true)}>
                     <UserRound className="mr-2 h-4 w-4" />
                     绑定ARO账号
                   </DropdownMenuItem>
                 )}
-                {hasMinRole(role, "ADMIN") && aroBinding && (
+                {hasMinRole(role, "STAFF") && aroBinding && (
                   <>
                     <DropdownMenuItem disabled className="text-[var(--twin-mute)] opacity-70">
                       <UserRound className="mr-2 h-4 w-4" />
@@ -1106,7 +1143,7 @@ export default function AdminLayout() {
                           const { token, aroUserId } = wrapper.data;
                           // 保存 ARO 姓名用于学生端头像显示
                           const aroName = aroBinding?.name || aroUserId;
-                          authStorage.setAuth(token, "STUDENT", { displayName: aroName, username: aroUserId } as any);
+                          authStorage.setAuth(token, "MEMBER", { displayName: aroName, username: aroUserId } as any);
                           toast.success("已切换至学生视图");
                           navigate("/student/home");
                         } catch {
@@ -1127,7 +1164,7 @@ export default function AdminLayout() {
                   <DropdownMenuItem
                     onSelect={() => {
                       setMobileNavOpen(false);
-                      navigate("/admin/profile-security", {
+                      navigate(toAdminRoutePath("/admin/profile-security"), {
                         state: { returnTo: `${pathname}${location.search}` },
                       });
                     }}
@@ -1160,7 +1197,7 @@ export default function AdminLayout() {
           <BackfillAutoGlobalBanner />
           <div className="admin-page-content mx-auto w-full max-w-[1600px] flex-1">
             {!pendingLockRedirect ? (
-              <PageTransition key={location.pathname} variant="fadeUp" duration={0.3} className="h-full">
+              <PageTransition animateKey={location.pathname} variant="fadeUp" duration={0.3} className="h-full">
                 <Outlet />
               </PageTransition>
             ) : null}
@@ -1176,11 +1213,11 @@ export default function AdminLayout() {
         onClose={() => setChromeCtx(null)}
         onOpenEntryInSettings={(p) => {
           setMobileNavOpen(false);
-          navigate(`/admin/page-permissions?${new URLSearchParams({ focusPath: p }).toString()}`);
+          navigate(`${toAdminRoutePath("/admin/page-permissions")}?${new URLSearchParams({ focusPath: p }).toString()}`);
         }}
         onOpenSensitiveInSettings={() => {
           setMobileNavOpen(false);
-          navigate("/admin/page-permissions");
+          navigate(toAdminRoutePath("/admin/page-permissions"));
         }}
         onSavedEntryPerm={() => {
           notifyWebPublicPagePermissionsUpdated();

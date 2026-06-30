@@ -1,6 +1,5 @@
 package com.example.demo.modules.reportform.entity;
 
-import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -9,13 +8,12 @@ public class ReportFormSubmission {
     private Long id;
     private Long formId;
     private Long userId;
+    /** 个人多份填报时的子文件名称；空字符串表示默认单份 */
+    private String instanceLabel;
     private String status;
     private String fieldValuesJson;
     private Integer version;
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss+08:00")
     private LocalDateTime submittedAt;
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss+08:00")
     private LocalDateTime createdAt;
-    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss+08:00")
     private LocalDateTime updatedAt;
 }

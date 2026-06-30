@@ -1,4 +1,6 @@
 import type { AuthUserInfo } from "@/api/domains/auth.api";
+import { resetAuthSessionQueries } from "@/features/auth/authQueryScope";
+import { resetStudentSessionQueries } from "@/features/student/utils/studentQueryScope";
 
 const TOKEN_KEY = "auth_token";
 const ROLE_KEY = "auth_role";
@@ -9,6 +11,16 @@ const PREV_USER_INFO_KEY = "auth_prev_user_info";
 /** 扫码弹窗 PIN 验证后进入学生中心时写入，用于顶栏仅展示「返回扫码页」、隐藏退出登录 */
 const STUDENT_ENTRY_FROM_SCAN_KEY = "student_entry_from_scan";
 const MOCK_JWT_PREFIX = "jwt_mock_token_";
+/** 登录入口视角：教职工门户 /login vs 学生门户 /student/login */
+const LOGIN_PORTAL_KEY = "auth_login_portal";
+
+export type AuthLoginPortal = "staff" | "student" | "mobile";
+
+// ===== Mirror Mode: staff viewing student page without auth swap =====
+const MIRROR_TOKEN_KEY = "mirror_token";
+const MIRROR_USER_INFO_KEY = "mirror_user_info";
+const MIRROR_ACTIVE_KEY = "mirror_active";
+const MIRROR_SOURCE_KEY = "mirror_source"; // "scan" | "aro_impersonate"
 
 /** 登录或自助改昵称后写入 userInfo，供头部等订阅刷新 */
 export const AUTH_USERINFO_UPDATED_EVENT = "aro-auth-userinfo-updated";
@@ -68,11 +80,27 @@ export const authStorage = {
     }
     dispatchUserInfoUpdated();
   },
+  markLoginPortal(portal: AuthLoginPortal) {
+    localStorage.setItem(LOGIN_PORTAL_KEY, portal);
+  },
+
+  getLoginPortal(): AuthLoginPortal | null {
+    const v = localStorage.getItem(LOGIN_PORTAL_KEY);
+    return v === "staff" || v === "student" || v === "mobile" ? v : null;
+  },
+
+  clearLoginPortal() {
+    localStorage.removeItem(LOGIN_PORTAL_KEY);
+  },
+
   clear() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(ROLE_KEY);
     localStorage.removeItem(USER_INFO_KEY);
+    // 不清 portal —— 退登后 pending 请求触发 forceLogout 时仍需知道跳哪个登录页
     this.clearStudentEntryFromScan();
+    this.exitMirrorMode();
+    resetAuthSessionQueries();
   },
 
   /** 标记当前学生中心会话来自扫码弹窗（特殊通道） */
@@ -156,5 +184,75 @@ export const authStorage = {
     localStorage.removeItem(PREV_TOKEN_KEY);
     localStorage.removeItem(PREV_ROLE_KEY);
     localStorage.removeItem(PREV_USER_INFO_KEY);
+  },
+
+  // ===== Mirror Mode: staff viewing student page =====
+
+  /** Whether mirror mode is active (localStorage, survives refresh) */
+  isMirrorMode(): boolean {
+    try {
+      return localStorage.getItem(MIRROR_ACTIVE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  },
+
+  /** Get the target student's token for API calls */
+  getMirrorToken(): string {
+    return localStorage.getItem(MIRROR_TOKEN_KEY) ?? "";
+  },
+
+  /** Get the target student's user info */
+  getMirrorUserInfo(): AuthUserInfo | null {
+    try {
+      const raw = localStorage.getItem(MIRROR_USER_INFO_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) as AuthUserInfo;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Which flow entered mirror mode: "scan" or "aro_impersonate" */
+  getMirrorSource(): string | null {
+    return localStorage.getItem(MIRROR_SOURCE_KEY) ?? null;
+  },
+
+  /** Get the mirrored student's user ID (for TanStack Query cache scoping) */
+  getMirrorUserId(): string | null {
+    const info = this.getMirrorUserInfo();
+    return info?.id?.trim() || null;
+  },
+
+  /**
+   * Enter mirror mode: store student token/info alongside staff auth.
+   * Staff auth (token, role, userInfo) remains completely untouched.
+   * @param source "scan" for scanner PIN/face entry, "aro_impersonate" for ARO switch
+   */
+  enterMirrorMode(token: string, userInfo: AuthUserInfo, source: "scan" | "aro_impersonate") {
+    localStorage.setItem(MIRROR_TOKEN_KEY, token);
+    if (userInfo) {
+      localStorage.setItem(MIRROR_USER_INFO_KEY, JSON.stringify(userInfo));
+    } else {
+      localStorage.removeItem(MIRROR_USER_INFO_KEY);
+    }
+    localStorage.setItem(MIRROR_ACTIVE_KEY, "1");
+    localStorage.setItem(MIRROR_SOURCE_KEY, source);
+    // Flush stale TanStack Query caches from previous student session
+    try { resetStudentSessionQueries(); } catch { /* ignore */ }
+  },
+
+  /**
+   * Exit mirror mode: clear all mirror keys, cleanup flags.
+   * Does NOT modify main auth (staff token/role/userInfo remain intact).
+   * Caller is responsible for navigation.
+   */
+  exitMirrorMode() {
+    localStorage.removeItem(MIRROR_TOKEN_KEY);
+    localStorage.removeItem(MIRROR_USER_INFO_KEY);
+    localStorage.removeItem(MIRROR_ACTIVE_KEY);
+    localStorage.removeItem(MIRROR_SOURCE_KEY);
+    this.clearStudentEntryFromScan();
+    try { resetStudentSessionQueries(); } catch { /* ignore */ }
   },
 };

@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.modules.twin.scan.delay.dto.ScanDelayCarrierDTO;
 import com.example.demo.modules.twin.scan.delay.dto.ScanDelayOptionDTO;
 import com.example.demo.modules.twin.scan.delay.dto.ScanDelayRoomBindingDTO;
 import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayRequest;
@@ -32,6 +33,46 @@ public class ScanDelayController {
     @Autowired
     private AuthContextService authContextService;
 
+    @GetMapping("/carriers")
+    @Operation(summary = "管理端：列出载体按钮")
+    public Result<List<ScanDelayCarrierDTO>> listCarriers(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        if (user == null || user.getRole() == null || user.getRole().ordinal() < RoleEnum.ADMIN.ordinal()) {
+            return Result.error("需要管理员权限");
+        }
+        return Result.success(configService.listAllCarriers());
+    }
+
+    @PostMapping("/carriers")
+    @Operation(summary = "管理端：新增或更新载体按钮")
+    public Result<ScanDelayCarrierDTO> saveCarrier(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody ScanDelayCarrierDTO body) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        if (user == null || user.getRole() == null || user.getRole().ordinal() < RoleEnum.ADMIN.ordinal()) {
+            return Result.error("需要管理员权限");
+        }
+        try {
+            return Result.success(configService.saveCarrier(body));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/carriers/{id}")
+    @Operation(summary = "管理端：删除载体按钮（不删除菜单项库）")
+    public Result<Void> deleteCarrier(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        if (user == null || user.getRole() == null || user.getRole().ordinal() < RoleEnum.ADMIN.ordinal()) {
+            return Result.error("需要管理员权限");
+        }
+        configService.deleteCarrier(id);
+        return Result.success(null);
+    }
+
     @GetMapping("/options")
     @Operation(summary = "管理端：列出全部延迟选项")
     public Result<List<ScanDelayOptionDTO>> listOptions(
@@ -55,7 +96,7 @@ public class ScanDelayController {
     }
 
     @PutMapping("/room-bindings/{roomId}")
-    @Operation(summary = "管理端：保存某房间绑定的延迟选项")
+    @Operation(summary = "管理端：保存某房间绑定的延迟载体")
     public Result<ScanDelayRoomBindingDTO> saveRoomBinding(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable String roomId,
@@ -65,15 +106,15 @@ public class ScanDelayController {
             return Result.error("需要管理员权限");
         }
         try {
-            List<Long> optionIds = new java.util.ArrayList<>();
-            Object raw = body.get("optionIds");
+            List<Long> carrierIds = new java.util.ArrayList<>();
+            Object raw = body.get("carrierIds");
             if (raw instanceof List<?> list) {
                 for (Object o : list) {
                     if (o == null) continue;
-                    optionIds.add(Long.parseLong(o.toString()));
+                    carrierIds.add(Long.parseLong(o.toString()));
                 }
             }
-            return Result.success(configService.saveRoomBinding(roomId, optionIds));
+            return Result.success(configService.saveRoomBinding(roomId, carrierIds));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
         }
@@ -139,7 +180,7 @@ public class ScanDelayController {
             @PathVariable Long id,
             @RequestBody Map<String, Object> body) {
         User user = authContextService.resolveUserFromBearer(authorization);
-        if (user == null || user.getRole() == RoleEnum.STUDENT) {
+        if (user == null || user.getRole() == RoleEnum.MEMBER) {
             return Result.error("需要教职工权限");
         }
         try {
@@ -159,10 +200,22 @@ public class ScanDelayController {
     public Result<List<Map<String, Object>>> listPending(
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         User user = authContextService.resolveUserFromBearer(authorization);
-        if (user == null || user.getRole() == RoleEnum.STUDENT) {
+        if (user == null || user.getRole() == RoleEnum.MEMBER) {
             return Result.error("需要教职工权限");
         }
         return Result.success(requestService.listPendingEnriched(user.getId()));
+    }
+
+    @GetMapping("/request/history")
+    @Operation(summary = "教职工：已审结延迟免冻结记录（全员可见）")
+    public Result<List<Map<String, Object>>> listHistory(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(defaultValue = "100") int limit) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        if (user == null || user.getRole() == RoleEnum.MEMBER) {
+            return Result.error("需要教职工权限");
+        }
+        return Result.success(requestService.listReviewedHistoryEnriched(limit));
     }
 
     @PutMapping("/master-enabled")

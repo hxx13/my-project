@@ -60,13 +60,8 @@ export async function specialChannelLoginByFace(userId: string): Promise<AuthDat
   return res.data.data;
 }
 
-/** 管理员重置学生 PIN */
-export async function resetStudentPin(userId: string): Promise<void> {
-  const { authHttp } = await import("@/api/core/authHttp");
-  const res = await authHttp.post<Result<null>>(
-    `/auth/special-channel/admin/personnel/${userId}/reset-pin`
-  );
-  if (!res.data?.success) {
-    throw new Error(res.data?.message || "重置 PIN 失败");
-  }
+/** 管理员重置学生 PIN — 走 admin API，personnelUserId 必须为人员库学号 */
+export async function resetStudentPin(personnelUserId: string): Promise<void> {
+  const { resetPersonnelPin } = await import("@/api/domains/admin.api");
+  await resetPersonnelPin(personnelUserId);
 }

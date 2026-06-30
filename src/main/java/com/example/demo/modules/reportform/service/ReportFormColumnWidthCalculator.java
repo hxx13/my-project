@@ -69,6 +69,25 @@ final class ReportFormColumnWidthCalculator {
         return widths;
     }
 
+    /** 按比例压缩列宽，使总宽不超过 Word 页内容宽 */
+    static int[] capTotalWidthPx(int[] widths, int maxTotalPx) {
+        if (maxTotalPx <= 0 || widths.length == 0) return widths;
+        int sum = 0;
+        for (int w : widths) sum += Math.max(1, w);
+        if (sum <= maxTotalPx) return widths;
+        int[] capped = new int[widths.length];
+        double scale = (double) maxTotalPx / sum;
+        int newSum = 0;
+        for (int i = 0; i < widths.length; i++) {
+            capped[i] = Math.max(28, (int) Math.floor(widths[i] * scale));
+            newSum += capped[i];
+        }
+        if (newSum > maxTotalPx && capped.length > 0) {
+            capped[capped.length - 1] = Math.max(28, capped[capped.length - 1] - (newSum - maxTotalPx));
+        }
+        return capped;
+    }
+
     /** 设计器布局列宽：静态文本 + 字段标签（不含填报值） */
     static int[] computeLayoutColumnWidthsPx(List<JsonNode> cells, JsonNode layout, int maxCol) {
         return computeColumnWidthsPx(cells, maxCol, cell -> resolveLayoutLabel(cell, layout));

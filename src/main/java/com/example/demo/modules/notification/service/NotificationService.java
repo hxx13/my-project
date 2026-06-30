@@ -33,6 +33,7 @@ public class NotificationService {
     private final CapabilityPolicyService capabilityPolicyService;
     private final NotificationPushService notificationPushService;
     private final MiniProgramNotificationService miniProgramNotificationService;
+    private final com.example.demo.modules.student.service.MobileUserSocketPushService mobileUserSocketPushService;
 
     public NotificationService(NotificationMapper notificationMapper,
                                NotificationSettingsMapper settingsMapper,
@@ -41,7 +42,8 @@ public class NotificationService {
                                UserDisplayNameService userDisplayNameService,
                                CapabilityPolicyService capabilityPolicyService,
                                NotificationPushService notificationPushService,
-                               MiniProgramNotificationService miniProgramNotificationService) {
+                               MiniProgramNotificationService miniProgramNotificationService,
+                               com.example.demo.modules.student.service.MobileUserSocketPushService mobileUserSocketPushService) {
         this.notificationMapper = notificationMapper;
         this.settingsMapper = settingsMapper;
         this.studentNotificationMapper = studentNotificationMapper;
@@ -50,6 +52,7 @@ public class NotificationService {
         this.capabilityPolicyService = capabilityPolicyService;
         this.notificationPushService = notificationPushService;
         this.miniProgramNotificationService = miniProgramNotificationService;
+        this.mobileUserSocketPushService = mobileUserSocketPushService;
     }
 
     public void publish(PublishNotificationEvent event) {
@@ -106,7 +109,7 @@ public class NotificationService {
         Set<String> studentRecipients = new LinkedHashSet<>();
         for (String uid : recipients) {
             User u = userMapper.findById(uid);
-            if (u != null && u.getRole() == RoleEnum.STUDENT) {
+            if (u != null && u.getRole() == RoleEnum.MEMBER) {
                 studentRecipients.add(uid);
             } else {
                 staffRecipients.add(uid);
@@ -134,7 +137,10 @@ public class NotificationService {
                     "id", notification.getId(),
                     "eventType", notification.getEventType(),
                     "bizType", notification.getBizType(),
-                    "bizId", notification.getBizId()
+                    "bizId", notification.getBizId(),
+                    "title", title != null ? title : "",
+                    "content", content != null ? content : "",
+                    "summary", variables.getOrDefault("summary", title != null ? title : "")
             ));
             miniProgramNotificationService.dispatchAfterPersisted(notification.getId(), staffRecipients, template, variables);
         }
@@ -153,7 +159,59 @@ public class NotificationService {
                 sn.setIsRead(0);
                 sn.setCreateTime(now);
                 studentNotificationMapper.insert(sn);
+                pushMobileStudentWorkOrderNotify(sid, sn.getId(), title, content,
+                        event.getBizType(), event.getBizId(), event.getEventType());
             }
+        }
+
+        // 非 STUDENT 申请人（教职工自助申领等）同样推送手机 HTML5 审核反馈
+        pushMobileApplicantWorkOrderIfNeeded(event, title, content);
+    }
+
+    private void pushMobileApplicantWorkOrderIfNeeded(PublishNotificationEvent event, String title, String content) {
+        if (mobileUserSocketPushService == null || event == null || !StringUtils.hasText(event.getApplicantId())) {
+            return;
+        }
+        String biz = event.getBizType() != null ? event.getBizType().trim().toUpperCase() : "";
+        if (!"MATERIAL_REQUEST".equals(biz) && !"SCAN_DELAY".equals(biz)) {
+            return;
+        }
+        String et = event.getEventType() != null ? event.getEventType().trim().toUpperCase() : "";
+        if (!"COMPLETED".equals(et) && !"APPROVED".equals(et) && !"REJECTED".equals(et)) {
+            return;
+        }
+        User applicant = userMapper.findById(event.getApplicantId().trim());
+        if (applicant != null && applicant.getRole() == RoleEnum.MEMBER) {
+            return;
+        }
+        String nid = "NTF_MOB_" + (event.getBizId() != null ? event.getBizId() : UUID.randomUUID().toString().substring(0, 8));
+        pushMobileStudentWorkOrderNotify(event.getApplicantId().trim(), nid, title, content,
+                event.getBizType(), event.getBizId(), event.getEventType());
+    }
+
+    /** 手机 HTML5 通知页：物资/延迟审核反馈实时推送 */
+    private void pushMobileStudentWorkOrderNotify(String userId, String notificationId, String title,
+                                                  String content, String bizType, String bizId, String eventType) {
+        if (mobileUserSocketPushService == null || !StringUtils.hasText(userId)) {
+            return;
+        }
+        String biz = bizType != null ? bizType.trim().toUpperCase() : "";
+        if (!"MATERIAL_REQUEST".equals(biz) && !"SCAN_DELAY".equals(biz)) {
+            return;
+        }
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("kind", "MATERIAL_REQUEST".equals(biz) ? "material_feedback" : "scan_delay_feedback");
+        item.put("id", notificationId);
+        item.put("notificationId", notificationId);
+        item.put("title", title != null ? title : "");
+        item.put("contentHtml", StringUtils.hasText(content) ? "<p>" + content + "</p>" : "");
+        item.put("bizType", biz);
+        item.put("bizId", bizId);
+        item.put("interactiveRequired", false);
+        item.put("at", java.time.LocalDateTime.now().toString());
+        mobileUserSocketPushService.pushAlertItem(userId.trim(), item);
+        if ("SCAN_DELAY".equals(biz) && "COMPLETED".equalsIgnoreCase(eventType)) {
+            mobileUserSocketPushService.pushRefresh(userId.trim(), "exempt");
         }
     }
 
@@ -363,6 +421,9 @@ public class NotificationService {
         if (!"CREATED".equalsIgnoreCase(event.getEventType())) {
             return;
         }
+        if (event.getRelatedUserIds() != null && !event.getRelatedUserIds().isEmpty()) {
+            return;
+        }
         String domain = bizTypeToPolicyDomain(event.getBizType());
         if (domain == null) {
             return;
@@ -429,6 +490,7 @@ public class NotificationService {
             case "PURCHASE" -> "采购";
             case "SUPPLIES_CLAIM" -> "物资领用";
             case "MATERIAL_REQUEST" -> "物资申领";
+            case "SCAN_DELAY" -> "延迟免冻结";
             default -> bizType.trim();
         };
     }

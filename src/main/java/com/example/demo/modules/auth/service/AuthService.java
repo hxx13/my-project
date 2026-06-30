@@ -44,6 +44,7 @@ public class AuthService {
         userInfo.setDisplayName(userDisplayNameService.resolveDisplayName(user.getId()));
         userInfo.setCanEditDisplayNickname(canSelfEditDisplayNickname(user));
         userInfo.setAuthProfile(user.getAuthProfile());
+        userInfo.setAccountSource(user.getAccountSource());
         userInfo.setMiniHomeDefaultTab(AuthProfileConstants.miniHomeDefaultTab(user.getAuthProfile()));
         data.setUserInfo(userInfo);
         return Result.success(data);
@@ -81,7 +82,7 @@ public class AuthService {
     }
 
     public RoleEnum normalizeRole(RoleEnum role) {
-        return role == null ? RoleEnum.STUDENT : role;
+        return role == null ? RoleEnum.MEMBER : role;
     }
 
 }

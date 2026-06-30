@@ -607,6 +607,36 @@ public class FacilityMaintenanceController {
                 user != null ? user.getId() : null));
     }
 
+    @PostMapping("/replacement-records/batch")
+    @Operation(summary = "批量新增更换记录（前端多选预设后一次提交，后端循环创建）")
+    public Result<?> createReplacementBatch(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                            @RequestBody Map<String, Object> body) {
+        Result<?> denied = requireStaff(authorization);
+        if (denied != null) return denied;
+        User user = resolveUser(authorization);
+        String siteId = str(body.get("siteId"));
+        LocalDateTime replacedAt = parseDateTime(body.get("replacedAt"));
+        String note = blankToNull(str(body.get("note")));
+        Object typesRaw = body.get("filterTypes");
+        if (!(typesRaw instanceof java.util.List)) {
+            return Result.error("filterTypes 必须为数组");
+        }
+        @SuppressWarnings("unchecked")
+        java.util.List<String> types = (java.util.List<String>) typesRaw;
+        if (types.isEmpty()) {
+            return Result.error("filterTypes 不能为空");
+        }
+        String createdBy = user != null ? user.getId() : null;
+        java.util.List<Map<String, Object>> results = new java.util.ArrayList<>();
+        for (String ft : types) {
+            if (ft == null || ft.isBlank()) continue;
+            Map<String, Object> r = service.createReplacementRecord(siteId, ft.trim(), replacedAt, note, createdBy);
+            r.put("filterType", ft.trim());
+            results.add(r);
+        }
+        return Result.success(results);
+    }
+
     @PatchMapping("/replacement-records/{id}")
     @Operation(summary = "更新更换记录")
     public Result<?> patchReplacement(@RequestHeader(value = "Authorization", required = false) String authorization,
@@ -682,7 +712,7 @@ public class FacilityMaintenanceController {
     private User resolveUser(String authorization) {
         User user = authContextService.resolveUserFromBearer(authorization);
         if (user == null) return null;
-        if (user.getRole() == null) user.setRole(RoleEnum.STUDENT);
+        if (user.getRole() == null) user.setRole(RoleEnum.MEMBER);
         return user;
     }
 

@@ -31,7 +31,7 @@ type Props = {
  * Debug 页危险操作收纳：按角色过滤后展示为单一下拉，避免工具栏平铺。
  */
 export function DebugDangerousOpsMenu({ items, align = "end", triggerLabel = "运维", className }: Props) {
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const visible = items.filter((i) => !i.minRole || hasMinRole(role, i.minRole));
   if (visible.length === 0) return null;
   return (

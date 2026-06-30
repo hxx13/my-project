@@ -1,16 +1,77 @@
 import { useMemo, useState } from "react";
-import { TrendingUp, Zap, Users, UserCheck } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { fetchExpSummary, fetchExpRecords, type ExpRecord } from "@/api/domains/expStats.api";
+import { TrendingUp, Zap, Users, UserCheck, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  fetchExpSummary, fetchExpRecords,
+  approveExpRecord, rejectExpRecord,
+  batchApproveExpRecords, batchRejectExpRecords,
+  type ExpRecord,
+} from "@/api/domains/expStats.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
+import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
+import toast from "react-hot-toast";
 
 const SOURCE_TYPE_OPTIONS = [
   { value: "", label: "全部来源" },
-  { value: "FIRST_ENTRY", label: "首次进入 (+50)" },
-  { value: "TIME_BASED", label: "停留时长" },
+  { value: "FIRST_ENTRY", label: "首次进入 +50（实时）" },
+  { value: "FIRST_ENTRY_SYNC", label: "首次进入 +50（对账）" },
+  { value: "TIME_BASED", label: "停留时长（实时）" },
+  { value: "TIME_BASED_SYNC", label: "停留时长（对账）" },
 ];
+
+const ANOMALY_OPTIONS = [
+  { value: "", label: "全部记录" },
+  { value: "0", label: "正常记录" },
+  { value: "1", label: "异常记录" },
+];
+
+const REVIEW_OPTIONS = [
+  { value: "", label: "全部状态" },
+  { value: "0", label: "待审核" },
+  { value: "1", label: "已批准" },
+  { value: "2", label: "已驳回" },
+];
+
+const FEED_SOURCE_OPTIONS = [
+  { value: "", label: "全部渠道" },
+  { value: "WEB_SCAN", label: "Web 扫码" },
+  { value: "TWIN_AUTO_SIGNOUT", label: "自动签退" },
+  { value: "ARO_OFFICIAL_UNMATCHED", label: "官方登记" },
+];
+
+function anomalyLabel(types: string | null): string {
+  if (!types) return "";
+  const map: Record<string, string> = {
+    OVER_CAP: "超时",
+    CROSS_DAY: "跨天",
+    NIGHT_HOURS: "夜间",
+  };
+  return types.split(",").map((t) => map[t.trim()] ?? t).join("·");
+}
+
+function reviewBadge(status: number): { label: string; cls: string } {
+  switch (status) {
+    case 0: return { label: "待审核", cls: "bg-amber-100 text-amber-700" };
+    case 1: return { label: "已批准", cls: "bg-emerald-100 text-emerald-700" };
+    case 2: return { label: "已撤销", cls: "bg-red-100 text-red-700" };
+    default: return { label: "已批准", cls: "bg-emerald-100 text-emerald-700" };
+  }
+}
+
+function feedSourceLabel(fs: string | null): string {
+  const map: Record<string, string> = {
+    WEB_SCAN: "Web扫码",
+    TWIN_AUTO_SIGNOUT: "自动签退",
+    ARO_OFFICIAL_UNMATCHED: "官方登记",
+  };
+  return fs ? (map[fs] ?? fs) : "-";
+}
+
+function expLevel(totalExp: number): number {
+  return Math.floor(Math.sqrt(Math.max(0, totalExp) / 50)) + 1;
+}
 
 function sourceTypeLabel(t: string) {
   const m = SOURCE_TYPE_OPTIONS.find((o) => o.value === t);
@@ -18,10 +79,7 @@ function sourceTypeLabel(t: string) {
 }
 
 function toTime(value?: string) {
-  if (!value) return "-";
-  const t = new Date(value);
-  if (Number.isNaN(t.getTime())) return value;
-  return t.toLocaleString("zh-CN", { hour12: false });
+  return formatDateTimeAsiaShanghaiShort(value);
 }
 
 const PAGE_SIZE = 20;
@@ -32,11 +90,17 @@ const compactInputClass =
 const compactSelectClass = "h-8 min-w-0 w-full px-2 text-xs";
 
 export default function AdminExpStatsPage() {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [sourceType, setSourceType] = useState("");
   const [userId, setUserId] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [anomalyFlag, setAnomalyFlag] = useState("");
+  const [reviewStatus, setReviewStatus] = useState("");
+  const [feedSource, setFeedSource] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [reviewing, setReviewing] = useState(false);
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["expSummary"] as const,
@@ -44,7 +108,7 @@ export default function AdminExpStatsPage() {
   });
 
   const { data: recordsPage, isLoading: recordsLoading } = useQuery({
-    queryKey: ["expRecords", page, sourceType, userId, startDate, endDate] as const,
+    queryKey: ["expRecords", page, sourceType, userId, startDate, endDate, anomalyFlag, reviewStatus, feedSource] as const,
     queryFn: () =>
       fetchExpRecords({
         pageNum: page,
@@ -53,6 +117,9 @@ export default function AdminExpStatsPage() {
         userId: userId.trim() || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
+        anomalyFlag: anomalyFlag ? Number(anomalyFlag) : undefined,
+        reviewStatus: reviewStatus ? Number(reviewStatus) : undefined,
+        feedSource: feedSource || undefined,
       }),
     placeholderData: (prev) => prev,
   });
@@ -61,14 +128,81 @@ export default function AdminExpStatsPage() {
   const total = recordsPage?.total ?? 0;
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
 
-  const applyFilter = () => setPage(1);
+  const applyFilter = () => { setPage(1); setSelectedIds(new Set()); };
 
   const resetFilter = () => {
     setSourceType("");
     setUserId("");
     setStartDate("");
     setEndDate("");
+    setAnomalyFlag("");
+    setReviewStatus("");
+    setFeedSource("");
     setPage(1);
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (!rows.length) return;
+    if (selectedIds.size === rows.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(rows.map((r) => r.id)));
+    }
+  };
+
+  const handleBatchApprove = async () => {
+    if (selectedIds.size === 0) return;
+    setReviewing(true);
+    try {
+      await batchApproveExpRecords([...selectedIds]);
+      toast.success(`已批准 ${selectedIds.size} 条`);
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["expRecords"] });
+      queryClient.invalidateQueries({ queryKey: ["expSummary"] });
+    } catch (e: any) {
+      toast.error(e?.message || "批量批准失败");
+    } finally { setReviewing(false); }
+  };
+
+  const handleBatchReject = async () => {
+    if (selectedIds.size === 0) return;
+    setReviewing(true);
+    try {
+      await batchRejectExpRecords([...selectedIds]);
+      toast.success(`已驳回 ${selectedIds.size} 条`);
+      setSelectedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["expRecords"] });
+      queryClient.invalidateQueries({ queryKey: ["expSummary"] });
+    } catch (e: any) {
+      toast.error(e?.message || "批量驳回失败");
+    } finally { setReviewing(false); }
+  };
+
+  const handleSingleApprove = async (id: number) => {
+    try {
+      await approveExpRecord(id);
+      toast.success("已批准");
+      queryClient.invalidateQueries({ queryKey: ["expRecords"] });
+      queryClient.invalidateQueries({ queryKey: ["expSummary"] });
+    } catch (e: any) { toast.error(e?.message || "操作失败"); }
+  };
+
+  const handleSingleReject = async (id: number) => {
+    try {
+      await rejectExpRecord(id);
+      toast.success("已驳回");
+      queryClient.invalidateQueries({ queryKey: ["expRecords"] });
+      queryClient.invalidateQueries({ queryKey: ["expSummary"] });
+    } catch (e: any) { toast.error(e?.message || "操作失败"); }
   };
   const statCards = [
     {
@@ -99,6 +233,13 @@ export default function AdminExpStatsPage() {
       tone: "from-violet-400 to-purple-500",
       format: (v: number) => v.toLocaleString(),
     },
+    {
+      label: "待审核异常",
+      value: summary?.pendingReviewCount ?? 0,
+      icon: AlertTriangle,
+      tone: "from-orange-400 to-red-500",
+      format: (v: number) => (v > 0 ? v.toLocaleString() + " 条" : "无"),
+    },
   ];
 
   return (
@@ -113,7 +254,7 @@ export default function AdminExpStatsPage() {
     >
       <div className="flex flex-col gap-6">
         {/* Stat Cards Row */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {statCards.map((card) => (
             <div
               key={card.label}
@@ -150,8 +291,8 @@ export default function AdminExpStatsPage() {
                 <tr className="border-b bg-[var(--app-color-surface-hover)] text-left text-[var(--app-color-text-secondary)]">
                   <th className="px-3 py-2 w-12">#</th>
                   <th className="px-3 py-2">用户</th>
-                  <th className="px-3 py-2 text-right">总经验</th>
-                  <th className="px-3 py-2 text-right">今日经验</th>
+                  <th className="px-3 py-2 text-right">等级 / 总经验</th>
+                  <th className="px-3 py-2 text-right">今日经验 ▼</th>
                 </tr>
               </thead>
               <tbody>
@@ -180,8 +321,9 @@ export default function AdminExpStatsPage() {
                         <span className="ml-1.5 font-mono text-[10px] text-[var(--app-color-text-tertiary)]">{earner.userId}</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums font-mono text-[var(--app-color-text-primary)]">
-                      {earner.totalExp?.toLocaleString() ?? 0}
+                    <td className="px-3 py-2 text-right tabular-nums text-[var(--app-color-text-secondary)]">
+                      <span className="font-bold text-[var(--app-color-accent)]">Lv.{expLevel(earner.totalExp ?? 0)}</span>
+                      <span className="ml-1.5 font-mono text-[var(--app-color-text-primary)]">{earner.totalExp?.toLocaleString() ?? 0}</span>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums font-mono text-[var(--app-color-feedback-success)]">
                       +{earner.todayExp?.toLocaleString() ?? 0}
@@ -195,6 +337,7 @@ export default function AdminExpStatsPage() {
 
         {/* XP Records Filter + Table */}
         <AdminFormCard title="经验值流水" className="p-3 [&>div:first-child]:mb-2 [&>div:first-child]:pb-1.5">
+          {/* Row 1: basic filters */}
           <div className="flex flex-nowrap items-end gap-2 overflow-x-auto">
             <label className="flex w-[8rem] shrink-0 flex-col gap-0.5">
               <span className="text-[10px] font-medium text-neutral-500">来源类型</span>
@@ -237,6 +380,27 @@ export default function AdminExpStatsPage() {
                 className={compactInputClass}
               />
             </label>
+          </div>
+          {/* Row 2: anomaly + review + channel filters + batch actions */}
+          <div className="mt-2 flex flex-nowrap items-end gap-2 overflow-x-auto">
+            <label className="flex w-[6rem] shrink-0 flex-col gap-0.5">
+              <span className="text-[10px] font-medium text-neutral-500">异常</span>
+              <AdminSelect value={anomalyFlag} className={compactSelectClass} onChange={(e) => setAnomalyFlag(e.target.value)}>
+                {ANOMALY_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+              </AdminSelect>
+            </label>
+            <label className="flex w-[6rem] shrink-0 flex-col gap-0.5">
+              <span className="text-[10px] font-medium text-neutral-500">审核</span>
+              <AdminSelect value={reviewStatus} className={compactSelectClass} onChange={(e) => setReviewStatus(e.target.value)}>
+                {REVIEW_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+              </AdminSelect>
+            </label>
+            <label className="flex w-[7rem] shrink-0 flex-col gap-0.5">
+              <span className="text-[10px] font-medium text-neutral-500">渠道</span>
+              <AdminSelect value={feedSource} className={compactSelectClass} onChange={(e) => setFeedSource(e.target.value)}>
+                {FEED_SOURCE_OPTIONS.map((o) => (<option key={o.value} value={o.value}>{o.label}</option>))}
+              </AdminSelect>
+            </label>
             <div className="flex shrink-0 items-center gap-1.5 self-end pb-0.5">
               <AdminButton type="button" tone="primary" size="sm" className="h-8 px-3 text-xs" onClick={applyFilter}>
                 筛选
@@ -244,6 +408,16 @@ export default function AdminExpStatsPage() {
               <AdminButton type="button" tone="secondary" size="sm" className="h-8 px-3 text-xs" onClick={resetFilter}>
                 重置
               </AdminButton>
+              {selectedIds.size > 0 && (
+                <>
+                  <AdminButton type="button" tone="success" size="sm" className="h-8 px-2 text-xs" disabled={reviewing} onClick={handleBatchApprove}>
+                    批准({selectedIds.size})
+                  </AdminButton>
+                  <AdminButton type="button" tone="danger" size="sm" className="h-8 px-2 text-xs" disabled={reviewing} onClick={handleBatchReject}>
+                    驳回({selectedIds.size})
+                  </AdminButton>
+                </>
+              )}
             </div>
           </div>
         </AdminFormCard>
@@ -258,17 +432,31 @@ export default function AdminExpStatsPage() {
           <table className="min-w-full text-xs">
             <thead>
               <tr className="border-b bg-[var(--app-color-surface-hover)] text-left text-[var(--app-color-text-secondary)]">
+                <th className="px-1 py-1.5 w-8">
+                  <input type="checkbox" checked={rows.length > 0 && selectedIds.size === rows.length} onChange={toggleAll} className="h-3 w-3" />
+                </th>
                 <th className="px-2 py-1.5">时间</th>
                 <th className="px-2 py-1.5">用户ID</th>
                 <th className="px-2 py-1.5">姓名</th>
                 <th className="px-2 py-1.5">经验值</th>
                 <th className="px-2 py-1.5">来源类型</th>
+                <th className="px-2 py-1.5">时长</th>
+                <th className="px-2 py-1.5">渠道</th>
+                <th className="px-2 py-1.5">异常</th>
+                <th className="px-2 py-1.5">审核</th>
                 <th className="px-2 py-1.5">房间</th>
+                <th className="px-2 py-1.5 w-12">操作</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {rows.map((r) => {
+                const badge = reviewBadge(r.reviewStatus ?? 0);
+                const anom = anomalyLabel(r.anomalyTypes);
+                return (
                 <tr key={r.id} className="border-b align-top hover:bg-[var(--app-color-surface-hover)]">
+                  <td className="px-1 py-1.5">
+                    <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)} className="h-3 w-3" />
+                  </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{toTime(r.createTime)}</td>
                   <td className="px-2 py-1.5 font-mono text-xs">{r.userId || "-"}</td>
                   <td className="px-2 py-1.5">{r.userName || "-"}</td>
@@ -278,9 +466,51 @@ export default function AdminExpStatsPage() {
                     </span>
                   </td>
                   <td className="px-2 py-1.5">{sourceTypeLabel(r.sourceType)}</td>
+                  <td className="px-2 py-1.5 font-mono tabular-nums text-[var(--app-color-text-secondary)]">
+                    {r.sessionDurationMinutes != null ? `${r.sessionDurationMinutes}min` : "-"}
+                  </td>
+                  <td className="px-2 py-1.5 text-[10px] text-[var(--app-color-text-tertiary)]">{feedSourceLabel(r.feedSource)}</td>
+                  <td className="px-2 py-1.5">
+                    {r.anomalyFlag === 1 ? (
+                      <span className="inline-flex items-center gap-0.5 rounded bg-orange-100 px-1 py-0.5 text-[10px] font-medium text-orange-700" title={anom}>
+                        <AlertTriangle className="h-3 w-3" />{anom}
+                      </span>
+                    ) : (
+                      <span className="text-[var(--app-color-text-tertiary)]">-</span>
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <span className={`inline-block rounded px-1 py-0.5 text-[10px] font-medium ${badge.cls}`}>{badge.label}</span>
+                  </td>
                   <td className="px-2 py-1.5">{r.roomName || r.roomId || "-"}</td>
+                  <td className="px-1 py-1.5">
+                    {r.reviewStatus === 0 && (
+                      <>
+                        <button type="button" className="inline-flex items-center rounded p-0.5 text-emerald-600 hover:bg-emerald-50" title="批准"
+                          onClick={() => handleSingleApprove(r.id)}>
+                          <CheckCircle className="h-3.5 w-3.5" />
+                        </button>
+                        <button type="button" className="inline-flex items-center rounded p-0.5 text-red-500 hover:bg-red-50" title="驳回"
+                          onClick={() => handleSingleReject(r.id)}>
+                          <XCircle className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                    {r.reviewStatus === 1 && (
+                      <button type="button" className="inline-flex items-center rounded p-0.5 text-red-500 hover:bg-red-50" title="撤销"
+                        onClick={() => handleSingleReject(r.id)}>
+                        <XCircle className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {r.reviewStatus === 2 && (
+                      <button type="button" className="inline-flex items-center rounded p-0.5 text-emerald-600 hover:bg-emerald-50" title="重新批准"
+                        onClick={() => handleSingleApprove(r.id)}>
+                        <CheckCircle className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </AdminTableShell>

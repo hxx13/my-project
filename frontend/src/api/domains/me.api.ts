@@ -10,6 +10,8 @@ export interface PendingBadges {
   processSupplies: number;
   material: number;
   processMaterial: number;
+  /** 延迟免冻结待审（reviewer 视角，与 scan-delay/request/pending 同源） */
+  processScanDelay?: number;
   /** 站内信（好友）未读条数，与 /api/chat 已读游标同源 */
   chatUnread?: number;
   repairText: string;
@@ -21,6 +23,7 @@ export interface PendingBadges {
   processSuppliesText: string;
   materialText: string;
   processMaterialText: string;
+  processScanDelayText?: string;
   chatUnreadText?: string;
   /**
    * 侧栏「消息」单一汇总（GET /api/me/pending-badges）：chat + notify + repair + purchase + supplies，
@@ -85,6 +88,12 @@ export interface MiniPreferences {
   appearanceSchedule?: AppearanceSchedulePreferences;
   /** 页面帮助「我已知晓」记录：path -> help.updatedAt */
   pageHelpIntroAck?: Record<string, string>;
+  /** 管理后台侧栏「常用」 */
+  adminNavRecent?: string[];
+  /** 管理后台侧栏「收藏」 */
+  adminNavStars?: string[];
+  /** 管理后台锁定入口 */
+  adminNavLock?: string | null;
 }
 
 interface MiniPreferencesResultBody {

@@ -3,10 +3,10 @@
 export const ASIA_SHANGHAI = "Asia/Shanghai";
 
 /**
- * 后端常见：`Timestamp.toInstant().toString()` 带 `Z`，但库中实为东八区墙钟被当成 UTC 写入，展示会少 8 小时。
- * 仅对以 `Z` 结尾的 ISO 在解析后叠加该毫秒数。后端修正后可改为 `0`。
+ * 后端 Jackson WallClockLocalDateTimeSerializer 已输出北京时间墙钟（yyyy-MM-dd HH:mm:ss，无 Z），
+ * 故 Z 后缀修正偏移量设为 0。仅在后端 legacy 接口返回错误带 Z 的时间串时才需设为 +8h。
  */
-export const BEIJING_INSTANT_Z_EXTRA_OFFSET_MS = 8 * 60 * 60 * 1000;
+export const BEIJING_INSTANT_Z_EXTRA_OFFSET_MS = 0;
 
 /** 无时区后缀的 SQL/ISO 日期时间（按北京时间墙钟解析） */
 const NAIVE_LOCAL_SQL = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?$/;

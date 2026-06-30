@@ -6,6 +6,7 @@ import com.example.demo.modules.twin.dashboard.dto.ScanPopupAnnouncementBundleDT
 import com.example.demo.modules.twin.dashboard.dto.ScanPopupAnnouncementItemDTO;
 import com.example.demo.modules.twin.dashboard.entity.TwinScanPopupAnnouncement;
 import com.example.demo.modules.twin.dashboard.mapper.TwinScanPopupAnnouncementMapper;
+import com.example.demo.modules.twin.scan.service.TwinScanNoticeAutoSuppressService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -25,15 +26,18 @@ public class TwinScanPopupAnnouncementService {
 
     private final TwinScanPopupAnnouncementMapper announcementMapper;
     private final TwinScanPopupAnnouncementConfigService configService;
+    private final TwinScanNoticeAutoSuppressService noticeAutoSuppressService;
 
     private final AtomicBoolean tableAbsent = new AtomicBoolean(false);
 
     public TwinScanPopupAnnouncementService(
             TwinScanPopupAnnouncementMapper announcementMapper,
-            TwinScanPopupAnnouncementConfigService configService
+            TwinScanPopupAnnouncementConfigService configService,
+            TwinScanNoticeAutoSuppressService noticeAutoSuppressService
     ) {
         this.announcementMapper = announcementMapper;
         this.configService = configService;
+        this.noticeAutoSuppressService = noticeAutoSuppressService;
     }
 
     public ScanPopupAnnouncementBundleDTO buildBundleForScan(User operator, String operatorRoleHint) {
@@ -54,6 +58,7 @@ public class TwinScanPopupAnnouncementService {
             item.setId(row.getId());
             item.setTitle(row.getTitle());
             item.setContentHtml(row.getContentHtml());
+            item.setUpdatedAt(row.getUpdatedAt());
             items.add(item);
         }
         ScanPopupAnnouncementBundleDTO bundle = new ScanPopupAnnouncementBundleDTO();
@@ -117,7 +122,7 @@ public class TwinScanPopupAnnouncementService {
         return row;
     }
 
-    public TwinScanPopupAnnouncement update(
+    public AnnouncementUpdateOutcome update(
             long id,
             String title,
             String contentHtml,
@@ -125,12 +130,13 @@ public class TwinScanPopupAnnouncementService {
             int sortOrder,
             String status,
             LocalDateTime publishAt,
-            LocalDateTime expireAt
+            LocalDateTime expireAt,
+            boolean clearAutoSuppress
     ) {
         ensureTableReady();
         TwinScanPopupAnnouncement existing = announcementMapper.selectById(id);
         if (existing == null) {
-            return null;
+            return new AnnouncementUpdateOutcome(null, 0);
         }
         TwinScanPopupAnnouncement row = new TwinScanPopupAnnouncement();
         row.setId(id);
@@ -142,12 +148,39 @@ public class TwinScanPopupAnnouncementService {
         row.setPublishAt(publishAt);
         row.setExpireAt(expireAt);
         announcementMapper.updateById(row);
-        return announcementMapper.selectById(id);
+        int cleared = 0;
+        if (clearAutoSuppress) {
+            cleared = noticeAutoSuppressService.clearForAnnouncement(id);
+            if (cleared > 0) {
+                log.info("[scan-announcement] 公告 #{} 管理员确认清空 {} 条「不再弹出」记录", id, cleared);
+            }
+        }
+        return new AnnouncementUpdateOutcome(announcementMapper.selectById(id), cleared);
     }
+
+    public record AnnouncementUpdateOutcome(TwinScanPopupAnnouncement row, int clearedAutoSuppressCount) {}
 
     public boolean delete(long id) {
         ensureTableReady();
+        noticeAutoSuppressService.clearForAnnouncement(id);
         return announcementMapper.deleteById(id) > 0;
+    }
+
+    /** 管理员手动清空该公告的全部「不再弹出」记录 */
+    public int clearAutoSuppressRecords(long id) {
+        ensureTableReady();
+        TwinScanPopupAnnouncement existing = announcementMapper.selectById(id);
+        if (existing == null) {
+            throw new IllegalArgumentException("公告不存在");
+        }
+        return noticeAutoSuppressService.clearForAnnouncement(id);
+    }
+
+    public int countAutoSuppressRecords(long id) {
+        if (tableAbsent.get()) {
+            return 0;
+        }
+        return noticeAutoSuppressService.countForAnnouncement(id);
     }
 
     private List<TwinScanPopupAnnouncement> listActiveRows() {

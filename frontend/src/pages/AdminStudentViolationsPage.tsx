@@ -9,6 +9,7 @@ import {
   Bell,
   Check,
   CreditCard,
+  FileText,
   Pencil,
   RefreshCw,
   Save,
@@ -39,7 +40,11 @@ import {
   type ViolationRule,
 } from "@/api/domains/studentViolation.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
-import { effectiveViolationForbidEnter } from "@/components/scanner/twinViolationInteractive";
+import {
+  resolveManualViolationForbidEnter,
+  violationEnterLocked,
+  violationImmediateForbidEnter,
+} from "@/components/scanner/twinViolationInteractive";
 import { adminHttp } from "@/api/core/adminHttp";
 import { searchPersonnel } from "@/api/twinApi";
 import { AdminButton, adminPickableRowClass } from "@/components/admin/AdminButton";
@@ -63,10 +68,12 @@ import {
 } from "@/features/admin/scanOperatorRoleHint";
 import { normalizePersonnelRecord, type PersonnelRecordView } from "@/utils/personnelRecord";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
+import { SystemConfigsPanel } from "@/features/admin/settings/SystemConfigsPanel";
+import { fetchSystemConfigs, fetchConfigDefinitions, type SystemConfigRecord, type SettingDefinitionRecord } from "@/api/domains/notification.api";
 
 type PickUser = { userId: string; name: string };
 type LockMode = "single" | "batch";
-type PageTabId = "unbound" | "announcement" | "create" | "records" | "swipe-alert" | "rules";
+type PageTabId = "unbound" | "announcement" | "create" | "records" | "swipe-alert" | "rules" | "homepage-content";
 
 const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
   { id: "unbound", label: "未绑卡提示", icon: <CreditCard className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
@@ -75,6 +82,7 @@ const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
   { id: "records", label: "违规记录", icon: <ShieldAlert className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "swipe-alert", label: "刷卡失败告警", icon: <AlertTriangle className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "rules", label: "触发规则", icon: <Settings className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
+  { id: "homepage-content", label: "主页文案", icon: <FileText className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
 ];
 
 const LOCK_MODE_OPTIONS: { value: LockMode; label: string }[] = [
@@ -230,7 +238,7 @@ function ViolationTemplateQuickSelect({
 }
 
 function parsePageTab(raw: string | null): PageTabId {
-  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert" || raw === "rules") return raw;
+  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert" || raw === "rules" || raw === "homepage-content") return raw;
   return "unbound";
 }
 
@@ -240,6 +248,49 @@ function parseJsonArrayStr(raw: string | null | undefined): string[] {
     const arr = JSON.parse(raw);
     return Array.isArray(arr) ? arr : [];
   } catch { return []; }
+}
+
+/** MySQL TINYINT / JSON boolean 统一解析（勿用 `v !== 0`，false 与 "0" 会被误判为开） */
+function dbTinyIntOn(value: unknown, defaultOn = false): boolean {
+  if (value === null || value === undefined) return defaultOn;
+  if (value === true || value === 1 || value === "1") return true;
+  if (value === false || value === 0 || value === "0") return false;
+  if (typeof value === "string") {
+    const s = value.trim().toLowerCase();
+    if (s === "true") return true;
+    if (s === "false") return false;
+  }
+  return defaultOn;
+}
+
+function HomepageContentTab() {
+  const [configs, setConfigs] = useState<SystemConfigRecord[]>([]);
+  const [defs, setDefs] = useState<SettingDefinitionRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      fetchSystemConfigs("dashboard_codex"),
+      fetchConfigDefinitions("dashboard_codex"),
+    ])
+      .then(([c, d]) => { setConfigs(c); setDefs(d); })
+      .catch(err => console.error("Failed to load dashboard_codex configs:", err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--twin-mute)]">加载中…</div>;
+
+  return (
+    <SystemConfigsPanel
+      moduleKey="dashboard_codex"
+      configs={configs}
+      configDefs={defs}
+      onConfigsChange={setConfigs}
+      title="主页文案与公告"
+      description="管理主页还卡说明、惩戒公告等面向学生的文案与展示样式。修改后即时生效。"
+    />
+  );
 }
 
 export default function AdminStudentViolationsPage() {
@@ -297,7 +348,7 @@ export default function AdminStudentViolationsPage() {
   const [unboundEnabled, setUnboundEnabled] = useState(true);
   const [unboundShowEvery, setUnboundShowEvery] = useState(true);
   const [unboundForbidEnter, setUnboundForbidEnter] = useState(false);
-  const [unboundApplyRoles, setUnboundApplyRoles] = useState<UnboundApplyRoleCode[]>(["STUDENT"]);
+  const [unboundApplyRoles, setUnboundApplyRoles] = useState<UnboundApplyRoleCode[]>(["MEMBER"]);
   const [unboundText, setUnboundText] = useState("");
   const [unboundUrls, setUnboundUrls] = useState<string[]>([]);
   const [unboundUploading, setUnboundUploading] = useState(false);
@@ -316,6 +367,10 @@ export default function AdminStudentViolationsPage() {
   const [strandedInteractiveUnlockOnVerify, setStrandedInteractiveUnlockOnVerify] = useState(true);
   const [strandedConfigLoading, setStrandedConfigLoading] = useState(false);
   const [strandedConfigSaving, setStrandedConfigSaving] = useState(false);
+  const [strandedSignout2Enabled, setStrandedSignout2Enabled] = useState(true);
+  const [strandedSignout2LastResult, setStrandedSignout2LastResult] = useState("");
+  const [strandedSignout2Loading, setStrandedSignout2Loading] = useState(false);
+  const [strandedSignout2Saving, setStrandedSignout2Saving] = useState(false);
   // Test state
   const [testPersonKeyword, setTestPersonKeyword] = useState("");
   const [testPickedUser, setTestPickedUser] = useState<{userId: string; name: string} | null>(null);
@@ -350,7 +405,7 @@ export default function AdminStudentViolationsPage() {
       setUnboundEnabled(unboundSettings.enabled);
       setUnboundShowEvery(unboundSettings.showNoticeEveryScan);
       setUnboundForbidEnter(Boolean(unboundSettings.forbidEnter));
-      setUnboundApplyRoles(unboundSettings.applyRoleCodes ?? ["STUDENT"]);
+      setUnboundApplyRoles(unboundSettings.applyRoleCodes ?? ["MEMBER"]);
       setUnboundText(unboundSettings.violationText ?? "");
       setUnboundUrls(unboundSettings.imageUrls ?? []);
     }
@@ -391,7 +446,7 @@ export default function AdminStudentViolationsPage() {
       setUnboundEnabled(saved.enabled);
       setUnboundShowEvery(saved.showNoticeEveryScan);
       setUnboundForbidEnter(Boolean(saved.forbidEnter));
-      setUnboundApplyRoles(saved.applyRoleCodes ?? ["STUDENT"]);
+      setUnboundApplyRoles(saved.applyRoleCodes ?? ["MEMBER"]);
       setUnboundText(saved.violationText ?? "");
       setUnboundUrls(saved.imageUrls ?? []);
       qc.setQueryData(["unboundCardNoticeSettings"], saved);
@@ -570,6 +625,36 @@ export default function AdminStudentViolationsPage() {
     void uploadViolationImages(imgs);
   };
 
+  const handleNewInteractiveChallengeChange = (value: string) => {
+    setNewInteractiveChallenge(value);
+    if (value.trim()) {
+      setForbidEnter(true);
+    }
+  };
+
+  const handleForbidEnterChange = (checked: boolean, interactivePhrase: string) => {
+    if (!checked && interactivePhrase.trim()) {
+      toast.error("已填写交互式确认短语时须保持「立即禁止扫码进入」；清空短语后可仅关禁入");
+      return;
+    }
+    setForbidEnter(checked);
+  };
+
+  const handleEditInteractiveChallengeChange = (value: string) => {
+    setEditInteractiveChallenge(value);
+    if (value.trim()) {
+      setEditForbid(true);
+    }
+  };
+
+  const handleEditForbidChange = (checked: boolean) => {
+    if (!checked && editInteractiveChallenge.trim()) {
+      toast.error("已填写交互式确认短语时须保持「立即禁止扫码进入」；清空短语后可仅关禁入");
+      return;
+    }
+    setEditForbid(checked);
+  };
+
   const resetViolationForm = () => {
     setViolationText("");
     setImageUrls([]);
@@ -591,12 +676,13 @@ export default function AdminStudentViolationsPage() {
       setSaving(true);
       try {
         const interactiveChallenge = newInteractiveChallenge.trim() || null;
+        const effectiveForbidEnter = resolveManualViolationForbidEnter(forbidEnter, interactiveChallenge);
         await createStudentViolation({
           targetUserId: picked.userId,
           ruleId: selectedRuleId,
           violationText: violationText.trim(),
           imageUrls,
-          forbidEnter: effectiveViolationForbidEnter(forbidEnter, newInteractiveChallenge),
+          forbidEnter: effectiveForbidEnter,
           maxEnterSuccess: maxEnterParsed,
           showNoticeEveryScan: showEvery,
           expireAfterDays: expireDaysParsed,
@@ -630,12 +716,13 @@ export default function AdminStudentViolationsPage() {
     setSaving(true);
     try {
       const interactiveChallenge = newInteractiveChallenge.trim() || null;
+      const effectiveForbidEnter = resolveManualViolationForbidEnter(forbidEnter, interactiveChallenge);
       const summary = await batchCreateStudentViolations({
         targetUserIds: ids,
         ruleId: selectedRuleId,
         violationText: violationText.trim(),
         imageUrls,
-        forbidEnter: effectiveViolationForbidEnter(forbidEnter, newInteractiveChallenge),
+        forbidEnter: effectiveForbidEnter,
         maxEnterSuccess: maxEnterParsed,
         showNoticeEveryScan: showEvery,
         expireAfterDays: expireDaysParsed,
@@ -730,10 +817,11 @@ export default function AdminStudentViolationsPage() {
     setSavingEdit(true);
     try {
       const interactiveChallenge = editInteractiveChallenge.trim() || null;
+      const effectiveForbidEnter = resolveManualViolationForbidEnter(editForbid, interactiveChallenge);
       const updated = await updateStudentViolation(editId, {
         violationText: editText.trim(),
         imageUrls: editUrls,
-        forbidEnter: effectiveViolationForbidEnter(editForbid, editInteractiveChallenge),
+        forbidEnter: effectiveForbidEnter,
         maxEnterSuccess: editMaxParsed,
         showNoticeEveryScan: editShowEvery,
         expireMode: editExpireMode,
@@ -781,33 +869,26 @@ export default function AdminStudentViolationsPage() {
     try {
       const res = await adminHttp.get("/twin/student-violations/stranded-config");
       const cfg = (res as any)?.data?.data ?? (res as any)?.data ?? {};
-      setStrandedAutoSignout(cfg.auto_signout_enabled !== 0);
+      setStrandedAutoSignout(dbTinyIntOn(cfg.auto_signout_enabled, true));
       setStrandedViolationTpl(cfg.violation_text_tpl || "");
       setStrandedForbidEnter(Boolean(cfg.forbid_enter));
       setStrandedExpireDays(String(cfg.expire_after_days ?? 1));
       setStrandedWhitelistDepts(parseJsonArrayStr(cfg.whitelist_depts));
       setInteractiveChallengeEnabled(Boolean(cfg.interactive_challenge_enabled));
       setInteractiveChallengePhrase(cfg.interactive_challenge_phrase || "一人一卡,严禁尾随");
-      setStrandedInteractiveUnlockOnVerify(cfg.interactive_unlock_on_verify !== 0);
+      setStrandedInteractiveUnlockOnVerify(dbTinyIntOn(cfg.interactive_unlock_on_verify, true));
     } catch { /* ignore */ }
     finally { setStrandedConfigLoading(false); }
   };
-
-  // 交互式确认开启时，强制锁定禁止进入
-  useEffect(() => {
-    if (interactiveChallengeEnabled) {
-      setStrandedForbidEnter(true);
-    }
-  }, [interactiveChallengeEnabled]);
 
   const saveStrandedConfig = async () => {
     setStrandedConfigSaving(true);
     try {
       // Save stranded violation config (keys must be snake_case for backend Map.get())
       await adminHttp.put("/twin/student-violations/stranded-config", {
-        auto_signout_enabled: strandedAutoSignout,
+        auto_signout_enabled: strandedAutoSignout ? 1 : 0,
         violation_text_tpl: isRichTextEmpty(strandedViolationTpl) ? "" : strandedViolationTpl.trim(),
-        forbid_enter: interactiveChallengeEnabled ? 1 : (strandedForbidEnter ? 1 : 0),
+        forbid_enter: strandedForbidEnter ? 1 : 0,
         expire_after_days: Number(strandedExpireDays) || 1,
         whitelist_depts: JSON.stringify(strandedWhitelistDepts),
         interactive_challenge_enabled: interactiveChallengeEnabled ? 1 : 0,
@@ -819,6 +900,30 @@ export default function AdminStudentViolationsPage() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
     } finally { setStrandedConfigSaving(false); }
+  };
+
+  const loadStrandedSignoutConfig = async () => {
+    setStrandedSignout2Loading(true);
+    try {
+      const res = await adminHttp.get("/twin/student-violations/stranded-signout-config");
+      const cfg = (res as any)?.data?.data ?? (res as any)?.data ?? {};
+      setStrandedSignout2Enabled(dbTinyIntOn(cfg.auto_signout_enabled, true));
+      setStrandedSignout2LastResult(String(cfg.last_execution_result ?? ""));
+    } catch { /* ignore */ }
+    finally { setStrandedSignout2Loading(false); }
+  };
+
+  const saveStrandedSignoutConfig = async () => {
+    setStrandedSignout2Saving(true);
+    try {
+      await adminHttp.put("/twin/student-violations/stranded-signout-config", {
+        auto_signout_enabled: strandedSignout2Enabled ? 1 : 0,
+      });
+      toast.success("第二道滞留签退配置已保存");
+      loadStrandedSignoutConfig();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "保存失败");
+    } finally { setStrandedSignout2Saving(false); }
   };
 
   const runTestOnUser = async () => {
@@ -853,7 +958,10 @@ export default function AdminStudentViolationsPage() {
 
   const testSearchTimer = useRef<number | null>(null);
 
-  useEffect(() => { loadStrandedConfig(); }, []);
+  useEffect(() => {
+    loadStrandedConfig();
+    loadStrandedSignoutConfig();
+  }, []);
 
   return (
     <AdminPageShell
@@ -951,7 +1059,7 @@ export default function AdminStudentViolationsPage() {
                             return prev.includes(opt.code) ? prev : [...prev, opt.code];
                           }
                           const next = prev.filter((c) => c !== opt.code);
-                          return next.length ? next : ["STUDENT"];
+                          return next.length ? next : ["MEMBER"];
                         });
                       }}
                     />
@@ -1343,15 +1451,14 @@ export default function AdminStudentViolationsPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className={`flex items-center gap-2 text-sm ${newInteractiveChallenge.trim() ? "text-amber-700" : "text-[var(--twin-ink)]"}`}>
+            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <input
                 type="checkbox"
                 className="h-4 w-4 rounded border-[var(--twin-hairline-strong)] text-[var(--twin-ink)] focus-visible:ring-2 focus-visible:ring-[#0070f3]/25"
-                checked={newInteractiveChallenge.trim() ? true : forbidEnter}
-                disabled={Boolean(newInteractiveChallenge.trim())}
-                onChange={(e) => setForbidEnter(e.target.checked)}
+                checked={forbidEnter}
+                onChange={(e) => handleForbidEnterChange(e.target.checked, newInteractiveChallenge)}
               />
-              {newInteractiveChallenge.trim() ? "🔒 禁止扫码进入（交互式确认要求）" : "立即禁止扫码进入"}
+              立即禁止扫码进入
             </label>
             <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <input
@@ -1364,16 +1471,12 @@ export default function AdminStudentViolationsPage() {
             </label>
             <div className="sm:col-span-2">
               <label className="text-xs font-medium text-[var(--twin-body)]">
-                🧩 交互式确认短语（留空=关闭）
+                🧩 交互式确认短语（留空=关闭；填写后将自动勾选禁入，验证后可解除）
               </label>
               <input
                 className={cn(inputBase, "mt-1")}
                 value={newInteractiveChallenge}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setNewInteractiveChallenge(v);
-                  if (v.trim()) setForbidEnter(true);
-                }}
+                onChange={(e) => handleNewInteractiveChallengeChange(e.target.value)}
                 placeholder="如：一人一卡,严禁尾随"
               />
               {newInteractiveChallenge.trim() ? (
@@ -1427,8 +1530,8 @@ export default function AdminStudentViolationsPage() {
 
         {/* ---- Auto-stranded config ---- */}
         <AdminFormCard
-          title="🤖 每日自动滞留检测"
-          description="每日定时检测未豁免且仍在楼内的滞留人员，自动创建违规记录并通过扫码公告通知。执行时间请在「定时管理」页面配置。"
+          title="🤖 每日自动滞留检测（一道·违规公告）"
+          description="每日定时检测未豁免且仍在楼内的滞留人员，自动创建违规记录并通过扫码公告通知。执行时刻请在「定时管理 → 冻结联动任务 → 滞留·未豁免人员自动违规（一道）」配置。"
         >
           {strandedConfigLoading ? (
             <p className="text-sm text-[var(--twin-mute)]">加载配置中…</p>
@@ -1466,13 +1569,12 @@ export default function AdminStudentViolationsPage() {
 
               {/* Forbid enter + expire */}
               <div className="grid grid-cols-2 gap-3">
-                <label className={`flex items-center gap-2 text-sm ${interactiveChallengeEnabled ? "text-amber-700" : ""}`}>
+                <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" className="h-4 w-4"
-                    checked={interactiveChallengeEnabled || strandedForbidEnter}
-                    disabled={interactiveChallengeEnabled}
-                    onChange={(e) => { if (!interactiveChallengeEnabled) setStrandedForbidEnter(e.target.checked); }}
+                    checked={strandedForbidEnter}
+                    onChange={(e) => setStrandedForbidEnter(e.target.checked)}
  />
-                  {interactiveChallengeEnabled ? "🔒 禁止扫码进入（交互式确认要求）" : "禁止扫码进入"}
+                  立即禁止扫码进入
                 </label>
                 <div>
                   <label className="text-xs font-medium text-[var(--twin-body)]">
@@ -1532,6 +1634,42 @@ export default function AdminStudentViolationsPage() {
               <AdminButton type="button" tone="primary" loading={strandedConfigSaving}
                 className="gap-1.5" onClick={() => { saveStrandedConfig(); }}>
                 <Save className="h-4 w-4" />保存配置
+              </AdminButton>
+            </div>
+          )}
+        </AdminFormCard>
+
+        <AdminFormCard
+          title="🤖 每日自动滞留检测（二道·仅签退）"
+          description="与一道检测口径相同（未豁免且仍在楼内），仅执行签退，不创建违规、不涉及禁入或交互式确认。执行时刻请在「定时管理 → 冻结联动任务 → 滞留·未豁免人员自动签退（二道）」配置；部门白名单与一道共用。"
+        >
+          {strandedSignout2Loading ? (
+            <p className="text-sm text-[var(--twin-mute)]">加载配置中…</p>
+          ) : (
+            <div className="space-y-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={strandedSignout2Enabled}
+                  onChange={(e) => setStrandedSignout2Enabled(e.target.checked)}
+                />
+                执行签退操作（帮助滞留人员离开）
+              </label>
+              {strandedSignout2LastResult ? (
+                <p className="text-xs text-[var(--twin-mute)]">
+                  上次执行：{strandedSignout2LastResult}
+                </p>
+              ) : null}
+              <AdminButton
+                type="button"
+                tone="primary"
+                loading={strandedSignout2Saving}
+                className="gap-1.5"
+                onClick={() => { void saveStrandedSignoutConfig(); }}
+              >
+                <Save className="h-4 w-4" />
+                保存配置
               </AdminButton>
             </div>
           )}
@@ -1655,7 +1793,12 @@ export default function AdminStudentViolationsPage() {
                   <th className="whitespace-nowrap px-3 py-2">规则</th>
                   <th className="whitespace-nowrap px-3 py-2">状态</th>
                   <th className="whitespace-nowrap px-3 py-2">来源</th>
-                  <th className="whitespace-nowrap px-3 py-2">禁入</th>
+                  <th className="whitespace-nowrap px-3 py-2" title="创建时勾选的「立即禁止扫码进入」开关">
+                    立即禁入
+                  </th>
+                  <th className="whitespace-nowrap px-3 py-2" title="当前扫码是否被禁止进入（含交互确认、次数上限）">
+                    当前禁入
+                  </th>
                   <th className="whitespace-nowrap px-3 py-2">进入计数</th>
                   <th className="whitespace-nowrap px-3 py-2">到期</th>
                   <th className="whitespace-nowrap px-3 py-2 text-right">操作</th>
@@ -1700,7 +1843,12 @@ export default function AdminStudentViolationsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-xs">{r.forbidEnter ? "是" : "否"}</td>
+                      <td className="px-3 py-2 text-xs">
+                        {violationImmediateForbidEnter(r.forbidEnter) ? "是" : "否"}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {violationEnterLocked(r) ? "是" : "否"}
+                      </td>
                       <td className="px-3 py-2 text-xs">
                         {r.maxEnterSuccess != null ? `${r.enterSuccessCount ?? 0}/${r.maxEnterSuccess}` : "—"}
                       </td>
@@ -1764,6 +1912,15 @@ export default function AdminStudentViolationsPage() {
           className="space-y-4"
         >
           <ViolationRuleManager />
+        </AdminTabPanel>
+
+        <AdminTabPanel
+          id="violation-page-panel-homepage-content"
+          tabId="homepage-content"
+          activeTab={activeTab}
+          className="space-y-4"
+        >
+          <HomepageContentTab />
         </AdminTabPanel>
       </div>
 
@@ -1848,15 +2005,14 @@ export default function AdminStudentViolationsPage() {
                   </div>
                 ) : null}
               </div>
-              <label className={`flex items-center gap-2 text-sm ${editInteractiveChallenge.trim() ? "text-amber-700" : "text-[var(--twin-ink)]"}`}>
+              <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
                 <input
                   type="checkbox"
                   className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
-                  checked={editInteractiveChallenge.trim() ? true : editForbid}
-                  disabled={Boolean(editInteractiveChallenge.trim())}
-                  onChange={(e) => setEditForbid(e.target.checked)}
+                  checked={editForbid}
+                  onChange={(e) => handleEditForbidChange(e.target.checked)}
                 />
-                {editInteractiveChallenge.trim() ? "🔒 禁止扫码进入（交互式确认要求）" : "立即禁止扫码进入"}
+                立即禁止扫码进入
               </label>
               <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
                 <input
@@ -1869,16 +2025,12 @@ export default function AdminStudentViolationsPage() {
               </label>
               <div>
                 <label className="text-xs font-medium text-[var(--twin-body)]">
-                  🧩 交互式确认短语（留空=关闭）
+                  🧩 交互式确认短语（留空=关闭；填写后将自动勾选禁入，验证后可解除）
                 </label>
                 <input
                   className={cn(inputBase, "mt-1")}
                   value={editInteractiveChallenge}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setEditInteractiveChallenge(v);
-                    if (v.trim()) setEditForbid(true);
-                  }}
+                  onChange={(e) => handleEditInteractiveChallengeChange(e.target.value)}
                   placeholder="如：一人一卡,严禁尾随"
                 />
                 {editInteractiveChallenge.trim() ? (

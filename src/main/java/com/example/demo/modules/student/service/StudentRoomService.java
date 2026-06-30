@@ -4,6 +4,7 @@ import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.student.mapper.StudentRoomPinMapper;
 import com.example.demo.modules.twin.common.dto.RoomDashboardRenderDTO;
+import com.example.demo.modules.twin.common.util.RoomFloorPrefixUtil;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.dashboard.service.TwinDashboardAggregationService;
 import org.slf4j.Logger;
@@ -178,7 +179,7 @@ public class StudentRoomService {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("roomId", String.valueOf(room.getRoomId()));
         item.put("roomName", room.getRoomName() != null ? room.getRoomName() : "");
-        item.put("floor", deriveFloor(room.getRoomName()));
+        item.put("floor", RoomFloorPrefixUtil.deriveFloorLabel(room.getRoomName()));
         item.put("zone", room.getCampus() != null ? room.getCampus() : "");
 
         int occupants = room.getOccupants() != null ? room.getOccupants().size() : 0;
@@ -197,17 +198,6 @@ public class StudentRoomService {
         item.put("isPinned", isPinned);
 
         return item;
-    }
-
-    private String deriveFloor(String roomName) {
-        if (roomName == null) return "";
-        for (int i = 0; i < roomName.length(); i++) {
-            char c = roomName.charAt(i);
-            if (c >= '1' && c <= '9') {
-                return c + "F";
-            }
-        }
-        return "";
     }
 
     private int getRoomCapacity(String roomId) {

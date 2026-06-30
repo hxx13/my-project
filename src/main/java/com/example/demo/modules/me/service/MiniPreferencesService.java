@@ -17,6 +17,8 @@ import java.util.Set;
 public class MiniPreferencesService {
 
     private static final int MAX_SELECTIONS = 64;
+    private static final int MAX_ADMIN_NAV_RECENT = 8;
+    private static final int MAX_ADMIN_NAV_STARS = 64;
 
     private final UserMapper userMapper;
     private final ObjectMapper objectMapper;
@@ -49,6 +51,9 @@ public class MiniPreferencesService {
             vo.setTwinWebChromeTheme(sanitizeTwinWebChromeTheme(vo.getTwinWebChromeTheme()));
             vo.setAppearanceSchedule(sanitizeAppearanceSchedule(vo.getAppearanceSchedule()));
             vo.setPageHelpIntroAck(sanitizePageHelpIntroAck(vo.getPageHelpIntroAck()));
+            vo.setAdminNavRecent(sanitizeAdminNavPaths(vo.getAdminNavRecent(), MAX_ADMIN_NAV_RECENT));
+            vo.setAdminNavStars(sanitizeAdminNavPaths(vo.getAdminNavStars(), MAX_ADMIN_NAV_STARS));
+            vo.setAdminNavLock(sanitizeAdminNavLock(vo.getAdminNavLock()));
             return vo;
         } catch (Exception e) {
             return empty();
@@ -89,9 +94,32 @@ public class MiniPreferencesService {
         if (incoming.getAppearanceSchedule() == null && existing.getAppearanceSchedule() != null) {
             incoming.setAppearanceSchedule(existing.getAppearanceSchedule());
         }
-        if (incoming.getPageHelpIntroAck() == null && existing.getPageHelpIntroAck() != null) {
-            incoming.setPageHelpIntroAck(new LinkedHashMap<>(existing.getPageHelpIntroAck()));
+        mergePageHelpIntroAck(existing, incoming);
+        if (incoming.getAdminNavRecent() == null) {
+            if (existing.getAdminNavRecent() != null && !existing.getAdminNavRecent().isEmpty()) {
+                incoming.setAdminNavRecent(new ArrayList<>(existing.getAdminNavRecent()));
+            }
         }
+        if (incoming.getAdminNavStars() == null) {
+            if (existing.getAdminNavStars() != null && !existing.getAdminNavStars().isEmpty()) {
+                incoming.setAdminNavStars(new ArrayList<>(existing.getAdminNavStars()));
+            }
+        }
+        if (incoming.getAdminNavLock() == null && existing.getAdminNavLock() != null) {
+            incoming.setAdminNavLock(existing.getAdminNavLock());
+        }
+    }
+
+    /** 合并已读记录：incoming 覆盖同 path，但保留 existing 中未被提交的项（避免主题保存冲掉帮助已读） */
+    private static void mergePageHelpIntroAck(MiniPreferencesVo existing, MiniPreferencesVo incoming) {
+        Map<String, String> merged = new LinkedHashMap<>();
+        if (existing.getPageHelpIntroAck() != null) {
+            merged.putAll(existing.getPageHelpIntroAck());
+        }
+        if (incoming.getPageHelpIntroAck() != null) {
+            merged.putAll(incoming.getPageHelpIntroAck());
+        }
+        incoming.setPageHelpIntroAck(merged);
     }
 
     private static String sanitizeTwinWebChromeTheme(String raw) {
@@ -145,6 +173,41 @@ public class MiniPreferencesService {
         return fallback;
     }
 
+    private static List<String> sanitizeAdminNavPaths(List<String> raw, int max) {
+        List<String> out = new ArrayList<>();
+        if (raw == null) {
+            return out;
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        for (String p : raw) {
+            if (p == null) {
+                continue;
+            }
+            String path = p.trim();
+            if (path.isEmpty() || !path.startsWith("/admin") || path.length() > 512 || path.contains("..")) {
+                continue;
+            }
+            if (seen.add(path)) {
+                out.add(path);
+            }
+            if (out.size() >= max) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private static String sanitizeAdminNavLock(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String path = raw.trim();
+        if (!path.startsWith("/admin") || path.length() > 512 || path.contains("..")) {
+            return null;
+        }
+        return path;
+    }
+
     private static Map<String, String> sanitizePageHelpIntroAck(Map<String, String> raw) {
         Map<String, String> out = new LinkedHashMap<>();
         if (raw == null) {
@@ -172,6 +235,9 @@ public class MiniPreferencesService {
         vo.setTwinWebChromeTheme("standard");
         vo.setAppearanceSchedule(sanitizeAppearanceSchedule(null));
         vo.setPageHelpIntroAck(new LinkedHashMap<>());
+        vo.setAdminNavRecent(new ArrayList<>());
+        vo.setAdminNavStars(new ArrayList<>());
+        vo.setAdminNavLock(null);
         vo.setRoomWatch(new MiniPreferencesVo.RoomWatchVo());
         vo.getRoomWatch().setSelections(new ArrayList<>());
         return vo;
@@ -182,6 +248,9 @@ public class MiniPreferencesService {
         out.setTwinWebChromeTheme(sanitizeTwinWebChromeTheme(in.getTwinWebChromeTheme()));
         out.setAppearanceSchedule(sanitizeAppearanceSchedule(in.getAppearanceSchedule()));
         out.setPageHelpIntroAck(sanitizePageHelpIntroAck(in.getPageHelpIntroAck()));
+        out.setAdminNavRecent(sanitizeAdminNavPaths(in.getAdminNavRecent(), MAX_ADMIN_NAV_RECENT));
+        out.setAdminNavStars(sanitizeAdminNavPaths(in.getAdminNavStars(), MAX_ADMIN_NAV_STARS));
+        out.setAdminNavLock(sanitizeAdminNavLock(in.getAdminNavLock()));
         MiniPreferencesVo.RoomWatchVo rw = new MiniPreferencesVo.RoomWatchVo();
         List<MiniPreferencesVo.RoomWatchSelectionVo> list =
                 in.getRoomWatch() != null && in.getRoomWatch().getSelections() != null

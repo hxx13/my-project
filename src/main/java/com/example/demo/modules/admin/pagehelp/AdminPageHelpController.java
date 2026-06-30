@@ -210,7 +210,7 @@ public class AdminPageHelpController {
         if (!(attr instanceof User currentUser)) {
             return Result.error("当前登录信息无效");
         }
-        RoleEnum role = currentUser.getRole() == null ? RoleEnum.STUDENT : currentUser.getRole();
+        RoleEnum role = currentUser.getRole() == null ? RoleEnum.MEMBER : currentUser.getRole();
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             return Result.error("无权限访问");
         }
@@ -222,7 +222,7 @@ public class AdminPageHelpController {
         if (!(attr instanceof User currentUser)) {
             return Result.error("当前登录信息无效");
         }
-        RoleEnum role = currentUser.getRole() == null ? RoleEnum.STUDENT : currentUser.getRole();
+        RoleEnum role = currentUser.getRole() == null ? RoleEnum.MEMBER : currentUser.getRole();
         if (role.getLevel() < RoleEnum.ADMIN.getLevel()) {
             return Result.error("无权限：仅管理员及以上可编辑教程");
         }

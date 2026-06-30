@@ -104,6 +104,25 @@ export async function registerStudent(
 // ======================== 学生档案 API ========================
 
 /**
+ * 学生激活（已有账号设密码，UPDATE 而非 INSERT）
+ * POST /api/auth/register/student/activate
+ */
+export async function activateStudent(
+  userId: string,
+  username: string,
+  password: string
+): Promise<Result<{ token: string; role: string; userInfo: unknown }>> {
+  const res = await authHttp.post<Result<{ token: string; role: string; userInfo: unknown }>>(
+    "/auth/register/student/activate",
+    { userId, username, password }
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "激活失败");
+  }
+  return res.data;
+}
+
+/**
  * 获取学生个人聚合档案
  * GET /api/student/profile
  */
@@ -465,8 +484,8 @@ export interface CageShelfFilterOptions {
   campuses: { campusId: number; campusName: string }[];
   areas: { areaId: string; areaName: string }[];
   floors: { floorId: string; floorName: string }[];
-  rooms: { roomId: string; roomName: string }[];
-  shelves: { shelveId: string; shelveName: string }[];
+  rooms: { roomId: string; roomName: string; highlight?: boolean }[];
+  shelves: { shelveId: string; shelveName: string; highlight?: boolean }[];
 }
 
 /** 笼架筛选选项查询参数 */

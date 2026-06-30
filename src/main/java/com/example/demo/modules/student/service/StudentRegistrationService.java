@@ -9,6 +9,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.AuthService;
 import com.example.demo.modules.auth.service.PasswordCredentialService;
+import com.example.demo.modules.student.dto.StudentActivateRequest;
 import com.example.demo.modules.student.dto.StudentQrVerifyResponse;
 import com.example.demo.modules.student.dto.StudentRegisterRequest;
 import com.google.zxing.BinaryBitmap;
@@ -141,19 +142,25 @@ public class StudentRegistrationService {
 
         String aroUserId = req.getUserId();
 
-        // 若 ARO 用户已存在 sys_user 记录（绑定/WeChat 注册等），不允许重复注册
-        if (userMapper.findById(aroUserId) != null) {
-            return Result.fail(409, "该 ARO 账号已被注册或绑定，请直接登录或联系管理员");
+        // 若 ARO 用户已存在 sys_user 记录，区分有无密码
+        User existingUser = userMapper.findById(aroUserId);
+        if (existingUser != null) {
+            if (StringUtils.hasText(existingUser.getPassword())) {
+                return Result.fail(409, "该账号已注册，请直接登录");
+            } else {
+                return Result.fail(409, "该账号已绑定但未设密码，请前往激活页面设置密码");
+            }
         }
 
         User user = new User();
         user.setId(aroUserId);
         user.setUsername(username);
         user.setPassword(passwordCredentialService.encodeForStorage(req.getPassword()));
-        user.setRole(RoleEnum.STUDENT);
+        user.setRole(RoleEnum.MEMBER);
         user.setStatus(1);
         user.setPasswordResetRequired(0);
         user.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
+        user.setAccountSource("STUDENT");
 
         userMapper.insertUser(user);
         user = userMapper.findById(user.getId());
@@ -162,6 +169,72 @@ public class StudentRegistrationService {
         }
         user.setRole(authService.normalizeRole(user.getRole()));
         return authService.generateAuthResult(user);
+    }
+
+    /**
+     * 学生激活（设密码）：对已存在但无密码的学生账号 UPDATE 而非 INSERT。
+     * 保留 openId、miniBindType 不动。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Result<?> activate(StudentActivateRequest req) {
+        if (req == null || !StringUtils.hasText(req.getUserId())) {
+            return Result.fail(400, "用户ID(user_id)不能为空");
+        }
+        if (!DIGIT_19.matcher(req.getUserId()).matches()) {
+            return Result.fail(400, "用户ID(user_id)必须为19位数字");
+        }
+        if (!StringUtils.hasText(req.getUsername())) {
+            return Result.fail(400, "用户名不能为空");
+        }
+        if (!StringUtils.hasText(req.getPassword())) {
+            return Result.fail(400, "密码不能为空");
+        }
+        if (req.getPassword().length() < 6) {
+            return Result.fail(400, "密码长度不能少于6位");
+        }
+
+        String username = req.getUsername().trim();
+        if (username.length() < 3 || username.length() > 64) {
+            return Result.fail(400, "用户名长度需在3-64个字符之间");
+        }
+
+        String userId = req.getUserId();
+
+        // 0. 必须在 ARO 人员库中存在
+        if (!isPersonnelExists(userId)) {
+            return Result.fail(404, "ARO人员库中不存在该用户ID: " + userId);
+        }
+
+        // 1. 必须存在 sys_user 记录
+        User existing = userMapper.findById(userId);
+        if (existing == null) {
+            return Result.fail(404, "未找到该学生账号，请先通过微信或管理员完成身份绑定");
+        }
+
+        // 2. 已有密码 → 不允许重复激活
+        if (StringUtils.hasText(existing.getPassword())) {
+            return Result.fail(409, "该账号已激活，请直接登录");
+        }
+
+        // 3. username 不能被其他人占用
+        User byUsername = userMapper.findByUsername(username);
+        if (byUsername != null && !byUsername.getId().equals(userId)) {
+            return Result.fail(400, "用户名已被使用");
+        }
+
+        // 4. UPDATE: 设 username + password + authProfile（保留 openId/miniBindType）
+        existing.setUsername(username);
+        existing.setPassword(passwordCredentialService.encodeForStorage(req.getPassword()));
+        existing.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
+        userMapper.updateUser(existing);
+
+        // 5. 重新查询并生成 JWT
+        User updated = userMapper.findById(userId);
+        if (updated == null) {
+            return Result.error("激活失败，请稍后重试");
+        }
+        updated.setRole(authService.normalizeRole(updated.getRole()));
+        return authService.generateAuthResult(updated);
     }
 
     /**

@@ -15,10 +15,10 @@ public interface ReportFormTemplateMapper {
 
     @Insert("INSERT INTO report_form_template (name, description, layout_json, theme_json, " +
             "fill_policy_json, permission_json, schedule_json, word_template_ids_json, " +
-            "version_snapshots_json, created_by) " +
+            "version_snapshots_json, created_by, created_at, updated_at) " +
             "VALUES (#{name}, #{description}, #{layoutJson}, #{themeJson}, " +
             "#{fillPolicyJson}, #{permissionJson}, #{scheduleJson}, #{wordTemplateIdsJson}, " +
-            "#{versionSnapshotsJson}, #{createdBy})")
+            "#{versionSnapshotsJson}, #{createdBy}, #{createdAt}, #{updatedAt})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(ReportFormTemplate entity);
 
@@ -26,7 +26,7 @@ public interface ReportFormTemplateMapper {
             "layout_json=#{layoutJson}, theme_json=#{themeJson}, fill_policy_json=#{fillPolicyJson}, " +
             "permission_json=#{permissionJson}, schedule_json=#{scheduleJson}, " +
             "word_template_ids_json=#{wordTemplateIdsJson}, " +
-            "version_snapshots_json=#{versionSnapshotsJson}, updated_at=NOW() " +
+            "version_snapshots_json=#{versionSnapshotsJson}, updated_at=#{updatedAt} " +
             "WHERE id=#{id}")
     int update(ReportFormTemplate entity);
 

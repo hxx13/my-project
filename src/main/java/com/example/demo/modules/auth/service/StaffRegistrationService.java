@@ -60,6 +60,7 @@ public class StaffRegistrationService {
         user.setStatus(1);
         user.setPasswordResetRequired(0);
         user.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
+        user.setAccountSource("STAFF");
         userMapper.insertUser(user);
         user = userMapper.findById(user.getId());
         user.setRole(authService.normalizeRole(user.getRole()));

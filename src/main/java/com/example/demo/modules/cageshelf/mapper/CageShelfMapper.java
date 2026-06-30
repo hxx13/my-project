@@ -39,6 +39,9 @@ public interface CageShelfMapper {
 
     CageShelfIndex findByShelveId(@Param("shelveId") String shelveId);
 
+    /** 手机 HTML5 笼架 Tab：一次拉取全部笼架索引 */
+    List<Map<String, Object>> listAllShelfSummaries();
+
     List<Map<String, Object>> listIndexes(@Param("campusId") Integer campusId,
                                           @Param("areaId") String areaId,
                                           @Param("floorId") String floorId,
@@ -63,6 +66,15 @@ public interface CageShelfMapper {
             @Param("legacyCampusNames") List<String> legacyCampusNames,
             @Param("legacyFloorNames") List<String> legacyFloorNames,
             @Param("legacyRoomName") String legacyRoomName);
+
+    /** 按笼架 ID 批量查索引（课题组可见范围过滤） */
+    List<CageShelfIndex> listIndexesByShelveIds(@Param("shelveIds") List<String> shelveIds);
+
+    /** 按房间 ID 查该房间下全部笼架 ID */
+    List<String> listShelveIdsByRoomIds(@Param("roomIds") List<String> roomIds);
+
+    /** 房间名称模糊匹配（与 ARO allowedRoomsDisplayZh 对齐） */
+    List<String> listRoomIdsMatchingName(@Param("roomNamePart") String roomNamePart);
 
     /** @param limit null 或 ≤0 表示不限制条数（全量） */
     List<CageShelfIndex> listShelveIndexesForAnalytics(

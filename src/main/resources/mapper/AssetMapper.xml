@@ -21,6 +21,7 @@
         <result property="deletedTime" column="deleted_time"/>
         <result property="deletedBy" column="deleted_by"/>
         <result property="purgeAfterTime" column="purge_after_time"/>
+        <result property="photoUrls" column="photo_urls"/>
     </resultMap>
 
     <resultMap id="AssetColumnDefResultMap" type="com.example.demo.modules.asset.entity.AssetColumnDef">
@@ -46,6 +47,7 @@
         <result property="transferTime" column="transfer_time"/>
         <result property="transferLocation" column="transfer_location"/>
         <result property="fromLocation" column="from_location"/>
+        <result property="fromUserName" column="from_user_name"/>
         <result property="remark" column="remark"/>
         <result property="photoUrl" column="photo_url"/>
         <result property="photoUrlsBefore" column="photo_urls_before"/>
@@ -111,9 +113,9 @@
 
     <insert id="insertAsset" parameterType="com.example.demo.modules.asset.entity.AssetRecord">
         INSERT INTO asset_record(
-            id, asset_code, asset_name, status, location, locked, note, create_by, update_by
+            id, asset_code, asset_name, status, location, locked, note, photo_urls, create_by, update_by
         ) VALUES (
-            #{id}, #{assetCode}, #{assetName}, #{status}, #{location}, #{locked}, #{note}, #{createBy}, #{updateBy}
+            #{id}, #{assetCode}, #{assetName}, #{status}, #{location}, #{locked}, #{note}, #{photoUrls}, #{createBy}, #{updateBy}
         )
     </insert>
 
@@ -176,22 +178,36 @@
             AND a.asset_name LIKE CONCAT('%', #{assetName}, '%')
         </if>
         <if test="campus != null and campus != ''">
-            AND EXISTS (
-                SELECT 1 FROM asset_record_value cv
-                WHERE cv.asset_id = a.id
-                  <choose>
-                      <when test="campusKeys != null and campusKeys.size() > 0">
-                          AND cv.column_key IN
-                          <foreach collection="campusKeys" item="key" open="(" close=")" separator=",">
-                              #{key}
-                          </foreach>
-                      </when>
-                      <otherwise>
-                          AND cv.column_key = 'col_校区'
-                      </otherwise>
-                  </choose>
-                  AND cv.column_value LIKE CONCAT('%', #{campus}, '%')
-            )
+            <choose>
+                <when test="campus == '浦西'">
+                    AND (
+                        a.location NOT LIKE CONCAT('%', '浦东', '%')
+                        <if test="campusKeys != null and campusKeys.size() > 0">
+                            AND NOT EXISTS (
+                                SELECT 1 FROM asset_record_value cv2
+                                WHERE cv2.asset_id = a.id
+                                  AND cv2.column_key IN
+                                  <foreach collection="campusKeys" item="key" open="(" close=")" separator=",">#{key}</foreach>
+                                  AND cv2.column_value LIKE CONCAT('%', '浦东', '%')
+                            )
+                        </if>
+                    )
+                </when>
+                <otherwise>
+                    AND (
+                        a.location LIKE CONCAT('%', #{campus}, '%')
+                        <if test="campusKeys != null and campusKeys.size() > 0">
+                            OR EXISTS (
+                                SELECT 1 FROM asset_record_value cv2
+                                WHERE cv2.asset_id = a.id
+                                  AND cv2.column_key IN
+                                  <foreach collection="campusKeys" item="key" open="(" close=")" separator=",">#{key}</foreach>
+                                  AND cv2.column_value LIKE CONCAT('%', #{campus}, '%')
+                            )
+                        </if>
+                    )
+                </otherwise>
+            </choose>
         </if>
         <if test="user != null and user != ''">
             AND EXISTS (
@@ -313,10 +329,10 @@
     <insert id="insertTransferRequest" parameterType="com.example.demo.modules.asset.entity.AssetTransferRequest">
         INSERT INTO asset_transfer_request(
             id, asset_id, asset_code, asset_name, applicant_id, applicant_name, transfer_time,
-            transfer_location, from_location, remark, photo_url, photo_urls_before, photo_urls_after, status, create_time
+            transfer_location, from_location, from_user_name, remark, photo_url, photo_urls_before, photo_urls_after, status, create_time
         ) VALUES (
             #{id}, #{assetId}, #{assetCode}, #{assetName}, #{applicantId}, #{applicantName}, #{transferTime},
-            #{transferLocation}, #{fromLocation}, #{remark}, #{photoUrl}, #{photoUrlsBefore}, #{photoUrlsAfter}, #{status}, #{createTime}
+            #{transferLocation}, #{fromLocation}, #{fromUserName}, #{remark}, #{photoUrl}, #{photoUrlsBefore}, #{photoUrlsAfter}, #{status}, #{createTime}
         )
     </insert>
 
@@ -534,6 +550,22 @@
         DELETE FROM asset_record_value
         WHERE asset_id = #{assetId}
     </delete>
+
+    <select id="listDistinctLocationValues" resultType="string">
+        SELECT DISTINCT location
+        FROM asset_record
+        WHERE deleted = 0
+          AND location IS NOT NULL
+          AND location != ''
+        ORDER BY location ASC
+    </select>
+
+    <update id="updateAssetPhotoUrls">
+        UPDATE asset_record
+        SET photo_urls = #{photoUrls},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
 
     <select id="listRecycledAssets" resultMap="AssetRecordResultMap">
         SELECT *

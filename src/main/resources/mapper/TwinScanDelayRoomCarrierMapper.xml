@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayRoomCarrierMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayRoomCarrier">
+        <id column="id" property="id"/>
+        <result column="room_id" property="roomId"/>
+        <result column="carrier_id" property="carrierId"/>
+        <result column="sort_order" property="sortOrder"/>
+    </resultMap>
+
+    <select id="listAll" resultMap="BaseMap">
+        SELECT id, room_id, carrier_id, sort_order
+        FROM twin_scan_delay_room_carrier
+        ORDER BY room_id, sort_order DESC, id ASC
+    </select>
+
+    <select id="listByRoomId" resultMap="BaseMap">
+        SELECT id, room_id, carrier_id, sort_order
+        FROM twin_scan_delay_room_carrier
+        WHERE room_id = #{roomId}
+        ORDER BY sort_order DESC, id ASC
+    </select>
+
+    <select id="listByRoomIds" resultMap="BaseMap">
+        SELECT id, room_id, carrier_id, sort_order
+        FROM twin_scan_delay_room_carrier
+        <if test="roomIds != null and roomIds.size() > 0">
+            WHERE room_id IN
+            <foreach collection="roomIds" item="rid" open="(" separator="," close=")">
+                #{rid}
+            </foreach>
+        </if>
+        ORDER BY room_id, sort_order DESC, id ASC
+    </select>
+
+    <select id="countByRoomAndCarrier" resultType="int">
+        SELECT COUNT(1) FROM twin_scan_delay_room_carrier
+        WHERE room_id = #{roomId} AND carrier_id = #{carrierId}
+    </select>
+
+    <delete id="deleteByRoomId">
+        DELETE FROM twin_scan_delay_room_carrier WHERE room_id = #{roomId}
+    </delete>
+
+    <delete id="deleteByCarrierId">
+        DELETE FROM twin_scan_delay_room_carrier WHERE carrier_id = #{carrierId}
+    </delete>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_scan_delay_room_carrier (room_id, carrier_id, sort_order)
+        VALUES (#{roomId}, #{carrierId}, #{sortOrder})
+    </insert>
+</mapper>

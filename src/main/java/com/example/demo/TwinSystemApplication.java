@@ -24,10 +24,13 @@ public class TwinSystemApplication {
 
     @PostConstruct
     void setDefaultTimezone() {
+        System.setProperty("user.timezone", "Asia/Shanghai");
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
     }
 
     public static void main(String[] args) {
+        System.setProperty("user.timezone", "Asia/Shanghai");
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
         SpringApplicationBuilder builder = new SpringApplicationBuilder(TwinSystemApplication.class);
         builder.headless(false);
         builder.run(args);

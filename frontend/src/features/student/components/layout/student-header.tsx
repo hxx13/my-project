@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Bell, ChevronDown, LogOut, Menu, UserRound } from "lucide-react";
+import { ArrowLeft, Bell, ChevronDown, LogOut, Menu, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authStorage } from "@/features/auth/authStorage";
 import { getImpersonationState, returnToStaffView, fullLogout } from "@/features/auth/impersonation";
@@ -25,10 +25,15 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
   const { pathname } = useLocation();
   const impersonation = useMemo(() => getImpersonationState(), []);
   const isImpersonating = Boolean(impersonation?.isImpersonating);
+  /** 镜像模式：教职工查看学生页面（不替换登录态） */
+  const isMirrorMode = useMemo(() => authStorage.isMirrorMode(), []);
+  const mirrorSource = useMemo(() => authStorage.getMirrorSource(), []);
+  const mirrorUserInfo = useMemo(() => authStorage.getMirrorUserInfo(), []);
   /** 扫码弹窗 PIN 进入：仅允许返回扫码页，禁止退出登录以免丢失终端操作员会话 */
   const fromScanPopup = authStorage.isStudentEntryFromScan() && !isImpersonating;
-  const showReturnToScanner = fromScanPopup;
-  const showLogout = !fromScanPopup;
+  const showReturnToScanner = fromScanPopup && !isMirrorMode;
+  // Mirror mode & impersonation: hide logout (staff auth is not the student's)
+  const showLogout = !fromScanPopup && !isImpersonating && !isMirrorMode;
 
   // 独立拉取学生档案获取真实姓名和头像（queryKey 含当前会话 userId）
   const { data: profile, isFetching } = useStudentProfile();
@@ -46,9 +51,14 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
     navigate("/admin");
   };
 
+  const handleExitMirrorMode = () => {
+    authStorage.exitMirrorMode();
+    navigate("/admin", { replace: true });
+  };
+
   const handleLogout = () => {
     fullLogout();
-    navigate("/student/login", { replace: true });
+    navigate("/login", { replace: true });
   };
 
   return (
@@ -90,6 +100,18 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
             返回扫码页
           </button>
         ) : null}
+
+        {/* Mirror mode: return to staff backend */}
+        {isMirrorMode && !isImpersonating && (
+          <button
+            type="button"
+            onClick={handleExitMirrorMode}
+            className="inline-flex items-center gap-1 h-8 px-3 rounded-md border border-blue-300 bg-blue-50 text-xs text-blue-700 hover:bg-blue-100 transition-colors dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            返回首页
+          </button>
+        )}
 
         <ThemeSwitcher
           className="h-8 shrink-0 rounded-md border border-[var(--student-hairline)] bg-[var(--student-canvas)] px-2.5 text-[11px] font-medium text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]"
@@ -133,6 +155,9 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
                 {isImpersonating && (
                   <span className="truncate text-[10px] text-amber-600">模拟模式</span>
                 )}
+                {isMirrorMode && !isImpersonating && (
+                  <span className="truncate text-[10px] text-blue-600">镜像查看模式</span>
+                )}
               </span>
               <ChevronDown className="hidden h-4 w-4 shrink-0 text-[var(--student-mute)] sm:block" aria-hidden />
             </button>
@@ -159,7 +184,21 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={handleReturnToStaff}>
                   <UserRound className="mr-2 h-4 w-4" />
-                  返回教职工后台
+                  返回首页
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+
+            {isMirrorMode && !isImpersonating && (
+              <>
+                <div className="px-2 py-1 text-[10px] text-[var(--student-mute)]">
+                  镜像查看 · {mirrorUserInfo?.displayName || mirrorUserInfo?.username || "学生"}
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={handleExitMirrorMode}>
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  返回首页
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
               </>

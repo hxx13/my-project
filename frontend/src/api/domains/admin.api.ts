@@ -71,6 +71,13 @@ export async function resetUserOpenId(id: string) {
   await adminHttp.post(`/users/${id}/reset-openid`);
 }
 
+/** 重置人员库学号的扫码 PIN（须 SUPER_ADMIN；personnelUserId = aro_personnel.user_id，非系统账号 USR_*） */
+export async function resetPersonnelPin(personnelUserId: string) {
+  const uid = personnelUserId.trim();
+  if (!uid) throw new Error("人员学号不能为空");
+  await adminHttp.post(`/personnel/${encodeURIComponent(uid)}/reset-pin`);
+}
+
 export async function updateUserDisplayNickname(id: string, displayNickname: string) {
   await adminHttp.patch(`/users/${id}/display-nickname`, { displayNickname });
 }

@@ -26,7 +26,7 @@ export function AdminSensitiveAction({
   className,
   ...rest
 }: AdminSensitiveActionProps) {
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   if (!hasMinRole(role, visibilityMinRole)) return null;
   return (
     <span

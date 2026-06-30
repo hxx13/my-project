@@ -169,7 +169,8 @@ public class PurchaseOrderController {
         String resultImagesJson = purchaseOrderService.toJsonArray(request == null ? null : request.getResultImages());
         int updated = purchaseOrderMapper.markCompleted(id, resultRemark, resultImagesJson, LocalDateTime.now());
         if (updated < 1) return Result.error("完成处理失败，请刷新后重试");
-        publishEvent("COMPLETED", user, order, Map.of());
+        String summary = buildCompletionSummary(order.getLocation(), order.getContent());
+        publishEvent("COMPLETED", user, order, Map.of("summary", summary));
         return Result.success();
     }
 
@@ -309,7 +310,7 @@ public class PurchaseOrderController {
     private User resolveUser(String authorization) {
         User user = authContextService.resolveUserFromBearer(authorization);
         if (user == null) return null;
-        if (user.getRole() == null) user.setRole(RoleEnum.STUDENT);
+        if (user.getRole() == null) user.setRole(RoleEnum.MEMBER);
         return user;
     }
 
@@ -351,6 +352,18 @@ public class PurchaseOrderController {
                 .filter(row -> id.equals(row.getId()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private static String buildCompletionSummary(String location, String content) {
+        StringBuilder sb = new StringBuilder();
+        if (StringUtils.hasText(location)) sb.append(location.trim());
+        if (StringUtils.hasText(content)) {
+            String c = content.trim();
+            if (c.length() > 50) c = c.substring(0, 50) + "…";
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append(c);
+        }
+        return sb.toString();
     }
 
     private void publishEvent(String eventType, User operator, PurchaseOrder order, Map<String, String> variables) {

@@ -5,14 +5,18 @@ import { Plus, Trash2, X, Pencil, Check } from 'lucide-react';
 import { fetchOptionSets, createOptionSet, updateOptionSet, deleteOptionSet } from '../api/reportForm.api';
 import type { OptionSet } from '../types';
 import toast from 'react-hot-toast';
+import { authStorage } from '@/features/auth/authStorage';
+import { canManageOptionSet, formatOptionSetLabel, parseOptionSetItems, optionSetItemLabels } from '../utils/optionSetLabels';
 
 interface Props {
   open: boolean;
   onClose: () => void;
+  formId?: number;
 }
 
-export default function OptionSetManager({ open, onClose }: Props) {
+export default function OptionSetManager({ open, onClose, formId }: Props) {
   const qc = useQueryClient();
+  const currentUsername = authStorage.getUserInfo()?.username;
   const [name, setName] = useState('');
   const [items, setItems] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -20,14 +24,14 @@ export default function OptionSetManager({ open, onClose }: Props) {
   const [editItems, setEditItems] = useState('');
 
   const { data: optionSets = [], isLoading } = useQuery({
-    queryKey: ['report-form-option-sets'],
-    queryFn: () => fetchOptionSets(),
+    queryKey: ['report-form-option-sets', formId ?? null],
+    queryFn: () => fetchOptionSets(formId),
     enabled: open,
   });
 
   const createMut = useMutation({
     mutationFn: (body: { name: string; itemsJson: string }) =>
-      createOptionSet(body.name, body.itemsJson),
+      createOptionSet(body.name, body.itemsJson, 'user', formId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['report-form-option-sets'] });
       setName(''); setItems('');
@@ -62,7 +66,8 @@ export default function OptionSetManager({ open, onClose }: Props) {
   const startEdit = (os: OptionSet) => {
     setEditingId(os.id);
     setEditName(os.name);
-    setEditItems((os.itemsJson || []).map(i => i.label).join('\n'));
+    const items = parseOptionSetItems(os.itemsJson);
+    setEditItems(items.map(i => i.label).join('\n'));
   };
 
   if (!open) return null;
@@ -124,20 +129,26 @@ export default function OptionSetManager({ open, onClose }: Props) {
                 ) : (
                   <>
                     <div>
-                      <div className="text-xs font-medium text-[var(--app-color-text-primary)]">{os.name}</div>
+                      <div className="text-xs font-medium text-[var(--app-color-text-primary)]">
+                        {formatOptionSetLabel(os, currentUsername)}
+                      </div>
                       <div className="text-[10px] text-[var(--app-color-text-tertiary)] mt-0.5">
-                        {os.itemsJson?.map(i => i.label).join('、') || '无选项'}
+                        {optionSetItemLabels(os.itemsJson) || '无选项'}
                       </div>
                     </div>
                     <div className="flex gap-1 shrink-0">
-                      <button onClick={() => startEdit(os)}
-                        className="p-1 rounded-[4px] hover:bg-[var(--app-color-surface-hover)]">
-                        <Pencil className="w-3 h-3 text-[var(--app-color-text-tertiary)]" />
-                      </button>
-                      <button onClick={() => { if (confirm(`删除选项集「${os.name}」？`)) deleteMut.mutate(os.id); }}
-                        className="p-1 rounded-[4px] hover:bg-[var(--app-color-feedback-danger-soft)]">
-                        <Trash2 className="w-3 h-3 text-[var(--app-color-feedback-danger)]" />
-                      </button>
+                      {canManageOptionSet(os, currentUsername) && (
+                        <>
+                          <button onClick={() => startEdit(os)}
+                            className="p-1 rounded-[4px] hover:bg-[var(--app-color-surface-hover)]">
+                            <Pencil className="w-3 h-3 text-[var(--app-color-text-tertiary)]" />
+                          </button>
+                          <button onClick={() => { if (confirm(`删除预设「${os.name}」？`)) deleteMut.mutate(os.id); }}
+                            className="p-1 rounded-[4px] hover:bg-[var(--app-color-feedback-danger-soft)]">
+                            <Trash2 className="w-3 h-3 text-[var(--app-color-feedback-danger)]" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </>
                 )}

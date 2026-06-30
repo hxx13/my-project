@@ -118,5 +118,6 @@ export async function getDahuaSwingRuleConfig() {
 }
 
 export async function saveDahuaSwingRuleConfig(body: DahuaSwingRuleConfig) {
-  await adminHttp.put("/twin/dahua/rules/config", body);
+  const res = await adminHttp.put<ApiResponse<DahuaSwingRuleConfig>>("/twin/dahua/rules/config", body);
+  return res.data?.data ?? body;
 }

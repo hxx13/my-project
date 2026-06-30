@@ -5,10 +5,11 @@
 # 若报「token in login doesn't match」：说明下面 auth.token 与 ECS 上 frps 实际配置不一致，
 # 请 SSH 到服务器查看 frps 所用文件中的 auth.token（INI 则为 [common] 下 token=），复制到此处。
 #
-# ========== 须在「阿里云安全组 + 宝塔防火墙」放行的端口 ==========
-# 7000   frpc→frps（若 frps 只监听内网可不对公网放行；公网连 frps 则需放行）
-# 8080   Spring HTTP（本配置 springboot-proxy）
-# 9092   Socket.IO（socketio-proxy）
+# ========== 须在「阿里云安全组 + 防火墙」放行的端口 ==========
+# Nginx 前置模式（推荐）：公网 80 + 9092；8080 关闭；frp Spring 用 remotePort=18080
+#   见 deploy/ecs/README-nginx-static.md
+# 直连模式（当前默认）：公网 8080 + 9092
+# 7000   frpc→frps
 # 21115  RustDesk hbbs NAT 检测（TCP）
 # 21116  RustDesk hbbs ID / 打洞（TCP + UDP 都要放行）
 # 21117  RustDesk hbbr 中继（TCP）
@@ -19,6 +20,11 @@
 serverAddr = "47.101.61.184"
 serverPort = 7000
 
+# 须写在 [[proxies]] 之前；写在 proxy 段内会报 unknown field "tcpMux"
+transport.tcpMux = true
+transport.tcpMuxKeepaliveInterval = 30
+
+# Spring HTTP — 直连公网 8080；Nginx 模式见 deploy/ecs/frpc-nginx-mode.toml.example（18080）
 [[proxies]]
 name = "springboot-proxy"
 type = "tcp"
@@ -33,8 +39,7 @@ localIP = "127.0.0.1"
 localPort = 9092
 remotePort = 9092
 
-# RustDesk 自建服务器：本机安装 hbbs/hbbr 且监听上述端口时使用。
-# 若仅用 RustDesk 官方中转、不在本机跑服务，可删除从 rustdesk-hbbs-nat 到 rustdesk-web-https 的全部段落。
+# RustDesk 自建服务器
 [[proxies]]
 name = "rustdesk-hbbs-nat"
 type = "tcp"

@@ -31,6 +31,12 @@ export default function StudentLayout() {
     timeoutMs: IDLE_TIMEOUT_MS,
     warningMs: IDLE_WARNING_MS,
     onTimeout: () => {
+      // Mirror mode timeout: exit mirror mode, return to staff view
+      if (authStorage.isMirrorMode()) {
+        authStorage.exitMirrorMode();
+        navigate("/admin", { replace: true });
+        return;
+      }
       if (getImpersonationState()?.isImpersonating) {
         returnToStaffView();
         navigate("/admin", { replace: true });

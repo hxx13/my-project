@@ -61,7 +61,6 @@ export const RICH_TEXT_IMAGE_CSS_VAR_NAMES = {
   maxWidth: "--rich-text-image-max-width",
   rowMax: "--rich-text-image-row-max",
   rowGap: "--rich-text-image-row-gap",
-  maxHeight: "--rich-text-image-max-height",
   /** 与 page-help 弹窗预览共用 */
   pageHelpMaxWidth: "--page-help-content-img-max-width",
 } as const;
@@ -96,6 +95,11 @@ export function parseMaxWidthPercent(maxWidth: string): number {
 export function formatMaxWidthPercent(percent: number): string {
   const n = Math.min(100, Math.max(10, Math.round(percent)));
   return `${n}%`;
+}
+
+/** 写入 img style，扫码端无编辑器 CSS 变量时仍可保持图宽；高度随宽度等比缩放 */
+export function richTextImageInlineStyle(maxWidth: string): string {
+  return `max-width: ${maxWidth}; width: auto; height: auto; display: inline-block; box-sizing: border-box;`;
 }
 
 export function richTextImageHelpText(config: RichTextImageConfig): string {

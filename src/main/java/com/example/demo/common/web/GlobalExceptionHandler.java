@@ -6,6 +6,8 @@ import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.knowledge.service.KnowledgeCategoryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -93,9 +95,28 @@ public class GlobalExceptionHandler {
         return Result.fail(ErrorCodeConstants.INTERNAL_ERROR, "请求处理超时，请稍后重试");
     }
 
+    /** 静态资源 404 须返回空 body + 404，不能 JSON（否则 module script MIME 报错） */
+    private static boolean isStaticAssetPath(String path) {
+        if (path == null || path.isBlank()) {
+            return false;
+        }
+        String p = path.trim().replace('\\', '/');
+        if (p.startsWith("/assets/") || p.startsWith("/models/") || p.equals("/favicon.svg") || p.equals("/index.html")) {
+            return true;
+        }
+        return p.endsWith(".js") || p.endsWith(".css") || p.endsWith(".wasm") || p.endsWith(".map")
+                || p.endsWith(".svg") || p.endsWith(".ico");
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
-    public Result<Void> handleNoResource(NoResourceFoundException ex) {
+    public ResponseEntity<?> handleNoResource(NoResourceFoundException ex) {
         String path = ex.getResourcePath();
+        if (isStaticAssetPath(path)) {
+            if (log.isDebugEnabled()) {
+                log.debug("Static resource not found: {} {}", ex.getHttpMethod(), path);
+            }
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
         if (isBenignProbePath(path)) {
             if (log.isTraceEnabled()) {
                 log.trace("Ignored probe: {} {}", ex.getHttpMethod(), path);
@@ -104,9 +125,10 @@ public class GlobalExceptionHandler {
             log.debug("No resource: {} {}", ex.getHttpMethod(), path);
         }
         if ("login".equals(path) || "/login".equals(path)) {
-            return Result.error("请使用 POST /api/auth/login/web 登录");
+            return ResponseEntity.badRequest().body(Result.error("请使用 POST /api/auth/login/web 登录"));
         }
-        return Result.fail(ErrorCodeConstants.BAD_REQUEST, "接口不存在: " + ex.getHttpMethod() + " " + path);
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Result.fail(ErrorCodeConstants.NOT_FOUND, "接口不存在: " + ex.getHttpMethod() + " " + path));
     }
 
     @ExceptionHandler(Exception.class)

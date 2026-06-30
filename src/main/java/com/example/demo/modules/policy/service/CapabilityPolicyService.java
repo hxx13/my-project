@@ -109,7 +109,7 @@ public class CapabilityPolicyService {
     }
 
     private static int level(User user) {
-        RoleEnum r = user.getRole() == null ? RoleEnum.STUDENT : user.getRole();
+        RoleEnum r = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
         return r.getLevel();
     }
 

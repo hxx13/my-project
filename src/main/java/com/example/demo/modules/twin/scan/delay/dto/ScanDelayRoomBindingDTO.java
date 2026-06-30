@@ -7,5 +7,6 @@ import java.util.List;
 @Data
 public class ScanDelayRoomBindingDTO {
     private String roomId;
-    private List<Long> optionIds;
+    /** 房间已绑定的载体按钮 ID 列表 */
+    private List<Long> carrierIds;
 }

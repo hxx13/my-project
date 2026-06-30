@@ -24,7 +24,7 @@ public class ChatDmPendingBadgeContributor implements PendingBadgeContributor {
 
     @Override
     public void contribute(User user, PendingBadgesView view, Map<String, Integer> badgeCounters) {
-        RoleEnum role = user.getRole() == null ? RoleEnum.STUDENT : user.getRole();
+        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             return;
         }

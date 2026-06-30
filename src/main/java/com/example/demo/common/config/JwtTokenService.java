@@ -63,7 +63,7 @@ public class JwtTokenService {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(aroUserId)
-                .claim("role", RoleEnum.STUDENT.name())
+                .claim("role", RoleEnum.MEMBER.name())
                 .claim("impersonatedBy", staffUser.getId())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(30, ChronoUnit.DAYS)))

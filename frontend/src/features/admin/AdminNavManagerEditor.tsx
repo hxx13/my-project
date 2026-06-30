@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, Trash2, Eye, EyeOff, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -12,11 +12,13 @@ import {
   type AdminNavConfigNode,
 } from "@/api/domains/adminNavConfig.api";
 import { getNavFolderSiblings, getNavNodeSiblingIndex } from "@/features/admin/adminNavManagerUtils";
+import { normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 
 interface Props {
   node: AdminNavConfigNode | null;
   tree: AdminNavConfigNode[];
   allNodes: AdminNavConfigNode[];
+  registryPaths: Set<string>;
   onRefresh: () => void;
 }
 
@@ -40,9 +42,10 @@ function typeAccent(node: AdminNavConfigNode): string {
   }
 }
 
-export function AdminNavManagerEditor({ node, tree, allNodes, onRefresh }: Props) {
+export function AdminNavManagerEditor({ node, tree, allNodes, registryPaths, onRefresh }: Props) {
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
+  const [togglingVis, setTogglingVis] = useState(false);
 
   useEffect(() => {
     if (node) setTitle(node.title);
@@ -60,6 +63,7 @@ export function AdminNavManagerEditor({ node, tree, allNodes, onRefresh }: Props
   const isSubgroup = node.type === "SUBGROUP";
   const isFolder = isGroup || isSubgroup;
   const isItem = node.type === "ITEM";
+  const isRegistryItem = isItem && node.itemPath ? registryPaths.has(normalizeAdminPath(node.itemPath)) : false;
 
   const handleSaveTitle = async () => {
     if (!title.trim() || title === node.title) return;
@@ -87,6 +91,19 @@ export function AdminNavManagerEditor({ node, tree, allNodes, onRefresh }: Props
   const handleRemoveItem = async (itemId: string) => {
     await moveNavItem(itemId, "__unassigned__");
     onRefresh();
+  };
+
+  const handleToggleVisibility = async () => {
+    setTogglingVis(true);
+    try {
+      await updateNavGroup(node.id, { visible: !node.visible });
+      toast.success(node.visible ? "入口已隐藏（左侧「已隐藏条目」中可恢复）" : "入口已显示");
+      onRefresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "操作失败");
+    } finally {
+      setTogglingVis(false);
+    }
   };
 
   const handleReset = async () => {
@@ -168,9 +185,9 @@ export function AdminNavManagerEditor({ node, tree, allNodes, onRefresh }: Props
         </div>
       )}
 
-      {/* Item specific: path + icon info */}
+      {/* Item specific: path + icon info + move */}
       {isItem && (
-        <div className="bg-gray-50 rounded-md p-4 space-y-2">
+        <div className="bg-gray-50 rounded-md p-4 space-y-3">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-0.5">路由路径</label>
             <code className="text-sm text-gray-700 bg-gray-100 px-2 py-0.5 rounded">{node.itemPath || "—"}</code>
@@ -183,6 +200,27 @@ export function AdminNavManagerEditor({ node, tree, allNodes, onRefresh }: Props
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-0.5">气泡字段</label>
               <span className="text-sm text-gray-700">{node.itemBadgeKey}</span>
+            </div>
+          )}
+          {/* Move item to another folder */}
+          {targetFolders.length > 0 && (
+            <div className="border-t border-gray-200 pt-3">
+              <label className="block text-xs font-medium text-gray-500 mb-1.5">移动到文件夹</label>
+              <select
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) handleMoveItem(node.id, e.target.value);
+                }}
+              >
+                <option value="">选择目标文件夹…</option>
+                {targetFolders.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.type === "GROUP" ? "📁" : "📂"} {f.title}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-gray-400">将入口从当前文件夹移动到选中的目标文件夹中</p>
             </div>
           )}
         </div>
@@ -235,14 +273,46 @@ export function AdminNavManagerEditor({ node, tree, allNodes, onRefresh }: Props
 
       {/* Danger zone */}
       <hr className="border-gray-200" />
-      <div className="flex gap-2">
-        <Button variant="destructive" size="sm" onClick={handleDelete}>
-          删除此{isFolder ? "文件夹" : "入口"}
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleReset}
-          className="border-amber-300 text-amber-700 hover:bg-amber-50">
-          重置为默认
-        </Button>
+      <div className="space-y-3">
+        {isRegistryItem ? (
+          /* 注册表条目：禁止硬删除，只能软隐藏 */
+          <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-amber-600 shrink-0" />
+              <p className="text-sm font-medium text-amber-800">此入口来自代码注册表，不可删除</p>
+            </div>
+            <p className="text-xs text-amber-700">
+              注册表条目是系统基础导航结构的一部分。如果不再需要展示，可以隐藏而非删除。
+              隐藏后可通过左侧「一键恢复全部」重新显示。
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={togglingVis}
+                onClick={() => void handleToggleVisibility()}
+                className={node.visible
+                  ? "border-amber-300 text-amber-700 hover:bg-amber-50"
+                  : "border-green-300 text-green-700 hover:bg-green-50"}
+              >
+                {node.visible
+                  ? <><EyeOff className="h-3.5 w-3.5 mr-1.5" />隐藏入口</>
+                  : <><Eye className="h-3.5 w-3.5 mr-1.5" />显示入口</>}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* 自定义条目：允许删除 */
+          <div className="flex gap-2">
+            <Button variant="destructive" size="sm" onClick={handleDelete}>
+              删除此{isFolder ? "文件夹" : "入口"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleReset}
+              className="border-amber-300 text-amber-700 hover:bg-amber-50">
+              重置为默认
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

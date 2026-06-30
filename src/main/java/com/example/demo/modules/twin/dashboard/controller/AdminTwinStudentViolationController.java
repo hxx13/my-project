@@ -346,11 +346,13 @@ public class AdminTwinStudentViolationController {
         m.put("violationText", v.getViolationText());
         m.put("imageUrls", v.getImageUrls());
         m.put("forbidEnter", v.getForbidEnter());
+        m.put("enterLocked", violationService.isEnterLocked(v));
         m.put("maxEnterSuccess", v.getMaxEnterSuccess());
         m.put("enterSuccessCount", v.getEnterSuccessCount());
         m.put("showNoticeEveryScan", v.getShowNoticeEveryScan());
         m.put("expireAt", v.getExpireAt());
         m.put("status", v.getStatus());
+        m.put("source", v.getSource());
         m.put("createdByUserId", v.getCreatedByUserId());
         m.put("createdAt", v.getCreatedAt());
         m.put("updatedAt", v.getUpdatedAt());
@@ -377,7 +379,7 @@ public class AdminTwinStudentViolationController {
         if (user.getStatus() != null && user.getStatus() == 0) {
             return Result.error("账号已禁用");
         }
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() < RoleEnum.ADMIN.getLevel()) {
             return Result.error("无权限访问（需管理员及以上）");
         }
@@ -443,6 +445,7 @@ public class AdminTwinStudentViolationController {
         private Integer maxEnterSuccess;
         private Boolean showNoticeEveryScan;
         private Integer expireAfterDays;
+        /** 交互式确认短语；非空时与 forbidEnter 勾选联动为强制禁入 */
         private String interactiveChallenge;
         private Boolean interactiveUnlockOnVerify;
         private Long ruleId;
@@ -459,7 +462,7 @@ public class AdminTwinStudentViolationController {
         private String expireMode;
         /** RELATIVE 时：从当前时刻起算的天数 */
         private Integer expireAfterDays;
-        /** 交互式确认短语；null 或空串=关闭 */
+        /** 交互式确认短语；null 或空串=关闭；非空时与 forbidEnter 联动为强制禁入 */
         private String interactiveChallenge;
         /** 交互验证完成后是否自动解除禁入 */
         private Boolean interactiveUnlockOnVerify;
@@ -599,6 +602,32 @@ public class AdminTwinStudentViolationController {
         boolean autoSignout = body != null && Boolean.TRUE.equals(toBool(body.get("autoSignout")));
         String summary = strandedViolationService.testSingleUser(userId, autoSignout);
         return Result.success(Map.of("userId", userId, "summary", summary));
+    }
+
+    @GetMapping("/stranded-signout-config")
+    @Operation(summary = "获取第二道滞留定时签退配置（id=2，仅签退开关）")
+    public Result<?> getStrandedSignoutConfig(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        return Result.success(strandedViolationService.getSignoutConfig());
+    }
+
+    @PutMapping("/stranded-signout-config")
+    @Operation(summary = "保存第二道滞留定时签退配置")
+    public Result<?> saveStrandedSignoutConfig(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody Map<String, Object> body
+    ) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) {
+            return denied;
+        }
+        strandedViolationService.saveSignoutConfig(body != null ? body : Map.of());
+        return Result.success(strandedViolationService.getSignoutConfig());
     }
 
     // ═══ 违规触发规则 CRUD ═══

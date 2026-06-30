@@ -119,6 +119,17 @@
         ORDER BY shelve_id ASC
     </select>
 
+    <select id="listAllShelfSummaries" resultType="map">
+        SELECT CAST(shelve_id AS CHAR) AS shelveId,
+               shelve_name AS shelveName,
+               CAST(room_id AS CHAR) AS roomId,
+               room_name AS roomName,
+               campus_name AS campusName
+        FROM cage_shelf_index
+        WHERE deleted = 0
+        ORDER BY campus_name ASC, room_name ASC, shelve_id ASC
+    </select>
+
     <select id="findByShelveId" resultMap="CageShelfIndexMap">
         SELECT *
         FROM cage_shelf_index
@@ -195,6 +206,43 @@
         SELECT COUNT(1)
         FROM cage_shelf_index
         <include refid="analyticsShelfFilterWhere"/>
+    </select>
+
+    <select id="listIndexesByShelveIds" resultMap="CageShelfIndexMap">
+        SELECT *
+        FROM cage_shelf_index
+        WHERE deleted = 0
+          <if test="shelveIds != null and shelveIds.size() > 0">
+              AND CAST(shelve_id AS CHAR) IN
+              <foreach collection="shelveIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          </if>
+          <if test="shelveIds == null or shelveIds.size() == 0">
+              AND 1 = 0
+          </if>
+        ORDER BY campus_id, area_id, floor_id, room_id, shelve_id
+    </select>
+
+    <select id="listShelveIdsByRoomIds" resultType="string">
+        SELECT DISTINCT CAST(shelve_id AS CHAR)
+        FROM cage_shelf_index
+        WHERE deleted = 0
+          <if test="roomIds != null and roomIds.size() > 0">
+              AND CAST(room_id AS CHAR) IN
+              <foreach collection="roomIds" item="rid" open="(" separator="," close=")">#{rid}</foreach>
+          </if>
+          <if test="roomIds == null or roomIds.size() == 0">
+              AND 1 = 0
+          </if>
+    </select>
+
+    <select id="listRoomIdsMatchingName" resultType="string">
+        SELECT DISTINCT CAST(room_id AS CHAR)
+        FROM cage_shelf_index
+        WHERE deleted = 0
+          AND (
+              room_name LIKE CONCAT('%', #{roomNamePart}, '%')
+              OR #{roomNamePart} LIKE CONCAT('%', room_name, '%')
+          )
     </select>
 
     <select id="listShelveIndexesForAnalytics" resultMap="CageShelfIndexMap">

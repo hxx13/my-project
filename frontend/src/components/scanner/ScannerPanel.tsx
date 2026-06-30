@@ -11,6 +11,7 @@ import {
     setScanPopupSession,
     tryBeginScanChannel,
 } from '@/components/scanner/scanSessionGuard';
+import { mergeViolationInteractiveAckIntoResult } from '@/components/scanner/twinViolationInteractive';
 import { UiverseProfilePopup } from './UiverseProfilePopup';
 import { StudentDahuaBindPanel } from './StudentDahuaBindPanel';
 import { RepeatedSwipeWarningBanner } from './RepeatedSwipeWarningBanner';
@@ -42,7 +43,6 @@ export default function ScannerPanel() {
     const [executeErrorMessage, setExecuteErrorMessage] = useState('');
     const [swipeWarning, setSwipeWarning] = useState<string | null>(null);
     const [swipeWarningKey, setSwipeWarningKey] = useState(0);
-    const [swipeBlockedUntil, setSwipeBlockedUntil] = useState(0);
     const [lastScannedId, setLastScannedId] = useState('');
     const lastScannedIdRef = useRef('');
 
@@ -134,7 +134,6 @@ export default function ScannerPanel() {
         if (!guard.allow) {
             setSwipeWarning(guard.message);
             setSwipeWarningKey((k) => k + 1);
-            setSwipeBlockedUntil(guard.blockedUntil);
             return;
         }
         lastScannedIdRef.current = hardwareId;
@@ -372,28 +371,14 @@ export default function ScannerPanel() {
                         }}
                         onViolationInteractiveVerified={(patch) => {
                             // 保存后仅合并当前扫码结果，禁止整表 load（post-save-no-full-refresh.mdc）
-                            setActiveResult((prev) => {
-                                if (!prev?.studentViolationNotice || prev.studentViolationNotice.id !== patch.violationId) {
-                                    return prev;
-                                }
-                                if (patch.violationExpired) {
-                                    return { ...prev, studentViolationNotice: undefined };
-                                }
-                                return {
-                                    ...prev,
-                                    studentViolationNotice: {
-                                        ...prev.studentViolationNotice,
-                                        enterLocked: patch.enterLocked,
-                                        interactiveChallengeVerified: patch.interactiveChallengeVerified,
-                                        pastExpireAwaitingInteractive: false,
-                                    },
-                                };
-                            });
-                            // 轻量 re-analyze 同步进房按钮与规则字段（非整表刷新）
+                            setActiveResult((prev) => mergeViolationInteractiveAckIntoResult(prev, patch));
                             const cardId = lastScannedIdRef.current;
                             if (cardId && !patch.violationExpired) {
                                 analyzeMutation.mutate(cardId, {
-                                    onSuccess: (data) => setActiveResult(data),
+                                    onSuccess: (data) =>
+                                        setActiveResult(
+                                            mergeViolationInteractiveAckIntoResult(data, patch) ?? data
+                                        ),
                                 });
                             }
                         }}
@@ -413,7 +398,7 @@ export default function ScannerPanel() {
             {/* 重复刷卡警告 — 独立于 Popup 渲染，使用自己的 createPortal(document.body)。
                  原先在 ScanPopupNoticeCoordinator 内部，被 violation/unbound/announcement
                  的 return-null 守卫截断，导致无违规/公告时警告弹窗永远不显示。 */}
-            <RepeatedSwipeWarningBanner message={swipeWarning} triggerKey={swipeWarningKey} blockedUntil={swipeBlockedUntil} />
+            <RepeatedSwipeWarningBanner message={swipeWarning} triggerKey={swipeWarningKey} />
 
             {/* 人脸验证：Dynamic Island + 摄像头 + 提示 */}
             {fv.faceVerifyActive && (

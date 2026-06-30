@@ -8,12 +8,37 @@
         WHERE id = 1
     </select>
 
+    <select id="selectSignoutConfig" resultType="map">
+        SELECT *
+        FROM stranded_violation_config
+        WHERE id = 2
+    </select>
+
     <update id="updateExecutionResult">
         UPDATE stranded_violation_config
         SET last_execution_at = #{executedAt},
             last_execution_result = #{result}
         WHERE id = 1
     </update>
+
+    <update id="updateSignoutExecutionResult">
+        UPDATE stranded_violation_config
+        SET last_execution_at = #{executedAt},
+            last_execution_result = #{result}
+        WHERE id = 2
+    </update>
+
+    <update id="updateSignoutOnlyConfig">
+        UPDATE stranded_violation_config
+        SET auto_signout_enabled = #{autoSignoutEnabled}
+        WHERE id = 2
+    </update>
+
+    <insert id="ensureSignoutConfigRow">
+        INSERT INTO stranded_violation_config (id, enabled, auto_signout_enabled)
+        VALUES (2, 0, 1)
+        ON DUPLICATE KEY UPDATE id = id
+    </insert>
 
     <update id="updateConfig">
         UPDATE stranded_violation_config

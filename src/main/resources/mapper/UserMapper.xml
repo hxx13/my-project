@@ -16,11 +16,12 @@
         <result property="miniBindType" column="mini_bind_type"/>
         <result property="miniPreferencesJson" column="mini_preferences_json"/>
         <result property="authProfile" column="auth_profile"/>
+        <result property="accountSource" column="account_source"/>
         <result property="createTime" column="create_time"/>
     </resultMap>
 
     <sql id="User_Column_List">
-        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, create_time
+        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, account_source, create_time
     </sql>
 
     <select id="findByUsername" resultMap="UserResultMap">
@@ -54,8 +55,8 @@
     </select>
 
     <insert id="insertUser" parameterType="com.example.demo.modules.auth.entity.User">
-        INSERT INTO sys_user(id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile)
-        VALUES (#{id}, #{username}, #{password}, #{openId}, #{role}, #{status}, #{passwordResetRequired}, #{displayNickname}, #{miniBindType}, #{miniPreferencesJson}, #{authProfile})
+        INSERT INTO sys_user(id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, account_source)
+        VALUES (#{id}, #{username}, #{password}, #{openId}, #{role}, #{status}, #{passwordResetRequired}, #{displayNickname}, #{miniBindType}, #{miniPreferencesJson}, #{authProfile}, #{accountSource})
     </insert>
 
     <update id="updateOpenIdById">
@@ -125,6 +126,23 @@
         WHERE id = #{id}
     </update>
 
+    <update id="updateUser" parameterType="com.example.demo.modules.auth.entity.User">
+        UPDATE sys_user
+        SET username = #{username},
+            password = #{password},
+            open_id = #{openId},
+            role = #{role},
+            status = #{status},
+            password_reset_required = #{passwordResetRequired},
+            display_nickname = #{displayNickname},
+            mini_bind_type = #{miniBindType},
+            mini_preferences_json = #{miniPreferencesJson},
+            auth_profile = #{authProfile},
+            account_source = #{accountSource},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
     <insert id="insertBindAudit">
         INSERT INTO auth_bind_audit(open_id, identifier, bind_type, client_ip, status, message)
         VALUES (#{openId}, #{identifier}, #{bindType}, #{clientIp}, #{status}, #{message})
@@ -146,7 +164,7 @@
         WHERE status = 1
           AND (
             CASE role
-              WHEN 'STUDENT' THEN 1
+              WHEN 'MEMBER' THEN 1
               WHEN 'STAFF' THEN 2
               WHEN 'SENIOR' THEN 3
               WHEN 'ADMIN' THEN 4
@@ -155,6 +173,17 @@
               ELSE 0
             END
           ) >= #{minRoleLevel}
+    </select>
+
+    <select id="searchByKeyword" resultMap="UserResultMap">
+        SELECT <include refid="User_Column_List"/>
+        FROM sys_user
+        WHERE status = 1
+          AND (
+            username LIKE CONCAT('%', #{keyword}, '%')
+            OR IFNULL(display_nickname, '') LIKE CONCAT('%', #{keyword}, '%')
+          )
+        LIMIT 20
     </select>
 
 </mapper>

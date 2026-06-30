@@ -38,6 +38,8 @@ public interface UserMapper {
                                            @Param("password") String password,
                                            @Param("passwordResetRequired") Integer passwordResetRequired);
 
+    int updateUser(User user);
+
     int insertBindAudit(@Param("openId") String openId,
                         @Param("identifier") String identifier,
                         @Param("bindType") String bindType,
@@ -51,6 +53,5 @@ public interface UserMapper {
 
     List<User> listEnabledUsersByMinRoleLevel(@Param("minRoleLevel") Integer minRoleLevel);
 
-    @org.apache.ibatis.annotations.Select("SELECT * FROM user WHERE username LIKE CONCAT('%', #{keyword}, '%') OR IFNULL(display_nickname, '') LIKE CONCAT('%', #{keyword}, '%') LIMIT 20")
     List<User> searchByKeyword(@Param("keyword") String keyword);
 }

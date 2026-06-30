@@ -39,6 +39,12 @@ public class SocketIOConfig {
         config.setAuthorizationListener(new AuthorizationListener() {
             @Override
             public boolean isAuthorized(com.corundumstudio.socketio.HandshakeData data) {
+                // 手机端 HTML5 通道：无需 JWT，仅接收全局广播通知
+                String channel = data.getSingleUrlParam("channel");
+                if ("mobile".equals(channel)) {
+                    return true;
+                }
+                // 主通道：需要有效 JWT
                 String token = data.getSingleUrlParam("token");
                 if (token == null || token.isEmpty()) {
                     log.warn("[SocketIO] 连接被拒：未携带 token，来源 {}", data.getAddress());

@@ -20,6 +20,8 @@ public class PendingBadgesView {
     private int processSupplies;
     private int material;
     private int processMaterial;
+    /** 延迟免冻结待审（reviewer 视角，与 scan-delay/request/pending 同源） */
+    private int processScanDelay;
 
     /** 站内信（好友）未读条数 */
     private int chatUnread;
@@ -33,6 +35,7 @@ public class PendingBadgesView {
     private String processSuppliesText = "";
     private String materialText = "";
     private String processMaterialText = "";
+    private String processScanDelayText = "";
     private String chatUnreadText = "";
 
     /**

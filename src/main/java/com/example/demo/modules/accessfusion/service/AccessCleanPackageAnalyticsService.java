@@ -4,6 +4,8 @@ import com.example.demo.modules.accessfusion.mapper.AccessCleanChannelScopeMappe
 import com.example.demo.modules.accessfusion.mapper.AccessCleanPackageItemMapper;
 import com.example.demo.modules.analytics.service.IsolationPackageEventAggregator;
 import com.example.demo.modules.analytics.service.IsolationPackageFilter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -20,6 +22,8 @@ import java.util.Map;
 public class AccessCleanPackageAnalyticsService {
 
     public static final String DATA_SOURCE = "access_package";
+
+    private static final Logger log = LoggerFactory.getLogger(AccessCleanPackageAnalyticsService.class);
 
     private final AccessCleanPackageItemMapper packageItemMapper;
     private final AccessCleanChannelScopeMapper channelScopeMapper;
@@ -67,6 +71,16 @@ public class AccessCleanPackageAnalyticsService {
         long totalEvents = longVal(counts.get("totalEvents"));
         if (totalEvents == 0) {
             totalEvents = longVal(counts.get("totalSets"));
+        }
+
+        // 诊断日志：当查询结果为空时记录关键参数，方便排查
+        if (totalEvents == 0) {
+            log.warn(
+                    "[analytics-query] buildReport returned 0 events: "
+                            + "startTime={} endTime={} channelCodes={} channelScope={} rowsScanned={} queryMs={}",
+                    startTime, endTime,
+                    channelCodes != null ? channelCodes : "<ALL>",
+                    scope.label(), rowsScanned, queryMs);
         }
         long studentEvents = longVal(counts.get("studentEvents"));
         if (studentEvents == 0) {
@@ -169,7 +183,10 @@ public class AccessCleanPackageAnalyticsService {
         }
         List<String> enabled = listEnabledChannelCodes();
         if (enabled.isEmpty()) {
-            return new ChannelScope(List.of(), "未配置已启用清洗通道", true);
+            // 未配置清洗通道漏斗时，不限制通道查询全部数据，而非返回空报告。
+            // 用户"全部已启用通道"的意图是看到所有通道的数据。
+            // 若 access_clean_channel_scope 确实配置了通道但被禁用，此处仍查询全部。
+            return new ChannelScope(List.of(), "全部通道（未配置清洗通道漏斗，不限制通道查询）", false);
         }
         return new ChannelScope(enabled, "全部已启用清洗通道（" + enabled.size() + " 个）", false);
     }

@@ -1,18 +1,67 @@
 // components/FormGridRenderer.tsx
-import { useState, useEffect, useRef } from 'react';
-import type { LayoutJson, FieldDefinition, OptionSet, PermissionJson } from '../types';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import type { LayoutJson, FieldDefinition, PermissionJson, ThemeJson } from '../types';
+import { MIN_READABLE_COL_WIDTH, sumSpanColumnWidths } from '../utils/gridColumnWidths';
+import {
+  resolveWebGridDimensions,
+  rowSpanTotalHeight,
+} from '../utils/resolveWebGridDimensions';
+import {
+  GRID_CELL_TD_CLASS,
+  GRID_CELL_CONTENT_CLASS,
+  gridCellContentAlignClass,
+  gridCellMinHeight,
+  gridCellFixedHeight,
+  cellTextClass,
+  cellTextTitle,
+  GRID_CELL_INPUT_CLASS,
+  GRID_CELL_TEXTAREA_CLASS,
+  fillTextareaRows,
+  resolveCellAlign,
+  gridCellFlexJustifyClass,
+  cellTextAlignStyle,
+} from '../utils/gridCellLayout';
+import { formatFillFieldDisplayText, fillFieldHasMediaValue } from '../utils/fillFieldDisplay';
+import { useWordTableContainerWidth } from '../hooks/useWordTableContainerWidth';
 import UserSelector from './UserSelector';
-import { adminHttp } from '@/api/core/adminHttp';
-import toast from 'react-hot-toast';
-import { Check, ChevronDown } from 'lucide-react';
+import { GridCellDatetimeField } from './GridCellDatetimeField';
+import {
+  GridCellFileField,
+  GridCellFileReadonly,
+  GridCellImageField,
+  GridCellImageReadonly,
+} from './GridCellMediaFields';
+import { GridCellMultiSelectField, GridCellSelectField } from './GridCellSelectFields';
+import { FillCellTextBox, fillTextareaBoxStyle } from './FillCellTextBox';
+import { StaticCellContent } from './StaticCellContent';
+import { Check } from 'lucide-react';
+import { useOptionSetMap } from '../hooks/useOptionSetMap';
+import { resolveFieldOptions } from '../utils/optionSetResolve';
 
 interface Props {
   layout: LayoutJson | string;
+  themeJson?: ThemeJson | string;
   values: Record<string, unknown>;
   editable: boolean;
   onChange?: (fieldKey: string, value: unknown) => void;
   userRoles?: string[];
   permissionJson?: PermissionJson;
+  /** word：网页展示专用行高/列宽（不影响 Word 导出） */
+  formSource?: string;
+}
+
+function parseThemeJson(raw: unknown): ThemeJson {
+  const fallback: ThemeJson = {
+    headerBg: '', headerColor: '', headerFontSize: 13, headerBold: true, headerAlign: 'center',
+    zebraStripe: false, oddRowBg: '', evenRowBg: '', borderWidth: 1, borderColor: '',
+    borderRadius: 8, cellPadding: 8, defaultFontSize: 13, defaultAlign: 'center',
+    columnWidths: {}, rowHeights: {},
+  };
+  if (!raw) return fallback;
+  if (typeof raw === 'string') {
+    try { return { ...fallback, ...JSON.parse(raw) }; } catch { return fallback; }
+  }
+  return { ...fallback, ...(raw as ThemeJson) };
 }
 
 /** 后端返回的 layoutJson 可能是字符串，统一解析为对象 */
@@ -24,85 +73,82 @@ export function parseLayoutJson(raw: unknown): LayoutJson {
   return raw as LayoutJson;
 }
 
-export default function FormGridRenderer({ layout: rawLayout, values, editable, onChange, userRoles = [], permissionJson }: Props) {
+export default function FormGridRenderer({ layout: rawLayout, themeJson, values, editable, onChange, userRoles = [], permissionJson, formSource }: Props) {
   const layout = parseLayoutJson(rawLayout);
-  const cellMap = new Map<string, typeof layout.cells[0]>();
-  for (const cell of layout.cells) {
-    cellMap.set(`${cell.row},${cell.col}`, cell);
-  }
+  const theme = parseThemeJson(themeJson);
+  const { containerRef, containerWidth } = useWordTableContainerWidth(true);
+  const [activeCellId, setActiveCellId] = useState<string | null>(null);
+  const activeCellIdRef = useRef(activeCellId);
+  activeCellIdRef.current = activeCellId;
 
-  // 动态加载 optionSetId 引用的选项集
-  const [optionsSetMap, setOptionsSetMap] = useState<Record<string, { label: string; value: string }[]>>({});
-  const fieldsKey = JSON.stringify(Object.keys(layout.fields || {}));
+  const cellMap = useMemo(() => {
+    const map = new Map<string, typeof layout.cells[0]>();
+    for (const cell of layout.cells) map.set(`${cell.row},${cell.col}`, cell);
+    return map;
+  }, [layout.cells]);
+
+  const fields = layout.fields || {};
+  const { optionsSetMap } = useOptionSetMap(fields);
+
+  const getFieldOptions = useCallback(
+    (field: FieldDefinition) => resolveFieldOptions(field, optionsSetMap),
+    [optionsSetMap],
+  );
+
+  const fillMeasure = useMemo(
+    () => ({ values, getFieldOptions }),
+    [values, getFieldOptions],
+  );
+
+  const { colWidths, baseColWidths, rowHeightMap, totalWidth, displayMaxCol, strictRowHeight, allowCellGrow } = useMemo(
+    () => resolveWebGridDimensions(layout, theme, {
+      formSource,
+      containerWidth: containerWidth > 0 ? containerWidth : undefined,
+      constrainLayout: true,
+      fillMeasure,
+    }),
+    [layout, theme, formSource, containerWidth, fillMeasure],
+  );
+  const maxCol = displayMaxCol;
+  const maxRow = Math.max(...layout.cells.map(c => c.row + c.rowSpan), 1);
+
+  const cellSpanWidth = useCallback((col: number, colSpan: number) =>
+    sumSpanColumnWidths(col, colSpan, colWidths), [colWidths]);
+
+  const cellSpanBaseWidth = useCallback((col: number, colSpan: number) =>
+    sumSpanColumnWidths(col, colSpan, baseColWidths), [baseColWidths]);
 
   useEffect(() => {
-    const ids = new Set<string>();
-    for (const field of Object.values(layout.fields || {})) {
-      if (field.optionSetId) ids.add(field.optionSetId);
-    }
-    if (ids.size === 0) return;
+    if (!editable || !fillMeasure) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!activeCellIdRef.current) return;
+      const root = containerRef.current;
+      if (root && !root.contains(e.target as Node)) {
+        setActiveCellId(null);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [editable, fillMeasure, containerRef]);
 
-    // 并行加载所有引用的选项集
-    Promise.all(
-      [...ids].map(id =>
-        adminHttp.get(`/report-form/option-sets/${id}`)
-          .then(({ data }) => data?.data as OptionSet | undefined)
-          .catch(() => undefined)
-      )
-    ).then(results => {
-      const map: Record<string, { label: string; value: string }[]> = {};
-      results.forEach((set, i) => {
-        if (!set) return;
-        const id = [...ids][i];
-        // itemsJson 可能是 JSON 字符串或已解析数组
-        let items: { label: string; sortOrder?: number }[];
-        if (typeof set.itemsJson === 'string') {
-          try { items = JSON.parse(set.itemsJson); }
-          catch { items = []; }
-        } else if (Array.isArray(set.itemsJson)) {
-          items = set.itemsJson;
-        } else {
-          items = [];
-        }
-        // 去重：按 label 合并去重
-        const seen = new Set<string>();
-        const result: { label: string; value: string }[] = [];
-        for (const item of items) {
-          if (!seen.has(item.label)) {
-            seen.add(item.label);
-            result.push({ label: item.label, value: item.label });
-          }
-        }
-        map[id] = result;
-      });
-      setOptionsSetMap(map);
-    });
-  }, [fieldsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!activeCellId) return;
+    const root = containerRef.current;
+    if (!root) return;
+    const td = root.querySelector(`[data-fill-cell-id="${activeCellId}"]`);
+    const focusable = td?.querySelector<HTMLElement>(
+      'textarea, input, button, select, [tabindex]:not([tabindex="-1"])',
+    );
+    focusable?.focus();
+  }, [activeCellId, containerRef]);
 
-  const maxRow = Math.max(...layout.cells.map(c => c.row + c.rowSpan), 1);
-  const maxCol = Math.max(...layout.cells.map(c => c.col + c.colSpan), 1);
   const rendered = new Set<string>();
 
-  /** 合并直接 options 和 optionSetId 引用的选项 */
-  const getFieldOptions = (field: FieldDefinition): { label: string; value: string }[] => {
-    if (field.optionSetId && optionsSetMap[field.optionSetId]) {
-      // 选项集引用优先，合并本地 options（本地可覆盖或追加）
-      const setOpts = optionsSetMap[field.optionSetId];
-      const localOpts = field.options || [];
-      if (localOpts.length === 0) return setOpts;
-      // 去重：移除本地中已在选项集中出现的
-      const setValues = new Set(setOpts.map(o => o.value));
-      const uniqueLocal = localOpts.filter(o => !setValues.has(o.value));
-      return [...setOpts, ...uniqueLocal];
-    }
-    return field.options || [];
-  };
-
   const canEditField = (field: FieldDefinition, fieldKey?: string): boolean => {
+    if (field.type === 'STATIC') return false;
     if (!editable) return false;
     if (field.editableInFill === false) return false;
 
-    // 字段级权限（从 permissionJson.fieldRoleBindings 读取）
     if (fieldKey && permissionJson) {
       const bindings = (permissionJson as unknown as Record<string, unknown>).fieldRoleBindings as Record<string, { editableByRoles?: string[] }> | undefined;
       if (bindings?.[fieldKey]?.editableByRoles?.length) {
@@ -110,14 +156,12 @@ export default function FormGridRenderer({ layout: rawLayout, values, editable, 
       }
     }
 
-    // 字段自身 editableByRoles
     const roles = field.editableByRoles || [];
     if (roles.length === 0) return true;
     if (userRoles.length === 0) return false;
     return roles.some(r => userRoles.includes(r));
   };
 
-  /** 安全获取布尔值（处理 string "false" 等） */
   const toBoolean = (v: unknown): boolean => {
     if (v === null || v === undefined) return false;
     if (typeof v === 'boolean') return v;
@@ -126,7 +170,6 @@ export default function FormGridRenderer({ layout: rawLayout, values, editable, 
     return !!v;
   };
 
-  /** 安全获取数组值（处理 JSON 字符串） */
   const toArray = (v: unknown): string[] => {
     if (Array.isArray(v)) return v as string[];
     if (typeof v === 'string' && v.startsWith('[')) {
@@ -135,25 +178,97 @@ export default function FormGridRenderer({ layout: rawLayout, values, editable, 
     return v != null ? [String(v)] : [];
   };
 
-  const renderFieldControl = (cell: typeof layout.cells[0], field: FieldDefinition, value: unknown) => {
+  const renderFillDisplay = (
+    cell: typeof layout.cells[0],
+    field: FieldDefinition,
+    value: unknown,
+  ) => {
+    const fontSize = cell.style.fontSize ?? 13;
+    const colW = cellSpanWidth(cell.col, cell.colSpan);
+    const baseW = cellSpanBaseWidth(cell.col, cell.colSpan);
+
+    if (field.type === 'IMAGE' && fillFieldHasMediaValue(field, value)) {
+      return <GridCellImageReadonly value={value} />;
+    }
+    if (field.type === 'FILE' && fillFieldHasMediaValue(field, value)) {
+      return <GridCellFileReadonly value={value} />;
+    }
+
+    const displayValue = formatFillFieldDisplayText(field, value, getFieldOptions);
+    return (
+      <FillCellTextBox
+        text={displayValue}
+        colWidth={colW}
+        baseColWidth={baseW}
+        fontSize={fontSize}
+        bold={cell.style.bold}
+        className="text-xs text-[var(--app-color-text-primary)]"
+      />
+    );
+  };
+
+  const renderFieldControl = (
+    cell: typeof layout.cells[0],
+    field: FieldDefinition,
+    value: unknown,
+    isActive: boolean,
+  ) => {
     const fieldKey = cell.fieldKey;
+    const fontSize = cell.style.fontSize ?? 13;
+    const colW = cellSpanWidth(cell.col, cell.colSpan);
+    const baseW = cellSpanBaseWidth(cell.col, cell.colSpan);
+    const cellAlign = resolveCellAlign(cell.style.align, theme.defaultAlign);
+    const textAlignStyle = cellTextAlignStyle(cellAlign);
+
+    if (field.type === 'STATIC') {
+      const text = field.label || cell.staticText || '';
+      if (fillMeasure) {
+        return (
+          <FillCellTextBox
+            text={text}
+            colWidth={colW}
+            baseColWidth={baseW}
+            fontSize={fontSize}
+            bold={cell.style.bold}
+            className="text-xs text-[var(--app-color-text-primary)]"
+          />
+        );
+      }
+      return (
+        <span
+          className={`text-xs text-[var(--app-color-text-primary)] ${cellTextClass(text, fontSize, cell.style.bold)}`}
+          title={cellTextTitle(text)}
+        >
+          {text || '\u00a0'}
+        </span>
+      );
+    }
     const canEdit = canEditField(field, fieldKey);
     if (!fieldKey) return <span className="text-xs text-[var(--app-color-text-tertiary)]">—</span>;
 
-    const inputClass = "w-full border border-[var(--app-color-border-default)] rounded-[var(--app-radius-xs)] px-2 py-1 text-xs text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-page)] outline-none focus:border-[var(--app-color-accent)]";
+    const inlineInputClass = GRID_CELL_INPUT_CLASS + ' border-transparent bg-transparent hover:border-[var(--app-color-border)] hover:bg-[var(--app-color-surface-hover)] focus:border-[var(--app-color-accent)] focus:bg-[var(--app-color-surface-page)] transition-colors';
 
-    if (!canEdit) {
-      // Read-only display
+    if (!canEdit || (fillMeasure && editable && !isActive)) {
+      if (fillMeasure) {
+        return renderFillDisplay(cell, field, value);
+      }
       let displayValue: string;
       if (field.type === 'BOOLEAN') {
         displayValue = toBoolean(value) ? '✓ 是' : '✗ 否';
       } else if (field.type === 'MULTI_SELECT') {
         const arr = toArray(value);
-        displayValue = arr.length > 0 ? arr.join('、') : '';
+        const opts = getFieldOptions(field);
+        displayValue = arr.length > 0
+          ? arr.map(v => opts.find(o => o.value === v)?.label ?? v).join('、')
+          : '';
+      } else if (field.type === 'SELECT') {
+        const opts = getFieldOptions(field);
+        const val = String(value ?? '');
+        displayValue = opts.find(o => o.value === val)?.label || val;
       } else if (field.type === 'IMAGE' && value && value !== 'null') {
-        displayValue = '[图片]';
+        return <GridCellImageReadonly value={value} />;
       } else if (field.type === 'FILE' && value && value !== 'null') {
-        displayValue = '[文件]';
+        return <GridCellFileReadonly value={value} />;
       } else if (field.type === 'NUMBER') {
         const n = value != null && value !== '' && value !== 'null' ? Number(value) : NaN;
         displayValue = !isNaN(n) ? String(n) : '';
@@ -162,31 +277,37 @@ export default function FormGridRenderer({ layout: rawLayout, values, editable, 
         displayValue = isEmpty ? '' : String(value);
       }
       return (
-        <div className="flex justify-center">
-          <span className="text-xs text-[var(--app-color-text-secondary)] whitespace-nowrap overflow-hidden text-ellipsis block max-w-[300px]">
-            {displayValue || ' '}
-          </span>
-        </div>
+        <span
+          className={`text-xs text-[var(--app-color-text-secondary)] ${cellTextClass(displayValue, fontSize, cell.style.bold)}`}
+          title={cellTextTitle(displayValue)}
+        >
+          {displayValue || '\u00a0'}
+        </span>
       );
     }
-
-    const inlineInputClass = "w-full max-w-[300px] text-center rounded-[6px] border border-transparent bg-transparent hover:border-[var(--app-color-border)] hover:bg-[var(--app-color-surface-hover)] focus:border-[var(--app-color-accent)] focus:bg-[var(--app-color-surface-page)] px-2 py-1.5 text-xs text-[var(--app-color-text-primary)] outline-none transition-colors whitespace-nowrap overflow-hidden text-ellipsis";
 
     switch (field.type) {
       case 'TEXT': {
         const hint = field.maxLength ? `文本 · 最长${field.maxLength}字` : '文本';
+        const strVal = String(value ?? '');
         return (
-          <div className="flex justify-center">
-            <input type="text" value={String(value ?? '')}
-              onChange={e => onChange?.(fieldKey, e.target.value)}
-              onBlur={e => {
-                if (!field.maxLength) return;
-                const v = e.target.value;
-                if (v.length > field.maxLength) onChange?.(fieldKey, '');
-              }}
-              className={inlineInputClass}
-              placeholder={hint} />
-          </div>
+          <textarea
+            value={strVal}
+            rows={fillMeasure
+              ? fillTextareaRows(strVal, colW, baseW, 12, cell.style.bold)
+              : 1}
+            onChange={e => onChange?.(fieldKey, e.target.value)}
+            onBlur={e => {
+              if (!field.maxLength) return;
+              const v = e.target.value;
+              if (v.length > field.maxLength) onChange?.(fieldKey, '');
+            }}
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
+            className={GRID_CELL_TEXTAREA_CLASS + ' border-transparent bg-transparent hover:border-[var(--app-color-border)] hover:bg-[var(--app-color-surface-hover)] focus:border-[var(--app-color-accent)] focus:bg-[var(--app-color-surface-page)] transition-colors'}
+            style={{ ...(fillMeasure ? fillTextareaBoxStyle(strVal, colW, baseW, 12, cell.style.bold) : undefined), textAlign: textAlignStyle }}
+            placeholder={hint}
+          />
         );
       }
       case 'NUMBER': {
@@ -197,310 +318,255 @@ export default function FormGridRenderer({ layout: rawLayout, values, editable, 
         if (field.min != null && field.max != null) parts.push(`${field.min}~${field.max}`);
         else if (field.min != null) parts.push(`≥${field.min}`);
         else if (field.max != null) parts.push(`≤${field.max}`);
-        const hint = parts.join(' · ');
         return (
-          <div className="flex justify-center">
-            <input type="number" value={display}
-              onChange={e => {
-                const v = e.target.value;
-                onChange?.(fieldKey, v === '' ? undefined : Number(v));
-              }}
-              onBlur={e => {
-                const v = e.target.value;
-                if (v === '') return;
-                const n = Number(v);
-                if (isNaN(n)) { onChange?.(fieldKey, undefined); return; }
-                if (field.min != null && n < field.min) { onChange?.(fieldKey, undefined); return; }
-                if (field.max != null && n > field.max) { onChange?.(fieldKey, undefined); return; }
-              }}
-              className={inlineInputClass}
-              placeholder={hint} />
-          </div>
+          <input type="number" value={display}
+            onChange={e => {
+              const v = e.target.value;
+              onChange?.(fieldKey, v === '' ? undefined : Number(v));
+            }}
+            onBlur={e => {
+              const v = e.target.value;
+              if (v === '') return;
+              const n = Number(v);
+              if (isNaN(n)) { onChange?.(fieldKey, undefined); return; }
+              if (field.min != null && n < field.min) { onChange?.(fieldKey, undefined); return; }
+              if (field.max != null && n > field.max) { onChange?.(fieldKey, undefined); return; }
+            }}
+            className={inlineInputClass}
+            style={{ textAlign: textAlignStyle }}
+            placeholder={parts.join(' · ')} />
         );
       }
       case 'BOOLEAN': {
         const checked = toBoolean(value);
         return (
-          <div className="flex justify-center">
-            <button
-              onClick={() => onChange?.(fieldKey, !checked)}
-              className={`w-5 h-5 rounded-[4px] border-2 flex items-center justify-center transition-colors ${
-                checked
-                  ? 'bg-[var(--app-color-accent)] border-[var(--app-color-accent)] text-white'
-                  : 'border-[var(--app-color-border)] bg-[var(--app-color-surface-page)] hover:border-[var(--app-color-accent)]'
-              }`}
-            >
-              {checked && <Check className="w-3 h-3" />}
-            </button>
+          <div className={`flex w-full ${gridCellFlexJustifyClass(cellAlign)}`}>
+          <button
+            type="button"
+            onClick={() => onChange?.(fieldKey, !checked)}
+            className={`w-5 h-5 rounded-[4px] border-2 flex items-center justify-center transition-colors shrink-0 ${
+              checked
+                ? 'bg-[var(--app-color-accent)] border-[var(--app-color-accent)] text-white'
+                : 'border-[var(--app-color-border)] bg-[var(--app-color-surface-page)] hover:border-[var(--app-color-accent)]'
+            }`}
+          >
+            {checked && <Check className="w-3 h-3" />}
+          </button>
           </div>
         );
       }
-      case 'SELECT': {
-        const selectOpts = getFieldOptions(field);
-        const currentVal = String(value ?? '');
-        const currentLabel = selectOpts.find(o => o.value === currentVal)?.label;
-        const [open, setOpen] = useState(false);
-        const [hover, setHover] = useState(false);
-        const ref = useRef<HTMLDivElement>(null);
-
-        useEffect(() => {
-          if (!open) return;
-          const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-          document.addEventListener('mousedown', h);
-          return () => document.removeEventListener('mousedown', h);
-        }, [open]);
-
+      case 'SELECT':
         return (
-          <div className="flex justify-center">
-            <div ref={ref} className="relative w-full max-w-[200px]">
-              <button
-                onClick={() => setOpen(!open)}
-                onMouseEnter={() => setHover(true)}
-                onMouseLeave={() => setHover(false)}
-                className="w-full flex items-center justify-center gap-1 rounded-[6px] border border-transparent
-                           bg-transparent px-2 py-1.5 text-xs text-[var(--app-color-text-primary)] outline-none
-                           transition-all hover:border-[var(--app-color-border)] hover:bg-[var(--app-color-surface-hover)]
-                           cursor-pointer min-h-[28px]"
-              >
-                <span className={currentVal ? 'text-[var(--app-color-text-primary)]' : 'text-[var(--app-color-text-tertiary)]'}>
-                  {currentLabel || currentVal || ''}
-                </span>
-                <ChevronDown className={`w-3 h-3 text-[var(--app-color-text-tertiary)] transition-all ${hover || open ? 'opacity-100' : 'opacity-0'}`} />
-              </button>
-
-              {open && (
-                <div className="absolute top-full left-0 mt-1 w-full min-w-[160px] rounded-[var(--app-radius-container)]
-                                border border-[var(--app-color-border)] bg-[var(--app-color-surface-elevated)]
-                                shadow-lg z-[var(--z-dropdown)] py-1 max-h-[220px] overflow-y-auto">
-                  <button
-                    onClick={() => { onChange?.(fieldKey, ''); setOpen(false); }}
-                    className={`w-full px-3 py-1.5 text-[12px] text-left transition-colors italic
-                      ${!currentVal ? 'bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)]' : 'text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]'}`}
-                  >
-                    空白
-                  </button>
-                  {selectOpts.map((opt, i) => {
-                    const isSel = opt.value === currentVal;
-                    return (
-                      <button
-                        key={opt.value}
-                        onClick={() => { onChange?.(fieldKey, opt.value); setOpen(false); }}
-                        className={`w-full px-3 py-1.5 text-[12px] text-left transition-colors
-                          ${isSel ? 'bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent)] font-medium' : 'text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]'}
-                          ${i % 2 === 0 ? '' : 'border-t border-[var(--app-color-border)]/[0.2]'}`}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+          <GridCellSelectField
+            options={getFieldOptions(field)}
+            value={value}
+            editable
+            onChange={v => onChange?.(fieldKey, v)}
+            colWidth={colW}
+            baseColWidth={baseW}
+            fontSize={fontSize}
+            bold={cell.style.bold}
+            align={cellAlign}
+          />
         );
-      }
       case 'MULTI_SELECT': {
-        const selected: string[] = toArray(value);
-        const multiOpts = getFieldOptions(field);
-        const [open, setOpen] = useState(false);
-        const ref = useRef<HTMLDivElement>(null);
-
-        useEffect(() => {
-          if (!open) return;
-          const h = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-          };
-          document.addEventListener('mousedown', h);
-          return () => document.removeEventListener('mousedown', h);
-        }, [open]);
-
-        const toggleOption = (optValue: string, e: React.MouseEvent) => {
-          e.stopPropagation();
-          const next = selected.includes(optValue)
-            ? selected.filter(v => v !== optValue)
-            : [...selected, optValue];
-          onChange?.(fieldKey, next);
-        };
-
+        const arr = toArray(value);
+        const opts = getFieldOptions(field);
+        const displayText = arr.length > 0
+          ? arr.map(v => opts.find(o => o.value === v)?.label ?? v).join('、')
+          : '';
         return (
-          <div className="flex justify-center">
-            <div ref={ref} className="relative w-full max-w-[200px]">
-              {/* 触发器 */}
-              <button
-                onClick={() => setOpen(!open)}
-                className="w-full flex items-center justify-center gap-1 rounded-[6px] border border-transparent
-                           bg-transparent px-2 py-1.5 text-xs outline-none transition-all
-                           hover:border-[var(--app-color-border)] hover:bg-[var(--app-color-surface-hover)]
-                           cursor-pointer"
-              >
-                <span className={selected.length > 0 ? 'text-[var(--app-color-text-primary)]' : 'text-[var(--app-color-text-tertiary)]'}>
-                  {selected.length > 0 ? selected.join('、') : ''}
-                </span>
-                <ChevronDown className={`w-3.5 h-3.5 text-[var(--app-color-text-tertiary)] transition-transform ${open ? 'rotate-180' : ''}`} />
-              </button>
-
-              {/* 下拉面板 */}
-              {open && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-full min-w-[180px] rounded-[var(--app-radius-container)]
-                                border border-[var(--app-color-border)] bg-[var(--app-color-surface-elevated)]
-                                shadow-lg z-[var(--z-dropdown)] py-1 max-h-[220px] overflow-y-auto">
-                  {multiOpts.length === 0 ? (
-                    <p className="px-3 py-2 text-[11px] text-[var(--app-color-text-tertiary)] italic text-center">空白</p>
-                  ) : (
-                    multiOpts.map((opt, i) => {
-                      const isChecked = selected.includes(opt.value);
-                      return (
-                        <button
-                          key={opt.value}
-                          onClick={(e) => toggleOption(opt.value, e)}
-                          className={`w-full flex items-center gap-2 px-3 py-1.5 text-[12px] text-left transition-colors
-                            ${isChecked ? 'bg-[var(--app-color-accent-soft)] text-[var(--app-color-text-primary)]' : 'text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]'}
-                            ${i % 2 === 0 ? '' : 'border-t border-[var(--app-color-border)]/[0.3]'}`}
-                        >
-                          <span className={`w-4 h-4 rounded-[3px] border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                            isChecked
-                              ? 'bg-[var(--app-color-accent)] border-[var(--app-color-accent)] text-white'
-                              : 'border-[var(--app-color-border)] bg-[var(--app-color-surface-page)]'
-                          }`}>
-                            {isChecked && <Check className="w-2.5 h-2.5" />}
-                          </span>
-                          <span>{opt.label}</span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+          <GridCellMultiSelectField
+            options={opts}
+            value={value}
+            editable
+            onChange={v => onChange?.(fieldKey, v)}
+            displayText={displayText}
+            colWidth={colW}
+            baseColWidth={baseW}
+            fontSize={fontSize}
+            bold={cell.style.bold}
+            align={cellAlign}
+          />
         );
       }
       case 'DATETIME':
         return (
-          <div className="flex justify-center">
-            <input type="datetime-local" value={String(value ?? '')} onChange={e => onChange?.(fieldKey, e.target.value)}
-              className={inlineInputClass} placeholder="日期时间" />
-          </div>
+          <GridCellDatetimeField
+            value={value}
+            onChange={v => onChange?.(fieldKey, v)}
+            align={cellAlign}
+          />
         );
-      case 'IMAGE': {
-        const [imgError, setImgError] = useState(false);
+      case 'IMAGE':
         return (
-          <div className="space-y-1 flex flex-col items-center">
-            <input type="text" value={String(value ?? '')}
-              onChange={e => { setImgError(false); onChange?.(fieldKey, e.target.value); }}
-              className={`${inlineInputClass} text-left`} placeholder="粘贴图片链接" />
-            {value && !imgError ? (
-              <img src={String(value)} alt="预览"
-                onError={() => setImgError(true)}
-                className="max-w-[200px] max-h-[100px] rounded-[var(--app-radius-xs)] object-cover" />
-            ) : value && imgError ? (
-              <span className="text-[10px] text-[var(--app-color-feedback-danger)]">图片加载失败</span>
-            ) : null}
-          </div>
+          <GridCellImageField
+            value={value}
+            onChange={v => onChange?.(fieldKey, v)}
+            inlineInputClass={inlineInputClass}
+          />
         );
-      }
       case 'FILE':
         return (
-          <div className="space-y-1 flex flex-col items-center">
-            <input
-              type="file"
-              onChange={async e => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                try {
-                  const fd = new FormData();
-                  fd.append('file', file);
-                  const { data } = await adminHttp.post('/file-templates/upload', fd, {
-                    headers: { 'Content-Type': 'multipart/form-data' },
-                  });
-                  const url = data?.data?.url || data?.data;
-                  onChange?.(fieldKey, url || file.name);
-                  toast.success('文件上传成功');
-                } catch {
-                  onChange?.(fieldKey, file.name);
-                  toast.error('文件上传失败，已保存文件名');
-                }
-              }}
-              className="text-[11px]"
-            />
-            {value != null && typeof value === 'string' && value.length > 0 && (
-              <a href={String(value)} target="_blank" rel="noopener noreferrer"
-                className="text-[11px] text-[var(--app-color-accent)] underline block">
-                查看文件
-              </a>
-            )}
-          </div>
+          <GridCellFileField
+            value={value}
+            onChange={v => onChange?.(fieldKey, v)}
+          />
         );
       case 'USER':
         return (
-          <div className="flex justify-center">
-            <UserSelector
-              value={String(value ?? '')}
-              onChange={v => onChange?.(fieldKey, v)}
-              multi={field.props?.multi === true}
-            />
-          </div>
+          <UserSelector
+            value={String(value ?? '')}
+            onChange={v => onChange?.(fieldKey, v)}
+            multi={field.props?.multi === true}
+          />
         );
       case 'AUTO_USER':
         return (
-          <div className="flex justify-center">
-            <span className="text-xs text-[var(--app-color-text-tertiary)] italic">
-              {value ? String(value) : '（保存时自动记录）'}
-            </span>
-          </div>
+          <span className="text-xs text-[var(--app-color-text-tertiary)] italic truncate">
+            {value ? String(value) : '（保存时自动记录）'}
+          </span>
         );
       default:
         return <span className="text-xs text-[var(--app-color-text-tertiary)]">—</span>;
     }
   };
 
-  return (
-    <div className="overflow-auto border border-[var(--app-color-border-default)] rounded-[var(--app-radius-container)]">
-      <table className="border-collapse w-full">
-        <tbody>
-          {Array.from({ length: maxRow }, (_, r) => (
-            <tr key={r}>
-              {Array.from({ length: maxCol }, (_, c) => {
-                const key = `${r},${c}`;
-                if (rendered.has(key)) return null;
-                const cell = cellMap.get(key);
-                if (!cell) {
-                  return <td key={key} className="border border-[var(--app-color-border-default)] min-w-[80px] h-[32px]" />;
-                }
-                for (let dr = 0; dr < cell.rowSpan; dr++)
-                  for (let dc = 0; dc < cell.colSpan; dc++)
-                    rendered.add(`${r + dr},${c + dc}`);
-
+  const tableEl = (
+    <table
+      className="border-collapse overflow-visible"
+      style={{
+        tableLayout: 'fixed',
+        width: totalWidth,
+        minWidth: totalWidth,
+      }}
+    >
+      {maxCol > 0 && (
+        <colgroup>
+          {Array.from({ length: maxCol }, (_, c) => (
+            <col key={c} style={{ width: `${colWidths.get(c) ?? MIN_READABLE_COL_WIDTH}px` }} />
+          ))}
+        </colgroup>
+      )}
+      <tbody>
+        {Array.from({ length: maxRow }, (_, r) => {
+          const rowH = rowHeightMap.get(r) || 36;
+          return (
+          <tr key={r} style={strictRowHeight ? { height: rowH } : undefined}>
+            {Array.from({ length: maxCol }, (_, c) => {
+              const key = `${r},${c}`;
+              if (rendered.has(key)) return null;
+              const cell = cellMap.get(key);
+              if (!cell) {
                 return (
                   <td
-                    key={cell.id}
-                    colSpan={cell.colSpan}
-                    rowSpan={cell.rowSpan}
-                    className="border border-[var(--app-color-border-default)] p-2"
-                    style={{
-                      textAlign: cell.style.align,
-                      fontWeight: cell.style.bold ? 'bold' : 'normal',
-                      fontSize: cell.style.fontSize ? `${cell.style.fontSize}px` : undefined,
-                      color: cell.style.color || undefined,
-                      backgroundColor: cell.style.bg || undefined,
-                    }}
-                  >
+                    key={key}
+                    className={`border border-[var(--app-color-border-default)] ${GRID_CELL_TD_CLASS}`}
+                    style={strictRowHeight
+                      ? { height: rowH, minHeight: rowH }
+                      : { minHeight: rowH }}
+                  />
+                );
+              }
+              for (let dr = 0; dr < cell.rowSpan; dr++)
+                for (let dc = 0; dc < cell.colSpan; dc++)
+                  rendered.add(`${r + dr},${c + dc}`);
+
+              const cellH = strictRowHeight
+                ? gridCellFixedHeight(rowSpanTotalHeight(cell.row, cell.rowSpan, rowHeightMap))
+                : gridCellMinHeight(rowH, cell.rowSpan);
+
+              const tdSizeStyle = allowCellGrow
+                ? { minHeight: cellH }
+                : strictRowHeight
+                  ? { height: cellH, minHeight: cellH, maxHeight: cellH }
+                  : { minHeight: cellH };
+
+              const fieldDef = cell.fieldKey ? fields[cell.fieldKey] : undefined;
+              const fieldEditable = !!(fieldDef && canEditField(fieldDef, cell.fieldKey));
+              const isActive = activeCellId === cell.id;
+              const showFillEdit = !!(fillMeasure && editable && fieldEditable && isActive);
+              const cellAlign = resolveCellAlign(cell.style.align, theme.defaultAlign);
+
+              return (
+                <td
+                  key={cell.id}
+                  data-fill-cell-id={cell.id}
+                  colSpan={cell.colSpan}
+                  rowSpan={cell.rowSpan}
+                  className={`border border-[var(--app-color-border-default)] px-1.5 py-1 ${GRID_CELL_TD_CLASS} ${
+                    showFillEdit
+                      ? 'outline outline-2 outline-[var(--app-color-accent)] outline-offset-[-2px] relative z-[var(--z-dropdown)]'
+                      : fillMeasure && editable && fieldEditable
+                        ? 'cursor-pointer hover:bg-[var(--app-color-surface-hover)]'
+                        : ''
+                  }`}
+                  style={{
+                    ...tdSizeStyle,
+                    textAlign: cellTextAlignStyle(cellAlign),
+                    fontWeight: cell.style.bold ? 'bold' : 'normal',
+                    fontSize: cell.style.fontSize ? `${cell.style.fontSize}px` : undefined,
+                    color: cell.style.color || undefined,
+                    backgroundColor: cell.style.bg || undefined,
+                    verticalAlign: 'middle',
+                  }}
+                  onClick={() => {
+                    if (!fillMeasure || !editable || !fieldEditable) return;
+                    setActiveCellId(cell.id);
+                  }}
+                >
+                  <div className={`${GRID_CELL_CONTENT_CLASS} ${gridCellContentAlignClass(cellAlign)}`}>
                     {cell.kind === 'static' ? (
-                      <span>{cell.staticText || ' '}</span>
+                      cell.style.imageSrc ? (
+                        <StaticCellContent text={cell.staticText || ''} style={cell.style} />
+                      ) : fillMeasure ? (
+                        <FillCellTextBox
+                          text={cell.staticText || ''}
+                          colWidth={cellSpanWidth(cell.col, cell.colSpan)}
+                          baseColWidth={cellSpanBaseWidth(cell.col, cell.colSpan)}
+                          fontSize={cell.style.fontSize ?? 13}
+                          bold={cell.style.bold}
+                          className="text-xs"
+                        />
+                      ) : (
+                      <span
+                        className={`text-xs ${cellTextClass(cell.staticText, cell.style.fontSize ?? 13, cell.style.bold)}`}
+                        title={cellTextTitle(cell.staticText)}
+                      >
+                        {cell.staticText || '\u00a0'}
+                      </span>
+                      )
                     ) : cell.fieldKey ? (
                       renderFieldControl(cell, layout.fields[cell.fieldKey] || {
                         type: 'TEXT',
                         label: cell.fieldKey,
                         editableInFill: true,
-                      } as FieldDefinition, values[cell.fieldKey])
+                      } as FieldDefinition, values[cell.fieldKey], isActive)
                     ) : null}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  </div>
+                </td>
+              );
+            })}
+          </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+
+  return (
+    <div
+      ref={containerRef}
+      className="overflow-auto border border-[var(--app-color-border-default)] rounded-[var(--app-radius-container)] w-full"
+    >
+      <div
+        className="flex justify-center w-full"
+        style={{ minWidth: totalWidth > containerWidth && containerWidth > 0 ? totalWidth : undefined }}
+      >
+        <div className="shrink-0" style={{ width: totalWidth }}>
+          {tableEl}
+        </div>
+      </div>
     </div>
   );
 }

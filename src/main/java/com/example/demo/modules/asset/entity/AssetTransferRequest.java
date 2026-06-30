@@ -17,6 +17,8 @@ public class AssetTransferRequest {
     private String transferLocation;
     /** Snapshot of asset.location at submit time (for admin delete rollback). */
     private String fromLocation;
+    /** Snapshot of 使用人 at submit time for before/after comparison */
+    private String fromUserName;
     private String remark;
     private String photoUrl;
     /** JSON array of URLs, transfer before */

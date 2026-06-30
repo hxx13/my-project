@@ -40,7 +40,7 @@
         FROM aro_access_log
         WHERE user_id = #{userId}
           AND create_time >= #{todayStart}
-        ORDER BY create_time DESC
+        ORDER BY create_time ASC
     </select>
 
     <select id="selectAccessRecordsByUserId" resultType="map">

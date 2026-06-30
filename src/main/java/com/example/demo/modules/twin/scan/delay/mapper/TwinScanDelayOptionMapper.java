@@ -15,6 +15,10 @@ public interface TwinScanDelayOptionMapper {
 
     TwinScanDelayOption findById(@Param("id") Long id);
 
+    List<TwinScanDelayOption> listByCarrierId(@Param("carrierId") Long carrierId);
+
+    int countByCarrierId(@Param("carrierId") Long carrierId);
+
     int insert(TwinScanDelayOption row);
 
     int update(TwinScanDelayOption row);

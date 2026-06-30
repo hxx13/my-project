@@ -11,6 +11,7 @@ import type { LineStats } from '@/api/twinApi';
 import { HubPeakLineChart } from '@/features/dashboard/HubPeakLineChart';
 import { TimelineWaterfall } from '@/features/realtime-stream/TimelineWaterfall';
 import { NestedPieChart } from '@/features/dashboard/NestedPieChart';
+import DashboardQrCarousel from '@/features/dashboard/DashboardQrCarousel';
 import { UnifiedRankingCard } from '@/features/dashboard/UnifiedRankingCard';
 import { DashboardHeatmapChart } from '@/features/dashboard/DashboardHeatmapChart';
 import { RoomPreferenceChart } from '@/features/dashboard/RoomPreferenceChart';
@@ -288,7 +289,9 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex min-h-0 flex-[4] dash-card">
                         <GlassCard blobColor="rgba(45,92,247,0.3)">
-                            <NestedPieChart />
+                            <DashboardQrCarousel qrUrl={`${window.location.origin}/#/m/login`}>
+                                <NestedPieChart />
+                            </DashboardQrCarousel>
                         </GlassCard>
                     </div>
                 </div>

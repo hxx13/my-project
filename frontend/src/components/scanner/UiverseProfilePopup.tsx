@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -14,14 +14,20 @@ import { StudentEntryCard } from "./StudentEntryCard";
 import { ActionButtons } from "./components/ActionButtons";
 import { DisciplinaryModal } from "./components/DisciplinaryModal";
 import { ScanAccessMotionOverlay } from "./ScanAccessMotionOverlay";
+import { SwipeExitConfirmDialog } from "./SwipeExitConfirmDialog";
 import { resolveRoomActionDensity } from "./roomActionDensity";
 import { ACCESS_MOTION_CORNER_MODULE_RATIO } from "./accessMotionLoaderScale";
 import type { PopupProps } from "./components/types";
 import { ScanPopupNoticeCoordinator } from "./ScanPopupNoticeCoordinator";
+import {
+  mergeViolationInteractiveAckIntoResult,
+  type ViolationInteractiveAckResult,
+} from "./twinViolationInteractive";
 import { ScanEntryNotice } from "./ScanEntryNotice";
 import { Z_INDEX } from "@/constants/zIndex";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { BizOverlayShell } from "./BizOverlayShell";
+import type { ScanApplicantContext } from "./BizOverlayShell.types";
 import { useBizRegistry } from "./useBizRegistry";
 import MaterialBizPanel from "./MaterialBizPanel";
 import { checkPinStatus } from "./specialChannel.api";
@@ -107,7 +113,32 @@ const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
 
 export function UiverseProfilePopup(props: PopupProps) {
     const { result, onClose, autoActionRoomId = "", executeErrorMessage, onOpenStudentBind, onViolationInteractiveVerified, pinAlternativeEnabled, onFaceVerifyRequest, onFaceVerifyCancel, personalCenterFace, onBindStudentCenterSuccess } = props;
-    const { state, actions } = useProfilePopup(props);
+    const [violationAckPatch, setViolationAckPatch] = useState<ViolationInteractiveAckResult | null>(null);
+
+    useEffect(() => {
+        setViolationAckPatch(null);
+    }, [result?.userInfo?.userId]);
+
+    const mergedResult = useMemo(() => {
+        if (!result) return result;
+        if (!violationAckPatch) return result;
+        return mergeViolationInteractiveAckIntoResult(result, violationAckPatch) ?? result;
+    }, [result, violationAckPatch]);
+
+    const handleViolationInteractiveVerified = useCallback(
+        (patch: ViolationInteractiveAckResult) => {
+            setViolationAckPatch(patch);
+            onViolationInteractiveVerified?.(patch);
+        },
+        [onViolationInteractiveVerified]
+    );
+
+    const popupProps = useMemo(
+        () => ({ ...props, result: mergedResult }),
+        [props, mergedResult]
+    );
+
+    const { state, actions } = useProfilePopup(popupProps);
     const canOperateRiskState = hasMinRole(authStorage.getRole(), "STAFF");
     const { theme } = useTheme();
     const isDark = theme.mode === 'dark';
@@ -131,6 +162,21 @@ export function UiverseProfilePopup(props: PopupProps) {
     const [keypadUserId, setKeypadUserId] = useState("");
     const pendingPersonalFaceVerifyRef = useRef(false);
     const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
+
+    const scanApplicant = useMemo((): ScanApplicantContext | undefined => {
+      const u = state.user ?? result?.userInfo;
+      if (!studentUserId) return undefined;
+      return {
+        userId: studentUserId,
+        userName: u?.name?.trim() || undefined,
+        departmentName: u?.department_name?.trim() || undefined,
+        projectGroupName: u?.project_group_name?.trim() || undefined,
+        group: u?.group?.trim() || undefined,
+      };
+    }, [state.user, result?.userInfo, studentUserId]);
+
+    /** 换人刷卡时须 remount 通告协调器，否则 autoOpen 只跑首轮、openPanels 仍挂上一人 */
+    const noticeCoordinatorKey = studentUserId || "scan-notice";
 
     // 注册快捷业务
     const { register: registerBiz, clear: clearBiz } = useBizRegistry();
@@ -187,7 +233,8 @@ export function UiverseProfilePopup(props: PopupProps) {
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === "Escape") {
-                if (state.enterCelebrateRoomId) actions.dismissEnterCelebrate();
+                if (state.confirmingExitRoom) actions.cancelExit();
+                else if (state.enterCelebrateRoomId) actions.dismissEnterCelebrate();
                 else if (state.exitCelebrateRoomId) actions.dismissExitCelebrate();
                 else if (state.showRiskModal) actions.setShowRiskModal(false);
                 else onClose();
@@ -273,14 +320,15 @@ export function UiverseProfilePopup(props: PopupProps) {
                         当前未绑卡，点我绑定卡
                     </button>
                 ) : null}
-                <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-hidden p-10 pb-20">
+                <div className="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-hidden p-6 pb-10">
                     <div className="flex w-full max-w-[min(67.2vw,784px)] shrink-0 justify-center px-1 pt-1">
                         <ScanPopupNoticeCoordinator
-                            result={result}
-                            onViolationInteractiveVerified={onViolationInteractiveVerified}
+                            key={noticeCoordinatorKey}
+                            result={mergedResult ?? result}
+                            onViolationInteractiveVerified={handleViolationInteractiveVerified}
                         />
                     </div>
-                    <div className="grid min-h-0 w-full max-w-[1920px] flex-1 min-h-0 grid-cols-[25fr_50fr_25fr] gap-8 overflow-hidden">
+                    <div className="grid min-h-0 w-full max-w-[1920px] flex-1 min-h-0 grid-cols-[25fr_50fr_25fr] gap-8 overflow-visible">
                     <div className="flex flex-col h-full min-h-0 pt-6 pb-6 gap-4">
                         <div className="w-full h-[60px] mb-1">
                             <ScanLevelBadge
@@ -290,10 +338,10 @@ export function UiverseProfilePopup(props: PopupProps) {
                                 name={state.user?.name || "未知人员"}
                             />
                         </div>
-                        <div className="basis-1/2 min-h-0">
+                        <div className="flex-1 min-h-0">
                             <ProfileHeader user={state.user} isAvatarLoaded={state.isAvatarLoaded} globalUserState={state.globalUserState} onAvatarError={() => actions.setAvatarLoaded(false)} onOpenRiskModal={() => actions.setShowRiskModal(true)} />
                         </div>
-                        <div className="basis-1/2 min-h-0 flex flex-col min-h-0">
+                        <div className="flex-1 min-h-0 flex flex-col min-h-0">
                             <StudentEntryCard
                                 capacityStats={state.myCapacityStats}
                                 roomOverviewFetching={state.roomOverviewFetching}
@@ -316,7 +364,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                     </div>
                     <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
                         {popupMessage && (
-                            <div className="w-full max-w-[340px] mx-auto shrink-0 flex justify-end pr-0">
+                            <div className="w-full max-w-[340px] mx-auto shrink-0 flex justify-end pr-0 relative z-10">
                                 <div className="max-w-[min(260px,100%)] rounded-md border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-feedback-danger-soft)] px-2 py-1 text-[10px] leading-snug text-[var(--app-color-text-primary)] shadow-md flex items-start gap-1.5">
                                     <span className="flex-1 min-w-0 break-words text-right">{popupMessage}</span>
                                     <button
@@ -329,13 +377,13 @@ export function UiverseProfilePopup(props: PopupProps) {
                                 </div>
                             </div>
                         )}
-                        {/* 上 2/5：面包机区缩小并贴底；下 3/5 较原 50% 多约 20% 给操作按钮 */}
+                        {/* 上 2/5：面包机区贴底，预留动画空间；下 3/5 给操作按钮 */}
                         <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 pb-0.5">
-                            <div className="pointer-events-none flex h-[200px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">
+                            <div className="pointer-events-none flex h-[160px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">
                                 <ExpToaster key={state.toastData.nonce} expAdded={state.toastData.exp} play={state.toastData.play} />
                             </div>
                         </div>
-                        <div className="flex min-h-0 flex-[3] flex-col overflow-hidden">
+                        <div className="flex min-h-0 flex-[3] flex-col overflow-visible">
                             <div className="w-full max-w-[340px] mx-auto mb-2 space-y-1 shrink-0">
                                 <div className="flex gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1.5" title="由 twin_card_mapping 自动判定，打卡将写入流水">
                                     <div
@@ -380,7 +428,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                                             height: `${ACCESS_MOTION_CORNER_MODULE_RATIO * 100}%`,
                                         }}
                                         aria-label={`确认离开 ${cornerLeaveLabel}`}
-                                        onClick={() => actions.handleRoomClick(cornerLeaveRoom!, cornerLeaveIdx)}
+                                        onClick={() => actions.requestExit(cornerLeaveRoom!, cornerLeaveIdx)}
                                     />
                                 ) : null}
                                 {state.renderActionButtons ? (
@@ -406,6 +454,11 @@ export function UiverseProfilePopup(props: PopupProps) {
                                         subjectUserId={state.user?.userId}
                                         onDelaySuccess={actions.handleDelayGrantSuccess}
                                         userName={state.user?.name}
+                                        onRequestExit={actions.requestExit}
+                                        onConfirmExit={actions.confirmExit}
+                                        onCancelExit={actions.cancelExit}
+                                        confirmingExitRoom={state.confirmingExitRoom}
+                                        studentUserId={studentUserId}
                                     />
                                 ) : (
                                     <div className="flex-1 min-h-[120px] w-full shrink-0" aria-hidden />
@@ -416,13 +469,39 @@ export function UiverseProfilePopup(props: PopupProps) {
                     </div>
                 </div>
 
-                {/* 进入确认：居中弹窗 + 倒计时 → 最小化到角落胶囊 */}
+                {/* 进入确认：居中弹窗 + 倒计时 → 最小化到角落胶囊。
+                    离开确认弹窗打开时完全卸载，避免两个弹窗同时出现。 */}
+                {!state.confirmingExitRoom && (
                 <ScanEntryNotice
                     state={state}
                     roomName={cornerLeaveLabel}
                     onDismiss={actions.dismissEnterCelebrate}
+                    studentUserId={studentUserId}
+                    onRequestExit={() => {
+                        if (cornerLeaveRoom) {
+                            actions.requestExit(cornerLeaveRoom, cornerLeaveIdx);
+                        }
+                    }}
                 />
+                )}
             </motion.div>
+
+            {/* 离开确认弹窗（z=800，在所有扫描弹窗之上） */}
+            <SwipeExitConfirmDialog
+                open={state.confirmingExitRoom !== null}
+                userName={state.user?.name || ""}
+                roomName={state.confirmingExitRoom?.displayName || state.confirmingExitRoom?.name || "当前房间"}
+                onConfirm={actions.confirmExit}
+                onCancel={actions.cancelExit}
+                autoSignoutSeconds={state.autoSignoutSecondsRemaining}
+                autoSignoutState={state.autoSignoutState}
+                onCountdownEnd={() => {
+                    actions.cancelExit();
+                    actions.dismissEnterCelebrate();
+                }}
+                studentUserId={studentUserId}
+            />
+
             {/* Keypad overlay */}
             {showKeypad && (
                 <NumericKeypad
@@ -457,6 +536,7 @@ export function UiverseProfilePopup(props: PopupProps) {
             {showQuickActions && (
                 <BizOverlayShell
                     userId={studentUserId}
+                    scanUser={scanApplicant}
                     title="快捷业务"
                     onCancel={() => setShowQuickActions(false)}
                 />

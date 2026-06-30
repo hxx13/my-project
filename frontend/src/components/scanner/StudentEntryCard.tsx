@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ArrowLeft, GraduationCap, Home, KeyRound, LayoutGrid } from "lucide-react";
+import { ArrowLeft, GraduationCap, Home, KeyRound, LayoutGrid, Smartphone } from "lucide-react";
 import type { CapacityStat } from "./components/types";
 import { ScanActionButton } from "./ScanActionButton";
 import { STUDENT_CARD } from "./scanPopupTheme";
+import { MobileQrCard } from "./MobileQrCard";
 
 interface StudentEntryCardProps {
   capacityStats: CapacityStat[];
@@ -17,13 +18,13 @@ interface StudentEntryCardProps {
   onClosePopup: () => void;
 }
 
-type Page = 1 | 2;
+type Page = 1 | 2 | 3;
 
 export function StudentEntryCard({
   capacityStats,
   roomOverviewFetching,
   roomOverviewSourceCount,
-  studentUserId: _studentUserId,
+  studentUserId,
   studentName,
   onEnterStudentCenter,
   onOpenQuickActions,
@@ -32,8 +33,9 @@ export function StudentEntryCard({
   const [page, setPage] = useState<Page>(1);
 
   const pageTitles: Record<Page, { icon: typeof Home; title: string; subtitle: string }> = {
-    1: { icon: Home, title: "馆内实时负载", subtitle: "各房间当前占用情况" },
-    2: { icon: KeyRound, title: "快捷入口", subtitle: "选择你要执行的操作" },
+    1: { icon: Smartphone, title: "扫一扫进入手机版个人中心", subtitle: "扫码后在手机上打开个人中心" },
+    2: { icon: Home, title: "馆内实时负载", subtitle: "各房间当前占用情况" },
+    3: { icon: KeyRound, title: "快捷入口", subtitle: "选择你要执行的操作" },
   };
 
   const current = pageTitles[page];
@@ -48,7 +50,7 @@ export function StudentEntryCard({
 
       <div className="relative z-10 flex shrink-0 flex-col items-center gap-1.5 px-3 pb-1 pt-3">
         <div className="flex justify-center gap-1">
-          {([1, 2] as Page[]).map((p) => (
+          {([1, 2, 3] as Page[]).map((p) => (
             <div
               key={p}
               className={`h-1 w-5 rounded-full transition-all duration-300 ${
@@ -65,14 +67,28 @@ export function StudentEntryCard({
             <PageIcon className="h-4 w-4" strokeWidth={2.25} />
           </span>
           <div className="text-center">
-            <h3 className="text-xs font-semibold text-[var(--app-color-text-primary)]">{current.title}</h3>
+            <h3 className={`font-semibold text-[var(--app-color-text-primary)] ${page === 1 ? "text-sm leading-snug" : "text-xs"}`}>{current.title}</h3>
             <p className="mt-0.5 text-[9px] text-[var(--app-color-text-tertiary)]">{current.subtitle}</p>
           </div>
         </div>
       </div>
 
-      <div className="app-themed-scrollbar relative z-10 min-h-0 flex-1 overflow-y-auto px-3 pb-10">
+      <div
+        className={`relative z-10 min-h-0 flex-1 px-3 pb-12 ${
+          page === 1 ? "flex flex-col overflow-hidden" : "app-themed-scrollbar overflow-y-auto"
+        }`}
+      >
         {page === 1 ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            {studentUserId ? (
+              <MobileQrCard userId={studentUserId} adaptive />
+            ) : (
+              <p className="py-4 text-center text-[10px] text-[var(--app-color-text-tertiary)]">
+                暂无人员信息，无法生成二维码
+              </p>
+            )}
+          </div>
+        ) : page === 2 ? (
           <div className="flex flex-col gap-1.5">
             {roomOverviewFetching && capacityStats.length === 0 && roomOverviewSourceCount === 0 ? (
               <div className="h-8 w-full animate-pulse rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)]" />
@@ -152,24 +168,11 @@ export function StudentEntryCard({
         )}
       </div>
 
-      {page === 1 ? (
-        <div className="absolute bottom-2 right-2 z-20">
-          <button
-            type="button"
-            onClick={() => setPage(2)}
-            className="flex items-center gap-1.5 rounded-[var(--app-radius-pill)] border border-[var(--app-color-border-default)] px-3 py-1.5 text-[11px] text-[var(--app-color-text-secondary)] transition-colors hover:border-[var(--scan-accent-strong)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"
-          >
-            下一页
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-          </button>
-        </div>
-      ) : (
+      {page > 1 ? (
         <div className="absolute bottom-2 left-2 z-20">
           <button
             type="button"
-            onClick={() => setPage(1)}
+            onClick={() => setPage((page - 1) as Page)}
             className="flex items-center gap-1.5 rounded-[var(--app-radius-pill)] border border-[var(--app-color-border-default)] px-3 py-1.5 text-[11px] text-[var(--app-color-text-secondary)] transition-colors hover:border-[var(--scan-accent-strong)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
@@ -178,7 +181,21 @@ export function StudentEntryCard({
             上一页
           </button>
         </div>
-      )}
+      ) : null}
+      {page < 3 ? (
+        <div className="absolute bottom-2 right-2 z-20">
+          <button
+            type="button"
+            onClick={() => setPage((page + 1) as Page)}
+            className="flex items-center gap-1.5 rounded-[var(--app-radius-pill)] border border-[var(--app-color-border-default)] px-3 py-1.5 text-[11px] text-[var(--app-color-text-secondary)] transition-colors hover:border-[var(--scan-accent-strong)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"
+          >
+            下一页
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

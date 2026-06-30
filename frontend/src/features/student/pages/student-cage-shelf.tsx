@@ -155,7 +155,12 @@ const GridCellButton = memo(function GridCellButton({ cell, isSelected, onSelect
 
   return (
     <button type="button"
-      className={`relative min-h-[72px] rounded-[var(--student-radius-md)] text-[10px] leading-tight transition ${isSelected ? "ring-2 ring-[var(--student-primary)] ring-offset-1" : ""} ${cageCardTone(cell)}`}
+      className={cn(
+        "relative min-h-[72px] rounded-[var(--student-radius-md)] text-[10px] leading-tight transition",
+        isSelected ? "ring-2 ring-[var(--student-primary)] ring-offset-1" : "",
+        !cell.empty && cell.visible ? "ring-1 ring-[var(--student-primary)]/50 shadow-sm" : "",
+        cageCardTone(cell),
+      )}
       style={statusStyle}
       onClick={onSelect}
       disabled={cell.empty}
@@ -362,8 +367,15 @@ function StudentCageShelfInner() {
   const campusOptions = useMemo(() => (filterOpts?.campuses ?? []).map(c => ({ value: String(c.campusId), label: c.campusName })), [filterOpts?.campuses]);
   const areaOptions   = useMemo(() => (filterOpts?.areas ?? []).map(a => ({ value: a.areaId, label: a.areaName })), [filterOpts?.areas]);
   const floorOptions  = useMemo(() => (filterOpts?.floors ?? []).map(f => ({ value: f.floorId, label: f.floorName })), [filterOpts?.floors]);
-  const roomOptions   = useMemo(() => (filterOpts?.rooms ?? []).map(r => ({ value: r.roomId, label: r.roomName })), [filterOpts?.rooms]);
-  const shelfOptions  = useMemo(() => (filterOpts?.shelves ?? []).map(s => ({ value: s.shelveId, label: s.shelveName })), [filterOpts?.shelves]);
+  const roomOptions   = useMemo(() => (filterOpts?.rooms ?? []).map(r => ({
+    value: r.roomId,
+    label: r.highlight ? `${r.roomName} · 本组` : r.roomName,
+  })), [filterOpts?.rooms]);
+  const shelfOptions  = useMemo(() => (filterOpts?.shelves ?? []).map(s => ({
+    value: s.shelveId,
+    label: s.shelveName,
+    highlight: Boolean(s.highlight),
+  })), [filterOpts?.shelves]);
 
   const cells = activeDetail?.grid ?? [];
   const gridMeta = activeDetail?.shelfMeta;
@@ -543,13 +555,40 @@ function StudentCageShelfInner() {
                 <FilterSelect label="区域" placeholder={selections.campusId ? "请选择" : "先选校区"} options={areaOptions} value={selections.areaId} disabled={!selections.campusId} onChange={e => updateSelection("areaId", e.target.value)} />
                 <FilterSelect label="楼层" placeholder={selections.areaId ? "请选择" : "先选区域"} options={floorOptions} value={selections.floorId} disabled={!selections.areaId} onChange={e => updateSelection("floorId", e.target.value)} />
                 <FilterSelect label="房间" placeholder={selections.floorId ? "请选择" : "先选楼层"} options={roomOptions} value={selections.roomId} disabled={!selections.floorId} onChange={e => updateSelection("roomId", e.target.value)} />
-                <FilterSelect label="笼架" placeholder={selections.roomId ? (shelfOptions.length > 0 ? "请选择笼架" : "无可用笼架") : "先选房间"} options={shelfOptions} value={selections.shelveId} disabled={!selections.roomId || shelfOptions.length === 0} onChange={e => updateSelection("shelveId", e.target.value)} className="min-w-[160px] max-w-[240px]" />
-                {selections.campusId && (
-                  <div className="flex items-end pb-0.5">
-                    <button type="button" className="text-[11px] text-[var(--student-mute)] hover:text-[var(--student-primary)]" onClick={resetSelections}>重置</button>
-                  </div>
-                )}
               </div>
+              {selections.roomId && shelfOptions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-[var(--student-border)]">
+                  <span className="text-[11px] font-medium text-[var(--student-mute)] shrink-0">笼架</span>
+                  {shelfOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => updateSelection("shelveId", opt.value)}
+                      className={cn(
+                        "rounded-full px-3 py-1.5 text-xs font-medium transition border",
+                        selections.shelveId === opt.value
+                          ? "bg-[var(--student-primary)] text-white border-[var(--student-primary)] shadow-sm"
+                          : opt.highlight
+                            ? "bg-[var(--student-primary)]/10 text-[var(--student-primary)] border-[var(--student-primary)]/40 hover:border-[var(--student-primary)]"
+                            : "bg-white text-[var(--student-body)] border-[var(--student-border)] hover:border-[var(--student-primary)] hover:text-[var(--student-primary)]",
+                      )}
+                    >
+                      {opt.label}
+                      {opt.highlight && selections.shelveId !== opt.value && (
+                        <span className="ml-1 text-[9px] opacity-80">本组</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selections.roomId && shelfOptions.length === 0 && (
+                <p className="mt-3 pt-3 border-t border-[var(--student-border)] text-[11px] text-[var(--student-mute)]">该房间暂无可用笼架</p>
+              )}
+              {selections.campusId && (
+                <div className="flex items-end pb-0.5 mt-2">
+                  <button type="button" className="text-[11px] text-[var(--student-mute)] hover:text-[var(--student-primary)]" onClick={resetSelections}>重置</button>
+                </div>
+              )}
             </StudentCard>
           </div>
 

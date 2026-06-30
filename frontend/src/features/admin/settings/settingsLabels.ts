@@ -114,7 +114,7 @@ export type SettingsNavGroup = {
 /** 配置模块侧栏分组（固定顺序；未列入的模块归入「其他」） */
 const MODULE_GROUP_DEFS: Array<{ id: string; title: string; keys: string[] }> = [
   { id: "notify", title: "通知与权限", keys: ["notification", "template", "capability"] },
-  { id: "experience", title: "界面与展示", keys: ["dashboard_codex", "telemetry_facility", "frontend_runtime", "scanner"] },
+  { id: "experience", title: "界面与展示", keys: ["telemetry_facility", "frontend_runtime", "scanner"] },
   { id: "business", title: "业务扩展", keys: ["supplies", "mini_program", "llm", "material", "face"] },
   { id: "platform", title: "平台与网络", keys: ["network", "system", "logging", "credentials", "integration"] },
 ];

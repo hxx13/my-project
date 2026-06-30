@@ -1,114 +1,144 @@
 package com.example.demo.common.bootstrap;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
+import com.example.demo.common.logging.annotation.StartupPhase;
+import com.example.demo.common.logging.model.StartupContext;
+import com.example.demo.common.logging.model.StartupResult;
+import com.example.demo.common.logging.model.StartupRunner;
+import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.core.annotation.Order;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.DatabasePopulatorUtils;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.stereotype.Component;
-import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
 
 import javax.sql.DataSource;
 
 /**
- * 在 {@code spring.sql.init.mode=never} 时，于应用启动阶段在库内执行与 {@code scripts/*.ddl.sql} 同源的 classpath SQL，
- * 避免无法在库外手工跑脚本时出现缺表（含 {@code twin_student_violation}）。需数据源账号具备 CREATE TABLE 等权限。
- * <p>
- * 关闭方式：{@code app.schema.auto-ensure-embedded-core-ddl=false}（生产由 DBA 独占 DDL 时可关）。
+ * 启动阶段：幂等执行 classpath:db/bootstrap-*.sql。
+ * 关闭方式：{@code app.schema.auto-ensure-embedded-core-ddl=false}
  */
+@StartupPhase(
+    name = "数据库迁移",
+    order = 2,
+    description = "执行 bootstrap DDL 确保核心表存在",
+    subtasks = true
+)
 @Component
-@Order(2)
 @ConditionalOnProperty(
         prefix = "app.schema",
         name = "auto-ensure-embedded-core-ddl",
         havingValue = "true",
         matchIfMissing = true
 )
-public class EmbeddedTwinSystemCoreDdlBootstrap implements ApplicationRunner {
-
-    private static final Logger log = LoggerFactory.getLogger(EmbeddedTwinSystemCoreDdlBootstrap.class);
+public class EmbeddedTwinSystemCoreDdlBootstrap implements StartupRunner {
 
     private final DataSource dataSource;
     private final TwinStudentViolationService twinStudentViolationService;
 
-    public EmbeddedTwinSystemCoreDdlBootstrap(DataSource dataSource, TwinStudentViolationService twinStudentViolationService) {
+    public EmbeddedTwinSystemCoreDdlBootstrap(DataSource dataSource,
+                                               TwinStudentViolationService twinStudentViolationService) {
         this.dataSource = dataSource;
         this.twinStudentViolationService = twinStudentViolationService;
     }
 
     @Override
-    public void run(ApplicationArguments args) {
-        runScript("db/bootstrap-login-branding-invite-chat.sql", "登录轮播/推荐码/站内信等核心表");
-        runScript("db/bootstrap-admin-file-template.sql", "admin_file_template（文件模板下载）");
-        if (runScript("db/bootstrap-twin-student-violation.sql", "twin_student_violation（学生违规管理）")) {
+    public StartupResult run(StartupContext ctx) {
+        int success = 0, total = 0;
+
+        // --- 核心表 ---
+        total++; if (runScript("db/bootstrap-login-branding-invite-chat.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-admin-file-template.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-twin-student-violation.sql", ctx)) {
+            success++;
             twinStudentViolationService.markSchemaReady();
         }
-        runScript("db/bootstrap-twin-student-violation-add-source.sql", "stranded_violation_config（滞留违规配置表）");
-        runScript("db/bootstrap-twin-student-violation-source-col.sql", "twin_student_violation source列（如已存在则跳过）");
-        runScript("db/bootstrap-twin-student-violation-interactive-challenge.sql", "twin_student_violation interactive_challenge列");
-        runScript("db/bootstrap-twin-student-violation-interactive-verified.sql", "twin_student_violation interactive_challenge_verified_at列");
-        runScript("db/bootstrap-twin-student-violation-interactive-unlock.sql", "twin_student_violation interactive_unlock_on_verify列");
-        runScript("db/bootstrap-twin-violation-rule.sql", "twin_violation_rule（违规触发规则）");
-        runScript("db/bootstrap-stranded-config-interactive-unlock.sql", "stranded_violation_config interactive_unlock_on_verify列");
-        runScript("db/bootstrap-stranded-config-interactive-challenge.sql", "stranded_violation_config 交互式确认字段");
-        runScript("db/bootstrap-stranded-config-violation-text-tpl-text.sql", "stranded_violation_config violation_text_tpl TEXT");
-        runScript("db/bootstrap-twin-scan-popup-announcement.sql", "twin_scan_popup_announcement（扫码弹窗公告）");
-        runScript("db/cage-shelf-cell-snapshot.sql", "cage_shelf_cell_snapshot（笼位快照）");
-        runScript("db/cage-shelf-bookmark.sql", "cage_shelf_bookmark（笼架收藏）");
-        runScript("db/student-room-pin.sql", "student_room_pin（房间置顶）");
-        runScript("db/bootstrap-twin-swipe-alert-rule.sql", "swipe_alert_rule（刷卡失败灵动岛告警规则）");
-        runScript("db/bootstrap-twin-violation-text-template.sql", "twin_violation_text_template（违规文案模板预设）");
-        runScript("db/bootstrap-upload-file-record.sql", "upload_file_record（双端图片互通记录表）");
-        runScript("db/bootstrap-fix-relative-urls.sql", "修复历史相对路径为完整公网URL（幂等）");
-        runScript("db/bootstrap-twin-exp-record.sql", "twin_exp_record（经验值流水记录）");
-        runScript("db/bootstrap-report-form.sql", "report_form_definition/submission/submission_log/option_set（填报报表4表）");
-        runScript("db/bootstrap-report-form-source.sql", "report_form_definition source列（如已存在则跳过）");
-        runScript("db/migration/V20260615__face_recognition_tables.sql", "face_debug_photo + face_baseline（人脸识别调试+底库）");
-        runScript("db/migration/V20260615__face_baseline_multi.sql", "face_baseline 改为一对多（移除 uk_user_id 唯一约束）");
-        runScript("db/migration/V20260616__face_verify_audit.sql", "face_verify_audit（路线 B 人脸验证审计）");
-        // 抓拍/底库图列由 FaceVerifyAuditSchemaMigrator 在启动时幂等补列，避免 IDEA 已建表后 JAR 重复 ALTER 报 Duplicate column
+
+        // --- 违规模块 ---
+        total++; if (runScript("db/bootstrap-twin-student-violation-add-source.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-twin-student-violation-source-col.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-twin-student-violation-interactive-challenge.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-twin-student-violation-interactive-verified.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-twin-student-violation-interactive-unlock.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-twin-violation-rule.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-stranded-config-interactive-unlock.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-stranded-config-interactive-challenge.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-stranded-config-violation-text-tpl-text.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-stranded-signout-config-row.sql", ctx)) success++;
+
+        // --- 业务表 ---
+        total++; if (runScript("db/bootstrap-twin-scan-popup-announcement.sql", ctx)) success++;
+        total++; if (runScript("db/cage-shelf-cell-snapshot.sql", ctx)) success++;
+        total++; if (runScript("db/cage-shelf-bookmark.sql", ctx)) success++;
+        total++; if (runScript("db/student-room-pin.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-twin-swipe-alert-rule.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-twin-violation-text-template.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-upload-file-record.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-fix-relative-urls.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-twin-exp-record.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-twin-exp-record-anomaly-review.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-report-form.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-report-form-source.sql", ctx)) success++;
+        total++; if (runScript("db/migration/V20260615__face_recognition_tables.sql", ctx)) success++;
+        total++; if (runScript("db/migration/V20260615__face_baseline_multi.sql", ctx)) success++;
+        total++; if (runScript("db/migration/V20260616__face_verify_audit.sql", ctx)) success++;
+        total++; if (runScript("db/V20260624140000__student_mobile_token.sql", ctx)) success++;
+        total++; if (runScript("db/bootstrap-add-account-source.sql", ctx)) success++;
+
+        if (success == total) {
+            return StartupResult.success(total + "/" + total + " 就绪");
+        }
+        return StartupResult.failed(success + "/" + total + " 就绪，"
+                + (total - success) + " 个失败 (权限不足或表已存在)", null);
     }
 
-    /** @return 是否执行成功 */
-    private boolean runScript(String classpath, String label) {
+    /** 执行单个脚本，通过 subtask 追踪进度。返回是否成功。 */
+    private boolean runScript(String classpath, StartupContext ctx) {
+        final boolean[] ok = {false};
+        ctx.subtask(scriptLabel(classpath), () -> {
+            ok[0] = doRun(classpath, ctx);
+        });
+        return ok[0];
+    }
+
+    private boolean doRun(String classpath, StartupContext ctx) {
         try {
             ResourceDatabasePopulator populator = new ResourceDatabasePopulator();
             populator.addScript(new ClassPathResource(classpath));
             populator.setSeparator(";");
             populator.setContinueOnError(false);
             DatabasePopulatorUtils.execute(populator, dataSource);
-            log.info("[embedded-ddl] 已执行 classpath:{}（{}）", classpath, label);
             return true;
         } catch (Exception ex) {
             String msg = ex.getMessage() != null ? ex.getMessage() : "";
             if (isBenignDdlSkip(msg)) {
-                log.info("[embedded-ddl] 跳过 classpath:{}（{}）：结构已存在", classpath, label);
-                return true;
+                return true; // 幂等：列/表/索引已存在
             }
-            log.warn(
-                    "[embedded-ddl] 执行 {} 失败（{}）。请确认 spring.datasource 用户具备 DDL 权限，或改由 DBA 执行 scripts 下等价脚本：{}",
-                    classpath,
-                    label,
-                    msg
-            );
+            ctx.warn(scriptLabel(classpath) + ": " + truncate(msg, 120));
             return false;
         }
     }
 
-    /** 幂等 DDL：列/表/索引已存在时不视为失败 */
+    private static String scriptLabel(String classpath) {
+        // db/bootstrap-foo-bar.sql → foo-bar
+        String name = classpath.replace("db/", "").replace("bootstrap-", "")
+                .replace("migration/", "").replace("V20260615__", "")
+                .replace("V20260616__", "").replace("V20260624140000__", "")
+                .replace(".sql", "");
+        return name.length() > 40 ? name.substring(0, 37) + "..." : name;
+    }
+
     private static boolean isBenignDdlSkip(String message) {
-        if (message.isBlank()) {
-            return false;
-        }
+        if (message.isBlank()) return false;
         String lower = message.toLowerCase();
         return lower.contains("duplicate column")
                 || lower.contains("duplicate key name")
                 || lower.contains("already exists")
                 || message.contains("Duplicate column")
                 || message.contains("already exists");
+    }
+
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return "";
+        return s.length() <= maxLen ? s : s.substring(0, maxLen - 3) + "...";
     }
 }

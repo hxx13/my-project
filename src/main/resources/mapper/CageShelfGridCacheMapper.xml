@@ -41,4 +41,11 @@
         DELETE FROM cage_shelf_grid_cache WHERE updated_at &lt; #{cutoff}
     </delete>
 
+    <select id="selectAllWithFilledCells" resultType="map">
+        SELECT shelve_id AS shelveId,
+               grid_json AS gridJson
+        FROM cage_shelf_grid_cache
+        WHERE filled_cells > 0
+    </select>
+
 </mapper>

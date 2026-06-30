@@ -74,7 +74,7 @@ public class ChatService {
         if (u == null || u.getStatus() != null && u.getStatus() == 0) {
             return null;
         }
-        RoleEnum r = u.getRole() == null ? RoleEnum.STUDENT : u.getRole();
+        RoleEnum r = u.getRole() == null ? RoleEnum.MEMBER : u.getRole();
         if (r.getLevel() < RoleEnum.STAFF.getLevel()) {
             return null;
         }
@@ -85,7 +85,7 @@ public class ChatService {
         if (u == null) {
             return false;
         }
-        RoleEnum r = u.getRole() == null ? RoleEnum.STUDENT : u.getRole();
+        RoleEnum r = u.getRole() == null ? RoleEnum.MEMBER : u.getRole();
         return r.getLevel() >= RoleEnum.STAFF.getLevel();
     }
 

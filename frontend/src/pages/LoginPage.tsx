@@ -161,6 +161,21 @@ export default function LoginPage() {
       setSubmitting(true);
       const data = await loginWeb(username.trim(), password);
       authStorage.setAuth(data.token, data.role, data.userInfo);
+
+      // 学生库账号（或 MEMBER 角色）不能进入教职工视角 → 自动跳转学生中心
+      const isStudentAccount = data.userInfo?.accountSource === "STUDENT"
+        || (data.userInfo?.accountSource == null && data.role === "MEMBER");
+      if (isStudentAccount) {
+        authStorage.markLoginPortal("student");
+        toast("学生账号已自动跳转至学生中心", { icon: "🎒" });
+        setShowLogin(false);
+        setUsername("");
+        setPassword("");
+        navigate("/student/home", { replace: true });
+        return;
+      }
+
+      authStorage.markLoginPortal("staff");
       toast.success("登录成功");
       setShowLogin(false);
       setUsername("");

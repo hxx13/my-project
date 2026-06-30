@@ -1,13 +1,38 @@
 import type { AdminCommandPaletteItem } from "@/features/admin/buildAdminNavModel";
 import type { AdminSidebarNavGroup, AdminSidebarNavItem } from "@/features/admin/buildAdminNavModel";
-import { buildFriendsNavSidebarItem, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import { buildFriendsNavSidebarItem, isAdminAreaPath, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import {
+  defaultMiniPreferences,
+  fetchMiniPreferences,
+  saveMiniPreferences,
+  type MiniPreferences,
+} from "@/api/domains/me.api";
+import { authStorage } from "@/features/auth/authStorage";
 
-const RECENT_KEY = "aro-admin-nav-recent";
-const STARS_KEY = "aro-admin-nav-stars";
-const LOCK_KEY = "aro-admin-nav-lock";
+const LEGACY_RECENT_KEY = "aro-admin-nav-recent";
+const LEGACY_STARS_KEY = "aro-admin-nav-stars";
+const LEGACY_LOCK_KEY = "aro-admin-nav-lock";
 const RECENT_MAX = 8;
 
 export const ADMIN_NAV_PERSONALIZATION_EVENT = "aro-admin-nav-personalization";
+
+let hydratePromise: Promise<void> | null = null;
+let hydratedUserId = "";
+let persistTimer: number | null = null;
+
+function resolveUserId(): string {
+  return authStorage.getUserInfo()?.id?.trim() || authStorage.getUserIdFromToken()?.trim() || "";
+}
+
+/** 侧栏个性化持久化前需有用户 ID（scoped localStorage key） */
+export function resolveAdminNavUserId(): string {
+  return resolveUserId();
+}
+
+function scopedKey(suffix: string): string {
+  const uid = resolveUserId();
+  return uid ? `aro-admin-nav-${suffix}_${uid}` : `aro-admin-nav-${suffix}`;
+}
 
 function dispatchPersonalizationChanged() {
   try {
@@ -17,9 +42,9 @@ function dispatchPersonalizationChanged() {
   }
 }
 
-export function readAdminNavRecent(): string[] {
+function readLegacyList(key: string): string[] {
   try {
-    const raw = localStorage.getItem(RECENT_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const j = JSON.parse(raw) as unknown;
     if (!Array.isArray(j)) return [];
@@ -29,9 +54,20 @@ export function readAdminNavRecent(): string[] {
   }
 }
 
-export function readAdminNavStars(): string[] {
+function readLegacyLock(): string | null {
   try {
-    const raw = localStorage.getItem(STARS_KEY);
+    const raw = localStorage.getItem(LEGACY_LOCK_KEY);
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? normalizeAdminPath(trimmed) : null;
+  } catch {
+    return null;
+  }
+}
+
+function readScopedList(suffix: string): string[] {
+  try {
+    const raw = localStorage.getItem(scopedKey(suffix));
     if (!raw) return [];
     const j = JSON.parse(raw) as unknown;
     if (!Array.isArray(j)) return [];
@@ -39,17 +75,139 @@ export function readAdminNavStars(): string[] {
   } catch {
     return [];
   }
+}
+
+function readScopedLock(): string | null {
+  try {
+    const raw = localStorage.getItem(scopedKey("lock"));
+    if (!raw) return null;
+    const trimmed = raw.trim();
+    return trimmed.length > 0 ? normalizeAdminPath(trimmed) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeScopedList(suffix: string, paths: string[]) {
+  try {
+    localStorage.setItem(scopedKey(suffix), JSON.stringify(paths));
+  } catch {
+    /* ignore */
+  }
+}
+
+function writeScopedLock(path: string | null) {
+  try {
+    const key = scopedKey("lock");
+    if (!path) localStorage.removeItem(key);
+    else localStorage.setItem(key, path);
+  } catch {
+    /* ignore */
+  }
+}
+
+function schedulePersistToServer() {
+  const uid = resolveUserId();
+  if (!uid) return;
+  if (persistTimer != null) window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(() => {
+    persistTimer = null;
+    void (async () => {
+      try {
+        const base = (await fetchMiniPreferences()) ?? defaultMiniPreferences();
+        const merged: MiniPreferences = {
+          ...base,
+          roomWatch: base.roomWatch ?? { selections: [] },
+          adminNavRecent: readAdminNavRecent(),
+          adminNavStars: readAdminNavStars(),
+          adminNavLock: readAdminNavLock() ?? "",
+        };
+        // 保存后仅合并个人偏好，禁止整表 load；post-save-no-full-refresh.mdc
+        await saveMiniPreferences(merged);
+      } catch {
+        /* 离线或网络失败时保留 localStorage 副本 */
+      }
+    })();
+  }, 400);
+}
+
+function applyLocalState(recent: string[], stars: string[], lock: string | null) {
+  writeScopedList("recent", recent);
+  writeScopedList("stars", stars);
+  writeScopedLock(lock);
+  dispatchPersonalizationChanged();
+}
+
+/** 从 /api/me/mini-preferences 拉取侧栏个性化（按账号）；首次可将本机 legacy 数据迁移上传 */
+export function hydrateAdminNavPersonalization(): Promise<void> {
+  const uid = resolveUserId();
+  if (!uid) {
+    hydratedUserId = "";
+    hydratePromise = null;
+    return Promise.resolve();
+  }
+  if (hydratedUserId === uid && hydratePromise) {
+    return hydratePromise;
+  }
+  hydratedUserId = uid;
+  hydratePromise = (async () => {
+    const legacyRecent = readLegacyList(LEGACY_RECENT_KEY);
+    const legacyStars = readLegacyList(LEGACY_STARS_KEY);
+    const legacyLock = readLegacyLock();
+    const localRecent = readScopedList("recent");
+    const localStars = readScopedList("stars");
+    const localLock = readScopedLock();
+
+    try {
+      const prefs = await fetchMiniPreferences();
+      const serverRecent = (prefs?.adminNavRecent ?? []).map(normalizeAdminPath).filter(Boolean);
+      const serverStars = (prefs?.adminNavStars ?? []).map(normalizeAdminPath).filter(Boolean);
+      const serverLock = prefs?.adminNavLock ? normalizeAdminPath(prefs.adminNavLock) : null;
+
+      let recent = serverRecent.length ? serverRecent : localRecent.length ? localRecent : legacyRecent;
+      let stars = serverStars.length ? serverStars : localStars.length ? localStars : legacyStars;
+      let lock = serverLock ?? localLock ?? legacyLock;
+
+      applyLocalState(recent.slice(0, RECENT_MAX), stars, lock);
+
+      const shouldUpload =
+        (serverRecent.length === 0 && recent.length > 0) ||
+        (serverStars.length === 0 && stars.length > 0) ||
+        (serverLock == null && lock != null);
+      if (shouldUpload) {
+        schedulePersistToServer();
+      }
+    } catch {
+      if (!localRecent.length && !localStars.length && !localLock) {
+        applyLocalState(legacyRecent.slice(0, RECENT_MAX), legacyStars, legacyLock);
+      }
+    }
+  })();
+  return hydratePromise;
+}
+
+export function readAdminNavRecent(): string[] {
+  const scoped = readScopedList("recent");
+  if (scoped.length) return scoped;
+  return readLegacyList(LEGACY_RECENT_KEY);
+}
+
+export function readAdminNavStars(): string[] {
+  const scoped = readScopedList("stars");
+  if (scoped.length) return scoped;
+  return readLegacyList(LEGACY_STARS_KEY);
 }
 
 /** 记录最近访问的后台路径（仅 pathname，不含 query） */
 export function appendAdminNavRecent(pathname: string): void {
   const p = normalizeAdminPath(pathname);
-  if (!p.startsWith("/admin")) return;
+  if (!isAdminAreaPath(p) || p === "/admin") return;
   try {
     const prev = readAdminNavRecent().filter((x) => x !== p);
     const next = [p, ...prev].slice(0, RECENT_MAX);
-    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    writeScopedList("recent", next);
     dispatchPersonalizationChanged();
+    schedulePersistToServer();
   } catch {
     /* ignore */
   }
@@ -58,14 +216,16 @@ export function appendAdminNavRecent(pathname: string): void {
 /** @returns 收藏后是否为「已收藏」 */
 export function toggleAdminNavStar(pathname: string): boolean {
   const p = normalizeAdminPath(pathname);
-  if (!p.startsWith("/admin")) return false;
+  if (!isAdminAreaPath(p)) return false;
   try {
     const set = new Set(readAdminNavStars());
     const was = set.has(p);
     if (was) set.delete(p);
     else set.add(p);
-    localStorage.setItem(STARS_KEY, JSON.stringify([...set]));
+    const next = [...set];
+    writeScopedList("stars", next);
     dispatchPersonalizationChanged();
+    schedulePersistToServer();
     return !was;
   } catch {
     return false;
@@ -78,29 +238,26 @@ export function isAdminNavStarred(pathname: string): boolean {
 }
 
 export function readAdminNavLock(): string | null {
-  try {
-    const raw = localStorage.getItem(LOCK_KEY);
-    if (!raw) return null;
-    const trimmed = raw.trim();
-    return trimmed.length > 0 ? normalizeAdminPath(trimmed) : null;
-  } catch {
-    return null;
-  }
+  const scoped = readScopedLock();
+  if (scoped) return scoped;
+  return readLegacyLock();
 }
 
 /** 切换锁定状态；同一时间仅允许锁定一个页面。返回是否已锁定。 */
 export function toggleAdminNavLock(pathname: string): boolean {
   const p = normalizeAdminPath(pathname);
-  if (!p.startsWith("/admin")) return false;
+  if (!isAdminAreaPath(p)) return false;
   try {
     const current = readAdminNavLock();
     if (current === p) {
-      localStorage.removeItem(LOCK_KEY);
+      writeScopedLock(null);
       dispatchPersonalizationChanged();
+      schedulePersistToServer();
       return false;
     }
-    localStorage.setItem(LOCK_KEY, p);
+    writeScopedLock(p);
     dispatchPersonalizationChanged();
+    schedulePersistToServer();
     return true;
   } catch {
     return false;
@@ -114,8 +271,9 @@ export function isAdminNavLocked(pathname: string): boolean {
 
 export function clearAdminNavLock(): void {
   try {
-    localStorage.removeItem(LOCK_KEY);
+    writeScopedLock(null);
     dispatchPersonalizationChanged();
+    schedulePersistToServer();
   } catch {
     /* ignore */
   }

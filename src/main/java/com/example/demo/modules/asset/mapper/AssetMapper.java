@@ -165,5 +165,9 @@ public interface AssetMapper {
     int countRecycledAssets(@Param("keyword") String keyword);
 
     int deleteAssetValuesByAssetId(@Param("assetId") String assetId);
+
+    List<String> listDistinctLocationValues();
+
+    int updateAssetPhotoUrls(@Param("id") String id, @Param("photoUrls") String photoUrls);
 }
 

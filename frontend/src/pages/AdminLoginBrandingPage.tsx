@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -29,8 +29,8 @@ export default function AdminLoginBrandingPage() {
     queryFn: fetchAdminLoginBranding,
   });
 
-  const [synced, setSynced] = useState(false);
-  if (!synced && branding) {
+  useEffect(() => {
+    if (!branding) return;
     const light = branding.heroImageUrlsLight?.length
       ? branding.heroImageUrlsLight
       : branding.heroImageUrls || [];
@@ -38,21 +38,21 @@ export default function AdminLoginBrandingPage() {
     setUrlsDarkText((branding.heroImageUrlsDark || []).join("\n"));
     setIntervalSec(branding.intervalSec || 8);
     setHeroCarouselEnabled(branding.heroCarouselEnabled !== false);
-    setSynced(true);
-  }
+  }, [branding]);
 
   const save = async () => {
     const heroImageUrlsLight = parseUrlLines(urlsLightText);
     const heroImageUrlsDark = parseUrlLines(urlsDarkText);
     try {
-      await putAdminLoginBranding({
+      const saved = await putAdminLoginBranding({
         heroImageUrls: heroImageUrlsLight,
         heroImageUrlsLight,
         heroImageUrlsDark,
         intervalSec,
         heroCarouselEnabled,
       });
-      void queryClient.invalidateQueries({ queryKey: ["adminLoginBranding"] });
+      // 保存后仅合并 query 缓存，禁止整页 load；post-save-no-full-refresh.mdc
+      queryClient.setQueryData(["adminLoginBranding"], saved);
       toast.success("已保存");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "保存失败");
@@ -95,9 +95,12 @@ export default function AdminLoginBrandingPage() {
       <h1 className="text-xl font-semibold text-[var(--twin-ink)]">登录页轮播图</h1>
       <p className="text-sm text-[var(--twin-body)]">
         公开接口 <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">GET /api/public/login-branding</code>{" "}
-        供登录页读取；静态图通过{" "}
-        <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">GET /api/public/login-branding/files/文件名</code>{" "}
-        提供。登录页会按用户当前亮/暗色模式展示对应列表；若暗色列表为空则回退到亮色图。
+        供登录页与小程序首页读取。上传须走统一{" "}
+        <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">POST /api/upload</code>，保存{" "}
+        <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">/api/upload/files/日期/文件名</code>
+        （与物资/报修附图完全相同）。旧链{" "}
+        <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">/api/public/login-branding/files/…</code>{" "}
+        小程序不会展示，请重新上传并保存。
       </p>
       <div className="flex flex-col gap-2 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -168,7 +171,7 @@ export default function AdminLoginBrandingPage() {
           value={urlsLightText}
           onChange={(e) => setUrlsLightText(e.target.value)}
           rows={8}
-          placeholder="/api/public/login-branding/files/xxxxxxxx.jpg"
+          placeholder="/api/upload/files/20260624/xxxxxxxx.jpg"
           className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 font-mono text-xs text-[var(--twin-ink)]"
         />
       </label>
@@ -179,7 +182,7 @@ export default function AdminLoginBrandingPage() {
           value={urlsDarkText}
           onChange={(e) => setUrlsDarkText(e.target.value)}
           rows={8}
-          placeholder="/api/public/login-branding/files/yyyyyyyy.jpg"
+          placeholder="/api/upload/files/20260624/yyyyyyyy.jpg"
           className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 font-mono text-xs text-[var(--twin-ink)]"
         />
       </label>

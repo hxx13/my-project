@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { usePendingMaterialRequests, useFinishedMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useDeleteMaterialRequest } from "@/api/hooks/useMaterial";
 import { fetchAllMaterialDemands, resolveMaterialDemand, exportMaterialAuditTrail, type MaterialDemand } from "@/api/domains/material.api";
 import {
@@ -11,7 +12,6 @@ import {
   type ScanDelayHistoryRequest,
 } from "@/api/domains/scanDelay.api";
 import { fetchAdminMaterialItems, type MaterialItem } from "@/api/domains/material.api";
-import { fetchScanDelayOptions, type ScanDelayOption } from "@/api/domains/scanDelay.api";
 import { ScanDelayAutoApprovePanel } from "@/features/scan-delay-auto-approve/ScanDelayAutoApprovePanel";
 import { MaterialAutoApprovePanel } from "@/features/material-auto-approve/MaterialAutoApprovePanel";
 import { authStorage } from "@/features/auth/authStorage";
@@ -23,8 +23,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { materialQueryKeys } from "@/api/hooks/queryKeys";
 import { authHttp } from "@/api/core/authHttp";
 import toast from "react-hot-toast";
-import { formatBeijingDateTimeFull } from "@/utils/beijingTime";
+import { formatBeijingDateTimeFull, parseToDate, sameCalendarDayBeijing } from "@/utils/beijingTime";
 import { studentReviewPendingQueryOptions } from "@/features/student-review/studentReviewPoll";
+import { MATERIAL_REVIEW_FINISHED_PAGE } from "@/features/student-review/materialReviewCache";
 import {
   ADMIN_NOTIFICATION_SSE_PUSH_EVENT,
   ADMIN_PENDING_BADGES_REFRESH_EVENT,
@@ -42,12 +43,13 @@ function statusLabel(s: string) {
   return m[s] || s;
 }
 function isToday(dateStr?: string): boolean {
-  if (!dateStr) return false;
-  const d = new Date(dateStr);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
+  const d = parseToDate(dateStr);
+  if (!d) return false;
+  return sameCalendarDayBeijing(d, new Date());
+}
+
+function isMaterialPendingStatus(status: string): boolean {
+  return status === "PENDING" || status === "FIRST_OK";
 }
 
 function statusBadge(s: string): string {
@@ -58,11 +60,50 @@ function statusBadge(s: string): string {
   if (s === "RECEIVED") return "bg-emerald-50 text-emerald-700 border-emerald-200";
   return "bg-gray-50 text-gray-600 border-gray-200";
 }
+/** 卡片纯色背景：通过 twin token 切换明/暗色，不依赖 Tailwind dark: 变体。无彩色边框。 */
+function cardStatusTint(s: string): string {
+  if (s === "PENDING" || s === "FIRST_OK") return "bg-[var(--twin-card-pending)]";
+  if (s === "APPROVED" || s === "FULFILLED" || s === "RECEIVED") return "bg-[var(--twin-card-approved)]";
+  if (s === "REJECTED") return "bg-[var(--twin-card-rejected)]";
+  return "bg-[var(--twin-canvas)]";
+}
+function primaryItemName(req: MaterialRequest): string {
+  return req.lines?.[0]?.snapshotName || "未命名物品";
+}
+function groupByItem(reqs: MaterialRequest[]): Map<string, MaterialRequest[]> {
+  const map = new Map<string, MaterialRequest[]>();
+  for (const r of reqs) {
+    const k = primaryItemName(r);
+    const list = map.get(k) || [];
+    list.push(r);
+    map.set(k, list);
+  }
+  return map;
+}
 function downloadBlob(blob: Blob, name: string) { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u); }
 
+/** 与后端 MaterialService.canonicalUserId / isInReviewerList 对齐：兼容 reviewer 配置存 userId 或 username */
+function reviewerIdentityKeys(): string[] {
+  const info = authStorage.getUserInfo();
+  const keys: string[] = [];
+  const id = info?.id?.trim() || authStorage.getUserIdFromToken()?.trim();
+  const username = info?.username?.trim();
+  if (id) keys.push(id);
+  if (username) keys.push(username);
+  return keys;
+}
+
+function matchesReviewerIds(configured: string[] | undefined): boolean {
+  const keys = reviewerIdentityKeys();
+  if (!keys.length || !configured?.length) return false;
+  return configured.some((rid) => keys.includes(String(rid).trim()));
+}
+
 export default function MaterialReviewPage() {
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const canDelete = hasMinRole(role, "SUPER_ADMIN");
+  const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   /** 与 URL ?tab= 单一同步；避免 hash 跳转到无 tab 时仍停留在 scanDelay */
   const tab = parseReviewTab(searchParams.get("tab"));
@@ -71,7 +112,7 @@ export default function MaterialReviewPage() {
   const highlightRequestId = searchParams.get("requestId");
 
   const { data: pendingData, isLoading: pendingLoading } = usePendingMaterialRequests();
-  const { data: finishedData, isLoading: finishedLoading } = useFinishedMaterialRequests({ page: 1, size: 50 });
+  const { data: finishedData, isLoading: finishedLoading } = useFinishedMaterialRequests(MATERIAL_REVIEW_FINISHED_PAGE);
   const approve = useApproveMaterialRequest();
   const reject = useRejectMaterialRequest();
   const deleteReq = useDeleteMaterialRequest();
@@ -99,12 +140,6 @@ export default function MaterialReviewPage() {
   const { data: allItems = [] } = useQuery<MaterialItem[]>({
     queryKey: ["material", "admin", "items"],
     queryFn: () => fetchAdminMaterialItems(),
-    staleTime: 60_000,
-  });
-
-  const { data: scanDelayOptions = [] } = useQuery<ScanDelayOption[]>({
-    queryKey: ["scan-delay", "options"],
-    queryFn: fetchScanDelayOptions,
     staleTime: 60_000,
   });
 
@@ -138,30 +173,9 @@ export default function MaterialReviewPage() {
     return map;
   }, [allItems]);
 
-  const optionReviewerMap = useMemo(() => {
-    const map = new Map<number, string[]>();
-    for (const opt of scanDelayOptions) {
-      map.set(opt.id, opt.reviewerUserIds ?? []);
-    }
-    return map;
-  }, [scanDelayOptions]);
-
-  const currentUserId = authStorage.getUserInfo()?.id?.trim() || authStorage.getUserIdFromToken()?.trim() || "";
-
   const isMyItem = useCallback(
-    (itemId: number) => {
-      if (!currentUserId) return false;
-      return (itemReviewerMap.get(itemId) ?? []).includes(currentUserId);
-    },
-    [currentUserId, itemReviewerMap]
-  );
-
-  const isMyOption = useCallback(
-    (optionId: number) => {
-      if (!currentUserId) return false;
-      return (optionReviewerMap.get(optionId) ?? []).includes(currentUserId);
-    },
-    [currentUserId, optionReviewerMap]
+    (itemId: number) => matchesReviewerIds(itemReviewerMap.get(itemId)),
+    [itemReviewerMap],
   );
 
   const switchTab = (k: TabKey) => {
@@ -198,37 +212,45 @@ export default function MaterialReviewPage() {
     };
   }, [qc, tab]);
 
-  // Filtered material list (merged pending + finished)
+  // 待审列表已由后端按审核人过滤；已审结历史按「我负责的物品」筛选；合并时 pending 优先，避免缓存重叠重复展示
   const filteredMaterialRequests = useMemo(() => {
-    const pending = (pendingData ?? []).filter((req) =>
-      (req.lines ?? []).some((line) => isMyItem(line.itemId))
-    );
-    const finished = (finishedData?.data ?? []).filter((req) =>
-      (req.lines ?? []).some((line) => isMyItem(line.itemId))
+    const pending = pendingData ?? [];
+    const pendingIds = new Set(pending.map((r) => r.id));
+    const finished = (finishedData?.data ?? []).filter(
+      (req) => !pendingIds.has(req.id) && (req.lines ?? []).some((line) => isMyItem(line.itemId)),
     );
     return [...pending, ...finished].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      (a, b) => (parseToDate(b.createdAt)?.getTime() ?? 0) - (parseToDate(a.createdAt)?.getTime() ?? 0),
     );
   }, [pendingData, finishedData, isMyItem]);
+
+  const filteredMaterialPendingCount = useMemo(
+    () => (pendingData ?? []).filter((r) => isMaterialPendingStatus(r.status)).length,
+    [pendingData],
+  );
 
   const materialToday = useMemo(() => filteredMaterialRequests.filter(r => isToday(r.createdAt)), [filteredMaterialRequests]);
   const materialHistory = useMemo(() => filteredMaterialRequests.filter(r => !isToday(r.createdAt)), [filteredMaterialRequests]);
 
-  // Filtered scan delay lists
-  const filteredScanDelayPending = useMemo(
-    () => scanDelayPending.filter(r => isMyOption(r.optionId)),
-    [scanDelayPending, isMyOption]
+  const materialHistoryHasPending = useMemo(
+    () => materialHistory.some((r) => isMaterialPendingStatus(r.status)),
+    [materialHistory],
   );
 
+  /** 待审已由后端按审核人过滤；历史接口为全员可见，勿再用 optionReviewerMap 二次过滤 */
+  const filteredScanDelayPending = scanDelayPending;
+
   const filteredScanDelayHistory = useMemo(
-    () => scanDelayHistory.filter(r => isMyOption(r.optionId) && !!r.reviewedBy),
-    [scanDelayHistory, isMyOption]
+    () => scanDelayHistory.filter((r) => !!r.reviewedBy),
+    [scanDelayHistory],
   );
 
   const allScanDelay = useMemo(() => [
     ...filteredScanDelayPending.map(r => ({ ...r, _kind: "pending" as const })),
     ...filteredScanDelayHistory.map(r => ({ ...r, _kind: "history" as const })),
-  ].sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()), [filteredScanDelayPending, filteredScanDelayHistory]);
+  ].sort(
+    (a, b) => (parseToDate(b.createdAt)?.getTime() ?? 0) - (parseToDate(a.createdAt)?.getTime() ?? 0),
+  ), [filteredScanDelayPending, filteredScanDelayHistory]);
 
   const scanDelayToday = useMemo(() => allScanDelay.filter(r => isToday(r.createdAt)), [allScanDelay]);
   const scanDelayHistoryFiltered = useMemo(() => allScanDelay.filter(r => !isToday(r.createdAt)), [allScanDelay]);
@@ -261,13 +283,20 @@ export default function MaterialReviewPage() {
 
   return (
     <div className="space-y-6">
-      <AdminSubPageHeader title="学生审核" fallbackTo="/admin" description="审核学生物资申领、延迟免冻结申请与需求建议。" />
+      <AdminSubPageHeader
+        title={<span>学生审核{tab === "material" && <button type="button" onClick={() => navigate(`${toAdminRoutePath("/admin/material/audit-export")}`, { state: { returnTo: `${location.pathname}${location.search}` } })} className="ml-2 text-xs font-normal text-sky-600 hover:text-sky-700 hover:underline align-middle">申领审计导出 →</button>}</span>}
+        fallbackTo="/admin"
+        description="审核学生物资申领、延迟免冻结申请与需求建议。"
+      />
       <div className="flex flex-wrap items-center justify-between gap-1">
         <div className="flex flex-wrap gap-1">
           {([
-            ["material", `物资审核${(pendingData ?? []).length + (finishedData?.data ?? []).length > 0 ? ` (${(pendingData ?? []).length + (finishedData?.data ?? []).length})` : ""}`],
-            ["scanDelay", `延迟免冻结${scanDelayPending.length ? ` (${scanDelayPending.length})` : ""}`],
-            ["demands", `需求建议${demands.length ? ` (${demands.filter((d: MaterialDemand) => d.status === 0).length})` : ""}`],
+            ["material", `物资审核${filteredMaterialPendingCount > 0 ? ` (${filteredMaterialPendingCount})` : ""}`],
+            ["scanDelay", `延迟免冻结${filteredScanDelayPending.length > 0 ? ` (${filteredScanDelayPending.length})` : ""}`],
+            ["demands", (() => {
+              const open = demands.filter((d: MaterialDemand) => d.status === 0).length;
+              return `需求建议${open > 0 ? ` (${open})` : ""}`;
+            })()],
           ] as [TabKey, string][]).map(([k, v]) => (
             <button key={k} onClick={() => switchTab(k)} className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${tab === k ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}>{v}</button>
           ))}
@@ -285,27 +314,35 @@ export default function MaterialReviewPage() {
               <p className="mt-1 text-xs text-amber-800/90">请核对姓名、课题组与历史通过次数后审批；新申请到达时页面顶部也会出现强提醒横幅。</p>
             </div>
           ) : null}
-          {scanDelayLoading && scanDelayHistoryLoading ? <DataSkeleton variant="card" rows={4} /> : null}
+          {scanDelayLoading || scanDelayHistoryLoading ? <DataSkeleton variant="card" rows={4} /> : null}
           {allScanDelay.length === 0 && !scanDelayLoading && !scanDelayHistoryLoading ? (
-            <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无你负责审核的延迟免冻结记录</p>
+            <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无延迟免冻结记录</p>
           ) : (
             <div className="space-y-6">
               {scanDelayToday.length > 0 && (
                 <TimeGroup label="今天" count={scanDelayToday.length}>
-                  {scanDelayToday.map(item => item._kind === "pending" ? (
-                    <ScanDelayPendingCard key={`p-${item.id}`} req={item} highlightRequestId={highlightRequestId} onReview={handleScanDelayReview} />
-                  ) : (
-                    <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} />
-                  ))}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {scanDelayToday.map((item) =>
+                      item._kind === "pending" ? (
+                        <ScanDelayPendingCard key={`p-${item.id}`} req={item} highlightRequestId={highlightRequestId} onReview={handleScanDelayReview} />
+                      ) : (
+                        <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} />
+                      ),
+                    )}
+                  </div>
                 </TimeGroup>
               )}
               {scanDelayHistoryFiltered.length > 0 && (
                 <TimeGroup label="历史" count={scanDelayHistoryFiltered.length} defaultOpen={false}>
-                  {scanDelayHistoryFiltered.map(item => item._kind === "pending" ? (
-                    <ScanDelayPendingCard key={`p-${item.id}`} req={item} highlightRequestId={highlightRequestId} onReview={handleScanDelayReview} />
-                  ) : (
-                    <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} />
-                  ))}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {scanDelayHistoryFiltered.map((item) =>
+                      item._kind === "pending" ? (
+                        <ScanDelayPendingCard key={`p-${item.id}`} req={item} highlightRequestId={highlightRequestId} onReview={handleScanDelayReview} />
+                      ) : (
+                        <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} />
+                      ),
+                    )}
+                  </div>
                 </TimeGroup>
               )}
             </div>
@@ -350,16 +387,46 @@ export default function MaterialReviewPage() {
             <div className="space-y-6">
               {materialToday.length > 0 && (
                 <TimeGroup label="今天" count={materialToday.length}>
-                  {materialToday.map(req => (
-                    <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
-                  ))}
+                  <div className="space-y-4">
+                    {Array.from(groupByItem(materialToday)).map(([itemName, reqs]) => (
+                      <div key={itemName} className="space-y-2">
+                        <div className="flex items-center gap-2 pl-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--twin-primary)]" />
+                          <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
+                          <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          {reqs.map(req => (
+                            <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </TimeGroup>
               )}
               {materialHistory.length > 0 && (
-                <TimeGroup label="历史" count={materialHistory.length} defaultOpen={false}>
-                  {materialHistory.map(req => (
-                    <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
-                  ))}
+                <TimeGroup
+                  label={materialHistoryHasPending ? "历史（含待审）" : "历史"}
+                  count={materialHistory.length}
+                  defaultOpen={materialHistoryHasPending}
+                >
+                  <div className="space-y-4">
+                    {Array.from(groupByItem(materialHistory)).map(([itemName, reqs]) => (
+                      <div key={itemName} className="space-y-2">
+                        <div className="flex items-center gap-2 pl-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--twin-mute)]" />
+                          <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
+                          <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          {reqs.map(req => (
+                            <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </TimeGroup>
               )}
             </div>
@@ -372,15 +439,15 @@ export default function MaterialReviewPage() {
   );
 }
 
-function TimeGroup({ label, count, children, defaultOpen = true }: { label: string; count: number; children: ReactNode; defaultOpen?: boolean }) {
+function TimeGroup({ label, count, children, defaultOpen = true, className }: { label: string; count: number; children: ReactNode; defaultOpen?: boolean; className?: string }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-2 text-sm font-medium text-[var(--twin-ink)]">
         <span className={`transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
         {label} ({count})
       </button>
-      {open && <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">{children}</div>}
+      {open && <div className={className || ""}>{children}</div>}
     </div>
   );
 }
@@ -388,7 +455,7 @@ function TimeGroup({ label, count, children, defaultOpen = true }: { label: stri
 function MaterialRequestCard({ req, canDelete, approve, reject, deleteReq, handleExportPersonal }: { req: MaterialRequest; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void }) {
   const isPending = req.status === "PENDING" || req.status === "FIRST_OK";
   return (
-    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2">
+    <div className={`rounded-twin-lg border border-[var(--twin-hairline)] p-3 shadow-twin-level-1 flex flex-col gap-2 ${cardStatusTint(req.status)}`}>
       {/* 顶栏：ID + 状态 + 操作 */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] text-[var(--twin-mute)] font-mono">{req.id}</span>

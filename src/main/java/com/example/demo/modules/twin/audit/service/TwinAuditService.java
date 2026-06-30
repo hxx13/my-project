@@ -1,6 +1,7 @@
 package com.example.demo.modules.twin.audit.service;
 
 import com.example.demo.modules.twin.common.dto.RoomDashboardRenderDTO;
+import com.example.demo.modules.twin.common.util.RoomFloorPrefixUtil;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
@@ -24,8 +25,6 @@ public class TwinAuditService {
     private static final Pattern FLOOR_NUM = Pattern.compile("^(\\d+)F$", Pattern.CASE_INSENSITIVE);
     private static final Pattern FLOOR_B = Pattern.compile("^B(\\d+)F$", Pattern.CASE_INSENSITIVE);
     /** 与小程序 roomDashboard.floorPrefix 无连字符分支对齐：从名称中提取楼层 token */
-    private static final Pattern FLOOR_TOKEN = Pattern.compile("(\\d+F|B\\d+F)", Pattern.CASE_INSENSITIVE);
-
     private final TwinDashboardAggregationService aggregationService;
     private final TwinDashboardMapper dashboardMapper;
     private final TwinCardMappingService cardMappingService;
@@ -52,7 +51,7 @@ public class TwinAuditService {
                 continue;
             }
             String roomName = room.getRoomName() != null ? room.getRoomName().trim() : "未知房间";
-            String floor = floorPrefix(roomName);
+            String floor = RoomFloorPrefixUtil.floorPrefix(roomName);
             String roomId = room.getRoomId() != null ? String.valueOf(room.getRoomId()) : "";
 
             Map<String, Map<String, RoomBucket>> campusFloors =
@@ -195,28 +194,6 @@ public class TwinAuditService {
             return AUDIT_PUXI;
         }
         return null;
-    }
-
-    /**
-     * 与小程序 roomDashboard.floorPrefix 对齐：有连字符取首段；否则用正则提取 \d+F / B\d+F；否则「其它」。
-     */
-    private static String floorPrefix(String roomName) {
-        if (roomName == null || roomName.isBlank()) {
-            return "UNKNOWN";
-        }
-        String raw = roomName.trim();
-        int idx = raw.indexOf('-');
-        if (idx >= 0) {
-            String prefix = raw.substring(0, idx).trim();
-            if (!prefix.isEmpty()) {
-                return prefix;
-            }
-        }
-        Matcher m = FLOOR_TOKEN.matcher(raw);
-        if (m.find()) {
-            return m.group(1).toUpperCase(Locale.ROOT);
-        }
-        return "其它";
     }
 
     private int floorSortKey(String prefix) {

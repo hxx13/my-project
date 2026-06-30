@@ -3,6 +3,7 @@
  */
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import {
@@ -23,6 +24,7 @@ import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
 import { Portal } from "@/components/Portal";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
+import { formatDateTimeAsiaShanghai, formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "待出库",
@@ -33,8 +35,7 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 function toTimeText(v?: string | null) {
-  if (!v) return "-";
-  return String(v).replace("T", " ").slice(0, 16);
+  return formatDateTimeAsiaShanghaiShort(v);
 }
 
 function displayLink(item: SupplyClaimPdfLinkItem) {
@@ -79,13 +80,13 @@ export default function AdminSuppliesMinePage() {
   const goRevise = (id: string) => {
     setDetailOpen(false);
     setDetail(null);
-    navigate(`/admin/supplies?reviseClaimId=${encodeURIComponent(id)}`, {
+    navigate(`${toAdminRoutePath("/admin/supplies")}?reviseClaimId=${encodeURIComponent(id)}`, {
       state: { returnTo: `${location.pathname}${location.search}` },
     });
   };
 
   const goExport = (id: string) => {
-    navigate(`/admin/supplies/claim-export?claimId=${encodeURIComponent(id)}`, {
+    navigate(`${toAdminRoutePath("/admin/supplies/claim-export")}?claimId=${encodeURIComponent(id)}`, {
       state: { returnTo: `${location.pathname}${location.search}` },
     });
   };
@@ -323,6 +324,9 @@ export default function AdminSuppliesMinePage() {
                     <div className="text-xs text-[var(--twin-body)]">
                       申请 {line.qty} · 实发 {line.fulfilledQty ?? 0}
                     </div>
+                    {line.remark ? (
+                      <div className="mt-1 text-xs text-[var(--twin-mute)]">备注：{line.remark}</div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -406,7 +410,7 @@ export default function AdminSuppliesMinePage() {
                     <tr key={item.id}>
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{item.fileName}</td>
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{item.status}</td>
-                      <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{item.expireAt ? String(item.expireAt).replace("T", " ").slice(0, 19) : "-"}</td>
+                      <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{formatDateTimeAsiaShanghai(item.expireAt)}</td>
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2">
                         <div className="flex flex-wrap gap-1">
                           <button

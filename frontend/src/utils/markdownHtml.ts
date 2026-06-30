@@ -11,7 +11,7 @@ function escapeHtml(s: string): string {
 function formatInline(s: string): string {
   // Order matters: code before bold/italic, images before links
   return escapeHtml(s)
-    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="my-1 max-w-full rounded" loading="lazy" />')
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" loading="lazy" />')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-[var(--app-color-accent)] underline" target="_blank" rel="noopener">$1</a>')
     .replace(/`([^`]+)`/g, '<code class="rounded bg-[var(--app-color-surface-hover)] px-1 py-0.5 font-mono text-[0.85em] text-[var(--app-color-text-primary)]">$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")

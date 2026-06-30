@@ -19,6 +19,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.nio.charset.StandardCharsets;
@@ -59,9 +60,9 @@ public class MaterialAdminController {
     }
 
     @GetMapping("/categories")
-    @Operation(summary = "全部分类")
-    public Result<List<MaterialCategoryView>> listCategories() {
-        return Result.success(materialService.listCategoriesForAdmin());
+    @Operation(summary = "全部分类（可选课题组过滤）")
+    public Result<List<MaterialCategoryView>> listCategories(@RequestParam(required = false) String applicantGroup) {
+        return Result.success(materialService.listCategoriesForAdmin(applicantGroup));
     }
 
     @PostMapping("/categories")
@@ -88,9 +89,10 @@ public class MaterialAdminController {
     }
 
     @GetMapping("/items")
-    @Operation(summary = "物品列表")
-    public Result<List<MaterialItemView>> listItems(@RequestParam(required = false) Long categoryId) {
-        return Result.success(materialService.listItemsForAdmin(categoryId));
+    @Operation(summary = "物品列表（可选课题组过滤）")
+    public Result<List<MaterialItemView>> listItems(@RequestParam(required = false) Long categoryId,
+                                                     @RequestParam(required = false) String applicantGroup) {
+        return Result.success(materialService.listItemsForAdmin(categoryId, applicantGroup));
     }
 
     @PostMapping("/items")
@@ -171,13 +173,31 @@ public class MaterialAdminController {
     }
 
     @GetMapping("/requests/all")
-    @Operation(summary = "全部申领记录（支持按人员/课题组筛选）")
-    public Result<Map<String, Object>> allRequests(@RequestParam(required = false) String status,
+    @Operation(summary = "全部申领记录（支持筛选；管理用途，含待审）")
+    public Result<Map<String, Object>> allRequests(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                    @RequestParam(required = false) String status,
                                                     @RequestParam(required = false) String applicantUserId,
                                                     @RequestParam(required = false) String applicantGroup,
                                                     @RequestParam(defaultValue = "1") int page,
                                                     @RequestParam(defaultValue = "20") int size) {
-        return materialService.listAll(status, applicantUserId, applicantGroup, page, size);
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        return materialService.listAllVisibleToStaff(user, status, applicantUserId, applicantGroup, page, size);
+    }
+
+    @GetMapping("/requests/finished")
+    @Operation(summary = "已审结申领（物资全部 Tab：已通过/已拒绝/已出库/已完成）")
+    public Result<Map<String, Object>> finishedRequests(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                         @RequestParam(required = false) String applicantUserId,
+                                                         @RequestParam(required = false) String applicantGroup,
+                                                         @RequestParam(defaultValue = "1") int page,
+                                                         @RequestParam(defaultValue = "50") int size) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        if (user.getRole() == null || user.getRole().getLevel() < com.example.demo.common.enums.RoleEnum.STAFF.getLevel()) {
+            return Result.error("需要教职工权限");
+        }
+        return materialService.listFinishedForStaff(applicantUserId, applicantGroup, page, size);
     }
 
     @GetMapping("/requests/{id}")
@@ -281,25 +301,48 @@ public class MaterialAdminController {
     }
 
     @GetMapping("/groups-with-records")
-    @Operation(summary = "有申领记录的课题组列表")
-    public Result<List<String>> groupsWithRecords() {
-        return Result.success(requestMapper.selectDistinctGroups());
+    @Operation(summary = "有申领记录的课题组列表（日期区间内、当前审核人可见、排除草稿）")
+    public Result<List<String>> groupsWithRecords(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                   @RequestParam(required = false) String from,
+                                                   @RequestParam(required = false) String to) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        return materialService.listGroupsWithRecords(user, from, to);
     }
 
     @GetMapping("/applicants-with-records")
-    @Operation(summary = "有申领记录的人员列表")
-    public Result<List<Map<String, Object>>> applicantsWithRecords() {
-        return materialService.listApplicantsWithRecords();
+    @Operation(summary = "有申领记录的人员列表（日期区间内、当前审核人可见、排除草稿）")
+    public Result<List<Map<String, Object>>> applicantsWithRecords(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                                     @RequestParam(required = false) String from,
+                                                                     @RequestParam(required = false) String to) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        return materialService.listApplicantsWithRecords(user, from, to);
+    }
+
+    @GetMapping("/audit/requests")
+    @Operation(summary = "申领审计导出页申领列表（按物品审核人过滤）")
+    public Result<Map<String, Object>> auditExportRequests(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                            @RequestParam(required = false) String from,
+                                                            @RequestParam(required = false) String to,
+                                                            @RequestParam(required = false) String applicantUserId,
+                                                            @RequestParam(required = false) String applicantGroup,
+                                                            @RequestParam(defaultValue = "1") int page,
+                                                            @RequestParam(defaultValue = "500") int size) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        return materialService.listAuditExportRequests(user, from, to, applicantUserId, applicantGroup, page, size);
     }
 
     @GetMapping("/audit/item/{itemId}/claims")
-    @Operation(summary = "按物品查询申领明细")
+    @Operation(summary = "按物品查询申领明细（可选课题组过滤）")
     public Result<Map<String, Object>> itemClaimLines(@PathVariable Long itemId,
                                                        @RequestParam(required = false) String from,
                                                        @RequestParam(required = false) String to,
+                                                       @RequestParam(required = false) String applicantGroup,
                                                        @RequestParam(defaultValue = "1") int page,
                                                        @RequestParam(defaultValue = "50") int size) {
-        return materialService.listItemClaimLines(itemId, from, to, page, size);
+        return materialService.listItemClaimLines(itemId, from, to, applicantGroup, page, size);
     }
 
     @GetMapping("/eligible-reviewers")
@@ -343,11 +386,12 @@ public class MaterialAdminController {
     }
 
     @GetMapping("/audit/item/{itemId}/movements")
-    @Operation(summary = "按物品查询库存流水")
+    @Operation(summary = "按物品查询库存流水（可选课题组过滤）")
     public Result<Map<String, Object>> itemStockMovements(@PathVariable Long itemId,
+                                                           @RequestParam(required = false) String applicantGroup,
                                                            @RequestParam(defaultValue = "1") int page,
                                                            @RequestParam(defaultValue = "20") int size) {
-        return materialService.listItemStockMovements(itemId, page, size);
+        return materialService.listItemStockMovements(itemId, applicantGroup, page, size);
     }
 
     @GetMapping("/stats/by-group")
@@ -394,22 +438,58 @@ public class MaterialAdminController {
     }
 
     @GetMapping("/stats/export")
-    @Operation(summary = "导出审计流水Excel")
-    public ResponseEntity<byte[]> exportAuditTrailExcel(@RequestParam(defaultValue = "2000-01-01") String from,
+    @Operation(summary = "导出申领审计表格 Excel（与 Web 预览列一致）")
+    public ResponseEntity<byte[]> exportAuditTrailExcel(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                         @RequestParam(defaultValue = "2000-01-01") String from,
                                                          @RequestParam(defaultValue = "2099-12-31") String to,
-                                                         @RequestParam(required = false) Long categoryId,
-                                                         @RequestParam(required = false) String groupId) {
+                                                         @RequestParam(required = false) String applicantUserId,
+                                                         @RequestParam(required = false) String applicantGroup,
+                                                         @RequestParam(required = false) String groupId,
+                                                         @RequestParam(required = false) String exportLabel) {
+        User user = resolveUser(auth);
+        if (user == null) {
+            return ResponseEntity.status(401).contentType(MediaType.TEXT_PLAIN)
+                    .body("未登录".getBytes(StandardCharsets.UTF_8));
+        }
         try {
-            Result<Map<String, Object>> result = materialService.getAuditTrail(from, to, categoryId, groupId, 1, 100000);
-            if (result == null || !Boolean.TRUE.equals(result.getSuccess())) {
-                return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN)
-                        .body("导出失败".getBytes(StandardCharsets.UTF_8));
-            }
-            @SuppressWarnings("unchecked")
-            List<MaterialAuditTrailView> rows = (List<MaterialAuditTrailView>) result.getData().get("data");
-            if (rows == null) rows = List.of();
-            byte[] body = excelExportService.buildAuditTrailSheet(rows, userDisplayNameService::resolveDisplayName);
-            String fn = "material-audit-" + from + "_" + to + ".xlsx";
+            String group = StringUtils.hasText(applicantGroup) ? applicantGroup : groupId;
+            List<MaterialAuditGridRow> rows = materialService.collectAuditGridRows(
+                    user, from, to, applicantUserId, group);
+            byte[] body = excelExportService.buildAuditGridSheet(rows);
+            String fn = MaterialService.buildAuditExportFilename(
+                    StringUtils.hasText(exportLabel) ? exportLabel : "申领审计", from, to);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fn + "\"")
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .body(body);
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN)
+                    .body(("导出失败: " + ex.getMessage()).getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    @GetMapping("/audit/item/{itemId}/export")
+    @Operation(summary = "按物品导出来去流水 Excel（与 Web 预览列一致，可选课题组过滤）")
+    public ResponseEntity<byte[]> exportItemFlowExcel(@RequestHeader(value = "Authorization", required = false) String auth,
+                                                       @PathVariable Long itemId,
+                                                       @RequestParam(defaultValue = "2000-01-01") String from,
+                                                       @RequestParam(defaultValue = "2099-12-31") String to,
+                                                       @RequestParam(required = false) String applicantGroup,
+                                                       @RequestParam(required = false) String exportLabel) {
+        User user = resolveUser(auth);
+        if (user == null) {
+            return ResponseEntity.status(401).contentType(MediaType.TEXT_PLAIN)
+                    .body("未登录".getBytes(StandardCharsets.UTF_8));
+        }
+        if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
+            return ResponseEntity.status(403).contentType(MediaType.TEXT_PLAIN)
+                    .body("需要教职工权限".getBytes(StandardCharsets.UTF_8));
+        }
+        try {
+            List<MaterialItemFlowExportRow> rows = materialService.collectItemFlowExportRows(itemId, from, to, applicantGroup);
+            byte[] body = excelExportService.buildItemFlowSheet(rows);
+            String label = StringUtils.hasText(exportLabel) ? exportLabel : ("物品-" + itemId);
+            String fn = MaterialService.buildAuditExportFilename(label, from, to);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fn + "\"")
                     .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
@@ -433,7 +513,7 @@ public class MaterialAdminController {
     private User resolveUser(String auth) {
         User user = authContextService.resolveUserFromBearer(auth);
         if (user == null) return null;
-        if (user.getRole() == null) user.setRole(RoleEnum.STUDENT);
+        if (user.getRole() == null) user.setRole(RoleEnum.MEMBER);
         return user;
     }
 }

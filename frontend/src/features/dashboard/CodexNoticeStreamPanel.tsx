@@ -1,5 +1,7 @@
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { Clock, Megaphone } from "lucide-react";
+import { PageHelpImageLightbox } from "@/features/page-help/PageHelpImageLightbox";
+import { useRichTextImageLightbox } from "@/components/rich-text/useRichTextImageLightbox";
 import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
 import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 import { useVerticalAutoScroll } from "./useVerticalAutoScroll";
@@ -36,7 +38,7 @@ function SafeHtmlBlock({
   }
   return (
     <div
-      className={`${className} [&_img]:max-w-[70%] [&_img]:h-auto [&_img]:block [&_img]:mx-auto [&_img]:my-2 [&_img]:rounded-[var(--app-radius-element)]`}
+      className={`${className} [&_img]:max-w-[70%] [&_img]:h-auto [&_img]:block [&_img]:mx-auto [&_img]:my-2 [&_img]:rounded-[var(--app-radius-element)] [&_img]:cursor-zoom-in`}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -56,13 +58,13 @@ export function CodexNoticeStreamPanel({
   scrollMode = "cycle",
 }: Props) {
   const visual = useDashboardVisual();
-  const ref = useRef<HTMLDivElement | null>(null);
+  const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([noticeBody, returnRules]);
 
-  useVerticalAutoScroll(ref, {
-    enabled: active,
+  const scrollHandlers = useVerticalAutoScroll(containerRef, {
+    enabled: active && !lightbox,
     pauseStartMs: 1500,
     pauseEndMs: 2000,
-    msPerPx: 38,
+    msPerPx: 24,
     fallbackTimeoutMs: Math.max(4000, fallbackSeconds * 1000),
     onCycleComplete,
     resetKey: generation,
@@ -77,10 +79,12 @@ export function CodexNoticeStreamPanel({
   const rulesTone = dashTone(visual, "text-slate-300", DASH_NIGHT_CLASS.textMuted, "text-slate-600");
 
   return (
-    <div
-      ref={ref}
-      className="h-full w-full overflow-y-auto overflow-x-hidden pr-1 [scrollbar-gutter:stable]"
-    >
+    <>
+      <div
+        ref={containerRef}
+        className="h-full w-full touch-pan-y overflow-y-auto overflow-x-hidden pr-1 [scrollbar-gutter:stable] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        {...scrollHandlers}
+      >
       <div className="flex min-w-0 items-center gap-2 pb-1.5">
         <Megaphone
           className={`h-5 w-5 shrink-0 ${dashTone(visual, "text-cyan-400", DASH_NIGHT_CLASS.legendWarm, "text-amber-600")}`}
@@ -129,6 +133,15 @@ export function CodexNoticeStreamPanel({
       />
 
       <div className="h-3" />
-    </div>
+      </div>
+      {lightbox ? (
+        <PageHelpImageLightbox
+          src={lightbox.src}
+          alt={lightbox.alt}
+          onClose={closeLightbox}
+          autoCloseMs={10_000}
+        />
+      ) : null}
+    </>
   );
 }

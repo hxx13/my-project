@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { motion } from "framer-motion";
+import { useCallback, useRef, useState, useEffect, type ReactNode } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { ChevronLeft, ChevronRight, X, type LucideIcon } from "lucide-react";
 import { SCAN_ANNOUNCEMENT_BODY_CLASS } from "@/utils/announcementHtml";
 import { PageHelpImageLightbox } from "@/features/page-help/PageHelpImageLightbox";
@@ -27,6 +27,17 @@ export type ScanNoticeDoodleCardProps = {
   onClose: () => void;
   onPrev?: () => void;
   onNext?: () => void;
+  /** 次按钮：如「下次不再弹出」 */
+  secondaryLabel?: string;
+  secondaryDisabled?: boolean;
+  showSecondary?: boolean;
+  onSecondary?: () => void;
+  /** 递增时触发与点 ✕ 相同的退出动画并调用 onClose */
+  externalCloseTick?: number;
+  /** 并排批量展示时缩小卡片，不撑满屏宽 */
+  compact?: boolean;
+  /** 嵌入批量布局槽位：不包 fixed 全屏 anchor */
+  embedded?: boolean;
 };
 
 function imageGridClass(count: number): string {
@@ -35,6 +46,22 @@ function imageGridClass(count: number): string {
   if (count === 2) return "grid grid-cols-2 gap-2 w-full";
   return "grid grid-cols-2 sm:grid-cols-3 gap-2 w-full";
 }
+
+/** 退出态：轻量位移 + 淡出，避免大幅 scale 导致大卡片栅格化卡顿 */
+const CARD_EXIT = { scale: 0.97, opacity: 0, y: 10 } as const;
+const CARD_ENTER = { scale: 1, opacity: 1, y: 0 } as const;
+
+const CARD_EXIT_TRANSITION = {
+  type: "tween" as const,
+  duration: 0.26,
+  ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+};
+
+const CARD_EXIT_TRANSITION_REDUCED = {
+  type: "tween" as const,
+  duration: 0.12,
+  ease: "easeOut" as const,
+};
 
 export function ScanNoticeDoodleCard({
   kind,
@@ -57,8 +84,17 @@ export function ScanNoticeDoodleCard({
   onClose,
   onPrev,
   onNext,
+  secondaryLabel,
+  secondaryDisabled = false,
+  showSecondary = false,
+  onSecondary,
+  externalCloseTick = 0,
+  compact = false,
+  embedded = false,
 }: ScanNoticeDoodleCardProps) {
+  const reduceMotion = useReducedMotion();
   const [exiting, setExiting] = useState(false);
+  const exitDoneRef = useRef(false);
   const imgCount = imageUrls.length;
   const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([
     bodyHtml,
@@ -67,15 +103,21 @@ export function ScanNoticeDoodleCard({
 
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
-  const handleCloseClick = () => {
-    if (exiting) return;
-    setPendingAction(() => onClose);
-    setExiting(true);
-  };
+  const beginExit = useCallback(
+    (action: () => void) => {
+      if (exiting) return;
+      exitDoneRef.current = false;
+      setPendingAction(() => action);
+      setExiting(true);
+    },
+    [exiting]
+  );
+
+  const handleCloseClick = () => beginExit(onClose);
 
   const handlePrimaryClick = () => {
     if (primaryDisabled || exiting) return;
-    onPrimary();
+    beginExit(onPrimary);
   };
 
   const handleExitComplete = () => {
@@ -83,27 +125,29 @@ export function ScanNoticeDoodleCard({
     setPendingAction(null);
   };
 
-  return (
-    <div className="scan-notice-doodle-anchor" data-modal-layer="true">
-      <motion.div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className={`scan-doodle-card scan-doodle-card--${kind} flex flex-col`}
-        animate={
-          exiting
-            ? { scale: 0.12, opacity: 0, y: 24 }
-            : { scale: 1, opacity: 1, y: 0 }
-        }
-        transition={
-          exiting
-            ? { duration: 0.38, ease: [0.4, 0, 0.85, 1] }
-            : { duration: 0 }
-        }
-        onAnimationComplete={() => {
-          if (exiting) handleExitComplete();
-        }}
-      >
+  useEffect(() => {
+    if (!externalCloseTick) return;
+    if (exiting) return;
+    beginExit(onClose);
+  }, [externalCloseTick, exiting, onClose, beginExit]);
+
+  const exitTransition = reduceMotion ? CARD_EXIT_TRANSITION_REDUCED : CARD_EXIT_TRANSITION;
+
+  const card = (
+    <motion.div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      initial={false}
+      className={`scan-doodle-card scan-doodle-card--${kind} flex flex-col${compact ? " scan-doodle-card--compact" : ""}${exiting ? " scan-doodle-card--exiting" : ""}`}
+      animate={exiting ? CARD_EXIT : CARD_ENTER}
+      transition={exiting ? exitTransition : { duration: 0 }}
+      onAnimationComplete={() => {
+        if (!exiting || exitDoneRef.current) return;
+        exitDoneRef.current = true;
+        handleExitComplete();
+      }}
+    >
         <button
           type="button"
           className="scan-doodle-card__close"
@@ -199,8 +243,38 @@ export function ScanNoticeDoodleCard({
               {primaryLabel}
             </button>
           ) : null}
+          {showSecondary && secondaryLabel ? (
+            <button
+              type="button"
+              className="scan-doodle-card__btn scan-doodle-card__btn--secondary"
+              disabled={secondaryDisabled || exiting}
+              onClick={() => {
+                if (secondaryDisabled || exiting) return;
+                onSecondary?.();
+              }}
+            >
+              {secondaryLabel}
+            </button>
+          ) : null}
         </div>
       </motion.div>
+  );
+
+  if (embedded) {
+    return (
+      <>
+        {card}
+        {lightbox ? (
+          <PageHelpImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
+        ) : null}
+      </>
+    );
+  }
+
+  return (
+    <div className="scan-notice-doodle-anchor scan-notice-doodle-anchor--with-scrim" data-modal-layer="true">
+      <div className="scan-notice-scrim scan-notice-scrim--blocking" aria-hidden />
+      {card}
       {lightbox ? (
         <PageHelpImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
       ) : null}

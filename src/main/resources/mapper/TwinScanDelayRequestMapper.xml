@@ -24,7 +24,7 @@
             reviewer_user_id, status, requested_by, created_at
         ) VALUES (
             #{subjectUserId}, #{cardNo}, #{roomId}, #{optionId}, #{durationMinutes},
-            #{reviewerUserId}, #{status}, #{requestedBy}, NOW()
+            #{reviewerUserId}, #{status}, #{requestedBy}, #{createdAt}
         )
     </insert>
 
@@ -36,7 +36,7 @@
         UPDATE twin_scan_delay_request SET
             status = #{status},
             reviewed_by = #{reviewedBy},
-            reviewed_at = NOW(),
+            reviewed_at = #{reviewedAt},
             reject_reason = #{rejectReason}
         WHERE id = #{id} AND status = 'PENDING'
     </update>
@@ -45,6 +45,42 @@
         SELECT * FROM twin_scan_delay_request
         WHERE status = 'PENDING' AND reviewer_user_id = #{reviewerUserId}
         ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="listAllPending" resultMap="BaseMap">
+        SELECT * FROM twin_scan_delay_request
+        WHERE status = 'PENDING'
+        ORDER BY created_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="listReviewedHistory" resultMap="BaseMap">
+        SELECT * FROM twin_scan_delay_request
+        WHERE status IN ('APPROVED', 'REJECTED')
+        ORDER BY COALESCE(reviewed_at, created_at) DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countPendingByReviewer" resultType="int">
+        SELECT COUNT(1) FROM twin_scan_delay_request
+        WHERE status = 'PENDING' AND reviewer_user_id = #{reviewerUserId}
+    </select>
+
+    <select id="listApprovedCountsByReviewer" resultType="map">
+        SELECT subject_user_id AS subjectUserId,
+               option_id AS optionId,
+               COUNT(1) AS approvedCount
+        FROM twin_scan_delay_request
+        WHERE status = 'APPROVED' AND reviewer_user_id = #{reviewerUserId}
+        GROUP BY subject_user_id, option_id
+    </select>
+
+    <select id="listRecentBySubjectUserId" resultMap="BaseMap">
+        SELECT * FROM twin_scan_delay_request
+        WHERE subject_user_id = #{subjectUserId}
+          AND status IN ('PENDING', 'APPROVED', 'REJECTED')
+        ORDER BY COALESCE(reviewed_at, created_at) DESC
         LIMIT #{limit}
     </select>
 </mapper>

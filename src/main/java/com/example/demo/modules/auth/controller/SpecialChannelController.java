@@ -1,6 +1,7 @@
 package com.example.demo.modules.auth.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.exception.ErrorCodeConstants;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.dto.PinStatusResponse;
@@ -60,13 +61,16 @@ public class SpecialChannelController {
     }
 
     @PostMapping("/admin/personnel/{userId}/reset-pin")
-    @Operation(summary = "管理员重置学生个人密码（SUPER_ADMIN 专用）")
+    @Operation(summary = "管理员重置学生个人密码（SUPER_ADMIN；userId 须为人员库学号）")
     public Result<?> resetPin(@PathVariable String userId, HttpServletRequest request) {
         User me = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
         if (me == null) {
             return Result.fail(ErrorCodeConstants.UNAUTHORIZED, "未登录");
         }
-        specialChannelService.resetPin(userId, me.getId());
+        if (me.getRole() == null || me.getRole().getLevel() < RoleEnum.SUPER_ADMIN.getLevel()) {
+            return Result.fail(ErrorCodeConstants.FORBIDDEN, "需要超级管理员权限");
+        }
+        specialChannelService.resetPin(userId.trim(), me.getId());
         return Result.success();
     }
 }

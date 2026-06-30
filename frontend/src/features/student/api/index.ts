@@ -2,6 +2,7 @@
 export {
   verifyQrCode,
   registerStudent,
+  activateStudent,
   fetchStudentProfile,
   fetchStudentAccessRecords,
   fetchStudentPermissions,

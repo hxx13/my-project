@@ -7,6 +7,7 @@ let logoutDispatched = false;
 
 /** 强制登出：清除存储 → 通知其他模块(WebSocket等) → 跳转登录页 */
 function forceLogout() {
+    const portal = authStorage.getLoginPortal();
     authStorage.clear();
     if (!logoutDispatched) {
         logoutDispatched = true;
@@ -16,9 +17,11 @@ function forceLogout() {
             /* ignore */
         }
     }
-    // 避免多次并发 401 导致反复跳转
-    if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
+    const loginPath = portal === "student" ? "/student/login"
+      : portal === "mobile" ? "/m/login"
+      : "/login";
+    if (window.location.pathname !== loginPath && window.location.hash !== `#${loginPath}`) {
+        window.location.href = loginPath;
     }
 }
 

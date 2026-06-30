@@ -18,6 +18,7 @@ public class AssetRecord {
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
     private String latestTransferRequestId;
+    private String photoUrls;
     private Integer deleted;
     private LocalDateTime deletedTime;
     private String deletedBy;

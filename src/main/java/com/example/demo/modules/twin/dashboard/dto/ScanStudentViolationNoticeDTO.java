@@ -37,4 +37,6 @@ public class ScanStudentViolationNoticeDTO {
     private Boolean canSelfUnblock;
     /** 达到上限时的替换公告文案（null 则沿用原 violationText） */
     private String criticalNoticeText;
+    /** 被扫码人员已选择「下次不再自动弹出」此条 */
+    private Boolean autoOpenSuppressed;
 }

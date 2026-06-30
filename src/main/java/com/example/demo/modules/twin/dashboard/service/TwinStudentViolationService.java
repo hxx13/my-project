@@ -20,6 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class TwinStudentViolationService {
     private static final Logger log = LoggerFactory.getLogger(TwinStudentViolationService.class);
     private static final String STATUS_ACTIVE = "ACTIVE";
+    private static final String SOURCE_AUTO_STRANDED = "AUTO_STRANDED";
+    /** MySQL GET_LOCK 锁名最长 64 字符 */
+    private static final int AUTO_STRANDED_LOCK_TIMEOUT_SEC = 10;
 
     private final TwinStudentViolationMapper violationMapper;
     private final ObjectMapper objectMapper;
@@ -159,6 +163,11 @@ public class TwinStudentViolationService {
         return row != null && computeEnterLocked(row);
     }
 
+    /** 管理端列表：当前是否禁止扫码进入（含交互确认、次数上限，与扫码端 enterLocked 一致） */
+    public boolean isEnterLocked(TwinStudentViolation row) {
+        return computeEnterLocked(row);
+    }
+
     /**
      * 扫码端完成交互拼图：写入验证时间；若 interactive_unlock_on_verify=1 则同步解除禁入（幂等）。
      */
@@ -180,9 +189,13 @@ public class TwinStudentViolationService {
         if (!StringUtils.hasText(row.getInteractiveChallenge())) {
             throw new IllegalArgumentException("该违规无需交互确认");
         }
-        if (row.getRuleId() != null && ruleService != null
-                && !ruleService.canSelfUnblock(violationId, targetUserId.trim(), row.getRuleId())) {
-            throw new IllegalArgumentException("已达解禁上限");
+        // 自助解禁规则才受窗口次数上限约束；记录级交互短语（含 MANUAL 默认规则）仍允许拼图确认
+        if (row.getRuleId() != null && ruleService != null) {
+            TwinViolationRule rule = ruleService.getById(row.getRuleId());
+            if (rule != null && "自助解禁".equals(rule.getUnblockMethod())
+                    && !ruleService.canSelfUnblock(violationId, targetUserId.trim(), row.getRuleId())) {
+                throw new IllegalArgumentException("已达解禁上限");
+            }
         }
         if (row.getInteractiveChallengeVerifiedAt() != null) {
             return finalizeAfterInteractiveAck(row);
@@ -343,6 +356,53 @@ public class TwinStudentViolationService {
         return "";
     }
 
+    /**
+     * 手机 H5 违规记录列表项：正文与扫码弹窗 {@link #buildNotice} 同源（模板变量 + critical 替换）。
+     */
+    public Map<String, Object> toMobileListItem(TwinStudentViolation row) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", String.valueOf(row.getId()));
+        item.put("time", row.getCreatedAt() != null ? row.getCreatedAt().toString() : "");
+        item.put("type", "违规通告");
+        item.put("contentHtml", resolveDisplayBodyForMobile(row));
+        item.put("roomName", "");
+        item.put("doorName", "");
+        item.put("status", mapMobileStatus(row.getStatus()));
+        item.put("processedBy", row.getClearedByUserId() != null ? row.getClearedByUserId() : "");
+        item.put("processedTime", row.getClearedAt() != null ? row.getClearedAt().toString() : "");
+        return item;
+    }
+
+    /** 与扫码弹窗正文一致：模板变量 + 达到上限时的 critical 替换文案 */
+    private String resolveDisplayBodyForMobile(TwinStudentViolation row) {
+        if (row == null) {
+            return "";
+        }
+        String body = applyTemplateVariables(row.getViolationText(), row.getTargetUserId());
+        if (STATUS_ACTIVE.equals(row.getStatus()) && row.getRuleId() != null && ruleService != null) {
+            TwinViolationRule rule = ruleService.getById(row.getRuleId());
+            if (rule != null) {
+                TwinViolationRuleService.UnblockDecision decision =
+                        ruleService.evaluateForExisting(row.getTargetUserId(), row.getRuleId());
+                if (decision.isCritical() && StringUtils.hasText(rule.getCriticalNoticeText())) {
+                    body = applyTemplateVariables(rule.getCriticalNoticeText(), row.getTargetUserId());
+                }
+            }
+        }
+        return body != null ? body : "";
+    }
+
+    private static String mapMobileStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return "pending";
+        }
+        return switch (status.trim().toUpperCase()) {
+            case "ACTIVE" -> "pending";
+            case "CLEARED", "PROCESSED", "EXPIRED", "SUPERSEDED" -> "processed";
+            default -> "pending";
+        };
+    }
+
     private static String buildSummary(String rawText, int maxLen) {
         if (!StringUtils.hasText(rawText)) {
             return "";
@@ -378,6 +438,77 @@ public class TwinStudentViolationService {
             }
             throw e;
         }
+    }
+
+    /**
+     * 滞留自动违规：在 per-user MySQL 命名锁内去重并创建，避免定时任务/手动测试并发重复插入。
+     *
+     * @return 新建记录；若已有生效中的 AUTO_STRANDED 或未能获取锁则返回 null
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public TwinStudentViolation createAutoStrandedIfAbsent(
+            String targetUserId,
+            String violationText,
+            List<String> imageUrls,
+            boolean forbidEnter,
+            Integer maxEnterSuccess,
+            boolean showNoticeEveryScan,
+            Integer expireAfterDays,
+            String createdByUserId,
+            String interactiveChallenge,
+            Boolean interactiveUnlockOnVerify,
+            Long ruleId
+    ) {
+        if (!StringUtils.hasText(targetUserId)) {
+            throw new IllegalArgumentException("缺少 targetUserId");
+        }
+        if (violationTableAbsent.get()) {
+            throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
+        }
+        String tid = targetUserId.trim();
+        String lockName = autoStrandedLockName(tid);
+        Integer locked = violationMapper.tryAcquireLock(lockName, AUTO_STRANDED_LOCK_TIMEOUT_SEC);
+        if (locked == null || locked != 1) {
+            log.warn("[student-violation] AUTO_STRANDED 去重锁未获取 userId={} lock={}", tid, lockName);
+            return null;
+        }
+        try {
+            touchExpireStale();
+            if (violationTableAbsent.get()) {
+                throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
+            }
+            if (hasActiveAutoViolation(tid)) {
+                return null;
+            }
+            return create(
+                    tid,
+                    violationText,
+                    imageUrls,
+                    forbidEnter,
+                    maxEnterSuccess,
+                    showNoticeEveryScan,
+                    expireAfterDays,
+                    createdByUserId,
+                    SOURCE_AUTO_STRANDED,
+                    interactiveChallenge,
+                    interactiveUnlockOnVerify,
+                    ruleId);
+        } finally {
+            try {
+                violationMapper.releaseLock(lockName);
+            } catch (Exception e) {
+                log.warn("[student-violation] AUTO_STRANDED 释放锁失败 userId={} err={}", tid, e.getMessage());
+            }
+        }
+    }
+
+    private static String autoStrandedLockName(String targetUserId) {
+        String suffix = targetUserId.trim();
+        String prefix = "twin:v:auto:";
+        if (prefix.length() + suffix.length() <= 64) {
+            return prefix + suffix;
+        }
+        return prefix + Math.abs(suffix.hashCode());
     }
 
     /** 检查用户是否已有 ACTIVE 的自动滞留违规（用于去重，避免定时任务每次节拍重复创建） */
@@ -483,7 +614,7 @@ public class TwinStudentViolationService {
         row.setImageUrls(serializeImageUrls(imageUrls));
         row.setInteractiveChallenge(normalizeInteractiveChallenge(interactiveChallenge));
         row.setInteractiveUnlockOnVerify(resolveInteractiveUnlockOnVerify(row.getInteractiveChallenge(), interactiveUnlockOnVerify));
-        row.setForbidEnter(normalizeForbidEnter(forbidEnter, row.getInteractiveChallenge()) ? 1 : 0);
+        row.setForbidEnter(resolveManualForbidEnter(forbidEnter, interactiveChallenge) ? 1 : 0);
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setEnterSuccessCount(0);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
@@ -534,11 +665,11 @@ public class TwinStudentViolationService {
             throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
         }
 
-        // ──── 规则判定：如设上限则强制覆盖 forbid_enter ────
-        boolean effectiveForbidEnter = forbidEnter;
+        // ──── 规则判定：达上限时可强制禁入；手动创建时交互式短语亦须同步禁入 ────
+        boolean effectiveForbidEnter = resolveManualForbidEnter(forbidEnter, interactiveChallenge);
         if (ruleId != null && ruleService != null) {
             TwinViolationRuleService.UnblockDecision decision = ruleService.evaluate(tid, ruleId);
-            effectiveForbidEnter = decision.isForbidEnter();
+            effectiveForbidEnter = effectiveForbidEnter || decision.isForbidEnter();
         }
 
         try {
@@ -819,14 +950,15 @@ public class TwinStudentViolationService {
         boolean challengeChanged = !Objects.equals(newChallenge, oldChallenge);
         row.setInteractiveChallenge(newChallenge);
         row.setInteractiveUnlockOnVerify(resolveInteractiveUnlockOnVerify(newChallenge, interactiveUnlockOnVerify));
+        boolean effectiveForbidEnter = resolveManualForbidEnter(forbidEnter, interactiveChallenge);
         if (challengeChanged) {
             row.setInteractiveChallengeVerifiedAt(null);
-            row.setForbidEnter(normalizeForbidEnter(forbidEnter, newChallenge) ? 1 : 0);
+            row.setForbidEnter(effectiveForbidEnter ? 1 : 0);
         } else if (existing.getInteractiveChallengeVerifiedAt() != null) {
             row.setInteractiveChallengeVerifiedAt(existing.getInteractiveChallengeVerifiedAt());
-            row.setForbidEnter(existing.getForbidEnter());
+            row.setForbidEnter(effectiveForbidEnter ? 1 : 0);
         } else {
-            row.setForbidEnter(normalizeForbidEnter(forbidEnter, newChallenge) ? 1 : 0);
+            row.setForbidEnter(effectiveForbidEnter ? 1 : 0);
         }
         row.setMaxEnterSuccess(maxEnterSuccess);
         row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
@@ -924,12 +1056,9 @@ public class TwinStudentViolationService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    /** 配置交互式确认时，与手动新建/编辑弹窗一致：强制禁止进入直至完成拼图 */
-    private static boolean normalizeForbidEnter(boolean forbidEnter, String interactiveChallenge) {
-        if (StringUtils.hasText(interactiveChallenge)) {
-            return true;
-        }
-        return forbidEnter;
+    /** 手动新建/编辑：填写交互式短语时须同步立即禁入；可仅开禁入、不开交互 */
+    private static boolean resolveManualForbidEnter(boolean forbidEnter, String interactiveChallenge) {
+        return forbidEnter || StringUtils.hasText(normalizeInteractiveChallenge(interactiveChallenge));
     }
 
     private static int resolveInteractiveUnlockOnVerify(String interactiveChallenge, Boolean unlockOnVerify) {

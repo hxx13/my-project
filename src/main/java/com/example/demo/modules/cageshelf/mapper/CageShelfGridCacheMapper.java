@@ -3,6 +3,7 @@ package com.example.demo.modules.cageshelf.mapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.util.List;
 import java.util.Map;
 
 @Mapper
@@ -23,4 +24,7 @@ public interface CageShelfGridCacheMapper {
 
     /** Delete cache older than N days. */
     int deleteOlderThan(@Param("cutoff") String cutoff);
+
+    /** 有占用笼位的缓存行（用于课题组可见笼架判定） */
+    List<Map<String, Object>> selectAllWithFilledCells();
 }

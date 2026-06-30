@@ -1,14 +1,16 @@
 import { useParams, useNavigate, useBlocker } from 'react-router-dom';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { AdminPageShell } from '@/components/admin/AdminPageShell';
 import FormGridEditor from '../components/FormGridEditor';
 import EditorToolbar from '../components/EditorToolbar';
-import { fetchFormById, updateForm } from '../api/reportForm.api';
-import type { LayoutJson, FieldType, FieldDefinition, CellStyle, ThemeJson, ReportFormDefinition } from '../types';
+import { fetchFormById, updateForm, publishForm } from '../api/reportForm.api';
+import type { LayoutJson, FieldType, FieldDefinition, CellStyle, ThemeJson, ReportFormDefinition, FillPolicyJson, PermissionJson, ScheduleJson } from '../types';
 import { useFormGridEditor } from '../hooks/useFormGridEditor';
-import { calcColumnWidths, columnWidthsToRecord } from '../utils/gridColumnWidths';
+import { useFieldOptionSets } from '../hooks/useFieldOptionSets';
+import { calcColumnWidths, columnWidthsToRecord, mergeColumnWidths, buildBaseColumnWidths, applyColumnWidthCap, getWordLayoutMaxCol, mergeWordWebColumnWidths } from '../utils/gridColumnWidths';
+import { calcRowHeights, rowHeightsToRecord } from '../utils/gridRowHeights';
 import toast from 'react-hot-toast';
 import ThemePanel from '../components/ThemePanel';
 import PublishWizard from '../components/PublishWizard';
@@ -23,6 +25,30 @@ function parseLayout(raw: unknown): LayoutJson {
   if (typeof raw === 'object') return raw as LayoutJson;
   return { cells: [], fields: {}, mergeGroups: [] };
 }
+
+function parseJsonField<T extends object>(raw: unknown, fallback: T): T {
+  if (!raw) return fallback;
+  if (typeof raw === 'string') {
+    try { return { ...fallback, ...JSON.parse(raw) }; } catch { return fallback; }
+  }
+  if (typeof raw === 'object') return { ...fallback, ...(raw as T) };
+  return fallback;
+}
+
+const DEFAULT_FILL_POLICY: FillPolicyJson = {
+  mode: 'shared',
+  submitLabel: '提交',
+  allowEditAfterSubmit: true,
+};
+
+const DEFAULT_PERMISSION: PermissionJson = {
+  visibleRoles: ['STAFF'],
+  visibleUserIds: [],
+  fieldRoleBindings: {},
+  allowUnboundView: true,
+};
+
+const DEFAULT_SCHEDULE: ScheduleJson = { period: 'manual' };
 
 function parseTheme(raw: unknown): ThemeJson {
   const fallback: ThemeJson = {
@@ -49,6 +75,22 @@ function parseTheme(raw: unknown): ThemeJson {
   }
   if (typeof raw === 'object') return { ...fallback, ...(raw as ThemeJson) };
   return fallback;
+}
+
+/** 设计页列宽测算：内容加宽，但不超过「初始列宽 × 5」 */
+function computeDesignColumnWidths(
+  cells: LayoutJson['cells'],
+  fields: Record<string, FieldDefinition>,
+  maxCol: number,
+  theme: ThemeJson,
+  initialBase: Record<number, number>,
+): Record<number, number> {
+  const baseTheme: ThemeJson = { ...theme, columnWidths: initialBase };
+  const baseMap = buildBaseColumnWidths(maxCol, baseTheme);
+  const computed = calcColumnWidths(cells, fields, maxCol, undefined, baseMap, true);
+  const merged = mergeColumnWidths(computed, theme.columnWidths);
+  applyColumnWidthCap(merged, baseMap, maxCol);
+  return columnWidthsToRecord(merged);
 }
 
 export default function ReportFormDesignPage() {
@@ -83,12 +125,42 @@ function DesignerInner({
   navigate: ReturnType<typeof useNavigate>;
 }) {
   const editor = useFormGridEditor(initialLayout);
+  const { getFieldOptions, revision: optionSetRevision } = useFieldOptionSets(editor.layout.fields || {});
 
   const [showPublishWizard, setShowPublishWizard] = useState(false);
+  const [publishWizardIntent, setPublishWizardIntent] = useState<'initial' | 'reset'>('initial');
   const [showWordTemplate, setShowWordTemplate] = useState(false);
   const [showThemePanel, setShowThemePanel] = useState(false);
   const [autoFitKey, setAutoFitKey] = useState(0);
+  const [gridRenderKey, setGridRenderKey] = useState(0);
   const [theme, setTheme] = useState<ThemeJson>(initialTheme);
+  const initialColBaseRef = useRef<Record<number, number>>(
+    columnWidthsToRecord(
+      buildBaseColumnWidths(
+        Math.max(...initialLayout.cells.map(c => c.col + c.colSpan), 0) || 1,
+        initialTheme,
+      ),
+    ),
+  );
+
+  // 进入设计页时：Excel 等若 theme 列宽被历史逻辑撑大，按初始列宽 ×5 收回（Word 保持导入列宽）
+  useEffect(() => {
+    if (source === 'word') return;
+    const cells = initialLayout.cells;
+    if (cells.length === 0) return;
+    const fields = initialLayout.fields || {};
+    const maxCol = Math.max(...cells.map(c => c.col + c.colSpan), 0) || 1;
+    setTheme(t => {
+      const capped = computeDesignColumnWidths(cells, fields, maxCol, t, initialColBaseRef.current);
+      const changed = Object.entries(capped).some(([k, w]) => {
+        const col = Number(k);
+        const prev = t.columnWidths?.[col] ?? (t.columnWidths as Record<string, number> | undefined)?.[k];
+        return typeof prev !== 'number' || Math.abs(w - prev) > 1;
+      });
+      return changed ? { ...t, columnWidths: capped } : t;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅首次进入
+  }, []);
 
   // 选中格子（支持多选）
   const selectedCells = useMemo(
@@ -98,17 +170,13 @@ function DesignerInner({
 
   const selectedCell = selectedCells.length === 1 ? selectedCells[0] : null;
 
-  const cellKind = useMemo((): 'static' | 'field' | 'mixed' | undefined => {
-    if (selectedCells.length === 0) return undefined;
-    const kinds = new Set(selectedCells.map(c => c.kind));
-    if (kinds.size === 1) return selectedCells[0].kind;
-    return 'mixed';
-  }, [selectedCells]);
-
   const fieldTypeInfo = useMemo(() => {
     const types = selectedCells
-      .filter(c => c.kind === 'field' && c.fieldKey)
-      .map(c => editor.layout.fields[c.fieldKey!]?.type)
+      .map(c => {
+        if (c.kind === 'static') return 'STATIC' as FieldType;
+        if (c.fieldKey) return editor.layout.fields[c.fieldKey]?.type;
+        return undefined;
+      })
       .filter(Boolean) as FieldType[];
     const unique = [...new Set(types)];
     return {
@@ -117,27 +185,64 @@ function DesignerInner({
     };
   }, [selectedCells, editor.layout.fields]);
 
-  const field = selectedCell?.kind === 'field' && selectedCell?.fieldKey
+  const field = selectedCell?.fieldKey
     ? editor.layout.fields[selectedCell.fieldKey]
-    : null;
+    : (selectedCell?.kind === 'static' ? { type: 'STATIC' as FieldType, label: selectedCell.staticText || '' } : null);
+
+  const fieldStaticText = useMemo(() => {
+    if (selectedCells.length !== 1 || !selectedCell) return undefined;
+    if (selectedCell.kind === 'static') return selectedCell.staticText || '';
+    if (selectedCell.fieldKey) {
+      const f = editor.layout.fields[selectedCell.fieldKey];
+      if (f?.type === 'STATIC') return f.label || '';
+    }
+    return undefined;
+  }, [selectedCells, selectedCell, editor.layout.fields]);
 
   /** 多选时样式以第一个选中格为参考 */
   const referenceStyle = selectedCells[0]?.style;
 
   const fieldKeys = Object.keys(editor.layout.fields || {});
 
-  // 导入报表若未带列宽，首次进入设计页按内容测算列宽
+  // 导入 Excel 报表若未带列宽/行高，首次进入设计页按内容测算（Word 网页尺寸在渲染层计算，不写 theme）
   useEffect(() => {
     const cells = editor.layout.cells;
     if (cells.length === 0) return;
+    if (source !== 'excel') return;
     const hasWidths = theme.columnWidths && Object.keys(theme.columnWidths).length > 0;
-    if (hasWidths || (source !== 'word' && source !== 'excel')) return;
+    const hasHeights = theme.rowHeights && Object.keys(theme.rowHeights).length > 0;
+    if (hasWidths && hasHeights) return;
+    const fields = editor.layout.fields || {};
     const maxCol = Math.max(...cells.map(c => c.col + c.colSpan), 0);
-    const widths = calcColumnWidths(cells, editor.layout.fields || {}, maxCol);
-    setTheme(t => ({ ...t, columnWidths: columnWidthsToRecord(widths) }));
+    const maxRow = Math.max(...cells.map(c => c.row + c.rowSpan), 0);
+    const patch: Partial<ThemeJson> = {};
+    if (!hasWidths) patch.columnWidths = computeDesignColumnWidths(cells, fields, maxCol, { ...theme, ...patch }, initialColBaseRef.current);
+    if (!hasHeights) patch.rowHeights = rowHeightsToRecord(calcRowHeights(cells, fields, maxRow));
+    setTheme(t => ({ ...t, ...patch }));
     setAutoFitKey(k => k + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅首次进入时补算列宽
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅首次进入时补算
   }, []);
+
+  /** 内容变更后：Excel 等列宽随标签/选项略增；Word 列宽以导入 theme 为准，不在此改写 */
+  useEffect(() => {
+    if (source === 'word') return;
+    const cells = editor.layout.cells;
+    if (cells.length === 0) return;
+    const fields = editor.layout.fields || {};
+    const maxCol = Math.max(...cells.map(c => c.col + c.colSpan), 0);
+    if (maxCol <= 0) return;
+
+    setTheme(t => {
+      const nextWidths = computeDesignColumnWidths(cells, fields, maxCol, t, initialColBaseRef.current);
+      const needsUpdate = Object.entries(nextWidths).some(([k, w]) => {
+        const col = Number(k);
+        const prev = t.columnWidths?.[col] ?? (t.columnWidths as Record<string, number> | undefined)?.[k];
+        return typeof prev !== 'number' || Math.abs(w - prev) > 1;
+      });
+      if (!needsUpdate) return t;
+      return { ...t, columnWidths: nextWidths };
+    });
+  }, [editor.layout.cells, editor.layout.fields]);
 
   // 原始快照，用于检测未保存修改
   const savedSnapshot = useRef(JSON.stringify(initialLayout));
@@ -181,16 +286,29 @@ function DesignerInner({
   const handleDoubleClick = useCallback((cellId: string) => {
     const layout = editorRef.current.layout;
     const cell = layout.cells.find(c => c.id === cellId);
-    if (cell?.kind === 'static') {
+    if (!cell) return;
+    if (cell.kind === 'static') {
       setEditingCellId(cellId);
       setEditingText(cell.staticText || '');
+      return;
+    }
+    const f = cell.fieldKey ? layout.fields[cell.fieldKey] : null;
+    if (f?.type === 'STATIC') {
+      setEditingCellId(cellId);
+      setEditingText(f.label || '');
     }
   }, []);
 
   const commitEdit = useCallback(() => {
     const { cellId, text } = editingRef.current;
     if (!cellId) return;
-    editorRef.current.updateCell(cellId, { staticText: text });
+    const layout = editorRef.current.layout;
+    const cell = layout.cells.find(c => c.id === cellId);
+    if (cell?.kind === 'static') {
+      editorRef.current.updateCell(cellId, { staticText: text });
+    } else if (cell?.fieldKey) {
+      editorRef.current.updateFieldDefinition(cell.fieldKey, { label: text });
+    }
     setEditingCellId(null);
   }, []);
 
@@ -205,28 +323,43 @@ function DesignerInner({
     return () => document.removeEventListener('mousedown', handler, true);
   }, [editingCellId, commitEdit]);
 
-  // 保存
+  const qc = useQueryClient();
+
+  // 保存（先提交单元格内联编辑，避免未 blur 的内容丢失）
   const saveMut = useMutation({
     mutationFn: async () => {
+      commitEdit();
       const payload = { name: form.name as string, layoutJson: JSON.stringify(editorRef.current.layout) };
       await updateForm(formId, payload);
     },
     onSuccess: () => {
       markSaved();
+      setGridRenderKey(k => k + 1);
       toast.success('已保存');
     },
     onError: (e: Error) => toast.error('保存失败: ' + e.message),
   });
 
-  // 格子类型设置（支持批量）
-  const handleSetCellKind = useCallback((kind: 'static' | 'field') => {
-    if (editor.selectedCellIds.size === 0) return;
-    if (editor.selectedCellIds.size === 1) {
-      editorRef.current.setCellKind([...editor.selectedCellIds][0], kind);
-    } else {
-      editorRef.current.batchSetCellKind(editor.selectedCellIds, kind);
-    }
-  }, [editor.selectedCellIds]);
+  const republishMut = useMutation({
+    mutationFn: async () => {
+      commitEdit();
+      await updateForm(formId, {
+        name: form.name as string,
+        layoutJson: JSON.stringify(editorRef.current.layout),
+        themeJson: JSON.stringify(theme),
+      });
+      await publishForm(formId);
+    },
+    onSuccess: () => {
+      markSaved();
+      setGridRenderKey(k => k + 1);
+      void qc.invalidateQueries({ queryKey: ['report-form', formId] });
+      void qc.invalidateQueries({ queryKey: ['report-form-list'] });
+      void qc.invalidateQueries({ queryKey: ['report-fill-available'] });
+      toast.success('已重新发布（沿用上次发布条件）');
+    },
+    onError: (e: Error) => toast.error('重新发布失败: ' + e.message),
+  });
 
   // 字段属性更新（支持批量）
   const applyFieldPatch = useCallback((patch: Partial<FieldDefinition>) => {
@@ -247,12 +380,36 @@ function DesignerInner({
   }, [editor.selectedCellIds]);
 
   const handleFieldOptionsChange = useCallback((opts: { label: string; value: string }[]) => {
-    applyFieldPatch({ options: opts });
+    applyFieldPatch({ options: opts, optionSetId: undefined });
   }, [applyFieldPatch]);
 
-  const handleFieldOptionSetChange = useCallback((id: string | undefined, opts: { label: string; value: string }[]) => {
-    applyFieldPatch({ optionSetId: id, options: opts });
+  const handleBindOptionPreset = useCallback((id: string) => {
+    applyFieldPatch({ optionSetId: id, options: [] });
   }, [applyFieldPatch]);
+
+  const handleUnbindOptionPreset = useCallback(() => {
+    applyFieldPatch({ optionSetId: undefined, options: [] });
+  }, [applyFieldPatch]);
+
+  const handleOptionPresetUpdated = useCallback(() => {
+    setGridRenderKey(k => k + 1);
+  }, []);
+
+  const handleFieldStaticTextChange = useCallback((text: string) => {
+    if (editor.selectedCellIds.size === 0) return;
+    if (editor.selectedCellIds.size === 1 && selectedCell) {
+      if (selectedCell.kind === 'static') {
+        editorRef.current.updateCell(selectedCell.id, { staticText: text });
+        return;
+      }
+      if (selectedCell.fieldKey) {
+        editorRef.current.updateFieldDefinition(selectedCell.fieldKey, { label: text });
+      }
+    } else {
+      editorRef.current.batchUpdateFieldType(editor.selectedCellIds, 'STATIC');
+      applyFieldPatch({ label: text });
+    }
+  }, [editor.selectedCellIds, selectedCell, applyFieldPatch]);
 
   const handleStyleChange = useCallback((patch: Partial<CellStyle>) => {
     if (editor.selectedCellIds.size === 0) return;
@@ -266,10 +423,19 @@ function DesignerInner({
   // 拖选起点：记录 mousedown 的格子和坐标，移动超过阈值才启用拖选
   const dragOrigin = useRef<{ cellId: string; x: number; y: number } | null>(null);
 
-  const handleCellMouseDown = useCallback((cellId: string, e: React.MouseEvent) => {
-    // 格式刷激活时：点击格子涂刷样式（可连续涂刷）
+  const handlePreviewCellFocus = useCallback((cellId: string, shiftKey: boolean) => {
+    if (editor.formatBrushActive) return;
+    editor.selectCellForPreview(cellId, shiftKey);
+  }, [editor]);
+
+  const handleCellMouseDown = useCallback((cellId: string, e: React.MouseEvent, options?: { previewInteraction?: boolean }) => {
     if (editor.formatBrushActive) {
+      if (options?.previewInteraction) return;
       editor.brushApply(cellId, true);
+      return;
+    }
+    if (options?.previewInteraction) {
+      editor.selectCellForPreview(cellId, e.shiftKey);
       return;
     }
     dragOrigin.current = { cellId, x: e.clientX, y: e.clientY };
@@ -277,7 +443,6 @@ function DesignerInner({
   }, [editor]);
 
   const handleCellMouseEnter = useCallback((cellId: string, e: React.MouseEvent) => {
-    // 格式刷激活时拖过格子连续涂刷
     if (editor.formatBrushActive && e.buttons === 1) {
       editor.brushApply(cellId, true);
       return;
@@ -285,11 +450,10 @@ function DesignerInner({
     if (editor.formatBrushActive) return;
     if (e.buttons !== 1) return;
     if (!dragOrigin.current) return;
-    // 移动超过 4px 才算拖选，避免单击微动触发 toggle
     const dx = Math.abs(e.clientX - dragOrigin.current.x);
     const dy = Math.abs(e.clientY - dragOrigin.current.y);
     if (dx < 4 && dy < 4) return;
-    editor.selectCell(cellId, true);
+    editor.selectCellDragAdd(cellId);
   }, [editor]);
 
   const handleMouseUp = useCallback(() => {
@@ -311,16 +475,27 @@ function DesignerInner({
   const dirty = isDirty();
 
   return (
-    <div className="flex flex-col" style={{ minHeight: 'calc(100vh - 160px)' }}>
-      {/* 顶部工具栏 */}
+    <div className="flex h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] min-h-0 flex-col overflow-hidden">
+      {/* 顶部工具栏 — 固定不随表格滚动 */}
       <EditorToolbar
-        onSave={() => saveMut.mutate()}
-        onPublish={() => setShowPublishWizard(true)}
+        onSave={() => {
+          commitEdit();
+          saveMut.mutate();
+        }}
+        onPublish={() => {
+          setPublishWizardIntent('initial');
+          setShowPublishWizard(true);
+        }}
+        onRepublish={() => republishMut.mutate()}
+        onResetPublishConditions={() => {
+          setPublishWizardIntent('reset');
+          setShowPublishWizard(true);
+        }}
         onUndo={() => editor.undo()}
         onRedo={() => editor.redo()}
         canUndo={editor.undoStack.current.length > 0}
         canRedo={editor.redoStack.current.length > 0}
-        isSaving={saveMut.isPending}
+        isSaving={saveMut.isPending || republishMut.isPending}
         isDirty={dirty}
         isPublished={form.status === 'published'}
         onMergeCells={() => editor.mergeCells()}
@@ -329,18 +504,21 @@ function DesignerInner({
         canUnmerge={editor.selectedCellIds.size > 0}
         selectedStyle={referenceStyle}
         onStyleChange={handleStyleChange}
-        cellKind={cellKind}
         fieldType={fieldTypeInfo.type ?? field?.type}
         fieldTypeMixed={fieldTypeInfo.mixed}
-        fieldOptions={field?.options}
+        fieldStaticText={fieldStaticText}
+        onFieldStaticTextChange={handleFieldStaticTextChange}
+        fieldOptions={field && !field.optionSetId ? (field.options || []) : []}
+        fieldOptionCount={field ? getFieldOptions(field).length : 0}
         fieldOptionSetId={field?.optionSetId}
         fieldMaxLength={field?.maxLength}
         fieldMin={field?.min}
         fieldMax={field?.max}
-        onSetCellKind={handleSetCellKind}
         onFieldTypeChange={handleFieldTypeChange}
-        onFieldOptionsChange={handleFieldOptionsChange}
-        onFieldOptionSetChange={handleFieldOptionSetChange}
+        onBindOptionPreset={handleBindOptionPreset}
+        onUnbindOptionPreset={handleUnbindOptionPreset}
+        onInlineFieldOptionsChange={handleFieldOptionsChange}
+        onOptionPresetUpdated={handleOptionPresetUpdated}
         onFieldMaxLengthChange={(v) => applyFieldPatch({ maxLength: v })}
         onFieldMinChange={(v) => applyFieldPatch({ min: v })}
         onFieldMaxChange={(v) => applyFieldPatch({ max: v })}
@@ -349,15 +527,44 @@ function DesignerInner({
         onAutoFit={() => {
           const cells = editorRef.current.layout.cells;
           const fields = editorRef.current.layout.fields || {};
-          const maxCol = Math.max(...cells.map(c => c.col + c.colSpan), 0);
-          const widths = calcColumnWidths(cells, fields, maxCol);
-          const columnWidths = columnWidthsToRecord(widths);
+          const maxRow = Math.max(...cells.map(c => c.row + c.rowSpan), 0);
+          let columnWidths: Record<number, number>;
+          const rowHeights = rowHeightsToRecord(calcRowHeights(cells, fields, maxRow));
+          if (source === 'word') {
+            const wordMaxCol = getWordLayoutMaxCol(cells, theme);
+            columnWidths = columnWidthsToRecord(
+              mergeWordWebColumnWidths(
+                new Map(),
+                { ...theme, columnWidths: { ...initialColBaseRef.current, ...theme.columnWidths } },
+                wordMaxCol,
+              ),
+            );
+          } else {
+            const maxCol = Math.max(...cells.map(c => c.col + c.colSpan), 0);
+            columnWidths = computeDesignColumnWidths(cells, fields, maxCol, theme, initialColBaseRef.current);
+          }
+          const newTheme = { ...theme, columnWidths, rowHeights };
+          setTheme(newTheme);
+          setAutoFitKey(k => k + 1);
+          updateForm(formId, { themeJson: JSON.stringify(newTheme) })
+            .then(() => toast.success(source === 'word' ? '行高已自适应（列宽保持导入比例）' : '列宽与行高已自适应'))
+            .catch((e: Error) => toast.error('自适应保存失败: ' + e.message));
+        }}
+        isWordSource={source === 'word'}
+        onRestoreWordImportWidths={() => {
+          const wordMaxCol = getWordLayoutMaxCol(editorRef.current.layout.cells, theme);
+          const restoredMap = mergeWordWebColumnWidths(
+            new Map(),
+            { ...theme, columnWidths: { ...initialColBaseRef.current } },
+            wordMaxCol,
+          );
+          const columnWidths = columnWidthsToRecord(restoredMap);
           const newTheme = { ...theme, columnWidths };
           setTheme(newTheme);
           setAutoFitKey(k => k + 1);
           updateForm(formId, { themeJson: JSON.stringify(newTheme) })
-            .then(() => toast.success('列宽已自适应'))
-            .catch((e: Error) => toast.error('列宽保存失败: ' + e.message));
+            .then(() => toast.success('已恢复 Word 导入列宽'))
+            .catch((e: Error) => toast.error('恢复失败: ' + e.message));
         }}
         formatBrushActive={editor.formatBrushActive}
         onBrushPickup={() => {
@@ -386,11 +593,11 @@ function DesignerInner({
         cellCount={editor.layout.cells.length}
         selectedCount={editor.selectedCellIds.size}
         hasSelection={editor.selectedCellIds.size > 0}
+        selectionKey={[...editor.selectedCellIds].sort().join(',')}
+        formId={formId}
       />
-
-      {/* 主题面板（弹出式） */}
       {showThemePanel && (
-        <div className="border-b border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-3 py-2">
+        <div className="shrink-0 border-b border-[var(--app-color-border)] bg-[var(--app-color-surface-container)] px-3 py-2">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold text-[var(--app-color-text-primary)]">主题配置</span>
             <button onClick={() => setShowThemePanel(false)}
@@ -409,8 +616,12 @@ function DesignerInner({
       <div className="flex-1 min-h-0 overflow-auto p-3">
         {hasCells ? (
           <FormGridEditor
+            key={`${gridRenderKey}-${optionSetRevision}`}
             autoFitVersion={autoFitKey}
             columnWidths={theme.columnWidths}
+            rowHeights={theme.rowHeights}
+            formSource={source}
+            defaultAlign={theme.defaultAlign}
             layout={editor.layout}
             selectedCellIds={editor.selectedCellIds}
             editingCellId={editingCellId}
@@ -421,6 +632,7 @@ function DesignerInner({
             onCellDoubleClick={handleDoubleClick}
             onEditingTextChange={setEditingText}
             onEditingCommit={commitEdit}
+            onPreviewCellFocus={handlePreviewCellFocus}
           />
         ) : (
           <div className="text-center py-16">
@@ -438,6 +650,15 @@ function DesignerInner({
         onClose={() => setShowPublishWizard(false)}
         formId={formId}
         layout={editor.layout}
+        intent={publishWizardIntent}
+        onPublished={() => {
+          void qc.invalidateQueries({ queryKey: ['report-form', formId] });
+          void qc.invalidateQueries({ queryKey: ['report-form-list'] });
+          void qc.invalidateQueries({ queryKey: ['report-fill-available'] });
+        }}
+        initialFillPolicy={parseJsonField(form.fillPolicyJson, DEFAULT_FILL_POLICY)}
+        initialPermission={parseJsonField(form.permissionJson, DEFAULT_PERMISSION)}
+        initialSchedule={parseJsonField(form.scheduleJson, DEFAULT_SCHEDULE)}
       />
 
       {/* Word 模板管理 */}

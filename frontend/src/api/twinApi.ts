@@ -568,6 +568,7 @@ export const updateExemptFlag = async (
     mode?: string,
     maxCount?: number,
     roomIds?: string,
+    extendUntilTime?: string,
 ): Promise<{
     freezeExemptFlag?: number;
     freezeExemptExpireAt?: string | null;
@@ -580,6 +581,7 @@ export const updateExemptFlag = async (
     if (flag === 1) {
         if (mode) body.mode = mode;
         if (durationMinutes != null) body.durationMinutes = durationMinutes;
+        if (extendUntilTime) body.extendUntilTime = extendUntilTime;
         if (maxCount != null) body.maxCount = maxCount;
         if (roomIds) body.roomIds = roomIds;
     }

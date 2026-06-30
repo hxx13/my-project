@@ -667,7 +667,7 @@ public class AnalyticsController {
         if (user == null) {
             return Result.error("未登录");
         }
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             return Result.error("需要教职工及以上权限");
         }

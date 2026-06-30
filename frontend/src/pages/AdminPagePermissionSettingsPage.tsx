@@ -16,10 +16,10 @@ import { AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShe
 import { normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 
-const ROLE_OPTIONS: MinRole[] = ["STUDENT", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
+const ROLE_OPTIONS: MinRole[] = ["MEMBER", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
 
 const ROLE_LABEL: Record<MinRole, string> = {
-  STUDENT: "学生",
+  MEMBER: "学生",
   STAFF: "教职工",
   SENIOR: "高级职工",
   ADMIN: "管理员",
@@ -35,8 +35,6 @@ const PATH_TITLE_MAP: Record<string, string> = {
   "/admin/purchase-request": "采购申请",
   "/admin/purchase-process": "采购处理",
   "/admin/supplies": "领用物资",
-  "/admin/supplies/mine": "我的领用记录",
-  "/admin/supplies/claim-export": "领用单导出预览",
   "/admin/supplies/manage": "物资管理",
   "/admin/supplies/process": "物资处理",
   "/admin/supplies/audit-export": "领用导出",
@@ -91,9 +89,7 @@ const PATH_BRIEF_MAP: Record<string, string> = {
   "/admin/repair-process": "处理报修工单与结果登记。",
   "/admin/purchase-request": "提交采购申请单。",
   "/admin/purchase-process": "审批并处理采购流程。",
-  "/admin/supplies": "选择并提交物资领用。",
-  "/admin/supplies/mine": "查看与修改本人领用单、导出、回收站恢复。",
-  "/admin/supplies/claim-export": "单张领用单明细预览与 Excel 导出。",
+  "/admin/supplies": "选择并提交物资领用，查看本人领用记录与导出。",
   "/admin/supplies/manage": "维护物资与分类基础信息。",
   "/admin/supplies/process": "处理物资领用出库。",
   "/admin/supplies/audit-export": "预览领用单明细、按物品查看库存流水并导出 Excel（采购/报修导出不在此页）。",
@@ -130,7 +126,7 @@ function titleZh(row: PagePermissionNode) {
 }
 
 function annotation(row: PagePermissionNode) {
-  return `${nodeTypeZh(row.nodeType)} · ${sourceZh(row.entrySource)} · 最小角色 ${ROLE_LABEL[(row.minRole || "STUDENT") as MinRole]}`;
+  return `${nodeTypeZh(row.nodeType)} · ${sourceZh(row.entrySource)} · 最小角色 ${ROLE_LABEL[(row.minRole || "MEMBER") as MinRole]}`;
 }
 
 function canPreviewPath(path: string, platform: PagePlatform) {
@@ -174,6 +170,35 @@ function patchNode(list: PagePermissionNode[], nodeKey: string, patch: { minRole
   });
 }
 
+type DisplayRow =
+  | { kind: "group"; key: string; title: string }
+  | { kind: "node"; row: PagePermissionNode & { depth: number } };
+
+function buildDisplayRows(flatRows: Array<PagePermissionNode & { depth: number }>, platform: PagePlatform): DisplayRow[] {
+  if (platform !== "WEB") {
+    return flatRows.map((row) => ({ kind: "node", row }));
+  }
+  const sorted = [...flatRows].sort((a, b) => {
+    const ga = a.groupTitle || "zzz未分组";
+    const gb = b.groupTitle || "zzz未分组";
+    if (ga !== gb) return ga.localeCompare(gb, "zh");
+    if (a.pathOrRoute !== b.pathOrRoute) return a.pathOrRoute.localeCompare(b.pathOrRoute);
+    if (a.nodeType === b.nodeType) return a.nodeKey.localeCompare(b.nodeKey);
+    return a.nodeType === "PAGE" ? -1 : 1;
+  });
+  const out: DisplayRow[] = [];
+  let lastGroup = "";
+  for (const row of sorted) {
+    const group = row.groupTitle?.trim() || "未分组 / 仅路由";
+    if (group !== lastGroup) {
+      out.push({ kind: "group", key: group, title: group });
+      lastGroup = group;
+    }
+    out.push({ kind: "node", row: { ...row, depth: 0 } });
+  }
+  return out;
+}
+
 export default function AdminPagePermissionSettingsPage() {
   const qc = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -192,7 +217,7 @@ export default function AdminPagePermissionSettingsPage() {
       const drafts: Record<string, { minRole: MinRole; enabled: number }> = {};
       flat.forEach((it) => {
         drafts[it.nodeKey] = {
-          minRole: (it.minRole || "STUDENT") as MinRole,
+          minRole: (it.minRole || "MEMBER") as MinRole,
           enabled: it.enabled === 1 ? 1 : 0,
         };
       });
@@ -202,6 +227,7 @@ export default function AdminPagePermissionSettingsPage() {
   });
 
   const flatRows = useMemo(() => flatten(rows), [rows]);
+  const displayRows = useMemo(() => buildDisplayRows(flatRows, platform), [flatRows, platform]);
 
   const focusPathParam = searchParams.get("focusPath");
 
@@ -281,7 +307,8 @@ export default function AdminPagePermissionSettingsPage() {
           <p>同一路径可能有多个入口节点（例如侧栏、首页快捷、我的页），请分别按业务需要控制。</p>
           <p>超级管理员可在侧栏入口上<strong>右键</strong>打开快捷面板改权；保存失败会提示具体原因（常见为：子入口角色低于父页面角色）。</p>
           <p className="text-[var(--twin-mute)]">
-            自动发现规则见仓库 <code className="rounded-twin-sm bg-[var(--twin-canvas)] px-1">docs/page-permission-discovery.md</code>。
+            网页端节点来自注册表 manifest（<code className="rounded-twin-sm bg-[var(--twin-canvas)] px-1">adminNavRegistry.ts</code> + router）与侧栏 DB 配置合并；规则见{" "}
+            <code className="rounded-twin-sm bg-[var(--twin-canvas)] px-1">docs/页面权限发现.md</code>。
           </p>
         </div>
       }
@@ -353,7 +380,20 @@ export default function AdminPagePermissionSettingsPage() {
               </tr>
             </thead>
             <tbody>
-              {flatRows.map((row) => (
+              {displayRows.map((item) =>
+                item.kind === "group" ? (
+                  <tr key={`group-${item.key}`}>
+                    <td
+                      colSpan={8}
+                      className="border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-2 text-xs font-semibold text-[var(--twin-ink)]"
+                    >
+                      {item.title}
+                    </td>
+                  </tr>
+                ) : (
+                  (() => {
+                    const row = item.row;
+                    return (
                 <tr key={row.nodeKey} id={rowDomIdForNodeKey(row.nodeKey)} className="scroll-mt-24 transition-shadow">
                   <td className="border-b border-[var(--twin-hairline)] px-2 py-2 text-xs">
                     <div style={{ paddingLeft: `${row.depth * 16}px` }}>
@@ -451,7 +491,10 @@ export default function AdminPagePermissionSettingsPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                    );
+                  })()
+                )
+              )}
             </tbody>
           </table>
         </AdminTableShell>

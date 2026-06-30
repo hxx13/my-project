@@ -1,5 +1,5 @@
 /**
- * 物资申领审计导出 — 个人审计 + 课题组审计 + 按物品审计。
+ * 物资申领审计导出 — 个人审计 + 课题组审计 + 按物品审计 + 物品+课题组审计。
  * 学生：仅自己/自己课题组。教职工：可选任意人员/课题组。
  * 统一日期区间筛选 + 合并表格，无需区分单次/多次。
  */
@@ -7,21 +7,28 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
 import {
-  fetchMyMaterialRequests, fetchAllMaterialRequests,
+  fetchAuditExportRequests,
   fetchAdminMaterialCategories, fetchAdminMaterialItems,
   fetchItemStockMovements, fetchItemClaimLines,
   fetchApplicantsWithRecords, fetchGroupsWithRecords,
   exportMaterialAuditTrail,
+  exportMaterialItemFlow,
   type MaterialRequest, type MaterialStockMovementRow, type MaterialItemClaimRow,
 } from "@/api/domains/material.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
+import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
+import { sanitizeExportFilenamePart } from "@/features/report-form/utils/reportFormExportFilename";
 
-type TabKey = "personal" | "group" | "item";
+type TabKey = "personal" | "group" | "item" | "item-group";
 
 function downloadBlob(blob: Blob, name: string) { const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); URL.revokeObjectURL(u); }
-function toTime(v?: string | null) { if (!v) return "无"; return String(v).replace("T", " ").slice(0, 19); }
+function toTime(v?: string | null) {
+  if (!v) return "无";
+  const t = formatDateTimeAsiaShanghai(v);
+  return t === "-" ? "无" : t;
+}
 function cellZh(v?: string | null) {
   const t = String(v ?? "").trim();
   if (!t || t === "-") return "无";
@@ -52,6 +59,11 @@ function remarkZh(remark?: string | null) {
 }
 function iso(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function monthStart() { const t = new Date(); return { from: iso(new Date(t.getFullYear(), t.getMonth(), 1)), to: iso(t) }; }
+
+function buildAuditExportFilename(label: string, from: string, to: string) {
+  const base = sanitizeExportFilenamePart(label) || "申领审计";
+  return `${base}-${from}_${to}.xlsx`;
+}
 
 type ItemFlowRow = {
   key: string;
@@ -150,7 +162,7 @@ function buildItemFlowRows(
 }
 
 export default function MaterialAuditExportPage() {
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const isStaff = hasMinRole(role, "STAFF");
   const selfUserId = authStorage.getUserInfo()?.id?.trim() ?? "";
 
@@ -162,30 +174,53 @@ export default function MaterialAuditExportPage() {
 
   const [selectedUserId, setSelectedUserId] = useState(selfUserId);
   const { data: applicantList = [] } = useQuery({
-    queryKey: ["material", "applicants-with-records"],
-    queryFn: fetchApplicantsWithRecords,
+    queryKey: ["material", "applicants-with-records", from, to],
+    queryFn: () => fetchApplicantsWithRecords({ from, to }),
     enabled: isStaff && tab === "personal",
   });
 
   useEffect(() => {
-    if (tab !== "personal" || !isStaff || applicantList.length === 0) return;
+    if (tab !== "personal" || !isStaff) return;
+    if (applicantList.length === 0) {
+      if (selectedUserId) setSelectedUserId("");
+      return;
+    }
     const exists = applicantList.some((a) => a.userId === selectedUserId);
     if (!exists) setSelectedUserId(applicantList[0].userId);
   }, [applicantList, tab, isStaff, selectedUserId]);
 
   const [selectedGroup, setSelectedGroup] = useState("");
   const { data: groupList = [] } = useQuery({
-    queryKey: ["material", "groups-with-records"],
-    queryFn: fetchGroupsWithRecords,
-    enabled: tab === "group",
+    queryKey: ["material", "groups-with-records", from, to],
+    queryFn: () => fetchGroupsWithRecords({ from, to }),
+    enabled: tab === "group" || tab === "item-group",
   });
 
   useEffect(() => {
-    if (tab !== "group" || groupList.length === 0) return;
+    if (tab !== "group") return;
+    if (groupList.length === 0) {
+      if (selectedGroup) setSelectedGroup("");
+      return;
+    }
     if (!selectedGroup || !groupList.includes(selectedGroup)) {
       setSelectedGroup(groupList[0]);
     }
   }, [groupList, tab, selectedGroup]);
+
+  // 物品+课题组 tab 的课题组筛选
+  const [selectedItemGroup, setSelectedItemGroup] = useState("");
+  useEffect(() => {
+    if (tab !== "item-group") return;
+    if (groupList.length === 0) {
+      if (selectedItemGroup) setSelectedItemGroup("");
+      return;
+    }
+    if (!selectedItemGroup || !groupList.includes(selectedItemGroup)) {
+      setSelectedItemGroup(groupList[0]);
+    }
+  }, [groupList, tab, selectedItemGroup]);
+
+  const itemApplicantGroup = tab === "item-group" ? (selectedItemGroup || undefined) : undefined;
 
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [itemKeyword, setItemKeyword] = useState("");
@@ -195,12 +230,16 @@ export default function MaterialAuditExportPage() {
   const queryUserId = tab === "personal" ? (isStaff ? selectedUserId : selfUserId) : undefined;
   const queryGroup = tab === "group" && isStaff ? (selectedGroup || undefined) : undefined;
   const { data: queryData, isLoading: requestsLoading } = useQuery({
-    queryKey: ["material", "requests", "audit", { tab, applicantUserId: queryUserId, applicantGroup: queryGroup, isStaff }],
-    queryFn: () => {
-      if (!isStaff) return fetchMyMaterialRequests({ page: 1, size: 500 });
-      return fetchAllMaterialRequests({ page: 1, size: 500, applicantUserId: queryUserId, applicantGroup: queryGroup });
-    },
-    enabled: tab !== "item",
+    queryKey: ["material", "audit", "requests", { tab, from, to, applicantUserId: queryUserId, applicantGroup: queryGroup }],
+    queryFn: () => fetchAuditExportRequests({
+      page: 1,
+      size: 500,
+      from,
+      to,
+      applicantUserId: queryUserId,
+      applicantGroup: queryGroup,
+    }),
+    enabled: tab !== "item" && tab !== "item-group",
   });
 
   const studentGroup = useMemo(() => {
@@ -218,15 +257,11 @@ export default function MaterialAuditExportPage() {
 
   const auditRequests: MaterialRequest[] = useMemo(() => {
     const raw = queryData?.data ?? [];
-    return raw.filter((r) => {
-      const d = (r.createdAt || "").slice(0, 10);
-      if (d < from || d > to) return false;
-      if (tab === "group" && !isStaff && studentGroup) {
-        return (r.applicantGroup || "").trim() === studentGroup;
-      }
-      return true;
-    });
-  }, [queryData, from, to, tab, isStaff, studentGroup]);
+    if (tab === "group" && !isStaff && studentGroup) {
+      return raw.filter((r) => (r.applicantGroup || "").trim() === studentGroup);
+    }
+    return raw;
+  }, [queryData, tab, isStaff, studentGroup]);
 
   const currentRows = useMemo(() => {
     return auditRequests.flatMap((r) =>
@@ -241,25 +276,27 @@ export default function MaterialAuditExportPage() {
     );
   }, [auditRequests]);
 
+  const isItemTab = tab === "item" || tab === "item-group";
+
   const { data: categories = [] } = useQuery({
-    queryKey: ["material", "admin", "categories"],
-    queryFn: () => fetchAdminMaterialCategories(),
-    enabled: isStaff && tab === "item",
+    queryKey: ["material", "admin", "categories", itemApplicantGroup],
+    queryFn: () => fetchAdminMaterialCategories(itemApplicantGroup),
+    enabled: isStaff && isItemTab,
   });
   const { data: items = [] } = useQuery({
-    queryKey: ["material", "admin", "items", categoryId],
-    queryFn: () => fetchAdminMaterialItems(categoryId === "" ? undefined : categoryId),
-    enabled: isStaff && tab === "item",
+    queryKey: ["material", "admin", "items", categoryId, itemApplicantGroup],
+    queryFn: () => fetchAdminMaterialItems(categoryId === "" ? undefined : categoryId, itemApplicantGroup),
+    enabled: isStaff && isItemTab,
   });
   const { data: movementData, isLoading: movementsLoading } = useQuery({
-    queryKey: ["material", "movements", selectedItemId, from, to],
-    queryFn: () => fetchItemStockMovements(Number(selectedItemId), { page: 1, size: 500 }),
-    enabled: tab === "item" && !!selectedItemId,
+    queryKey: ["material", "movements", selectedItemId, from, to, itemApplicantGroup],
+    queryFn: () => fetchItemStockMovements(Number(selectedItemId), { page: 1, size: 500, applicantGroup: itemApplicantGroup }),
+    enabled: isItemTab && !!selectedItemId,
   });
   const { data: claimData, isLoading: claimsLoading } = useQuery({
-    queryKey: ["material", "item-claims", selectedItemId, from, to],
-    queryFn: () => fetchItemClaimLines(Number(selectedItemId), { from, to, page: 1, size: 500 }),
-    enabled: tab === "item" && !!selectedItemId,
+    queryKey: ["material", "item-claims", selectedItemId, from, to, itemApplicantGroup],
+    queryFn: () => fetchItemClaimLines(Number(selectedItemId), { from, to, page: 1, size: 500, applicantGroup: itemApplicantGroup }),
+    enabled: isItemTab && !!selectedItemId,
   });
   const itemFlowRows = useMemo(
     () => buildItemFlowRows(claimData?.data ?? [], movementData?.data ?? [], from, to),
@@ -282,6 +319,14 @@ export default function MaterialAuditExportPage() {
     return !k ? items : items.filter((it) => String(it.name || "").toLowerCase().includes(k));
   }, [items, itemKeyword]);
 
+  useEffect(() => {
+    if (selectedItemId === "") return;
+    if (!filteredItems.some((it) => it.id === selectedItemId)) {
+      setSelectedItemId("");
+      setFlowPage(1);
+    }
+  }, [filteredItems, selectedItemId]);
+
   const applicantLabel = (userId: string) => {
     const hit = applicantList.find((a) => a.userId === userId);
     return hit?.applicantName || userId || "未知";
@@ -294,16 +339,39 @@ export default function MaterialAuditExportPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const blob = await exportMaterialAuditTrail({ from, to, groupId: tab === "group" ? queryGroup : undefined });
-      downloadBlob(blob, `material-${tab}-${from}_${to}.xlsx`);
+      const exportLabel = tab === "personal"
+        ? `个人审计-${isStaff && selectedUserId ? applicantLabel(selectedUserId) : "本人"}`
+        : `课题组审计-${isStaff ? (selectedGroup || "未分配") : (selectedGroup || studentGroup || "未分配")}`;
+      const blob = await exportMaterialAuditTrail({
+        from,
+        to,
+        exportLabel,
+        applicantUserId: tab === "personal" && isStaff ? selectedUserId || undefined : undefined,
+        applicantGroup: tab === "group"
+          ? (isStaff ? (selectedGroup || undefined) : (studentGroup || undefined))
+          : undefined,
+      });
+      downloadBlob(blob, buildAuditExportFilename(exportLabel, from, to));
       toast.success("已导出");
     } catch { toast.error("导出失败"); } finally { setExporting(false); }
   };
   const handleExportAudit = async () => {
+    if (selectedItemId === "") return;
+    const itemName = items.find((it) => it.id === selectedItemId)?.name || String(selectedItemId);
+    const groupSuffix = itemApplicantGroup ? `-${itemApplicantGroup}` : "";
+    const exportLabel = tab === "item-group"
+      ? `物品+课题组审计-${itemName}${groupSuffix}`
+      : `物品审计-${itemName}`;
     setExporting(true);
     try {
-      const blob = await exportMaterialAuditTrail({ from, to });
-      downloadBlob(blob, `material-audit-item.xlsx`);
+      const blob = await exportMaterialItemFlow({
+        itemId: Number(selectedItemId),
+        from,
+        to,
+        applicantGroup: itemApplicantGroup,
+        exportLabel,
+      });
+      downloadBlob(blob, buildAuditExportFilename(exportLabel, from, to));
       toast.success("已导出");
     } catch { toast.error("导出失败"); } finally { setExporting(false); }
   };
@@ -317,9 +385,9 @@ export default function MaterialAuditExportPage() {
     <div className="space-y-4 p-6">
       <AdminSubPageHeader title="申领审计导出" fallbackTo="/admin/material/review" description="按人员、课题组或物品维度查看与导出申领明细。" />
 
-      <div className="flex gap-2">{tabBtn("personal", "个人审计")}{tabBtn("group", "课题组审计")}{isStaff && tabBtn("item", "按物品审计")}</div>
+      <div className="flex gap-2">{tabBtn("personal", "个人审计")}{tabBtn("group", "课题组审计")}{isStaff && tabBtn("item", "按物品审计")}{isStaff && tabBtn("item-group", "物品+课题组")}</div>
 
-      {tab !== "item" && (
+      {tab !== "item" && tab !== "item-group" && (
         <section className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1 space-y-3">
           <div className="flex flex-wrap items-end gap-3">
             {tab === "personal" && isStaff && (
@@ -397,9 +465,26 @@ export default function MaterialAuditExportPage() {
         </section>
       )}
 
-      {tab === "item" && (
+      {isItemTab && (
         <section className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1 space-y-3">
           <div className="flex flex-wrap items-end gap-3">
+            {tab === "item-group" && (
+              <div>
+                <label className="mb-1 block text-xs text-[var(--twin-body)]">课题组</label>
+                <select
+                  className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[160px]"
+                  value={selectedItemGroup}
+                  onChange={(e) => { setSelectedItemGroup(e.target.value); setFlowPage(1); }}
+                  disabled={groupList.length === 0}
+                >
+                  {groupList.length === 0 ? (
+                    <option value="">暂无课题组记录</option>
+                  ) : (
+                    groupList.map((g) => <option key={g} value={g}>{g}</option>)
+                  )}
+                </select>
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-xs text-[var(--twin-body)]">物资分类</label>
               <select className={`${inputCls} min-w-[140px]`} value={categoryId === "" ? "" : String(categoryId)} onChange={(e) => { setCategoryId(e.target.value === "" ? "" : Number(e.target.value)); setSelectedItemId(""); setFlowPage(1); }}>
@@ -429,7 +514,7 @@ export default function MaterialAuditExportPage() {
           </div>
 
           <p className="text-xs text-[var(--twin-mute)]">
-            物品来去流水 · 共 {itemFlowRows.length} 条 · {from} ～ {to}
+            {tab === "item-group" ? `物品+课题组来去流水 · ${selectedItemGroup || "未分配"} · ` : "物品来去流水 · "}共 {itemFlowRows.length} 条 · {from} ～ {to}
             {itemFlowLoading ? " · 加载中…" : ""}
           </p>
           <div className="overflow-x-auto rounded-twin-lg border border-[var(--twin-hairline)]">

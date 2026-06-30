@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:force": "vite --force",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "build": "node ../scripts/export-admin-nav-manifest.mjs && tsc -b && vite build",
+    "export:nav-manifest": "node ../scripts/export-admin-nav-manifest.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

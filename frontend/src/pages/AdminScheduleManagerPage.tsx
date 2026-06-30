@@ -55,10 +55,9 @@ const DEPRECATED_JOB_KEYS = new Set([
 const PLATFORM_POLL_KEYS = new Set(["ARO_PENETRATION_POLL"]);
 const RANKING_POLL_KEYS = new Set(["DASHBOARD_RANKING_ACTIVITY", "DASHBOARD_RANKING_ANIMAL"]);
 const ALL_POLL_KEYS = new Set([...PLATFORM_POLL_KEYS, ...RANKING_POLL_KEYS]);
-const FREEZE_KEYS = new Set(["RUN_REAPER", "RUN_REAPER_SECOND", "DAILY_EXEMPT_RESET", "STRANDED_VIOLATION_CHECK"]);
+const FREEZE_KEYS = new Set(["RUN_REAPER", "RUN_REAPER_SECOND", "DAILY_EXEMPT_RESET", "STRANDED_VIOLATION_CHECK", "STRANDED_SIGNOUT_CHECK"]);
 const DAILY_EXEMPT_RESET_KEY = "DAILY_EXEMPT_RESET";
 const SINGLE_KEYS = new Set([
-  "RPG_RECALC_ALL",
   "ORDER_SYNC",
   "ORDER_SYNC_FULL",
   "PERSONNEL_SYNC_ALL",
@@ -74,6 +73,7 @@ const SINGLE_KEYS = new Set([
   STATS_PULL_SCHEDULE_JOB.SINCE_LAST,
   ...Array.from(FREEZE_KEYS),
   "CAGE_SPECIAL_STATUS_SCAN",
+  "EXP_RECONCILE",
 ]);
 
 const WINCC_POLL_KEYS = TELEMETRY_WINCC_POLL_KEYS;
@@ -188,8 +188,8 @@ export default function AdminScheduleManagerPage() {
         ]),
       },
       {
-        title: "孪生·模型与空间",
-        keys: new Set(["RPG_RECALC_ALL", "GROUP_RECALC", "MODEL_RECALC"]),
+        title: "孪生·经验值与空间",
+        keys: new Set(["EXP_RECONCILE", "GROUP_RECALC", "MODEL_RECALC"]),
       },
       {
         title: "同步与落库",
@@ -636,20 +636,7 @@ export default function AdminScheduleManagerPage() {
                   <a href="#/admin/dahua-swing-tasks?tab=audit" className="text-[var(--twin-link-deep)] underline">
                     门禁数据工作台 · 审计拉取
                   </a>{" "}
-                  手动执行。下方勾选「参与定时」仅对<strong>同策略</strong>的到点 Job 生效；到点时刻在 B 区分别配置：
-                  {accessPipelineSchedule.pulls.map((p) => (
-                    <span key={p.jobKey} className="ml-1">
-                      {p.title}{" "}
-                      <strong className={p.enabled ? "text-violet-800" : "text-rose-600"}>
-                        {p.enabled ? p.scheduleTime : "关"}
-                      </strong>
-                    </span>
-                  ))}
-                  ；增量入库{" "}
-                  <strong className={accessPipelineSchedule.cleanEnabled ? "text-violet-800" : "text-rose-600"}>
-                    {accessPipelineSchedule.cleanEnabled ? accessPipelineSchedule.cleanTime : "已关闭"}
-                  </strong>
-                  （建议晚于昨日日批 15–30 分钟，且仅昨日 Job 结束后刷新隔离服/笼架订阅统计）。
+                  手动执行。
                 </p>
               </div>
               {STATS_PULL_SCHEDULE_SECTIONS.map((section) => {
@@ -754,6 +741,7 @@ export default function AdminScheduleManagerPage() {
               <div className="mb-2 text-sm font-semibold text-[var(--twin-body)]">冻结联动任务</div>
               <p className="mb-2 text-xs text-amber-800/90 bg-amber-50 border border-amber-200/80 rounded-twin-sm px-2 py-1.5">
                 「每日豁免权回收」在本页单独配置开关与执行时间，不再随冻结总开关绑定。可勾选「回收后自动签离」：仅对<strong>今日曾豁免且流水仍判定在馆</strong>者签离；时效到期收回、未申请豁免的滞留者不签离（与 AI 雷达口径一致，跨日后不计入当日雷达）。
+                <strong className="ml-1">滞留检测</strong>分两道独立定时：<strong>一道</strong>创建违规公告（行为在「新建违规」页配置），<strong>二道</strong>仅签退（开关在同页第二卡片）。
               </p>
               <AdminDataTableWrap scrollable className="rounded-none border-0 bg-transparent shadow-none ring-0">
                 <table className="min-w-full text-sm">

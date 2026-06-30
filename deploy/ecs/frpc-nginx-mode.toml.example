@@ -1,0 +1,28 @@
+# Windows frpc — Nginx 前置模式（复制为 frpc.toml 或合并到现有配置）
+# Spring 仍在本机 8080；ECS 上 Nginx 反代到 127.0.0.1:18080
+
+serverAddr = "47.101.61.184"
+serverPort = 7000
+
+# 与 ECS frps auth.token 一致
+auth.method = "token"
+auth.token = "change_me_to_a_long_random_secret"
+
+transport.tcpMux = true
+transport.tcpMuxKeepaliveInterval = 30
+transport.poolCount = 5
+
+[[proxies]]
+name = "springboot-proxy"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8080
+remotePort = 18080
+
+# Socket.IO 仍公网直连（前端 resolveSocketUrl 用 :9092）
+[[proxies]]
+name = "socketio-proxy"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 9092
+remotePort = 9092

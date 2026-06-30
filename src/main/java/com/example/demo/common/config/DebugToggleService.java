@@ -3,6 +3,8 @@ package com.example.demo.common.config;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import com.example.demo.common.event.CredentialsChangedEvent;
+import com.example.demo.common.logging.registry.LogCategory;
+import com.example.demo.common.logging.registry.LogCategoryRegistry;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -23,18 +25,22 @@ import java.util.concurrent.atomic.AtomicLong;
 @Service
 public class DebugToggleService {
 
-    /** key = 管理端分类名，value = Logback logger 名前缀 */
-    public static final LinkedHashMap<String, String> LOG_CATEGORIES = new LinkedHashMap<>();
-
-    static {
-        LOG_CATEGORIES.put("twin", "com.example.demo.modules.twin");
-        LOG_CATEGORIES.put("telemetry", "com.example.demo.modules.telemetry");
-        LOG_CATEGORIES.put("dahua", "com.example.demo.modules.dahua");
-        LOG_CATEGORIES.put("aro", "com.example.demo.modules.aro");
-        LOG_CATEGORIES.put("accessfusion", "com.example.demo.modules.accessfusion");
-        LOG_CATEGORIES.put("sql", "com.example.demo.modules");
-        LOG_CATEGORIES.put("request", "org.springframework.web");
+    /**
+     * 日志分类列表，从 {@link LogCategoryRegistry} 动态获取。
+     * @deprecated 新代码请直接使用 {@code LogCategoryRegistry.getInstance().all()}
+     */
+    @Deprecated
+    public static LinkedHashMap<String, String> getLogCategories() {
+        LinkedHashMap<String, String> map = new LinkedHashMap<>();
+        for (LogCategory cat : LogCategoryRegistry.getInstance().all()) {
+            map.put(cat.key(), cat.loggerName());
+        }
+        return map;
     }
+
+    /** @deprecated 请使用 {@link #getLogCategories()} */
+    @Deprecated
+    public static final LinkedHashMap<String, String> LOG_CATEGORIES = new LinkedHashMap<>();
 
     private final NotificationSettingsService settingsService;
 
@@ -127,9 +133,9 @@ public class DebugToggleService {
         Level rootLvl = Level.toLevel(rootLevel, Level.INFO);
         ctx.getLogger(Logger.ROOT_LOGGER_NAME).setLevel(rootLvl);
 
-        for (var entry : LOG_CATEGORIES.entrySet()) {
-            String catKey = entry.getKey();
-            String loggerName = entry.getValue();
+        for (LogCategory cat : LogCategoryRegistry.getInstance().all()) {
+            String catKey = cat.key();
+            String loggerName = cat.loggerName();
             String configKey = "logging.category." + catKey;
             boolean enabled = toBool(settingsService.getEffectiveValue("logging", configKey, "true"));
             categoryEnabled.put(catKey, enabled);

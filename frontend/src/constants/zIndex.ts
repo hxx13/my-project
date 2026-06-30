@@ -6,6 +6,7 @@ export const Z_INDEX = {
   scanDelayMenu: 310,      // 扫码弹窗内延迟二级菜单（须高于 scannerPopup）
   popupNotice: 310,         // 扫码通行动效 overlay
   popupModal: 320,          // DisciplinaryModal
+  repeatedSwipeWarning: 820, // 重复刷卡全屏红色脉冲警告，置于所有扫描弹窗最顶层（高于 --z-modal:800）
   bizOverlay: 400,          // BizOverlayShell
   keypad: 500,              // NumericKeypad（永远最顶层）
   globalToast: 600,         // 全局 Toast/Notification

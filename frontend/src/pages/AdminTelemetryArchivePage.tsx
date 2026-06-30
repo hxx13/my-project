@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { adminHttp } from "@/api/core/adminHttp";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
 import { AdminButton } from "@/components/admin/AdminButton";
@@ -154,7 +155,7 @@ export default function AdminTelemetryArchivePage() {
       <p className="max-w-3xl text-sm text-slate-600">
         WinCC 刷新写入 <code className="rounded bg-slate-100 px-1">telemetry_value_archive</code>。
         表过大可能拖慢 MySQL；可配置保留天数并自动清理。执行时刻在{" "}
-        <Link to="/admin/schedule" className="text-sky-700 underline">
+        <Link to={toAdminRoutePath("/admin/schedule")} className="text-sky-700 underline">
           定时任务管理
         </Link>{" "}
         中调整任务「温湿度·WinCC归档自动清理」。

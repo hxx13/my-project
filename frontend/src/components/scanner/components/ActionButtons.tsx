@@ -9,6 +9,35 @@ import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/format
 
 export type { RoomActionDensity } from "@/components/scanner/roomActionDensity";
 
+type DelayCarrierGroup = {
+    key: string;
+    buttonLabel: string;
+    options: ScanDelayOptionSummary[];
+};
+
+function groupDelayOptionsByCarrier(
+    options: ScanDelayOptionSummary[],
+    fallbackLabel: string
+): DelayCarrierGroup[] {
+    const groups: DelayCarrierGroup[] = [];
+    const index = new Map<string, DelayCarrierGroup>();
+    for (const opt of options) {
+        const key = opt.carrierId != null ? `c:${opt.carrierId}` : `l:${opt.buttonLabel || fallbackLabel}`;
+        let group = index.get(key);
+        if (!group) {
+            group = {
+                key,
+                buttonLabel: opt.buttonLabel?.trim() || fallbackLabel || "延迟",
+                options: [],
+            };
+            index.set(key, group);
+            groups.push(group);
+        }
+        group.options.push(opt);
+    }
+    return groups;
+}
+
 interface ActionButtonsProps {
     action: "ENTER" | "EXIT";
     targetRooms: RoomInfo[];
@@ -28,13 +57,23 @@ interface ActionButtonsProps {
     autoSignoutState?: string | null;
     /** 延迟免冻结总开关 */
     scanDelayEnabled?: boolean;
-    /** 公用延迟载体按钮文案 */
+    /** 全局兜底延迟按钮文案（规则未单独配置时使用） */
     scanDelayButtonLabel?: string;
     getDelayOptions?: (roomId: string) => ScanDelayOptionSummary[];
     subjectUserId?: string;
     onDelaySuccess?: () => void;
     /** 当前刷卡人姓名，用于进入确认弹窗显示 */
     userName?: string;
+    /** 打开离开确认弹窗（替代直接执行） */
+    onRequestExit?: (room: RoomInfo, index: number) => void;
+    /** 确认离开回调 */
+    onConfirmExit?: () => void;
+    /** 取消离开回调 */
+    onCancelExit?: () => void;
+    /** 当前待确认离开的房间 */
+    confirmingExitRoom?: RoomInfo | null;
+    /** 当前扫码人 userId，用于离开确认弹窗中的 QR 码 */
+    studentUserId?: string;
 }
 
 export const ActionButtons = (props: ActionButtonsProps) => {
@@ -51,6 +90,11 @@ export const ActionButtons = (props: ActionButtonsProps) => {
         subjectUserId,
         onDelaySuccess,
         userName,
+        onRequestExit,
+        onConfirmExit,
+        onCancelExit,
+        confirmingExitRoom,
+        studentUserId,
     } = props;
     const safeRooms = Array.isArray(targetRooms) ? targetRooms : [];
     const density = resolveRoomActionDensity(safeRooms.length);
@@ -59,7 +103,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
     const enterRowH = density === "normal" ? "h-[55px]" : density === "compact" ? "h-[48px]" : "h-[40px]";
     const exitRowMinH = density === "normal" ? "min-h-[7.5rem]" : density === "compact" ? "min-h-[6.5rem]" : "min-h-[5.5rem]";
 
-    const [openDelayRoomId, setOpenDelayRoomId] = useState<string | null>(null);
+    const [openDelayMenuKey, setOpenDelayMenuKey] = useState<string | null>(null);
     const delayAnchorRefs = useRef<Record<string, HTMLDivElement | null>>({});
     const [openDelayAnchorEl, setOpenDelayAnchorEl] = useState<HTMLDivElement | null>(null);
 
@@ -158,12 +202,12 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                 const isFinished = finishedRooms.includes(roomId);
                 if (action === "ENTER") {
                     const delayOptions = getDelayOptions?.(roomId) ?? [];
+                    const delayGroups = groupDelayOptionsByCarrier(delayOptions, scanDelayButtonLabel || "延迟");
                     const showDelay =
                         Boolean(scanDelayEnabled) &&
-                        delayOptions.length > 0 &&
+                        delayGroups.length > 0 &&
                         !props.isEnterLocked(room) &&
                         Boolean(subjectUserId);
-                    const delayLabel = scanDelayButtonLabel || "延迟";
                     return (
                         <div
                             key={roomId}
@@ -181,30 +225,38 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                                 </label>
                             </div>
                             {showDelay ? (
-                                <div
-                                    ref={(el) => {
-                                        delayAnchorRefs.current[roomId] = el;
-                                        if (openDelayRoomId === roomId) {
-                                            setOpenDelayAnchorEl(el);
-                                        }
-                                    }}
-                                    className={`h-full ${density === "dense" ? "max-w-[88px]" : "max-w-[96px]"}`}
-                                >
-                                    <ScanDelayButton
-                                        label={delayLabel}
-                                        active={openDelayRoomId === roomId}
-                                        onClick={() => {
-                                            setOpenDelayRoomId((prev) => {
-                                                const next = prev === roomId ? null : roomId;
-                                                if (next) {
-                                                    setOpenDelayAnchorEl(delayAnchorRefs.current[roomId] ?? null);
-                                                } else {
-                                                    setOpenDelayAnchorEl(null);
-                                                }
-                                                return next;
-                                            });
-                                        }}
-                                    />
+                                <div className={`flex h-full shrink-0 items-center gap-1 ${density === "dense" ? "max-w-[120px]" : "max-w-[140px]"}`}>
+                                    {delayGroups.map((group) => {
+                                        const menuKey = `${roomId}::${group.key}`;
+                                        return (
+                                            <div
+                                                key={menuKey}
+                                                ref={(el) => {
+                                                    delayAnchorRefs.current[menuKey] = el;
+                                                    if (openDelayMenuKey === menuKey) {
+                                                        setOpenDelayAnchorEl(el);
+                                                    }
+                                                }}
+                                                className={`h-full min-w-0 flex-1 ${density === "dense" ? "max-w-[56px]" : "max-w-[68px]"}`}
+                                            >
+                                                <ScanDelayButton
+                                                    label={group.buttonLabel}
+                                                    active={openDelayMenuKey === menuKey}
+                                                    onClick={() => {
+                                                        setOpenDelayMenuKey((prev) => {
+                                                            const next = prev === menuKey ? null : menuKey;
+                                                            if (next) {
+                                                                setOpenDelayAnchorEl(delayAnchorRefs.current[menuKey] ?? null);
+                                                            } else {
+                                                                setOpenDelayAnchorEl(null);
+                                                            }
+                                                            return next;
+                                                        });
+                                                    }}
+                                                />
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             ) : null}
                             <div className="flex-1 min-w-0 h-full">
@@ -216,20 +268,28 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                                     onClick={() => handleEnterClick(room, idx)}
                                 />
                             </div>
-                            {showDelay && openDelayRoomId === roomId ? (
-                                <ScanDelayMenuPortal
-                                    open
-                                    anchorEl={openDelayAnchorEl}
-                                    options={delayOptions}
-                                    subjectUserId={subjectUserId!}
-                                    roomId={roomId}
-                                    buttonLabel={delayLabel}
-                                    onClose={() => {
-                                        setOpenDelayRoomId(null);
-                                        setOpenDelayAnchorEl(null);
-                                    }}
-                                    onSuccess={() => onDelaySuccess?.()}
-                                />
+                            {showDelay && openDelayMenuKey?.startsWith(`${roomId}::`) ? (
+                                (() => {
+                                    const activeKey = openDelayMenuKey!;
+                                    const groupKey = activeKey.slice(roomId.length + 2);
+                                    const activeGroup = delayGroups.find((g) => g.key === groupKey);
+                                    if (!activeGroup) return null;
+                                    return (
+                                        <ScanDelayMenuPortal
+                                            open
+                                            anchorEl={openDelayAnchorEl}
+                                            options={activeGroup.options}
+                                            subjectUserId={subjectUserId!}
+                                            roomId={roomId}
+                                            buttonLabel={activeGroup.buttonLabel}
+                                            onClose={() => {
+                                                setOpenDelayMenuKey(null);
+                                                setOpenDelayAnchorEl(null);
+                                            }}
+                                            onSuccess={() => onDelaySuccess?.()}
+                                        />
+                                    );
+                                })()
                             ) : null}
                         </div>
                     );
@@ -254,7 +314,13 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                             text={props.getButtonText(room, roomId)}
                             disabled={props.isExitLocked(room) || isFinished}
                             density={density}
-                            onClick={() => onRoomClick(room, idx)}
+                            onClick={() => {
+                                if (onRequestExit) {
+                                    onRequestExit(room, idx);
+                                } else {
+                                    onRoomClick(room, idx);
+                                }
+                            }}
                         />
                     </div>
                 );
@@ -268,6 +334,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                 onConfirm={handleConfirmEnter}
                 onCancel={handleCancelEnter}
             />
+
         </div>
     );
 };

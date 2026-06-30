@@ -13,5 +13,7 @@ public class AssetTransferApplyRequest {
     private String photoUrl;
     private List<String> photoUrlsBefore;
     private List<String> photoUrlsAfter;
+    private String userName;
+    private String userEmployeeId;
 }
 

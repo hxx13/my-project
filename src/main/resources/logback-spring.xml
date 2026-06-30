@@ -1,31 +1,159 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <!--
-      标准控制台日志：含时间/级别/线程/类名，高亮着色。
-      logging.level.* 仍由 Spring Boot 从 application.properties 注入。
-      运行时可通过 /api/admin/logging/level 动态调节级别，重启恢复本文件默认值。
+      TWIN SYSTEM — 赛博朋克日志系统
+      ================================
+
+      三通道架构：
+        ① stderr — 启动动画 (StartupBanner 直接写入，不经过 Logback)
+        ② stdout — 运行时业务日志 (ERROR/WARN → 终端可见；INFO/DEBUG → 静默)
+        ③ RingBuffer — Web 管理端日志查看器 (所有级别)
+
+      环境：
+        local  — 控制台 ERROR/WARN + 所有级别进 RingBuffer；stderr 启动动画
+        prod   — 控制台 ERROR/WARN + JSON 文件滚动 (30天) + RingBuffer
+        docker — stdout JSON 一行 + RingBuffer
+
+      框架噪音永久静默 (ERROR/OFF)：
+        HikariCP, MyBatis Mapper 重复, Spring BeanPostProcessor, Tomcat, Netty, SocketIO
     -->
 
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) : %msg%n</pattern>
-            <charset>UTF-8</charset>
-        </encoder>
-    </appender>
+    <!-- ============================== 通用属性 ============================== -->
+    <property name="LOG_DIR" value="${LOG_PATH:-/var/log/twin}"/>
 
-    <!-- Web 端日志查看器：环形缓冲区 Appender -->
+    <!-- ============================== Appender 定义 ============================== -->
+
+    <!-- 环形缓冲区 Appender（所有 profile 激活，Web 管理端日志查看器数据源） -->
     <appender name="RING_BUFFER" class="com.example.demo.common.support.RingBufferAppender"/>
 
-    <!-- 框架/网络库噪音 → 保持静默 -->
+    <!-- ————————— local 控制台 ————————— -->
+    <springProfile name="local">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <target>System.out</target>
+            <withJansi>true</withJansi>
+            <encoder>
+                <pattern>%d{HH:mm:ss} %highlight(%-5level) %msg%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <!-- ————————— prod 控制台 + 文件 ————————— -->
+    <springProfile name="prod">
+        <!-- 控制台：纯文本，无颜色 -->
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <target>System.out</target>
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level [%logger{36}] %msg%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <!-- 主日志文件：按天滚动，保留 30 天 -->
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_DIR}/twin.log</file>
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} | %-5level | %thread | %logger{36} | %msg%n%xException</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_DIR}/twin.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+                <maxHistory>30</maxHistory>
+            </rollingPolicy>
+            <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+                <maxFileSize>50MB</maxFileSize>
+            </triggeringPolicy>
+        </appender>
+
+        <!-- ERROR 单独分离 -->
+        <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_DIR}/error.log</file>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+                <level>ERROR</level>
+            </filter>
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} | %-5level | %thread | %logger{36} | %msg%n%xException</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_DIR}/error.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+                <maxHistory>30</maxHistory>
+            </rollingPolicy>
+        </appender>
+    </springProfile>
+
+    <!-- ————————— docker 控制台 (JSON stdout) ————————— -->
+    <springProfile name="docker">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <target>System.out</target>
+            <encoder>
+                <pattern>{"ts":"%d{yyyy-MM-dd HH:mm:ss.SSS}","level":"%-5level","logger":"%logger{36}","msg":"%replace(%msg){'"','\\"'}","ex":"%replace(%xException){'\n','\\n'} }%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+    </springProfile>
+
+    <!-- ============================== 框架噪音 → 永久静默 ============================== -->
+    <!-- JDBC 连接池 — HikariCP 启动/关闭消息静默 -->
+    <logger name="com.zaxxer.hikari" level="ERROR"/>
+    <logger name="com.zaxxer.hikari.HikariConfig" level="ERROR"/>
+
+    <!-- MyBatis Mapper 重复定义警告 → OFF（根因在 @MapperScan 路径重叠，属无害噪音） -->
+    <logger name="org.mybatis.spring.mapper.ClassPathMapperScanner" level="ERROR"/>
+
+    <!-- Spring Boot 自动配置报告 & BeanPostProcessor 检查 -->
+    <logger name="org.springframework.boot.autoconfigure" level="ERROR"/>
+    <logger name="org.springframework.context.support.PostProcessorRegistrationDelegate" level="ERROR"/>
+
+    <!-- Tomcat / 嵌入式容器 -->
+    <logger name="org.apache.catalina" level="ERROR"/>
+    <logger name="org.apache.coyote" level="ERROR"/>
+    <logger name="org.apache.tomcat" level="ERROR"/>
+
+    <!-- Netty / SocketIO 网络层 -->
     <logger name="io.netty" level="ERROR"/>
     <logger name="com.corundumstudio.socketio" level="ERROR"/>
-    <logger name="org.apache.coyote.http11.Http11Processor" level="ERROR"/>
 
-    <!-- 业务模块默认 INFO，运行时可通过管理端动态切换 -->
+    <!-- Spring 框架启动细节 -->
+    <logger name="org.springframework.boot.web" level="WARN"/>
+    <logger name="org.springframework.jdbc.datasource" level="WARN"/>
+
+    <!-- DJL 引擎加载细节（通过 StartupBanner 阶段报告，无需逐行日志） -->
+    <logger name="ai.djl" level="WARN"/>
+
+    <!-- ============================== 业务模块默认级别 ============================== -->
+    <!--
+      默认 WARN → 正常运行时控制台几乎空白，只输出 WARN+。
+      运行时通过 LogCategoryRegistry / LoggingAdminController 动态切换。
+    -->
     <logger name="com.example.demo" level="INFO"/>
 
-    <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="RING_BUFFER"/>
-    </root>
+    <!-- ============================== ROOT ============================== -->
+    <!--
+      local:  ROOT=WARN → 只有业务异常可见；INFO/DEBUG 进 RingBuffer 供管理端查看
+      prod:   ROOT=WARN → 控制台只有问题；文件记录全部
+      docker: ROOT=INFO → 容器环境 stdout JSON，由编排平台收集
+    -->
+    <springProfile name="local">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="RING_BUFFER"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="prod">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+            <appender-ref ref="RING_BUFFER"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="docker">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="RING_BUFFER"/>
+        </root>
+    </springProfile>
 </configuration>

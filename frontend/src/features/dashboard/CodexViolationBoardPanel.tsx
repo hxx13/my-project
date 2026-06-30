@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ShieldAlert } from "lucide-react";
 import { fetchDashboardViolationBoard } from "@/api/domains/dashboardViolationBoard.api";
@@ -26,6 +26,20 @@ export function CodexViolationBoardPanel({
 }: Props) {
   const visual = useDashboardVisual();
   const ref = useRef<HTMLDivElement | null>(null);
+  const previewDepthRef = useRef(0);
+  const [previewLocked, setPreviewLocked] = useState(false);
+
+  const handleRowPreviewChange = useCallback((open: boolean) => {
+    if (open) {
+      previewDepthRef.current += 1;
+      setPreviewLocked(true);
+      return;
+    }
+    previewDepthRef.current = Math.max(0, previewDepthRef.current - 1);
+    if (previewDepthRef.current === 0) {
+      setPreviewLocked(false);
+    }
+  }, []);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["dashboard-violation-board"],
@@ -45,11 +59,11 @@ export function CodexViolationBoardPanel({
     }
   }, [active, isLoading, enabled, hasItems, onEmpty]);
 
-  useVerticalAutoScroll(ref, {
-    enabled: active && hasItems,
+  const scrollHandlers = useVerticalAutoScroll(ref, {
+    enabled: active && hasItems && !previewLocked,
     pauseStartMs: 30000,
     pauseEndMs: 30000,
-    msPerPx: 60,
+    msPerPx: 38,
     roundTrips: 3,
     fallbackTimeoutMs: 30000,
     onCycleComplete,
@@ -104,10 +118,11 @@ export function CodexViolationBoardPanel({
       </div>
       <div
         ref={ref}
-        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        {...scrollHandlers}
       >
         {items.map((item) => (
-          <ViolationBoardRow key={item.id} item={item} />
+          <ViolationBoardRow key={item.id} item={item} onPreviewOpenChange={handleRowPreviewChange} />
         ))}
         <div className="h-2" />
       </div>

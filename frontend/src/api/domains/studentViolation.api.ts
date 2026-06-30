@@ -38,7 +38,10 @@ export interface StudentViolationRow {
   clearedByUserId?: string | null;
   /** 交互式确认短语；null 表示普通公告 */
   interactiveChallenge?: string | null;
+  interactiveChallengeVerifiedAt?: string | null;
   interactiveUnlockOnVerify?: number;
+  /** 当前是否禁止扫码进入（与扫码端 enterLocked 一致） */
+  enterLocked?: boolean;
   ruleId?: number | null;
   ruleName?: string | null;
 }
@@ -150,10 +153,10 @@ export async function markStudentViolationProcessed(id: number) {
 }
 
 /** 与后端 RoleEnum.code 一致 */
-export type UnboundApplyRoleCode = "STUDENT" | "STAFF" | "SENIOR" | "ADMIN" | "SUPER_ADMIN" | "PLATFORM_OWNER";
+export type UnboundApplyRoleCode = "MEMBER" | "STAFF" | "SENIOR" | "ADMIN" | "SUPER_ADMIN" | "PLATFORM_OWNER";
 
 export const UNBOUND_APPLY_ROLE_OPTIONS: { code: UnboundApplyRoleCode; label: string }[] = [
-  { code: "STUDENT", label: "学生" },
+  { code: "MEMBER", label: "学生" },
   { code: "STAFF", label: "普通员工" },
   { code: "SENIOR", label: "高级员工" },
   { code: "ADMIN", label: "管理员" },
@@ -172,9 +175,9 @@ export interface UnboundCardNoticeSettings {
 
 export function normalizeApplyRoleCodes(raw: unknown): UnboundApplyRoleCode[] {
   const valid = new Set(UNBOUND_APPLY_ROLE_OPTIONS.map((o) => o.code));
-  if (!Array.isArray(raw) || !raw.length) return ["STUDENT"];
+  if (!Array.isArray(raw) || !raw.length) return ["MEMBER"];
   const out = raw.filter((x): x is UnboundApplyRoleCode => typeof x === "string" && valid.has(x as UnboundApplyRoleCode));
-  return out.length ? out : ["STUDENT"];
+  return out.length ? out : ["MEMBER"];
 }
 
 export async function getUnboundCardNoticeSettings(): Promise<UnboundCardNoticeSettings> {

@@ -21,12 +21,8 @@ export default function StudentLoginPage() {
       setSubmitting(true);
       const data = await loginWeb(username.trim(), password);
 
-      if (data.role !== "STUDENT") {
-        showToast("请使用教职工登录入口", "error");
-        return;
-      }
-
       authStorage.setAuth(data.token, data.role, data.userInfo);
+      authStorage.markLoginPortal("student");
       showToast("登录成功", "success");
       navigate("/student/home", { replace: true });
     } catch (err) {

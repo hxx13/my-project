@@ -46,6 +46,13 @@ export interface MinimizableNoticeProps {
   actionLabel?: string;
   onAction?: () => void;
 
+  /* ── 次要操作（不自动最小化）── */
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
+
+  /* ── 自定义内容插槽（倒计时与按钮之间，仅 modal 视图）── */
+  extra?: ReactNode;
+
   /* ── 最小化 ── */
   minimizable?: boolean;
   autoMinimizeMs?: number;
@@ -81,6 +88,9 @@ export function MinimizableNotice({
   onCountdownExpired,
   actionLabel,
   onAction,
+  secondaryActionLabel,
+  onSecondaryAction,
+  extra,
   minimizable = true,
   autoMinimizeMs,
   variant = "success",
@@ -331,15 +341,28 @@ export function MinimizableNotice({
                     </div>
                   )}
 
+                  {/* 自定义内容插槽（倒计时与按钮之间） */}
+                  {extra && <div className="mn-extra">{extra}</div>}
+
                   {/* 操作按钮 */}
-                  {actionLabel && (
+                  {(actionLabel || secondaryActionLabel) && (
                     <div className="mn-actions">
-                      <button
-                        className="mn-btn mn-btn--primary"
-                        onClick={handleAction}
-                      >
-                        {actionLabel}
-                      </button>
+                      {secondaryActionLabel && (
+                        <button
+                          className="mn-btn mn-btn--secondary"
+                          onClick={() => onSecondaryAction?.()}
+                        >
+                          {secondaryActionLabel}
+                        </button>
+                      )}
+                      {actionLabel && (
+                        <button
+                          className="mn-btn mn-btn--primary"
+                          onClick={handleAction}
+                        >
+                          {actionLabel}
+                        </button>
+                      )}
                     </div>
                   )}
                 </motion.div>

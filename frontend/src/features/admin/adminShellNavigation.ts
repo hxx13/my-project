@@ -1,6 +1,6 @@
 import type { PublicPagePermissionNode } from "@/api/domains/pagePermission.api";
 import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems, titleForUnknownAdminPath } from "@/features/admin/adminNavRegistry";
-import { normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import { isAdminAreaPath, normalizeAdminPath, toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 
 /**
  * 后台壳层导航（顶栏返回 / 页题）：对齐 `docs/ADMIN_UI_STYLE.md` 中引用的 Vercel 式信息密度与层次，
@@ -13,8 +13,6 @@ const REGISTRY_SIDEBAR_PATHS = new Set(
 
 /** 注册表未列名、但路由存在的子页：用于页题；壳层「返回」仍由 shouldShowAdminShellBack 控制 */
 const SECONDARY_ROUTE_TITLE: Record<string, string> = {
-  "/admin/supplies/mine": "我的领用记录",
-  "/admin/supplies/claim-export": "领用单导出",
   "/admin/supplies/manage": "物资管理",
   "/admin/supplies/process": "领用出库处理",
   "/admin/material/review": "学生审核",
@@ -25,8 +23,6 @@ const SECONDARY_ROUTE_TITLE: Record<string, string> = {
 
 /** 无 location.state.returnTo 时的默认回退路径 */
 const DEFAULT_BACK_PARENT: Record<string, string> = {
-  "/admin/supplies/mine": "/admin/supplies",
-  "/admin/supplies/claim-export": "/admin/supplies/mine",
   "/admin/supplies/manage": "/admin/supplies",
   "/admin/supplies/process": "/admin/supplies/audit-export",
   "/admin/material/review": "/admin",
@@ -34,6 +30,12 @@ const DEFAULT_BACK_PARENT: Record<string, string> = {
   "/admin/material/audit": "/admin/analytics?report=material_stats",
   "/admin/material/audit-export": "/admin/material/review",
 };
+
+/** 动态子路由的默认回退（最长前缀匹配） */
+const DEFAULT_BACK_PARENT_PREFIX: { prefix: string; parent: string }[] = [
+  { prefix: "/admin/report-fill/", parent: "/admin/report-fill" },
+  { prefix: "/admin/report-form/", parent: "/admin/report-form" },
+];
 
 export function collectSidebarEntryPathsFromPerm(permNodes: PublicPagePermissionNode[]): Set<string> {
   const s = new Set<string>();
@@ -64,7 +66,7 @@ export function isAdminPrimarySidebarPath(pathname: string, permSidebarPaths: Se
  */
 export function shouldShowAdminShellBack(pathname: string, permSidebarPaths: Set<string>): boolean {
   const p = stripPathQuery(pathname);
-  if (!p.startsWith("/admin")) return false;
+  if (!isAdminAreaPath(p)) return false;
   if (p === "/admin") return false;
   if (p === "/admin/profile-security") return false;
   return !isAdminPrimarySidebarPath(pathname, permSidebarPaths);
@@ -81,8 +83,18 @@ export function resolveAdminShellBackTo(pathname: string, returnToState: unknown
   const rt = raw?.returnTo;
   if (typeof rt === "string") {
     const t = rt.trim();
-    if (t.startsWith("/") && !t.startsWith("//")) return normalizeAdminPath(t.split("?")[0]);
+    if (t.startsWith("/") && !t.startsWith("//")) {
+      const qIdx = t.indexOf("?");
+      const pathOnly = qIdx >= 0 ? t.slice(0, qIdx) : t;
+      const query = qIdx >= 0 ? t.slice(qIdx) : "";
+      return toAdminRoutePath(normalizeAdminPath(pathOnly)) + query;
+    }
   }
   const p = stripPathQuery(pathname);
-  return DEFAULT_BACK_PARENT[p] ?? "/admin";
+  const exact = DEFAULT_BACK_PARENT[p];
+  if (exact) return toAdminRoutePath(exact);
+  for (const { prefix, parent } of DEFAULT_BACK_PARENT_PREFIX) {
+    if (p.startsWith(prefix) && p.length > prefix.length) return toAdminRoutePath(parent);
+  }
+  return toAdminRoutePath("/admin");
 }

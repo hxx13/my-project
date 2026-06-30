@@ -5,7 +5,7 @@ import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package, Lightbulb } from
 import { useMaterialCategories, useMaterialItems, useMaterialCart, useSaveMaterialCart, useCreateMaterialRequest } from "@/api/hooks/useMaterial";
 import { createMaterialDemand } from "@/api/domains/material.api";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
-import { authStorage } from "@/features/auth/authStorage";
+import { resolveMaterialApplicantGroupForStudentSession } from "@/features/student/materialApplicant";
 import type { MaterialItem } from "@/api/domains/material.api";
 import { StudentCard, Skeleton, EmptyState, Badge } from "../components/ui";
 import { cn } from "@/lib/utils";
@@ -62,7 +62,7 @@ export default function StudentMaterialPage() {
   async function handleSubmit() {
     if (!cart || cartCount === 0) return;
     const lines = Object.entries(cart).filter(([, qty]) => qty > 0).map(([itemId, qty]) => ({ itemId: Number(itemId), qty }));
-    const group = (authStorage.getUserInfo() as any)?.departmentName?.trim() || undefined;
+    const group = resolveMaterialApplicantGroupForStudentSession();
     await createRequest.mutateAsync({ lines, applicantGroup: group });
     saveCart.mutate({}); // 清空申领物品栏
     navigate("/student/material/requests");
@@ -196,9 +196,9 @@ function MaterialItemCard({ item, cartQty, maxStock, onQtyChange }: { item: Mate
           <h4 className="text-[13px] font-semibold truncate">{item.name}</h4>
         </div>
         {item.subtitle && <p className="text-[11px] text-[var(--student-mute)] mt-0.5 line-clamp-2">{item.subtitle}</p>}
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-[11px] text-[var(--student-mute)]">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : (item.stockQty||0)}</span>
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between gap-2 mt-1.5 flex-nowrap">
+          <span className="text-[11px] text-[var(--student-mute)] flex-1 min-w-0">库存: {item.stockMode === "UNLIMITED" ? "无限" : item.showStockQty === 0 ? "有货" : (item.stockQty||0)}</span>
+          <div className="flex items-center gap-1 shrink-0">
             {cartQty > 0 && <button onClick={() => onQtyChange(-1)} className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center"><Minus className="size-3" /></button>}
             {cartQty > 0 && <span className="text-[13px] w-5 text-center font-medium">{cartQty}</span>}
             <button onClick={() => onQtyChange(1)} disabled={atCap} className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"><Plus className="size-3" /></button>

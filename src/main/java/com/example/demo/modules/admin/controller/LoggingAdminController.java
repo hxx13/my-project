@@ -4,6 +4,8 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import com.example.demo.common.config.DebugToggleService;
+import com.example.demo.common.logging.registry.LogCategory;
+import com.example.demo.common.logging.registry.LogCategoryRegistry;
 import com.example.demo.common.support.LogRingBuffer;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
@@ -29,11 +31,11 @@ public class LoggingAdminController {
         result.put("levelOptions", LEVEL_OPTIONS);
 
         List<Map<String, String>> categories = new ArrayList<>();
-        for (var entry : DebugToggleService.LOG_CATEGORIES.entrySet()) {
+        for (LogCategory cat : LogCategoryRegistry.getInstance().all()) {
             Map<String, String> item = new LinkedHashMap<>();
-            item.put("key", entry.getKey());
-            item.put("loggerName", entry.getValue());
-            item.put("level", getLoggerLevel(entry.getValue()));
+            item.put("key", cat.key());
+            item.put("loggerName", cat.loggerName());
+            item.put("level", getLoggerLevel(cat.loggerName()));
             categories.add(item);
         }
         result.put("categories", categories);
@@ -67,8 +69,8 @@ public class LoggingAdminController {
     public Map<String, Object> reset() {
         LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
         ctx.getLogger(Logger.ROOT_LOGGER_NAME).setLevel(Level.INFO);
-        for (String name : DebugToggleService.LOG_CATEGORIES.values()) {
-            ctx.getLogger(name).setLevel(null);
+        for (LogCategory cat : LogCategoryRegistry.getInstance().all()) {
+            ctx.getLogger(cat.loggerName()).setLevel(null);
         }
         return Map.of("ok", true, "message", "已恢复默认级别: ROOT=INFO，所有分类继承 ROOT");
     }
@@ -91,8 +93,8 @@ public class LoggingAdminController {
         toggles.put("rootLevel", debugToggleService.getRootLevel());
 
         List<Map<String, Object>> cats = new ArrayList<>();
-        for (var entry : DebugToggleService.LOG_CATEGORIES.entrySet()) {
-            cats.add(Map.of("key", entry.getKey(), "enabled", debugToggleService.isCategoryEnabled(entry.getKey())));
+        for (LogCategory cat : LogCategoryRegistry.getInstance().all()) {
+            cats.add(Map.of("key", cat.key(), "enabled", debugToggleService.isCategoryEnabled(cat.key())));
         }
         toggles.put("categories", cats);
         return toggles;

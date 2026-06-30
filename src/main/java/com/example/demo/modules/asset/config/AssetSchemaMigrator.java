@@ -131,6 +131,11 @@ public class AssetSchemaMigrator implements ApplicationRunner {
                     "ALTER TABLE asset_transfer_request ADD COLUMN photo_urls_after TEXT NULL COMMENT '转移后照片URL JSON数组'");
             ensureColumnExists("asset_transfer_request", "from_location",
                     "ALTER TABLE asset_transfer_request ADD COLUMN from_location VARCHAR(255) NULL COMMENT '转移前资产所在地(用于管理员删除后回滚)'");
+            ensureColumnExists("asset_record", "photo_urls",
+                    "ALTER TABLE asset_record ADD COLUMN photo_urls TEXT NULL COMMENT '资产照片URL JSON数组(转移前参考照片)'");
+            ensureColumnExists("asset_transfer_request", "from_user_name",
+                    "ALTER TABLE asset_transfer_request ADD COLUMN from_user_name VARCHAR(100) NULL COMMENT '转移前使用人姓名(用于对比展示)'");
+            ensureAssetColumnDef("col_校区", "校区");
             log.info("[asset-schema] 资产相关表已就绪");
         } catch (Exception e) {
             log.error("[asset-schema] 表结构迁移失败: {}", e.getMessage());
@@ -152,6 +157,29 @@ public class AssetSchemaMigrator implements ApplicationRunner {
         if (count != null && count == 0) {
             jdbcTemplate.execute(alterSql);
         }
+    }
+
+    /** 确保「校区」动态列存在，供小程序手动标记与筛选 */
+    private void ensureAssetColumnDef(String columnKey, String columnLabel) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(1) FROM asset_column_def
+                WHERE column_key = ?
+                """,
+                Integer.class,
+                columnKey
+        );
+        if (count != null && count > 0) {
+            return;
+        }
+        jdbcTemplate.update(
+                """
+                INSERT INTO asset_column_def(column_key, column_label, value_type, sortable, searchable, sort_order, create_by)
+                VALUES (?, ?, 'TEXT', 1, 1, 999, 'system')
+                """,
+                columnKey,
+                columnLabel
+        );
     }
 }
 

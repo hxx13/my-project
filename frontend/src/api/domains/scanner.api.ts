@@ -182,6 +182,8 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
             critical: asBooleanLike(n.critical) ?? false,
             canSelfUnblock: asBooleanLike(n.canSelfUnblock ?? n.can_self_unblock),
             criticalNoticeText: asString(n.criticalNoticeText ?? n.critical_notice_text),
+            autoOpenSuppressed:
+                asBooleanLike(n.autoOpenSuppressed ?? n.auto_open_suppressed) ?? false,
         };
     };
     const studentViolationNotice = parseViolationNotice(
@@ -204,6 +206,10 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
                           id: idNum as number,
                           title: asString(row.title),
                           contentHtml: asString(row.contentHtml ?? row.content_html),
+                          updatedAt: asString(row.updatedAt ?? row.updated_at) ?? null,
+                          autoOpenSuppressed:
+                              asBooleanLike(row.autoOpenSuppressed ?? row.auto_open_suppressed) ??
+                              false,
                       };
                   })
                   .filter((x): x is NonNullable<typeof x> => x !== null)
@@ -287,7 +293,17 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
                     .map((it) => ({
                         id: Number(it.id),
                         roomId: String(it.roomId ?? it.room_id ?? roomId),
+                        carrierId: (() => {
+                            const raw = it.carrierId ?? it.carrier_id;
+                            if (raw == null || raw === "") return undefined;
+                            const n = Number(raw);
+                            return Number.isFinite(n) ? n : undefined;
+                        })(),
                         optionLabel: String(it.optionLabel ?? it.option_label ?? ""),
+                        buttonLabel: (() => {
+                            const raw = it.buttonLabel ?? it.button_label;
+                            return raw != null && String(raw).trim() ? String(raw).trim() : undefined;
+                        })(),
                         requireApproval: Boolean(it.requireApproval ?? it.require_approval),
                         reviewerUserIds: (() => {
                             const rawIds = it.reviewerUserIds ?? it.reviewer_user_ids;
@@ -295,6 +311,7 @@ const normalizeAnalyzeResponse = (raw: unknown): AnalyzeResponse => {
                         })(),
                         exemptMode: it.exemptMode != null ? String(it.exemptMode) : it.exempt_mode != null ? String(it.exempt_mode) : undefined,
                         durationMinutes: it.durationMinutes != null ? Number(it.durationMinutes) : it.duration_minutes != null ? Number(it.duration_minutes) : null,
+                        extendUntilTime: it.extendUntilTime != null ? String(it.extendUntilTime) : it.extend_until_time != null ? String(it.extend_until_time) : null,
                         maxCount: it.maxCount != null ? Number(it.maxCount) : it.max_count != null ? Number(it.max_count) : null,
                     }))
                     .filter((it) => Number.isFinite(it.id) && it.optionLabel);

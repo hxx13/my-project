@@ -17,7 +17,7 @@
                m.request_id AS requestId, m.operator_user_id AS operatorUserId,
                COALESCE(op.name, op2.display_nickname, op2.username) AS operatorName,
                m.applicant_user_id AS applicantUserId, m.remark,
-               DATE_ADD(m.created_at, INTERVAL 8 HOUR) AS createdAt,
+               DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
                COALESCE(r.applicant_name, p.name) AS applicantName,
                COALESCE(r.applicant_group, p.project_group_name) AS applicantGroup
         FROM material_stock_movement m
@@ -27,11 +27,20 @@
         LEFT JOIN aro_personnel op ON m.operator_user_id = op.user_id
         LEFT JOIN sys_user op2 ON m.operator_user_id = op2.id
         WHERE m.item_id = #{itemId}
+        <if test="applicantGroup != null and applicantGroup != ''">
+            AND (r.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup})
+        </if>
         ORDER BY m.created_at DESC
         LIMIT #{offset}, #{size}
     </select>
     <select id="countViewsByItemId" resultType="int">
-        SELECT COUNT(1) FROM material_stock_movement WHERE item_id = #{itemId}
+        SELECT COUNT(1) FROM material_stock_movement m
+        LEFT JOIN material_request r ON m.request_id = r.id
+        LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
+        WHERE m.item_id = #{itemId}
+        <if test="applicantGroup != null and applicantGroup != ''">
+            AND (r.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup})
+        </if>
     </select>
     <select id="statsDailyMovements" resultType="java.util.HashMap">
         SELECT DATE(m.created_at) AS date, m.movement_type AS movementType,

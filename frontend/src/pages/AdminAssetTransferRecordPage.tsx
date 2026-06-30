@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AutoImage } from "@/components/ui/AutoImage";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import { queryKeys } from "@/api/hooks/queryKeys";
 import { Portal } from "@/components/Portal";
-import { ClipboardList, Download } from "lucide-react";
+import { ClipboardList, Download, Upload } from "lucide-react";
 import {
   appendTransferAfterPhotos,
   completeTransferRequest,
@@ -26,7 +26,9 @@ import { AdminFormCard, AdminPageShell, AdminDataTableWrap } from "@/components/
 import { AdminButton } from "@/components/admin/AdminButton";
 import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import { authStorage } from "@/features/auth/authStorage";
+import { authHttp } from "@/api/core/authHttp";
 import { hasMinRole } from "@/features/auth/roleAccess";
+import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
@@ -61,8 +63,7 @@ function statusLabel(s: string | undefined) {
 }
 
 function formatDateTime(v: string | undefined | null) {
-  if (v == null || v === "") return "-";
-  return String(v).replace("T", " ").slice(0, 19);
+  return formatDateTimeAsiaShanghai(v);
 }
 
 function normalizeTransferRecord(r: AssetTransferRecord): AssetTransferRecord {
@@ -178,9 +179,11 @@ export default function AdminAssetTransferRecordPage() {
   const [detailRows, setDetailRows] = useState<{ key: string; label: string; value: string }[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deletingAfterPhoto, setDeletingAfterPhoto] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const qc = useQueryClient();
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const canDeleteTransfer = hasMinRole(role, "ADMIN");
 
   // Debounced auto-search: 输入即搜
@@ -309,6 +312,35 @@ export default function AdminAssetTransferRecordPage() {
       toast.error(e instanceof Error ? e.message : "追加失败");
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  /** Web 端上传转移后照片到后端，获得 publicUrl（与小程序 syncToBackend → publicUrl 对齐） */
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await authHttp.post<{ code: number; success: boolean; data: { url: string; publicUrl: string; recordId: number }; message?: string }>("/api/upload", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (res.data?.success && res.data.data?.publicUrl) {
+        const url = res.data.data.publicUrl;
+        setAppendUrlsText((prev) => {
+          const trimmed = prev.trimEnd();
+          return trimmed ? `${trimmed}\n${url}` : url;
+        });
+        toast.success("照片已上传");
+      } else {
+        toast.error(res.data?.message || "上传失败");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -797,13 +829,31 @@ export default function AdminAssetTransferRecordPage() {
             </div>
 
             <label className="mb-3 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-              追加照片 URL（每行一个；与小程序一致可填可访问的图片地址）
+              <span className="inline-flex items-center gap-2">
+                追加照片 URL（每行一个；也可直接上传）
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(e) => void handleFileUpload(e)}
+                />
+                <button
+                  type="button"
+                  disabled={uploadingFile || actionLoading}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2 py-0.5 text-[11px] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft-2)] disabled:opacity-50"
+                >
+                  <Upload className="h-3 w-3" />
+                  {uploadingFile ? "上传中…" : "上传照片"}
+                </button>
+              </span>
               <textarea
                 value={appendUrlsText}
                 onChange={(e) => setAppendUrlsText(e.target.value)}
                 rows={4}
                 className="rounded-twin-sm border border-[var(--twin-hairline-strong)] px-3 py-2 font-mono text-xs"
-                placeholder="https://... 或业务系统返回的媒体地址"
+                placeholder="https://... 或点击「上传照片」选择本地图片"
               />
             </label>
             <div className="flex flex-wrap gap-2">
@@ -948,7 +998,7 @@ export default function AdminAssetTransferRecordPage() {
                     <tr key={item.id}>
                       <td className="border-b px-2 py-2">{item.fileName}</td>
                       <td className="border-b px-2 py-2">{item.status}</td>
-                      <td className="border-b px-2 py-2">{item.expireAt ? String(item.expireAt).replace("T", " ").slice(0, 19) : "-"}</td>
+                      <td className="border-b px-2 py-2">{formatDateTimeAsiaShanghai(item.expireAt)}</td>
                       <td className="border-b px-2 py-2">
                         <div className="flex flex-wrap gap-1">
                           <button

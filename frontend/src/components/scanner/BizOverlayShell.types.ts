@@ -1,8 +1,19 @@
 import type { ReactNode, ComponentType } from "react";
 
+/** 扫码弹窗当前人员上下文（快捷业务登记信息与 analyze 一致） */
+export interface ScanApplicantContext {
+  userId: string;
+  userName?: string;
+  departmentName?: string;
+  projectGroupName?: string;
+  group?: string;
+}
+
 /** 业务项组件与覆盖层容器之间的唯一接口契约 */
 export interface BizItemSlotProps {
   userId: string;
+  /** 扫码解析到的人员信息（姓名、课题组等） */
+  scanUser?: ScanApplicantContext;
   pin: string;
   onDone: () => void;
   onError: (msg: string) => void;
@@ -23,6 +34,7 @@ export interface BizItem {
 
 export interface BizOverlayShellProps {
   userId: string;
+  scanUser?: ScanApplicantContext;
   title: string;
   onCancel: () => void;
   className?: string;

@@ -79,7 +79,7 @@ export default function UserSelector({ value, onChange, placeholder = '搜索用
   const inputClass = "w-full rounded-[4px] border border-[var(--app-color-border)] bg-[var(--app-color-surface-page)] px-2 py-1 text-[11px] text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)]";
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative w-full min-w-0 max-w-full">
       {/* 多选标签 */}
       {multi && selectedNames.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-1">

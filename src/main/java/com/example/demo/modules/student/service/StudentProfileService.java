@@ -3,7 +3,10 @@ package com.example.demo.modules.student.service;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.student.dto.StudentProfileAccountInfo;
+import com.example.demo.modules.student.dto.StudentProfilePersonnelInfo;
 import com.example.demo.modules.student.dto.StudentProfileResponse;
+import com.example.demo.modules.student.dto.StudentProfileStatsInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -23,7 +26,7 @@ public class StudentProfileService {
         StudentProfileResponse resp = new StudentProfileResponse();
 
         // 1. 构建 AccountInfo
-        StudentProfileResponse.AccountInfo account = new StudentProfileResponse.AccountInfo();
+        StudentProfileAccountInfo account = new StudentProfileAccountInfo();
         account.setUsername(user.getUsername());
         account.setRole(user.getRole() != null ? user.getRole().getDescZh() : null);
         account.setCreateTime(user.getCreateTime());
@@ -32,7 +35,7 @@ public class StudentProfileService {
         // 2. 关联 aro_personnel：优先通过 user_id，失败则通过姓名匹配
         AroPersonnel personnel = findPersonnelForUser(user);
         if (personnel != null) {
-            StudentProfileResponse.PersonnelInfo info = new StudentProfileResponse.PersonnelInfo();
+            StudentProfilePersonnelInfo info = new StudentProfilePersonnelInfo();
             info.setUserId(personnel.getId());
             info.setName(personnel.getName());
             info.setGender(personnel.getGender());
@@ -49,7 +52,7 @@ public class StudentProfileService {
         }
 
         // 3. StatsInfo（占位）
-        StudentProfileResponse.StatsInfo stats = new StudentProfileResponse.StatsInfo();
+        StudentProfileStatsInfo stats = new StudentProfileStatsInfo();
         stats.setRecentAccessCount(0);
         resp.setStats(stats);
 

@@ -7,7 +7,7 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { fetchPublicPagePermissions, WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, type MinRole } from "@/api/domains/pagePermission.api";
 import { fetchPendingBadges } from "@/api/domains/me.api";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
-import { buildAdminNavModel, createAdminNavContext, normalizeAdminPath, type AdminHomeEntry } from "@/features/admin/buildAdminNavModel";
+import { buildAdminNavModel, createAdminNavContext, normalizeAdminPath, toAdminRoutePath, type AdminHomeEntry } from "@/features/admin/buildAdminNavModel";
 import { ADMIN_NAV_PERSONALIZATION_EVENT, isAdminNavStarred, readAdminNavRecent, toggleAdminNavStar } from "@/features/admin/adminNavPersonalization";
 import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
 import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems, titleForUnknownAdminPath } from "@/features/admin/adminNavRegistry";
@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { Sparkles, Star, ChevronDown, ChevronRight } from "lucide-react";
 
 const ROLE_LABEL: Record<MinRole, string> = {
-  STUDENT: "学生", STAFF: "教职工", SENIOR: "高级职工", ADMIN: "管理员", SUPER_ADMIN: "超级管理员", PLATFORM_OWNER: "平台所有者",
+  MEMBER: "学生", STAFF: "教职工", SENIOR: "高级职工", ADMIN: "管理员", SUPER_ADMIN: "超级管理员", PLATFORM_OWNER: "平台所有者",
 };
 
 /** Hardcoded color map: path → CSS gradient. Built once at module load from registry. */
@@ -73,7 +73,7 @@ const HOME_CARD_GRID_CLASS =
 export default function AdminHomePage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const [navBump, setNavBump] = useState(0);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -254,7 +254,7 @@ function HomeCard({
   return (
     <button
       type="button"
-      onClick={() => entry.enabled && navigate(entry.path)}
+      onClick={() => entry.enabled && navigate(toAdminRoutePath(entry.path))}
       disabled={!entry.enabled}
       className={cn(
         "admin-home-entry-card group relative box-border flex h-[6.25rem] w-[5.75rem] shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl border p-2 text-center transition-all duration-200",

@@ -380,11 +380,8 @@ public class DahuaAutoSignoutService {
             return;
         }
         try {
-            TwinCardMapping mapping = twinCardMappingService.getByAroUserId(userId);
-            if (mapping == null) {
-                return;
-            }
-            if (mapping.getFreezeExemptFlag() != null && mapping.getFreezeExemptFlag() == 1) {
+            TwinCardMapping mapping = twinCardMappingService.loadMappingByAroUserIdFromDb(userId);
+            if (mapping == null || twinCardMappingService.isFreezeExempt(mapping)) {
                 return;
             }
             if (mapping.getCardNo() != null && !mapping.getCardNo().isBlank()) {

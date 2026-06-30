@@ -959,6 +959,7 @@ public class SuppliesService {
         if (!anyGrant) {
             return Result.error("请至少勾选一行同意发放");
         }
+        List<String> grantedItemNames = new ArrayList<>();
         for (SupplyClaimLine dl : dbLines) {
             Integer out = outQtyByLine.get(dl.getId());
             String remark = remarkByLine.get(dl.getId());
@@ -967,6 +968,9 @@ public class SuppliesService {
                 continue;
             }
             SupplyItem it = itemMapper.findById(dl.getItemId());
+            if (it != null && StringUtils.hasText(it.getName())) {
+                grantedItemNames.add(it.getName().trim());
+            }
             if (it == null) {
                 throw new IllegalStateException("物资不存在: " + dl.getItemId());
             }
@@ -996,7 +1000,7 @@ public class SuppliesService {
         logOp("ORDER_FULFILL", "CLAIM_ORDER", orderId, admin.getId(), detail);
         logOp("OUTBOUND", "CLAIM_ORDER", orderId, admin.getId(), detail);
         SupplyClaimOrder done = claimOrderMapper.findById(orderId);
-        publishClaimFulfilled(admin, done, outQtyByLine.size());
+        publishClaimFulfilled(admin, done, grantedItemNames);
         return Result.success(toOrderView(done, true));
     }
 
@@ -1232,7 +1236,7 @@ public class SuppliesService {
     }
 
     /** 出库完成 → 申请人站内回执（与报修/采购办结同源：COMPLETED + SUPPLIES_CLAIM） */
-    private void publishClaimFulfilled(User operator, SupplyClaimOrder order, int grantedLineKinds) {
+    private void publishClaimFulfilled(User operator, SupplyClaimOrder order, List<String> itemNames) {
         if (order == null || !StringUtils.hasText(order.getUserId())) {
             return;
         }
@@ -1246,8 +1250,15 @@ public class SuppliesService {
         vars.put("orderId", order.getId());
         vars.put("bizId", order.getId());
         vars.put("applicantName", resolveDisplayName(order.getUserId()));
-        int n = Math.max(grantedLineKinds, 1);
-        vars.put("summary", "已出库 " + n + " 类物资");
+        if (itemNames != null && !itemNames.isEmpty()) {
+            // 去重取前5个物品名称
+            List<String> distinct = itemNames.stream().distinct().limit(5).toList();
+            String items = String.join("、", distinct);
+            if (itemNames.stream().distinct().count() > 5) items += "等";
+            vars.put("summary", "已出库：" + items);
+        } else {
+            vars.put("summary", "已出库");
+        }
         event.setVariables(vars);
         notificationService.publish(event);
     }

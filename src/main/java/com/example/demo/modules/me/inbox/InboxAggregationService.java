@@ -36,7 +36,7 @@ public class InboxAggregationService {
         if (beforeMillis != null && beforeMillis > 0) {
             beforeTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(beforeMillis), ZoneId.systemDefault());
         }
-        RoleEnum role = user.getRole() == null ? RoleEnum.STUDENT : user.getRole();
+        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
         List<String> excludeBiz = List.of();
         if (role.getLevel() >= RoleEnum.STAFF.getLevel()) {
             excludeBiz = List.of("REPAIR", "PURCHASE", "SUPPLIES_CLAIM");

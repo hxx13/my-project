@@ -22,7 +22,7 @@ public class StaffUnifiedWorkInboxPendingCounter {
         if (user == null) {
             return 0;
         }
-        RoleEnum role = user.getRole() == null ? RoleEnum.STUDENT : user.getRole();
+        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             return 0;
         }

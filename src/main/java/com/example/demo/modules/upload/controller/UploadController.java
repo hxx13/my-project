@@ -8,6 +8,8 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.upload.entity.UploadFileRecord;
 import com.example.demo.modules.upload.service.UploadFileRecordService;
 import com.example.demo.modules.upload.service.UploadFileService;
+import com.example.demo.modules.site.LoginBrandingService;
+import com.example.demo.modules.upload.service.UploadFileStorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
@@ -15,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
@@ -55,6 +58,8 @@ public class UploadController {
     private final AuthContextService authContextService;
     private final UploadFileService uploadFileService;
     private final UploadFileRecordService uploadFileRecordService;
+    private final UploadFileStorageService uploadFileStorageService;
+    private final LoginBrandingService loginBrandingService;
     private final JdbcTemplate jdbcTemplate;
 
     @Value("${app.public-base-url:}")
@@ -66,10 +71,14 @@ public class UploadController {
     public UploadController(AuthContextService authContextService,
                             UploadFileService uploadFileService,
                             UploadFileRecordService uploadFileRecordService,
+                            UploadFileStorageService uploadFileStorageService,
+                            LoginBrandingService loginBrandingService,
                             JdbcTemplate jdbcTemplate) {
         this.authContextService = authContextService;
         this.uploadFileService = uploadFileService;
         this.uploadFileRecordService = uploadFileRecordService;
+        this.uploadFileStorageService = uploadFileStorageService;
+        this.loginBrandingService = loginBrandingService;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -84,7 +93,7 @@ public class UploadController {
         if (user.getStatus() != null && user.getStatus() == 0) {
             return Result.error("账号已禁用");
         }
-        RoleEnum role = user.getRole() == null ? RoleEnum.STUDENT : user.getRole();
+        RoleEnum role = user.getRole() == null ? RoleEnum.MEMBER : user.getRole();
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             return Result.error("无权限上传文件");
         }
@@ -92,33 +101,19 @@ public class UploadController {
             return Result.error("文件不能为空");
         }
 
-        String ext = extractExtension(file.getOriginalFilename());
-        String dateDir = LocalDate.now().toString().replace("-", "");
-        Path baseDir = uploadFileService.resolveBaseDir();
-        Path targetDir = baseDir.resolve(dateDir);
-        Files.createDirectories(targetDir);
-        String fileName = UUID.randomUUID().toString().replace("-", "") + (ext.isEmpty() ? "" : "." + ext);
-        Path target = targetDir.resolve(fileName);
-        try (InputStream inputStream = file.getInputStream()) {
-            Files.copy(inputStream, target, StandardCopyOption.REPLACE_EXISTING);
+        try {
+            UploadFileStorageService.StoredUploadFile stored =
+                    uploadFileStorageService.store(file, "WEB");
+            Map<String, Object> data = new HashMap<>();
+            data.put("url", stored.url());
+            data.put("publicUrl", stored.publicUrl());
+            data.put("recordId", stored.recordId());
+            return Result.success(data);
+        } catch (IllegalArgumentException ex) {
+            return Result.error(ex.getMessage());
+        } catch (Exception ex) {
+            return Result.error("上传失败: " + ex.getMessage());
         }
-
-        // 写入 upload_file_record 双端同步记录
-        UploadFileRecord record = new UploadFileRecord();
-        record.setStorageKey(dateDir + "/" + fileName);
-        record.setPublicUrl(buildPublicUrl(dateDir, fileName));
-        record.setOriginalName(file.getOriginalFilename());
-        record.setMimeType(file.getContentType());
-        record.setSizeBytes(file.getSize());
-        record.setSource("WEB");
-        record.setSyncedToWechat(false);
-        uploadFileRecordService.create(record);
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("url", "/api/upload/files/" + dateDir + "/" + fileName);
-        data.put("publicUrl", record.getPublicUrl());
-        data.put("recordId", record.getId());
-        return Result.success(data);
     }
 
     /**
@@ -161,7 +156,22 @@ public class UploadController {
                 }
             }
 
-            // 3. 未找到：返回占位 SVG，不报 404
+            // 3. 登录页轮播旧链：/api/public/login-branding/files/{fileName}
+            String loginBrandingFile = extractLoginBrandingFileName(url);
+            if (loginBrandingFile != null) {
+                try {
+                    Path brandingPath = loginBrandingService.resolveFileForDownload(loginBrandingFile);
+                    if (Files.isRegularFile(brandingPath)) {
+                        Resource resource = new FileSystemResource(brandingPath);
+                        MediaType mediaType = resolveMediaType(brandingPath);
+                        return ResponseEntity.ok().contentType(mediaType).body(resource);
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    return ResponseEntity.badRequest().build();
+                }
+            }
+
+            // 4. 未找到：返回占位 SVG，不报 404
             String svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"80\" height=\"80\">"
                     + "<rect fill=\"#f1f5f9\" width=\"80\" height=\"80\" rx=\"4\"/>"
                     + "<text x=\"40\" y=\"42\" text-anchor=\"middle\" fill=\"#94a3b8\" font-size=\"10\" font-family=\"sans-serif\">未同步</text>"
@@ -193,6 +203,7 @@ public class UploadController {
         Resource resource = new FileSystemResource(file);
         MediaType mediaType = resolveMediaType(file.toPath());
         return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(7, java.util.concurrent.TimeUnit.DAYS).cachePublic())
                 .contentType(mediaType)
                 .body(resource);
     }
@@ -270,6 +281,9 @@ public class UploadController {
     private String extractStorageKeyFromUrl(String url) {
         if (url == null || url.isBlank()) return null;
         String u = url.trim();
+        if (u.contains("/api/public/login-branding/files/")) {
+            return null;
+        }
         int idx = u.indexOf("/files/");
         if (idx < 0) return null;
         String after = u.substring(idx + 7); // skip "/files/"
@@ -277,6 +291,22 @@ public class UploadController {
         if (qm >= 0) after = after.substring(0, qm);
         after = after.trim();
         return after.isEmpty() ? null : after;
+    }
+
+    /** 从 url 参数或绝对地址中提取 login-branding 文件名（32hex.ext） */
+    private String extractLoginBrandingFileName(String url) {
+        if (url == null || url.isBlank()) return null;
+        String u = url.trim();
+        int qm = u.indexOf('?');
+        if (qm >= 0) u = u.substring(0, qm);
+        int hash = u.indexOf('#');
+        if (hash >= 0) u = u.substring(0, hash);
+        final String marker = "/api/public/login-branding/files/";
+        int idx = u.indexOf(marker);
+        if (idx < 0) return null;
+        String name = u.substring(idx + marker.length()).trim();
+        if (name.isEmpty() || name.contains("..") || name.contains("/")) return null;
+        return name;
     }
 
     private String extractExtension(String filename) {

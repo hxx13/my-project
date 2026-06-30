@@ -9,6 +9,7 @@ import com.example.demo.modules.admin.dto.UpdateStatusRequest;
 import com.example.demo.modules.admin.service.AdminService;
 import com.example.demo.modules.auth.dto.UpdateDisplayNicknameRequest;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.service.SpecialChannelService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,9 +21,11 @@ import org.springframework.web.bind.annotation.*;
 public class AdminController {
 
     private final AdminService adminService;
+    private final SpecialChannelService specialChannelService;
 
-    public AdminController(AdminService adminService) {
+    public AdminController(AdminService adminService, SpecialChannelService specialChannelService) {
         this.adminService = adminService;
+        this.specialChannelService = specialChannelService;
     }
 
     @GetMapping("/personnel")
@@ -144,6 +147,21 @@ public class AdminController {
         }
     }
 
+    @PostMapping("/personnel/{personnelUserId}/reset-pin")
+    @Operation(summary = "重置人员库学号的扫码个人密码（PIN），与 special-channel 存储一致")
+    public Result<?> resetPersonnelPin(@PathVariable String personnelUserId, HttpServletRequest httpRequest) {
+        Result<?> denied = requireSuperAdmin(httpRequest);
+        if (denied != null) return denied;
+        Object attr = httpRequest.getAttribute(com.example.demo.common.config.AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
+        String adminId = attr instanceof User me ? me.getId() : "";
+        try {
+            specialChannelService.resetPin(personnelUserId.trim(), adminId);
+            return Result.success();
+        } catch (com.example.demo.common.exception.TwinBusinessException e) {
+            return Result.fail(e.getCode(), e.getMessage());
+        }
+    }
+
     private Result<?> requireSuperAdmin(HttpServletRequest request) {
         return requireMinRole(request, RoleEnum.SUPER_ADMIN);
     }
@@ -153,7 +171,7 @@ public class AdminController {
         if (!(attr instanceof User currentUser)) {
             return Result.error("当前登录信息无效");
         }
-        RoleEnum currentRole = currentUser.getRole() == null ? RoleEnum.STUDENT : currentUser.getRole();
+        RoleEnum currentRole = currentUser.getRole() == null ? RoleEnum.MEMBER : currentUser.getRole();
         if (currentRole.getLevel() < minRole.getLevel()) {
             return Result.error("无权限访问");
         }

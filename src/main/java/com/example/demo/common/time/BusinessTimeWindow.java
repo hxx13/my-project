@@ -40,4 +40,16 @@ public class BusinessTimeWindow {
 
     public record Window(String startInclusive, String endExclusive) {
     }
+
+    /**
+     * 格式化 {@link LocalDateTime} 为北京时间墙钟字符串。
+     * JVM 默认时区已设为 Asia/Shanghai，MySQL JDBC serverTimezone=Asia/Shanghai，
+     * 无需额外偏移，直接输出。
+     */
+    public static String toDisplayWallClock(LocalDateTime dt) {
+        if (dt == null) {
+            return null;
+        }
+        return dt.format(DATETIME);
+    }
 }

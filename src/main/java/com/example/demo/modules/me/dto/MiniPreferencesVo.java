@@ -27,6 +27,15 @@ public class MiniPreferencesVo {
      */
     private Map<String, String> pageHelpIntroAck = new LinkedHashMap<>();
 
+    /** 管理后台侧栏「常用」最近访问路径（仅 pathname，不含 query） */
+    private List<String> adminNavRecent = new ArrayList<>();
+
+    /** 管理后台侧栏「收藏」路径 */
+    private List<String> adminNavStars = new ArrayList<>();
+
+    /** 管理后台锁定入口路径（同一时间仅一个；null 表示未锁定） */
+    private String adminNavLock;
+
     /**
      * 房间在场红点：用户勾选的关注区域（校区 + 可选楼层；楼层为空表示整校区）。
      */

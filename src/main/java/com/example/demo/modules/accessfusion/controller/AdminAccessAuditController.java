@@ -368,7 +368,7 @@ public class AdminAccessAuditController {
         if (user == null) {
             return Result.error("未登录或令牌无效");
         }
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() < RoleEnum.ADMIN.getLevel()) {
             return Result.error("无权限访问");
         }

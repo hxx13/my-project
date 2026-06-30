@@ -31,6 +31,7 @@ export default function RegisterStaffPage() {
       setSubmitting(true);
       const data = await registerStaff(username.trim(), password, inviteCode.trim());
       authStorage.setAuth(data.token, data.role, data.userInfo);
+      authStorage.markLoginPortal("staff");
       toast.success("注册成功");
       navigate("/", { replace: true });
     } catch (error) {

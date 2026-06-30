@@ -45,10 +45,12 @@ public class PendingBadgesService {
         v.setProcessSuppliesText(formatBadgeText(v.getProcessSupplies()));
         v.setMaterialText(formatBadgeText(v.getMaterial()));
         v.setProcessMaterialText(formatBadgeText(v.getProcessMaterial()));
+        v.setProcessScanDelayText(formatBadgeText(v.getProcessScanDelay()));
         v.setChatUnreadText(formatBadgeText(v.getChatUnread()));
         int staffSidebar = Math.max(0, v.getChatUnread())
                 + Math.max(0, v.getNotify())
-                + Math.max(0, v.getStaffUnifiedWorkInboxPending());
+                + Math.max(0, v.getStaffUnifiedWorkInboxPending())
+                + Math.max(0, v.getProcessScanDelay());
         v.setStaffMessagesSidebarTotal(staffSidebar);
         v.setStaffMessagesSidebarTotalText(formatBadgeText(staffSidebar));
         return v;

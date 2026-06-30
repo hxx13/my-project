@@ -5,19 +5,6 @@
     --rich-text-image-max-width: 50%;
     --rich-text-image-row-max: 1;
     --rich-text-image-row-gap: 0.5rem;
-    --rich-text-image-max-height: min(50vh, 400px);
-  }
-
-  .page-help-rich-editor {
-    --rich-text-image-max-height: min(36vh, 380px);
-  }
-
-  .page-help-dialog {
-    --rich-text-image-max-height: min(42vh, 440px);
-  }
-
-  .page-help-intro-dialog {
-    --rich-text-image-max-height: min(58vh, 640px);
   }
 
   /* 含图段落：默认居中（单图一行） */
@@ -52,15 +39,17 @@
     margin: 0;
     object-fit: contain;
     border-radius: var(--app-radius-element);
-    max-height: var(--rich-text-image-max-height);
     cursor: zoom-in;
     transition: opacity var(--app-motion-hover), box-shadow var(--app-motion-hover);
   }
 
-  /* 单图：使用环境变量宽度，不占满整行 */
-  .rich-text-content :where(p > img:only-child),
-  .page-help-rich-editor .ProseMirror :where(p > img:only-child),
-  .page-help-prose :where(p > img:only-child) {
+  /* 单图段落：段内仅一张图（TipTap 段内常有 br，勿用 :only-child） */
+  .rich-text-content :where(p:has(> img):not(:has(> img + img)) > img),
+  .page-help-rich-editor .ProseMirror :where(p:has(> img):not(:has(> img + img)) > img),
+  .page-help-prose :where(p:has(> img):not(:has(> img + img)) > img),
+  .rich-text-content :where(p > img:only-of-type),
+  .page-help-rich-editor .ProseMirror :where(p > img:only-of-type),
+  .page-help-prose :where(p > img:only-of-type) {
     max-width: var(--rich-text-image-max-width);
   }
 

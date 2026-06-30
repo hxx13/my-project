@@ -69,6 +69,11 @@ public interface AccessCleanPackageItemMapper {
 
     Map<String, Object> summarizeGlobalLibrary();
 
+    int countIncludedBetween(
+            @Param("channelCode") String channelCode,
+            @Param("startTime") String startTime,
+            @Param("endTime") String endTime);
+
     List<AccessCleanPackageItem> listLibraryItems(
             @Param("channelCodes") List<String> channelCodes,
             @Param("startTime") String startTime,

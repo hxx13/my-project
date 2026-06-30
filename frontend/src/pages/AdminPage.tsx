@@ -5,7 +5,7 @@ import { authStorage } from "@/features/auth/authStorage";
 
 export default function AdminPage() {
   const navigate = useNavigate();
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
 
   const handleLogout = () => {
     authStorage.clear();

@@ -10,11 +10,14 @@ import com.example.demo.modules.accessfusion.mapper.AccessSwingCleanRunMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.demo.modules.accessfusion.model.InferredAccessEvent;
+import com.example.demo.modules.accessfusion.support.AccessCleanDaySplitSupport;
 import com.example.demo.modules.accessfusion.support.SwingDirectionFilterSupport;
 import com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord;
 import com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper;
 import com.example.demo.modules.twin.dahua.support.DahuaSwingDepartmentSupport;
 import com.example.demo.modules.twin.dahua.support.DahuaSwingEnterExitSupport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -35,6 +38,7 @@ public class AccessSwingCleanWorkspaceService {
 
     public record CleanMergeResult(AccessCleanPackage packageRow, AccessSwingCleanRun run) {}
 
+    private static final Logger log = LoggerFactory.getLogger(AccessSwingCleanWorkspaceService.class);
     private static final DateTimeFormatter DT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     /** 清洗仅消费审计批量拉取写入的记录，排除 REALTIME 窗口轮询 */
     private static final String PULL_TASK_TYPE_STATS = "STATS";
@@ -513,7 +517,8 @@ public class AccessSwingCleanWorkspaceService {
                         incrementalOnly,
                         debounce,
                         manualItems,
-                        supersedesRunId);
+                        supersedesRunId,
+                        swings.size() >= MERGE_BATCH_LIMIT);
         return persistMerge(
                 query.channelCode(), publish, preview, "SCHEDULED".equals(triggerType), triggerType, ctx);
     }
@@ -645,7 +650,14 @@ public class AccessSwingCleanWorkspaceService {
                                 true,
                                 toManualMap(manual),
                                 debounce);
-                MergeContext ctx = new MergeContext(query, false, true, true, debounce, manual, null);
+                boolean truncated = swings.size() >= MERGE_BATCH_LIMIT;
+                if (truncated) {
+                    log.warn(
+                            "[clean-truncate] autoPublishAll: MERGE_BATCH_LIMIT ({}) reached for channel={}. "
+                                    + "{} records loaded, more may exist.",
+                            MERGE_BATCH_LIMIT, channelCode, swings.size());
+                }
+                MergeContext ctx = new MergeContext(query, false, true, true, debounce, manual, null, truncated);
                 persistMerge(channelCode, true, preview, true, "SCHEDULED", ctx);
                 ok++;
                 statRow.put("action", "MERGED");
@@ -711,6 +723,132 @@ public class AccessSwingCleanWorkspaceService {
         return autoPublishAllEnabledChannels();
     }
 
+    /**
+     * 强制回源清洗：对所有已启用通道在指定时间窗内执行全量（非增量）合并。
+     * 用于强制重算、定时安全网等需要回到门禁原表重新清洗的场景。
+     * @param startTime  时间窗起始 (yyyy-MM-dd HH:mm:ss)
+     * @param endTime    时间窗结束 (yyyy-MM-dd HH:mm:ss)
+     * @param triggerType 触发类型标签（FORCE_RECALC / PIPELINE_SAFETY_NET）
+     */
+    public Map<String, Object> forceMergeAllChannelsForWindow(
+            String startTime, String endTime, String triggerType) {
+        List<Map<String, Object>> channels = channelScopeService.listGlobalEnabledChannels();
+        int ok = 0;
+        int fail = 0;
+        int skipped = 0;
+        int totalIncluded = 0;
+        List<String> errors = new ArrayList<>();
+        List<Map<String, Object>> channelResults = new ArrayList<>();
+        for (Map<String, Object> chRow : channels) {
+            String channelCode = str(chRow.get("channelCode"));
+            if (!StringUtils.hasText(channelCode)) {
+                continue;
+            }
+            try {
+                List<Long> taskIds = channelScopeService.enabledTaskIdsForChannel(channelCode);
+                if (taskIds.isEmpty()) {
+                    skipped++;
+                    continue;
+                }
+                List<AccessCleanDaySplitSupport.DayWindow> days =
+                        AccessCleanDaySplitSupport.split(startTime, endTime);
+                int chIncluded = 0;
+                int chDays = 0;
+                for (AccessCleanDaySplitSupport.DayWindow day : days) {
+                    try {
+                        CleanMergeResult merged = mergePackage(
+                                0L,
+                                SCOPE_ALL_LINKED,
+                                channelCode,
+                                day.windowStart(),
+                                day.windowEnd(),
+                                true,
+                                false,
+                                true,
+                                false,
+                                SwingDirectionFilterSupport.ALL,
+                                List.of());
+                        int included = merged.run() != null
+                                ? intVal(merged.run().getIncludedCount()) : 0;
+                        chIncluded += included;
+                        chDays++;
+                    } catch (Exception dayEx) {
+                        errors.add(channelCode + " day=" + day.coverageDay()
+                                + ": " + dayEx.getMessage());
+                    }
+                }
+                totalIncluded += chIncluded;
+                ok++;
+                Map<String, Object> cr = new LinkedHashMap<>();
+                cr.put("channelCode", channelCode);
+                cr.put("days", chDays);
+                cr.put("included", chIncluded);
+                channelResults.add(cr);
+            } catch (Exception e) {
+                fail++;
+                errors.add(channelCode + ": " + e.getMessage());
+                log.warn("[force-merge] channel={} failed: {}", channelCode, e.getMessage());
+            }
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("triggerType", triggerType);
+        out.put("channels", channels.size());
+        out.put("ok", ok);
+        out.put("fail", fail);
+        out.put("skipped", skipped);
+        out.put("totalIncluded", totalIncluded);
+        out.put("channelResults", channelResults);
+        out.put("errors", errors);
+        log.info("[force-merge] {}: {} ok, {} fail, {} skipped, {} total included",
+                triggerType, ok, fail, skipped, totalIncluded);
+        return out;
+    }
+
+    /**
+     * 检测清洗缺口：对比门禁原表与清洗库，找出 raw 有记录但 clean 缺失或差距过大的通道。
+     * @param startDate 日期起 (yyyy-MM-dd)
+     * @param endDate   日期止 (yyyy-MM-dd)
+     * @param minGapThreshold 最小缺口阈值，低于此值不报告
+     */
+    public List<Map<String, Object>> detectCleaningGaps(
+            String startDate, String endDate, int minGapThreshold) {
+        List<Map<String, Object>> channels = channelScopeService.listGlobalEnabledChannels();
+        List<Map<String, Object>> gaps = new ArrayList<>();
+        String queryStart = startDate + " 00:00:00";
+        String queryEnd = endDate + " 23:59:59";
+        for (Map<String, Object> chRow : channels) {
+            String channelCode = str(chRow.get("channelCode"));
+            if (!StringUtils.hasText(channelCode)) {
+                continue;
+            }
+            List<Long> taskIds = channelScopeService.enabledTaskIdsForChannel(channelCode);
+            if (taskIds.isEmpty()) {
+                continue;
+            }
+            int rawCount = dahuaSwingMapper.countRecordsForChannelTasks(
+                    taskIds, channelCode, queryStart, queryEnd,
+                    null, null, PULL_TASK_TYPE_STATS);
+            int cleanCount = packageItemMapper.countIncludedBetween(
+                    channelCode, queryStart, queryEnd);
+            int gap = rawCount - cleanCount;
+            if (gap >= minGapThreshold) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("channelCode", channelCode);
+                entry.put("channelName", chRow.get("channelName"));
+                entry.put("rawCount", rawCount);
+                entry.put("cleanCount", cleanCount);
+                entry.put("gap", gap);
+                entry.put("taskCount", taskIds.size());
+                gaps.add(entry);
+                log.warn(
+                        "[clean-gap] channel={} has {} raw records but only {} cleaned "
+                                + "(gap={}) in [{}, {}]",
+                        channelCode, rawCount, cleanCount, gap, startDate, endDate);
+            }
+        }
+        return gaps;
+    }
+
     public Map<String, Object> getPackageDetail(long packageId, String disposition, int page, int pageSize) {
         int safeSize = Math.min(Math.max(pageSize, 1), 500);
         int offset = (Math.max(page, 1) - 1) * safeSize;
@@ -737,7 +875,8 @@ public class AccessSwingCleanWorkspaceService {
             boolean incrementalOnly,
             int debounceSeconds,
             List<Map<String, String>> manualItems,
-            Long supersedesRunId) {}
+            Long supersedesRunId,
+            boolean truncated) {}
 
     private CleanMergeResult persistMerge(
             String channelCode,
@@ -1117,6 +1256,11 @@ public class AccessSwingCleanWorkspaceService {
                         sortAsc,
                         limit,
                         0);
+        if (loaded.size() >= limit && limit > 0) {
+            log.warn(
+                    "[clean-truncate] Swing records truncated at limit={}: channel={} window=[{}, {}] taskIds={}",
+                    limit, channelCode, start, end, taskIds);
+        }
         if (SwingDirectionFilterSupport.ALL.equals(SwingDirectionFilterSupport.normalize(swingDirectionFilter))) {
             return loaded;
         }
@@ -1406,6 +1550,10 @@ public class AccessSwingCleanWorkspaceService {
         snap.put("manualItems", ctx.manualItems() != null ? ctx.manualItems() : List.of());
         if (ctx.supersedesRunId() != null) {
             snap.put("supersedesRunId", ctx.supersedesRunId());
+        }
+        if (ctx.truncated()) {
+            snap.put("truncated", true);
+            snap.put("batchLimit", MERGE_BATCH_LIMIT);
         }
         try {
             return objectMapper.writeValueAsString(snap);

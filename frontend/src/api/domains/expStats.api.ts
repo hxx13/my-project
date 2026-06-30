@@ -11,6 +11,8 @@ export interface ExpSummary {
     totalExp: number;
     todayExp: number;
   }>;
+  anomalyCount?: Array<{ anomaly_types: string; cnt: number }>;
+  pendingReviewCount?: number;
 }
 
 export interface ExpRecord {
@@ -23,6 +25,16 @@ export interface ExpRecord {
   roomId: string;
   roomName: string;
   createTime: string;
+  // 新增：异常标记与审核
+  anomalyFlag: number;
+  anomalyTypes: string | null;
+  reviewStatus: number;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  // 新增：溯源字段
+  feedSource: string | null;
+  sessionDurationMinutes: number | null;
 }
 
 export interface ExpRecordsPage {
@@ -32,19 +44,42 @@ export interface ExpRecordsPage {
   pageSize: number;
 }
 
-export async function fetchExpSummary(): Promise<ExpSummary> {
-  const res = await authHttp.get("/v1/twin/rpg/exp/summary");
-  return (res.data?.data ?? { totalExp: 0, todayExp: 0, activeUsers: 0, todayActiveUsers: 0, topEarners: [] }) as ExpSummary;
-}
-
-export async function fetchExpRecords(params: {
+export interface ExpRecordsParams {
   pageNum?: number;
   pageSize?: number;
   userId?: string;
   sourceType?: string;
   startDate?: string;
   endDate?: string;
-}): Promise<ExpRecordsPage> {
+  anomalyFlag?: number;
+  reviewStatus?: number;
+  feedSource?: string;
+}
+
+export async function fetchExpSummary(): Promise<ExpSummary> {
+  const res = await authHttp.get("/v1/twin/rpg/exp/summary");
+  return (res.data?.data ?? { totalExp: 0, todayExp: 0, activeUsers: 0, todayActiveUsers: 0, topEarners: [] }) as ExpSummary;
+}
+
+export async function fetchExpRecords(params: ExpRecordsParams): Promise<ExpRecordsPage> {
   const res = await authHttp.get("/v1/twin/rpg/exp/records", { params });
   return (res.data?.data ?? { list: [], total: 0, pageNum: 1, pageSize: 20 }) as ExpRecordsPage;
+}
+
+// ── 审核操作 ──
+
+export async function approveExpRecord(id: number, note?: string): Promise<void> {
+  await authHttp.post(`/v1/twin/rpg/review/${id}/approve`, note ? { note } : {});
+}
+
+export async function rejectExpRecord(id: number, note?: string): Promise<void> {
+  await authHttp.post(`/v1/twin/rpg/review/${id}/reject`, note ? { note } : {});
+}
+
+export async function batchApproveExpRecords(ids: number[]): Promise<void> {
+  await authHttp.post("/v1/twin/rpg/review/batch-approve", { ids });
+}
+
+export async function batchRejectExpRecords(ids: number[]): Promise<void> {
+  await authHttp.post("/v1/twin/rpg/review/batch-reject", { ids });
 }

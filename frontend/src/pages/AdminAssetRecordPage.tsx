@@ -105,6 +105,8 @@ export default function AdminAssetRecordPage() {
   const [appliedAssetName, setAppliedAssetName] = useState("");
   const [appliedUser, setAppliedUser] = useState("");
   const [appliedModel, setAppliedModel] = useState("");
+  const [campus, setCampus] = useState("");
+  const [appliedCampus, setAppliedCampus] = useState("");
   const [sortBy, setSortBy] = useState("updateTime");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [modalOpen, setModalOpen] = useState(false);
@@ -180,12 +182,13 @@ export default function AdminAssetRecordPage() {
     page,
     size,
     keyword: appliedKeyword || undefined,
+    campus: appliedCampus || undefined,
     assetName: appliedAssetName || undefined,
     user: appliedUser || undefined,
     model: appliedModel || undefined,
     sortBy,
     sortDirection,
-  }), [page, size, appliedKeyword, appliedAssetName, appliedUser, appliedModel, sortBy, sortDirection]);
+  }), [page, size, appliedKeyword, appliedCampus, appliedAssetName, appliedUser, appliedModel, sortBy, sortDirection]);
 
   const { data: assetData, isLoading } = useAssetList(queryParams);
   const rows = assetData?.rows ?? [];
@@ -193,12 +196,13 @@ export default function AdminAssetRecordPage() {
   const columns = assetData?.columns ?? [];
 
   const { data: facetsData } = useQuery({
-    queryKey: [...queryKeys.asset.all, "facets", keyword.trim(), assetName, user, model] as const,
+    queryKey: [...queryKeys.asset.all, "facets", appliedKeyword, appliedCampus, appliedAssetName, appliedUser, appliedModel] as const,
     queryFn: () => fetchAssetFacets({
-      keyword: keyword.trim() || undefined,
-      assetName: normalizeAll(assetName) || undefined,
-      user: normalizeAll(user) || undefined,
-      model: normalizeAll(model) || undefined,
+      keyword: appliedKeyword || undefined,
+      campus: appliedCampus || undefined,
+      assetName: appliedAssetName || undefined,
+      user: appliedUser || undefined,
+      model: appliedModel || undefined,
     }),
     placeholderData: (prev) => prev,
   });
@@ -234,6 +238,7 @@ export default function AdminAssetRecordPage() {
         if (label === "申请转移时间" || label === "申请转移地点" || label === "申请人" || label === "申请备注") return false;
         if (label === "数量" || label === "单价" || label === "价值" || label === "记账日期" || label === "资产类别") return false;
         if (label === "是否锁定") return false;
+        if (label.includes("规格型号") || label.includes("型号")) return false;
         return true;
       }),
     [columns]
@@ -248,6 +253,11 @@ export default function AdminAssetRecordPage() {
 
   const detailBeforePhotoUrls = useMemo(
     () => (detailAsset ? parseTransferPhotoUrls(detailAsset.latestTransferPhotoUrlsBefore) : []),
+    [detailAsset]
+  );
+
+  const detailAssetPhotos = useMemo(
+    () => (detailAsset ? parseTransferPhotoUrls(detailAsset.photoUrls) : []),
     [detailAsset]
   );
 
@@ -282,33 +292,29 @@ export default function AdminAssetRecordPage() {
 
   const applySearch = () => {
     setAppliedKeyword(keyword.trim());
+    setAppliedCampus(campus);
     setAppliedAssetName(assetName === "__ALL__" ? "" : assetName);
     setAppliedUser(user === "__ALL__" ? "" : user);
     setAppliedModel(model === "__ALL__" ? "" : model);
     setPage(1);
   };
 
-  // Debounced auto-search: 输入即搜，无需手动点击查询按钮
+  // Debounced auto-search: 输入即搜，选择即搜，无需手动点击查询按钮
   useEffect(() => {
     const timer = setTimeout(() => {
-      const kw = keyword.trim();
-      const an = assetName === "__ALL__" ? "" : assetName;
-      const u = user === "__ALL__" ? "" : user;
-      const m = model === "__ALL__" ? "" : model;
-      if (kw !== appliedKeyword || an !== appliedAssetName || u !== appliedUser || m !== appliedModel) {
-        applySearch();
-      }
+      applySearch();
     }, 400);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyword, assetName, user, model]);
+  }, [keyword, campus, assetName, user, model]);
 
   const resetSearch = () => {
     setKeyword("");
+    setCampus("");
     setAssetName("__ALL__");
     setUser("__ALL__");
     setModel("__ALL__");
     setAppliedKeyword("");
+    setAppliedCampus("");
     setAppliedAssetName("");
     setAppliedUser("");
     setAppliedModel("");
@@ -359,6 +365,7 @@ export default function AdminAssetRecordPage() {
     try {
       const blob = await exportAssetExcel({
         keyword: appliedKeyword || undefined,
+        campus: appliedCampus || undefined,
         assetName: appliedAssetName || undefined,
         user: appliedUser || undefined,
         model: appliedModel || undefined,
@@ -627,38 +634,46 @@ export default function AdminAssetRecordPage() {
     >
     <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-auto pb-2">
         <AdminFormCard title="筛选" description={`共 ${total} 条；列宽可随内容在「更多操作」中刷新。`}>
-          <div className="flex flex-nowrap items-end gap-3 overflow-x-auto">
-            <label className="flex min-w-[10rem] shrink-0 flex-col gap-1">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex w-40 shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>全局搜索</span>
               <input
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && applySearch()}
                 className={adminInputClass}
-                placeholder="资产编码/名称..."
+                placeholder="编码/名称..."
               />
             </label>
-            <label className="flex min-w-[7rem] shrink-0 flex-col gap-1">
+            <label className="flex w-20 shrink-0 flex-col gap-1">
+              <span className={adminLabelClass}>校区</span>
+              <AdminSelect value={campus} onChange={(e) => setCampus(e.target.value)} className="w-full">
+                <option value="">全部</option>
+                <option value="浦东">浦东</option>
+                <option value="浦西">浦西</option>
+              </AdminSelect>
+            </label>
+            <label className="flex w-36 shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>资产名称</span>
-              <AdminSelect value={assetName} onChange={(e) => setAssetName(e.target.value)}>
+              <AdminSelect value={assetName} onChange={(e) => setAssetName(e.target.value)} className="w-full">
                 <option value="__ALL__">全部</option>
                 {facets.assetNames.map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </AdminSelect>
             </label>
-            <label className="flex min-w-[6rem] shrink-0 flex-col gap-1">
+            <label className="flex w-28 shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>使用人</span>
-              <AdminSelect value={user} onChange={(e) => setUser(e.target.value)}>
+              <AdminSelect value={user} onChange={(e) => setUser(e.target.value)} className="w-full">
                 <option value="__ALL__">全部</option>
                 {(facets.users && facets.users.length ? facets.users : facets.campuses).map((item) => (
                   <option key={item} value={item}>{item}</option>
                 ))}
               </AdminSelect>
             </label>
-            <label className="flex min-w-[7rem] shrink-0 flex-col gap-1">
+            <label className="flex w-36 shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>规格型号</span>
-              <AdminSelect value={model} onChange={(e) => setModel(e.target.value)}>
+              <AdminSelect value={model} onChange={(e) => setModel(e.target.value)} className="w-full">
                 <option value="__ALL__">全部</option>
                 {facets.models.map((item) => (
                   <option key={item} value={item}>{item}</option>
@@ -691,7 +706,6 @@ export default function AdminAssetRecordPage() {
               {editableColumns.map((c) => (
                 <col key={c.columnKey} style={{ width: widths.dynamic[c.columnKey] }} />
               ))}
-              <col style={{ width: widths.latestTransferTime }} />
               <col style={{ width: widths.actions }} />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-[var(--twin-canvas)]">
@@ -740,20 +754,6 @@ export default function AdminAssetRecordPage() {
                     />
                   </th>
                 ))}
-                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ position: "relative" }}>
-                  转移时间
-                  <span
-                    onMouseDown={(e) => onResizeMouseDown(e, "latestTransferTime", parseCh(widths.latestTransferTime))}
-                    style={{
-                      position: "absolute", right: 0, top: 0, bottom: 0,
-                      width: "8px", cursor: "col-resize",
-                      borderRight: "2px solid transparent",
-                      transition: "border-color 0.15s",
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.borderRightColor = "var(--twin-hairline-strong, #cbd5e1)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.borderRightColor = "transparent")}
-                  />
-                </th>
                 <th className="border-b px-2 py-1.5 text-left whitespace-nowrap">操作</th>
               </tr>
             </thead>
@@ -782,9 +782,6 @@ export default function AdminAssetRecordPage() {
                       </td>
                     );
                   })}
-                  <td className="border-b px-2 py-1.5 whitespace-nowrap text-xs text-[var(--twin-body)]">
-                    {r.latestTransferTime ? String(r.latestTransferTime).replace("T", " ").slice(0, 16) : <span className="text-[var(--twin-mute)]">—</span>}
-                  </td>
                   <td className="border-b px-2 py-1.5">
                     <div className="flex items-center gap-2">
                       <AdminButton
@@ -1022,6 +1019,48 @@ export default function AdminAssetRecordPage() {
                 <div><span className="text-[var(--twin-mute)]">资产名称：</span>{detailAsset.assetName || "-"}</div>
                 <div><span className="text-[var(--twin-mute)]">当前存放地点：</span>{detailAsset.location || "-"}</div>
                 <div><span className="text-[var(--twin-mute)]">是否锁定：</span>{detailAsset.locked === 1 ? "已锁定" : "未锁定"}</div>
+                {(() => {
+                  const dynEntries = Object.entries(detailAsset.dynamicValues || {}).filter(([, v]) => v && String(v).trim());
+                  if (!dynEntries.length) return null;
+                  const modelCol = columns.find((c) => (c.columnLabel || "").includes("规格型号") || (c.columnLabel || "").includes("型号"));
+                  return (
+                    <div className="pt-2">
+                      <hr className="my-2 border-[var(--twin-hairline)]" />
+                      <div className="text-xs font-semibold text-[var(--twin-mute)] uppercase tracking-wide">详细字段</div>
+                      {modelCol && dynEntries.some(([k]) => k === modelCol.columnKey) && (
+                        <div className="mt-1"><span className="text-[var(--twin-mute)]">规格型号：</span>
+                          <span className="break-all">{detailAsset.dynamicValues[modelCol.columnKey] || "-"}</span>
+                        </div>
+                      )}
+                      {dynEntries.filter(([k]) => !modelCol || k !== modelCol.columnKey).map(([key, val]) => {
+                        const colDef = columns.find((c) => c.columnKey === key);
+                        const label = colDef ? (colDef.columnLabel || key) : key;
+                        return (
+                          <div key={key} className="mt-1"><span className="text-[var(--twin-mute)]">{label}：</span>
+                            <span className="break-all">{String(val)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                {detailAssetPhotos.length > 0 && (
+                  <div className="pt-2">
+                    <div className="text-[var(--twin-mute)]">资产照片（转移前参考）</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {detailAssetPhotos.map((u) => (
+                        <button
+                          key={u}
+                          type="button"
+                          className="h-20 w-20 overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0"
+                          onClick={() => setDetailImagePreview(u)}
+                        >
+                          <AutoImage src={u} alt="" className="h-full w-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {detailAsset.latestTransferRequestId && (
                   <>
                     <hr className="my-2 border-[var(--twin-hairline)]" />

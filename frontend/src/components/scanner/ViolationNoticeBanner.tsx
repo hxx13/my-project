@@ -22,21 +22,15 @@ type Props = {
 export function ViolationNoticeBanner({
   notice,
   kind = "violation",
-  targetUserId,
-  onInteractiveVerified,
   panelOpen,
   onPanelOpenChange,
-  suppressAutoOpen,
 }: Props) {
   return (
     <ScanPopupNoticeBanner
       kind={kind}
       notice={notice}
-      targetUserId={targetUserId}
-      onInteractiveVerified={onInteractiveVerified}
       panelOpen={panelOpen}
       onPanelOpenChange={onPanelOpenChange}
-      suppressAutoOpen={suppressAutoOpen}
     />
   );
 }

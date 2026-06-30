@@ -51,7 +51,8 @@ export async function ensureModelsLoaded(): Promise<void> {
   }
 }
 
-export function useFaceModels(): FaceModelsState {
+export function useFaceModels(options?: { autoLoad?: boolean }): FaceModelsState {
+  const autoLoad = options?.autoLoad !== false;
   const [loaded, setLoaded] = useState(globalLoaded);
   const [loading, setLoading] = useState(globalLoading);
   const [error, setError] = useState<string | null>(globalError);
@@ -85,10 +86,10 @@ export function useFaceModels(): FaceModelsState {
   }, []);
 
   useEffect(() => {
-    if (!globalLoaded) {
+    if (autoLoad && !globalLoaded) {
       void loadModels();
     }
-  }, [loadModels]);
+  }, [autoLoad, loadModels]);
 
   return { loaded, loading, error };
 }

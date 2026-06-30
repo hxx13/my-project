@@ -100,17 +100,38 @@ function resolveHomeEntryBadgeText(
   itemBadgeKey: string | null | undefined,
   pendingBadges: PendingBadges | null,
 ): string | undefined {
-  const fromKey = badgeTextFromKey(
-    pendingBadges,
-    (itemBadgeKey as keyof PendingBadges | undefined) ?? lookupRegistryBadgeKey(path),
-  );
-  return fromKey;
+  return resolveNavEntryBadgeText(path, itemBadgeKey, pendingBadges);
 }
 
+/** 教职工 Twin 命名空间；Admin 壳实际挂载在 /console/admin 下 */
+export const STAFF_CONSOLE_NS = "/console";
+
+/**
+ * 规范化为注册表用的 canonical 路径（/admin/...）。
+ * 兼容 location.pathname（/console/admin/...）与旧 /admin/... 链接。
+ */
 export function normalizeAdminPath(path: string): string {
   if (!path) return "";
-  const withSlash = path.startsWith("/") ? path : `/${path}`;
-  return withSlash.replace(/\/+/g, "/");
+  let withSlash = path.startsWith("/") ? path : `/${path}`;
+  withSlash = withSlash.replace(/\/+/g, "/");
+  if (withSlash === `${STAFF_CONSOLE_NS}/admin`) return "/admin";
+  if (withSlash.startsWith(`${STAFF_CONSOLE_NS}/admin/`)) {
+    return withSlash.slice(STAFF_CONSOLE_NS.length);
+  }
+  return withSlash;
+}
+
+/** canonical /admin/... → 可 navigate 的 /console/admin/... */
+export function toAdminRoutePath(path: string): string {
+  const canonical = normalizeAdminPath(path);
+  if (!canonical || canonical === "/admin") return `${STAFF_CONSOLE_NS}/admin`;
+  if (canonical.startsWith("/admin/")) return `${STAFF_CONSOLE_NS}${canonical}`;
+  return path;
+}
+
+export function isAdminAreaPath(path: string): boolean {
+  const p = normalizeAdminPath(path);
+  return p === "/admin" || p.startsWith("/admin/");
 }
 
 export function createAdminNavContext(role: string, permNodes: PublicPagePermissionNode[]): AdminNavContext {
@@ -124,7 +145,7 @@ export function createAdminNavContext(role: string, permNodes: PublicPagePermiss
       canPurchaseRequest: hasMinRole(role, "STAFF"),
       canPurchaseProcess: hasMinRole(role, "SUPER_ADMIN"),
       canViewNotifications: hasMinRole(role, "STAFF"),
-      canViewSettings: hasMinRole(role, "SUPER_ADMIN"),
+      canViewSettings: hasMinRole(role, "ADMIN"),
       canViewMetaStorage: hasMinRole(role, "ADMIN"),
       canSuppliesMall: hasMinRole(role, "ADMIN"),
       canSuppliesAdmin: hasMinRole(role, "SUPER_ADMIN"),
@@ -153,6 +174,57 @@ function badgeTextFromKey(pending: PendingBadges | null, key?: keyof PendingBadg
   return t || undefined;
 }
 
+function formatBadgeCount(n: number): string {
+  if (n <= 0) return "";
+  return n > 99 ? "99+" : String(n);
+}
+
+/** 学生审核入口角标：物资待审 + 延迟免冻结待审（与 MaterialReviewPage 两 Tab 各自标题计数同源，相加=侧栏总数） */
+export function formatStudentReviewBadgeCount(material: number, scanDelay: number): string | undefined {
+  const total = Math.max(0, material) + Math.max(0, scanDelay);
+  const text = formatBadgeCount(total);
+  return text || undefined;
+}
+
+/** 侧栏/收藏/常用中的「学生审核」入口统一覆盖角标（以 live 待审列表为准） */
+export function patchStudentReviewNavBadges(
+  groups: AdminSidebarNavGroup[],
+  badgeText: string | undefined,
+): AdminSidebarNavGroup[] {
+  const target = normalizeAdminPath("/admin/material/review");
+  const patch = (it: AdminSidebarNavItem): AdminSidebarNavItem =>
+    normalizeAdminPath(it.to) === target ? { ...it, badgeText: badgeText || undefined } : it;
+  return groups.map((g) => ({
+    ...g,
+    items: g.items.map(patch),
+    subgroups: g.subgroups?.map((sg) => ({ ...sg, items: sg.items.map(patch) })),
+  }));
+}
+
+/** 学生审核入口：物资待审 + 延迟免冻结待审（侧栏显示总数，页面内各 tab 标题独立计数） */
+function studentReviewBadgeText(pending: PendingBadges | null): string | undefined {
+  if (!pending) return undefined;
+  return formatStudentReviewBadgeCount(pending.processMaterial ?? 0, pending.processScanDelay ?? 0);
+}
+
+function isMaterialReviewNavPath(path: string): boolean {
+  return normalizeAdminPath(path) === normalizeAdminPath("/admin/material/review");
+}
+
+function resolveNavEntryBadgeText(
+  path: string,
+  itemBadgeKey: string | null | undefined,
+  pendingBadges: PendingBadges | null,
+): string | undefined {
+  if (isMaterialReviewNavPath(path)) {
+    return studentReviewBadgeText(pendingBadges);
+  }
+  return badgeTextFromKey(
+    pendingBadges,
+    (itemBadgeKey as keyof PendingBadges | undefined) ?? lookupRegistryBadgeKey(path),
+  );
+}
+
 const SIDEBAR_ICON_WRAP_PALETTE = [
   "bg-sky-500/25 text-sky-100 ring-sky-400/35",
   "bg-violet-500/25 text-violet-100 ring-violet-400/35",
@@ -177,7 +249,7 @@ export function sidebarIconWrapForNavId(id: string): string {
 export function buildFriendsNavSidebarItem(): AdminSidebarNavItem {
   return {
     key: "staff-messages",
-    to: "/admin/staff-messages",
+    to: toAdminRoutePath("/admin/staff-messages"),
     label: "消息",
     icon: MessagesSquare,
     iconWrapClass: sidebarIconWrapForNavId("staff-messages"),
@@ -185,15 +257,16 @@ export function buildFriendsNavSidebarItem(): AdminSidebarNavItem {
 }
 
 function registryItemToSidebar(it: AdminNavRegistryItem, pendingBadges: PendingBadges | null): AdminSidebarNavItem {
+  const badgeText = resolveNavEntryBadgeText(it.path, it.badgeTextKey, pendingBadges);
   return {
     key: it.id,
-    to: it.path,
+    to: toAdminRoutePath(it.path),
     end: it.navEnd,
     label: it.label,
     icon: it.icon,
     telemetry: it.telemetry,
     telemetryReturnStorageKey: it.telemetryReturnStorageKey,
-    badgeText: badgeTextFromKey(pendingBadges, it.badgeTextKey),
+    badgeText,
     iconWrapClass: sidebarIconWrapForNavId(it.id),
   };
 }
@@ -239,7 +312,7 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
         icon: it.icon,
         tone: it.homeTone,
         enabled: roleOk && permOk,
-        badgeText: badgeTextFromKey(pendingBadges, it.badgeTextKey),
+        badgeText: resolveHomeEntryBadgeText(it.path, it.badgeTextKey, pendingBadges),
       };
     }),
   }));
@@ -251,7 +324,7 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
     const p = normalizeAdminPath(n.pathOrRoute);
     if (!p || knownPaths.has(p) || seenAutoPath.has(p) || shouldHideAdminSidebarPath(p)) continue;
     seenAutoPath.add(p);
-    const minRole = (n.minRole as MinRole) || "STUDENT";
+    const minRole = (n.minRole as MinRole) || "MEMBER";
     const roleOk = hasMinRole(ctx.role, minRole);
     const permOk = canShowWebEntry(ctx.permNodes, n.pathOrRoute, "sidebar", ctx.role, minRole);
     autoEntries.push({
@@ -346,10 +419,10 @@ function nodeToSidebarItem(
   if (!roleOk || !permOk) return null;
   return {
     key: node.id,
-    to: node.itemPath,
+    to: toAdminRoutePath(node.itemPath),
     label: node.title,
     icon: resolveIconByName(node.itemIcon),
-    badgeText: badgeTextFromKey(pendingBadges, node.itemBadgeKey as keyof PendingBadges | undefined),
+    badgeText: resolveNavEntryBadgeText(node.itemPath, node.itemBadgeKey, pendingBadges),
     iconWrapClass: sidebarIconWrapForNavId(node.id),
   };
 }
@@ -482,14 +555,7 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
     }
 
     for (const ri of missing) {
-      targetGroup.items.push({
-        key: ri.id,
-        to: ri.path,
-        label: ri.label,
-        icon: ri.icon,
-        telemetry: (ri as any).telemetry,
-        telemetryReturnStorageKey: (ri as any).telemetryReturnStorageKey,
-      });
+      targetGroup.items.push(registryItemToSidebar(ri, pendingBadges));
       knownPaths.add(normalizeAdminPath(ri.path));
       // 异步同步到后端 DB，使 AdminNavManager 可见
       if (serverConfig.length > 0) {
@@ -547,7 +613,7 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
     const p = normalizeAdminPath(n.pathOrRoute);
     if (!p || knownPaths.has(p) || seenAutoPath.has(p) || shouldHideAdminSidebarPath(p)) continue;
     seenAutoPath.add(p);
-    const minRole = (n.minRole as MinRole) || "STUDENT";
+    const minRole = (n.minRole as MinRole) || "MEMBER";
     const roleOk = hasMinRole(ctx.role, minRole);
     const permOk = canShowWebEntry(ctx.permNodes, n.pathOrRoute, "sidebar", ctx.role, minRole);
     autoEntries.push({

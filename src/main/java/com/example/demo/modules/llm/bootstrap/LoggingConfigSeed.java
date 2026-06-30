@@ -73,6 +73,6 @@ public class LoggingConfigSeed implements ApplicationRunner {
                         """,
                 module, configKey, labelZh, description, valueType, optionsJson, defaultValue,
                 isSensitive, requiresRestart, isPublic);
-        log.info("[logging] 已插入配置定义: {}.{}", module, configKey);
+        // 静默插入（不再打印每行日志）
     }
 }

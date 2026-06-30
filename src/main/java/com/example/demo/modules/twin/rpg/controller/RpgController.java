@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.modules.aro.dto.RpgStatsDto;
 import com.example.demo.modules.twin.rpg.service.RpgDatabaseService;
 import com.example.demo.modules.twin.rpg.service.RpgEngineService;
+import com.example.demo.modules.twin.rpg.service.TwinExpReconcileService;
 import com.example.demo.modules.twin.rpg.service.TwinExpStatsService;
 import com.example.demo.modules.twin.common.service.JobExecutionRegistry;
 import com.example.demo.modules.twin.common.service.JobSchedulerService;
@@ -31,6 +32,9 @@ public class RpgController {
     @Autowired
     private TwinExpStatsService twinExpStatsService;
 
+    @Autowired
+    private TwinExpReconcileService twinExpReconcileService;
+
     @GetMapping("/exp/{userId}")
     @Operation(summary = "查询用户经验值")
     public RpgStatsDto getUserExp(@PathVariable String userId) {
@@ -39,12 +43,11 @@ public class RpgController {
         return rpgEngineService.calculateRealtimeExp(userId, historicalExp);
     }
 
-    // 💥 新增：一键触发历史大结算
+    // 💥 重算全量历史经验：逐日对账 aro_access_log → 写入 twin_exp_record + 更新 aro_personnel
     @GetMapping("/recalculate-all")
-    @Operation(summary = "重算全量历史经验")
-    public String recalculateAll() {
-        jobSchedulerService.runManual(JobExecutionRegistry.JOB_RPG_RECALC, "manual-api");
-        return "全量经验重算已执行";
+    @Operation(summary = "重算全量历史经验（逐日对账→写入流水→更新全员档案）")
+    public Map<String, Object> recalculateAll() {
+        return twinExpReconcileService.reconcileAllHistorical();
     }
 
     // 暴露给前端的"全量同步人员库"核弹按钮接口
@@ -70,14 +73,19 @@ public class RpgController {
     }
 
     @GetMapping("/exp/records")
-    @Operation(summary = "经验值流水明细（分页）")
+    @Operation(summary = "经验值流水明细（分页，支持异常/审核/来源筛选）")
     public Result<Map<String, Object>> getExpRecords(
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize,
             @RequestParam(required = false) String userId,
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate) {
-        return Result.success(twinExpStatsService.getRecordsPage(pageNum, pageSize, userId, sourceType, startDate, endDate));
+            @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) Integer anomalyFlag,
+            @RequestParam(required = false) Integer reviewStatus,
+            @RequestParam(required = false) String feedSource) {
+        return Result.success(twinExpStatsService.getRecordsPageWithFilters(
+                pageNum, pageSize, userId, sourceType, startDate, endDate,
+                anomalyFlag, reviewStatus, feedSource));
     }
 }

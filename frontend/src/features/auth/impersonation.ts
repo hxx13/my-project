@@ -25,7 +25,7 @@ export function getImpersonationState(): ImpersonationState | null {
   return null;
 }
 
-/** 返回教职工后台：恢复原始 auth 并跳转到 /admin */
+/** 返回首页：恢复原始 auth 并跳转到 /admin */
 export function returnToStaffView(): boolean {
   try {
     const raw = localStorage.getItem("admin_original_auth");
@@ -41,8 +41,9 @@ export function returnToStaffView(): boolean {
   return false;
 }
 
-/** 安全退出登录：清理所有 auth 状态（含模拟残留） */
+/** 安全退出登录：清理所有 auth 状态（含模拟残留 + 镜像模式） */
 export function fullLogout(): void {
   try { localStorage.removeItem("admin_original_auth"); } catch { /* ignore */ }
+  authStorage.exitMirrorMode();
   authStorage.clear();
 }

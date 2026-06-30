@@ -41,9 +41,10 @@ public class StudentAccountProvisioner {
                 User user = new User();
                 user.setId(userId);
                 user.setUsername(userId);
-                user.setRole(RoleEnum.STUDENT);
+                user.setRole(RoleEnum.MEMBER);
                 user.setStatus(1);
                 user.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
+                user.setAccountSource("STUDENT");
                 userMapper.insertUser(user);
                 created++;
             } catch (Exception ex) {

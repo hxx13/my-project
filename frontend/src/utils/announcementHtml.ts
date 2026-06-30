@@ -33,7 +33,7 @@ export function prepareAnnouncementHtml(raw: string): string {
  */
 /** 扫码弹窗正文排版（公告、违规说明等共用） */
 export const SCAN_ANNOUNCEMENT_BODY_CLASS =
-  "scan-announcement-body rich-text-content text-lg leading-relaxed text-[var(--app-color-text-primary)] " +
+  "scan-announcement-body rich-text-content leading-relaxed text-[var(--app-color-text-primary)] " +
   /* 保留 pre/code 无背景适配暗色卡片 */
   "[&_pre]:m-0 [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:whitespace-pre-wrap " +
   "[&_code]:bg-[var(--app-color-surface-hover)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[var(--app-color-text-primary)] [&_code]:font-mono [&_code]:text-[0.85em] " +

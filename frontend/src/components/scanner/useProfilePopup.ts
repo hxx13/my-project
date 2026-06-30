@@ -14,6 +14,7 @@ import {
 } from "@/components/scanner/accessMotionVariants";
 import type { PopupActions, PopupProps, PopupState } from "@/components/scanner/components/types";
 import { sortScanRoomsPudongFirst } from "@/components/scanner/roomCampusSort";
+import { hasActiveAutoSignoutCountdown } from "@/utils/formatCountdown";
 
 const POPUP_RUNTIME_STAMP = "popup-runtime-2026-04-16-r3";
 
@@ -154,6 +155,9 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     const [accessMotionVariant, setAccessMotionVariant] = useState<AccessMotionVariant | null>(null);
     const [keepCardStates, setKeepCardStates] = useState<boolean[]>(new Array(targetRooms.length || 10).fill(false));
     const manualLockRef = useRef(false);
+    /** 离开确认弹窗状态 */
+    const [confirmingExitRoom, setConfirmingExitRoom] = useState<RoomInfo | null>(null);
+    const [confirmingExitIndex, setConfirmingExitIndex] = useState(-1);
     const hasLoggedStampRef = useRef(false);
     const toasterResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const entryModeAtExecuteRef = useRef<"OWN" | "BORROWED" | null>(null);
@@ -182,8 +186,12 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         accessMotionLoopEpochRef.current = performance.now();
     }, []);
     const markEnterNoticeReady = useCallback(() => {
+        // 场内二次扫码（startAtCorner）：仅在有延时签退计时器时弹出居中通告
+        if (enterMotionAtCorner && !hasActiveAutoSignoutCountdown(result)) {
+            return;
+        }
         setEnterNoticeReady(true);
-    }, []);
+    }, [enterMotionAtCorner, result?.autoSignoutScheduledAt, result?.autoSignoutSecondsRemaining]);
     const dismissExitCelebrate = useCallback(() => {
         setExitCelebrateRoomId(null);
         setEnterCelebrateRoomId(null);
@@ -634,6 +642,33 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         onRefresh?.();
     }, [onRefresh]);
 
+    // ─── 离开确认状态机 ───
+    /** 打开离开确认弹窗（做守卫检查但不执行） */
+    const requestExit = useCallback((room: RoomInfo, index: number) => {
+        if (!user || isWorking || actedRoomId || isRefreshing) return;
+        if (isExecuteSuccess && lastExecutedActionRef.current === action) return;
+        if (action === "EXIT" && isExitLocked(room)) return;
+        setConfirmingExitRoom(room);
+        setConfirmingExitIndex(index);
+    }, [user, isWorking, actedRoomId, isRefreshing, isExecuteSuccess, action, isExitLocked]);
+
+    /** 确认离开：清除确认态并执行实际的 handleRoomClick */
+    const confirmExit = useCallback(() => {
+        const room = confirmingExitRoom;
+        const index = confirmingExitIndex;
+        setConfirmingExitRoom(null);
+        setConfirmingExitIndex(-1);
+        if (room && index >= 0) {
+            handleRoomClick(room, index);
+        }
+    }, [confirmingExitRoom, confirmingExitIndex, handleRoomClick]);
+
+    /** 取消离开确认 */
+    const cancelExit = useCallback(() => {
+        setConfirmingExitRoom(null);
+        setConfirmingExitIndex(-1);
+    }, []);
+
     /**
      * 进入闭环（enterCelebrateRoomId 存续）期间禁止在模块中央挂载 ActionButtons：
      * 落点后再挂「离开」会与用户刚点的「进入」同位置重叠，形成闪回幻觉。
@@ -679,6 +714,8 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             scanDelayEnabled: Boolean(result?.scanDelayEnabled),
             scanDelayButtonLabel: result?.scanDelayButtonLabel?.trim() || "延迟",
             scanDelayOptionsByRoom: result?.scanDelayOptionsByRoom ?? {},
+            confirmingExitRoom,
+            confirmingExitIndex,
         },
         actions: {
             setShowRiskModal,
@@ -699,6 +736,9 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             markEnterNoticeReady,
             getDelayOptionsForRoom,
             handleDelayGrantSuccess,
+            requestExit,
+            confirmExit,
+            cancelExit,
         },
     };
 };

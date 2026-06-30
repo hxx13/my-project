@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import {
   downloadPersonalClaimExcel,
@@ -21,6 +22,7 @@ import { Portal } from "@/components/Portal";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
+import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { webImageSrc } from "@/utils/mediaUrl";
@@ -28,8 +30,7 @@ import { webImageSrc } from "@/utils/mediaUrl";
 type TabKey = "pending" | "done";
 
 function toTextTime(v?: string | null) {
-  if (!v) return "-";
-  return String(v).replace("T", " ").slice(0, 19);
+  return formatDateTimeAsiaShanghai(v);
 }
 
 function claimStatusText(s: string) {
@@ -55,7 +56,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 export default function AdminSuppliesProcessPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const canProcess = hasMinRole(role, "SENIOR");
   const canReadMine = hasMinRole(role, "STAFF");
   const [activeTab, setActiveTab] = useState<TabKey>("pending");
@@ -122,7 +123,7 @@ export default function AdminSuppliesProcessPage() {
   };
 
   const goAuditExport = (claimId: string) => {
-    navigate(`/admin/supplies/audit-export?tab=personal&claimId=${encodeURIComponent(claimId)}`, {
+    navigate(`${toAdminRoutePath("/admin/supplies/audit-export")}?tab=personal&claimId=${encodeURIComponent(claimId)}`, {
       state: { returnTo: `${location.pathname}${location.search}` },
     });
   };
@@ -348,6 +349,11 @@ export default function AdminSuppliesProcessPage() {
                           className="mt-1.5 w-full rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
                         />
                       ) : null}
+                      {detail.status !== "PENDING" && remarkMap[line.id] ? (
+                        <div className="mt-1 text-xs text-[var(--twin-mute)]">
+                          备注：{remarkMap[line.id]}
+                        </div>
+                      ) : null}
                     </div>
                     {canProcess && detail.status === "PENDING" ? (
                       <label className="inline-flex items-center gap-1.5 text-xs text-[var(--twin-body)] shrink-0">
@@ -380,7 +386,7 @@ export default function AdminSuppliesProcessPage() {
                       setDetail(null);
                       setGrantMap({});
                       setRemarkMap({});
-                      navigate(`/admin/supplies?reviseClaimId=${encodeURIComponent(detail.id)}`, {
+                      navigate(`${toAdminRoutePath("/admin/supplies")}?reviseClaimId=${encodeURIComponent(detail.id)}`, {
                         state: { returnTo: `${location.pathname}${location.search}` },
                       });
                     }}

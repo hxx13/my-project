@@ -377,4 +377,12 @@
                COUNT(DISTINCT i.channel_code) AS channelCount
         FROM access_clean_package_item i
     </select>
+
+    <select id="countIncludedBetween" resultType="int">
+        SELECT COUNT(*) FROM access_clean_package_item
+        WHERE channel_code = #{channelCode}
+          AND disposition = 'INCLUDED'
+          AND swing_time &gt;= #{startTime}
+          AND swing_time &lt;= #{endTime}
+    </select>
 </mapper>

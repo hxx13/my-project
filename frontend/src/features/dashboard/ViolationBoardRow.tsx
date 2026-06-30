@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import type { DashboardViolationBoardItem } from "@/api/domains/dashboardViolationBoard.api";
+import { PageHelpImageLightbox } from "@/features/page-help/PageHelpImageLightbox";
+import { useRichTextImageLightbox } from "@/components/rich-text/useRichTextImageLightbox";
 import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
 import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 
@@ -21,16 +23,32 @@ function toInlineHtml(raw: string): string {
 
 type Props = {
   item: DashboardViolationBoardItem;
+  onPreviewOpenChange?: (open: boolean) => void;
 };
 
 /**
  * 惩戒公示单行：姓名 → 简短说明 → 末尾照片（无图不渲染占位）。
  */
-export function ViolationBoardRow({ item }: Props) {
+export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
   const visual = useDashboardVisual();
   const [imgHidden, setImgHidden] = useState(false);
+  const [coverPreviewOpen, setCoverPreviewOpen] = useState(false);
   const url = item.coverImageUrl?.trim();
   const showImg = Boolean(url) && !imgHidden;
+
+  const summaryHtml = useMemo(
+    () => toInlineHtml(item.summary || "—"),
+    [item.summary],
+  );
+  const { containerRef, lightbox, closeLightbox } = useRichTextImageLightbox([summaryHtml]);
+  const previewOpenRef = useRef(false);
+
+  useEffect(() => {
+    const open = coverPreviewOpen || lightbox != null;
+    if (open === previewOpenRef.current) return;
+    previewOpenRef.current = open;
+    onPreviewOpenChange?.(open);
+  }, [coverPreviewOpen, lightbox, onPreviewOpenChange]);
 
   const nameTone = dashTone(visual, "text-fuchsia-100", DASH_NIGHT_CLASS.title, "text-rose-900");
   const summaryTone = dashTone(visual, "text-fuchsia-100/85", DASH_NIGHT_CLASS.textMuted, "text-rose-950/85");
@@ -40,12 +58,10 @@ export function ViolationBoardRow({ item }: Props) {
   // 3字名自然填满，2字名左右撑开中间留空，保证右侧文案上下对齐
   const nameChars = [...(item.displayName || "—")];
 
-  const summaryHtml = useMemo(
-    () => toInlineHtml(item.summary || "—"),
-    [item.summary],
-  );
+  const closeCoverPreview = () => setCoverPreviewOpen(false);
 
   return (
+    <>
     <div
       className={`flex items-start gap-2 border-b py-2.5 md:gap-3 md:py-3 ${borderTone}`}
     >
@@ -57,9 +73,9 @@ export function ViolationBoardRow({ item }: Props) {
           <span key={i}>{ch}</span>
         ))}
       </span>
-      <div className="min-w-0 flex-1">
+      <div ref={containerRef} className="min-w-0 flex-1">
         <p
-          className={`text-[11px] leading-snug md:text-xs ${summaryTone}`}
+          className={`text-[11px] leading-snug md:text-xs [&_img]:my-1 [&_img]:max-h-16 [&_img]:cursor-zoom-in [&_img]:rounded-md ${summaryTone}`}
           style={{
             overflow: "hidden",
             display: "-webkit-box",
@@ -70,16 +86,44 @@ export function ViolationBoardRow({ item }: Props) {
         />
       </div>
       {showImg ? (
-        <img
-          src={url}
-          alt=""
-          loading="lazy"
-          className={`h-12 w-12 shrink-0 rounded-lg object-cover md:h-14 md:w-14 ${
-            dashTone(visual, "ring-1 ring-fuchsia-500/35", "ring-1 ring-[var(--dash-night-border-warm)]", "ring-1 ring-rose-200")
-          }`}
-          onError={() => setImgHidden(true)}
-        />
+        <button
+          type="button"
+          className="shrink-0 cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-color-accent)]"
+          aria-label={`查看 ${item.displayName || "违规"} 惩戒图片大图`}
+          onClick={(event) => {
+            event.stopPropagation();
+            setCoverPreviewOpen(true);
+          }}
+        >
+          <img
+            src={url}
+            alt=""
+            loading="lazy"
+            draggable={false}
+            className={`h-12 w-12 rounded-lg object-cover md:h-14 md:w-14 ${
+              dashTone(visual, "ring-1 ring-fuchsia-500/35", "ring-1 ring-[var(--dash-night-border-warm)]", "ring-1 ring-rose-200")
+            }`}
+            onError={() => setImgHidden(true)}
+          />
+        </button>
       ) : null}
     </div>
+    {coverPreviewOpen && url ? (
+      <PageHelpImageLightbox
+        src={url}
+        alt={`${item.displayName || "违规"}惩戒图片`}
+        onClose={closeCoverPreview}
+        autoCloseMs={10_000}
+      />
+    ) : null}
+    {lightbox ? (
+      <PageHelpImageLightbox
+        src={lightbox.src}
+        alt={lightbox.alt}
+        onClose={closeLightbox}
+        autoCloseMs={10_000}
+      />
+    ) : null}
+    </>
   );
 }

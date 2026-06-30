@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { useQuery } from "@tanstack/react-query";
-import { getDahuaSwingRuleConfig, saveDahuaSwingRuleConfig } from "@/api/domains/dahuaSwing.api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getDahuaSwingRuleConfig, saveDahuaSwingRuleConfig, type DahuaSwingRuleConfig } from "@/api/domains/dahuaSwing.api";
 import { fetchDahuaDeviceChannels, type DahuaDeviceChannelRow } from "@/api/twinApi";
 import { normalizeChannelCode, resolveChannelLabelsByCodes } from "@/utils/dahuaChannelUtils";
 import DataSkeleton from "@/components/ui/DataSkeleton";
@@ -71,14 +71,33 @@ function cfgToForm(cfg: any): RuleForm {
   };
 }
 
+const RULE_CONFIG_QUERY_KEY = ["dahuaSwing", "ruleConfig"] as const;
+
+function formToApi(form: RuleForm): DahuaSwingRuleConfig {
+  return {
+    scanPopupEntryWindowEnabled: form.scanPopupEntryWindowEnabled,
+    scanPopupEntryWindows: form.scanPopupEntryWindows,
+    scanLeaveDahuaDeferSeconds: form.scanLeaveDahuaDeferSeconds,
+    exitChannelCodes: form.exitChannelCodes.map(normalizeChannelCode).filter(Boolean),
+    toggleChannelCodes: form.toggleChannelCodes.map(normalizeChannelCode).filter(Boolean),
+    activatedReswipeExitChannelCodes: form.activatedReswipeExitChannelCodes.map(normalizeChannelCode).filter(Boolean),
+    autoRiskActionEnabled: form.autoRiskActionEnabled,
+    autoExitDelaySeconds: form.autoExitDelaySeconds,
+    enterDebounceSeconds: form.enterDebounceSeconds,
+    activationExpireSeconds: form.activationExpireSeconds,
+    requireOtherRoomSuccess: form.requireOtherRoomSuccess,
+    otherRoomWithinSeconds: form.otherRoomWithinSeconds,
+  };
+}
+
 export default function AdminDahuaSwingRulesPage() {
+  const queryClient = useQueryClient();
   const { data: configData, isLoading } = useQuery({
-    queryKey: ["dahuaSwing", "ruleConfig"] as const,
+    queryKey: RULE_CONFIG_QUERY_KEY,
     queryFn: getDahuaSwingRuleConfig,
   });
 
   const [form, setForm] = useState<RuleForm>(defaultForm());
-  const [initialized, setInitialized] = useState(false);
   const [channelOptions, setChannelOptions] = useState<DahuaDeviceChannelRow[]>([]);
   const [exitChannelKeyword, setExitChannelKeyword] = useState("");
   const [toggleChannelKeyword, setToggleChannelKeyword] = useState("");
@@ -86,11 +105,10 @@ export default function AdminDahuaSwingRulesPage() {
   const [channelLabelExtra, setChannelLabelExtra] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (configData && !initialized) {
+    if (configData) {
       setForm(cfgToForm(configData));
-      setInitialized(true);
     }
-  }, [configData, initialized]);
+  }, [configData]);
 
   useEffect(() => {
     void (async () => {
@@ -137,7 +155,12 @@ export default function AdminDahuaSwingRulesPage() {
 
   const save = async () => {
     try {
-      await saveDahuaSwingRuleConfig(form);
+      const payload = formToApi(form);
+      const saved = await saveDahuaSwingRuleConfig(payload);
+      const next = saved ?? payload;
+      // 保存后仅合并 query 缓存，禁止整页 load；post-save-no-full-refresh.mdc
+      queryClient.setQueryData(RULE_CONFIG_QUERY_KEY, next);
+      setForm(cfgToForm(next));
       toast.success("联动规则保存成功");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "联动规则保存失败");

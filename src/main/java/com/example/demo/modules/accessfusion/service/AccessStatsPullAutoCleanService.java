@@ -46,11 +46,14 @@ public class AccessStatsPullAutoCleanService {
         summary.put("autoCleanTriggered", false);
         if (task == null || task.getId() == null || task.getId() <= 0) {
             summary.put("autoCleanSkippedReason", "INVALID_TASK");
+            log.warn("[auto-clean] task invalid: auto-clean skipped, data will not be cleaned into package library");
             return summary;
         }
         long taskId = task.getId();
         if (!StringUtils.hasText(pulledStart) || !StringUtils.hasText(pulledEnd)) {
             summary.put("autoCleanSkippedReason", "EMPTY_PULL_WINDOW");
+            log.warn("[auto-clean] taskId={}: empty pull window — pulledStart={} pulledEnd={}",
+                    taskId, pulledStart, pulledEnd);
             return summary;
         }
         if (!taskSettingsService.isAutoCleanPackageEnabled(taskId)) {
@@ -60,8 +63,10 @@ public class AccessStatsPullAutoCleanService {
         List<String> channels =
                 channelScopeService.resolveEnabledChannelsForClean(taskId, task.getQueryJson());
         if (channels.isEmpty()) {
-            log.info(
-                    "stats pull task {}: skip auto clean — no channels (scope/query/records empty)",
+            log.warn(
+                    "[auto-clean] taskId={}: skip — no enabled channels resolved. "
+                            + "Channel scope may not be configured. Data in twin_dahua_swing_record "
+                            + "for this task's pull window will NOT appear in analytics until manually cleaned.",
                     taskId);
             summary.put("autoCleanSkippedReason", "NO_ENABLED_CHANNELS");
             return summary;

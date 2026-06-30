@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.scan.mapper.TwinScanNoticeAutoSuppressMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.scan.entity.TwinScanNoticeAutoSuppress">
+        <id property="id" column="id"/>
+        <result property="targetUserId" column="target_user_id"/>
+        <result property="noticeKind" column="notice_kind"/>
+        <result property="recordId" column="record_id"/>
+        <result property="sourceUpdatedAt" column="source_updated_at"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectByTargetUserId" resultMap="BaseMap">
+        SELECT id, target_user_id, notice_kind, record_id, source_updated_at, created_at, updated_at
+        FROM twin_scan_notice_auto_suppress
+        WHERE target_user_id = #{targetUserId}
+    </select>
+
+    <select id="exists" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_scan_notice_auto_suppress
+        WHERE target_user_id = #{targetUserId}
+          AND notice_kind = #{noticeKind}
+          AND record_id = #{recordId}
+    </select>
+
+    <select id="countByNoticeKindAndRecordId" resultType="int">
+        SELECT COUNT(1)
+        FROM twin_scan_notice_auto_suppress
+        WHERE notice_kind = #{noticeKind}
+          AND record_id = #{recordId}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO twin_scan_notice_auto_suppress (target_user_id, notice_kind, record_id, source_updated_at)
+        VALUES (#{targetUserId}, #{noticeKind}, #{recordId}, #{sourceUpdatedAt})
+        ON DUPLICATE KEY UPDATE
+            source_updated_at = VALUES(source_updated_at),
+            updated_at = CURRENT_TIMESTAMP
+    </insert>
+
+    <delete id="deleteByNoticeKindAndRecordId">
+        DELETE FROM twin_scan_notice_auto_suppress
+        WHERE notice_kind = #{noticeKind}
+          AND record_id = #{recordId}
+    </delete>
+</mapper>

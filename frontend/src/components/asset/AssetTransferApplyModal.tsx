@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
+import { Upload } from "lucide-react";
 import { lockAsset, searchAssets, submitTransferRequest, type AssetRow } from "@/api/domains/asset.api";
+import { authHttp } from "@/api/core/authHttp";
+import { authStorage } from "@/features/auth/authStorage";
 
 interface Props {
   open: boolean;
@@ -20,6 +23,9 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
   const [photosBeforeLines, setPhotosBeforeLines] = useState("");
   const [photosAfterLines, setPhotosAfterLines] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploadingSlot, setUploadingSlot] = useState<"before" | "after" | null>(null);
+  const beforeFileRef = useRef<HTMLInputElement>(null);
+  const afterFileRef = useRef<HTMLInputElement>(null);
 
   const title = useMemo(() => (selected ? `${selected.assetName} (${selected.assetCode})` : ""), [selected]);
 
@@ -63,6 +69,40 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
     }
   };
 
+  const appendPhotoUrl = (slot: "before" | "after", url: string) => {
+    const setter = slot === "before" ? setPhotosBeforeLines : setPhotosAfterLines;
+    setter((prev) => {
+      const trimmed = prev.trimEnd();
+      return trimmed ? `${trimmed}\n${url}` : url;
+    });
+  };
+
+  const handlePhotoUpload = async (slot: "before" | "after", e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingSlot(slot);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await authHttp.post<{ code: number; success: boolean; data: { publicUrl: string }; message?: string }>(
+        "/api/upload",
+        form,
+        { headers: { "Content-Type": "multipart/form-data" } },
+      );
+      if (res.data?.success && res.data.data?.publicUrl) {
+        appendPhotoUrl(slot, res.data.data.publicUrl);
+        toast.success("照片已上传");
+      } else {
+        toast.error(res.data?.message || "上传失败");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "上传失败");
+    } finally {
+      setUploadingSlot(null);
+      e.target.value = "";
+    }
+  };
+
   const submit = async () => {
     if (!selected) {
       toast.error("请先选择资产");
@@ -81,12 +121,15 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
     const after = splitUrls(photosAfterLines);
     setLoading(true);
     try {
+      const userInfo = authStorage.getUserInfo();
+      const applicantName = (userInfo?.displayName || userInfo?.displayNickname || userInfo?.username || "").trim();
       await lockAsset(selected.id);
       await submitTransferRequest({
         assetId: selected.id,
         transferTime: transferTime.trim(),
         transferLocation: transferLocation.trim(),
         remark: remark.trim() || undefined,
+        userName: applicantName || undefined,
         photoUrlsBefore: before.length ? before : undefined,
         photoUrlsAfter: after.length ? after : undefined,
       });
@@ -175,23 +218,47 @@ export default function AssetTransferApplyModal({ open, onClose, onSuccess, init
               <textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={3} className="rounded border border-slate-300 px-3 py-2" />
             </label>
             <label className="flex flex-col gap-1 text-sm text-slate-700">
-              转移前照片 URL（每行一个，可选）
+              <span className="inline-flex items-center gap-2">
+                转移前照片 URL（每行一个，可选）
+                <input ref={beforeFileRef} type="file" accept="image/*" className="sr-only" onChange={(e) => void handlePhotoUpload("before", e)} />
+                <button
+                  type="button"
+                  disabled={uploadingSlot !== null || loading}
+                  onClick={() => beforeFileRef.current?.click()}
+                  className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <Upload className="h-3 w-3" />
+                  {uploadingSlot === "before" ? "上传中…" : "上传照片"}
+                </button>
+              </span>
               <textarea
                 value={photosBeforeLines}
                 onChange={(e) => setPhotosBeforeLines(e.target.value)}
                 rows={3}
                 className="rounded border border-slate-300 px-3 py-2 font-mono text-xs"
-                placeholder="https://..."
+                placeholder="https://... 或点击「上传照片」"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm text-slate-700">
-              转移后照片 URL（每行一个，可选；未完成前可在转移记录中补充）
+              <span className="inline-flex items-center gap-2">
+                转移后照片 URL（每行一个，可选；未完成前可在转移记录中补充）
+                <input ref={afterFileRef} type="file" accept="image/*" className="sr-only" onChange={(e) => void handlePhotoUpload("after", e)} />
+                <button
+                  type="button"
+                  disabled={uploadingSlot !== null || loading}
+                  onClick={() => afterFileRef.current?.click()}
+                  className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <Upload className="h-3 w-3" />
+                  {uploadingSlot === "after" ? "上传中…" : "上传照片"}
+                </button>
+              </span>
               <textarea
                 value={photosAfterLines}
                 onChange={(e) => setPhotosAfterLines(e.target.value)}
                 rows={3}
                 className="rounded border border-slate-300 px-3 py-2 font-mono text-xs"
-                placeholder="https://..."
+                placeholder="https://... 或点击「上传照片」"
               />
             </label>
             <button disabled={loading} onClick={() => void submit()} className="w-full rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">

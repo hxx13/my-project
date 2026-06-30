@@ -20,6 +20,9 @@ public class AuthUserInfo {
     /** WECHAT_ARO | WEB_PASSWORD，与 sys_user.auth_profile 一致 */
     private String authProfile;
 
+    /** 账号来源库：STUDENT / STAFF */
+    private String accountSource;
+
     /** 小程序首页默认分栏：news | announcements */
     private String miniHomeDefaultTab;
 }

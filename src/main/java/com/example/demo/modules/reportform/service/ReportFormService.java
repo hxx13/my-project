@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -78,7 +79,9 @@ public class ReportFormService {
         if (body.containsKey("permissionJson")) def.setPermissionJson((String) body.get("permissionJson"));
         if (body.containsKey("scheduleJson")) def.setScheduleJson((String) body.get("scheduleJson"));
         if (body.containsKey("pinned")) def.setPinned((Boolean) body.get("pinned"));
+        if (body.containsKey("wordTemplateIdsJson")) def.setWordTemplateIdsJson((String) body.get("wordTemplateIdsJson"));
         def.setUpdatedBy(username);
+        touchUpdated(def);
         int rows = definitionMapper.update(def);
         log.info("[report-form] 保存完成: id={} rows={} layoutLen={}",
                 id, rows, def.getLayoutJson() != null ? def.getLayoutJson().length() : 0);
@@ -99,6 +102,7 @@ public class ReportFormService {
         def.setScheduleJson("{\"period\":\"manual\"}");
         def.setCreatedBy(username);
         def.setUpdatedBy(username);
+        stampNew(def);
         definitionMapper.insert(def);
         return def;
     }
@@ -114,10 +118,44 @@ public class ReportFormService {
         def.setFillPolicyJson("{\"mode\":\"shared\",\"submitLabel\":\"提交\",\"allowEditAfterSubmit\":true}");
         def.setPermissionJson("{\"visibleRoles\":[],\"visibleUserIds\":[],\"fieldRoleBindings\":{},\"allowUnboundView\":true}");
         def.setScheduleJson("{\"period\":\"manual\"}");
+        if (result.getWordTemplateBase64() != null && !result.getWordTemplateBase64().isBlank()) {
+            try {
+                def.setWordTemplateIdsJson(buildWordTemplateBindingJson(result));
+            } catch (Exception e) {
+                log.warn("[report-form] Word 打印模板自动绑定失败，表单仍已创建: {}", e.getMessage());
+            }
+        }
         def.setCreatedBy(username);
         def.setUpdatedBy(username);
+        stampNew(def);
         definitionMapper.insert(def);
         return def;
+    }
+
+    private String buildWordTemplateBindingJson(ReportFormImportResult result) throws Exception {
+        String wtId = "wt_" + java.util.UUID.randomUUID().toString().substring(0, 8);
+        ObjectNode binding = objectMapper.createObjectNode();
+        binding.put("id", wtId);
+        String tmplName = result.getWordTemplateName() != null && !result.getWordTemplateName().isBlank()
+                ? result.getWordTemplateName() : result.getName();
+        binding.put("name", tmplName);
+        binding.put("data", result.getWordTemplateBase64());
+
+        if (result.getBookmarksJson() != null && !result.getBookmarksJson().isBlank()) {
+            binding.set("bookmarks", objectMapper.readTree(result.getBookmarksJson()));
+        } else {
+            binding.putArray("bookmarks");
+        }
+
+        if (result.getBookmarkMappingJson() != null && !result.getBookmarkMappingJson().isBlank()) {
+            binding.set("bookmarkMapping", objectMapper.readTree(result.getBookmarkMappingJson()));
+        } else {
+            binding.putObject("bookmarkMapping");
+        }
+
+        ArrayNode templates = objectMapper.createArrayNode();
+        templates.add(binding);
+        return templates.toString();
     }
 
     public ReportFormDefinition publish(Long id, String username) {
@@ -125,9 +163,11 @@ public class ReportFormService {
         if (def == null) {
             throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
-        // 允许重新发布（已发布 → 更新版本快照）
+        // 允许重新发布（已发布 / 已归档 → 更新版本快照并恢复为已发布）
         if ("published".equals(def.getStatus())) {
             log.info("[report-form] 重新发布报表 {} — 增量版本快照", id);
+        } else if ("archived".equals(def.getStatus())) {
+            log.info("[report-form] 从归档状态重新发布报表 {}", id);
         }
 
         // Build version snapshot
@@ -146,7 +186,8 @@ public class ReportFormService {
         int nextVersion = snapshotArray.size() + 1;
         ObjectNode snapshot = objectMapper.createObjectNode();
         snapshot.put("version", nextVersion);
-        snapshot.put("publishedAt", java.time.LocalDateTime.now().toString());
+        snapshot.put("publishedAt", com.example.demo.common.time.BusinessTimeWindow.toDisplayWallClock(
+                LocalDateTime.now()));
         snapshot.put("publishedBy", username);
         ObjectNode snapshotData = objectMapper.createObjectNode();
         snapshotData.put("layoutJson", def.getLayoutJson());
@@ -157,9 +198,10 @@ public class ReportFormService {
 
         def.setStatus("published");
         def.setPublishedBy(username);
-        def.setPublishedAt(java.time.LocalDateTime.now());
+        def.setPublishedAt(LocalDateTime.now());
         def.setVersionSnapshotsJson(snapshotArray.toString());
         def.setUpdatedBy(username);
+        touchUpdated(def);
         definitionMapper.updateStatus(def);
 
         // 发布保险：自动备份到模板库，源文件删除后模板仍存活
@@ -175,6 +217,7 @@ public class ReportFormService {
             t.setWordTemplateIdsJson(def.getWordTemplateIdsJson());
             t.setVersionSnapshotsJson(snapshotArray.toString());
             t.setCreatedBy(username);
+            stampNew(t);
             templateMapper.insert(t);
             log.info("[report-form] 发布模板备份完成: templateId={} name={}", t.getId(), def.getName());
         } catch (Exception e) {
@@ -194,27 +237,69 @@ public class ReportFormService {
         }
         def.setStatus("draft");
         def.setUpdatedBy(username);
+        touchUpdated(def);
         definitionMapper.updateStatus(def);
     }
 
     // ──────────────── Archive / Unarchive ────────────────
 
-    public void archive(Long id) {
+    public void archive(Long id, String username) {
         ReportFormDefinition def = definitionMapper.selectById(id);
         if (def == null) {
             throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
+        if ("archived".equals(def.getStatus())) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_FIELD_INVALID, "报表已归档");
+        }
         def.setStatus("archived");
+        def.setUpdatedBy(username);
+        touchUpdated(def);
         definitionMapper.updateStatus(def);
     }
 
-    public void unarchive(Long id) {
+    public void unarchive(Long id, String username) {
         ReportFormDefinition def = definitionMapper.selectById(id);
         if (def == null) {
             throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
-        def.setStatus("draft");
+        if (!"archived".equals(def.getStatus())) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_FIELD_INVALID, "报表未归档");
+        }
+        // 曾发布过的模板取消归档后恢复为已发布，避免仍显示为草稿/归档
+        if (def.getPublishedAt() != null && def.getPublishedBy() != null && !def.getPublishedBy().isBlank()) {
+            def.setStatus("published");
+        } else {
+            def.setStatus("draft");
+        }
+        def.setUpdatedBy(username);
+        touchUpdated(def);
         definitionMapper.updateStatus(def);
+    }
+
+    private void stampNew(ReportFormDefinition def) {
+        LocalDateTime now = LocalDateTime.now();
+        def.setCreatedAt(now);
+        def.setUpdatedAt(now);
+    }
+
+    private void touchUpdated(ReportFormDefinition def) {
+        def.setUpdatedAt(LocalDateTime.now());
+    }
+
+    private void stampNew(ReportFormTemplate template) {
+        LocalDateTime now = LocalDateTime.now();
+        template.setCreatedAt(now);
+        template.setUpdatedAt(now);
+    }
+
+    private void stampNew(ReportFormOptionSet os) {
+        LocalDateTime now = LocalDateTime.now();
+        os.setCreatedAt(now);
+        os.setUpdatedAt(now);
+    }
+
+    private void touchUpdated(ReportFormOptionSet os) {
+        os.setUpdatedAt(LocalDateTime.now());
     }
 
     private String generateDefaultLayout(int rows, int cols) {
@@ -287,6 +372,7 @@ public class ReportFormService {
         template.setScheduleJson(src.getScheduleJson());
         template.setCreatedBy(username);
         template.setUpdatedBy(username);
+        stampNew(template);
         definitionMapper.insert(template);
         return template;
     }
@@ -323,6 +409,7 @@ public class ReportFormService {
             throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
         }
         def.setName(name);
+        touchUpdated(def);
         definitionMapper.update(def);
     }
 
@@ -343,14 +430,15 @@ public class ReportFormService {
         dup.setScheduleJson(src.getScheduleJson());
         dup.setCreatedBy(username);
         dup.setUpdatedBy(username);
+        stampNew(dup);
         definitionMapper.insert(dup);
         return dup;
     }
 
     // ──────────────── Option Set CRUD ────────────────
 
-    public List<ReportFormOptionSet> listOptionSets() {
-        return optionSetMapper.selectByScope(null);
+    public List<ReportFormOptionSet> listOptionSets(String username, String authProfile, Long formId) {
+        return optionSetMapper.selectVisible(username, authProfile, formId);
     }
 
     public ReportFormOptionSet getOptionSet(Long id) {
@@ -361,32 +449,52 @@ public class ReportFormService {
         return os;
     }
 
-    public ReportFormOptionSet createOptionSet(String name, String scope, Long formId, String itemsJson) {
+    public ReportFormOptionSet createOptionSet(String name, String scope, Long formId, String itemsJson,
+                                               String username, String authProfile) {
         ReportFormOptionSet os = new ReportFormOptionSet();
         os.setName(name);
-        os.setScope(scope != null ? scope : "global");
+        String resolvedScope = scope != null ? scope : "user";
+        os.setScope(resolvedScope);
         os.setFormId(formId);
         os.setItemsJson(itemsJson);
+        os.setCreatedBy(username);
+        os.setAuthProfile(authProfile);
+        stampNew(os);
         optionSetMapper.insert(os);
         return os;
     }
 
-    public void updateOptionSet(Long id, String name, String itemsJson) {
+    public void updateOptionSet(Long id, String name, String itemsJson, String username) {
         ReportFormOptionSet os = optionSetMapper.selectById(id);
         if (os == null) {
             throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "选项集不存在");
         }
+        assertOptionSetWritable(os, username);
         os.setName(name);
         os.setItemsJson(itemsJson);
+        touchUpdated(os);
         optionSetMapper.update(os);
     }
 
-    public void deleteOptionSet(Long id) {
+    public void deleteOptionSet(Long id, String username) {
+        ReportFormOptionSet os = optionSetMapper.selectById(id);
+        if (os == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.NOT_FOUND, "选项集不存在");
+        }
+        assertOptionSetWritable(os, username);
         int refs = optionSetMapper.countFieldRefsByOptionSetId(id);
         if (refs > 0) {
             throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_OPTION_SET_IN_USE,
                     "该选项集被 " + refs + " 个表单引用，无法删除");
         }
         optionSetMapper.deleteById(id);
+    }
+
+    /** 个人预设仅创建人可改删；无创建人记录的共享预设允许同体系管理员维护 */
+    private void assertOptionSetWritable(ReportFormOptionSet os, String username) {
+        if (os.getCreatedBy() != null && !os.getCreatedBy().isBlank()
+                && !os.getCreatedBy().equals(username)) {
+            throw TwinBusinessException.of(ErrorCodeConstants.FORBIDDEN, "只能操作自己保存的预设");
+        }
     }
 }

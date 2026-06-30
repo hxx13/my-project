@@ -1,6 +1,7 @@
 // frontend/src/features/report-form/api/reportForm.api.ts
 import { adminHttp } from '@/api/core/adminHttp';
 import type { ReportFormDefinition, PageResult, OptionSet, WordTemplateBinding } from '../types';
+import { buildReportExportFilename } from '../utils/reportFormExportFilename';
 
 const BASE = '/report-form';
 
@@ -89,11 +90,16 @@ export function togglePinForm(id: number): Promise<void> {
 
 // ── 选项集 ──
 
-export function fetchOptionSets(): Promise<OptionSet[]> {
-  return adminHttp.get(`${BASE}/option-sets`).then(({ data }) => data.data);
+export function fetchOptionSets(formId?: number): Promise<OptionSet[]> {
+  const q = formId != null ? `?formId=${formId}` : '';
+  return adminHttp.get(`${BASE}/option-sets${q}`).then(({ data }) => data.data);
 }
 
-export function createOptionSet(name: string, itemsJson: string, scope = 'global', formId?: number) {
+export function fetchOptionSetById(id: number): Promise<OptionSet> {
+  return adminHttp.get(`${BASE}/option-sets/${id}`).then(({ data }) => data.data);
+}
+
+export function createOptionSet(name: string, itemsJson: string, scope = 'user', formId?: number) {
   return adminHttp.post(`${BASE}/option-sets`, { name, itemsJson, scope, formId }).then(({ data }) => data.data);
 }
 
@@ -137,4 +143,67 @@ export function createFormFromWord(file: File): Promise<ReportFormDefinition> {
   return adminHttp.post(`${BASE}/forms/from-word`, fd, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(({ data }) => data.data);
+}
+
+/** 导出报表模板 Excel（不含填报数据） */
+export async function exportFormTemplateExcel(formId: number, filename?: string): Promise<void> {
+  const { authStorage } = await import('@/features/auth/authStorage');
+  const token = authStorage.getToken();
+  const resp = await fetch(`/api/admin/report-form/forms/${formId}/export-excel`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    let message = `导出失败 (${resp.status})`;
+    try {
+      const json = await resp.json();
+      message = json.message || json.msg || message;
+    } catch { /* ignore */ }
+    throw new Error(message);
+  }
+  const blob = await resp.blob();
+  downloadBlob(blob, filename || `report-form-${formId}-template.xlsx`);
+}
+
+/** 导出 Word（设计页：注入 layout 静态内容；未发布也可用） */
+export async function exportFormWordFilled(formId: number, wtId: string, filename?: string): Promise<void> {
+  const { authStorage } = await import('@/features/auth/authStorage');
+  const token = authStorage.getToken();
+  const resp = await fetch(`/api/admin/report-form/forms/${formId}/export-word-filled/${wtId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    let message = `导出失败 (${resp.status})`;
+    try {
+      const json = await resp.json();
+      message = json.message || json.msg || message;
+    } catch { /* ignore */ }
+    throw new Error(message);
+  }
+  const blob = await resp.blob();
+  downloadBlob(blob, filename || `report-form-${formId}-layout.docx`);
+}
+
+/** 导出已绑定的 Word 模板文件（.docx，不含填报数据） */
+export async function exportFormWordTemplate(
+  formId: number,
+  wtId: string,
+  formName?: string,
+  tmplName?: string,
+): Promise<void> {
+  const filename = buildReportExportFilename({
+    formName: formName || 'report-form',
+    extension: 'docx',
+    wordTemplateName: tmplName,
+  });
+  await exportFormWordFilled(formId, wtId, filename);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
 }

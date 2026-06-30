@@ -76,6 +76,19 @@ export function useFormGridEditor(initialLayout: LayoutJson) {
     });
   }, []);
 
+  /** 点击预览控件：选中该格，不触发「再点同一格取消选中」 */
+  const selectCellForPreview = useCallback((cellId: string, multi: boolean) => {
+    setSelectedCellIds(prev => {
+      if (multi) {
+        const next = new Set(prev);
+        if (next.has(cellId)) next.delete(cellId);
+        else next.add(cellId);
+        return next;
+      }
+      return new Set([cellId]);
+    });
+  }, []);
+
   /** 拖选：只加不删，避免经过已选格子时 toggle 掉 */
   const selectCellDragAdd = useCallback((cellId: string) => {
     setSelectedCellIds(prev => {
@@ -146,7 +159,7 @@ export function useFormGridEditor(initialLayout: LayoutJson) {
     });
   }, [pushUndo]);
 
-  /** 批量设置填报字段类型（静态格会先转为填报字段） */
+  /** 批量设置填报字段类型（静态格会先转为 STATIC 填报字段） */
   const batchUpdateFieldType = useCallback((cellIds: Set<string>, type: FieldType) => {
     if (cellIds.size === 0) return;
     pushUndo();
@@ -155,12 +168,19 @@ export function useFormGridEditor(initialLayout: LayoutJson) {
       const cells = prev.cells.map(c => {
         if (!cellIds.has(c.id)) return c;
         let fieldKey = c.fieldKey || `f_${c.id}`;
-        if (c.kind === 'static') {
-          if (!fields[fieldKey]) {
-            fields[fieldKey] = { type, label: '', editableInFill: true };
-          } else {
-            fields[fieldKey] = { ...fields[fieldKey], type };
-          }
+        const fromStaticText = c.kind === 'static' ? (c.staticText || '') : '';
+
+        if (c.kind === 'static' || type === 'STATIC') {
+          const label = type === 'STATIC'
+            ? (fromStaticText || fields[fieldKey]?.label || '')
+            : (fields[fieldKey]?.label || fromStaticText || '');
+          fields[fieldKey] = {
+            ...(fields[fieldKey] || { label: '', editableInFill: true }),
+            type,
+            label,
+            editableInFill: type !== 'STATIC',
+            required: type === 'STATIC' ? false : fields[fieldKey]?.required,
+          };
           return { ...c, kind: 'field' as const, fieldKey, staticText: undefined };
         }
         if (c.fieldKey) {
@@ -353,7 +373,7 @@ export function useFormGridEditor(initialLayout: LayoutJson) {
 
   return {
     layout, setLayout: replaceLayout,
-    selectedCellIds, selectCell, selectCellDragAdd, selectRange, isDragging, setIsDragging,
+    selectedCellIds, selectCell, selectCellForPreview, selectCellDragAdd, selectRange, isDragging, setIsDragging,
     updateCell, updateCellStyle, updateCellsStyle, setCellKind, batchSetCellKind,
     toggleCellKind, updateFieldDefinition, batchUpdateFieldType, batchUpdateFieldDefinition,
     mergeCells, unmergeCells,

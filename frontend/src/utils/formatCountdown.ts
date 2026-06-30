@@ -18,6 +18,19 @@ export function remainingSecondsFromScheduledAt(
     return rem > 0 ? rem : 0;
 }
 
+export type AutoSignoutCountdownInput = {
+    autoSignoutScheduledAt?: string | null;
+    autoSignoutSecondsRemaining?: number | null;
+};
+
+/** 是否存在有效的自动签退 / 延时离开倒计时（analyze 或弹窗 state 均可传入） */
+export function hasActiveAutoSignoutCountdown(input: AutoSignoutCountdownInput | null | undefined): boolean {
+    if (!input) return false;
+    const fromDeadline = remainingSecondsFromScheduledAt(input.autoSignoutScheduledAt);
+    if (fromDeadline != null && fromDeadline > 0) return true;
+    return (input.autoSignoutSecondsRemaining ?? 0) > 0;
+}
+
 /** 联动计时器文案：待激活 vs 延时签退 */
 export function resolveAutoSignoutCountdownCopy(state: string | null | undefined): {
     badge: string;

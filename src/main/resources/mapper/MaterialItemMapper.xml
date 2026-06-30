@@ -11,6 +11,24 @@
         <if test="categoryId != null">AND category_id = #{categoryId}</if>
         ORDER BY id DESC
     </select>
+    <select id="selectByApplicantGroup" resultType="com.example.demo.modules.material.entity.MaterialItem">
+        SELECT i.* FROM material_item i
+        WHERE i.deleted = 0
+        <if test="categoryId != null">AND i.category_id = #{categoryId}</if>
+        <if test="applicantGroup != null and applicantGroup != ''">
+            AND i.id IN (
+                SELECT DISTINCT l.item_id FROM material_request_line l
+                JOIN material_request r ON l.request_id = r.id
+                WHERE r.deleted = 0 AND r.applicant_group = #{applicantGroup}
+                UNION
+                SELECT DISTINCT m.item_id FROM material_stock_movement m
+                LEFT JOIN material_request r2 ON m.request_id = r2.id
+                LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
+                WHERE r2.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup}
+            )
+        </if>
+        ORDER BY i.id DESC
+    </select>
     <select id="selectById" resultType="com.example.demo.modules.material.entity.MaterialItem">
         SELECT * FROM material_item WHERE id = #{id}
     </select>

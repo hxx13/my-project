@@ -3,6 +3,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams, useLocation } from "react-router-dom";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
 import {
   createSupplyClaim,
@@ -23,6 +24,7 @@ import type { PublicPagePermissionNode } from "@/api/domains/pagePermission.api"
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { webImageSrc } from "@/utils/mediaUrl";
 import { Portal } from "@/components/Portal";
+import MySuppliesRecordsPanel from "@/components/supplies/MySuppliesRecordsPanel";
 
 const SUPPLIES_MALL_CARD_MIN_COL_PX = 300;
 /** 卡片最小高度（约为原版 2×） */
@@ -80,7 +82,7 @@ export default function AdminSuppliesMallPage() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const returnToForChild = `${location.pathname}${location.search}`;
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const superOk = hasMinRole(role, "SUPER_ADMIN");
 
   const [permNodes, setPermNodes] = useState<PublicPagePermissionNode[]>([]);
@@ -100,6 +102,7 @@ export default function AdminSuppliesMallPage() {
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [remarkMap, setRemarkMap] = useState<Record<number, string>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [recordsPanelOpen, setRecordsPanelOpen] = useState(false);
 
   const claimCap = capMap.SUPPLIES_CLAIM;
   const adminCap = capMap.SUPPLIES_ADMIN;
@@ -416,7 +419,7 @@ export default function AdminSuppliesMallPage() {
         setCartSheetOpen(false);
         setRemarkMap({});
         window.dispatchEvent(new Event(ADMIN_PENDING_BADGES_REFRESH_EVENT));
-        navigate("/admin/supplies/mine");
+        setRecordsPanelOpen(true);
         return;
       }
       await createSupplyClaim(lines);
@@ -462,7 +465,7 @@ export default function AdminSuppliesMallPage() {
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           {showProcessEntry ? (
             <Link
-              to="/admin/supplies/process"
+              to={toAdminRoutePath("/admin/supplies/process")}
               state={{ returnTo: returnToForChild }}
               className="relative rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:opacity-90"
             >
@@ -476,16 +479,16 @@ export default function AdminSuppliesMallPage() {
           ) : null}
           {showAdminEntry ? (
             <Link
-              to="/admin/supplies/manage"
+              to={toAdminRoutePath("/admin/supplies/manage")}
               state={{ returnTo: returnToForChild }}
               className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-800 hover:opacity-90"
             >
               管理
             </Link>
           ) : null}
-          <Link
-            to="/admin/supplies/mine"
-            state={{ returnTo: returnToForChild }}
+          <button
+            type="button"
+            onClick={() => setRecordsPanelOpen(true)}
             className="relative rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-1.5 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft-2)]"
           >
             我的记录
@@ -494,7 +497,7 @@ export default function AdminSuppliesMallPage() {
                 {mineBadgeText}
               </span>
             ) : null}
-          </Link>
+          </button>
         </div>
       </header>
 
@@ -824,6 +827,11 @@ export default function AdminSuppliesMallPage() {
           </div>
         </div>
         </Portal>
+      ) : null}
+
+      {/* 我的记录面板 */}
+      {recordsPanelOpen ? (
+        <MySuppliesRecordsPanel onClose={() => setRecordsPanelOpen(false)} />
       ) : null}
     </div>
     </div>

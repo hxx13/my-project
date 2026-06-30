@@ -1,7 +1,8 @@
 // frontend/src/features/report-form/api/reportFill.api.ts
 import { adminHttp } from '@/api/core/adminHttp';
 import { authStorage } from '@/features/auth/authStorage';
-import type { ReportFormDefinition, ReportFormSubmission } from '../types';
+import type { ReportFormDefinition, ReportFormSubmission, PublisherFillGroup } from '../types';
+import { parseContentDispositionFilename } from '../utils/reportFormExportFilename';
 import toast from 'react-hot-toast';
 
 const BASE = '/report-fill';
@@ -10,12 +11,30 @@ export function fetchAvailableForms(): Promise<ReportFormDefinition[]> {
   return adminHttp.get(`${BASE}/available`).then(({ data }) => data.data);
 }
 
-export function fetchCanEdit(formId: number): Promise<{ canEdit: boolean; role: string }> {
-  return adminHttp.get(`${BASE}/forms/${formId}/can-edit`).then(({ data }) => data.data);
+export function fetchCanEdit(formId: number, submissionId?: number): Promise<{ canEdit: boolean; role: string; publisher?: boolean }> {
+  const qs = submissionId != null ? `?submissionId=${submissionId}` : '';
+  return adminHttp.get(`${BASE}/forms/${formId}/can-edit${qs}`).then(({ data }) => data.data);
 }
 
-export function fetchMySubmission(formId: number): Promise<ReportFormSubmission> {
-  return adminHttp.get(`${BASE}/forms/${formId}/my-submission`).then(({ data }) => data.data);
+export function fetchMySubmission(formId: number, submissionId?: number): Promise<ReportFormSubmission> {
+  const qs = submissionId != null ? `?submissionId=${submissionId}` : '';
+  return adminHttp.get(`${BASE}/forms/${formId}/my-submission${qs}`).then(({ data }) => data.data);
+}
+
+export function fetchMySubmissions(formId: number): Promise<ReportFormSubmission[]> {
+  return adminHttp.get(`${BASE}/forms/${formId}/my-submissions`).then(({ data }) => data.data);
+}
+
+export function createSubmissionInstance(formId: number, instanceLabel?: string): Promise<ReportFormSubmission> {
+  return adminHttp.post(`${BASE}/forms/${formId}/instances`, { instanceLabel }).then(({ data }) => data.data);
+}
+
+export function deleteSubmissionInstance(formId: number, submissionId: number): Promise<void> {
+  return adminHttp.delete(`${BASE}/forms/${formId}/submissions/${submissionId}`).then(({ data }) => data.data);
+}
+
+export function fetchPublisherOverview(formId: number): Promise<PublisherFillGroup[]> {
+  return adminHttp.get(`${BASE}/forms/${formId}/publisher-overview`).then(({ data }) => data.data);
 }
 
 export function fetchFormSubmissions(formId: number): Promise<ReportFormSubmission[]> {
@@ -23,6 +42,7 @@ export function fetchFormSubmissions(formId: number): Promise<ReportFormSubmissi
 }
 
 export interface SavePayload {
+  submissionId?: number;
   fieldValuesJson: string;
   expectedVersion: number;
 }
@@ -31,8 +51,9 @@ export function saveMySubmission(formId: number, payload: SavePayload): Promise<
   return adminHttp.put(`${BASE}/forms/${formId}/my-submission`, payload).then(({ data }) => data.data);
 }
 
-export function submitMySubmission(formId: number): Promise<ReportFormSubmission> {
-  return adminHttp.post(`${BASE}/forms/${formId}/my-submission/submit`).then(({ data }) => data.data);
+export function submitMySubmission(formId: number, submissionId?: number): Promise<ReportFormSubmission> {
+  const qs = submissionId != null ? `?submissionId=${submissionId}` : '';
+  return adminHttp.post(`${BASE}/forms/${formId}/my-submission/submit${qs}`).then(({ data }) => data.data);
 }
 
 export function createFromTemplate(templateId: number): Promise<ReportFormDefinition> {
@@ -79,12 +100,24 @@ async function downloadFile(path: string, options: DownloadOptions = {}) {
 
   const blob = await resp.blob();
   const disposition = resp.headers.get('Content-Disposition') || '';
-  const filenameMatch = /filename\*?=(?:UTF-8''|"?)([^";]+)/i.exec(disposition);
-  const filename = filenameMatch?.[1]?.replace(/"/g, '') || options.defaultFilename || 'download';
+  const filename = parseContentDispositionFilename(disposition)
+    || options.defaultFilename
+    || 'download';
 
   const blobUrl = URL.createObjectURL(blob);
   if (options.inline) {
-    window.open(blobUrl, '_blank');
+    const win = window.open(blobUrl, '_blank');
+    if (win) {
+      const triggerPrint = () => {
+        try {
+          win.print();
+        } catch {
+          // 部分浏览器对 blob: 预览页限制 print()
+        }
+      };
+      win.addEventListener('load', triggerPrint);
+      window.setTimeout(triggerPrint, 900);
+    }
   } else {
     const a = document.createElement('a');
     a.href = blobUrl;
@@ -106,39 +139,54 @@ async function runExport(label: string, fn: () => Promise<void>) {
   }
 }
 
-export async function exportExcel(formId: number, submissionId?: number) {
+export async function exportExcel(formId: number, submissionId?: number, defaultFilename?: string) {
   await runExport('Excel 导出', () => downloadFile(
     submissionId
       ? `${BASE}/forms/${formId}/export?submissionId=${submissionId}`
       : `${BASE}/forms/${formId}/export`,
-    { defaultFilename: `report-form-${formId}.xlsx` },
+    { defaultFilename },
   ));
 }
 
-export async function exportPdf(formId: number, submissionId?: number) {
+export async function exportPdf(formId: number, submissionId?: number, defaultFilename?: string) {
   await runExport('PDF 导出', () => downloadFile(
     submissionId
       ? `${BASE}/forms/${formId}/export-pdf?submissionId=${submissionId}`
       : `${BASE}/forms/${formId}/export-pdf`,
-    { defaultFilename: `report-form-${formId}.pdf` },
+    { defaultFilename },
   ));
 }
 
-export async function exportWord(formId: number, wtId: string, submissionId: number) {
+export async function exportWord(
+  formId: number,
+  wtId: string,
+  submissionId: number,
+  fieldValues?: Record<string, unknown>,
+  defaultFilename?: string,
+) {
   await runExport('Word 导出', () => downloadFile(
-    `${BASE}/forms/${formId}/export-word/${wtId}?submissionId=${submissionId}`,
-    { defaultFilename: `report-form-${formId}.docx` },
+    `${BASE}/forms/${formId}/export-word/${wtId}`,
+    {
+      method: 'POST',
+      body: {
+        submissionId,
+        ...(fieldValues && Object.keys(fieldValues).length > 0
+          ? { fieldValuesJson: JSON.stringify(fieldValues) }
+          : {}),
+      },
+      defaultFilename,
+    },
   ));
 }
 
-export async function printForm(formId: number, submissionId?: number) {
+export async function printForm(formId: number, submissionId?: number, defaultFilename?: string) {
   await runExport('打印', () => downloadFile(
     `${BASE}/forms/${formId}/print`,
     {
       method: 'POST',
       body: submissionId != null ? { submissionId } : {},
       inline: true,
-      defaultFilename: `report-form-${formId}.pdf`,
+      defaultFilename,
     },
   ));
 }

@@ -25,8 +25,6 @@ let executePendingUserId: string | null = null;
 
 let lastExecute: LastExecute | null = null;
 
-let autoExitTimer: ReturnType<typeof setTimeout> | null = null;
-
 export function setScanPopupSession(userId: string | null, scanKey: string | null) {
   popupUserId = userId ? normalizeKey(userId) : null;
   popupScanKey = scanKey ? normalizeKey(scanKey) : null;
@@ -47,18 +45,7 @@ export function noteScanExecuteSuccess(userId: string, scanKey: string, action: 
 }
 
 export function cancelScheduledAutoExit() {
-  if (autoExitTimer) {
-    clearTimeout(autoExitTimer);
-    autoExitTimer = null;
-  }
-}
-
-export function scheduleAutoExit(callback: () => void, delayMs: number) {
-  cancelScheduledAutoExit();
-  autoExitTimer = setTimeout(() => {
-    autoExitTimer = null;
-    callback();
-  }, delayMs);
+  // 保留为安全占位函数：原定时器调度已废弃，由手动确认弹窗替代
 }
 
 /** 是否允许 DebugNav 馆内二次扫触发自动离开 */

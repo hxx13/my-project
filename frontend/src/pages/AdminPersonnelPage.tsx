@@ -15,15 +15,16 @@ import {
 } from "@/api/hooks/usePersonnel";
 import type { PersonnelAuthRecord, SystemUserRecord } from "@/api/domains/admin.api";
 import { authStorage } from "@/features/auth/authStorage";
-import { hasMinRole } from "@/features/auth/roleAccess";
+import { hasMinRole, hasMobileHtml5Privilege, MOBILE_HTML5_PRIVILEGE_MIN_ROLE } from "@/features/auth/roleAccess";
 import { AdminPageShell, AdminDataTableWrap } from "@/components/admin/AdminPageShell";
 import { Portal } from "@/components/Portal";
 import { resetStudentPin } from "@/api/domains/specialChannel.api";
+import { PersonnelMobileTokenCell } from "@/components/admin/PersonnelMobileTokenCell";
 
-const ROLE_OPTIONS = ["STUDENT", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
+const ROLE_OPTIONS = ["MEMBER", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
 const STAFF_CREATE_ROLE_OPTIONS = ["STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN"];
 const ROLE_LABEL_MAP: Record<string, string> = {
-  STUDENT: "学生",
+  MEMBER: "学生",
   STAFF: "普通员工",
   SENIOR: "高级员工",
   ADMIN: "管理员",
@@ -33,7 +34,7 @@ const ROLE_LABEL_MAP: Record<string, string> = {
 const BUILTIN_SUPER_ADMIN_ID = "SYS_SUPER_ROOT";
 
 export default function AdminPersonnelPage() {
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const myUserId = authStorage.getUserInfo()?.id ?? authStorage.getUserIdFromToken() ?? "";
   const isSuperAdmin = hasMinRole(role, "SUPER_ADMIN");
 
@@ -217,14 +218,29 @@ export default function AdminPersonnelPage() {
     resetOpenIdMut.mutate(id);
   };
 
-  const handleResetPin = async (id: string) => {
-    if (!window.confirm("确认重置该学生的个人密码（PIN）吗？重置后学生需重新设置。")) return;
+  const handleResetPin = async (personnelUserId: string, displayName?: string) => {
+    const uid = personnelUserId.trim();
+    if (!uid) return;
+    const label = displayName?.trim() ? `${displayName.trim()}（${uid}）` : uid;
+    if (!window.confirm(`确认重置人员库学号 ${label} 的扫码个人密码（PIN）吗？\n\nPIN 按人员库学号存储，与系统登录账号（USR_*）无关。重置后该人员需重新设置 PIN。`)) return;
     try {
-      await resetStudentPin(id);
-      toast.success("PIN 已重置");
-    } catch (err: any) {
-      toast.error(err?.message || "重置 PIN 失败");
+      await resetStudentPin(uid);
+      toast.success(`已重置 ${label} 的 PIN`);
+      if (activeTab === "personnel") {
+        void refetchPersonnel();
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "重置 PIN 失败");
     }
+  };
+
+  const jumpToPersonnelPinReset = (personnelUserId: string, name?: string) => {
+    const uid = personnelUserId.trim();
+    if (!uid) return;
+    setActiveTab("personnel");
+    setPage(1);
+    setKeyword(uid);
+    toast(`已在人员库 Tab 筛选学号 ${name?.trim() ? `${name.trim()} · ${uid}` : uid}，请在 PIN 列操作`, { icon: "ℹ️" });
   };
 
   const handleCreateStaff = () => {
@@ -286,7 +302,7 @@ export default function AdminPersonnelPage() {
       { k: "工号", v: row.jobNumber || "—" },
       { k: "部门", v: row.departmentName || "—" },
       { k: "项目组", v: row.projectGroupName || "—" },
-      { k: "角色", v: ROLE_LABEL_MAP[row.role || "STUDENT"] || row.role || "—" },
+      { k: "角色", v: ROLE_LABEL_MAP[row.role || "MEMBER"] || row.role || "—" },
       { k: "状态", v: row.status === 0 ? "禁用" : "启用" },
       {
         k: "密码",
@@ -341,7 +357,7 @@ export default function AdminPersonnelPage() {
   return (
     <AdminPageShell
       title="人员授权"
-      description="维护学生与系统员工的登录账号、角色与启用状态；敏感操作需二次确认。"
+      description="维护学生与系统员工的登录账号、角色与启用状态；学生分页将角色设为「管理员」及以上时，HTML5 手机直达在笼架详情与公告交互上免课题组/自助机限制（房间页权限仍按标准规则）。"
     >
     <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-2 md:p-5">
       <div className="mb-3 flex min-h-9 min-w-0 flex-nowrap items-center gap-2 border-b border-[var(--twin-hairline)] pb-3">
@@ -484,7 +500,17 @@ export default function AdminPersonnelPage() {
               {activeTab === "system" && isSuperAdmin ? (
                 <th className="px-2 py-2 text-left font-medium">ARO绑定</th>
               ) : null}
-              <th className="px-2 py-2 text-left font-medium">角色</th>
+              {activeTab === "personnel" ? (
+                <th className="px-2 py-2 text-center font-medium w-[72px]">手机直达</th>
+              ) : null}
+              <th className="px-2 py-2 text-left font-medium">
+                <span className="block">角色</span>
+                {activeTab === "personnel" ? (
+                  <span className="block text-[10px] font-normal text-[var(--twin-mute)] leading-tight mt-0.5">
+                    {ROLE_LABEL_MAP[MOBILE_HTML5_PRIVILEGE_MIN_ROLE]}及以上：笼架详情免课题组过滤
+                  </span>
+                ) : null}
+              </th>
               <th className="px-2 py-2 text-left font-medium">密码</th>
               {isSuperAdmin ? (
                 <th className="px-2 py-2 text-left font-medium">个人密码</th>
@@ -494,7 +520,7 @@ export default function AdminPersonnelPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={activeTab === "personnel" ? (isSuperAdmin ? 5 : 4) : activeTab === "system" && isSuperAdmin ? 6 : 5}>
+                <td className="px-2 py-4 text-center text-[var(--twin-mute)]" colSpan={activeTab === "personnel" ? (isSuperAdmin ? 6 : 5) : activeTab === "system" && isSuperAdmin ? 6 : 5}>
                   加载中…
                 </td>
               </tr>
@@ -543,19 +569,29 @@ export default function AdminPersonnelPage() {
                       {row.username ? (
                         <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
                           {row.username}
-                          <span className="text-emerald-500">({ROLE_LABEL_MAP[row.role || "STUDENT"]})</span>
+                          <span className="text-emerald-500">({ROLE_LABEL_MAP[row.role || "MEMBER"]})</span>
                         </span>
                       ) : (
                         <span className="text-[var(--twin-mute)]">-</span>
                       )}
                     </td>
                   ) : null}
+                  {/* 手机端直达链接 + QR 码 */}
+                  <PersonnelMobileTokenCell
+                    userId={row.id}
+                    userName={row.name || row.username}
+                    role={row.role}
+                  />
                   <td className="px-2 py-1.5 align-middle">
                     <select
                       disabled={row.id === BUILTIN_SUPER_ADMIN_ID}
-                      value={row.role || "STUDENT"}
+                      value={row.role || "MEMBER"}
                       onChange={(e) => handleRoleChange(row.id, e.target.value)}
-                      className={`${selectRoleCls} disabled:cursor-not-allowed disabled:bg-[var(--twin-canvas-soft)] disabled:text-[var(--twin-mute)]`}
+                      className={`${selectRoleCls} disabled:cursor-not-allowed disabled:bg-[var(--twin-canvas-soft)] disabled:text-[var(--twin-mute)] ${
+                        hasMobileHtml5Privilege(row.role)
+                          ? "border-amber-300 bg-amber-50/80 text-amber-900"
+                          : ""
+                      }`}
                     >
                       {ROLE_OPTIONS.map((r) => (
                         <option key={r} value={r}>
@@ -583,7 +619,7 @@ export default function AdminPersonnelPage() {
                           {row.personalPin ? (
                             <button type="button"
                               className="text-[10px] text-red-500 hover:underline"
-                              onClick={() => handleResetPin(row.id)}>
+                              onClick={() => handleResetPin(row.id, row.name)}>
                               清空
                             </button>
                           ) : null}
@@ -635,14 +671,31 @@ export default function AdminPersonnelPage() {
                           <button type="button" className={inkBtn} onClick={() => handleResetOpenId(row.id)}>
                             重置绑定
                           </button>
-                          {isSuperAdmin && (row.role === "STUDENT" || String(row.role).includes("STUDENT")) ? (
-                            <button
-                              type="button"
-                              className={`${inkBtn} border-amber-200 text-amber-700 hover:bg-amber-50`}
-                              onClick={() => handleResetPin(row.id)}
-                            >
-                              重置PIN
-                            </button>
+                          {isSuperAdmin && (row.role === "MEMBER" || String(row.role).includes("MEMBER")) ? (
+                            (() => {
+                              const binding = aroBindings[row.id];
+                              const boundPersonnelId = binding?.aroUserId?.trim();
+                              if (boundPersonnelId) {
+                                return (
+                                  <button
+                                    type="button"
+                                    className={`${inkBtn} border-amber-200 text-amber-700 hover:bg-amber-50`}
+                                    title={`扫码 PIN 归属人员库学号 ${boundPersonnelId}，非本系统账号 ${row.id}`}
+                                    onClick={() => jumpToPersonnelPinReset(boundPersonnelId, binding?.name)}
+                                  >
+                                    人员库重置PIN
+                                  </button>
+                                );
+                              }
+                              return (
+                                <span
+                                  className="text-[10px] text-[var(--twin-mute)] max-w-[8rem]"
+                                  title="纯系统账号无人员库 PIN；扫码 PIN 请在「人员库」Tab 按被扫学生学号重置"
+                                >
+                                  PIN 见人员库
+                                </span>
+                              );
+                            })()
                           ) : null}
                           <button
                             type="button"

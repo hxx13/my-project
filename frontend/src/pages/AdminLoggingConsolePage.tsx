@@ -1,9 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  RotateCcw, Database, Trash2, Play, Pause,
-  ArrowDown, ChevronDown, ChevronRight, Settings2, ArrowLeft,
-} from "lucide-react";
+import { ArrowDown, ArrowLeft, ChevronDown, ChevronRight, Database, Pause, Play, RotateCcw, Settings2, Trash2 } from "lucide-react";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import {
   fetchLogLevels,
   setLogLevel,
@@ -180,7 +178,7 @@ export default function AdminLoggingConsolePage() {
       {/* top bar */}
       <div className="flex items-center gap-2 px-3 py-2 shrink-0 bg-gray-900 border-b border-gray-700">
         <button
-          onClick={() => navigate("/admin")}
+          onClick={() => navigate(toAdminRoutePath("/admin"))}
           className="flex items-center gap-1 text-sm text-gray-400 hover:text-white font-mono transition mr-1"
           title="返回管理后台"
         >

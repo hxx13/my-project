@@ -23,15 +23,23 @@
     --doodle-mint: color-mix(in srgb, var(--scan-notice-soft, var(--app-color-feedback-success-soft)) 65%, var(--scan-accent, transparent));
     --doodle-lavender: color-mix(in srgb, var(--scan-notice-accent) 35%, var(--scan-accent-secondary, var(--app-color-scan-ai-accent)));
     --doodle-yellow: color-mix(in srgb, var(--app-color-feedback-warning) 45%, var(--scan-notice-accent));
-    --doodle-card-width: min(94vw, 34em);
-    --doodle-card-min-width: min(88vw, 16em);
+    /* 设计稿最大 612×18px；宽度随 vw 变化（同 80vh 随高度），不超过最大值 */
+    --doodle-design-max-width: 612px;
+    --doodle-design-font-px: 18;
+    --doodle-design-ref-width: 1280;
+    --doodle-design-ref-height: 900;
+    --doodle-card-width: min(94vw, clamp(288px, 47.8125vw, var(--doodle-design-max-width)));
+    --doodle-width-ratio: min(1, calc(100vw / var(--doodle-design-ref-width)));
+    --doodle-height-ratio: min(1, calc(100vh / var(--doodle-design-ref-height)));
+    --doodle-row-slot-scale: 1;
     --doodle-card-max-height: 80vh;
     --doodle-card-min-height: min(28vh, 11.5em);
 
+    box-sizing: border-box;
     position: relative;
     width: var(--doodle-card-width);
-    min-width: var(--doodle-card-min-width);
     max-width: var(--doodle-card-width);
+    min-width: 0;
     height: auto;
     max-height: var(--doodle-card-max-height);
     min-height: var(--doodle-card-min-height);
@@ -39,7 +47,15 @@
     flex-direction: column;
     align-items: stretch;
     padding: 2.4em 1.5em 1.35em;
-    font-size: 18px;
+    font-size: calc(
+      var(--doodle-design-font-px) *
+      min(
+        var(--doodle-width-ratio),
+        var(--doodle-height-ratio),
+        var(--doodle-row-slot-scale)
+      ) *
+      1px
+    );
     color: var(--doodle-ink);
     background:
       linear-gradient(var(--doodle-bg) 1.5em, transparent 1.5em) 0 0 / 100% 1.6em,
@@ -51,6 +67,21 @@
       inset 0 0 1.2em color-mix(in srgb, var(--doodle-ink) 3%, transparent);
     pointer-events: auto;
     transform-origin: center center;
+    transform: translateZ(0);
+  }
+
+  .scan-doodle-card--exiting {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    contain: layout paint;
+    pointer-events: none;
+    box-shadow: none;
+  }
+
+  .scan-doodle-card--exiting::before,
+  .scan-doodle-card--exiting .scan-doodle-deco {
+    opacity: 0;
+    transition: opacity 0.12s ease-out;
   }
 
   .scan-doodle-card::before {
@@ -238,9 +269,27 @@
     margin: 0.25em 0 0.5em;
     padding: 0.5em 0.35em 0.65em;
     text-align: center;
-    font-size: var(--font-size-lg);
+    font-size: 1em;
     line-height: 1.75;
     color: var(--doodle-ink);
+  }
+
+  .scan-doodle-card__body .scan-announcement-body {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  /* 覆盖 Tailwind 固定 rem，随卡片流体字号等比缩放 */
+  .scan-doodle-card__body .scan-announcement-body :where(h2) {
+    font-size: 1.25em;
+  }
+
+  .scan-doodle-card__body .scan-announcement-body :where(h3) {
+    font-size: 1.125em;
+  }
+
+  .scan-doodle-card__body .scan-announcement-body :where(p, li) {
+    font-size: 1em;
   }
 
   .scan-doodle-card__body :is(p, li) {
@@ -271,6 +320,7 @@
   .scan-doodle-card__image {
     max-height: min(42vh, 320px);
     width: 100%;
+    height: auto;
     object-fit: contain;
   }
 
@@ -339,10 +389,175 @@
     background: color-mix(in srgb, var(--doodle-coral) 88%, var(--app-color-text-inverse));
   }
 
+  .scan-doodle-card__btn--secondary {
+    min-width: 7.5em;
+    font-size: 0.72em;
+    background: color-mix(in srgb, var(--app-color-surface-hover) 75%, var(--app-color-surface-container));
+    color: var(--app-color-text-secondary);
+  }
+
+  .scan-doodle-card__btn--secondary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--doodle-lavender) 45%, var(--app-color-surface-container));
+    color: var(--doodle-ink);
+  }
+
   .scan-doodle-card__counter {
     font-size: 0.74em;
     font-weight: 800;
     letter-spacing: 0.06em;
     color: var(--app-color-text-secondary);
+  }
+
+  /* ── 通告横向条带：原尺寸平铺，超出视口横向滚动（隐藏滚动条） ── */
+  .scan-notice-strip-root {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(0.75rem, 3vw, 1.5rem);
+    pointer-events: none;
+  }
+
+  .scan-notice-strip-root__scrim {
+    position: absolute;
+    inset: 0;
+    pointer-events: auto;
+  }
+
+  .scan-notice-strip-close-all {
+    position: absolute;
+    z-index: 12;
+    top: clamp(0.65rem, 2.5vh, 1.25rem);
+    right: clamp(0.65rem, 2.5vw, 1.25rem);
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    padding: 0.45em 0.85em;
+    border: 0.14em solid var(--app-color-border-default);
+    border-radius: var(--app-radius-pill);
+    background: color-mix(in srgb, var(--app-color-surface-container) 92%, var(--app-color-text-primary) 8%);
+    color: var(--app-color-text-primary);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    box-shadow: var(--app-elevation-card);
+    cursor: pointer;
+    transition: background var(--app-motion-hover), border-color var(--app-motion-hover);
+  }
+
+  .scan-notice-strip-close-all:hover {
+    border-color: var(--scan-notice-accent, var(--app-color-accent));
+    background: color-mix(in srgb, var(--scan-notice-accent-soft, var(--app-color-accent-soft)) 55%, var(--app-color-surface-container));
+  }
+
+  .scan-notice-strip-scroll {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    pointer-events: auto;
+    padding: 0.5rem 0 0.75rem;
+  }
+
+  /* 横向滚动条 — 对齐 app-themed-scrollbar / page-help-scrollbar 语义色 */
+  .scan-notice-strip-scroll--themed {
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--app-color-text-tertiary) 55%, var(--app-color-border-strong))
+      color-mix(in srgb, var(--app-color-surface-hover) 70%, transparent);
+  }
+
+  .scan-notice-strip-scroll--themed::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scan-notice-strip-scroll--themed::-webkit-scrollbar-track {
+    margin: 0 4px;
+    border-radius: var(--app-radius-pill);
+    background: color-mix(in srgb, var(--app-color-surface-hover) 70%, transparent);
+  }
+
+  .scan-notice-strip-scroll--themed::-webkit-scrollbar-thumb {
+    border-radius: var(--app-radius-pill);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    background: color-mix(in srgb, var(--app-color-text-tertiary) 55%, var(--app-color-border-strong));
+    transition: background var(--app-motion-hover);
+  }
+
+  .scan-notice-strip-scroll--themed::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--app-color-accent-secondary) 50%, var(--app-color-text-secondary));
+  }
+
+  .scan-notice-strip-scroll--themed::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .scan-notice-strip-row {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(1rem, 2.5vw, 1.75rem);
+    width: max-content;
+    min-width: 100%;
+    box-sizing: border-box;
+    padding: 0 clamp(0.75rem, 2vw, 1.25rem);
+    margin: 0 auto;
+  }
+
+  /* 关闭部分弹窗后，剩余数量变化时由 flex + min-width:100% 自动重新居中 */
+  .scan-notice-strip-row--1 {
+    justify-content: center;
+  }
+
+  /* 2 张并排：按视口均分，最大仍 612px */
+  .scan-notice-strip-row--2 .scan-doodle-card {
+    --doodle-card-width: min(612px, max(240px, calc((100vw - 5rem - 1.75rem) / 2)));
+    --doodle-row-slot-scale: min(1, calc((100vw - 5rem - 1.75rem) / 2 / 612px));
+  }
+
+  .scan-notice-strip-row--2 {
+    justify-content: center;
+  }
+
+  /* 3 张 / 4 张及以上：一屏完整 3 张，其余横滑 */
+  .scan-notice-strip-row--3 .scan-doodle-card,
+  .scan-notice-strip-row--many .scan-doodle-card {
+    --doodle-card-width: min(612px, max(220px, calc((100vw - 5rem - 3.5rem) / 3)));
+    --doodle-row-slot-scale: min(1, calc((100vw - 5rem - 3.5rem) / 3 / 612px));
+  }
+
+  .scan-notice-strip-row--3 {
+    justify-content: center;
+  }
+
+  .scan-notice-strip-row--many {
+    justify-content: flex-start;
+  }
+
+  .scan-notice-strip-slot {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .scan-notice-strip-slot .scan-doodle-card {
+    pointer-events: auto;
+    flex-shrink: 0;
+  }
+
+  .scan-notice-doodle-anchor--with-scrim .scan-notice-scrim--blocking {
+    position: absolute;
+    inset: 0;
   }
 }

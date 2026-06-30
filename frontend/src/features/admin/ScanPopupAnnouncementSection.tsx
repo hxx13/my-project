@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Pencil, RefreshCw, Save, Trash2 } from "lucide-react";
+import { GripVertical, Pencil, RefreshCw, Save, Trash2 } from "lucide-react";
 import {
   createScanPopupAnnouncement,
   deleteScanPopupAnnouncement,
@@ -35,11 +35,43 @@ function toDatetimeLocalValue(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** datetime-local 输入框产出 yyyy-MM-ddTHH:mm（无秒），后端 parseDateTime 要求 yyyy-MM-ddTHH:mm:ss，补秒避免被静默丢弃 */
+function normalizeDatetimeLocal(value: string): string | null {
+  const t = value.trim();
+  if (!t) return null;
+  // 已含秒则原样返回
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(t)) return t;
+  // 缺秒则补 :00
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t)) return t + ":00";
+  return t;
+}
+
+/** 公告公示时间状态：根据 publishAt / expireAt 判断当前是否在公示期内 */
+type TimeStatus = "pending" | "active" | "expired" | "indefinite";
+
+function getTimeStatus(row: ScanPopupAnnouncementRow): TimeStatus {
+  const now = Date.now();
+  const publish = row.publishAt ? new Date(row.publishAt).getTime() : null;
+  const expire = row.expireAt ? new Date(row.expireAt).getTime() : null;
+
+  if (!publish && !expire) return "indefinite";
+  if (publish && now < publish) return "pending";
+  if (expire && now >= expire) return "expired";
+  return "active";
+}
+
+const TIME_STATUS_META: Record<TimeStatus, { label: string; color: string }> = {
+  pending: { label: "待生效", color: "text-amber-600 bg-amber-50 border-amber-200" },
+  active: { label: "生效中", color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+  expired: { label: "已过期", color: "text-neutral-500 bg-neutral-100 border-neutral-200" },
+  indefinite: { label: "永久有效", color: "text-blue-600 bg-blue-50 border-blue-200" },
+};
+
 export function ScanPopupAnnouncementSection() {
   const [settings, setSettings] = useState<ScanPopupAnnouncementSettings>({
     enabled: true,
     showNoticeEveryScan: true,
-    applyRoleCodes: ["STUDENT"],
+    applyRoleCodes: ["MEMBER"],
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -53,6 +85,10 @@ export function ScanPopupAnnouncementSection() {
   const [publishAt, setPublishAt] = useState("");
   const [expireAt, setExpireAt] = useState("");
   const [saving, setSaving] = useState(false);
+  const [clearAutoSuppressOnSave, setClearAutoSuppressOnSave] = useState(false);
+
+  const editRow = editId != null ? rows.find((r) => r.id === editId) : undefined;
+  const editAutoSuppressCount = editRow?.autoSuppressCount ?? 0;
 
   const loadSettings = useCallback(async () => {
     setSettingsLoading(true);
@@ -89,6 +125,7 @@ export function ScanPopupAnnouncementSection() {
     setSortOrder("0");
     setPublishAt("");
     setExpireAt("");
+    setClearAutoSuppressOnSave(false);
   };
 
   const pickRow = (r: ScanPopupAnnouncementRow) => {
@@ -99,6 +136,7 @@ export function ScanPopupAnnouncementSection() {
     setSortOrder(String(r.sortOrder ?? 0));
     setPublishAt(toDatetimeLocalValue(r.publishAt));
     setExpireAt(toDatetimeLocalValue(r.expireAt));
+    setClearAutoSuppressOnSave(false);
   };
 
   const saveSettings = async () => {
@@ -131,13 +169,26 @@ export function ScanPopupAnnouncementSection() {
         contentHtml,
         enabled,
         sortOrder: Math.floor(sort),
-        publishAt: publishAt.trim() || null,
-        expireAt: expireAt.trim() || null,
+        publishAt: normalizeDatetimeLocal(publishAt),
+        expireAt: normalizeDatetimeLocal(expireAt),
         status: "ACTIVE",
       };
       if (editId != null) {
-        const updated = await updateScanPopupAnnouncement(editId, body);
-        toast.success("公告已更新");
+        const updated = await updateScanPopupAnnouncement(editId, {
+          ...body,
+          clearAutoSuppress: clearAutoSuppressOnSave,
+        });
+        const cleared = updated.clearedAutoSuppressCount ?? 0;
+        if (clearAutoSuppressOnSave) {
+          toast.success(
+            cleared > 0
+              ? `公告已保存，已清空 ${cleared} 条「不再弹出」记录，被扫码人员将重新自动弹出`
+              : "公告已保存（当前无「不再弹出」记录需清空）"
+          );
+          setClearAutoSuppressOnSave(false);
+        } else {
+          toast.success("公告已更新");
+        }
         // 保存后仅合并当前行，禁止整表 load（post-save-no-full-refresh.mdc）
         setRows((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
       } else {
@@ -164,6 +215,80 @@ export function ScanPopupAnnouncementSection() {
       toast.error(e instanceof Error ? e.message : "删除失败");
     }
   };
+
+  // ── 拖拽排序 ──
+  const dragSrcIndexRef = useRef<number | null>(null);
+
+  const onDragStart = useCallback((index: number) => {
+    dragSrcIndexRef.current = index;
+  }, []);
+
+  const onDragOver = useCallback((e: React.DragEvent, _index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = useCallback(
+    async (targetIndex: number) => {
+      const srcIndex = dragSrcIndexRef.current;
+      dragSrcIndexRef.current = null;
+      if (srcIndex == null || srcIndex === targetIndex) return;
+
+      const list = [...rows];
+      const dragged = list[srcIndex];
+      if (!dragged?.id) return;
+
+      // 计算新 sortOrder：插入到目标位置的前后两项之间
+      let newSortOrder: number;
+      if (targetIndex === 0) {
+        // 拖到最前：比当前第一项大 10
+        newSortOrder = (list[0].sortOrder ?? 0) + 10;
+      } else if (targetIndex >= list.length - 1) {
+        // 拖到最后：比当前最后一项小 10，不低于 0
+        newSortOrder = Math.max(0, (list[list.length - 1].sortOrder ?? 0) - 10);
+      } else {
+        // 拖到中间：取前后两项 sortOrder 的平均值
+        const prevOrder = list[targetIndex > srcIndex ? targetIndex : targetIndex - 1].sortOrder ?? 0;
+        const nextOrder = list[targetIndex > srcIndex ? targetIndex + 1 : targetIndex].sortOrder ?? 0;
+        newSortOrder = Math.floor((prevOrder + nextOrder) / 2);
+        // 如果平均值与前后重合，则微调
+        if (newSortOrder === prevOrder || newSortOrder === nextOrder) {
+          newSortOrder = prevOrder - 1;
+        }
+      }
+
+      // 乐观更新本地顺序
+      const reordered = [...list];
+      reordered.splice(srcIndex, 1);
+      reordered.splice(targetIndex, 0, dragged);
+      setRows(reordered);
+
+      // 持久化到后端
+      try {
+        await updateScanPopupAnnouncement(dragged.id, {
+          title: dragged.title,
+          contentHtml: dragged.contentHtml ?? "",
+          enabled: dragged.enabled !== false,
+          sortOrder: newSortOrder,
+          publishAt: dragged.publishAt ?? null,
+          expireAt: dragged.expireAt ?? null,
+          status: dragged.status ?? "ACTIVE",
+        });
+        // 静默更新本地 sortOrder 为服务端确认值
+        setRows((prev) =>
+          prev.map((r) => (r.id === dragged.id ? { ...r, sortOrder: newSortOrder } : r))
+        );
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "排序保存失败，请刷新");
+        void loadList();
+      }
+    },
+    [rows, loadList]
+  );
+
+  const onDragEnd = useCallback(() => {
+    dragSrcIndexRef.current = null;
+  }, []);
 
   return (
     <>
@@ -230,7 +355,7 @@ export function ScanPopupAnnouncementSection() {
                           if (e.target.checked) set.add(opt.code);
                           else set.delete(opt.code);
                           const next = Array.from(set) as UnboundApplyRoleCode[];
-                          return { ...s, applyRoleCodes: next.length ? next : ["STUDENT"] };
+                          return { ...s, applyRoleCodes: next.length ? next : ["MEMBER"] };
                         });
                       }}
                     />
@@ -283,6 +408,23 @@ export function ScanPopupAnnouncementSection() {
               />
             </div>
           </div>
+          {editId != null && editAutoSuppressCount > 0 ? (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-sm text-amber-950">
+              <input
+                id="clear-auto-suppress-checkbox"
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 rounded border-amber-300 cursor-pointer"
+                checked={clearAutoSuppressOnSave}
+                onChange={(e) => setClearAutoSuppressOnSave(e.target.checked)}
+              />
+              <label htmlFor="clear-auto-suppress-checkbox" className="cursor-pointer">
+                <span className="font-medium">公告已更新，清空「下次不再弹出」记录</span>
+                <span className="mt-0.5 block text-[11px] leading-relaxed text-amber-900/85">
+                  当前 {editAutoSuppressCount} 位被扫码人员已选择不再自动弹出。勾选后随「保存修改」一并清空，他们下次扫码将重新看到此公告；不勾选则仅保存内容，不会重弹。
+                </span>
+              </label>
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2 border-t border-neutral-100 pt-3">
             <AdminButton type="button" tone="primary" loading={saving} className="gap-1.5" onClick={() => void saveAnnouncement()}>
               <Save className="h-4 w-4" aria-hidden />
@@ -294,10 +436,17 @@ export function ScanPopupAnnouncementSection() {
               </AdminButton>
             ) : null}
           </div>
+          {editId != null ? (
+            <p className="text-[11px] leading-relaxed text-neutral-500">
+              {editAutoSuppressCount > 0
+                ? "修改标题或正文后，是否让被扫码人员重新自动弹出，由上方勾选控制；未勾选时「不再弹出」偏好继续有效。"
+                : "新发布公告会自动弹出；当前尚无被扫码人员选择「不再弹出」此公告。"}
+            </p>
+          ) : null}
         </div>
       </AdminFormCard>
 
-      <AdminFormCard title="公告列表" description="按排序与 ID 倒序；扫码端多条时支持上一条/下一条翻页。">
+      <AdminFormCard title="公告列表" description="拖拽左侧手柄可调整排序；排序大者靠前，扫码端多条平铺时按排序决定左右顺序。">
         <div className="mb-3 flex justify-end">
           <AdminButton type="button" tone="secondary" loading={listLoading} className="gap-1.5" onClick={() => void loadList()}>
             <RefreshCw className="h-4 w-4" aria-hidden />
@@ -310,27 +459,58 @@ export function ScanPopupAnnouncementSection() {
           <p className="text-sm text-neutral-500">暂无公告</p>
         ) : (
           <ul className="divide-y divide-neutral-100 rounded-lg border border-neutral-200">
-            {rows.map((r) => (
+            {rows.map((r, idx) => {
+              const timeStatus = getTimeStatus(r);
+              const statusMeta = TIME_STATUS_META[timeStatus];
+              return (
               <li
                 key={r.id}
+                draggable
                 className={cn(
                   "flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm transition-colors",
-                  editId === r.id && "bg-violet-50/80"
+                  editId === r.id && "bg-violet-50/80",
+                  "cursor-default select-none"
                 )}
+                onDragStart={() => onDragStart(idx)}
+                onDragOver={(e) => onDragOver(e, idx)}
+                onDrop={() => void onDrop(idx)}
+                onDragEnd={onDragEnd}
               >
-                <div className="min-w-0">
-                  <div className="font-medium text-neutral-900">
-                    #{r.id} {r.title}
-                    {r.enabled === false ? (
-                      <span className="ml-2 text-xs text-neutral-400">（已停用）</span>
-                    ) : null}
-                    {editId === r.id ? (
-                      <span className="ml-2 rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-violet-800">
-                        编辑中
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="shrink-0 cursor-grab text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
+                    title="拖拽排序"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-medium text-neutral-900">
+                      #{r.id} {r.title}
+                      {r.enabled === false ? (
+                        <span className="ml-2 text-xs text-neutral-400">（已停用）</span>
+                      ) : null}
+                      {editId === r.id ? (
+                        <span className="ml-2 rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-violet-800">
+                          编辑中
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="text-xs text-neutral-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span>排序 {r.sortOrder ?? 0}</span>
+                      <span className={cn("rounded-full border px-1.5 py-px text-[10px] font-medium", statusMeta.color)}>
+                        {statusMeta.label}
                       </span>
-                    ) : null}
+                      {r.publishAt ? (
+                        <span>{new Date(r.publishAt).toLocaleDateString("zh-CN")} 起</span>
+                      ) : null}
+                      {r.expireAt ? (
+                        <span>至 {new Date(r.expireAt).toLocaleDateString("zh-CN")}</span>
+                      ) : null}
+                      {(r.autoSuppressCount ?? 0) > 0 ? (
+                        <span className="text-amber-700">· {r.autoSuppressCount} 人已选不再弹出</span>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="text-xs text-neutral-500">排序 {r.sortOrder ?? 0}</div>
                 </div>
                 <div className="flex shrink-0 gap-1.5">
                   <AdminButton
@@ -350,7 +530,8 @@ export function ScanPopupAnnouncementSection() {
                   </AdminButton>
                 </div>
               </li>
-            ))}
+            );
+            })}
           </ul>
         )}
       </AdminFormCard>

@@ -39,8 +39,14 @@ public final class FieldValidator {
         String type = fieldDef.has("type") ? fieldDef.get("type").asText() : "TEXT";
 
         // 允许 null/空值（required 校验在提交时单独处理）
-        if (value == null || (value instanceof String && ((String) value).isEmpty())) {
+        if (value == null) {
             return;
+        }
+        if (value instanceof String s) {
+            String trimmed = s.trim();
+            if (trimmed.isEmpty() || "null".equalsIgnoreCase(trimmed)) {
+                return;
+            }
         }
 
         try {
@@ -55,6 +61,7 @@ public final class FieldValidator {
                 case "FILE" -> validateFile(fieldKey, fieldDef, value);
                 case "USER" -> { /* any string OK */ }
                 case "AUTO_USER" -> { /* auto-injected by service, skip */ }
+                case "STATIC" -> { /* 展示用，无填报值 */ }
                 default -> { /* unknown type, skip */ }
             }
         } catch (TwinBusinessException e) {
@@ -149,8 +156,14 @@ public final class FieldValidator {
     // ──────────── DATETIME ────────────
 
     private static void validateDatetime(String fieldKey, Object value) {
-        String s = String.valueOf(value);
-        // 接受 ISO 8601 大致格式
+        String s = String.valueOf(value).trim();
+        if (s.isEmpty() || "null".equalsIgnoreCase(s)) {
+            return;
+        }
+        // 空格分隔 → ISO T 分隔
+        if (s.matches("^\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}.*$")) {
+            s = s.replaceFirst("\\s+", "T");
+        }
         if (!s.matches("^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?)?.*$")) {
             throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_FIELD_INVALID,
                 "字段 [" + fieldKey + "] 日期时间格式不正确，应为 YYYY-MM-DD 或 YYYY-MM-DDTHH:mm");
@@ -226,6 +239,9 @@ public final class FieldValidator {
             var entry = iter.next();
             String fieldKey = entry.getKey();
             JsonNode fieldDef = entry.getValue();
+            if (fieldDef.has("type") && "STATIC".equals(fieldDef.get("type").asText())) {
+                continue;
+            }
             if (fieldDef.has("required") && fieldDef.get("required").asBoolean()) {
                 Object val = values.get(fieldKey);
                 if (val == null || (val instanceof String s && s.isEmpty())) {

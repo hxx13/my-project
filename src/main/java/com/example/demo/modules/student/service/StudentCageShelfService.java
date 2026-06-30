@@ -6,6 +6,7 @@ import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
+import com.example.demo.modules.cageshelf.mapper.CageShelfGridCacheMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
 import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -42,6 +44,7 @@ public class StudentCageShelfService {
     private final AroService aroService;
     private final AroPersonnelMapper aroPersonnelMapper;
     private final CageShelfMapper cageShelfMapper;
+    private final CageShelfGridCacheMapper gridCacheMapper;
     private final StudentCageShelfSnapshotMapper snapshotMapper;
     private final CageCellAnnotationMapper annotationMapper;
     private final StudentCageShelfPinMapper cageShelfPinMapper;
@@ -50,6 +53,7 @@ public class StudentCageShelfService {
                                    AroService aroService,
                                    AroPersonnelMapper aroPersonnelMapper,
                                    CageShelfMapper cageShelfMapper,
+                                   CageShelfGridCacheMapper gridCacheMapper,
                                    StudentCageShelfSnapshotMapper snapshotMapper,
                                    CageCellAnnotationMapper annotationMapper,
                                    StudentCageShelfPinMapper cageShelfPinMapper) {
@@ -57,6 +61,7 @@ public class StudentCageShelfService {
         this.aroService = aroService;
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.cageShelfMapper = cageShelfMapper;
+        this.gridCacheMapper = gridCacheMapper;
         this.snapshotMapper = snapshotMapper;
         this.annotationMapper = annotationMapper;
         this.cageShelfPinMapper = cageShelfPinMapper;
@@ -65,16 +70,48 @@ public class StudentCageShelfService {
     // ---- filter options ----
 
     /**
-     * 级联筛选选项：与教职工后台 CageShelfService.filterOptions() 使用相同的 Mapper 方法，
-     * 每级根据上级选择逐步缩小范围，不做课题组过滤（笼架索引本身是全局的）。
+     * 级联筛选选项：管理员及以上看全部；其余角色仅显示本课题组有占用笼位的房间/笼架。
      */
     public Map<String, Object> getFilterOptions(User user, Integer campusId, String areaId, String floorId, String roomId) {
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("campuses", cageShelfMapper.listCampuses());
-        out.put("areas", cageShelfMapper.listAreas(campusId));
-        out.put("floors", cageShelfMapper.listFloors(campusId, areaId, null));
-        out.put("rooms", cageShelfMapper.listRooms(campusId, areaId, null, floorId, null));
-        out.put("shelves", cageShelfMapper.listShelves(campusId, areaId, floorId, null, null, roomId, null));
+        if (isAdminUser(user)) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("campuses", cageShelfMapper.listCampuses());
+            out.put("areas", cageShelfMapper.listAreas(campusId));
+            out.put("floors", cageShelfMapper.listFloors(campusId, areaId, null));
+            out.put("rooms", cageShelfMapper.listRooms(campusId, areaId, null, floorId, null));
+            out.put("shelves", cageShelfMapper.listShelves(campusId, areaId, floorId, null, null, roomId, null));
+            return out;
+        }
+        Set<String> ownGroupShelveIds = resolveOwnGroupShelveIds(user);
+        List<CageShelfIndex> scope = ownGroupShelveIds.isEmpty()
+                ? List.of()
+                : cageShelfMapper.listIndexesByShelveIds(new ArrayList<>(ownGroupShelveIds));
+        return buildScopedFilterOptions(scope, ownGroupShelveIds, campusId, areaId, floorId, roomId);
+    }
+
+    /** 手机 HTML5 笼架列表：非管理员仅返回本课题组有占用笼位的笼架 */
+    public List<Map<String, Object>> listAllShelvesForMobile(User user, boolean html5PrivilegeBypass) {
+        if (isAdminUser(user) || html5PrivilegeBypass) {
+            List<Map<String, Object>> rows = cageShelfMapper.listAllShelfSummaries();
+            return rows == null ? List.of() : new ArrayList<>(rows);
+        }
+        Set<String> ownGroupShelveIds = resolveOwnGroupShelveIds(user);
+        if (ownGroupShelveIds.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> rows = cageShelfMapper.listAllShelfSummaries();
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            if (row == null) continue;
+            String shelveId = objToStr(row.get("shelveId"));
+            if (!ownGroupShelveIds.contains(shelveId)) continue;
+            Map<String, Object> shelf = new LinkedHashMap<>(row);
+            shelf.put("highlight", true);
+            out.add(shelf);
+        }
         return out;
     }
 
@@ -83,13 +120,24 @@ public class StudentCageShelfService {
     /**
      * 学生端笼架详情：复用教职工端缓存数据，叠加课题组可见性过滤。
      */
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getShelfDetail(User user, String shelveId) {
+        return getShelfDetail(user, shelveId, false);
+    }
+
+    /**
+     * @param mobileHtml5PrivilegeBypass 仅手机 HTML5 token 接口对特权用户传入 true，学生 Web 端保持 false
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getShelfDetail(User user, String shelveId, boolean mobileHtml5PrivilegeBypass) {
+        boolean isAdmin = isAdminUser(user) || mobileHtml5PrivilegeBypass;
+        if (!isAdmin && !canAccessShelve(user, shelveId)) {
+            throw new IllegalStateException("无权限查看该笼架");
+        }
+
         // 直接复用教职工端缓存数据（优先缓存，缓存未命中时实时拉取 ARO）
         Map<String, Object> adminDetail = cageShelfService.fetchShelfDetail(shelveId);
 
         // 权限控制
-        boolean isAdmin = isAdminUser(user);
         List<String> groupNames = isAdmin ? List.of() : resolveUserGroupNames(user.getId());
 
         // 对 admin 返回的 grid 叠加可见性过滤
@@ -108,9 +156,7 @@ public class StudentCageShelfService {
             }
 
             // 可见性检查
-            String dept = String.valueOf(gridCell.getOrDefault("departmentName", ""));
-            String pi = String.valueOf(gridCell.getOrDefault("projectPiName", ""));
-            boolean visible = isAdmin || groupNames.stream().anyMatch(g -> g.equals(dept) || g.equals(pi));
+            boolean visible = isAdmin || isCellVisible(gridCell, groupNames);
             gridCell.put("visible", visible);
             filled++;
 
@@ -327,6 +373,209 @@ public class StudentCageShelfService {
 
     // ---- helpers ----
 
+    /** 非管理员是否可访问该笼架（须为本课题组有占用笼位的笼架） */
+    public boolean canAccessShelve(User user, String shelveId) {
+        if (user == null || shelveId == null || shelveId.isBlank()) {
+            return false;
+        }
+        if (isAdminUser(user)) {
+            return true;
+        }
+        return resolveOwnGroupShelveIds(user).contains(shelveId.trim());
+    }
+
+    /** 本课题组有占用笼位的笼架 ID（快照 + 网格缓存，PI 与课题组名匹配） */
+    private Set<String> resolveOwnGroupShelveIds(User user) {
+        List<String> groupNames = resolveUserGroupNames(user.getId());
+        if (groupNames.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> shelveIds = new LinkedHashSet<>();
+        for (Map<String, Object> row : snapshotMapper.selectDistinctShelves(groupNames)) {
+            String sid = objToStr(row.get("shelveId"));
+            if (!sid.isBlank()) {
+                shelveIds.add(sid);
+            }
+        }
+        collectOwnGroupShelveIdsFromGridCache(groupNames, shelveIds);
+        return shelveIds;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void collectOwnGroupShelveIdsFromGridCache(List<String> groupNames, Set<String> out) {
+        List<Map<String, Object>> rows = gridCacheMapper.selectAllWithFilledCells();
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        for (Map<String, Object> row : rows) {
+            String shelveId = objToStr(row.get("shelveId"));
+            String gridJson = objToStr(row.get("gridJson"));
+            if (shelveId.isBlank() || gridJson.isBlank()) {
+                continue;
+            }
+            try {
+                List<Map<String, Object>> grid = objectMapper.readValue(gridJson, List.class);
+                for (Map<String, Object> cell : grid) {
+                    if (Boolean.TRUE.equals(cell.get("empty"))) {
+                        continue;
+                    }
+                    if (isCellVisible(cell, groupNames)) {
+                        out.add(shelveId);
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("[student-cage-shelf] 解析 grid cache 失败 shelveId={} err={}", shelveId, e.getMessage());
+            }
+        }
+    }
+
+    private Map<String, Object> buildScopedFilterOptions(List<CageShelfIndex> scope,
+                                                         Set<String> ownGroupShelveIds,
+                                                         Integer campusId,
+                                                         String areaId,
+                                                         String floorId,
+                                                         String roomId) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (scope == null || scope.isEmpty()) {
+            out.put("campuses", List.of());
+            out.put("areas", List.of());
+            out.put("floors", List.of());
+            out.put("rooms", List.of());
+            out.put("shelves", List.of());
+            return out;
+        }
+
+        out.put("campuses", distinctCampuses(scope));
+        out.put("areas", distinctAreas(filterByCampus(scope, campusId)));
+        out.put("floors", distinctFloors(filterByCampusAndArea(scope, campusId, areaId)));
+        out.put("rooms", distinctRooms(filterByCampusAreaFloor(scope, campusId, areaId, floorId), ownGroupShelveIds));
+        out.put("shelves", distinctShelves(filterByCampusAreaFloorRoom(scope, campusId, areaId, floorId, roomId), ownGroupShelveIds));
+        return out;
+    }
+
+    private List<CageShelfIndex> filterByCampus(List<CageShelfIndex> scope, Integer campusId) {
+        if (campusId == null) {
+            return scope;
+        }
+        return scope.stream().filter(r -> campusId.equals(r.getCampusId())).toList();
+    }
+
+    private List<CageShelfIndex> filterByCampusAndArea(List<CageShelfIndex> scope, Integer campusId, String areaId) {
+        List<CageShelfIndex> base = filterByCampus(scope, campusId);
+        if (areaId == null || areaId.isBlank()) {
+            return base;
+        }
+        return base.stream().filter(r -> areaId.equals(String.valueOf(r.getAreaId()))).toList();
+    }
+
+    private List<CageShelfIndex> filterByCampusAreaFloor(List<CageShelfIndex> scope,
+                                                          Integer campusId,
+                                                          String areaId,
+                                                          String floorId) {
+        List<CageShelfIndex> base = filterByCampusAndArea(scope, campusId, areaId);
+        if (floorId == null || floorId.isBlank()) {
+            return base;
+        }
+        return base.stream().filter(r -> floorId.equals(String.valueOf(r.getFloorId()))).toList();
+    }
+
+    private List<CageShelfIndex> filterByCampusAreaFloorRoom(List<CageShelfIndex> scope,
+                                                              Integer campusId,
+                                                              String areaId,
+                                                              String floorId,
+                                                              String roomId) {
+        List<CageShelfIndex> base = filterByCampusAreaFloor(scope, campusId, areaId, floorId);
+        if (roomId == null || roomId.isBlank()) {
+            return base;
+        }
+        return base.stream().filter(r -> roomId.equals(String.valueOf(r.getRoomId()))).toList();
+    }
+
+    private List<Map<String, Object>> distinctCampuses(List<CageShelfIndex> rows) {
+        Map<Integer, Map<String, Object>> map = new LinkedHashMap<>();
+        for (CageShelfIndex r : rows) {
+            if (r.getCampusId() == null) continue;
+            map.putIfAbsent(r.getCampusId(), mapOf(
+                    "campusId", r.getCampusId(),
+                    "campusName", nullToEmpty(r.getCampusName())));
+        }
+        return map.values().stream()
+                .sorted(Comparator.comparing(m -> String.valueOf(m.get("campusId"))))
+                .toList();
+    }
+
+    private List<Map<String, Object>> distinctAreas(List<CageShelfIndex> rows) {
+        Map<String, Map<String, Object>> map = new LinkedHashMap<>();
+        for (CageShelfIndex r : rows) {
+            if (r.getAreaId() == null) continue;
+            String key = String.valueOf(r.getAreaId());
+            map.putIfAbsent(key, mapOf("areaId", key, "areaName", nullToEmpty(r.getAreaName())));
+        }
+        return map.values().stream()
+                .sorted(Comparator.comparing(m -> String.valueOf(m.get("areaId"))))
+                .toList();
+    }
+
+    private List<Map<String, Object>> distinctFloors(List<CageShelfIndex> rows) {
+        Map<String, Map<String, Object>> map = new LinkedHashMap<>();
+        for (CageShelfIndex r : rows) {
+            if (r.getFloorId() == null) continue;
+            String key = String.valueOf(r.getFloorId());
+            map.putIfAbsent(key, mapOf("floorId", key, "floorName", nullToEmpty(r.getFloorName())));
+        }
+        return map.values().stream()
+                .sorted(Comparator.comparing(m -> String.valueOf(m.get("floorId"))))
+                .toList();
+    }
+
+    private List<Map<String, Object>> distinctRooms(List<CageShelfIndex> rows, Set<String> ownGroupShelveIds) {
+        Map<String, Map<String, Object>> map = new LinkedHashMap<>();
+        for (CageShelfIndex r : rows) {
+            if (r.getRoomId() == null) continue;
+            String key = String.valueOf(r.getRoomId());
+            if (!map.containsKey(key)) {
+                boolean highlight = ownGroupShelveIds != null && !ownGroupShelveIds.isEmpty()
+                        && r.getShelveId() != null
+                        && ownGroupShelveIds.contains(String.valueOf(r.getShelveId()));
+                Map<String, Object> item = mapOf("roomId", key, "roomName", nullToEmpty(r.getRoomName()));
+                item.put("highlight", highlight);
+                map.put(key, item);
+            } else if (ownGroupShelveIds != null && r.getShelveId() != null
+                    && ownGroupShelveIds.contains(String.valueOf(r.getShelveId()))) {
+                map.get(key).put("highlight", true);
+            }
+        }
+        return map.values().stream()
+                .sorted(Comparator.comparing(m -> String.valueOf(m.get("roomId"))))
+                .toList();
+    }
+
+    private List<Map<String, Object>> distinctShelves(List<CageShelfIndex> rows, Set<String> ownGroupShelveIds) {
+        Map<String, Map<String, Object>> map = new LinkedHashMap<>();
+        for (CageShelfIndex r : rows) {
+            if (r.getShelveId() == null) continue;
+            String key = String.valueOf(r.getShelveId());
+            Map<String, Object> item = mapOf("shelveId", key, "shelveName", nullToEmpty(r.getShelveName()));
+            item.put("highlight", ownGroupShelveIds != null && ownGroupShelveIds.contains(key));
+            map.putIfAbsent(key, item);
+        }
+        return map.values().stream()
+                .sorted(Comparator.comparing(m -> String.valueOf(m.get("shelveId"))))
+                .toList();
+    }
+
+    private static Map<String, Object> mapOf(String k1, Object v1, String k2, Object v2) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put(k1, v1);
+        m.put(k2, v2);
+        return m;
+    }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
+    }
+
     private List<String> resolveUserGroupNames(String userId) {
         try {
             AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
@@ -351,14 +600,35 @@ public class StudentCageShelfService {
         if (groupNames == null || groupNames.isEmpty()) {
             return false;
         }
-        String dept = objToStr(cell.get("departmentName"));
+        String[] piDept = extractCellPiAndDept(cell);
+        return PersonnelProjectGroupUtil.cellBelongsToAnyUserGroup(groupNames, piDept[0], piDept[1]);
+    }
+
+    private String[] extractCellPiAndDept(Map<String, Object> cell) {
         String pi = objToStr(cell.get("projectPiName"));
-        for (String g : groupNames) {
-            if (g.equals(dept) || g.equals(pi)) {
-                return true;
+        if (pi.isEmpty()) {
+            pi = objToStr(cell.get("piName"));
+        }
+        String dept = objToStr(cell.get("departmentName"));
+        Map<String, Object> cageBoxInfo = castMap(cell.get("cageBoxInfo"));
+        if (cageBoxInfo != null) {
+            if (pi.isEmpty()) {
+                pi = trim(firstNonNullOr(cageBoxInfo, "projectPiName", cageBoxInfo.get("ProjectPiName")));
+            }
+            if (dept.isEmpty()) {
+                dept = trim(firstNonNullOr(cageBoxInfo, "departmentName", cageBoxInfo.get("DepartmentName")));
             }
         }
-        return false;
+        return new String[]{pi, dept};
+    }
+
+    private String[] extractCellPiAndDeptFromCageBox(Map<String, Object> cageBoxVo) {
+        if (cageBoxVo == null) {
+            return new String[]{"", ""};
+        }
+        String pi = trim(firstNonNullOr(cageBoxVo, "projectPiName", cageBoxVo.get("ProjectPiName")));
+        String dept = trim(firstNonNullOr(cageBoxVo, "departmentName", cageBoxVo.get("DepartmentName")));
+        return new String[]{pi, dept};
     }
 
     private Map<String, Object> buildEmptyGridResponse(CageShelfIndex index) {
@@ -617,9 +887,8 @@ public class StudentCageShelfService {
         boolean isAdmin = isAdminUser(user);
         List<String> groupNames = isAdmin ? List.of() : resolveUserGroupNames(user.getId());
         Map<String, Object> cageBoxVo = castMap(target.get("cageBoxVo"));
-        String dept = cageBoxVo == null ? "" : trim(cageBoxVo.get("departmentName"));
-        String pi = cageBoxVo == null ? "" : trim(cageBoxVo.get("projectPiName"));
-        boolean visible = isAdmin || groupNames.stream().anyMatch(g -> g.equals(dept) || g.equals(pi));
+        String[] piDept = extractCellPiAndDeptFromCageBox(cageBoxVo);
+        boolean visible = isAdmin || PersonnelProjectGroupUtil.cellBelongsToAnyUserGroup(groupNames, piDept[0], piDept[1]);
 
         // 构建返回
         Map<String, Object> result = new LinkedHashMap<>();
@@ -684,9 +953,7 @@ public class StudentCageShelfService {
             List<Map<String, Object>> cages = (List<Map<String, Object>>) group.get("cages");
             List<Map<String, Object>> visible = new ArrayList<>();
             for (Map<String, Object> cage : cages) {
-                String dept = String.valueOf(cage.getOrDefault("departmentName", ""));
-                String pi = String.valueOf(cage.getOrDefault("projectPiName", ""));
-                if (groupNames.stream().anyMatch(g -> g.equals(dept) || g.equals(pi))) {
+                if (isCellVisible(cage, groupNames)) {
                     visible.add(cage);
                 }
             }
@@ -779,6 +1046,7 @@ public class StudentCageShelfService {
         List<Map<String, Object>> result = new ArrayList<>();
         for (String sid : shelveIds) {
             if (sid == null || sid.isBlank()) continue;
+            if (!canAccessShelve(user, sid)) continue;
             try {
                 // Verify shelveId still exists; auto-clean stale bookmarks
                 CageShelfIndex idx = cageShelfMapper.findByShelveId(sid);

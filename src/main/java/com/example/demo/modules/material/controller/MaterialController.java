@@ -150,7 +150,7 @@ public class MaterialController {
     private User resolveUser(String auth) {
         User user = authContextService.resolveUserFromBearer(auth);
         if (user == null) return null;
-        if (user.getRole() == null) user.setRole(RoleEnum.STUDENT);
+        if (user.getRole() == null) user.setRole(RoleEnum.MEMBER);
         return user;
     }
 }

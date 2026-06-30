@@ -8,6 +8,7 @@ import com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord;
 import com.example.demo.modules.twin.dahua.mapper.DahuaSwingMapper;
 import com.example.demo.modules.twin.common.support.TwinActivationLinkageLabels;
 import com.example.demo.modules.twin.common.support.TwinSwingLinkageDetailBuilder;
+import com.example.demo.modules.student.service.MobilePresenceNotifyService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -48,6 +49,7 @@ public class DahuaSwingRuleEngineService {
     private final TwinCardMappingService twinCardMappingService;
     private final TwinAutomationLogService twinAutomationLogService;
     private final DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper;
+    private final MobilePresenceNotifyService mobilePresenceNotifyService;
 
     public DahuaSwingRuleEngineService(
             DahuaSwingMapper dahuaSwingMapper,
@@ -55,7 +57,8 @@ public class DahuaSwingRuleEngineService {
             DahuaSwingRuleConfigService dahuaSwingRuleConfigService,
             TwinCardMappingService twinCardMappingService,
             TwinAutomationLogService twinAutomationLogService,
-            DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper
+            DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper,
+            MobilePresenceNotifyService mobilePresenceNotifyService
     ) {
         this.dahuaSwingMapper = dahuaSwingMapper;
         this.dahuaAutoSignoutService = dahuaAutoSignoutService;
@@ -63,6 +66,21 @@ public class DahuaSwingRuleEngineService {
         this.twinCardMappingService = twinCardMappingService;
         this.twinAutomationLogService = twinAutomationLogService;
         this.dahuaDeviceChannelCacheMapper = dahuaDeviceChannelCacheMapper;
+        this.mobilePresenceNotifyService = mobilePresenceNotifyService;
+    }
+
+    private void notifyMobilePresence(String userId, String reason) {
+        if (mobilePresenceNotifyService == null || userId == null || userId.isBlank()) {
+            return;
+        }
+        mobilePresenceNotifyService.notifyPresenceChanged(userId, reason);
+    }
+
+    private void notifyTimerCleared(String userId, String scope) {
+        if (mobilePresenceNotifyService == null || userId == null || userId.isBlank()) {
+            return;
+        }
+        mobilePresenceNotifyService.notifyTimerCleared(userId, scope);
     }
 
     /**
@@ -117,6 +135,7 @@ public class DahuaSwingRuleEngineService {
                 "待激活计时：" + activationExpire + " 秒内须刷激活门；到期「" + pending.getScheduledExitAt() + "」。",
                 "dahua-swing-rule"
         );
+        notifyMobilePresence(uid, "pending_activation");
     }
 
     /**
@@ -224,10 +243,11 @@ public class DahuaSwingRuleEngineService {
                                 + (doorLabelAr.isBlank() ? "channel=" + channelCode : doorLabelAr),
                         "dahua-swing-record"
                 );
+                notifyMobilePresence(userId, "auto_exit_scheduled");
                 return;
             }
         }
-        // 仅「激活后再刷门签退」独有（未同时配置为激活门）、且人员尚未激活：忽略。
+        // 仅「激活后再刷门签退」独有
         // 若该通道也在 toggleChannelCodes 中（同一物理门双角色），须继续走下方激活逻辑以清除 __PENDING_ACTIVATION__。
         if (hitActivatedReswipeExitRule && !hitToggleRule) {
             log.info("[swing-rule] skip-reswipe-exit-only-until-activated userId={} channel={}", userId, channelCode);
@@ -278,6 +298,7 @@ public class DahuaSwingRuleEngineService {
                             + (doorLabelEx.isBlank() ? "channel=" + channelCode : doorLabelEx),
                     "dahua-swing-record"
             );
+            notifyMobilePresence(userId, "auto_exit_scheduled");
             return;
         }
 
@@ -307,8 +328,11 @@ public class DahuaSwingRuleEngineService {
         }
 
         // 仅命中激活卡片规则：取消「待激活」倒计时；后续激活逻辑作用在当前通道行上
-        dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
+        int pendingRemoved = dahuaSwingMapper.deleteActivationStateByUserTaskAndChannel(
                 GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
+        if (pendingRemoved > 0) {
+            notifyTimerCleared(userId, "pending_activation");
+        }
         int counter = state.getCounter() == null ? 0 : state.getCounter();
         counter++;
         state.setCounter(counter);
@@ -338,10 +362,11 @@ public class DahuaSwingRuleEngineService {
                 actDetail,
                 "dahua-swing-record"
         );
+        notifyMobilePresence(userId, "activated");
     }
 
     /**
-     * 到期任务：须完整自动离开（见类注释）。同一 userId 只处理一次；
+     * 到期任务：须完整自动离开
      * 仅 autoSignout 成功时清空联动行，ARO 失败时保留 scheduled 行供下一 tick 重试。
      */
     private static final String LOCK_DUE_STATES = "dahua_process_due_states";
@@ -417,6 +442,7 @@ public class DahuaSwingRuleEngineService {
             log.info("[swing-rule] due-auto-signout-result userId={} success={}", userId, ok);
             if (ok) {
                 dahuaSwingMapper.deleteActivationStatesByUserId(userId);
+                notifyMobilePresence(userId, "auto_signout");
             } else {
                 int attempt = state.getCounter() == null ? 0 : state.getCounter();
                 attempt++;
@@ -425,6 +451,7 @@ public class DahuaSwingRuleEngineService {
                     log.warn("[swing-rule] due-auto-signout-max-retries userId={} attempts={} state={} channel={} — force-clean to prevent infinite retry",
                             userId, attempt, state.getState(), state.getChannelCode());
                     dahuaSwingMapper.deleteActivationStatesByUserId(userId);
+                    notifyTimerCleared(userId, "auto_signout_failed");
                 } else {
                     dahuaSwingMapper.upsertActivationState(state);
                     log.warn("[swing-rule] due-auto-signout-keep-state userId={} state={} channel={} scheduledExitAt={} attempt={}/5",
@@ -439,7 +466,11 @@ public class DahuaSwingRuleEngineService {
         if (uid.isBlank()) {
             return 0;
         }
-        return dahuaSwingMapper.deleteActivationStatesByUserId(uid);
+        int deleted = dahuaSwingMapper.deleteActivationStatesByUserId(uid);
+        if (deleted > 0) {
+            notifyTimerCleared(uid, "all");
+        }
+        return deleted;
     }
 
     private static DahuaActivationState newStateRow(String userId, String channelCode) {

@@ -54,13 +54,246 @@ public class ReportFillService {
      * 发布时选择"最低可见角色"，>= 该角色的用户可编辑。
      */
     private static final Map<String, Integer> ROLE_LEVEL = Map.of(
-        "STUDENT", 1,
+        "MEMBER", 1,
         "STAFF", 2,
         "SENIOR", 3,
         "ADMIN", 4,
         "SUPER_ADMIN", 5,
         "PLATFORM_OWNER", 6
     );
+
+    /** 获取当前用户可查看的已发布表单（附带填报时间摘要） */
+    public List<com.example.demo.modules.reportform.dto.ReportFormAvailableVo> getAvailableEnriched(String role, Long userId, User currentUser) {
+        List<ReportFormDefinition> published = getAvailable(role, userId);
+        List<com.example.demo.modules.reportform.dto.ReportFormAvailableVo> out = new ArrayList<>();
+        for (ReportFormDefinition form : published) {
+            com.example.demo.modules.reportform.dto.ReportFormAvailableVo vo =
+                    objectMapper.convertValue(form, com.example.demo.modules.reportform.dto.ReportFormAvailableVo.class);
+            String mode = readFillMode(form);
+            boolean multi = readAllowMultipleInstances(form);
+            vo.setAllowMultipleInstances(multi);
+            boolean publisher = isFormPublisher(form, currentUser);
+            vo.setPublisher(publisher);
+
+            if ("individual".equals(mode)) {
+                int myCount = submissionMapper.countByFormAndUserId(form.getId(), userId);
+                vo.setMyInstanceCount(myCount);
+                List<ReportFormSubmission> mine = submissionMapper.selectByFormAndUserId(form.getId(), userId);
+                if (!mine.isEmpty()) {
+                    ReportFormSubmission latest = mine.get(0);
+                    vo.setLastFillUpdatedAt(latest.getUpdatedAt());
+                    vo.setLastSubmittedAt(latest.getSubmittedAt());
+                    vo.setMyFillStatus(latest.getStatus());
+                    vo.setMySubmissionId(latest.getId());
+                }
+                if (publisher) {
+                    vo.setTotalSubmissionCount(submissionMapper.countByFormId(form.getId()));
+                    vo.setTotalFillerCount(submissionMapper.countDistinctFillersByFormId(form.getId()));
+                }
+            } else {
+                Long effectiveUserId = 0L;
+                ReportFormSubmission sub = submissionMapper.selectDefaultByFormAndUser(form.getId(), effectiveUserId);
+                if (sub != null) {
+                    vo.setLastFillUpdatedAt(sub.getUpdatedAt());
+                    vo.setLastSubmittedAt(sub.getSubmittedAt());
+                    vo.setMyFillStatus(sub.getStatus());
+                    vo.setMySubmissionId(sub.getId());
+                }
+                if (publisher) {
+                    vo.setTotalSubmissionCount(submissionMapper.countByFormId(form.getId()));
+                    vo.setTotalFillerCount(sub != null ? 1 : 0);
+                }
+            }
+            out.add(vo);
+        }
+        return out;
+    }
+
+    public boolean readAllowMultipleInstances(ReportFormDefinition form) {
+        if (form == null || form.getFillPolicyJson() == null) return false;
+        try {
+            var node = objectMapper.readTree(form.getFillPolicyJson());
+            return node.has("allowMultipleInstances") && node.get("allowMultipleInstances").asBoolean(false);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    public boolean isFormPublisher(ReportFormDefinition form, User user) {
+        if (form == null || user == null) return false;
+        String uid = user.getId();
+        String username = user.getUsername();
+        if (StringUtils.hasText(form.getPublishedBy())) {
+            if (form.getPublishedBy().equals(uid) || form.getPublishedBy().equals(username)) return true;
+        }
+        if (StringUtils.hasText(form.getCreatedBy())) {
+            if (form.getCreatedBy().equals(uid) || form.getCreatedBy().equals(username)) return true;
+        }
+        return false;
+    }
+
+    public boolean canAccessSubmission(ReportFormDefinition form, String role, Long userId, User currentUser,
+                                       ReportFormSubmission sub) {
+        if (form == null || sub == null || !Objects.equals(sub.getFormId(), form.getId())) return false;
+        if (isFormPublisher(form, currentUser)) return true;
+        Integer userLevel = ROLE_LEVEL.getOrDefault(role, 0);
+        if (userLevel >= 4) return true;
+        String mode = readFillMode(form);
+        if ("shared".equals(mode)) {
+            return sub.getUserId() == null || sub.getUserId() == 0L;
+        }
+        return Objects.equals(sub.getUserId(), userId);
+    }
+
+    public boolean canEditSubmission(ReportFormDefinition form, String role, Long userId, User currentUser,
+                                     ReportFormSubmission sub) {
+        if (!canAccessSubmission(form, role, userId, currentUser, sub)) return false;
+        if (isFormPublisher(form, currentUser)) return true;
+        Integer userLevel = ROLE_LEVEL.getOrDefault(role, 0);
+        if (userLevel >= 4) return true;
+        return canEdit(form, role, userId);
+    }
+
+    public ReportFormSubmission requireAccessibleSubmission(Long formId, Long submissionId, String role,
+                                                          Long userId, User currentUser) {
+        ReportFormDefinition form = definitionMapper.selectById(formId);
+        if (form == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
+        }
+        ReportFormSubmission sub = submissionMapper.selectById(submissionId);
+        if (sub == null || !Objects.equals(sub.getFormId(), formId)) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "填报记录不存在");
+        }
+        if (!canAccessSubmission(form, role, userId, currentUser, sub)) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NO_PERMISSION, "无权访问该填报记录");
+        }
+        return sub;
+    }
+
+    public List<Map<String, Object>> listMySubmissions(Long formId, Long userId) {
+        List<ReportFormSubmission> subs = submissionMapper.selectByFormAndUserId(formId, userId);
+        return toSubmissionRows(subs);
+    }
+
+    public ReportFormSubmission createSubmissionInstance(Long formId, Long userId, String instanceLabel) {
+        ReportFormDefinition form = definitionMapper.selectById(formId);
+        if (form == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
+        }
+        if (!"published".equals(form.getStatus())) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_PUBLISHED, "报表未发布");
+        }
+        if (!"individual".equals(readFillMode(form))) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_FIELD_INVALID, "仅个人表支持创建多份子文件");
+        }
+        if (!readAllowMultipleInstances(form)) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_FIELD_INVALID, "该报表未开启多份子文件");
+        }
+        String windowError = checkTimeWindow(form);
+        if (windowError != null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_OUT_OF_WINDOW, windowError);
+        }
+        String label = normalizeInstanceLabel(instanceLabel, formId, userId);
+        if (submissionMapper.selectByFormUserAndLabel(formId, userId, label) != null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_FIELD_INVALID, "子文件名称已存在");
+        }
+        ReportFormSubmission sub = new ReportFormSubmission();
+        sub.setFormId(formId);
+        sub.setUserId(userId);
+        sub.setInstanceLabel(label);
+        sub.setStatus("draft");
+        sub.setFieldValuesJson("{}");
+        sub.setVersion(0);
+        stampNewSubmission(sub);
+        submissionMapper.insert(sub);
+        return submissionMapper.selectById(sub.getId());
+    }
+
+    /** 删除个人多份子文件：填报人可删自己的，发布者可删任意一份 */
+    public void deleteSubmissionInstance(Long formId, Long submissionId, String role, Long userId, User currentUser) {
+        ReportFormDefinition form = definitionMapper.selectById(formId);
+        if (form == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "报表不存在");
+        }
+        if (!"individual".equals(readFillMode(form)) || !readAllowMultipleInstances(form)) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_FIELD_INVALID, "当前报表未开启多份子文件，无法删除");
+        }
+        ReportFormSubmission sub = requireAccessibleSubmission(formId, submissionId, role, userId, currentUser);
+        boolean owner = Objects.equals(sub.getUserId(), userId);
+        boolean publisher = isFormPublisher(form, currentUser);
+        Integer userLevel = ROLE_LEVEL.getOrDefault(role, 0);
+        if (!owner && !publisher && userLevel < 4) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NO_PERMISSION, "无权删除该子文件");
+        }
+        if (submissionMapper.deleteById(submissionId) <= 0) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "删除失败");
+        }
+    }
+
+    private void stampNewSubmission(ReportFormSubmission sub) {
+        LocalDateTime now = LocalDateTime.now();
+        sub.setCreatedAt(now);
+        sub.setUpdatedAt(now);
+    }
+
+    private String normalizeInstanceLabel(String raw, Long formId, Long userId) {
+        String label = raw != null ? raw.trim() : "";
+        if (!label.isBlank()) return label;
+        int n = submissionMapper.countByFormAndUserId(formId, userId) + 1;
+        return "子文件 " + n;
+    }
+
+    /** 发布者视角：按填报人分组 */
+    public List<Map<String, Object>> listPublisherOverview(Long formId) {
+        List<ReportFormSubmission> subs = submissionMapper.selectByFormId(formId);
+        Map<Long, String> nickByStoredUserId = buildStoredUserIdNicknameMap();
+        Map<Long, List<ReportFormSubmission>> byUser = new LinkedHashMap<>();
+        for (ReportFormSubmission sub : subs) {
+            if (sub.getUserId() == null || sub.getUserId() == 0L) continue;
+            byUser.computeIfAbsent(sub.getUserId(), k -> new ArrayList<>()).add(sub);
+        }
+        List<Map<String, Object>> groups = new ArrayList<>();
+        for (Map.Entry<Long, List<ReportFormSubmission>> e : byUser.entrySet()) {
+            Map<String, Object> group = new LinkedHashMap<>();
+            group.put("userId", e.getKey());
+            group.put("displayNickname", resolveSubmissionDisplayName(e.getKey(), nickByStoredUserId));
+            group.put("instanceCount", e.getValue().size());
+            group.put("instances", toSubmissionRows(e.getValue()));
+            groups.add(group);
+        }
+        return groups;
+    }
+
+    private List<Map<String, Object>> toSubmissionRows(List<ReportFormSubmission> subs) {
+        Map<Long, String> nickByStoredUserId = buildStoredUserIdNicknameMap();
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (ReportFormSubmission sub : subs) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", sub.getId());
+            row.put("formId", sub.getFormId());
+            row.put("userId", sub.getUserId());
+            row.put("instanceLabel", sub.getInstanceLabel());
+            row.put("status", sub.getStatus());
+            row.put("fieldValuesJson", sub.getFieldValuesJson());
+            row.put("version", sub.getVersion());
+            row.put("submittedAt", sub.getSubmittedAt());
+            row.put("createdAt", sub.getCreatedAt());
+            row.put("updatedAt", sub.getUpdatedAt());
+            row.put("displayNickname", resolveSubmissionDisplayName(sub.getUserId(), nickByStoredUserId));
+            out.add(row);
+        }
+        return out;
+    }
+
+    private String readFillMode(ReportFormDefinition form) {
+        try {
+            if (form.getFillPolicyJson() != null) {
+                var node = objectMapper.readTree(form.getFillPolicyJson());
+                if (node.has("mode")) return node.get("mode").asText();
+            }
+        } catch (Exception ignored) {}
+        return "shared";
+    }
 
     /** 获取当前用户可查看的已发布表单（所有人可见，权限仅控制编辑） */
     public List<ReportFormDefinition> getAvailable(String role, Long userId) {
@@ -156,7 +389,7 @@ public class ReportFillService {
      * 获取或创建用户的填报记录。
      */
     public ReportFormSubmission getOrCreateSubmission(Long formId, Long userId) {
-        ReportFormSubmission sub = submissionMapper.selectByFormAndUser(formId, userId);
+        ReportFormSubmission sub = submissionMapper.selectDefaultByFormAndUser(formId, userId);
         if (sub == null) {
             ReportFormDefinition form = definitionMapper.selectById(formId);
             if (form == null) {
@@ -165,6 +398,9 @@ public class ReportFillService {
             if (!"published".equals(form.getStatus())) {
                 throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_PUBLISHED, "报表未发布");
             }
+            if ("individual".equals(readFillMode(form)) && readAllowMultipleInstances(form)) {
+                throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_FIELD_INVALID, "请先在填报中心创建子文件");
+            }
             String windowError = checkTimeWindow(form);
             if (windowError != null) {
                 throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_OUT_OF_WINDOW, windowError);
@@ -172,9 +408,11 @@ public class ReportFillService {
             sub = new ReportFormSubmission();
             sub.setFormId(formId);
             sub.setUserId(userId);
+            sub.setInstanceLabel("");
             sub.setStatus("draft");
             sub.setFieldValuesJson("{}");
             sub.setVersion(0);
+            stampNewSubmission(sub);
             submissionMapper.insert(sub);
         }
         return sub;
@@ -187,8 +425,22 @@ public class ReportFillService {
         return saveSubmission(formId, userId, fieldValuesJson, expectedVersion, null);
     }
 
+    public ReportFormSubmission saveSubmissionById(Long submissionId, Long actorUserId, String fieldValuesJson,
+                                                 Integer expectedVersion, String displayNickname,
+                                                 String role, User currentUser) {
+        ReportFormSubmission sub = submissionMapper.selectById(submissionId);
+        if (sub == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "填报记录不存在");
+        }
+        ReportFormDefinition form = definitionMapper.selectById(sub.getFormId());
+        if (!canEditSubmission(form, role, actorUserId, currentUser, sub)) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NO_PERMISSION, "无权编辑该填报记录");
+        }
+        return doSaveSubmission(form, sub, actorUserId, fieldValuesJson, expectedVersion, displayNickname);
+    }
+
     public ReportFormSubmission saveSubmission(Long formId, Long userId, String fieldValuesJson, Integer expectedVersion, String displayNickname) {
-        ReportFormSubmission sub = submissionMapper.selectByFormAndUser(formId, userId);
+        ReportFormSubmission sub = submissionMapper.selectDefaultByFormAndUser(formId, userId);
         if (sub == null) {
             ReportFormDefinition form = definitionMapper.selectById(formId);
             if (form != null) {
@@ -199,17 +451,19 @@ public class ReportFillService {
             }
             sub = getOrCreateSubmission(formId, userId);
         }
+        ReportFormDefinition form = definitionMapper.selectById(formId);
+        return doSaveSubmission(form, sub, userId, fieldValuesJson, expectedVersion, displayNickname);
+    }
 
-        // 乐观锁检查
+    private ReportFormSubmission doSaveSubmission(ReportFormDefinition form, ReportFormSubmission sub, Long userId,
+                                                  String fieldValuesJson, Integer expectedVersion, String displayNickname) {
+        Long formId = sub.getFormId();
         if (expectedVersion != null && !expectedVersion.equals(sub.getVersion())) {
             throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_VERSION_CONFLICT,
                     "数据冲突：报表已被他人修改，请刷新后重试");
         }
 
-        // 获取表单定义（校验 + AUTO_USER 注入共用）
-        ReportFormDefinition form = definitionMapper.selectById(formId);
-
-        // 字段校验
+        // 乐观锁检查
         if (form != null && form.getLayoutJson() != null) {
             try {
                 var layout = objectMapper.readTree(form.getLayoutJson());
@@ -273,6 +527,7 @@ public class ReportFillService {
         }
 
         sub.setFieldValuesJson(fieldValuesJson);
+        sub.setUpdatedAt(LocalDateTime.now());
         int rows = submissionMapper.updateWithVersion(sub);
         if (rows == 0) {
             throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_VERSION_CONFLICT,
@@ -289,13 +544,27 @@ public class ReportFillService {
      * 提交（含必填校验 + 日志）。
      */
     public ReportFormSubmission submitSubmission(Long formId, Long userId) {
-        // 自动创建提交记录（首次提交无需先保存）
-        ReportFormSubmission sub = submissionMapper.selectByFormAndUser(formId, userId);
+        ReportFormSubmission sub = submissionMapper.selectDefaultByFormAndUser(formId, userId);
         if (sub == null) {
             sub = getOrCreateSubmission(formId, userId);
         }
+        return doSubmitSubmission(sub, userId);
+    }
 
-        // 校验必填字段
+    public ReportFormSubmission submitSubmissionById(Long submissionId, Long actorUserId, String role, User currentUser) {
+        ReportFormSubmission sub = submissionMapper.selectById(submissionId);
+        if (sub == null) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NOT_FOUND, "填报记录不存在");
+        }
+        ReportFormDefinition form = definitionMapper.selectById(sub.getFormId());
+        if (!canEditSubmission(form, role, actorUserId, currentUser, sub)) {
+            throw TwinBusinessException.of(ErrorCodeConstants.REPORT_FORM_NO_PERMISSION, "无权提交该填报记录");
+        }
+        return doSubmitSubmission(sub, actorUserId);
+    }
+
+    private ReportFormSubmission doSubmitSubmission(ReportFormSubmission sub, Long userId) {
+        Long formId = sub.getFormId();
         ReportFormDefinition form = definitionMapper.selectById(formId);
         if (form != null && form.getLayoutJson() != null) {
             try {
@@ -319,7 +588,8 @@ public class ReportFillService {
             }
         }
 
-        submissionMapper.submit(sub.getId());
+        LocalDateTime now = LocalDateTime.now();
+        submissionMapper.submit(sub.getId(), now, now);
 
         // 写入提交日志（快照提交时的数据）
         writeLog(sub.getId(), userId, "submit", sub.getFieldValuesJson());
@@ -329,24 +599,7 @@ public class ReportFillService {
 
     /** 提交列表附带填报人昵称（个人表展示用） */
     public List<Map<String, Object>> listSubmissionsWithUserDisplay(Long formId) {
-        List<ReportFormSubmission> subs = submissionMapper.selectByFormId(formId);
-        Map<Long, String> nickByStoredUserId = buildStoredUserIdNicknameMap();
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (ReportFormSubmission sub : subs) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("id", sub.getId());
-            row.put("formId", sub.getFormId());
-            row.put("userId", sub.getUserId());
-            row.put("status", sub.getStatus());
-            row.put("fieldValuesJson", sub.getFieldValuesJson());
-            row.put("version", sub.getVersion());
-            row.put("submittedAt", sub.getSubmittedAt());
-            row.put("createdAt", sub.getCreatedAt());
-            row.put("updatedAt", sub.getUpdatedAt());
-            row.put("displayNickname", resolveSubmissionDisplayName(sub.getUserId(), nickByStoredUserId));
-            out.add(row);
-        }
-        return out;
+        return toSubmissionRows(submissionMapper.selectByFormId(formId));
     }
 
     private Map<Long, String> buildStoredUserIdNicknameMap() {

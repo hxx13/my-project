@@ -12,19 +12,16 @@ import {
   PieChart,
   Bell,
   BookOpen,
-  CalendarClock,
   CircleCheck,
   ClipboardCheck,
+  ClipboardList,
   Clock,
   CreditCard,
   DoorOpen,
   Download,
   FileText,
   GitBranch,
-  Images,
-  KeyRound,
   LayoutGrid,
-  Link2,
   LockKeyhole,
   MapPin,
   Megaphone,
@@ -193,23 +190,14 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
     title: "系统与安全",
     items: [
       {
-        id: "schedule",
-        path: "/admin/schedule-manager",
-        label: "定时管理",
-        icon: CalendarClock,
-        homeTone: "from-amber-400 to-orange-500",
-        fallbackMinRole: "ADMIN",
-        sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/admin/schedule-manager", "ADMIN"),
-      },
-      {
         id: "settings",
         path: "/admin/settings",
         label: "系统设置",
         icon: Settings,
-        alias: ["设置", "配置", "系统", "settings", "config"],
+        alias: ["设置", "配置", "系统", "定时任务", "权限", "人脸", "通知", "集成", "品牌", "轮播图", "外部通信", "页面权限", "settings", "config"],
         homeTone: "from-slate-400 to-zinc-500",
-        fallbackMinRole: "SUPER_ADMIN",
-        sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/settings", "SUPER_ADMIN"),
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/settings", "ADMIN"),
       },
       {
         id: "logging-console",
@@ -218,16 +206,7 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         icon: Terminal,
         homeTone: "from-emerald-400 to-green-500",
         fallbackMinRole: "SUPER_ADMIN",
-        sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/logging-console", "SUPER_ADMIN"),
-      },
-      {
-        id: "external-comm",
-        path: "/admin/external-comm-config",
-        label: "外部通信配置",
-        icon: Link2,
-        homeTone: "from-cyan-400 to-blue-500",
-        fallbackMinRole: "SUPER_ADMIN",
-        sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/external-comm-config", "SUPER_ADMIN"),
+        sidebarVisible: (ctx) => ctx.flags.canViewSettings && hasMinRole(ctx.role, "SUPER_ADMIN") && show(ctx, "/admin/logging-console", "SUPER_ADMIN"),
       },
       {
         id: "api-docs",
@@ -236,16 +215,25 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         icon: BookOpen,
         homeTone: "from-green-400 to-emerald-500",
         fallbackMinRole: "SUPER_ADMIN",
-        sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/api-docs", "SUPER_ADMIN"),
+        sidebarVisible: (ctx) => ctx.flags.canViewSettings && hasMinRole(ctx.role, "SUPER_ADMIN") && show(ctx, "/admin/api-docs", "SUPER_ADMIN"),
       },
       {
-        id: "page-perms",
-        path: "/admin/page-permissions",
-        label: "页面权限设置",
-        icon: KeyRound,
-        homeTone: "from-rose-400 to-pink-500",
+        id: "nav-manager",
+        path: "/admin/nav-manager",
+        label: "侧栏导航管理",
+        icon: LayoutGrid,
+        homeTone: "from-sky-400 to-blue-500",
         fallbackMinRole: "SUPER_ADMIN",
-        sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/page-permissions", "SUPER_ADMIN"),
+        sidebarVisible: (ctx) => ctx.flags.canViewSettings && hasMinRole(ctx.role, "SUPER_ADMIN") && show(ctx, "/admin/nav-manager", "SUPER_ADMIN"),
+      },
+      {
+        id: "profile-security",
+        path: "/admin/profile-security",
+        label: "账号与安全",
+        icon: ShieldAlert,
+        homeTone: "from-slate-400 to-zinc-500",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx) => show(ctx, "/admin/profile-security", "STAFF"),
       },
       {
         id: "knowledge",
@@ -256,15 +244,6 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-indigo-400 to-violet-500",
         fallbackMinRole: "STAFF",
         sidebarVisible: (ctx: any) => true,
-      },
-      {
-        id: "login-branding",
-        path: "/admin/login-branding",
-        label: "登录页轮播图",
-        icon: Images,
-        homeTone: "from-fuchsia-400 to-pink-500",
-        fallbackMinRole: "SUPER_ADMIN",
-        sidebarVisible: (ctx) => ctx.flags.canViewSettings && show(ctx, "/admin/login-branding", "ADMIN"),
       },
       {
         id: "registration-invites",
@@ -472,6 +451,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         homeTone: "from-amber-400 to-orange-500",
         fallbackMinRole: "STAFF",
         sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/event-log", "STAFF"),
+      },
+      {
+        id: "cage-special-status",
+        path: "/admin/cage-shelves/special-status",
+        label: "笼架特殊状态",
+        icon: AlertTriangle,
+        homeTone: "from-amber-400 to-orange-500",
+        fallbackMinRole: "STAFF",
+        sidebarVisible: (ctx) => ctx.flags.canAssetOps && show(ctx, "/admin/cage-shelves/special-status", "STAFF"),
       },
     ],
   },
@@ -700,9 +688,7 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p === "/admin/dahua-issue" ||
     p === "/admin/door-control" ||
     p.startsWith("/admin/access-rules") ||
-    p.startsWith("/admin/schedule-manager") ||
     p.startsWith("/admin/dahua-swing-") ||
-    p === "/admin/dahua-swing-stats-tasks" ||
     p === "/admin/access-audit-source" ||
     p === "/admin/access-fusion" ||
     p === "/admin/access-clean-rule-profiles" ||
@@ -739,10 +725,8 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
   }
   if (
     p === "/admin/settings" ||
-    p === "/admin/external-comm-config" ||
+    p.startsWith("/admin/settings/") ||
     p === "/admin/api-docs" ||
-    p === "/admin/page-permissions" ||
-    p === "/admin/login-branding" ||
     p === "/admin/registration-invites"
   ) {
     return "系统与安全";

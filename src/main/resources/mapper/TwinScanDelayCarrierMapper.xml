@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayCarrierMapper">
+
+    <resultMap id="BaseMap" type="com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayCarrier">
+        <id column="id" property="id"/>
+        <result column="button_label" property="buttonLabel"/>
+        <result column="enabled" property="enabled"/>
+        <result column="sort_order" property="sortOrder"/>
+    </resultMap>
+
+    <select id="listAll" resultMap="BaseMap">
+        SELECT id, button_label, enabled, sort_order
+        FROM twin_scan_delay_carrier
+        ORDER BY sort_order DESC, id ASC
+    </select>
+
+    <select id="findById" resultMap="BaseMap">
+        SELECT id, button_label, enabled, sort_order
+        FROM twin_scan_delay_carrier
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_scan_delay_carrier (button_label, enabled, sort_order)
+        VALUES (#{buttonLabel}, #{enabled}, #{sortOrder})
+    </insert>
+
+    <update id="update">
+        UPDATE twin_scan_delay_carrier SET
+            button_label = #{buttonLabel},
+            enabled = #{enabled},
+            sort_order = #{sortOrder}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM twin_scan_delay_carrier WHERE id = #{id}
+    </delete>
+</mapper>

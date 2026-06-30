@@ -94,7 +94,7 @@ public class TwinAutomationDisplayMapController {
         if (user.getStatus() != null && user.getStatus() == 0) {
             return "账号已禁用";
         }
-        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.STUDENT;
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
         if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
             return "无权限访问";
         }

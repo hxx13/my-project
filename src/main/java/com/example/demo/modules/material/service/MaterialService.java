@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import com.example.demo.modules.material.dto.*;
@@ -15,10 +16,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -37,6 +41,11 @@ public class MaterialService {
     private final NotificationService notificationService;
     private final UserDisplayNameService userDisplayNameService;
     private final AroPersonnelMapper aroPersonnelMapper;
+    private final UserMapper userMapper;
+
+    @Autowired
+    @Lazy
+    private MaterialAutoApproveService autoApproveService;
 
     public MaterialService(MaterialCategoryMapper categoryMapper, MaterialItemMapper itemMapper,
                            MaterialCartMapper cartMapper, MaterialRequestMapper requestMapper,
@@ -45,7 +54,8 @@ public class MaterialService {
                            MaterialOperationLogMapper operationLogMapper,
                            NotificationService notificationService,
                            UserDisplayNameService userDisplayNameService,
-                           AroPersonnelMapper aroPersonnelMapper) {
+                           AroPersonnelMapper aroPersonnelMapper,
+                           UserMapper userMapper) {
         this.categoryMapper = categoryMapper;
         this.itemMapper = itemMapper;
         this.cartMapper = cartMapper;
@@ -56,6 +66,7 @@ public class MaterialService {
         this.notificationService = notificationService;
         this.userDisplayNameService = userDisplayNameService;
         this.aroPersonnelMapper = aroPersonnelMapper;
+        this.userMapper = userMapper;
     }
 
     // ==================== 分类 ====================
@@ -64,8 +75,14 @@ public class MaterialService {
         return categoryMapper.selectEnabled().stream().map(this::toCategoryView).collect(Collectors.toList());
     }
 
-    public List<MaterialCategoryView> listCategoriesForAdmin() {
-        return categoryMapper.selectAll().stream().map(this::toCategoryView).collect(Collectors.toList());
+    public List<MaterialCategoryView> listCategoriesForAdmin(String applicantGroup) {
+        List<MaterialCategory> categories;
+        if (org.springframework.util.StringUtils.hasText(applicantGroup)) {
+            categories = categoryMapper.selectByApplicantGroup(applicantGroup);
+        } else {
+            categories = categoryMapper.selectAll();
+        }
+        return categories.stream().map(this::toCategoryView).collect(Collectors.toList());
     }
 
     public Result<MaterialCategoryView> createCategory(String name, Integer sortOrder) {
@@ -99,8 +116,14 @@ public class MaterialService {
         return itemMapper.selectPublished(categoryId).stream().map(this::toItemView).collect(Collectors.toList());
     }
 
-    public List<MaterialItemView> listItemsForAdmin(Long categoryId) {
-        return itemMapper.selectAll(categoryId).stream().map(this::toItemView).collect(Collectors.toList());
+    public List<MaterialItemView> listItemsForAdmin(Long categoryId, String applicantGroup) {
+        List<MaterialItem> items;
+        if (org.springframework.util.StringUtils.hasText(applicantGroup)) {
+            items = itemMapper.selectByApplicantGroup(categoryId, applicantGroup);
+        } else {
+            items = itemMapper.selectAll(categoryId);
+        }
+        return items.stream().map(this::toItemView).collect(Collectors.toList());
     }
 
     public Result<MaterialItemView> getItem(Long id) {
@@ -111,6 +134,11 @@ public class MaterialService {
 
     @Transactional
     public Result<MaterialItemView> createItem(MaterialItemUpsertReq req) {
+        String workflow = req.getWorkflowType() != null ? req.getWorkflowType() : "SIMPLE";
+        Result<?> reviewerCheck = validateItemReviewers(workflow, req.getReviewerIds(), req.getSecondReviewerIds());
+        if (!Boolean.TRUE.equals(reviewerCheck.getSuccess())) {
+            return Result.error(reviewerCheck.getMessage());
+        }
         MaterialItem item = new MaterialItem();
         item.setCategoryId(req.getCategoryId());
         item.setName(req.getName());
@@ -143,6 +171,13 @@ public class MaterialService {
     public Result<MaterialItemView> updateItem(Long id, MaterialItemUpsertReq req) {
         MaterialItem item = itemMapper.selectById(id);
         if (item == null) return Result.error("物品不存在");
+        String workflow = req.getWorkflowType() != null ? req.getWorkflowType() : item.getWorkflowType();
+        String reviewerIds = req.getReviewerIds() != null ? req.getReviewerIds() : item.getReviewerIds();
+        String secondIds = req.getSecondReviewerIds() != null ? req.getSecondReviewerIds() : item.getSecondReviewerIds();
+        Result<?> reviewerCheck = validateItemReviewers(workflow, reviewerIds, secondIds);
+        if (!Boolean.TRUE.equals(reviewerCheck.getSuccess())) {
+            return Result.error(reviewerCheck.getMessage());
+        }
         if (req.getCategoryId() != null) item.setCategoryId(req.getCategoryId());
         if (req.getName() != null) item.setName(req.getName());
         if (req.getSubtitle() != null) item.setSubtitle(req.getSubtitle());
@@ -309,12 +344,13 @@ public class MaterialService {
     public Result<List<MaterialRequestView>> createRequest(User user, CreateMaterialRequestReq req) {
         if (req.getLines() == null || req.getLines().isEmpty()) return Result.error("申领物品不能为空");
 
-        // 按物品的审核流程分组，每种流程生成独立的申领单
+        // 按审核流程 + 审核人（及双审复审人）分组，不同审核人生成独立申领单
         Map<String, List<CreateMaterialRequestReq.LineItem>> grouped = new LinkedHashMap<>();
         for (var lr : req.getLines()) {
             MaterialItem item = itemMapper.selectById(lr.getItemId());
-            String wf = item != null && item.getWorkflowType() != null ? item.getWorkflowType() : "SIMPLE";
-            grouped.computeIfAbsent(wf, k -> new ArrayList<>()).add(lr);
+            if (item == null) return Result.error("物品不存在: " + lr.getItemId());
+            String groupKey = materialRequestGroupKey(item);
+            grouped.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(lr);
         }
 
         String applicantName = userDisplayNameService.resolveDisplayName(user.getId());
@@ -323,8 +359,9 @@ public class MaterialService {
         long baseTs = System.currentTimeMillis();
 
         for (var entry : grouped.entrySet()) {
-            String workflowType = entry.getKey();
+            String groupKey = entry.getKey();
             List<CreateMaterialRequestReq.LineItem> groupLines = entry.getValue();
+            String workflowType = workflowTypeFromGroupKey(groupKey, groupLines);
             String id = "MR" + baseTs + String.format("%04d", new Random().nextInt(10000));
             baseTs += 1; // 确保不同组 ID 不重复
 
@@ -339,11 +376,22 @@ public class MaterialService {
                 request.setStatus("PENDING");
             }
             request.setWorkflowType(workflowType);
+            LocalDateTime now = LocalDateTime.now();
+            request.setCreatedAt(now);
+            request.setUpdatedAt(now);
             requestMapper.insert(request);
 
             List<MaterialRequestLine> lines = new ArrayList<>();
             for (var lineReq : groupLines) {
                 MaterialItem item = itemMapper.selectById(lineReq.getItemId());
+                if (item == null) return Result.error("物品不存在");
+                if (!"SKIP_REVIEW".equals(workflowType)) {
+                    Result<?> check = validateItemReviewers(workflowType, item.getReviewerIds(),
+                            "DUAL_REVIEW".equals(workflowType) ? item.getSecondReviewerIds() : null);
+                    if (!Boolean.TRUE.equals(check.getSuccess())) {
+                        return Result.error(check.getMessage());
+                    }
+                }
                 MaterialRequestLine line = new MaterialRequestLine();
                 line.setRequestId(id);
                 line.setItemId(lineReq.getItemId());
@@ -372,12 +420,19 @@ public class MaterialService {
                         itemMapper.applyLock(line.getItemId(), line.getQty());
                     }
                 }
-                requestMapper.updateReview(id, null, "APPROVED");
+                requestMapper.updateReview(id, null, "APPROVED", LocalDateTime.now());
                 fulfillAllLinesOnApprove(id, null, request);
             }
 
-            logOp("REQUEST", id, "SUBMIT", Map.of("lines", groupLines.size(), "workflow", workflowType));
+            logOp("REQUEST", id, "SUBMIT", Map.of("lines", groupLines.size(), "workflow", workflowType, "reviewerGroup", groupKey));
             publishMaterialEvent("CREATED", id, user.getId(), user.getId(), "共 " + groupLines.size() + " 项物资");
+            if ("PENDING".equals(requestMapper.selectById(id).getStatus())) {
+                try {
+                    autoApproveService.tryTrustOnSubmit(id);
+                } catch (Exception e) {
+                    log.warn("[material-auto] trust on submit skip requestId={}: {}", id, e.getMessage());
+                }
+            }
             results.add(toRequestView(requestMapper.selectById(id)));
         }
         return Result.success(results);
@@ -403,10 +458,79 @@ public class MaterialService {
         return Result.success(result);
     }
 
+    /** 已审结申领（物资全部 Tab：不含待审/初审通过） */
+    public Result<Map<String, Object>> listFinishedForStaff(String applicantUserId, String applicantGroup, int page, int size) {
+        int offset = (page - 1) * size;
+        List<MaterialRequest> requests = requestMapper.selectFinished(applicantUserId, applicantGroup, offset, size);
+        int total = requestMapper.countFinished(applicantUserId, applicantGroup);
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", requests.stream().map(this::toRequestView).collect(Collectors.toList()));
+        result.put("total", total);
+        return Result.success(result);
+    }
+
+    /** 非超管仅可见本人有权审核/已参与的申领，避免「物资全部」泄露指定审核单 */
+    public Result<Map<String, Object>> listAllVisibleToStaff(User viewer, String status, String applicantUserId,
+                                                             String applicantGroup, int page, int size) {
+        if (viewer == null) {
+            return Result.error("未登录");
+        }
+        if (isMaterialAuditSuperViewer(viewer)) {
+            return listAll(status, applicantUserId, applicantGroup, page, size);
+        }
+        Result<Map<String, Object>> raw = listAll(status, applicantUserId, applicantGroup, 1, 500);
+        if (!Boolean.TRUE.equals(raw.getSuccess()) || raw.getData() == null) {
+            return raw;
+        }
+        @SuppressWarnings("unchecked")
+        List<MaterialRequestView> rows = (List<MaterialRequestView>) raw.getData().get("data");
+        if (rows == null) {
+            rows = List.of();
+        }
+        List<MaterialRequestView> visible = new ArrayList<>();
+        for (MaterialRequestView v : rows) {
+            MaterialRequest req = requestMapper.selectById(v.getId());
+            if (req != null && canViewRequestAsStaff(req, viewer)) {
+                visible.add(v);
+            }
+        }
+        int offset = Math.max(0, (page - 1) * size);
+        int end = Math.min(offset + size, visible.size());
+        List<MaterialRequestView> pageRows = offset >= visible.size() ? List.of() : visible.subList(offset, end);
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", pageRows);
+        result.put("total", visible.size());
+        return Result.success(result);
+    }
+
+    private boolean isMaterialAuditSuperViewer(User user) {
+        if (user == null || user.getRole() == null) return false;
+        return user.getRole().getLevel() >= com.example.demo.common.enums.RoleEnum.SUPER_ADMIN.getLevel();
+    }
+
+    private boolean canViewRequestAsStaff(MaterialRequest request, User viewer) {
+        if (request == null || viewer == null) return false;
+        if ("PENDING".equals(request.getStatus()) || "FIRST_OK".equals(request.getStatus())) {
+            return canReview(request, viewer);
+        }
+        if (canReview(request, viewer)) return true;
+        String vid = viewer.getId();
+        if (vid != null && vid.equals(request.getFirstReviewerId())) return true;
+        if (vid != null && vid.equals(request.getSecondReviewerId())) return true;
+        return false;
+    }
+
+    public int countPendingForReviewer(User reviewer) {
+        if (reviewer == null) return 0;
+        Result<List<MaterialRequestView>> res = listPendingForReview(reviewer);
+        if (!Boolean.TRUE.equals(res.getSuccess()) || res.getData() == null) return 0;
+        return res.getData().size();
+    }
+
     public Result<MaterialRequestView> getRequestDetail(User user, String id) {
         MaterialRequest request = requestMapper.selectById(id);
         if (request == null) return Result.error("申领单不存在");
-        if (user.getRole() != null && "STUDENT".equals(user.getRole().name())) {
+        if (user.getRole() != null && "MEMBER".equals(user.getRole().name())) {
             if (!user.getId().equals(request.getUserId())) return Result.error("无权查看");
         }
         return Result.success(toRequestView(request));
@@ -419,7 +543,7 @@ public class MaterialService {
         if (!user.getId().equals(request.getUserId())) return Result.error("只能撤回自己的申领");
         if (!"PENDING".equals(request.getStatus()) && !"FIRST_OK".equals(request.getStatus()))
             return Result.error("当前状态不可撤回");
-        requestMapper.updateStatus(id, "DRAFT");
+        requestMapper.updateStatus(id, "DRAFT", LocalDateTime.now());
         // 释放预占库存
         List<MaterialRequestLine> withdrawLines = requestLineMapper.selectByRequestId(id);
         for (MaterialRequestLine line : withdrawLines) {
@@ -438,7 +562,7 @@ public class MaterialService {
         if (request == null) return Result.error("申领单不存在");
         if (!user.getId().equals(request.getUserId())) return Result.error("只能确认自己的申领");
         if (!"FULFILLED".equals(request.getStatus())) return Result.error("当前状态不可确认");
-        requestMapper.updateReceived(id);
+        requestMapper.updateReceived(id, LocalDateTime.now());
         logOp("REQUEST", id, "RECEIVE", null);
         return Result.success(null);
     }
@@ -465,11 +589,9 @@ public class MaterialService {
         return ids != null && !ids.isBlank() && !"[]".equals(ids.trim());
     }
 
-    /** null-safe Map for operation log (Map.of rejects null values) */
-    /** 统一补齐8h时差：MySQL LocalDateTime → 前端展示时间 */
+    /** LocalDateTime → 北京时间墙钟 yyyy-MM-dd HH:mm:ss */
     private static String toDisplayTime(java.time.LocalDateTime dt) {
-        if (dt == null) return null;
-        return dt.plusHours(8).toString();
+        return com.example.demo.common.time.WallClockDisplayFormat.fromLocalDateTime(dt);
     }
 
     private static Map<String, Object> reviewLogDetail(String reviewerId) {
@@ -480,27 +602,177 @@ public class MaterialService {
 
     private boolean canReview(MaterialRequest request, User reviewer) {
         if (reviewer.getRole() == null) return false;
-        if ("STUDENT".equals(reviewer.getRole().name())) return false;
+        if ("MEMBER".equals(reviewer.getRole().name())) return false;
         List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(request.getId());
         if (lines.isEmpty()) return false;
-        MaterialItem item = itemMapper.selectById(lines.get(0).getItemId());
-        if (item == null) return false;
-        if ("SIMPLE".equals(request.getWorkflowType()) || "PENDING".equals(request.getStatus())) {
-            return isInReviewerList(item.getReviewerIds(), reviewer.getId());
-        } else if ("FIRST_OK".equals(request.getStatus())) {
-            return isInReviewerList(item.getSecondReviewerIds(), reviewer.getId());
+        for (MaterialRequestLine line : lines) {
+            MaterialItem item = itemMapper.selectById(line.getItemId());
+            if (item == null) return false;
+            String reviewerIdsJson;
+            if ("SIMPLE".equals(request.getWorkflowType()) || "PENDING".equals(request.getStatus())) {
+                reviewerIdsJson = item.getReviewerIds();
+            } else if ("FIRST_OK".equals(request.getStatus())) {
+                reviewerIdsJson = item.getSecondReviewerIds();
+            } else {
+                return false;
+            }
+            if (!isInReviewerList(reviewerIdsJson, reviewer)) {
+                return false;
+            }
         }
-        return false;
+        return true;
     }
 
-    private boolean isInReviewerList(String reviewerIdsJson, String userId) {
-        if (reviewerIdsJson == null || reviewerIdsJson.isBlank()) return true;
-        try {
-            List<String> ids = objectMapper.readValue(reviewerIdsJson, new TypeReference<List<String>>() {});
-            return ids.contains(userId);
-        } catch (Exception e) {
-            return true;
+    /** 供自动审批等模块判断当前审核人是否可处理该单（与 canReview 同源） */
+    public boolean canUserReview(User reviewer, String requestId) {
+        if (reviewer == null || !StringUtils.hasText(requestId)) return false;
+        MaterialRequest request = requestMapper.selectById(requestId.trim());
+        return request != null && canReview(request, reviewer);
+    }
+
+    /** 申领单首行物品 ID（审核权限与自动审批匹配均以此为准） */
+    public Long primaryItemIdForRequest(String requestId) {
+        if (!StringUtils.hasText(requestId)) return null;
+        List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(requestId.trim());
+        if (lines.isEmpty()) return null;
+        return lines.get(0).getItemId();
+    }
+
+    private boolean isInReviewerList(String reviewerIdsJson, User reviewer) {
+        if (reviewer == null) return false;
+        if (reviewerIdsJson == null || reviewerIdsJson.isBlank()) {
+            return false;
         }
+        if ("[]".equals(reviewerIdsJson.trim())) {
+            return false;
+        }
+        Set<String> configured = normalizeReviewerIdList(reviewerIdsJson);
+        if (configured.isEmpty()) {
+            return false;
+        }
+        String canonicalReviewer = canonicalUserId(reviewer);
+        if (!StringUtils.hasText(canonicalReviewer)) {
+            return false;
+        }
+        return configured.contains(canonicalReviewer);
+    }
+
+    /** 登录账号 → sys_user.id（兼容历史 reviewer_ids 存 username） */
+    private String canonicalUserId(User user) {
+        if (user == null) return "";
+        if (StringUtils.hasText(user.getId())) {
+            String byId = resolveCanonicalUserId(user.getId());
+            if (StringUtils.hasText(byId)) return byId;
+        }
+        if (StringUtils.hasText(user.getUsername())) {
+            return resolveCanonicalUserId(user.getUsername());
+        }
+        return "";
+    }
+
+    private String resolveCanonicalUserId(String raw) {
+        if (!StringUtils.hasText(raw)) return "";
+        String trimmed = raw.trim();
+        User byId = userMapper.findById(trimmed);
+        if (byId != null && StringUtils.hasText(byId.getId())) {
+            return byId.getId().trim();
+        }
+        User byName = userMapper.findByUsername(trimmed);
+        if (byName != null && StringUtils.hasText(byName.getId())) {
+            return byName.getId().trim();
+        }
+        return trimmed;
+    }
+
+    /** 需审核物品必须配置至少一名有效审核人（免审 SKIP_REVIEW 除外） */
+    private Result<?> validateItemReviewers(String workflowType, String reviewerIds, String secondReviewerIds) {
+        if ("SKIP_REVIEW".equals(workflowType)) {
+            return Result.success(null);
+        }
+        Set<String> first = normalizeReviewerIdList(reviewerIds);
+        if (first.isEmpty()) {
+            return Result.error("请至少选择一名审核人");
+        }
+        if ("DUAL_REVIEW".equals(workflowType)) {
+            Set<String> second = normalizeReviewerIdList(secondReviewerIds);
+            if (second.isEmpty()) {
+                return Result.error("双审流程请至少选择一名复审人");
+            }
+        }
+        return Result.success(null);
+    }
+
+    /** 申领分单键：相同流程且相同审核人（双审含复审人）可合并为一单 */
+    private String materialRequestGroupKey(MaterialItem item) {
+        if (item == null) return "UNKNOWN";
+        String wf = item.getWorkflowType() != null ? item.getWorkflowType() : "SIMPLE";
+        if ("SKIP_REVIEW".equals(wf)) return "SKIP_REVIEW";
+        Set<String> first = normalizeReviewerIdList(item.getReviewerIds());
+        String firstKey = first.stream().sorted().collect(Collectors.joining(","));
+        if ("DUAL_REVIEW".equals(wf)) {
+            Set<String> second = normalizeReviewerIdList(item.getSecondReviewerIds());
+            String secondKey = second.stream().sorted().collect(Collectors.joining(","));
+            return wf + "|F:" + firstKey + "|S:" + secondKey;
+        }
+        return wf + "|R:" + firstKey;
+    }
+
+    private String workflowTypeFromGroupKey(String groupKey, List<CreateMaterialRequestReq.LineItem> groupLines) {
+        if ("SKIP_REVIEW".equals(groupKey)) return "SKIP_REVIEW";
+        if (groupKey != null && groupKey.contains("|")) {
+            return groupKey.substring(0, groupKey.indexOf('|'));
+        }
+        if (groupLines != null && !groupLines.isEmpty()) {
+            MaterialItem item = itemMapper.selectById(groupLines.get(0).getItemId());
+            if (item != null && item.getWorkflowType() != null) return item.getWorkflowType();
+        }
+        return "SIMPLE";
+    }
+
+    /** 解析申领单当前阶段应通知/展示的审核人 sys_user.id */
+    private Set<String> resolveReviewerUserIdsForRequest(MaterialRequest request) {
+        Set<String> out = new LinkedHashSet<>();
+        if (request == null) return out;
+        List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(request.getId());
+        for (MaterialRequestLine line : lines) {
+            MaterialItem item = itemMapper.selectById(line.getItemId());
+            if (item == null) continue;
+            String json;
+            if ("SIMPLE".equals(request.getWorkflowType()) || "PENDING".equals(request.getStatus())) {
+                json = item.getReviewerIds();
+            } else if ("FIRST_OK".equals(request.getStatus())) {
+                json = item.getSecondReviewerIds();
+            } else {
+                continue;
+            }
+            out.addAll(normalizeReviewerIdList(json));
+        }
+        return out;
+    }
+
+    private Set<String> normalizeReviewerIdList(String reviewerIdsJson) {
+        Set<String> out = new LinkedHashSet<>();
+        if (!StringUtils.hasText(reviewerIdsJson) || "[]".equals(reviewerIdsJson.trim())) {
+            return out;
+        }
+        try {
+            List<String> ids = objectMapper.readValue(reviewerIdsJson.trim(), new TypeReference<List<String>>() {});
+            for (String raw : ids) {
+                if (!StringUtils.hasText(raw)) continue;
+                User u = userMapper.findById(raw.trim());
+                if (u == null) {
+                    u = userMapper.findByUsername(raw.trim());
+                }
+                if (u != null && StringUtils.hasText(u.getId())) {
+                    out.add(u.getId().trim());
+                } else {
+                    out.add(raw.trim());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[material] normalize reviewer ids failed: {}", e.getMessage());
+        }
+        return out;
     }
 
     @Transactional
@@ -511,16 +783,17 @@ public class MaterialService {
         // 审核人：仅在物品指定了审核人名单时才记录操作者ID，否则留空
         String recordReviewerId = hasExplicitReviewers(request) ? reviewer.getId() : null;
         boolean finalApproved = false;
+        LocalDateTime reviewTime = LocalDateTime.now();
         if ("SIMPLE".equals(request.getWorkflowType())) {
-            requestMapper.updateReview(id, recordReviewerId, "APPROVED");
+            requestMapper.updateReview(id, recordReviewerId, "APPROVED", reviewTime);
             logOp("REQUEST", id, "APPROVE", reviewLogDetail(recordReviewerId));
             finalApproved = true;
         } else if ("DUAL_REVIEW".equals(request.getWorkflowType())) {
             if ("PENDING".equals(request.getStatus())) {
-                requestMapper.updateReview(id, recordReviewerId, "FIRST_OK");
+                requestMapper.updateReview(id, recordReviewerId, "FIRST_OK", reviewTime);
                 logOp("REQUEST", id, "FIRST_OK", reviewLogDetail(recordReviewerId));
             } else if ("FIRST_OK".equals(request.getStatus())) {
-                requestMapper.updateReview(id, recordReviewerId, "APPROVED");
+                requestMapper.updateReview(id, recordReviewerId, "APPROVED", reviewTime);
                 logOp("REQUEST", id, "APPROVE", reviewLogDetail(recordReviewerId));
                 finalApproved = true;
             }
@@ -543,11 +816,15 @@ public class MaterialService {
     private void fulfillAllLinesOnApprove(String requestId, User operator, MaterialRequest request) {
         List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(requestId);
         int outboundLines = 0;
+        List<String> itemNames = new ArrayList<>();
         for (MaterialRequestLine line : lines) {
             int qty = line.getQty() != null ? line.getQty() : 0;
             if (qty <= 0) continue;
             requestLineMapper.updateFulfilledQty(line.getId(), qty);
             MaterialItem item = itemMapper.selectById(line.getItemId());
+            if (item != null && org.springframework.util.StringUtils.hasText(item.getName())) {
+                itemNames.add(item.getName().trim());
+            }
             int stockAfter = item != null && item.getStockQty() != null ? item.getStockQty() : 0;
             MaterialStockMovement m = new MaterialStockMovement();
             m.setItemId(line.getItemId());
@@ -562,13 +839,13 @@ public class MaterialService {
             stockMovementMapper.insert(m);
             outboundLines++;
         }
-        requestMapper.updateFulfill(requestId, operator != null ? operator.getId() : null);
+        requestMapper.updateFulfill(requestId, operator != null ? operator.getId() : null, LocalDateTime.now());
         Map<String, Object> detail = new HashMap<>();
         detail.put("operator", operator != null ? operator.getId() : null);
         detail.put("autoOnApprove", true);
         logOp("REQUEST", requestId, "FULFILL", detail);
         publishMaterialEvent("COMPLETED", requestId, operator != null ? operator.getId() : null, request.getUserId(),
-                "审核通过已出库 " + outboundLines + " 类物资");
+                buildFulfillSummary(itemNames));
     }
 
     @Transactional
@@ -576,7 +853,7 @@ public class MaterialService {
         MaterialRequest request = requestMapper.selectById(id);
         if (request == null) return Result.error("申领单不存在");
         if (!canReview(request, reviewer)) return Result.error("无权审核此申领单");
-        requestMapper.updateStatus(id, "REJECTED");
+        requestMapper.updateStatus(id, "REJECTED", LocalDateTime.now());
         // 回退锁定库存
         List<MaterialRequestLine> rejectLines = requestLineMapper.selectByRequestId(id);
         for (MaterialRequestLine line : rejectLines) {
@@ -620,7 +897,8 @@ public class MaterialService {
                 }
             }
         }
-        requestMapper.softDelete(id, operator != null ? operator.getId() : null, java.time.LocalDateTime.now().plusDays(7));
+        LocalDateTime now = LocalDateTime.now();
+        requestMapper.softDelete(id, operator != null ? operator.getId() : null, now, now.plusDays(7));
         logOp("REQUEST", id, "DELETE", null);
         return Result.success(null);
     }
@@ -659,42 +937,193 @@ public class MaterialService {
 
     // ==================== 库存流水审计 ====================
 
-    public Result<Map<String, Object>> listItemStockMovements(Long itemId, int page, int size) {
+    public Result<Map<String, Object>> listItemStockMovements(Long itemId, String applicantGroup, int page, int size) {
         int offset = (page - 1) * size;
-        List<MaterialStockMovementView> views = stockMovementMapper.selectViewsByItemId(itemId, offset, size);
+        List<MaterialStockMovementView> views = stockMovementMapper.selectViewsByItemId(itemId, offset, size, applicantGroup);
         for (MaterialStockMovementView v : views) {
+            if (v.getCreatedAt() != null) {
+                v.setCreatedAt(com.example.demo.common.time.WallClockDisplayFormat.fromJdbcValue(v.getCreatedAt()));
+            }
             enrichMovementApplicant(v);
         }
-        int total = stockMovementMapper.countViewsByItemId(itemId);
+        int total = stockMovementMapper.countViewsByItemId(itemId, applicantGroup);
         Map<String, Object> result = new HashMap<>();
         result.put("data", views);
         result.put("total", total);
         return Result.success(result);
     }
 
-    public Result<List<Map<String, Object>>> listApplicantsWithRecords() {
-        List<Map<String, Object>> rows = requestMapper.selectDistinctApplicants();
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
-            String userId = row.get("userId") != null ? String.valueOf(row.get("userId")) : "";
+    public Result<List<Map<String, Object>>> listApplicantsWithRecords(User viewer, String from, String to) {
+        List<MaterialRequestView> visible = collectAuditExportRequestViews(viewer, from, to, null, null);
+        LinkedHashMap<String, String> byUser = new LinkedHashMap<>();
+        for (MaterialRequestView req : visible) {
+            String userId = req.getUserId() != null ? req.getUserId().trim() : "";
             if (!StringUtils.hasText(userId)) continue;
-            String name = row.get("applicantName") != null ? String.valueOf(row.get("applicantName")).trim() : "";
+            String name = req.getApplicantName() != null ? req.getApplicantName().trim() : "";
             if (!StringUtils.hasText(name)) {
                 name = userDisplayNameService.resolveDisplayName(userId);
             }
+            byUser.putIfAbsent(userId, name);
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Map.Entry<String, String> e : byUser.entrySet()) {
             Map<String, Object> m = new HashMap<>();
-            m.put("userId", userId);
-            m.put("applicantName", name);
+            m.put("userId", e.getKey());
+            m.put("applicantName", e.getValue());
             out.add(m);
         }
         out.sort(Comparator.comparing(m -> String.valueOf(m.get("applicantName"))));
         return Result.success(out);
     }
 
-    public Result<Map<String, Object>> listItemClaimLines(Long itemId, String from, String to, int page, int size) {
-        int offset = (page - 1) * size;
-        List<Map<String, Object>> rows = requestMapper.selectClaimLinesByItemId(itemId, from, to, offset, size);
-        for (Map<String, Object> row : rows) {
+    public Result<List<String>> listGroupsWithRecords(User viewer, String from, String to) {
+        List<MaterialRequestView> visible = collectAuditExportRequestViews(viewer, from, to, null, null);
+        TreeSet<String> groups = new TreeSet<>();
+        for (MaterialRequestView req : visible) {
+            String g = req.getApplicantGroup() != null ? req.getApplicantGroup().trim() : "";
+            if (StringUtils.hasText(g)) groups.add(g);
+        }
+        return Result.success(new ArrayList<>(groups));
+    }
+
+    /**
+     * 申领审计导出页列表：按物品配置的审核人过滤（行级），超管亦不 bypass。
+     */
+    public Result<Map<String, Object>> listAuditExportRequests(User viewer, String from, String to,
+                                                                 String applicantUserId, String applicantGroup,
+                                                                 int page, int size) {
+        if (viewer == null) return Result.error("未登录");
+        List<MaterialRequestView> all = collectAuditExportRequestViews(
+                viewer, from, to, applicantUserId, applicantGroup);
+        int offset = Math.max(0, (page - 1) * size);
+        int end = Math.min(offset + size, all.size());
+        List<MaterialRequestView> pageRows = offset >= all.size() ? List.of() : all.subList(offset, end);
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", pageRows);
+        result.put("total", all.size());
+        return Result.success(result);
+    }
+
+    private List<MaterialRequestView> collectAuditExportRequestViews(User viewer, String from, String to,
+                                                                       String applicantUserId, String applicantGroup) {
+        if (viewer == null) return List.of();
+        String fromDay = trimDay(from);
+        String toDay = trimDay(to);
+        boolean staff = isStaffUser(viewer);
+
+        List<MaterialRequest> candidates;
+        if (!staff) {
+            candidates = requestMapper.selectByUserId(viewer.getId(), null, 0, 500);
+        } else {
+            candidates = requestMapper.selectAll(null, applicantUserId, applicantGroup, 0, 500);
+        }
+
+        List<MaterialRequestView> out = new ArrayList<>();
+        for (MaterialRequest req : candidates) {
+            if (req == null || isDraftStatus(req.getStatus())) continue;
+            if (!dateInRangeDayFromDateTime(req.getCreatedAt(), fromDay, toDay)) continue;
+            if (!staff && StringUtils.hasText(applicantGroup)) {
+                String g = req.getApplicantGroup() != null ? req.getApplicantGroup().trim() : "";
+                if (!applicantGroup.trim().equals(g)) continue;
+            }
+            MaterialRequestView view = toRequestView(req);
+            List<MaterialRequestLineView> visibleLines = new ArrayList<>();
+            if (view.getLines() != null) {
+                for (MaterialRequestLineView line : view.getLines()) {
+                    MaterialItem item = line.getItemId() != null ? itemMapper.selectById(line.getItemId()) : null;
+                    if (canViewLineForAuditExport(viewer, req, item)) {
+                        visibleLines.add(line);
+                    }
+                }
+            }
+            if (visibleLines.isEmpty()) continue;
+            view.setLines(visibleLines);
+            out.add(view);
+        }
+        return out;
+    }
+
+    private boolean isStaffUser(User viewer) {
+        return viewer.getRole() != null
+                && viewer.getRole().getLevel() >= com.example.demo.common.enums.RoleEnum.STAFF.getLevel();
+    }
+
+    /** 审计导出：仅可见本人为物品审核人（或已参与审核）的明细行 */
+    private boolean canViewLineForAuditExport(User viewer, MaterialRequest request, MaterialItem item) {
+        if (viewer == null || request == null) return false;
+        if (viewer.getRole() != null && "MEMBER".equals(viewer.getRole().name())) {
+            return viewer.getId() != null && viewer.getId().equals(request.getUserId());
+        }
+        if (item != null && isAssignedItemReviewer(viewer, item)) return true;
+        String vid = viewer.getId();
+        if (vid != null && vid.equals(request.getFirstReviewerId())) return true;
+        if (vid != null && vid.equals(request.getSecondReviewerId())) return true;
+        return false;
+    }
+
+    private boolean isAssignedItemReviewer(User viewer, MaterialItem item) {
+        if (viewer == null || item == null) return false;
+        return isInReviewerListStrict(item.getReviewerIds(), viewer)
+                || isInReviewerListStrict(item.getSecondReviewerIds(), viewer);
+    }
+
+    /** 物品已配置审核人时，仅名单内账号可见；未配置或空数组则无人可见（审计页不兜底全员） */
+    private boolean isInReviewerListStrict(String reviewerIdsJson, User reviewer) {
+        if (!StringUtils.hasText(reviewerIdsJson) || "[]".equals(reviewerIdsJson.trim())) {
+            return false;
+        }
+        Set<String> configured = normalizeReviewerIdList(reviewerIdsJson);
+        if (configured.isEmpty()) return false;
+        String canonicalReviewer = canonicalUserId(reviewer);
+        return StringUtils.hasText(canonicalReviewer) && configured.contains(canonicalReviewer);
+    }
+
+    /**
+     * 申领审计导出页表格数据：与 Web 预览同源（日期区间、人员/课题组、排除草稿、审核人范围）。
+     */
+    public List<MaterialAuditGridRow> collectAuditGridRows(User viewer, String from, String to,
+                                                            String applicantUserId, String applicantGroup) {
+        if (viewer == null) return List.of();
+        List<MaterialRequestView> requests = collectAuditExportRequestViews(
+                viewer, from, to, applicantUserId, applicantGroup);
+
+        List<MaterialAuditGridRow> rows = new ArrayList<>();
+        for (MaterialRequestView req : requests) {
+            if (req == null || req.getLines() == null) continue;
+            for (MaterialRequestLineView line : req.getLines()) {
+                MaterialAuditGridRow row = new MaterialAuditGridRow();
+                row.setRequestId(displayCell(req.getId()));
+                row.setItemName(displayCell(line.getSnapshotName()));
+                row.setQty(line.getQty() != null ? String.valueOf(line.getQty()) : "无");
+                row.setStatus(statusZhDisplay(req.getStatus()));
+                row.setApplicantName(displayCell(req.getApplicantName()));
+                row.setApplicantGroup(displayCell(req.getApplicantGroup()));
+                row.setTime(displayTime(req.getCreatedAt()));
+                rows.add(row);
+            }
+        }
+        return rows;
+    }
+
+    /**
+     * 按物品来去流水导出数据：与 Web 预览 buildItemFlowRows 逻辑一致。
+     */
+    public List<MaterialItemFlowExportRow> collectItemFlowExportRows(Long itemId, String from, String to, String applicantGroup) {
+        if (itemId == null || itemId <= 0) return List.of();
+        String fromDay = trimDay(from);
+        String toDay = trimDay(to);
+
+        List<MaterialStockMovementView> movements = stockMovementMapper.selectViewsByItemId(itemId, 0, 500, applicantGroup);
+        for (MaterialStockMovementView v : movements) {
+            if (v.getCreatedAt() != null) {
+                v.setCreatedAt(com.example.demo.common.time.WallClockDisplayFormat.fromJdbcValue(v.getCreatedAt()));
+            }
+            enrichMovementApplicant(v);
+        }
+
+        List<Map<String, Object>> claimMaps = requestMapper.selectClaimLinesByItemId(itemId, fromDay, toDay, applicantGroup, 0, 500);
+        for (Map<String, Object> row : claimMaps) {
+            com.example.demo.common.time.WallClockDisplayFormat.normalizeMapDateTimeKeys(row, "createdAt", "fulfilledAt");
             String userId = row.get("userId") != null ? String.valueOf(row.get("userId")) : "";
             if (!StringUtils.hasText(String.valueOf(row.get("applicantName")))) {
                 row.put("applicantName", userDisplayNameService.resolveDisplayName(userId));
@@ -703,7 +1132,200 @@ public class MaterialService {
                 row.put("applicantGroup", resolveApplicantGroup(userId, null));
             }
         }
-        int total = requestMapper.countClaimLinesByItemId(itemId, from, to);
+
+        List<MaterialItemFlowExportRow> rows = new ArrayList<>();
+        Set<String> outboundRequestIds = new HashSet<>();
+
+        for (MaterialStockMovementView m : movements) {
+            String type = m.getMovementType() != null ? m.getMovementType().toUpperCase(Locale.ROOT) : "";
+            if (!"INBOUND".equals(type) && !"OUTBOUND".equals(type) && !"ADJUST".equals(type)) continue;
+            if (!dateInRangeDay(m.getCreatedAt(), fromDay, toDay)) continue;
+            if ("OUTBOUND".equals(type) && StringUtils.hasText(m.getRequestId())) {
+                outboundRequestIds.add(m.getRequestId());
+            }
+            MaterialItemFlowExportRow row = new MaterialItemFlowExportRow();
+            row.setTime(displayTime(m.getCreatedAt()));
+            row.setEventType(movementTypeZh(type));
+            row.setItemName(displayCell(m.getItemName()));
+            row.setQty(movementQtyDisplay(type, m.getQty()));
+            row.setStockAfter(m.getStockAfter() != null ? String.valueOf(m.getStockAfter()) : "无");
+            row.setApplicantName(displayCell(m.getApplicantName()));
+            row.setApplicantGroup(displayCell(m.getApplicantGroup()));
+            row.setRequestId(displayCell(m.getRequestId()));
+            row.setRemark(remarkZhDisplay(m.getRemark()));
+            rows.add(row);
+        }
+
+        for (Map<String, Object> c : claimMaps) {
+            int fulfilled = toInt(c.get("fulfilledQty"));
+            String requestId = c.get("requestId") != null ? String.valueOf(c.get("requestId")) : "";
+            if (fulfilled <= 0 || outboundRequestIds.contains(requestId)) continue;
+            String outboundTime = firstNonBlank(
+                    c.get("fulfilledAt") != null ? String.valueOf(c.get("fulfilledAt")) : null,
+                    c.get("createdAt") != null ? String.valueOf(c.get("createdAt")) : null);
+            if (!dateInRangeDay(outboundTime, fromDay, toDay)) continue;
+            String status = c.get("status") != null ? String.valueOf(c.get("status")).toUpperCase(Locale.ROOT) : "";
+            if (!"FULFILLED".equals(status) && !"RECEIVED".equals(status)) continue;
+
+            MaterialItemFlowExportRow row = new MaterialItemFlowExportRow();
+            row.setTime(displayTime(outboundTime));
+            row.setEventType("出库");
+            row.setItemName(displayCell(c.get("itemName") != null ? String.valueOf(c.get("itemName")) : null));
+            row.setQty("-" + fulfilled);
+            row.setStockAfter("无");
+            row.setApplicantName(displayCell(c.get("applicantName") != null ? String.valueOf(c.get("applicantName")) : null));
+            row.setApplicantGroup(displayCell(c.get("applicantGroup") != null ? String.valueOf(c.get("applicantGroup")) : null));
+            row.setRequestId(displayCell(requestId));
+            row.setRemark("申领出库（无流水补录）");
+            rows.add(row);
+        }
+
+        rows.sort((a, b) -> {
+            String ta = a.getTime() != null ? a.getTime() : "";
+            String tb = b.getTime() != null ? b.getTime() : "";
+            return tb.compareTo(ta);
+        });
+        return rows;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<MaterialRequestView> extractRequestViews(Result<Map<String, Object>> result) {
+        if (result == null || !Boolean.TRUE.equals(result.getSuccess()) || result.getData() == null) {
+            return List.of();
+        }
+        Object data = result.getData().get("data");
+        if (!(data instanceof List<?> list)) return List.of();
+        List<MaterialRequestView> out = new ArrayList<>();
+        for (Object o : list) {
+            if (o instanceof MaterialRequestView v) out.add(v);
+        }
+        return out;
+    }
+
+    private static String trimDay(String v) {
+        if (!StringUtils.hasText(v)) return "";
+        return v.trim().length() >= 10 ? v.trim().substring(0, 10) : v.trim();
+    }
+
+    private static boolean isDraftStatus(String status) {
+        return "DRAFT".equalsIgnoreCase(String.valueOf(status != null ? status : "").trim());
+    }
+
+    private static boolean dateInRangeDay(String v, String from, String to) {
+        if (!StringUtils.hasText(v) || !StringUtils.hasText(from) || !StringUtils.hasText(to)) return false;
+        String d = v.length() >= 10 ? v.substring(0, 10) : v;
+        return d.compareTo(from) >= 0 && d.compareTo(to) <= 0;
+    }
+
+    private static boolean dateInRangeDayFromDateTime(LocalDateTime dt, String from, String to) {
+        if (dt == null || !StringUtils.hasText(from) || !StringUtils.hasText(to)) return false;
+        return dateInRangeDay(dt.toLocalDate().toString(), from, to);
+    }
+
+    public static String sanitizeExportFilenamePart(String part) {
+        if (!StringUtils.hasText(part)) return "申领审计";
+        return part.trim().replaceAll("[\\\\/:*?\"<>|]", "_").replaceAll("\\s+", " ");
+    }
+
+    public static String buildAuditExportFilename(String label, String from, String to) {
+        String base = sanitizeExportFilenamePart(label);
+        String f = StringUtils.hasText(from) ? from.trim() : "start";
+        String t = StringUtils.hasText(to) ? to.trim() : "end";
+        return base + "-" + f + "_" + t + ".xlsx";
+    }
+
+    private static String displayCell(String v) {
+        String t = v != null ? v.trim() : "";
+        if (!StringUtils.hasText(t) || "-".equals(t)) return "无";
+        return t;
+    }
+
+    private static String displayTime(String v) {
+        if (!StringUtils.hasText(v)) return "无";
+        String t = com.example.demo.common.time.WallClockDisplayFormat.fromJdbcValue(v);
+        if (!StringUtils.hasText(t) || "-".equals(t)) return "无";
+        return t;
+    }
+
+    private static String statusZhDisplay(String s) {
+        if (!StringUtils.hasText(s)) return "无";
+        return switch (s.trim().toUpperCase(Locale.ROOT)) {
+            case "DRAFT" -> "草稿";
+            case "PENDING" -> "待审核";
+            case "FIRST_OK" -> "初审通过";
+            case "APPROVED" -> "已通过";
+            case "REJECTED" -> "已拒绝";
+            case "FULFILLED" -> "已出库";
+            case "RECEIVED" -> "已完成";
+            default -> "未知";
+        };
+    }
+
+    private static String movementTypeZh(String type) {
+        if (!StringUtils.hasText(type)) return "无";
+        return switch (type.toUpperCase(Locale.ROOT)) {
+            case "INBOUND" -> "入库";
+            case "OUTBOUND" -> "出库";
+            case "ADJUST" -> "调整";
+            default -> "其他";
+        };
+    }
+
+    private static String movementQtyDisplay(String type, Integer qty) {
+        String u = type != null ? type.toUpperCase(Locale.ROOT) : "";
+        int n = qty != null ? Math.abs(qty) : 0;
+        if ("INBOUND".equals(u)) return "+" + n;
+        if ("OUTBOUND".equals(u)) return "-" + n;
+        if ("ADJUST".equals(u)) {
+            int signed = qty != null ? qty : 0;
+            return signed > 0 ? "+" + signed : String.valueOf(signed);
+        }
+        return qty != null ? String.valueOf(qty) : "0";
+    }
+
+    private static String remarkZhDisplay(String remark) {
+        String t = remark != null ? remark.trim() : "";
+        if (!StringUtils.hasText(t) || "-".equals(t)) return "无";
+        String u = t.toUpperCase(Locale.ROOT);
+        if ("INBOUND".equals(u)) return "入库";
+        if ("OUTBOUND".equals(u)) return "申领出库";
+        if (u.contains("INITIAL INBOUND") || "INITIAL".equals(u)) return "初始入库";
+        return t;
+    }
+
+    private static int toInt(Object v) {
+        if (v instanceof Number n) return n.intValue();
+        try {
+            return v != null ? Integer.parseInt(String.valueOf(v)) : 0;
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null) return "";
+        for (String v : values) {
+            if (StringUtils.hasText(v)) return v;
+        }
+        return "";
+    }
+
+    public Result<Map<String, Object>> listItemClaimLines(Long itemId, String from, String to,
+                                                          String applicantGroup, int page, int size) {
+        int offset = (page - 1) * size;
+        List<Map<String, Object>> rows = requestMapper.selectClaimLinesByItemId(itemId, from, to, applicantGroup, offset, size);
+        for (Map<String, Object> row : rows) {
+            com.example.demo.common.time.WallClockDisplayFormat.normalizeMapDateTimeKeys(
+                    row, "createdAt", "fulfilledAt");
+            String userId = row.get("userId") != null ? String.valueOf(row.get("userId")) : "";
+            if (!StringUtils.hasText(String.valueOf(row.get("applicantName")))) {
+                row.put("applicantName", userDisplayNameService.resolveDisplayName(userId));
+            }
+            if (!StringUtils.hasText(String.valueOf(row.get("applicantGroup")))) {
+                row.put("applicantGroup", resolveApplicantGroup(userId, null));
+            }
+        }
+        int total = requestMapper.countClaimLinesByItemId(itemId, from, to, applicantGroup);
         Map<String, Object> result = new HashMap<>();
         result.put("data", rows);
         result.put("total", total);
@@ -1005,9 +1627,23 @@ public class MaterialService {
             lv.setQty(l.getQty());
             lv.setSnapshotName(l.getSnapshotName());
             lv.setFulfilledQty(l.getFulfilledQty());
+            if (l.getItemId() != null) {
+                MaterialItem it = itemMapper.selectById(l.getItemId());
+                if (it != null) {
+                    lv.setCoverUrl(it.getCoverUrl());
+                }
+            }
             return lv;
         }).collect(Collectors.toList()));
         return v;
+    }
+
+    private static String buildFulfillSummary(List<String> itemNames) {
+        if (itemNames == null || itemNames.isEmpty()) return "已出库";
+        List<String> distinct = itemNames.stream().distinct().limit(5).toList();
+        String items = String.join("、", distinct);
+        if (itemNames.stream().distinct().count() > 5) items += "等";
+        return "已出库：" + items;
     }
 
     private void publishMaterialEvent(String eventType, String requestId, String senderId, String applicantId, String summary) {
@@ -1018,6 +1654,16 @@ public class MaterialService {
             event.setBizId(requestId);
             event.setSenderId(senderId);
             event.setApplicantId(applicantId);
+            if ("CREATED".equalsIgnoreCase(eventType)) {
+                MaterialRequest request = requestMapper.selectById(requestId);
+                Set<String> reviewerIds = resolveReviewerUserIdsForRequest(request);
+                if (!reviewerIds.isEmpty()) {
+                    event.setRelatedUserIds(reviewerIds);
+                    event.setProcessorId(reviewerIds.iterator().next());
+                    // 仅通知审核人，不把申请人当作 CREATED 的教职工收件人
+                    event.setApplicantId(null);
+                }
+            }
             Map<String, String> vars = new HashMap<>();
             vars.put("requestId", requestId);
             vars.put("bizId", requestId);

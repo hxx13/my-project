@@ -30,6 +30,7 @@ import {
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
+import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 
 type TabKey = "personal" | "audit";
 
@@ -69,8 +70,7 @@ function claimStatusZh(s: string) {
 }
 
 function toTimeText(v?: string | null) {
-  if (!v) return "-";
-  return String(v).replace("T", " ").slice(0, 19);
+  return formatDateTimeAsiaShanghai(v);
 }
 
 function lineIoType(orderStatus: string, fulfilledQty: number) {
@@ -116,7 +116,7 @@ function auditMergedRowKey(row: AuditMergedRow): string {
 }
 
 export default function AdminSuppliesAuditExportPage() {
-  const role = authStorage.getRole() || "STUDENT";
+  const role = authStorage.getRole() || "MEMBER";
   const canSubmitClaim = hasMinRole(role, "STAFF");
   const canAudit = hasMinRole(role, "SENIOR");
   const canPickClaimRangeOthers = hasMinRole(role, "SUPER_ADMIN");

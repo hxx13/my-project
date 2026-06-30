@@ -48,9 +48,9 @@ export function ActivityMemberTable({
         <table className="min-w-full text-xs">
           <thead className="bg-neutral-50 text-[11px] font-semibold text-neutral-600">
             <tr>
-              <th className="px-3 py-3 text-left">#</th>
-              <th className="px-3 py-3 text-left">姓名</th>
-              <th className="px-3 py-3 text-left">经验等级</th>
+              <th className="px-3 py-3 text-left whitespace-nowrap">#</th>
+              <th className="px-3 py-3 text-left whitespace-nowrap min-w-[4.5rem]">姓名</th>
+              <th className="px-3 py-3 text-left whitespace-nowrap">经验等级</th>
               <th className="px-3 py-3 text-left cursor-pointer select-none hover:text-violet-700" onClick={() => onSort("entries")}>
                 进出次数 <SortArrow col="entries" />
               </th>
@@ -75,9 +75,11 @@ export function ActivityMemberTable({
                 const lastActive = formatLastActive(m.lastActiveDate, m.daysSinceLastActive);
                 return (
                   <tr key={m.userId} className={cn("hover:bg-violet-50/50 transition", i % 2 === 0 && "bg-white", i % 2 === 1 && "bg-neutral-50/30")}>
-                    <td className="px-3 py-2.5 font-mono text-neutral-400">{(page - 1) * size + i + 1}</td>
-                    <td className="px-3 py-2.5 font-medium text-neutral-900">{m.userName}</td>
-                    <td className="px-3 py-2.5 font-mono text-violet-600">{m.experienceLevel}</td>
+                    <td className="px-3 py-2.5 font-mono text-neutral-400 whitespace-nowrap">{(page - 1) * size + i + 1}</td>
+                    <td className="px-3 py-2.5 font-medium text-neutral-900 whitespace-nowrap">
+                      {m.userName}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-violet-600 whitespace-nowrap">{m.experienceLevel}</td>
                     <td className="px-3 py-2.5 font-mono font-semibold text-violet-700">{m.entryCount}</td>
                     <td className="px-3 py-2.5 font-mono text-neutral-700">{formatDuration(m.totalDurationMinutes)}</td>
                     <td className="px-3 py-2.5 font-mono text-neutral-700">{m.weeklyAvgFreq}</td>

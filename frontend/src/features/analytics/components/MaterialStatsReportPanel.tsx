@@ -62,7 +62,7 @@ export function MaterialStatsReportPanel() {
 
   const { data: groups = [] } = useQuery({
     queryKey: ["material", "groups-with-records"],
-    queryFn: fetchGroupsWithRecords,
+    queryFn: () => fetchGroupsWithRecords(),
     staleTime: 60_000,
   });
 

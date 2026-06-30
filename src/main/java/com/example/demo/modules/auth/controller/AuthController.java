@@ -304,10 +304,11 @@ public class AuthController {
             user = new User();
             user.setId(id);
             user.setUsername(id);
-            user.setRole(RoleEnum.STUDENT);
+            user.setRole(RoleEnum.MEMBER);
             user.setOpenId(request.getOpenId());
             user.setMiniBindType("STUDENT");
             user.setAuthProfile(AuthProfileConstants.WECHAT_ARO);
+            user.setAccountSource("STUDENT");
             userMapper.insertUser(user);
         } else {
             userMapper.updateOpenIdById(id, request.getOpenId(), "STUDENT");

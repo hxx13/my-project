@@ -58,6 +58,11 @@ public final class ErrorCodeConstants {
     public static final int REPORT_FORM_OPTION_SET_IN_USE = 1_008_009;
     public static final int REPORT_FORM_WORD_TEMPLATE_NOT_FOUND = 1_008_010;
 
+    /** 手机端直达 mobile-token 1-010-xxx */
+    public static final int MOBILE_TOKEN_INVALID   = 1_010_001;  // "链接无效或已失效"
+    public static final int MOBILE_TOKEN_EXPIRED   = 1_010_002;  // "链接已过期"
+    public static final int MOBILE_TOKEN_MULTI_IP  = 1_010_003;  // "检测到多设备使用"
+
     /** 人脸识别 face 1-009-xxx */
     public static final int FACE_VERIFY_NO_BASELINE = 1_009_001;
     public static final int FACE_VERIFY_NO_FACE = 1_009_002;

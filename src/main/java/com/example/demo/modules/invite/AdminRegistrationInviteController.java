@@ -95,7 +95,7 @@ public class AdminRegistrationInviteController {
         if (!(attr instanceof User u)) {
             return Result.error("当前登录信息无效");
         }
-        RoleEnum r = u.getRole() == null ? RoleEnum.STUDENT : u.getRole();
+        RoleEnum r = u.getRole() == null ? RoleEnum.MEMBER : u.getRole();
         if (r.getLevel() < RoleEnum.ADMIN.getLevel()) {
             return Result.error("无权限访问");
         }

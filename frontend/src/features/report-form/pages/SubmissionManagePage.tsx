@@ -8,7 +8,9 @@ import FormGridRenderer, { parseLayoutJson } from '../components/FormGridRendere
 import type { ReportFormSubmission } from '../types';
 import { exportExcel, exportPdf, exportWord } from '../api/reportFill.api';
 import { fetchWordTemplates } from '../api/reportForm.api';
+import { buildReportExportFilename, parseFillMode } from '../utils/reportFormExportFilename';
 import { Table2, Eye, User, Clock, CheckCircle, FileText, Download, FileSpreadsheet } from 'lucide-react';
+import { formatDateTimeAsiaShanghaiShort } from '@/lib/formatDateTimeAsiaShanghai';
 import toast from 'react-hot-toast';
 
 type ViewMode = 'table' | 'detail';
@@ -46,6 +48,13 @@ export default function SubmissionManagePage() {
   const layout = parseLayoutJson(form.layoutJson);
   const fieldCells = layout.cells.filter(c => c.kind === 'field' && c.fieldKey);
   const fields = layout.fields;
+  const fillMode = parseFillMode(form.fillPolicyJson);
+  const batchExportName = (ext: string) => buildReportExportFilename({
+    formName: form.name,
+    extension: ext,
+    fillMode,
+    batch: true,
+  });
 
   const statusBadge = (status: string) => (
     <span className={`px-1.5 py-0 rounded text-[10px] font-medium ${
@@ -74,12 +83,12 @@ export default function SubmissionManagePage() {
           <Eye className="w-3.5 h-3.5" /> 逐份查看
         </button>
         <span className="w-px h-5 bg-[var(--app-color-border-default)]" />
-        <button onClick={() => exportExcel(formId)}
+        <button onClick={() => exportExcel(formId, undefined, batchExportName('xlsx'))}
           disabled={submissions.length === 0}
           className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 flex items-center gap-1">
           <FileSpreadsheet className="w-3.5 h-3.5" /> 批量 Excel
         </button>
-        <button onClick={() => exportPdf(formId)}
+        <button onClick={() => exportPdf(formId, undefined, batchExportName('pdf'))}
           disabled={submissions.length === 0}
           className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-30 flex items-center gap-1">
           <Download className="w-3.5 h-3.5" /> 批量 PDF
@@ -89,7 +98,19 @@ export default function SubmissionManagePage() {
             const wtList = await fetchWordTemplates(formId);
             if (wtList.length === 0) { toast.error('未绑定 Word 模板，请先在设计器中上传'); return; }
             // 使用第一个模板导出
-            await exportWord(formId, wtList[0].id, submissions[0]?.id);
+            const firstSub = submissions[0];
+            await exportWord(
+              formId,
+              wtList[0].id,
+              firstSub?.id,
+              undefined,
+              buildReportExportFilename({
+                formName: form.name,
+                extension: 'docx',
+                fillMode,
+                instanceLabel: firstSub?.instanceLabel,
+              }),
+            );
           } catch (e) { toast.error('Word 导出失败: ' + (e as Error).message); }
         }}
           disabled={submissions.length === 0}
@@ -137,7 +158,7 @@ export default function SubmissionManagePage() {
                   ))}
                   <td className="px-3 py-2">{statusBadge(sub.status)}</td>
                   <td className="px-3 py-2 text-xs text-[var(--app-color-text-tertiary)]">
-                    {sub.updatedAt ? new Date(sub.updatedAt).toLocaleString() : '-'}
+                    {sub.updatedAt ? formatDateTimeAsiaShanghaiShort(sub.updatedAt) : '-'}
                   </td>
                 </tr>
               ))}
@@ -169,7 +190,7 @@ export default function SubmissionManagePage() {
                 <div className="flex items-center gap-2 mt-0.5 ml-5">
                   {statusBadge(sub.status)}
                   <span className="text-[10px] text-[var(--app-color-text-tertiary)]">
-                    {sub.updatedAt ? new Date(sub.updatedAt).toLocaleDateString() : ''}
+                    {sub.updatedAt ? formatDateTimeAsiaShanghaiShort(sub.updatedAt).slice(0, 10) : ''}
                   </span>
                 </div>
               </button>
@@ -190,6 +211,8 @@ export default function SubmissionManagePage() {
                 </div>
                 <FormGridRenderer
                   layout={layout}
+                  themeJson={form.themeJson}
+                  formSource={form.source}
                   values={selectedSub.fieldValuesJson || {}}
                   editable={false}
                 />

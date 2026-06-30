@@ -7,6 +7,7 @@ import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/adm
 import { AdminSelect } from "@/components/admin/AdminSelect";
 import { adminHintClass } from "@/features/admin/adminFormUi";
 import { detailTextToLines } from "@/utils/detailTextToLines";
+import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
 
 const TYPE_OPTIONS = [
   { value: "", label: "全部类型" },
@@ -25,10 +26,7 @@ const TRIGGER_OPTIONS = [
 ];
 
 function toTime(value?: string) {
-  if (!value) return "-";
-  const t = new Date(value);
-  if (Number.isNaN(t.getTime())) return value;
-  return t.toLocaleString("zh-CN", { hour12: false });
+  return formatDateTimeAsiaShanghaiShort(value);
 }
 
 function toApiTime(value: string, tail: "00:00:00" | "23:59:59") {

@@ -10,6 +10,8 @@ import com.example.demo.modules.me.inbox.dto.InboxFeedResponse;
 import com.example.demo.modules.me.service.MiniPreferencesService;
 import com.example.demo.modules.me.service.PageHelpIntroService;
 import com.example.demo.modules.me.service.PendingBadgesService;
+import com.example.demo.modules.me.service.StudentReviewService;
+import com.example.demo.modules.me.dto.StudentReviewDashboardVo;
 import com.example.demo.modules.policy.dto.CapabilitySummaryRow;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,19 +39,22 @@ public class MeController {
     private final InboxAggregationService inboxAggregationService;
     private final CapabilityPolicyService capabilityPolicyService;
     private final PageHelpIntroService pageHelpIntroService;
+    private final StudentReviewService studentReviewService;
 
     public MeController(AuthContextService authContextService,
                           PendingBadgesService pendingBadgesService,
                           MiniPreferencesService miniPreferencesService,
                           InboxAggregationService inboxAggregationService,
                           CapabilityPolicyService capabilityPolicyService,
-                          PageHelpIntroService pageHelpIntroService) {
+                          PageHelpIntroService pageHelpIntroService,
+                          StudentReviewService studentReviewService) {
         this.authContextService = authContextService;
         this.pendingBadgesService = pendingBadgesService;
         this.miniPreferencesService = miniPreferencesService;
         this.inboxAggregationService = inboxAggregationService;
         this.capabilityPolicyService = capabilityPolicyService;
         this.pageHelpIntroService = pageHelpIntroService;
+        this.studentReviewService = studentReviewService;
     }
 
     @GetMapping("/pending-badges")
@@ -78,6 +83,19 @@ public class MeController {
             return Result.error("账号已禁用");
         }
         return Result.success(inboxAggregationService.buildFeed(user, limit, beforeMillis));
+    }
+
+    @GetMapping("/student-review/dashboard")
+    @Operation(summary = "学生审核工作台聚合（物资待审/全部/延迟免冻结/需求建议）")
+    public Result<StudentReviewDashboardVo> studentReviewDashboard(HttpServletRequest request) {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) {
+            return Result.error("未登录或Token无效");
+        }
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            return Result.error("账号已禁用");
+        }
+        return studentReviewService.buildDashboard(user);
     }
 
     @GetMapping("/capability-summary")

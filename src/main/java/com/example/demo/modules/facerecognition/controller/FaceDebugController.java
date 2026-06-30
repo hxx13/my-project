@@ -100,7 +100,7 @@ public class FaceDebugController {
         if (!(attr instanceof User currentUser)) {
             return Result.error("未登录或 Token 无效");
         }
-        RoleEnum currentRole = currentUser.getRole() == null ? RoleEnum.STUDENT : currentUser.getRole();
+        RoleEnum currentRole = currentUser.getRole() == null ? RoleEnum.MEMBER : currentUser.getRole();
         if (currentRole.getLevel() < minRole.getLevel()) {
             return Result.error("无权限访问");
         }

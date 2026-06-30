@@ -104,6 +104,10 @@ export interface PopupState {
     scanDelayEnabled: boolean;
     scanDelayButtonLabel: string;
     scanDelayOptionsByRoom: Record<string, ScanDelayOptionSummary[]>;
+    /** 离开确认弹窗：待确认的房间 */
+    confirmingExitRoom: RoomInfo | null;
+    /** 离开确认弹窗：待确认的房间索引 */
+    confirmingExitIndex: number;
 }
 
 export interface PopupActions {
@@ -126,4 +130,10 @@ export interface PopupActions {
     markEnterNoticeReady: () => void;
     getDelayOptionsForRoom: (roomId: string) => ScanDelayOptionSummary[];
     handleDelayGrantSuccess: () => void;
+    /** 打开离开确认弹窗（不执行离开） */
+    requestExit: (room: RoomInfo, index: number) => void;
+    /** 确认离开：执行待确认的房间操作 */
+    confirmExit: () => void;
+    /** 取消离开确认 */
+    cancelExit: () => void;
 }

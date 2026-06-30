@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { useQuery } from "@tanstack/react-query";
 import { TableProperties, ArrowLeft } from "lucide-react";
 import { fetchCageShelfFilterOptions, fetchCageShelfIndexes, type CageShelfFilterOptions } from "@/api/domains/cageShelf.api";
@@ -51,7 +52,7 @@ export default function AdminCageShelfIndexPage() {
     <AdminPageShell
       title={
         <span className="inline-flex items-center gap-2">
-          <button type="button" className="hover:bg-[var(--twin-canvas-soft)] rounded-twin-md p-1 -ml-1 transition" onClick={() => navigate("/admin/cage-shelves")} title="返回笼架信息">
+          <button type="button" className="hover:bg-[var(--twin-canvas-soft)] rounded-twin-md p-1 -ml-1 transition" onClick={() => navigate(toAdminRoutePath("/admin/cage-shelves"))} title="返回笼架信息">
             <ArrowLeft className="h-5 w-5 text-[var(--twin-link-deep)]" />
           </button>
           <TableProperties className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />

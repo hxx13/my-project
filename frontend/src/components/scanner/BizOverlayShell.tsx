@@ -22,7 +22,7 @@ const SHELL_TEXT_MUTED = "text-[var(--app-color-text-tertiary)]";
 const SHELL_HOVER = "hover:bg-[var(--app-color-surface-hover)]";
 const SHELL_BACKDROP = "bg-black/50 backdrop-blur-sm";
 
-export function BizOverlayShell({ userId, title, onCancel }: BizOverlayShellProps) {
+export function BizOverlayShell({ userId, scanUser, title, onCancel }: BizOverlayShellProps) {
   const [selected, setSelected] = useState<BizItem | null>(null);
 
   const items = useMemo(() => getBizItems(), []);
@@ -131,6 +131,7 @@ export function BizOverlayShell({ userId, title, onCancel }: BizOverlayShellProp
                     {SelectedComponent && (
                       <selected.component
                         userId={userId}
+                        scanUser={scanUser}
                         pin=""
                         onDone={close}
                         onError={(msg) => console.error(`[${selected.id}]`, msg)}
