@@ -242,28 +242,53 @@ export function MaterialSpecPickControl({
   const specRequired = Number(item.specRequired) === 1;
   const showPlainRow = !specRequired && !hasAnyMultiSpecSelection(selections);
 
-  const updateAnchor = () => {
+  const anchorLock = useRef<{ left: number; minWidth: number; maxWidth: number } | null>(null);
+
+  const updateAnchor = (verticalOnly = false) => {
     if (!buttonRef.current) return;
-    setAnchor(measurePopoverLayout(buttonRef.current, popoverRef.current));
+    const measured = measurePopoverLayout(buttonRef.current, popoverRef.current);
+    if (verticalOnly && anchorLock.current) {
+      // Lock horizontal to first-calculated position — prevents left-right jumping
+      // when popover content height changes trigger ResizeObserver re-calc.
+      setAnchor({
+        top: measured.top,
+        left: anchorLock.current.left,
+        minWidth: anchorLock.current.minWidth,
+        maxWidth: anchorLock.current.maxWidth,
+      });
+    } else {
+      if (!anchorLock.current) {
+        anchorLock.current = { left: measured.left, minWidth: measured.minWidth, maxWidth: measured.maxWidth };
+      }
+      setAnchor(measured);
+    }
   };
+
+  // Stable handler refs so add/removeEventListener references match
+  const handlersRef = useRef<{ resize: () => void; scroll: () => void }>({ resize: () => {}, scroll: () => {} });
+  handlersRef.current.resize = () => updateAnchor(false);
+  handlersRef.current.scroll = () => updateAnchor(true);
 
   useLayoutEffect(() => {
     if (!open) {
       setAnchor(null);
+      anchorLock.current = null;
       return;
     }
-    updateAnchor();
+    updateAnchor(false); // full calc on open
     const ro =
       typeof ResizeObserver !== "undefined" && popoverRef.current
-        ? new ResizeObserver(() => updateAnchor())
+        ? new ResizeObserver(() => updateAnchor(true)) // vertical-only on resize
         : null;
     ro?.observe(popoverRef.current!);
-    window.addEventListener("resize", updateAnchor);
-    window.addEventListener("scroll", updateAnchor, true);
+    const onResize = () => handlersRef.current.resize();
+    const onScroll = () => handlersRef.current.scroll();
+    window.addEventListener("resize", onResize);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       ro?.disconnect();
-      window.removeEventListener("resize", updateAnchor);
-      window.removeEventListener("scroll", updateAnchor, true);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open, selectionReady, activeCombos.length, showPlainRow, dimensions.length]);
 
