@@ -43,6 +43,12 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function formatSpecLabel(specJson: string | undefined | null): string {
+  if (!specJson) return '';
+  try { return Object.values(JSON.parse(specJson)).join('·'); }
+  catch { return ''; }
+}
+
 function movementInOutLabelRow(t: string | undefined, qty: number) {
   const u = String(t || "").toUpperCase();
   if (u === "INBOUND") return "入库";

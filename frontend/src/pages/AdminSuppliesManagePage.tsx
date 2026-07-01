@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { createPortal } from "react-dom";
 import {
   useAdminSupplyCategories,
   useAdminSupplyItems,
@@ -25,6 +26,8 @@ import EmptyState from "@/components/ui/EmptyState";
 
 type CardPanel = null | { itemId: number; kind: "inbound" | "stock" };
 
+type SpecDimension = { name: string; options: string[] };
+
 export default function AdminSuppliesManagePage() {
   const [filterCat, setFilterCat] = useState<number | "">("");
   const [newCatName, setNewCatName] = useState("");
@@ -39,6 +42,19 @@ export default function AdminSuppliesManagePage() {
   const [createUploading, setCreateUploading] = useState(false);
   const [recyclePage, setRecyclePage] = useState(1);
   const [recycleOpen, setRecycleOpen] = useState(false);
+
+  /* ── 规格配置 ── */
+  const [createSpecEnabled, setCreateSpecEnabled] = useState(false);
+  const [createSpecDimensions, setCreateSpecDimensions] = useState<SpecDimension[]>([]);
+  const [createSpecRequired, setCreateSpecRequired] = useState(false);
+  const [editSpecEnabled, setEditSpecEnabled] = useState(false);
+  const [editSpecDimensions, setEditSpecDimensions] = useState<SpecDimension[]>([]);
+  const [editSpecRequired, setEditSpecRequired] = useState(false);
+
+  /* ── 内联编辑 ── */
+  const [editingItem, setEditingItem] = useState<SupplyItem | null>(null);
+  const [editCoverUrl, setEditCoverUrl] = useState("");
+  const [editUploading, setEditUploading] = useState(false);
 
   const { data: categories = [], isLoading: catLoading } = useAdminSupplyCategories();
   const { data: items = [], isLoading: itemsLoading } = useAdminSupplyItems(filterCat === "" ? undefined : filterCat);
@@ -220,6 +236,54 @@ export default function AdminSuppliesManagePage() {
                 onChange={(e) => setCreateInitialQty(e.target.value)}
               />
             </label>
+            {/* ── 规格配置 ── */}
+            <label className="flex items-center gap-2 pt-2">
+              <input type="checkbox" checked={createSpecEnabled} onChange={e => setCreateSpecEnabled(e.target.checked)} className="rounded" />
+              <span className="text-xs text-[var(--twin-body)]">启用规格</span>
+            </label>
+            {createSpecEnabled && (
+              <div className="col-span-full w-full space-y-2 border border-[var(--twin-hairline)] rounded-twin-md p-3 bg-[var(--twin-canvas)]">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={createSpecRequired} onChange={e => setCreateSpecRequired(e.target.checked)} className="rounded" />
+                  <span className="text-xs text-[var(--twin-body)]">强制选择规格</span>
+                </label>
+                {createSpecDimensions.map((dim, di) => (
+                  <div key={di} className="flex items-center gap-2 flex-wrap">
+                    <input className="w-20 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs text-[var(--twin-ink)]" placeholder="维度名"
+                      value={dim.name} onChange={e => {
+                        const next = [...createSpecDimensions]; next[di] = { ...next[di], name: e.target.value }; setCreateSpecDimensions(next);
+                      }} />
+                    {dim.options.map((opt, oi) => (
+                      <span key={oi} className="inline-flex items-center gap-1 bg-[var(--twin-canvas-soft)] border border-[var(--twin-hairline)] rounded-full px-2 py-0.5 text-xs">
+                        <input className="w-12 border-none bg-transparent text-xs text-[var(--twin-ink)] outline-none" placeholder="选项"
+                          value={opt} onChange={e => {
+                            const next = [...createSpecDimensions];
+                            next[di] = { ...next[di], options: [...next[di].options] };
+                            next[di].options[oi] = e.target.value;
+                            setCreateSpecDimensions(next);
+                          }} />
+                        <button type="button" className="text-[var(--twin-mute)] hover:text-red-500 leading-none" onClick={() => {
+                          const next = [...createSpecDimensions];
+                          next[di] = { ...next[di], options: next[di].options.filter((_, i) => i !== oi) };
+                          setCreateSpecDimensions(next);
+                        }}>&times;</button>
+                      </span>
+                    ))}
+                    <button type="button" className="text-xs text-[var(--twin-link-deep)]" onClick={() => {
+                      const next = [...createSpecDimensions];
+                      next[di] = { ...next[di], options: [...next[di].options, ''] };
+                      setCreateSpecDimensions(next);
+                    }}>+ 选项</button>
+                    <button type="button" className="text-xs text-red-400 hover:text-red-600" onClick={() => {
+                      setCreateSpecDimensions(createSpecDimensions.filter((_, i) => i !== di));
+                    }}>删除维度</button>
+                  </div>
+                ))}
+                <button type="button" className="text-xs text-[var(--twin-link-deep)]" onClick={() => {
+                  setCreateSpecDimensions([...createSpecDimensions, { name: '', options: ['', ''] }]);
+                }}>+ 添加维度</button>
+              </div>
+            )}
             <label className="flex flex-col gap-1">
               <span className="text-xs text-[var(--twin-mute)]">封面图</span>
               <div className="flex items-center gap-2">
@@ -283,12 +347,19 @@ export default function AdminSuppliesManagePage() {
                     stockMode: createMode,
                     stockQty: createMode === "FLAG" ? (qtyNum > 0 ? 1 : 0) : Math.floor(qtyNum),
                     shelfStatus: "ON_SHELF",
+                    specSchema: createSpecEnabled && createSpecDimensions.length > 0
+                      ? JSON.stringify({ dimensions: createSpecDimensions.filter(d => d.name.trim() && d.options.filter(o => o.trim()).length >= 2) })
+                      : undefined,
+                    specRequired: createSpecEnabled && createSpecRequired ? 1 : 0,
                   },
                   {
                     onSuccess: () => {
                       setCreateName("");
                       setCreateInitialQty("0");
                       setCreateCoverUrl("");
+                      setCreateSpecEnabled(false);
+                      setCreateSpecDimensions([]);
+                      setCreateSpecRequired(false);
                     },
                   },
                 );
@@ -358,6 +429,32 @@ export default function AdminSuppliesManagePage() {
                     }}
                   >
                     改名
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-twin-sm px-2 py-1 text-xs font-medium text-[var(--twin-link-deep)]"
+                    onClick={() => {
+                      setEditingItem(it);
+                      setEditCoverUrl(it.coverUrl || "");
+                      if (it.specSchema) {
+                        try {
+                          const parsed = JSON.parse(it.specSchema);
+                          setEditSpecEnabled(true);
+                          setEditSpecDimensions(parsed.dimensions || []);
+                          setEditSpecRequired(it.specRequired === 1);
+                        } catch {
+                          setEditSpecEnabled(false);
+                          setEditSpecDimensions([]);
+                          setEditSpecRequired(false);
+                        }
+                      } else {
+                        setEditSpecEnabled(false);
+                        setEditSpecDimensions([]);
+                        setEditSpecRequired(false);
+                      }
+                    }}
+                  >
+                    编辑
                   </button>
                   <button
                     type="button"
@@ -547,6 +644,134 @@ export default function AdminSuppliesManagePage() {
           </div>
         ) : null}
       </section>
+
+      {/* ── 编辑弹窗 ── */}
+      {editingItem && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4" onClick={() => setEditingItem(null)}>
+          <div className="bg-[var(--twin-canvas)] rounded-twin-xl border border-[var(--twin-hairline)] shadow-twin-level-4 w-full max-w-lg max-h-[85vh] overflow-y-auto p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium text-[var(--twin-ink)]">编辑 {editingItem.name}</h3>
+              <button type="button" onClick={() => setEditingItem(null)} className="text-[var(--twin-mute)] hover:text-[var(--twin-ink)] text-lg">&times;</button>
+            </div>
+            {/* 封面图 */}
+            <div className="flex items-center gap-3">
+              {editCoverUrl ? (
+                <div className="flex items-center gap-2">
+                  <img src={webImageSrc(editCoverUrl) || editCoverUrl} alt="" className="h-16 w-16 object-cover rounded border" />
+                  <button type="button" className="text-xs text-red-500" onClick={() => setEditCoverUrl("")}>移除</button>
+                </div>
+              ) : (
+                <label className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-xs cursor-pointer hover:bg-[var(--twin-canvas-soft)]">
+                  {editUploading ? "上传中…" : "上传封面"}
+                  <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                    const f = e.target.files?.[0]; if (!f) return;
+                    setEditUploading(true);
+                    try {
+                      const result = await uploadSingleImage(f);
+                      setEditCoverUrl(result.publicUrl);
+                    } catch (err: any) { toast.error(err?.message || "上传失败"); }
+                    finally { setEditUploading(false); }
+                  }} />
+                </label>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-[var(--twin-mute)]">名称</span>
+                <input className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.name} onChange={e => setEditingItem({ ...editingItem, name: e.target.value })} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-[var(--twin-mute)]">状态</span>
+                <select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.shelfStatus} onChange={e => setEditingItem({ ...editingItem, shelfStatus: e.target.value })}>
+                  <option value="ON_SHELF">上架</option>
+                  <option value="OFF_SHELF">下架</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-[var(--twin-mute)]">库存模式</span>
+                <select className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-[var(--twin-ink)]" value={editingItem.stockMode} onChange={e => setEditingItem({ ...editingItem, stockMode: e.target.value })}>
+                  <option value="QUANTIFIED">数量型</option>
+                  <option value="FLAG">有无型</option>
+                </select>
+              </label>
+              {/* ── 规格配置 ── */}
+              <label className="flex items-center gap-2 col-span-2 pt-2">
+                <input type="checkbox" checked={editSpecEnabled} onChange={e => setEditSpecEnabled(e.target.checked)} className="rounded" />
+                <span className="text-xs text-[var(--twin-body)]">启用规格</span>
+              </label>
+              {editSpecEnabled && (
+                <div className="col-span-2 space-y-2 border border-[var(--twin-hairline)] rounded-twin-md p-3 bg-[var(--twin-canvas)]">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={editSpecRequired} onChange={e => setEditSpecRequired(e.target.checked)} className="rounded" />
+                    <span className="text-xs text-[var(--twin-body)]">强制选择规格</span>
+                  </label>
+                  {editSpecDimensions.map((dim, di) => (
+                    <div key={di} className="flex items-center gap-2 flex-wrap">
+                      <input className="w-20 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs text-[var(--twin-ink)]" placeholder="维度名"
+                        value={dim.name} onChange={e => {
+                          const next = [...editSpecDimensions]; next[di] = { ...next[di], name: e.target.value }; setEditSpecDimensions(next);
+                        }} />
+                      {dim.options.map((opt, oi) => (
+                        <span key={oi} className="inline-flex items-center gap-1 bg-[var(--twin-canvas-soft)] border border-[var(--twin-hairline)] rounded-full px-2 py-0.5 text-xs">
+                          <input className="w-12 border-none bg-transparent text-xs text-[var(--twin-ink)] outline-none" placeholder="选项"
+                            value={opt} onChange={e => {
+                              const next = [...editSpecDimensions];
+                              next[di] = { ...next[di], options: [...next[di].options] };
+                              next[di].options[oi] = e.target.value;
+                              setEditSpecDimensions(next);
+                            }} />
+                          <button type="button" className="text-[var(--twin-mute)] hover:text-red-500 leading-none" onClick={() => {
+                            const next = [...editSpecDimensions];
+                            next[di] = { ...next[di], options: next[di].options.filter((_, i) => i !== oi) };
+                            setEditSpecDimensions(next);
+                          }}>&times;</button>
+                        </span>
+                      ))}
+                      <button type="button" className="text-xs text-[var(--twin-link-deep)]" onClick={() => {
+                        const next = [...editSpecDimensions];
+                        next[di] = { ...next[di], options: [...next[di].options, ''] };
+                        setEditSpecDimensions(next);
+                      }}>+ 选项</button>
+                      <button type="button" className="text-xs text-red-400 hover:text-red-600" onClick={() => {
+                        setEditSpecDimensions(editSpecDimensions.filter((_, i) => i !== di));
+                      }}>删除维度</button>
+                    </div>
+                  ))}
+                  <button type="button" className="text-xs text-[var(--twin-link-deep)]" onClick={() => {
+                    setEditSpecDimensions([...editSpecDimensions, { name: '', options: ['', ''] }]);
+                  }}>+ 添加维度</button>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--twin-hairline)]">
+              <button type="button" className="rounded-twin-sm border border-[var(--twin-hairline)] px-4 py-1.5 text-sm text-[var(--twin-body)]" onClick={() => setEditingItem(null)}>取消</button>
+              <button
+                type="button"
+                className="rounded-twin-sm bg-[var(--twin-ink)] px-4 py-1.5 text-sm font-medium text-white"
+                onClick={() => {
+                  if (!editingItem) return;
+                  updateItemMut.mutate({
+                    id: editingItem.id,
+                    body: {
+                      name: editingItem.name,
+                      shelfStatus: editingItem.shelfStatus,
+                      stockMode: editingItem.stockMode,
+                      coverUrl: editCoverUrl !== "" ? editCoverUrl : undefined,
+                      specSchema: editSpecEnabled && editSpecDimensions.length > 0
+                        ? JSON.stringify({ dimensions: editSpecDimensions.filter(d => d.name.trim() && d.options.filter(o => o.trim()).length >= 2) })
+                        : undefined,
+                      specRequired: editSpecEnabled && editSpecRequired ? 1 : 0,
+                    },
+                  }, { onSuccess: () => setEditingItem(null) });
+                }}
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

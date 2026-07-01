@@ -191,27 +191,25 @@ export async function fetchMaterialItem(id: number) {
   return res.data.data;
 }
 
-export async function fetchMaterialCart(): Promise<Record<number, number>> {
+export async function fetchMaterialCart(): Promise<Record<string, number>> {
   const res = await authHttp.get<Result<{ lines?: Record<string, number> }>>("/material/cart");
   const lines = res.data.data?.lines ?? {};
-  const cart: Record<number, number> = {};
+  const cart: Record<string, number> = {};
   for (const [k, v] of Object.entries(lines)) {
-    const id = Number(k);
     const qty = Number(v);
-    if (Number.isFinite(id) && id > 0 && Number.isFinite(qty) && qty > 0) {
-      cart[id] = Math.min(Math.floor(qty), 999);
+    if (Number.isFinite(qty) && qty > 0) {
+      cart[k] = Math.min(Math.floor(qty), 999);
     }
   }
   return cart;
 }
 
-export async function saveMaterialCart(cart: Record<number, number>): Promise<void> {
+export async function saveMaterialCart(cart: Record<string, number>): Promise<void> {
   const lines: Record<string, number> = {};
   for (const [k, v] of Object.entries(cart)) {
-    const id = Number(k);
     const qty = Number(v);
-    if (Number.isFinite(id) && id > 0 && Number.isFinite(qty) && qty > 0) {
-      lines[String(id)] = Math.min(Math.floor(qty), 999);
+    if (Number.isFinite(qty) && qty > 0) {
+      lines[k] = Math.min(Math.floor(qty), 999);
     }
   }
   await authHttp.put("/material/cart", { lines });

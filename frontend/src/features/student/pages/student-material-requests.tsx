@@ -17,6 +17,12 @@ const STATUS_COLORS: Record<string, string> = {
   RECEIVED: "bg-emerald-100 text-emerald-700",
 };
 
+function formatSpecLabel(specJson: string | undefined | null): string {
+  if (!specJson) return "";
+  try { return Object.values(JSON.parse(specJson)).join("·"); }
+  catch { return ""; }
+}
+
 export default function StudentMaterialRequestsPage() {
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
@@ -54,7 +60,18 @@ export default function StudentMaterialRequestsPage() {
               </div>
               <div className="text-[13px] space-y-0.5">
                 {req.lines?.map((l, i) => (
-                  <p key={i} className="text-[var(--student-body)]">{l.snapshotName} × {l.qty} {l.fulfilledQty > 0 && <span className="text-green-600">(出库 {l.fulfilledQty})</span>}</p>
+                  <p key={i} className="text-[var(--student-body)]">
+                    {l.snapshotName}
+                    {l.specSnapshot && (
+                      <span className="ml-1 text-[10px] bg-[var(--student-primary-soft)] text-[var(--student-primary)] rounded-full px-1.5 py-0.5">
+                        {formatSpecLabel(l.specSnapshot)}
+                      </span>
+                    )}
+                    {" "}&times; {l.qty}{" "}
+                    {l.fulfilledQty > 0 && (
+                      <span className="text-green-600">(出库 {l.fulfilledQty})</span>
+                    )}
+                  </p>
                 ))}
               </div>
               <div className="flex items-center justify-between text-[11px] text-[var(--student-mute)]">

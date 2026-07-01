@@ -53,6 +53,12 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function formatSpecLabel(specJson: string | undefined | null): string {
+  if (!specJson) return '';
+  try { return Object.values(JSON.parse(specJson)).join('·'); }
+  catch { return ''; }
+}
+
 export default function AdminSuppliesProcessPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -321,53 +327,75 @@ export default function AdminSuppliesProcessPage() {
               申请人：{applicantLabel(detail)} | 状态：{claimStatusText(detail.status)} | 申请：{toTextTime(detail.createdAt)}
             </div>
             <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
-              {(detail.lines || []).map((line) => (
-                <div key={line.id} className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
-                  <div className="flex items-center gap-3">
-                    {line.coverUrl ? (
-                      <img
-                        src={webImageSrc(line.coverUrl)}
-                        alt={line.snapshotName}
-                        className="h-12 w-12 rounded-[var(--app-radius-container)] object-cover border border-[var(--twin-hairline)] shrink-0"
-                      />
-                    ) : (
-                      <div className="h-12 w-12 rounded-[var(--app-radius-container)] bg-[var(--twin-canvas)] border border-[var(--twin-hairline)] flex items-center justify-center shrink-0">
-                        <span className="text-xs text-[var(--twin-mute)]">{line.snapshotName?.charAt(0) || "?"}</span>
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[var(--twin-ink)] truncate">{line.snapshotName}</span>
-                        <span className="text-xs text-[var(--twin-mute)] shrink-0">申 {line.qty} / 发 {line.fulfilledQty ?? 0}</span>
-                      </div>
-                      {canProcess && detail.status === "PENDING" && grantMap[line.id] ? (
-                        <input
-                          type="text"
-                          placeholder="出库备注（可选）"
-                          value={remarkMap[line.id] || ""}
-                          onChange={(e) => setRemarkMap((prev) => ({ ...prev, [line.id]: e.target.value }))}
-                          className="mt-1.5 w-full rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
-                        />
-                      ) : null}
-                      {detail.status !== "PENDING" && remarkMap[line.id] ? (
-                        <div className="mt-1 text-xs text-[var(--twin-mute)]">
-                          备注：{remarkMap[line.id]}
+              {(() => {
+                const lines = detail.lines || [];
+                // 按 specSnapshot 分组
+                const groups: Record<string, typeof lines> = {};
+                for (const line of lines) {
+                  const key = line.specSnapshot || '__no_spec__';
+                  if (!groups[key]) groups[key] = [];
+                  groups[key].push(line);
+                }
+                return Object.entries(groups).map(([groupKey, groupLines]) => {
+                  const specLabel = groupKey !== '__no_spec__' ? formatSpecLabel(groupKey) : '';
+                  return (
+                    <div key={groupKey} className="space-y-1.5">
+                      {specLabel ? (
+                        <div className="text-xs font-medium text-[var(--twin-link-deep)] pl-1">
+                          规格：{specLabel}
                         </div>
                       ) : null}
+                      {groupLines.map((line) => (
+                        <div key={line.id} className="rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
+                          <div className="flex items-center gap-3">
+                            {line.coverUrl ? (
+                              <img
+                                src={webImageSrc(line.coverUrl)}
+                                alt={line.snapshotName}
+                                className="h-12 w-12 rounded-[var(--app-radius-container)] object-cover border border-[var(--twin-hairline)] shrink-0"
+                              />
+                            ) : (
+                              <div className="h-12 w-12 rounded-[var(--app-radius-container)] bg-[var(--twin-canvas)] border border-[var(--twin-hairline)] flex items-center justify-center shrink-0">
+                                <span className="text-xs text-[var(--twin-mute)]">{line.snapshotName?.charAt(0) || "?"}</span>
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[var(--twin-ink)] truncate">{line.snapshotName}</span>
+                                <span className="text-xs text-[var(--twin-mute)] shrink-0">申 {line.qty} / 发 {line.fulfilledQty ?? 0}</span>
+                              </div>
+                              {canProcess && detail.status === "PENDING" && grantMap[line.id] ? (
+                                <input
+                                  type="text"
+                                  placeholder="出库备注（可选）"
+                                  value={remarkMap[line.id] || ""}
+                                  onChange={(e) => setRemarkMap((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                                  className="mt-1.5 w-full rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
+                                />
+                              ) : null}
+                              {detail.status !== "PENDING" && remarkMap[line.id] ? (
+                                <div className="mt-1 text-xs text-[var(--twin-mute)]">
+                                  备注：{remarkMap[line.id]}
+                                </div>
+                              ) : null}
+                            </div>
+                            {canProcess && detail.status === "PENDING" ? (
+                              <label className="inline-flex items-center gap-1.5 text-xs text-[var(--twin-body)] shrink-0">
+                                <input
+                                  type="checkbox"
+                                  checked={!!grantMap[line.id]}
+                                  onChange={(e) => setGrantMap((prev) => ({ ...prev, [line.id]: e.target.checked }))}
+                                />
+                                出库
+                              </label>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    {canProcess && detail.status === "PENDING" ? (
-                      <label className="inline-flex items-center gap-1.5 text-xs text-[var(--twin-body)] shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={!!grantMap[line.id]}
-                          onChange={(e) => setGrantMap((prev) => ({ ...prev, [line.id]: e.target.checked }))}
-                        />
-                        出库
-                      </label>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
+                  );
+                });
+              })()}
             </div>
             {canProcess && detail.status === "PENDING" ? (
               <div className="mt-3 flex items-center justify-between gap-2 shrink-0">

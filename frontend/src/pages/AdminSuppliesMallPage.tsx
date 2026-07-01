@@ -32,9 +32,25 @@ const SUPPLIES_MALL_CARD_MIN_H = "8rem";
 /** 缩略图边长（原版 48px → 96px，与卡片加高同步） */
 const SUPPLIES_MALL_THUMB_PX = 96;
 
+type SpecDimension = { name: string; options: string[] };
+
 const LEGACY_WEB_CART_PREFIX = "aro_web_supplies_cart_v1_";
 
-function readLegacyWebSuppliesCart(userId: string): Record<number, number> {
+function formatSpecLabel(specJson: string | undefined | null): string {
+  if (!specJson) return '';
+  try { return Object.values(JSON.parse(specJson)).join('·'); }
+  catch { return ''; }
+}
+
+function specKeyFromSpecSnapshot(specSnapshot: string): string {
+  if (!specSnapshot) return '';
+  try {
+    const obj = JSON.parse(specSnapshot) as Record<string, string>;
+    return Object.entries(obj).map(([k, v]) => `${k}=${v}`).join('|');
+  } catch { return ''; }
+}
+
+function readLegacyWebSuppliesCart(userId: string): Record<string, number> {
   const id = userId.trim();
   if (!id) return {};
   try {
@@ -42,12 +58,11 @@ function readLegacyWebSuppliesCart(userId: string): Record<number, number> {
     if (!raw) return {};
     const o = JSON.parse(raw) as unknown;
     if (!o || typeof o !== "object") return {};
-    const cart: Record<number, number> = {};
+    const cart: Record<string, number> = {};
     for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
-      const itemId = Number(k);
       const qty = Number(v);
-      if (Number.isFinite(itemId) && itemId > 0 && Number.isFinite(qty) && qty > 0) {
-        cart[itemId] = Math.min(Math.floor(qty), 999);
+      if (Number.isFinite(qty) && qty > 0) {
+        cart[k] = Math.min(Math.floor(qty), 999);
       }
     }
     return cart;
@@ -88,7 +103,7 @@ export default function AdminSuppliesMallPage() {
   const [permNodes, setPermNodes] = useState<PublicPagePermissionNode[]>([]);
   const [capMap, setCapMap] = useState<Record<string, { canProcess: boolean }>>({});
   const [activeCat, setActiveCat] = useState<number | "all">("all");
-  const [cart, setCart] = useState<Record<number, number>>({});
+  const [cart, setCart] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
@@ -96,13 +111,14 @@ export default function AdminSuppliesMallPage() {
   const [mineBadgeText, setMineBadgeText] = useState("");
   const [processBadgeText, setProcessBadgeText] = useState("");
   const reviseBootstrappedRef = useRef<string | null>(null);
-  const cartRef = useRef<Record<number, number>>({});
+  const cartRef = useRef<Record<string, number>>({});
   const remoteSaveTimerRef = useRef<number | null>(null);
   const [authUserId, setAuthUserId] = useState(() => authStorage.getUserInfo()?.id?.trim() || "");
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
-  const [remarkMap, setRemarkMap] = useState<Record<number, string>>({});
+  const [remarkMap, setRemarkMap] = useState<Record<string, string>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [recordsPanelOpen, setRecordsPanelOpen] = useState(false);
+  const [specSelections, setSpecSelections] = useState<Record<number, Record<string, string>>>({});
 
   const claimCap = capMap.SUPPLIES_CLAIM;
   const adminCap = capMap.SUPPLIES_ADMIN;
@@ -117,7 +133,7 @@ export default function AdminSuppliesMallPage() {
 
   const items = useMemo(() => rawItems.map(normalizeNovelty), [rawItems]);
 
-  const flushRemoteCart = useCallback(async (payload: Record<number, number>) => {
+  const flushRemoteCart = useCallback(async (payload: Record<string, number>) => {
     try {
       await saveSupplyCart(payload);
     } catch (e) {
@@ -126,7 +142,7 @@ export default function AdminSuppliesMallPage() {
   }, []);
 
   const syncCartImmediate = useCallback(
-    (next: Record<number, number>) => {
+    (next: Record<string, number>) => {
       cartRef.current = next;
       setCart(next);
       if (remoteSaveTimerRef.current != null) {
@@ -139,7 +155,7 @@ export default function AdminSuppliesMallPage() {
   );
 
   const syncCart = useCallback(
-    (next: Record<number, number>) => {
+    (next: Record<string, number>) => {
       cartRef.current = next;
       setCart(next);
       if (remoteSaveTimerRef.current != null) {
@@ -161,8 +177,8 @@ export default function AdminSuppliesMallPage() {
       return;
     }
     try {
-      const remote = await fetchSupplyCart();
-      let merged: Record<number, number> = { ...remote };
+      const remote = await fetchSupplyCart() as unknown as Record<string, number>;
+      let merged: Record<string, number> = { ...remote };
       const legacy = readLegacyWebSuppliesCart(uid);
       if (Object.keys(merged).length === 0 && Object.keys(legacy).length > 0) {
         merged = legacy;
@@ -250,6 +266,31 @@ export default function AdminSuppliesMallPage() {
     return () => window.removeEventListener(ADMIN_PENDING_BADGES_REFRESH_EVENT, onEv);
   }, [refreshMineBadge]);
 
+  /** 从 cart key 中提取 itemId（支持 "123" 和 "123::spec=val" 两种格式） */
+  const itemIdFromCartKey = (key: string): number => {
+    const idx = key.indexOf("::");
+    return Number(idx >= 0 ? key.slice(0, idx) : key);
+  };
+
+  /** 从 cart key 中提取 specSnapshot JSON */
+  const specSnapshotFromCartKey = (key: string): string | undefined => {
+    const idx = key.indexOf("::");
+    if (idx < 0) return undefined;
+    const specPart = key.slice(idx + 2);
+    if (!specPart) return undefined;
+    const obj: Record<string, string> = {};
+    for (const pair of specPart.split('|')) {
+      const eq = pair.indexOf('=');
+      if (eq > 0) obj[pair.slice(0, eq)] = pair.slice(eq + 1);
+    }
+    return Object.keys(obj).length > 0 ? JSON.stringify(obj) : undefined;
+  };
+
+  const buildSpecCartKey = (itemId: number, selections: Record<string, string>, dimOrder: string[]): string => {
+    const parts = dimOrder.filter(d => selections[d]).map(d => `${d}=${selections[d]}`);
+    return parts.length > 0 ? `${itemId}::${parts.join('|')}` : String(itemId);
+  };
+
   const maxForItem = (item: SupplyItem | undefined) => {
     if (!item) return 0;
     if (item.stockMode === "QUANTIFIED") return Math.max(0, Number(item.stockQty) || 0);
@@ -260,15 +301,16 @@ export default function AdminSuppliesMallPage() {
     (list: SupplyItem[]) => {
       const next = { ...cartRef.current };
       let changed = false;
-      for (const it of list) {
-        const id = it.id;
-        if (next[id] == null) continue;
+      for (const key of Object.keys(next)) {
+        const iid = itemIdFromCartKey(key);
+        const it = list.find(x => x.id === iid);
+        if (!it) continue;
         const max = maxForItem(it);
         if (max <= 0) {
-          delete next[id];
+          delete next[key];
           changed = true;
-        } else if (next[id] > max) {
-          next[id] = max;
+        } else if (next[key] > max) {
+          next[key] = max;
           changed = true;
         }
       }
@@ -292,12 +334,13 @@ export default function AdminSuppliesMallPage() {
           setSearchParams(next, { replace: true });
           return;
         }
-        const nextCart: Record<number, number> = {};
+        const nextCart: Record<string, number> = {};
         for (const line of d.lines || []) {
           const iid = Number(line.itemId);
           const q = Number(line.qty);
           if (Number.isFinite(iid) && iid > 0 && Number.isFinite(q) && q > 0) {
-            nextCart[iid] = Math.min(Math.floor(q), 999);
+            const key = line.specSnapshot ? `${iid}::${specKeyFromSpecSnapshot(line.specSnapshot)}` : String(iid);
+            nextCart[key] = Math.min(Math.floor(q), 999);
           }
         }
         syncCartImmediate(nextCart);
@@ -351,17 +394,21 @@ export default function AdminSuppliesMallPage() {
   }, [items, searchKeyword]);
 
   const cartLines = useMemo(() => {
-    const out: { id: number; name: string; cover?: string; initial: string; qty: number }[] = [];
+    const out: { key: string; itemId: number; specLabel: string; name: string; cover?: string; initial: string; qty: number }[] = [];
     for (const [k, qty] of Object.entries(cart)) {
-      const id = Number(k);
       const q = Number(qty);
-      if (!Number.isFinite(id) || id <= 0 || !Number.isFinite(q) || q <= 0) continue;
-      const it = items.find((x) => x.id === id);
+      if (!Number.isFinite(q) || q <= 0) continue;
+      const iid = itemIdFromCartKey(k);
+      if (!Number.isFinite(iid) || iid <= 0) continue;
+      const it = items.find((x) => x.id === iid);
       const name = it?.name || "物资";
       const ch = String(name).trim().charAt(0) || "?";
+      const specLabel = k.includes("::") ? formatSpecLabel(specSnapshotFromCartKey(k)) : "";
       out.push({
-        id,
-        name,
+        key: k,
+        itemId: iid,
+        specLabel,
+        name: specLabel ? `${name}（${specLabel}）` : name,
         cover: webImageSrc(it?.coverUrl),
         initial: ch,
         qty: q,
@@ -370,40 +417,46 @@ export default function AdminSuppliesMallPage() {
     return out;
   }, [cart, items]);
 
-  const addToCart = (item: SupplyItem) => {
+  const addToCart = (item: SupplyItem, cartKey?: string) => {
+    const key = cartKey || String(item.id);
     const max = maxForItem(item);
     if (max <= 0) {
       toast.error("暂无库存");
       return;
     }
-    const cur = cart[item.id] || 0;
+    const cur = cart[key] || 0;
     const nextQty = Math.min(cur + 1, max);
-    syncCart({ ...cart, [item.id]: nextQty });
+    syncCart({ ...cart, [key]: nextQty });
   };
 
-  const decFromCart = (itemId: number) => {
-    const cur = (cart[itemId] || 0) - 1;
+  const decFromCart = (cartKey: string) => {
+    const cur = (cart[cartKey] || 0) - 1;
     const next = { ...cart };
-    if (cur <= 0) delete next[itemId];
-    else next[itemId] = cur;
+    if (cur <= 0) delete next[cartKey];
+    else next[cartKey] = cur;
     syncCart(next);
   };
 
-  const inputCartQty = (item: SupplyItem, raw: string) => {
+  const inputCartQty = (item: SupplyItem, raw: string, cartKey?: string) => {
+    const key = cartKey || String(item.id);
     const max = maxForItem(item);
     const n = Number.parseInt(raw || "0", 10);
     const safe = Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
     const next = { ...cart };
-    if (safe <= 0) delete next[item.id];
-    else next[item.id] = safe;
+    if (safe <= 0) delete next[key];
+    else next[key] = safe;
     syncCart(next);
     if (Number.isFinite(n) && n > max) toast.error(`最多可下单 ${max}`);
   };
 
   const doSubmit = async () => {
     const lines = Object.entries(cart)
-      .map(([itemId, qty]) => ({ itemId: Number(itemId), qty, remark: remarkMap[Number(itemId)]?.trim() || undefined }))
-      .filter((l) => l.qty > 0);
+      .map(([cartKey, qty]) => {
+        const iid = itemIdFromCartKey(cartKey);
+        const specSnapshot = specSnapshotFromCartKey(cartKey);
+        return { itemId: iid, qty, remark: remarkMap[cartKey]?.trim() || undefined, specSnapshot };
+      })
+      .filter((l) => l.qty > 0 && l.itemId > 0);
     if (lines.length === 0) {
       toast.error("请先选择物资");
       return;
@@ -418,6 +471,7 @@ export default function AdminSuppliesMallPage() {
         syncCartImmediate({});
         setCartSheetOpen(false);
         setRemarkMap({});
+        setSpecSelections({});
         window.dispatchEvent(new Event(ADMIN_PENDING_BADGES_REFRESH_EVENT));
         setRecordsPanelOpen(true);
         return;
@@ -427,6 +481,7 @@ export default function AdminSuppliesMallPage() {
       syncCartImmediate({});
       setCartSheetOpen(false);
       setRemarkMap({});
+      setSpecSelections({});
       window.dispatchEvent(new Event(ADMIN_PENDING_BADGES_REFRESH_EVENT));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "提交失败");
@@ -545,13 +600,30 @@ export default function AdminSuppliesMallPage() {
           >
             {filteredItems.map((item) => {
               const cover = webImageSrc(item.coverUrl);
-              const qty = cart[item.id] || 0;
+              const qty = cart[String(item.id)] || 0;
+              const hasSpec = (() => {
+                if (!item.specSchema) return false;
+                try { const p = JSON.parse(item.specSchema); return p.dimensions?.length > 0; }
+                catch { return false; }
+              })();
+              const specDimensions: SpecDimension[] = (() => {
+                if (!item.specSchema) return [];
+                try { const p = JSON.parse(item.specSchema); return p.dimensions || []; }
+                catch { return []; }
+              })();
+              const dimOrder = specDimensions.map(d => d.name).filter(Boolean);
+              const currentSelections = specSelections[item.id] || {};
+              const allDimsSelected = dimOrder.length > 0 && dimOrder.every(d => currentSelections[d]);
+              const specCartKey = allDimsSelected && hasSpec ? buildSpecCartKey(item.id, currentSelections, dimOrder) : String(item.id);
+              const specQty = hasSpec ? (cart[specCartKey] || 0) : qty;
+
               return (
                 <div
                   key={item.id}
-                  className="flex min-w-0 flex-row items-center gap-3 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 shadow-sm"
+                  className="flex min-w-0 flex-col rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-2 shadow-sm"
                   style={{ minHeight: SUPPLIES_MALL_CARD_MIN_H }}
                 >
+                  <div className="flex min-w-0 flex-row items-center gap-3">
                   <div
                     className="relative shrink-0 overflow-hidden rounded-md bg-[var(--twin-canvas-soft)]"
                     style={{ width: SUPPLIES_MALL_THUMB_PX, height: SUPPLIES_MALL_THUMB_PX }}
@@ -586,12 +658,13 @@ export default function AdminSuppliesMallPage() {
                           <span className="shrink-0 whitespace-nowrap text-[11px] font-bold text-emerald-600">进货!</span>
                         ) : null}
                       </div>
+                      {!hasSpec ? (
                       <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0.5">
                         <button
                           type="button"
                           className={`h-6 w-6 shrink-0 rounded text-xs font-bold ${qty <= 0 ? "text-[var(--twin-mute)]" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"}`}
                           disabled={qty <= 0}
-                          onClick={() => decFromCart(item.id)}
+                          onClick={() => decFromCart(String(item.id))}
                         >
                           −
                         </button>
@@ -610,6 +683,7 @@ export default function AdminSuppliesMallPage() {
                           +
                         </button>
                       </div>
+                      ) : null}
                     </div>
                     {item.subtitle ? (
                       <div
@@ -623,6 +697,71 @@ export default function AdminSuppliesMallPage() {
                       {item.stockMode === "QUANTIFIED" ? `库存 ${item.stockQty}` : item.stockQty >= 1 ? "有货" : "缺货"}
                     </div>
                   </div>
+                  </div>
+                  {hasSpec ? (
+                    <div className="mt-2 space-y-1.5 border-t border-[var(--twin-hairline)] pt-2">
+                      {specDimensions.map((dim) => (
+                        <div key={dim.name} className="flex items-center gap-1 flex-wrap">
+                          <span className="text-[10px] font-medium text-[var(--twin-mute)] shrink-0 w-8">{dim.name}</span>
+                          {dim.options.filter(o => o.trim()).map((opt) => {
+                            const selected = currentSelections[dim.name] === opt;
+                            return (
+                              <button
+                                key={opt}
+                                type="button"
+                                className={`rounded-full px-2 py-0.5 text-[10px] border transition-colors ${
+                                  selected
+                                    ? "bg-sky-600 text-white border-sky-600"
+                                    : "border-[var(--twin-hairline)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+                                }`}
+                                onClick={() => {
+                                  setSpecSelections(prev => ({
+                                    ...prev,
+                                    [item.id]: { ...(prev[item.id] || {}), [dim.name]: opt },
+                                  }));
+                                }}
+                              >
+                                {opt}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+                      {allDimsSelected ? (
+                        <div className="flex items-center gap-2 pt-1">
+                          <span className="text-[10px] text-[var(--twin-mute)]">
+                            {dimOrder.map(d => currentSelections[d]).join('·')}
+                          </span>
+                          <div className="flex items-center gap-0.5 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-0.5">
+                            <button
+                              type="button"
+                              className={`h-6 w-6 shrink-0 rounded text-xs font-bold ${specQty <= 0 ? "text-[var(--twin-mute)]" : "text-[var(--twin-body)] hover:bg-[var(--twin-canvas)]"}`}
+                              disabled={specQty <= 0}
+                              onClick={() => decFromCart(specCartKey)}
+                            >
+                              −
+                            </button>
+                            <input
+                              type="number"
+                              min={0}
+                              value={specQty}
+                              onChange={(e) => inputCartQty(item, e.target.value, specCartKey)}
+                              className="h-6 w-7 border-0 bg-transparent text-center text-[11px] outline-none"
+                            />
+                            <button
+                              type="button"
+                              className="h-6 w-6 shrink-0 rounded bg-sky-600 text-xs font-bold text-white hover:bg-sky-700"
+                              onClick={() => addToCart(item, specCartKey)}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      ) : item.specRequired === 1 ? (
+                        <div className="text-[10px] text-amber-600">请选择完整规格</div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -665,9 +804,9 @@ export default function AdminSuppliesMallPage() {
             <div className="shrink-0 border-b border-[var(--twin-hairline)] px-4 py-3 text-sm font-semibold text-[var(--twin-ink)]">购物车</div>
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
               {cartLines.map((line) => {
-                const item = items.find((x) => x.id === line.id);
+                const item = items.find((x) => x.id === line.itemId);
                 return (
-                  <div key={line.id} className="mb-2 flex gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
+                  <div key={line.key} className="mb-2 flex gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
                     {line.cover ? (
                       <img src={line.cover} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
                     ) : (
@@ -681,7 +820,7 @@ export default function AdminSuppliesMallPage() {
                         <button
                           type="button"
                           className="h-7 w-7 rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-sm"
-                          onClick={() => decFromCart(line.id)}
+                          onClick={() => decFromCart(line.key)}
                         >
                           −
                         </button>
@@ -695,8 +834,8 @@ export default function AdminSuppliesMallPage() {
                             const max = item ? maxForItem(item) : 999;
                             const safe = Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0;
                             const next = { ...cart };
-                            if (safe <= 0) delete next[line.id];
-                            else next[line.id] = safe;
+                            if (safe <= 0) delete next[line.key];
+                            else next[line.key] = safe;
                             syncCart(next);
                             if (Number.isFinite(n) && n > max) toast.error(`最多 ${max}`);
                           }}
@@ -706,7 +845,7 @@ export default function AdminSuppliesMallPage() {
                           type="button"
                           className="h-7 w-7 rounded bg-sky-600 text-sm font-bold text-white disabled:opacity-40"
                           disabled={!item}
-                          onClick={() => item && addToCart(item)}
+                          onClick={() => item && addToCart(item, line.key.includes("::") ? line.key : undefined)}
                         >
                           +
                         </button>
@@ -714,8 +853,8 @@ export default function AdminSuppliesMallPage() {
                       <input
                         type="text"
                         placeholder="备注（可选，将计入审计）"
-                        value={remarkMap[line.id] || ""}
-                        onChange={(e) => setRemarkMap((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                        value={remarkMap[line.key] || ""}
+                        onChange={(e) => setRemarkMap((prev) => ({ ...prev, [line.key]: e.target.value }))}
                         className="mt-1 w-full rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-0.5 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
                       />
                     </div>
@@ -783,9 +922,9 @@ export default function AdminSuppliesMallPage() {
             <p className="mb-2 text-xs text-[var(--twin-mute)] shrink-0">请核对以下物品与备注信息，提交后将进入出库处理流程。</p>
             <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
               {cartLines.map((line) => {
-                const item = items.find((x) => x.id === line.id);
+                const item = items.find((x) => x.id === line.itemId);
                 return (
-                  <div key={line.id} className="flex items-center gap-3 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
+                  <div key={line.key} className="flex items-center gap-3 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
                     {line.cover ? (
                       <img src={line.cover} alt="" className="h-10 w-10 shrink-0 rounded object-cover border border-[var(--twin-hairline)]" />
                     ) : (
@@ -801,8 +940,8 @@ export default function AdminSuppliesMallPage() {
                       <input
                         type="text"
                         placeholder="备注（可选，将计入审计）"
-                        value={remarkMap[line.id] || ""}
-                        onChange={(e) => setRemarkMap((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                        value={remarkMap[line.key] || ""}
+                        onChange={(e) => setRemarkMap((prev) => ({ ...prev, [line.key]: e.target.value }))}
                         className="mt-1 w-full rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-0.5 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"
                       />
                     </div>
