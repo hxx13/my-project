@@ -32,6 +32,8 @@ export interface SupplyItem {
   isNewItem?: boolean;
   isNewInbound?: boolean;
   noveltyTag?: string;
+  specSchema?: string;
+  specRequired?: number;
 }
 
 export interface SupplyClaimLine {
@@ -42,6 +44,7 @@ export interface SupplyClaimLine {
   fulfilledQty: number;
   coverUrl?: string;
   remark?: string;
+  specSnapshot?: string;
 }
 
 export interface SupplyClaimOrder {
@@ -126,7 +129,7 @@ export async function markSupplyItemsViewed() {
   await authHttp.post("/supplies/items/mark-viewed");
 }
 
-export async function createSupplyClaim(lines: { itemId: number; qty: number; remark?: string }[]) {
+export async function createSupplyClaim(lines: { itemId: number; qty: number; remark?: string; specSnapshot?: string }[]) {
   const res = await authHttp.post<Result<SupplyClaimOrder>>("/supplies/claims", { lines });
   return res.data.data;
 }
@@ -136,7 +139,7 @@ export async function withdrawSupplyClaim(id: string) {
 }
 
 /** PUT /supplies/claims/{id}/lines：修订待出库领用单（与小程序 supplies 提交「完成修改」一致） */
-export async function revisePendingSupplyClaimLines(claimId: string, lines: { itemId: number; qty: number; remark?: string }[]) {
+export async function revisePendingSupplyClaimLines(claimId: string, lines: { itemId: number; qty: number; remark?: string; specSnapshot?: string }[]) {
   const res = await authHttp.put<Result<SupplyClaimOrder>>(
     `/supplies/claims/${encodeURIComponent(claimId)}/lines`,
     { lines },

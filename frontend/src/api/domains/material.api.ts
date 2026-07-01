@@ -34,6 +34,8 @@ export interface MaterialItem {
   isNewItem?: boolean;
   createdAt?: string;
   lastInboundAt?: string;
+  specSchema?: string;   // JSON: {"dimensions":[{"name":"尺码","options":["S","M","L"]}]}
+  specRequired?: number; // 0=可选 1=必选
 }
 
 export interface MaterialRequestLine {
@@ -42,6 +44,7 @@ export interface MaterialRequestLine {
   qty: number;
   snapshotName: string;
   fulfilledQty: number;
+  specSnapshot?: string; // JSON: {"尺码":"S","颜色":"红"}
 }
 
 export interface MaterialRequest {
@@ -214,7 +217,7 @@ export async function saveMaterialCart(cart: Record<number, number>): Promise<vo
   await authHttp.put("/material/cart", { lines });
 }
 
-export async function createMaterialRequest(lines: { itemId: number; qty: number }[], applicantGroup?: string) {
+export async function createMaterialRequest(lines: { itemId: number; qty: number; specSnapshot?: string }[], applicantGroup?: string) {
   const res = await authHttp.post<Result<MaterialRequest[]>>("/material/requests", { lines, applicantGroup });
   return res.data.data;
 }
@@ -229,7 +232,7 @@ function getMaterialRequestSubmitErrorMessage(data: unknown): string {
 
 export async function createMaterialRequestWithToken(
   bearerToken: string,
-  lines: { itemId: number; qty: number }[],
+  lines: { itemId: number; qty: number; specSnapshot?: string }[],
   applicantGroup?: string,
 ) {
   const res = await axios.post<Result<MaterialRequest[]>>(
