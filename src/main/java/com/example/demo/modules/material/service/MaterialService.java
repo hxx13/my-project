@@ -1,6 +1,8 @@
 package com.example.demo.modules.material.service;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.common.exception.ErrorCodeConstants;
+import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.entity.User;
@@ -152,7 +154,7 @@ public class MaterialService {
         item.setWorkflowType(req.getWorkflowType() != null ? req.getWorkflowType() : "SIMPLE");
         item.setReviewerIds(req.getReviewerIds());
         item.setSecondReviewerIds(req.getSecondReviewerIds());
-        item.setSpecSchema(req.getSpecSchema());
+        item.setSpecSchema(req.getSpecSchema() != null && !req.getSpecSchema().isBlank() ? req.getSpecSchema() : null);
         item.setSpecRequired(req.getSpecRequired() != null ? req.getSpecRequired() : 0);
         itemMapper.insert(item);
         // 初始入库创建库存流水
@@ -190,7 +192,7 @@ public class MaterialService {
         if (req.getReviewerIds() != null) item.setReviewerIds(req.getReviewerIds());
         if (req.getSecondReviewerIds() != null) item.setSecondReviewerIds(req.getSecondReviewerIds());
         if (req.getShowStockQty() != null) item.setShowStockQty(req.getShowStockQty());
-        if (req.getSpecSchema() != null) item.setSpecSchema(req.getSpecSchema());
+        if (req.getSpecSchema() != null) item.setSpecSchema(req.getSpecSchema().isBlank() ? null : req.getSpecSchema());
         if (req.getSpecRequired() != null) item.setSpecRequired(req.getSpecRequired());
         itemMapper.updateById(item);
         logOp("ITEM", String.valueOf(id), "UPDATE", null);
@@ -399,8 +401,8 @@ public class MaterialService {
                 // 规格校验
                 if (item.getSpecRequired() != null && item.getSpecRequired() == 1) {
                     if (lineReq.getSpecSnapshot() == null || lineReq.getSpecSnapshot().isBlank()) {
-                        throw new com.example.demo.common.exception.TwinBusinessException(
-                                com.example.demo.common.exception.ErrorCodeConstants.MATERIAL_SPEC_REQUIRED,
+                        throw new TwinBusinessException(
+                                ErrorCodeConstants.MATERIAL_SPEC_REQUIRED,
                                 "该物品需要选择完整规格");
                     }
                 }
@@ -408,8 +410,8 @@ public class MaterialService {
                     try {
                         objectMapper.readTree(lineReq.getSpecSnapshot());
                     } catch (Exception e) {
-                        throw new com.example.demo.common.exception.TwinBusinessException(
-                                com.example.demo.common.exception.ErrorCodeConstants.MATERIAL_SPEC_INVALID_JSON,
+                        throw new TwinBusinessException(
+                                ErrorCodeConstants.MATERIAL_SPEC_INVALID_JSON,
                                 "规格数据格式错误");
                     }
                 }
