@@ -1,7 +1,7 @@
 /** 学生物资商城 — 快捷入口路由：/student/material */
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package, Lightbulb, Loader2 } from "lucide-react";
+import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package, Lightbulb, Loader2, X } from "lucide-react";
 import { useMaterialCategories, useMaterialItems, useMaterialCart, useSaveMaterialCart, useCreateMaterialRequest } from "@/api/hooks/useMaterial";
 import { createMaterialDemand } from "@/api/domains/material.api";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
@@ -183,7 +183,7 @@ export default function StudentMaterialPage() {
             >
               <ShoppingCart className="size-4" /> 申领物品栏
               {cartCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">
+                <span className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-[var(--student-danger)] text-white text-[10px] flex items-center justify-center font-bold">
                   {cartCount}
                 </span>
               )}
@@ -286,19 +286,35 @@ export default function StudentMaterialPage() {
       {showCart && (
         <aside className="w-[320px] shrink-0 border-l border-[var(--student-hairline)] bg-white flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--student-hairline)]">
-            <h3 className="text-[14px] font-semibold">申领物品栏 ({cartCount} 件)</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-[15px] font-bold text-[var(--student-ink)]">申领物品栏</h3>
+              {cartCount > 0 && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[var(--student-primary-soft)] text-[var(--student-primary)]">
+                  {cartCount} 件
+                </span>
+              )}
+            </div>
             <button
               onClick={() => setShowCart(false)}
-              className="text-[var(--student-mute)] hover:text-[var(--student-ink)] text-[20px] leading-none"
+              className="p-1 rounded-md hover:bg-[var(--student-canvas-soft)] text-[var(--student-mute)] hover:text-[var(--student-ink)] transition-colors"
+              aria-label="关闭"
             >
-              &times;
+              <X className="size-4" />
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {cartItems.length === 0 ? (
-              <p className="text-center text-[13px] text-[var(--student-mute)] py-8">
-                申领物品栏为空
-              </p>
+              <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                <Package className="size-10 text-[var(--student-mute)]/30 mb-3" />
+                <p className="text-[14px] font-semibold text-[var(--student-ink)] mb-1">申领栏是空的</p>
+                <p className="text-[12px] text-[var(--student-mute)] mb-4">从左侧物品列表中选择你需要的物品加入申领栏</p>
+                <button
+                  onClick={() => setShowCart(false)}
+                  className="text-[12px] font-medium px-4 py-1.5 rounded-full border border-[var(--student-primary)] text-[var(--student-primary)] hover:bg-[var(--student-primary-soft)] transition-colors"
+                >
+                  去浏览物品
+                </button>
+              </div>
             ) : (
               cartItems.map((group) => (
                 <div
@@ -350,11 +366,15 @@ export default function StudentMaterialPage() {
             )}
           </div>
           {cartItems.length > 0 && (
-            <div className="p-3 border-t border-[var(--student-hairline)]">
+            <div className="flex items-center justify-between p-3 border-t border-[var(--student-hairline)]">
+              <span className="text-[13px] text-[var(--student-mute)]">
+                合计{" "}
+                <strong className="text-[var(--student-ink)] text-[15px]">{cartCount} 件</strong>
+              </span>
               <button
                 onClick={() => setConfirmOpen(true)}
-                disabled={createRequest.isPending}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-[var(--student-radius-md)] bg-[var(--student-primary)] text-white text-[14px] font-semibold disabled:opacity-50"
+                disabled={cartCount === 0}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[var(--student-primary)] text-white text-[13px] font-semibold disabled:opacity-40 transition-opacity"
               >
                 <Send className="size-4" /> 提交申领
               </button>
