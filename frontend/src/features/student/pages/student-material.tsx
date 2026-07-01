@@ -240,13 +240,13 @@ export default function StudentMaterialPage() {
             ) : (
               <div className="space-y-2">
                 <textarea
-                  className="w-full rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 py-2 text-[13px] text-[var(--student-ink)] resize-none"
+                  className="w-full rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-white px-3 py-2 text-[13px] text-[var(--student-ink)] resize-none focus:outline-none focus:ring-2 focus:ring-[var(--student-primary)]/20 focus:border-[var(--student-primary)] transition-shadow"
                   rows={2}
                   placeholder="描述你需要的物品..."
                   value={demandText}
                   onChange={(e) => setDemandText(e.target.value)}
                 />
-                <div className="flex gap-2">
+                <div className="flex justify-end gap-2">
                   <button
                     onClick={async () => {
                       if (!demandText.trim()) return;
@@ -272,7 +272,7 @@ export default function StudentMaterialPage() {
                       setShowDemandForm(false);
                       setDemandText("");
                     }}
-                    className="rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] px-3 py-1.5 text-[12px] text-[var(--student-mute)]"
+                    className="rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] px-3 py-1.5 text-[12px] text-[var(--student-mute)] hover:bg-[var(--student-canvas-soft)] transition-colors"
                   >
                     取消
                   </button>
