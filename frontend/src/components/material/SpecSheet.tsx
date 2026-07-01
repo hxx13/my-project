@@ -1,7 +1,7 @@
 /**
- * Bottom Sheet 规格选择器 — 替代锚点弹窗，全端统一。
- * 京东/淘宝/美团同款交互：底部滑出，选规格+数量，点完成关闭。
- */
+ * 规格选择器 — 替代锚点弹窗，全端统一，响应式双形态。
+ * ≥640px：居中 Dialog（桌面/平板/管理后台）
+ * <640px：Bottom Sheet（手机 H5）
 import { useEffect, useMemo, useState } from "react";
 import { X, Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -111,20 +111,20 @@ export function SpecSheet({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[var(--z-modal)] flex flex-col justify-end">
+    <div className="fixed inset-0 z-[var(--z-modal)] flex flex-col justify-end sm:items-center sm:justify-center">
       {/* Overlay */}
       <div
         className="absolute inset-0 bg-black/40 animate-in fade-in-0 duration-200"
         onClick={() => onOpenChange(false)}
       />
 
-      {/* Sheet body */}
+      {/* Sheet body — bottom sheet on mobile, centered dialog on desktop */}
       <div
-        className="relative bg-white rounded-t-2xl max-h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-200 overflow-hidden"
+        className="relative bg-white rounded-t-2xl sm:rounded-2xl max-h-[85vh] sm:max-h-[90vh] sm:max-w-md sm:w-full sm:shadow-2xl flex flex-col animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 overflow-hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
       >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1">
+        {/* Drag handle — mobile only */}
+        <div className="flex justify-center pt-3 pb-1 sm:hidden">
           <div className="w-8 h-1 rounded-full bg-[var(--student-hairline)]" />
         </div>
 
@@ -239,8 +239,8 @@ export function SpecSheet({
           )}
         </div>
 
-        {/* Bottom bar */}
-        <div className="shrink-0 px-5 py-3 border-t border-[var(--student-hairline)] flex items-center justify-between">
+        {/* Bottom bar — mobile: single button */}
+        <div className="shrink-0 px-5 py-3 border-t border-[var(--student-hairline)] flex items-center justify-between sm:hidden">
           <span className="text-[13px] text-[var(--student-mute)]">
             已选{" "}
             <strong className="text-[var(--student-ink)] text-[15px]">{itemCartQty}</strong>{" "}
@@ -253,6 +253,31 @@ export function SpecSheet({
           >
             完成
           </button>
+        </div>
+
+        {/* Bottom bar — desktop: cancel + confirm */}
+        <div className="hidden sm:flex shrink-0 items-center justify-between px-5 py-3 border-t border-[var(--student-hairline)] bg-[var(--student-canvas-soft)]">
+          <span className="text-[13px] text-[var(--student-mute)]">
+            已选{" "}
+            <strong className="text-[var(--student-ink)] text-[15px]">{itemCartQty}</strong>{" "}
+            件
+          </span>
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="px-4 py-2 rounded-lg border border-[var(--student-hairline)] bg-white text-[13px] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] transition-colors"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="px-5 py-2 rounded-lg bg-[var(--student-primary)] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity"
+            >
+              确认
+            </button>
+          </div>
         </div>
       </div>
     </div>
