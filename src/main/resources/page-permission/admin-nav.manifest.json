@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-29T10:08:22.551Z",
+  "generatedAt": "2026-07-01T04:44:26.512Z",
   "pages": [
     {
       "path": "/admin",
@@ -150,13 +150,6 @@
       "registryId": "exp-stats"
     },
     {
-      "path": "/admin/external-comm-config",
-      "label": "外部通信配置",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
-      "registryId": "external-comm"
-    },
-    {
       "path": "/admin/face-debug",
       "label": "人脸识别调试",
       "fallbackMinRole": "ADMIN",
@@ -192,13 +185,6 @@
       "registryId": "logging-console"
     },
     {
-      "path": "/admin/login-branding",
-      "label": "登录页轮播图",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
-      "registryId": "login-branding"
-    },
-    {
       "path": "/admin/material/audit-export",
       "label": "申领审计导出",
       "fallbackMinRole": "STAFF",
@@ -232,13 +218,6 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "系统与安全",
       "registryId": "notifications"
-    },
-    {
-      "path": "/admin/page-permissions",
-      "label": "页面权限设置",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
-      "registryId": "page-perms"
     },
     {
       "path": "/admin/personnel",
@@ -304,17 +283,10 @@
       "registryId": "report-form"
     },
     {
-      "path": "/admin/schedule-manager",
-      "label": "定时管理",
-      "fallbackMinRole": "ADMIN",
-      "groupTitle": "系统与安全",
-      "registryId": "schedule"
-    },
-    {
       "path": "/admin/settings",
       "label": "系统设置",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "系统与安全",
       "registryId": "settings"
     },
     {
@@ -344,34 +316,6 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "学生审核",
       "registryId": "supplies-audit-export"
-    },
-    {
-      "path": "/admin/supplies/claim-export",
-      "label": "领用单导出",
-      "fallbackMinRole": "STAFF",
-      "groupTitle": "学生审核",
-      "registryId": "supplies-claim-export"
-    },
-    {
-      "path": "/admin/supplies/manage",
-      "label": "物资管理",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "学生审核",
-      "registryId": "supplies-manage"
-    },
-    {
-      "path": "/admin/supplies/mine",
-      "label": "我的领用记录",
-      "fallbackMinRole": "STAFF",
-      "groupTitle": "学生审核",
-      "registryId": "supplies-mine"
-    },
-    {
-      "path": "/admin/supplies/process",
-      "label": "领用处理",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "学生审核",
-      "registryId": "supplies-process"
     },
     {
       "path": "/admin/telemetry-archive",
@@ -571,14 +515,6 @@
       "entrySource": "sidebar"
     },
     {
-      "path": "/admin/external-comm-config",
-      "label": "外部通信配置",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
-      "registryId": "external-comm",
-      "entrySource": "sidebar"
-    },
-    {
       "path": "/admin/face-debug",
       "label": "人脸识别调试",
       "fallbackMinRole": "ADMIN",
@@ -619,14 +555,6 @@
       "entrySource": "sidebar"
     },
     {
-      "path": "/admin/login-branding",
-      "label": "登录页轮播图",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
-      "registryId": "login-branding",
-      "entrySource": "sidebar"
-    },
-    {
       "path": "/admin/material/audit-export",
       "label": "申领审计导出",
       "fallbackMinRole": "STAFF",
@@ -664,14 +592,6 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "系统与安全",
       "registryId": "notifications",
-      "entrySource": "sidebar"
-    },
-    {
-      "path": "/admin/page-permissions",
-      "label": "页面权限设置",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
-      "registryId": "page-perms",
       "entrySource": "sidebar"
     },
     {
@@ -747,18 +667,10 @@
       "entrySource": "sidebar"
     },
     {
-      "path": "/admin/schedule-manager",
-      "label": "定时管理",
-      "fallbackMinRole": "ADMIN",
-      "groupTitle": "系统与安全",
-      "registryId": "schedule",
-      "entrySource": "sidebar"
-    },
-    {
       "path": "/admin/settings",
       "label": "系统设置",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "系统与安全",
       "registryId": "settings",
       "entrySource": "sidebar"
     },
@@ -792,38 +704,6 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "学生审核",
       "registryId": "supplies-audit-export",
-      "entrySource": "sidebar"
-    },
-    {
-      "path": "/admin/supplies/claim-export",
-      "label": "领用单导出",
-      "fallbackMinRole": "STAFF",
-      "groupTitle": "学生审核",
-      "registryId": "supplies-claim-export",
-      "entrySource": "sidebar"
-    },
-    {
-      "path": "/admin/supplies/manage",
-      "label": "物资管理",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "学生审核",
-      "registryId": "supplies-manage",
-      "entrySource": "sidebar"
-    },
-    {
-      "path": "/admin/supplies/mine",
-      "label": "我的领用记录",
-      "fallbackMinRole": "STAFF",
-      "groupTitle": "学生审核",
-      "registryId": "supplies-mine",
-      "entrySource": "sidebar"
-    },
-    {
-      "path": "/admin/supplies/process",
-      "label": "领用处理",
-      "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "学生审核",
-      "registryId": "supplies-process",
       "entrySource": "sidebar"
     },
     {

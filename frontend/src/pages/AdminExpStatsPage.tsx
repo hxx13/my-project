@@ -410,10 +410,10 @@ export default function AdminExpStatsPage() {
               </AdminButton>
               {selectedIds.size > 0 && (
                 <>
-                  <AdminButton type="button" tone="success" size="sm" className="h-8 px-2 text-xs" disabled={reviewing} onClick={handleBatchApprove}>
+                  <AdminButton type="button" tone="primary" size="sm" className="h-8 px-2 text-xs" disabled={reviewing} onClick={handleBatchApprove}>
                     批准({selectedIds.size})
                   </AdminButton>
-                  <AdminButton type="button" tone="danger" size="sm" className="h-8 px-2 text-xs" disabled={reviewing} onClick={handleBatchReject}>
+                  <AdminButton type="button" tone="destructive" size="sm" className="h-8 px-2 text-xs" disabled={reviewing} onClick={handleBatchReject}>
                     驳回({selectedIds.size})
                   </AdminButton>
                 </>
