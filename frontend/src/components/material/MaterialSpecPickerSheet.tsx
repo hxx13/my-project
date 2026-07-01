@@ -184,7 +184,9 @@ function measurePopoverLayout(button: HTMLElement, popover?: HTMLElement | null)
   };
 
   if (!popover) {
-    const estW = minWidth;
+    // Use maxWidth as initial estimate so the first placement won't overflow
+    // when the actual popover is wider than the trigger button.
+    const estW = maxWidth;
     return {
       top: placeVertical(120),
       left: placeHorizontal(estW),
@@ -290,7 +292,7 @@ export function MaterialSpecPickControl({
       window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", onScroll, true);
     };
-  }, [open, selectionReady, activeCombos.length, showPlainRow, dimensions.length]);
+  }, [open]); // Only re-run on open/close — ResizeObserver handles content changes
 
   useEffect(() => {
     if (!open) return;
