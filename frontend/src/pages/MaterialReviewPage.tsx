@@ -99,6 +99,14 @@ function matchesReviewerIds(configured: string[] | undefined): boolean {
   return configured.some((rid) => keys.includes(String(rid).trim()));
 }
 
+function formatSpecLabel(specJson: string | undefined | null): string {
+  if (!specJson) return '';
+  try {
+    const obj = JSON.parse(specJson);
+    return Object.values(obj).join('·');
+  } catch { return ''; }
+}
+
 export default function MaterialReviewPage() {
   const role = authStorage.getRole() || "MEMBER";
   const canDelete = hasMinRole(role, "SUPER_ADMIN");
@@ -387,20 +395,38 @@ export default function MaterialReviewPage() {
               {materialToday.length > 0 && (
                 <TimeGroup label="今天" count={materialToday.length}>
                   <div className="space-y-4">
-                    {Array.from(groupByItem(materialToday)).map(([itemName, reqs]) => (
-                      <div key={itemName} className="space-y-2">
-                        <div className="flex items-center gap-2 pl-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--twin-primary)]" />
-                          <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
-                          <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
-                        </div>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                          {reqs.map(req => (
-                            <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                    {Array.from(groupByItem(materialToday)).map(([itemName, reqs]) => {
+                      const specGroups = new Map<string, MaterialRequest[]>();
+                      for (const req of reqs) {
+                        const firstLine = req.lines?.[0];
+                        const key = firstLine?.specSnapshot || '__no_spec__';
+                        if (!specGroups.has(key)) specGroups.set(key, []);
+                        specGroups.get(key)!.push(req);
+                      }
+                      return (
+                        <div key={itemName} className="space-y-2">
+                          <div className="flex items-center gap-2 pl-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--twin-primary)]" />
+                            <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
+                            <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
+                          </div>
+                          {Array.from(specGroups.entries()).map(([specKey, specReqs]) => (
+                            <div key={specKey}>
+                              {specKey !== '__no_spec__' && (
+                                <div className="text-xs font-medium text-[var(--twin-mute)] px-3 py-1">
+                                  {formatSpecLabel(specKey)}
+                                </div>
+                              )}
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                {specReqs.map(req => (
+                                  <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                                ))}
+                              </div>
+                            </div>
                           ))}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </TimeGroup>
               )}
@@ -412,20 +438,38 @@ export default function MaterialReviewPage() {
                   defaultOpen={true}
                 >
                   <div className="space-y-4">
-                    {Array.from(groupByItem(materialHistoryPending)).map(([itemName, reqs]) => (
-                      <div key={itemName} className="space-y-2">
-                        <div className="flex items-center gap-2 pl-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                          <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
-                          <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
-                        </div>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                          {reqs.map(req => (
-                            <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                    {Array.from(groupByItem(materialHistoryPending)).map(([itemName, reqs]) => {
+                      const specGroups = new Map<string, MaterialRequest[]>();
+                      for (const req of reqs) {
+                        const firstLine = req.lines?.[0];
+                        const key = firstLine?.specSnapshot || '__no_spec__';
+                        if (!specGroups.has(key)) specGroups.set(key, []);
+                        specGroups.get(key)!.push(req);
+                      }
+                      return (
+                        <div key={itemName} className="space-y-2">
+                          <div className="flex items-center gap-2 pl-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                            <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
+                            <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
+                          </div>
+                          {Array.from(specGroups.entries()).map(([specKey, specReqs]) => (
+                            <div key={specKey}>
+                              {specKey !== '__no_spec__' && (
+                                <div className="text-xs font-medium text-[var(--twin-mute)] px-3 py-1">
+                                  {formatSpecLabel(specKey)}
+                                </div>
+                              )}
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                {specReqs.map(req => (
+                                  <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                                ))}
+                              </div>
+                            </div>
                           ))}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </TimeGroup>
               )}
@@ -436,20 +480,38 @@ export default function MaterialReviewPage() {
                   defaultOpen={false}
                 >
                   <div className="space-y-4">
-                    {Array.from(groupByItem(materialHistoryDone)).map(([itemName, reqs]) => (
-                      <div key={itemName} className="space-y-2">
-                        <div className="flex items-center gap-2 pl-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--twin-mute)]" />
-                          <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
-                          <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
-                        </div>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                          {reqs.map(req => (
-                            <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                    {Array.from(groupByItem(materialHistoryDone)).map(([itemName, reqs]) => {
+                      const specGroups = new Map<string, MaterialRequest[]>();
+                      for (const req of reqs) {
+                        const firstLine = req.lines?.[0];
+                        const key = firstLine?.specSnapshot || '__no_spec__';
+                        if (!specGroups.has(key)) specGroups.set(key, []);
+                        specGroups.get(key)!.push(req);
+                      }
+                      return (
+                        <div key={itemName} className="space-y-2">
+                          <div className="flex items-center gap-2 pl-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--twin-mute)]" />
+                            <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
+                            <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
+                          </div>
+                          {Array.from(specGroups.entries()).map(([specKey, specReqs]) => (
+                            <div key={specKey}>
+                              {specKey !== '__no_spec__' && (
+                                <div className="text-xs font-medium text-[var(--twin-mute)] px-3 py-1">
+                                  {formatSpecLabel(specKey)}
+                                </div>
+                              )}
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                {specReqs.map(req => (
+                                  <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                                ))}
+                              </div>
+                            </div>
                           ))}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </TimeGroup>
               )}

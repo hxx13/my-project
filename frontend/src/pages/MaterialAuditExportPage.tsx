@@ -57,6 +57,13 @@ function remarkZh(remark?: string | null) {
   if (u.includes("INITIAL INBOUND") || u === "INITIAL") return "初始入库";
   return t;
 }
+function formatSpecLabel(specJson: string | undefined | null): string {
+  if (!specJson) return '';
+  try {
+    const obj = JSON.parse(specJson);
+    return Object.values(obj).join('·');
+  } catch { return ''; }
+}
 function iso(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function monthStart() { const t = new Date(); return { from: iso(new Date(t.getFullYear(), t.getMonth(), 1)), to: iso(t) }; }
 
@@ -442,13 +449,14 @@ export default function MaterialAuditExportPage() {
             <div className="overflow-x-auto rounded-twin-lg border border-[var(--twin-hairline)]">
               <table className="min-w-full text-xs">
                 <thead className="bg-[var(--twin-canvas-soft)]"><tr>
-                  <th className="px-2 py-2 text-left">单号</th><th className="px-2 py-2 text-left">物品</th><th className="px-2 py-2">数量</th><th className="px-2 py-2">状态</th><th className="px-2 py-2 text-left">申领人</th><th className="px-2 py-2 text-left">课题组</th><th className="px-2 py-2 text-left">时间</th>
+                  <th className="px-2 py-2 text-left">单号</th><th className="px-2 py-2 text-left">物品</th><th className="px-2 py-2">数量</th><th className="px-2 py-2">规格</th><th className="px-2 py-2">状态</th><th className="px-2 py-2 text-left">申领人</th><th className="px-2 py-2 text-left">课题组</th><th className="px-2 py-2 text-left">时间</th>
                 </tr></thead>
                 <tbody>{currentRows.map((r, i) => (
                   <tr key={i} className="hover:bg-[var(--twin-canvas-soft)]">
                     <td className="px-2 py-2 font-mono text-[10px]">{cellZh(r.requestId)}</td>
                     <td className="px-2 py-2">{cellZh(r.snapshotName)}</td>
                     <td className="px-2 py-2 text-center">{r.qty ?? "无"}</td>
+                    <td className="px-2 py-2 text-center text-[10px]">{formatSpecLabel((r as { specSnapshot?: string }).specSnapshot) || "无"}</td>
                     <td className="px-2 py-2 text-center">{statusZh(r.status)}</td>
                     <td className="px-2 py-2">{cellZh(r.applicantName)}</td>
                     <td className="px-2 py-2">{cellZh(r.applicantGroup)}</td>
