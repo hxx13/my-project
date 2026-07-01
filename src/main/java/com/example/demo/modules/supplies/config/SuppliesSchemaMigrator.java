@@ -99,6 +99,12 @@ public class SuppliesSchemaMigrator implements ApplicationRunner {
                         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='领用物资购物车（Web/小程序多端同步）'
                     """);
+            ensureColumnExists("supply_item", "spec_schema",
+                    "ALTER TABLE supply_item ADD COLUMN spec_schema JSON NULL COMMENT '规格定义'");
+            ensureColumnExists("supply_item", "spec_required",
+                    "ALTER TABLE supply_item ADD COLUMN spec_required TINYINT NOT NULL DEFAULT 0 COMMENT '是否强制选规格'");
+            ensureColumnExists("supply_claim_line", "spec_snapshot",
+                    "ALTER TABLE supply_claim_line ADD COLUMN spec_snapshot VARCHAR(500) NULL COMMENT '规格快照'");
             log.info("[supplies-schema] 物资表结构已就绪");
         } catch (Exception e) {
             log.error("[supplies-schema] 表结构迁移失败: {}", e.getMessage());

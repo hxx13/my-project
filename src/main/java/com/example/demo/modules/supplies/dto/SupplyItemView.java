@@ -18,6 +18,8 @@ public class SupplyItemView {
     private java.time.LocalDateTime purgeAfterTime;
     private java.time.LocalDateTime createdAt;
     private java.time.LocalDateTime lastInboundAt;
+    private String specSchema;
+    private Integer specRequired;
     private Boolean isNewItem;
     private Boolean isNewInbound;
     private String noveltyTag;

@@ -13,5 +13,6 @@ public class CreateSupplyClaimRequest {
         private Long itemId;
         private Integer qty;
         private String remark;
+        private String specSnapshot;
     }
 }

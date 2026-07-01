@@ -11,4 +11,5 @@ public class SupplyClaimLineView {
     private Integer fulfilledQty;
     private String coverUrl;
     private String remark;
+    private String specSnapshot;
 }

@@ -11,4 +11,5 @@ public class SupplyClaimLine {
     private String snapshotName;
     private Integer fulfilledQty;
     private String remark;
+    private String specSnapshot;
 }

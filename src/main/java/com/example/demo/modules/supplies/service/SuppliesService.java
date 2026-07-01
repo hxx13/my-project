@@ -2,6 +2,8 @@ package com.example.demo.modules.supplies.service;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.common.exception.ErrorCodeConstants;
+import com.example.demo.common.exception.TwinBusinessException;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.policy.BizDomains;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
@@ -461,6 +463,7 @@ public class SuppliesService {
         }
         Map<Long, Integer> merged = new LinkedHashMap<>();
         Map<Long, String> remarkByItem = new LinkedHashMap<>();
+        Map<Long, String> specSnapshotByItem = new LinkedHashMap<>();
         for (CreateSupplyClaimRequest.Line line : req.getLines()) {
             if (line == null || line.getItemId() == null || line.getQty() == null || line.getQty() <= 0) {
                 return Result.error("领用行参数无效");
@@ -468,6 +471,9 @@ public class SuppliesService {
             merged.merge(line.getItemId(), line.getQty(), Integer::sum);
             if (line.getRemark() != null && !line.getRemark().trim().isEmpty()) {
                 remarkByItem.put(line.getItemId(), line.getRemark().trim());
+            }
+            if (line.getSpecSnapshot() != null && !line.getSpecSnapshot().trim().isEmpty()) {
+                specSnapshotByItem.put(line.getItemId(), line.getSpecSnapshot().trim());
             }
         }
         List<SupplyClaimLine> toInsert = new ArrayList<>();
@@ -490,12 +496,19 @@ public class SuppliesService {
             } else {
                 return Result.error("未知库存模式");
             }
+            String specSnapshot = specSnapshotByItem.get(e.getKey());
+            if (it.getSpecRequired() != null && it.getSpecRequired() == 1) {
+                if (specSnapshot == null || specSnapshot.isBlank()) {
+                    throw new TwinBusinessException(ErrorCodeConstants.MATERIAL_SPEC_REQUIRED, "该物品需要选择完整规格");
+                }
+            }
             SupplyClaimLine cl = new SupplyClaimLine();
             cl.setItemId(e.getKey());
             cl.setQty(e.getValue());
             cl.setSnapshotName(it.getName());
             cl.setFulfilledQty(0);
             cl.setRemark(remarkByItem.get(e.getKey()));
+            cl.setSpecSnapshot(specSnapshot);
             toInsert.add(cl);
         }
         return Result.success(toInsert);
@@ -1335,6 +1348,8 @@ public class SuppliesService {
         v.setPurgeAfterTime(it.getPurgeAfterTime());
         v.setCreatedAt(it.getCreatedAt());
         v.setLastInboundAt(it.getLastInboundAt());
+        v.setSpecSchema(it.getSpecSchema());
+        v.setSpecRequired(it.getSpecRequired());
         return v;
     }
 
@@ -1533,6 +1548,7 @@ public class SuppliesService {
         v.setSnapshotName(l.getSnapshotName());
         v.setFulfilledQty(l.getFulfilledQty());
         v.setRemark(l.getRemark());
+        v.setSpecSnapshot(l.getSpecSnapshot());
         if (l.getItemId() != null) {
             SupplyItem it = itemMapper.findById(l.getItemId());
             if (it != null) {
@@ -1565,6 +1581,10 @@ public class SuppliesService {
         if (StringUtils.hasText(req.getShelfStatus())) it.setShelfStatus(req.getShelfStatus().trim().toUpperCase());
         if (StringUtils.hasText(req.getStockMode())) it.setStockMode(req.getStockMode().trim().toUpperCase());
         if (req.getStockQty() != null) it.setStockQty(req.getStockQty());
+        if (req.getSpecSchema() != null) {
+            it.setSpecSchema(req.getSpecSchema().isBlank() ? null : req.getSpecSchema());
+        }
+        if (req.getSpecRequired() != null) it.setSpecRequired(req.getSpecRequired());
         if (existing == null) {
             if (!StringUtils.hasText(it.getShelfStatus())) it.setShelfStatus(SHELF_ON);
             if (!StringUtils.hasText(it.getStockMode())) it.setStockMode(MODE_QUANTIFIED);

@@ -21,4 +21,6 @@ public class SupplyItem {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime lastInboundAt;
+    private String specSchema;
+    private Integer specRequired;
 }

@@ -11,4 +11,6 @@ public class SupplyItemUpsertRequest {
     private String shelfStatus;
     private String stockMode;
     private Integer stockQty;
+    private String specSchema;
+    private Integer specRequired;
 }

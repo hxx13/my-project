@@ -10,11 +10,12 @@
         <result property="snapshotName" column="snapshot_name"/>
         <result property="fulfilledQty" column="fulfilled_qty"/>
         <result property="remark" column="remark"/>
+        <result property="specSnapshot" column="spec_snapshot"/>
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO supply_claim_line(order_id, item_id, qty, snapshot_name, fulfilled_qty, remark)
-        VALUES (#{orderId}, #{itemId}, #{qty}, #{snapshotName}, #{fulfilledQty}, #{remark})
+        INSERT INTO supply_claim_line(order_id, item_id, qty, snapshot_name, fulfilled_qty, remark, spec_snapshot)
+        VALUES (#{orderId}, #{itemId}, #{qty}, #{snapshotName}, #{fulfilledQty}, #{remark}, #{specSnapshot})
     </insert>
 
     <select id="listByOrderId" resultMap="Base">

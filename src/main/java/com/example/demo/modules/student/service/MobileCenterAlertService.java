@@ -1,7 +1,9 @@
 package com.example.demo.modules.student.service;
 
 import com.example.demo.modules.material.entity.MaterialRequest;
+import com.example.demo.modules.material.entity.MaterialRequestLine;
 import com.example.demo.modules.material.mapper.MaterialRequestMapper;
+import com.example.demo.modules.material.mapper.MaterialRequestLineMapper;
 import com.example.demo.modules.notification.entity.StudentNotification;
 import com.example.demo.modules.notification.mapper.StudentNotificationMapper;
 import com.example.demo.modules.roommapping.entity.RoomMappingRoom;
@@ -33,7 +35,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Set;
 
 /**
  * 手机 HTML5 通知聚合：公告、违规、豁免状态、物资/延迟审核反馈。
@@ -54,6 +55,7 @@ public class MobileCenterAlertService {
     private final TwinScanDelayRequestMapper scanDelayRequestMapper;
     private final ScanDelayConfigService scanDelayConfigService;
     private final MaterialRequestMapper materialRequestMapper;
+    private final MaterialRequestLineMapper materialRequestLineMapper;
     private final TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService;
 
     public MobileCenterAlertService(TwinScanPopupAnnouncementMapper announcementMapper,
@@ -66,6 +68,7 @@ public class MobileCenterAlertService {
                                     TwinScanDelayRequestMapper scanDelayRequestMapper,
                                     ScanDelayConfigService scanDelayConfigService,
                                     MaterialRequestMapper materialRequestMapper,
+                                    MaterialRequestLineMapper materialRequestLineMapper,
                                     TwinScanNoticeAutoSuppressService scanNoticeAutoSuppressService) {
         this.announcementMapper = announcementMapper;
         this.violationMapper = violationMapper;
@@ -77,6 +80,7 @@ public class MobileCenterAlertService {
         this.scanDelayRequestMapper = scanDelayRequestMapper;
         this.scanDelayConfigService = scanDelayConfigService;
         this.materialRequestMapper = materialRequestMapper;
+        this.materialRequestLineMapper = materialRequestLineMapper;
         this.scanNoticeAutoSuppressService = scanNoticeAutoSuppressService;
     }
 
@@ -204,9 +208,13 @@ public class MobileCenterAlertService {
                 }
                 String kind = "MATERIAL_REQUEST".equals(biz) ? "material_feedback" : "scan_delay_feedback";
                 Map<String, Object> item = baseItem(kind, sn.getId(), sn.getTitle(), false);
-                item.put("contentHtml", wrapPlainSummary(sn.getSummary()));
+                String status = resolveWorkOrderAlertStatus(biz, sn.getBizId());
+                item.put("contentHtml", buildWorkOrderFeedbackHtml(biz, sn.getBizId(), sn.getSummary()));
                 item.put("bizType", biz);
                 item.put("bizId", sn.getBizId());
+                if (StringUtils.hasText(status)) {
+                    item.put("status", status);
+                }
                 item.put("notificationId", sn.getId());
                 item.put("isRead", sn.getIsRead() != null && sn.getIsRead() == 1);
                 item.put("createdAt", sn.getCreateTime() != null ? sn.getCreateTime().format(FMT) : null);
@@ -232,27 +240,11 @@ public class MobileCenterAlertService {
                 if ("DRAFT".equals(status)) {
                     continue;
                 }
-                String title;
-                String html;
-                switch (status) {
-                    case "PENDING", "FIRST_OK" -> {
-                        title = "物资申领审核中";
-                        html = "<p>申领单 " + escapeHtml(req.getId()) + "</p><p>状态：等待教职工审核</p>";
-                    }
-                    case "REJECTED" -> {
-                        title = "物资申领已拒绝";
-                        html = "<p>申领单 " + escapeHtml(req.getId()) + "</p><p>审核未通过</p>";
-                    }
-                    case "APPROVED", "FULFILLED", "RECEIVED" -> {
-                        title = "物资申领已通过";
-                        html = "<p>申领单 " + escapeHtml(req.getId()) + "</p><p>审核通过"
-                                + ("FULFILLED".equals(status) || "RECEIVED".equals(status) ? "，已出库" : "")
-                                + "</p>";
-                    }
-                    default -> {
-                        continue;
-                    }
+                if (!isMaterialFeedbackStatus(status)) {
+                    continue;
                 }
+                String title = materialFeedbackTitle(status);
+                String html = buildMaterialFeedbackHtml(req, status);
                 Map<String, Object> item = baseItem("material_feedback", req.getId(), title, false);
                 item.put("contentHtml", html);
                 item.put("bizType", "MATERIAL_REQUEST");
@@ -284,26 +276,8 @@ public class MobileCenterAlertService {
                     continue;
                 }
                 TwinScanDelayOption opt = scanDelayConfigService.requireOptionQuiet(req.getOptionId());
-                String optionLabel = opt != null && StringUtils.hasText(opt.getOptionLabel())
-                        ? opt.getOptionLabel() : "延迟免冻结";
-                String roomLabel = resolveRoomDisplayName(req.getRoomId(), opt);
-                String title;
-                String html;
-                if ("PENDING".equals(status)) {
-                    title = "延迟申请审核中";
-                    html = "<p>" + escapeHtml(optionLabel) + " · " + escapeHtml(roomLabel)
-                            + "</p><p>状态：等待教职工审核</p>";
-                } else if ("APPROVED".equals(status)) {
-                    title = "延迟申请已通过";
-                    html = "<p>" + escapeHtml(optionLabel) + " · " + escapeHtml(roomLabel)
-                            + "</p><p>已授予免冻结豁免</p>";
-                } else {
-                    title = "延迟申请已拒绝";
-                    html = "<p>" + escapeHtml(optionLabel) + " · " + escapeHtml(roomLabel) + "</p>";
-                    if (StringUtils.hasText(req.getRejectReason())) {
-                        html += "<p>原因：" + escapeHtml(req.getRejectReason()) + "</p>";
-                    }
-                }
+                String title = scanDelayFeedbackTitle(status);
+                String html = buildScanDelayFeedbackHtml(req, opt, status);
                 Map<String, Object> item = baseItem("scan_delay_feedback", req.getId(), title, false);
                 item.put("contentHtml", html);
                 item.put("bizType", "SCAN_DELAY");
@@ -396,6 +370,181 @@ public class MobileCenterAlertService {
             return "";
         }
         return "<p>" + escapeHtml(summary.trim()) + "</p>";
+    }
+
+    private String resolveWorkOrderAlertStatus(String bizType, String bizId) {
+        if (!StringUtils.hasText(bizType) || !StringUtils.hasText(bizId)) {
+            return "";
+        }
+        String biz = bizType.trim().toUpperCase();
+        try {
+            if ("MATERIAL_REQUEST".equals(biz)) {
+                MaterialRequest req = materialRequestMapper.selectById(bizId.trim());
+                return req != null && req.getStatus() != null ? req.getStatus().trim().toUpperCase() : "";
+            }
+            if ("SCAN_DELAY".equals(biz)) {
+                TwinScanDelayRequest req = scanDelayRequestMapper.findById(Long.parseLong(bizId.trim()));
+                return req != null && req.getStatus() != null ? req.getStatus().trim().toUpperCase() : "";
+            }
+        } catch (Exception ignored) {
+            return "";
+        }
+        return "";
+    }
+
+    private String buildWorkOrderFeedbackHtml(String bizType, String bizId, String summaryFallback) {
+        if (!StringUtils.hasText(bizType) || !StringUtils.hasText(bizId)) {
+            return wrapPlainSummary(summaryFallback);
+        }
+        String biz = bizType.trim().toUpperCase();
+        try {
+            if ("MATERIAL_REQUEST".equals(biz)) {
+                MaterialRequest req = materialRequestMapper.selectById(bizId.trim());
+                if (req != null) {
+                    String status = req.getStatus() != null ? req.getStatus().trim().toUpperCase() : "";
+                    return buildMaterialFeedbackHtml(req, status);
+                }
+            }
+            if ("SCAN_DELAY".equals(biz)) {
+                TwinScanDelayRequest req = scanDelayRequestMapper.findById(Long.parseLong(bizId.trim()));
+                if (req != null) {
+                    TwinScanDelayOption opt = scanDelayConfigService.requireOptionQuiet(req.getOptionId());
+                    String status = req.getStatus() != null ? req.getStatus().trim().toUpperCase() : "";
+                    return buildScanDelayFeedbackHtml(req, opt, status);
+                }
+            }
+        } catch (Exception e) {
+            log.debug("[MobileAlerts] enrich work-order html failed biz={} id={}: {}", bizType, bizId, e.getMessage());
+        }
+        return wrapPlainSummary(summaryFallback);
+    }
+
+    private static boolean isMaterialFeedbackStatus(String status) {
+        return "PENDING".equals(status) || "FIRST_OK".equals(status) || "REJECTED".equals(status)
+                || "APPROVED".equals(status) || "FULFILLED".equals(status) || "RECEIVED".equals(status);
+    }
+
+    private static String materialFeedbackTitle(String status) {
+        return switch (status) {
+            case "PENDING", "FIRST_OK" -> "物资申领审核中";
+            case "REJECTED" -> "物资申领已拒绝";
+            case "APPROVED", "FULFILLED", "RECEIVED" -> "物资申领已通过";
+            default -> "物资申领";
+        };
+    }
+
+    private String buildMaterialFeedbackHtml(MaterialRequest req, String status) {
+        StringBuilder html = new StringBuilder();
+        List<MaterialRequestLine> lines = materialRequestLineMapper.selectByRequestId(req.getId());
+        if (lines != null && !lines.isEmpty()) {
+            html.append("<p><strong>申领物品</strong></p><ul>");
+            for (MaterialRequestLine line : lines) {
+                if (line == null) {
+                    continue;
+                }
+                String name = StringUtils.hasText(line.getSnapshotName()) ? line.getSnapshotName().trim() : "物品";
+                html.append("<li>").append(escapeHtml(name));
+                if (line.getQty() != null && line.getQty() > 0) {
+                    html.append(" × ").append(line.getQty());
+                }
+                String spec = formatSpecSnapshot(line.getSpecSnapshot());
+                if (StringUtils.hasText(spec)) {
+                    html.append("（").append(escapeHtml(spec)).append("）");
+                }
+                html.append("</li>");
+            }
+            html.append("</ul>");
+        }
+        if ("FULFILLED".equals(status) || "RECEIVED".equals(status)) {
+            html.append("<p>已出库，请尽快领取。</p>");
+        } else if ("REJECTED".equals(status)) {
+            html.append("<p>审核未通过，如有疑问请联系审核老师。</p>");
+        } else if ("PENDING".equals(status) || "FIRST_OK".equals(status)) {
+            html.append("<p>等待教职工审核。</p>");
+        } else if ("APPROVED".equals(status)) {
+            html.append("<p>审核已通过，等待出库。</p>");
+        }
+        return html.toString();
+    }
+
+    private static String scanDelayFeedbackTitle(String status) {
+        return switch (status) {
+            case "PENDING" -> "延迟申请审核中";
+            case "APPROVED" -> "延迟申请已通过";
+            case "REJECTED" -> "延迟申请已拒绝";
+            default -> "延迟申请";
+        };
+    }
+
+    private String buildScanDelayFeedbackHtml(TwinScanDelayRequest req, TwinScanDelayOption opt, String status) {
+        String optionLabel = opt != null && StringUtils.hasText(opt.getOptionLabel())
+                ? opt.getOptionLabel() : "延迟免冻结";
+        String roomLabel = resolveRoomDisplayName(req.getRoomId(), opt);
+        StringBuilder html = new StringBuilder();
+        html.append("<p><strong>").append(escapeHtml(roomLabel)).append("</strong></p>");
+        html.append("<p>").append(escapeHtml(optionLabel)).append("</p>");
+        String delayUntil = formatScanDelayUntil(req, opt);
+        if (StringUtils.hasText(delayUntil)) {
+            html.append("<p>延迟至：").append(escapeHtml(delayUntil)).append("</p>");
+        }
+        if ("APPROVED".equals(status)) {
+            html.append("<p>已授予免冻结豁免。</p>");
+        } else if ("PENDING".equals(status)) {
+            html.append("<p>等待教职工审核。</p>");
+        } else if ("REJECTED".equals(status)) {
+            if (StringUtils.hasText(req.getRejectReason())) {
+                html.append("<p>拒绝原因：").append(escapeHtml(req.getRejectReason().trim())).append("</p>");
+            } else {
+                html.append("<p>申请未通过。</p>");
+            }
+        }
+        return html.toString();
+    }
+
+    private static String formatScanDelayUntil(TwinScanDelayRequest req, TwinScanDelayOption opt) {
+        if (opt != null && StringUtils.hasText(opt.getExtendUntilTime())) {
+            return opt.getExtendUntilTime().trim();
+        }
+        Integer minutes = req != null && req.getDurationMinutes() != null ? req.getDurationMinutes()
+                : (opt != null ? opt.getDurationMinutes() : null);
+        if (minutes == null || minutes <= 0) {
+            return "";
+        }
+        if (minutes % 60 == 0) {
+            int hours = minutes / 60;
+            return hours + " 小时";
+        }
+        return minutes + " 分钟";
+    }
+
+    private static String formatSpecSnapshot(String specSnapshot) {
+        if (!StringUtils.hasText(specSnapshot)) {
+            return "";
+        }
+        String raw = specSnapshot.trim();
+        if (!raw.startsWith("{")) {
+            return raw;
+        }
+        try {
+            com.alibaba.fastjson2.JSONObject obj = com.alibaba.fastjson2.JSON.parseObject(raw);
+            if (obj == null || obj.isEmpty()) {
+                return "";
+            }
+            List<String> parts = new ArrayList<>();
+            for (String key : obj.keySet()) {
+                Object val = obj.get(key);
+                if (val == null) {
+                    continue;
+                }
+                String vs = String.valueOf(val).trim();
+                if (!vs.isEmpty()) {
+                    parts.add(key + "：" + vs);
+                }
+            }
+            return String.join("，", parts);
+        } catch (Exception e) {
+            return raw;
+        }
     }
 
     private List<String> parseRoomIds(String roomIdsJson) {
