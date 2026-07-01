@@ -58,6 +58,7 @@ export default function StudentMaterialPage() {
   const saveCart = useSaveMaterialCart();
   const createRequest = useCreateMaterialRequest();
   const [showCart, setShowCart] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState("");
   const [demandText, setDemandText] = useState("");
   const [demandSubmitting, setDemandSubmitting] = useState(false);
   const [showDemandForm, setShowDemandForm] = useState(false);
@@ -78,6 +79,18 @@ export default function StudentMaterialPage() {
     if (!cart) return 0;
     return Object.values(cart).reduce((a, b) => a + b, 0);
   }, [cart]);
+
+  // Filter items by search keyword (对齐教职工领用页搜索模式)
+  const filteredItems = useMemo(() => {
+    if (!items) return [];
+    const kw = searchKeyword.trim().toLowerCase();
+    if (!kw) return items;
+    return items.filter((it) => {
+      const name = String(it.name || "").toLowerCase();
+      const subtitle = String(it.subtitle || "").toLowerCase();
+      return name.includes(kw) || subtitle.includes(kw);
+    });
+  }, [items, searchKeyword]);
 
   // Group cart entries by itemId for sidebar display
   const cartItems = useMemo(() => {
@@ -162,24 +175,27 @@ export default function StudentMaterialPage() {
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0">
+        {/* 标题栏：左侧返回+标题，右侧操作入口（对齐教职工领用页布局） */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--student-hairline)] bg-white">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center gap-1 text-[13px] text-[var(--student-mute)] hover:text-[var(--student-ink)]"
-          >
-            <ChevronLeft className="size-4" /> 返回
-          </button>
-          <h2 className="text-[15px] font-semibold text-[var(--student-ink)]">申领物品</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => navigate(-1)}
+              className="flex items-center gap-1 text-[13px] text-[var(--student-mute)] hover:text-[var(--student-ink)] shrink-0"
+            >
+              <ChevronLeft className="size-4" /> 返回
+            </button>
+            <h2 className="text-[15px] font-semibold text-[var(--student-ink)] truncate">申领物品</h2>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => navigate("/student/material/requests")}
-              className="text-[12px] text-[var(--student-primary)] hover:underline"
+              className="text-[12px] text-[var(--student-primary)] hover:underline whitespace-nowrap"
             >
               我的申领
             </button>
             <button
               onClick={() => setShowCart(!showCart)}
-              className="relative flex items-center gap-1 px-3 py-1.5 rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] text-white text-[13px]"
+              className="relative flex items-center gap-1 px-3 py-1.5 rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] text-white text-[13px] whitespace-nowrap"
             >
               <ShoppingCart className="size-4" /> 申领物品栏
               {cartCount > 0 && (
@@ -191,6 +207,17 @@ export default function StudentMaterialPage() {
           </div>
         </div>
 
+        {/* 搜索栏（对齐教职工领用页搜索框） */}
+        <div className="px-5 py-2 bg-white border-b border-[var(--student-hairline)]">
+          <input
+            type="text"
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            placeholder="搜索物品"
+            className="h-8 w-full max-w-md rounded-full border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-3 text-xs outline-none focus:ring-2 focus:ring-[var(--student-primary)]/20 focus:border-[var(--student-primary)] transition-shadow"
+          />
+        </div>
+
         <div className="flex-1 overflow-y-auto p-4">
           {itemsLoading ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
@@ -198,11 +225,11 @@ export default function StudentMaterialPage() {
                 <Skeleton key={i} className="h-[120px]" />
               ))}
             </div>
-          ) : !items || items.length === 0 ? (
-            <EmptyState icon={Package} title="暂无上架物品" />
+          ) : filteredItems.length === 0 ? (
+            <EmptyState icon={Package} title={searchKeyword.trim() ? "未找到匹配物品" : "暂无上架物品"} />
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 overflow-visible">
-              {items.map((item) => (
+              {filteredItems.map((item) => (
                 <MaterialItemCard
                   key={item.id}
                   item={item}
@@ -319,7 +346,7 @@ export default function StudentMaterialPage() {
               cartItems.map((group) => (
                 <div
                   key={group.item.id}
-                  className="p-2 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] space-y-1"
+                  className="p-2.5 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] space-y-1.5"
                 >
                   <div className="flex items-center gap-2">
                     <p className="text-[13px] font-medium truncate flex-1">
@@ -337,24 +364,24 @@ export default function StudentMaterialPage() {
                   {group.entries.map((entry) => (
                     <div
                       key={entry.key}
-                      className="flex items-center justify-between pl-2"
+                      className="flex items-center justify-between gap-2 pl-2 py-1"
                     >
-                      <span className="text-[11px] text-[var(--student-mute)]">
+                      <span className="text-[12px] text-[var(--student-body)] font-medium truncate flex-1 min-w-0">
                         {entry.specLabel || "默认"}
                       </span>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           onClick={() => updateCartQty(entry.key, -1)}
-                          className="size-5 rounded border border-[var(--student-hairline)] flex items-center justify-center"
+                          className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center hover:bg-[var(--student-canvas-soft)] transition-colors"
                         >
                           <Minus className="size-3" />
                         </button>
-                        <span className="text-[12px] w-5 text-center font-medium">
+                        <span className="text-[13px] w-5 text-center font-semibold tabular-nums">
                           {entry.qty}
                         </span>
                         <button
                           onClick={() => updateCartQty(entry.key, 1)}
-                          className="size-5 rounded border border-[var(--student-hairline)] flex items-center justify-center"
+                          className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center hover:bg-[var(--student-canvas-soft)] transition-colors"
                         >
                           <Plus className="size-3" />
                         </button>
