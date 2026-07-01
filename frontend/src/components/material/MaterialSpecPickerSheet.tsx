@@ -351,7 +351,13 @@ export function MaterialSpecPickControl({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className={cn("rounded-full p-0.5 hover:bg-[var(--student-canvas-soft)] transition-colors", "text-[var(--student-mute)]")}
+              aria-label="关闭"
+              className={cn(
+                "rounded-full p-0.5 transition-colors",
+                variant === "scanner" ? "hover:bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]" :
+                variant === "mobile" ? "hover:bg-[#f2f3f5] text-[#969799]" :
+                "hover:bg-[var(--student-canvas-soft)] text-[var(--student-mute)]",
+              )}
             >
               <X className="size-3.5" />
             </button>
