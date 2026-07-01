@@ -99,7 +99,7 @@ export function SpecSheet({
   const allCombos = useMemo(() => generateSpecCombos(dimensions), [dimensions]);
   const selectionReady = isMultiSpecSelectionReady(dimensions, selections);
   const activeCombos = useMemo(() => {
-    if (!selectionReady) return [];
+    if (!selectionReady) return allCombos; // show all combos when nothing selected yet
     return filterCombosByMultiSelections(allCombos, selections);
   }, [allCombos, selectionReady, selections]);
 
@@ -194,11 +194,11 @@ export function SpecSheet({
             </div>
           ))}
 
-          {/* Selected combos */}
-          {selectionReady && activeCombos.length > 0 && (
+          {/* Combos — show all when nothing selected, filtered when specs chosen */}
+          {activeCombos.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-[var(--student-hairline)]">
               <p className="text-[11px] font-medium text-[var(--student-mute)] uppercase tracking-wide">
-                已选规格组合
+                {selectionReady ? "已选规格组合" : "可选规格组合"}
               </p>
               {activeCombos.map((combo) => (
                 <div
