@@ -2,6 +2,7 @@
  * 规格选择器 — 替代锚点弹窗，全端统一，响应式双形态。
  * ≥640px：居中 Dialog（桌面/平板/管理后台）
  * <640px：Bottom Sheet（手机 H5）
+ */
 import { useEffect, useMemo, useState } from "react";
 import { X, Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
