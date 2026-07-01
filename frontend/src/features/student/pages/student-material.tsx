@@ -7,7 +7,7 @@ import { createMaterialDemand } from "@/api/domains/material.api";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { resolveMaterialApplicantGroupForStudentSession } from "@/features/student/materialApplicant";
 import type { MaterialItem } from "@/api/domains/material.api";
-import { StudentCard, Skeleton, EmptyState, Badge, Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui";
+import { StudentCard, Skeleton, EmptyState, Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui";
 import { MaterialSpecPickControl } from "@/components/material/MaterialSpecPickerSheet";
 import { hasSpecSchema } from "@/utils/materialSpecHelpers";
 import { cn } from "@/lib/utils";
