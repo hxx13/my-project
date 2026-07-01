@@ -1,13 +1,13 @@
 /** 学生物资商城 — 快捷入口路由：/student/material */
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package, Lightbulb } from "lucide-react";
+import { ShoppingCart, ChevronLeft, Plus, Minus, Send, Package, Lightbulb, Loader2 } from "lucide-react";
 import { useMaterialCategories, useMaterialItems, useMaterialCart, useSaveMaterialCart, useCreateMaterialRequest } from "@/api/hooks/useMaterial";
 import { createMaterialDemand } from "@/api/domains/material.api";
 import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { resolveMaterialApplicantGroupForStudentSession } from "@/features/student/materialApplicant";
 import type { MaterialItem } from "@/api/domains/material.api";
-import { StudentCard, Skeleton, EmptyState, Badge } from "../components/ui";
+import { StudentCard, Skeleton, EmptyState, Badge, Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui";
 import { MaterialSpecPickControl } from "@/components/material/MaterialSpecPickerSheet";
 import { hasSpecSchema } from "@/utils/materialSpecHelpers";
 import { cn } from "@/lib/utils";
@@ -62,6 +62,7 @@ export default function StudentMaterialPage() {
   const [demandSubmitting, setDemandSubmitting] = useState(false);
   const [showDemandForm, setShowDemandForm] = useState(false);
   const [demandEntryVisible, setDemandEntryVisible] = useState(true);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     fetchPublicRuntimeConfig()
@@ -351,7 +352,7 @@ export default function StudentMaterialPage() {
           {cartItems.length > 0 && (
             <div className="p-3 border-t border-[var(--student-hairline)]">
               <button
-                onClick={handleSubmit}
+                onClick={() => setConfirmOpen(true)}
                 disabled={createRequest.isPending}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-[var(--student-radius-md)] bg-[var(--student-primary)] text-white text-[14px] font-semibold disabled:opacity-50"
               >
@@ -361,6 +362,78 @@ export default function StudentMaterialPage() {
           )}
         </aside>
       )}
+
+      {/* Submit Confirmation Dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogHeader>
+          <DialogTitle>确认提交申领</DialogTitle>
+          <DialogDescription>请核对以下物品，提交后将进入审核流程</DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[40vh] overflow-y-auto space-y-2 my-3">
+          {cartItems.map((group) =>
+            group.entries.map((entry) => (
+              <div
+                key={entry.key}
+                className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--student-canvas-soft)]"
+              >
+                <div className="size-9 shrink-0 rounded-md bg-[var(--student-canvas-soft)] flex items-center justify-center text-sm font-bold text-[var(--student-primary)]/40">
+                  {group.item.name?.charAt(0) || "物"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-semibold text-[var(--student-ink)] truncate">
+                    {group.item.name}
+                  </p>
+                  <p className="text-[11px] text-[var(--student-mute)]">
+                    {entry.specLabel || "默认"}
+                  </p>
+                </div>
+                <span className="text-[13px] font-semibold text-[var(--student-ink)] shrink-0">
+                  ×{entry.qty}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="flex items-center justify-between py-2 border-t border-[var(--student-hairline)]">
+          <span className="text-[13px] text-[var(--student-mute)]">
+            合计{" "}
+            <strong className="text-[var(--student-ink)] text-[15px]">{cartCount} 件</strong>
+          </span>
+        </div>
+
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={() => setConfirmOpen(false)}
+            className="px-4 py-2 rounded-lg border border-[var(--student-hairline)] text-[13px] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] transition-colors"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              setConfirmOpen(false);
+              await handleSubmit();
+            }}
+            disabled={createRequest.isPending}
+            className="px-5 py-2 rounded-lg bg-[var(--student-primary)] text-white text-[13px] font-semibold disabled:opacity-50 flex items-center gap-2 transition-opacity"
+          >
+            {createRequest.isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                提交中…
+              </>
+            ) : (
+              <>
+                <Send className="size-4" />
+                确认提交
+              </>
+            )}
+          </button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }
