@@ -145,8 +145,8 @@ export default function StudentMaterialPage() {
   }
 
   return (
-    <div className="flex h-full bg-[var(--student-canvas-soft)]">
-      <aside className="w-[200px] shrink-0 border-r border-[var(--student-hairline)] bg-white p-3 space-y-1 overflow-y-auto">
+    <div className="flex h-full bg-[var(--student-canvas)]">
+      <aside className="w-[200px] shrink-0 border-r border-[var(--student-hairline)] bg-[var(--student-canvas)] p-3 space-y-1 overflow-y-auto">
         <button
           onClick={() => setActiveCategoryId(undefined)}
           className={cn(
@@ -176,7 +176,7 @@ export default function StudentMaterialPage() {
 
       <main className="flex-1 flex flex-col min-w-0">
         {/* 标题栏：左侧返回+标题，右侧操作入口（对齐教职工领用页布局） */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--student-hairline)] bg-white">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--student-hairline)] bg-[var(--student-surface)]">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => navigate(-1)}
@@ -208,7 +208,7 @@ export default function StudentMaterialPage() {
         </div>
 
         {/* 搜索栏（对齐教职工领用页搜索框） */}
-        <div className="px-5 py-2 bg-white border-b border-[var(--student-hairline)]">
+        <div className="px-5 py-2 bg-[var(--student-surface)] border-b border-[var(--student-hairline)]">
           <input
             type="text"
             value={searchKeyword}
@@ -311,7 +311,7 @@ export default function StudentMaterialPage() {
       </main>
 
       {showCart && (
-        <aside className="w-[320px] shrink-0 border-l border-[var(--student-hairline)] bg-white flex flex-col">
+        <aside className="w-[320px] shrink-0 border-l border-[var(--student-hairline)] bg-[var(--student-surface)] flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--student-hairline)]">
             <div className="flex items-center gap-2">
               <h3 className="text-[15px] font-bold text-[var(--student-ink)]">申领物品栏</h3>
