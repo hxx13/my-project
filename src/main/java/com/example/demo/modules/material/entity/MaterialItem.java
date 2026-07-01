@@ -30,4 +30,8 @@ public class MaterialItem {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime lastInboundAt;
+    /** 规格定义 JSON，如 {"dimensions":[{"name":"尺码","options":["S","M","L"]}]} */
+    private String specSchema;
+    /** 是否强制选规格：0=可选 1=必选 */
+    private Integer specRequired;
 }

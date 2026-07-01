@@ -33,14 +33,16 @@
         SELECT * FROM material_item WHERE id = #{id}
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO material_item (category_id, name, subtitle, cover_url, shelf_status, stock_mode, stock_qty, show_stock_qty, workflow_type, reviewer_ids, second_reviewer_ids)
-        VALUES (#{categoryId}, #{name}, #{subtitle}, #{coverUrl}, #{shelfStatus}, #{stockMode}, #{stockQty}, #{showStockQty}, #{workflowType}, #{reviewerIds}, #{secondReviewerIds})
+        INSERT INTO material_item (category_id, name, subtitle, cover_url, shelf_status, stock_mode, stock_qty, show_stock_qty, workflow_type, reviewer_ids, second_reviewer_ids, spec_schema, spec_required)
+        VALUES (#{categoryId}, #{name}, #{subtitle}, #{coverUrl}, #{shelfStatus}, #{stockMode}, #{stockQty}, #{showStockQty}, #{workflowType}, #{reviewerIds}, #{secondReviewerIds}, #{specSchema}, #{specRequired})
     </insert>
     <update id="updateById">
         UPDATE material_item
         SET category_id = #{categoryId}, name = #{name}, subtitle = #{subtitle}, cover_url = #{coverUrl},
             shelf_status = #{shelfStatus}, stock_mode = #{stockMode}, show_stock_qty = #{showStockQty},
             workflow_type = #{workflowType}, reviewer_ids = #{reviewerIds}, second_reviewer_ids = #{secondReviewerIds}
+            <if test="specSchema != null">, spec_schema = #{specSchema}</if>
+            <if test="specRequired != null">, spec_required = #{specRequired}</if>
         WHERE id = #{id}
     </update>
     <update id="softDelete">

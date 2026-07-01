@@ -13,5 +13,7 @@ public class CreateMaterialRequestReq {
     public static class LineItem {
         private Long itemId;
         private Integer qty;
+        /** 规格快照 JSON，如 {"尺码":"S","颜色":"红"} */
+        private String specSnapshot;
     }
 }

@@ -152,6 +152,8 @@ public class MaterialService {
         item.setWorkflowType(req.getWorkflowType() != null ? req.getWorkflowType() : "SIMPLE");
         item.setReviewerIds(req.getReviewerIds());
         item.setSecondReviewerIds(req.getSecondReviewerIds());
+        item.setSpecSchema(req.getSpecSchema());
+        item.setSpecRequired(req.getSpecRequired() != null ? req.getSpecRequired() : 0);
         itemMapper.insert(item);
         // 初始入库创建库存流水
         if (initQty > 0) {
@@ -188,6 +190,8 @@ public class MaterialService {
         if (req.getReviewerIds() != null) item.setReviewerIds(req.getReviewerIds());
         if (req.getSecondReviewerIds() != null) item.setSecondReviewerIds(req.getSecondReviewerIds());
         if (req.getShowStockQty() != null) item.setShowStockQty(req.getShowStockQty());
+        if (req.getSpecSchema() != null) item.setSpecSchema(req.getSpecSchema());
+        if (req.getSpecRequired() != null) item.setSpecRequired(req.getSpecRequired());
         itemMapper.updateById(item);
         logOp("ITEM", String.valueOf(id), "UPDATE", null);
         return Result.success(toItemView(itemMapper.selectById(id)));
@@ -392,12 +396,30 @@ public class MaterialService {
                         return Result.error(check.getMessage());
                     }
                 }
+                // 规格校验
+                if (item.getSpecRequired() != null && item.getSpecRequired() == 1) {
+                    if (lineReq.getSpecSnapshot() == null || lineReq.getSpecSnapshot().isBlank()) {
+                        throw new com.example.demo.common.exception.TwinBusinessException(
+                                com.example.demo.common.exception.ErrorCodeConstants.MATERIAL_SPEC_REQUIRED,
+                                "该物品需要选择完整规格");
+                    }
+                }
+                if (lineReq.getSpecSnapshot() != null && !lineReq.getSpecSnapshot().isBlank()) {
+                    try {
+                        objectMapper.readTree(lineReq.getSpecSnapshot());
+                    } catch (Exception e) {
+                        throw new com.example.demo.common.exception.TwinBusinessException(
+                                com.example.demo.common.exception.ErrorCodeConstants.MATERIAL_SPEC_INVALID_JSON,
+                                "规格数据格式错误");
+                    }
+                }
                 MaterialRequestLine line = new MaterialRequestLine();
                 line.setRequestId(id);
                 line.setItemId(lineReq.getItemId());
                 line.setQty(lineReq.getQty());
                 line.setSnapshotName(item != null ? item.getName() : "未知物品");
                 line.setFulfilledQty(0);
+                line.setSpecSnapshot(lineReq.getSpecSnapshot());
                 lines.add(line);
             }
             requestLineMapper.insertBatch(lines);
@@ -1690,6 +1712,8 @@ public class MaterialService {
         v.setSecondReviewerIds(item.getSecondReviewerIds());
         if (item.getCreatedAt() != null) v.setCreatedAt(toDisplayTime(item.getCreatedAt()));
         if (item.getLastInboundAt() != null) v.setLastInboundAt(toDisplayTime(item.getLastInboundAt()));
+        v.setSpecSchema(item.getSpecSchema());
+        v.setSpecRequired(item.getSpecRequired());
         return v;
     }
 
@@ -1718,6 +1742,7 @@ public class MaterialService {
             lv.setQty(l.getQty());
             lv.setSnapshotName(l.getSnapshotName());
             lv.setFulfilledQty(l.getFulfilledQty());
+            lv.setSpecSnapshot(l.getSpecSnapshot());
             if (l.getItemId() != null) {
                 MaterialItem it = itemMapper.selectById(l.getItemId());
                 if (it != null) {

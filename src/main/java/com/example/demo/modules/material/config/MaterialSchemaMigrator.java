@@ -171,6 +171,16 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
             ensureColumnExists("material_item", "show_stock_qty",
                     "ALTER TABLE material_item ADD COLUMN show_stock_qty TINYINT NOT NULL DEFAULT 1 COMMENT '学生视角是否显示具体库存：1=显示数字 0=显示有货'");
 
+            // spec_schema 规格定义
+            ensureColumnExists("material_item", "spec_schema",
+                    "ALTER TABLE material_item ADD COLUMN spec_schema JSON NULL COMMENT '规格定义'");
+            // spec_required 是否强制选规格
+            ensureColumnExists("material_item", "spec_required",
+                    "ALTER TABLE material_item ADD COLUMN spec_required TINYINT NOT NULL DEFAULT 0 COMMENT '是否强制选规格'");
+            // spec_snapshot 申领行规格快照
+            ensureColumnExists("material_request_line", "spec_snapshot",
+                    "ALTER TABLE material_request_line ADD COLUMN spec_snapshot VARCHAR(500) NULL COMMENT '规格快照'");
+
             int backfilled = materialService.backfillRequestApplicantMetadata();
             if (backfilled > 0) {
                 log.info("[material-schema] 已回填 {} 条申领单的申领人/课题组元数据", backfilled);

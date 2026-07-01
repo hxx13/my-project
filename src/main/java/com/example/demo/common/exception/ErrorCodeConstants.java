@@ -69,4 +69,8 @@ public final class ErrorCodeConstants {
     public static final int FACE_MODEL_NOT_READY = 1_009_003;
     public static final int FACE_VERIFY_TOKEN_INVALID = 1_009_004;
     public static final int FACE_BASELINE_NO_FACE = 1_009_005;
+
+    /** 物资 material 1-006-xxx */
+    public static final int MATERIAL_SPEC_REQUIRED = 1_006_001;
+    public static final int MATERIAL_SPEC_INVALID_JSON = 1_006_002;
 }

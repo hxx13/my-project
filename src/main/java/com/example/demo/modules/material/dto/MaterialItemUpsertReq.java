@@ -15,4 +15,6 @@ public class MaterialItemUpsertReq {
     private String secondReviewerIds;
     private Integer stockQty;
     private Integer showStockQty;
+    private String specSchema;
+    private Integer specRequired;
 }

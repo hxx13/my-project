@@ -21,4 +21,6 @@ public class MaterialItemView {
     private Boolean isNewItem;
     private String createdAt;
     private String lastInboundAt;
+    private String specSchema;
+    private Integer specRequired;
 }

@@ -5,9 +5,9 @@
         SELECT * FROM material_request_line WHERE request_id = #{requestId}
     </select>
     <insert id="insertBatch" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO material_request_line (request_id, item_id, qty, snapshot_name) VALUES
+        INSERT INTO material_request_line (request_id, item_id, qty, snapshot_name, spec_snapshot) VALUES
         <foreach collection="lines" item="line" separator=",">
-            (#{line.requestId}, #{line.itemId}, #{line.qty}, #{line.snapshotName})
+            (#{line.requestId}, #{line.itemId}, #{line.qty}, #{line.snapshotName}, #{line.specSnapshot})
         </foreach>
     </insert>
     <update id="updateFulfilledQty">
