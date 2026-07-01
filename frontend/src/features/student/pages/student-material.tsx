@@ -133,14 +133,14 @@ export default function StudentMaterialPage() {
 
   return (
     <div className="flex h-full bg-[var(--student-canvas-soft)]">
-      <aside className="w-[180px] shrink-0 border-r border-[var(--student-hairline)] bg-white p-3 space-y-1 overflow-y-auto">
+      <aside className="w-[200px] shrink-0 border-r border-[var(--student-hairline)] bg-white p-3 space-y-1 overflow-y-auto">
         <button
           onClick={() => setActiveCategoryId(undefined)}
           className={cn(
-            "w-full text-left px-3 py-2 rounded-[var(--student-radius-sm)] text-[13px] transition-colors",
+            "w-full text-left px-3 py-2.5 rounded-[var(--student-radius-sm)] text-[13px] transition-colors border-l-[3px]",
             !activeCategoryId
-              ? "bg-[var(--student-primary-soft)] text-[var(--student-primary)] font-semibold"
-              : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]",
+              ? "bg-[var(--student-primary-soft)] text-[var(--student-primary)] font-semibold border-l-[var(--student-primary)]"
+              : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] border-l-transparent",
           )}
         >
           全部分类
@@ -150,10 +150,10 @@ export default function StudentMaterialPage() {
             key={cat.id}
             onClick={() => setActiveCategoryId(cat.id)}
             className={cn(
-              "w-full text-left px-3 py-2 rounded-[var(--student-radius-sm)] text-[13px] transition-colors",
+              "w-full text-left px-3 py-2.5 rounded-[var(--student-radius-sm)] text-[13px] transition-colors border-l-[3px]",
               activeCategoryId === cat.id
-                ? "bg-[var(--student-primary-soft)] text-[var(--student-primary)] font-semibold"
-                : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]",
+                ? "bg-[var(--student-primary-soft)] text-[var(--student-primary)] font-semibold border-l-[var(--student-primary)]"
+                : "text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] border-l-transparent",
             )}
           >
             {cat.name}
