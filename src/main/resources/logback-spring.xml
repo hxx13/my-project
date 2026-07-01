@@ -23,11 +23,9 @@
 
     <!-- ============================== Appender 定义 ============================== -->
 
-    <!-- 环形缓冲区 Appender（所有 profile 激活，Web 管理端日志查看器数据源） -->
-    <appender name="RING_BUFFER" class="com.example.demo.common.support.RingBufferAppender"/>
-
     <!-- ————————— local 控制台 (WARN+ only) ————————— -->
     <springProfile name="local">
+        <appender name="RING_BUFFER" class="com.example.demo.common.support.RingBufferAppender"/>
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <target>System.out</target>
             <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
@@ -42,6 +40,7 @@
 
     <!-- ————————— prod 控制台 + 文件 ————————— -->
     <springProfile name="prod">
+        <appender name="RING_BUFFER" class="com.example.demo.common.support.RingBufferAppender"/>
         <!-- 控制台：纯文本，WARN+ only -->
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <target>System.out</target>
@@ -89,6 +88,7 @@
 
     <!-- ————————— docker 控制台 (JSON stdout) ————————— -->
     <springProfile name="docker">
+        <appender name="RING_BUFFER" class="com.example.demo.common.support.RingBufferAppender"/>
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
             <target>System.out</target>
             <encoder>

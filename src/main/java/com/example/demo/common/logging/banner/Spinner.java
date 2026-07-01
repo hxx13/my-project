@@ -1,40 +1,28 @@
 package com.example.demo.common.logging.banner;
 
 /**
- * Unicode 盲文旋转指示器 —— 逐帧循环 {@code ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏}。
- * 线程安全，适合后台线程推进帧、渲染线程读取当前帧。
+ * 旋转指示器 —— Unicode 盲文 ⠋⠙⠹⠸ 或 ASCII |/-\。
  */
 public class Spinner {
 
-    private static final String[] FRAMES = {
-        "⠋", // ⠋
-        "⠙", // ⠙
-        "⠹", // ⠹
-        "⠸", // ⠸
-        "⠼", // ⠼
-        "⠴", // ⠴
-        "⠦", // ⠦
-        "⠧", // ⠧
-        "⠇", // ⠇
-        "⠏", // ⠏
+    private static final String[] UNICODE_FRAMES = {
+        "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"
     };
+    private static final String[] ASCII_FRAMES = { "|", "/", "-", "\\" };
 
+    private final String[] frames;
     private volatile int index = 0;
 
-    /** 推进一帧并返回帧字符 */
+    public Spinner() {
+        this.frames = CyberColor.hasUnicode() ? UNICODE_FRAMES : ASCII_FRAMES;
+    }
+
     public String tick() {
-        String frame = FRAMES[index];
-        index = (index + 1) % FRAMES.length;
+        String frame = frames[index];
+        index = (index + 1) % frames.length;
         return frame;
     }
 
-    /** 只读当前帧，不推进 */
-    public String current() {
-        return FRAMES[index];
-    }
-
-    /** 重置到第 0 帧 */
-    public void reset() {
-        index = 0;
-    }
+    public String current() { return frames[index]; }
+    public void reset() { index = 0; }
 }
