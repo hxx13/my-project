@@ -1022,13 +1022,9 @@ public class StudentCageShelfService {
     public void togglePin(User user, String shelveId) {
         // Always delete all matching rows first (handles any duplicates from broken unique key)
         int deleted = cageShelfPinMapper.delete(user.getId(), shelveId);
-        log.error("[DIAG-TOGGLE] userId={} shelveId={} deleted={}", user.getId(), shelveId, deleted);
         if (deleted == 0) {
-            int inserted = cageShelfPinMapper.insert(user.getId(), shelveId);
-            log.error("[DIAG-TOGGLE] INSERT result={}", inserted);
+            cageShelfPinMapper.insert(user.getId(), shelveId);
         }
-        int count = cageShelfPinMapper.exists(user.getId(), shelveId);
-        log.error("[DIAG-TOGGLE] after toggle, countByUserAndShelve={}", count);
     }
 
     public boolean isPinned(User user, String shelveId) {
@@ -1040,9 +1036,7 @@ public class StudentCageShelfService {
      * shelveId 全局唯一 → 从 cage_shelf_index 反向查 roomId，从 grid cache 读笼位数据。
      */
     public List<Map<String, Object>> getPinnedShelves(User user) {
-        log.error("[DIAG] getPinnedShelves userId={}", user.getId());
         List<String> shelveIds = cageShelfPinMapper.selectPinnedShelveIds(user.getId());
-        log.error("[DIAG] student_cage_shelf_pin returned {} rows: {}", shelveIds.size(), shelveIds);
         List<Map<String, Object>> result = new ArrayList<>();
         for (String sid : shelveIds) {
             if (sid == null || sid.isBlank()) continue;

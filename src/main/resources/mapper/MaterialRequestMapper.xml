@@ -138,6 +138,18 @@
         SET applicant_name = #{applicantName}, applicant_group = #{applicantGroup}
         WHERE id = #{id}
     </update>
+    <update id="resetForRevoke">
+        UPDATE material_request
+        SET status = 'PENDING',
+            first_reviewer_id = NULL,
+            first_review_time = NULL,
+            second_reviewer_id = NULL,
+            second_review_time = NULL,
+            fulfilled_at = NULL,
+            fulfilled_by = NULL,
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
     <select id="statsByGroup" resultType="java.util.HashMap">
         SELECT applicant_group AS groupName, COUNT(*) AS requestCount,
                COUNT(DISTINCT user_id) AS memberCount,

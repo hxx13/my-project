@@ -227,6 +227,15 @@ public class MaterialAdminController {
         return materialService.reject(user, id);
     }
 
+    @PostMapping("/requests/{id}/revoke")
+    @Operation(summary = "撤销审核（已通过→待审，回退库存与流水）")
+    public Result<?> revoke(@RequestHeader(value = "Authorization", required = false) String auth,
+                            @PathVariable String id) {
+        User user = resolveUser(auth);
+        if (user == null) return Result.error("未登录");
+        return materialService.revoke(user, id);
+    }
+
     @DeleteMapping("/requests/{id}")
     @Operation(summary = "删除申领单（软删除进回收站）")
     public Result<?> deleteRequest(@RequestHeader(value = "Authorization", required = false) String auth,

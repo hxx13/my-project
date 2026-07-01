@@ -367,6 +367,10 @@ export async function rejectMaterialRequest(id: string) {
   await authHttp.post(`/material/admin/requests/${id}/reject`);
 }
 
+export async function revokeMaterialRequest(id: string) {
+  await authHttp.post(`/material/admin/requests/${id}/revoke`);
+}
+
 export async function fulfillMaterialRequest(id: string, lines: { lineId: number; grant: boolean; fulfillQty?: number }[]) {
   const res = await authHttp.post<Result<MaterialRequest>>(`/material/admin/requests/${id}/fulfill`, { lines });
   return res.data.data;

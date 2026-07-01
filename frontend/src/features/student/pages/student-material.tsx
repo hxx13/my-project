@@ -91,11 +91,15 @@ export default function StudentMaterialPage() {
             <ChevronLeft className="size-4" /> 返回
           </button>
           <h2 className="text-[15px] font-semibold text-[var(--student-ink)]">申领物品</h2>
-          <button onClick={() => setShowCart(!showCart)}
+          <div className="flex items-center gap-2">
+            <button onClick={() => navigate("/student/material/requests")}
+              className="text-[12px] text-[var(--student-primary)] hover:underline">我的申领</button>
+            <button onClick={() => setShowCart(!showCart)}
             className="relative flex items-center gap-1 px-3 py-1.5 rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] text-white text-[13px]">
             <ShoppingCart className="size-4" /> 申领物品栏
             {cartCount > 0 && <span className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-red-500 text-white text-[10px] flex items-center justify-center font-bold">{cartCount}</span>}
           </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">

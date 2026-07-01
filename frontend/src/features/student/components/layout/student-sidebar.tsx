@@ -31,6 +31,7 @@ const navItems: NavItem[] = [
   { to: "/student/rooms", icon: DoorOpen, label: "我的房间" },
   { to: "/student/cage-shelf", icon: LayoutGrid, label: "笼架信息" },
   { to: "/student/material", icon: Package, label: "申领物品" },
+  { to: "/student/material/requests", icon: FileText, label: "我的申领" },
   { to: "/student/stats", icon: BarChart3, label: "数据统计" },
   { to: "/student/notifications", icon: Bell, label: "通知" },
 ];

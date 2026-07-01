@@ -12,6 +12,7 @@ import {
   submitStudentMobileMaterialRequest,
 } from "@/api/domains/studentMobile.api";
 import type { MaterialRequest } from "@/api/domains/material.api";
+import { withdrawMaterialRequest, confirmMaterialReceive } from "@/api/domains/material.api";
 import {
   buildCartLines,
   cartTotalQty,
@@ -134,6 +135,7 @@ function mapRequestRow(r: MaterialRequest) {
     displayTitle,
     lineSummary,
     canWithdraw: status === "PENDING" || status === "FIRST_OK",
+    canRevoke: status === "APPROVED" || status === "FULFILLED",
     canReceive: status === "FULFILLED",
   };
 }
@@ -319,6 +321,37 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
       toast.error(e instanceof Error ? e.message : "提交失败");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleWithdraw = async (id: string) => {
+    try {
+      await withdrawMaterialRequest(id);
+      toast.success("已撤回");
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "撤回失败");
+    }
+  };
+
+  const handleRevoke = async (id: string) => {
+    if (!window.confirm("确定撤销此申领？已通过/出库的物品将被召回，审核记录将被清除。")) return;
+    try {
+      await withdrawMaterialRequest(id);
+      toast.success("已撤销，申领回到待审状态");
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "撤销失败");
+    }
+  };
+
+  const handleConfirmReceive = async (id: string) => {
+    try {
+      await confirmMaterialReceive(id);
+      toast.success("已确认领取");
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "确认失败");
     }
   };
 
@@ -820,6 +853,39 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
                         {row.lineSummary}
                       </p>
                     )}
+                    {/* 操作按钮 */}
+                    <div className="flex gap-2 mt-2 pt-2" style={{ borderTop: "1px solid #f2f3f5" }}>
+                      {row.canWithdraw && (
+                        <button
+                          type="button"
+                          onClick={() => handleWithdraw(row.id)}
+                          className="text-xs px-3 py-1 rounded-full font-medium"
+                          style={{ color: "#ee0a24", background: "#fde8ea", border: "1px solid #f8d0d4" }}
+                        >
+                          撤回
+                        </button>
+                      )}
+                      {row.canRevoke && (
+                        <button
+                          type="button"
+                          onClick={() => handleRevoke(row.id)}
+                          className="text-xs px-3 py-1 rounded-full font-medium"
+                          style={{ color: "#d97706", background: "#fef3c7", border: "1px solid #fde68a" }}
+                        >
+                          撤销
+                        </button>
+                      )}
+                      {row.canReceive && (
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmReceive(row.id)}
+                          className="text-xs px-3 py-1 rounded-full font-medium"
+                          style={{ color: "#1989fa", background: "#e8f3ff", border: "1px solid #d4e5fc" }}
+                        >
+                          确认领取
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })

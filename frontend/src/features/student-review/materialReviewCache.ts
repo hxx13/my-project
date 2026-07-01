@@ -70,6 +70,39 @@ export function mergeMaterialReviewAfterReject(
   }
 }
 
+/** 撤销审核：从已审结缓存移除，回退到待审列表顶部 */
+export function mergeMaterialReviewAfterRevoke(
+  qc: QueryClient,
+  id: string,
+  finishedParams: { page: number; size: number } = MATERIAL_REVIEW_FINISHED_PAGE,
+): void {
+  let revoked: MaterialRequest | undefined;
+
+  // 从已审结列表找到该条并移除
+  qc.setQueryData<{ data: MaterialRequest[]; total: number }>(
+    materialQueryKeys.finishedRequests(finishedParams),
+    (prev) => {
+      if (!prev) return prev;
+      revoked = prev.data.find((r) => r.id === id);
+      const data = prev.data.filter((r) => r.id !== id);
+      const removed = data.length !== prev.data.length;
+      return {
+        data,
+        total: removed ? Math.max(0, prev.total - 1) : prev.total,
+      };
+    },
+  );
+
+  // 回退到待审列表顶部
+  if (revoked) {
+    const row: MaterialRequest = { ...revoked, status: "PENDING" };
+    qc.setQueryData<MaterialRequest[]>(materialQueryKeys.pendingRequests(), (prev) => {
+      if (!prev) return [row];
+      return [row, ...prev];
+    });
+  }
+}
+
 export function removeMaterialReviewRequestFromCaches(
   qc: QueryClient,
   id: string,

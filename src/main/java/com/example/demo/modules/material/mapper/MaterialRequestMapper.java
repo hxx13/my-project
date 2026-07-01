@@ -58,6 +58,8 @@ public interface MaterialRequestMapper {
                                 @Param("applicantGroup") String applicantGroup);
     int updateApplicantMeta(@Param("id") String id, @Param("applicantName") String applicantName,
                             @Param("applicantGroup") String applicantGroup);
+    /** 撤销审核：清空审核/出库字段，回退到 PENDING */
+    int resetForRevoke(@Param("id") String id, @Param("updatedAt") java.time.LocalDateTime updatedAt);
     /** 待审核申领数（PENDING + 双审 FIRST_OK） */
     int countPendingReview();
 

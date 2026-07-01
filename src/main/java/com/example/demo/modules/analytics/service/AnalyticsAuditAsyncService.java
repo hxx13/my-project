@@ -2,7 +2,6 @@ package com.example.demo.modules.analytics.service;
 
 import com.example.demo.modules.analytics.entity.AnalyticsUserView;
 import com.example.demo.modules.analytics.mapper.AnalyticsUserViewMapper;
-import com.example.demo.modules.analytics.service.AnalyticsReportRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -31,37 +30,29 @@ public class AnalyticsAuditAsyncService {
     public void runAuditAndBackfillAsync(
             long viewId, String userId, boolean backfillHistory, String backfillUntil) {
         AnalyticsUserView view = loadSubscribedView(viewId, userId);
-        if (view == null) {
-            return;
-        }
+        if (view == null) return;
         try {
-            boolean cage = view != null && AnalyticsReportRegistry.REPORT_CAGE_OCCUPANCY.equals(view.getReportKey());
+            boolean cage = AnalyticsReportRegistry.REPORT_CAGE_OCCUPANCY.equals(view.getReportKey());
             boolean doBackfill = backfillHistory && !cage && StringUtils.hasText(backfillUntil);
-            log.debug("[analytics-audit] async start viewId={} backfill={}", viewId, doBackfill);
             auditService.runAuditForView(view);
             if (doBackfill) {
-                LocalDate until = auditService.parseBackfillUntil(backfillUntil);
-                auditService.backfillAuditForView(view, until);
+                auditService.backfillAuditForView(view, auditService.parseBackfillUntil(backfillUntil));
             }
-            log.debug("[analytics-audit] async done viewId={}", viewId);
         } catch (Exception e) {
-            log.warn("[analytics-audit] async failed viewId={}: {}", viewId, e.getMessage(), e);
+            log.warn("[analytics-audit] async audit failed viewId={}: {}", viewId, e.getMessage(), e);
         }
     }
 
+    /** 强制重算：用户主动触发，不要求视图已订阅。动画由 refreshAllSnapshotsForView 内部 LoadingSpinner 负责。 */
     @Async("heavyCalcExecutor")
     public void refreshSnapshotsAsync(long viewId, String userId) {
-        // 强制重算不要求视图已订阅 — 用户主动触发即应执行
         AnalyticsUserView view = userViewMapper.selectByIdAndUser(viewId, userId);
         if (view == null) {
             log.warn("[analytics-audit] force-recalc: view not found viewId={} userId={}", viewId, userId);
             return;
         }
         try {
-            log.warn("[analytics-audit] force-recalc start viewId={} subscribed={}",
-                    viewId, view.getIsSubscribed());
             auditService.refreshAllSnapshotsForView(view);
-            log.warn("[analytics-audit] force-recalc done viewId={}", viewId);
         } catch (Exception e) {
             log.warn("[analytics-audit] force-recalc failed viewId={}: {}", viewId, e.getMessage(), e);
         }
@@ -70,14 +61,9 @@ public class AnalyticsAuditAsyncService {
     @Async("heavyCalcExecutor")
     public void backfillOnlyAsync(long viewId, String userId, String backfillUntil) {
         AnalyticsUserView view = loadSubscribedView(viewId, userId);
-        if (view == null) {
-            return;
-        }
+        if (view == null) return;
         try {
-            log.debug("[analytics-audit] async backfill start viewId={}", viewId);
-            LocalDate until = auditService.parseBackfillUntil(backfillUntil);
-            auditService.backfillAuditForView(view, until);
-            log.debug("[analytics-audit] async backfill done viewId={}", viewId);
+            auditService.backfillAuditForView(view, auditService.parseBackfillUntil(backfillUntil));
         } catch (Exception e) {
             log.warn("[analytics-audit] async backfill failed viewId={}: {}", viewId, e.getMessage(), e);
         }

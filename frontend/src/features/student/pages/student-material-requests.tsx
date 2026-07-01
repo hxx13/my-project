@@ -66,6 +66,9 @@ export default function StudentMaterialRequestsPage() {
                   {req.status === "FULFILLED" && (
                     <button onClick={() => confirm.mutate(req.id)} className="text-[var(--student-primary)] hover:underline font-semibold">确认领取</button>
                   )}
+                  {(req.status === "APPROVED" || req.status === "FULFILLED") && (
+                    <button onClick={() => { if (!window.confirm("确定撤销此申领？已通过/出库的物品将被召回，审核记录将被清除。")) return; withdraw.mutate(req.id); }} className="text-amber-600 hover:underline font-medium">撤销</button>
+                  )}
                 </div>
               </div>
             </StudentCard>

@@ -1,5 +1,8 @@
 package com.example.demo.modules.analytics.service;
 
+import static com.example.demo.common.logging.banner.LoadingSpinner.progress;
+import static com.example.demo.common.logging.banner.LoadingSpinner.run;
+
 import com.example.demo.modules.accessfusion.service.AccessAudienceConstants;
 import com.example.demo.modules.accessfusion.service.AccessSwingCleanWorkspaceService;
 import com.example.demo.modules.analytics.dto.AnalyticsAuditLogDto;
@@ -131,70 +134,70 @@ public class AnalyticsAuditService {
     }
 
     /**
-     * 强制重算：回源清洗 + 历史回溯 + 刷新已有快照 + 写最新周期。
-     * 不要求视图已订阅 — 用户主动触发强制重算即应执行。
+     * 强制重算：回源清洗 → 历史回溯 → 刷新已有快照 → 写最新周期。
+     * 不要求视图已订阅 — 用户主动触发即应执行。
+     * 动画：LoadingSpinner.run（清洗）+ LoadingSpinner.progress（回溯）。
      */
     public void refreshAllSnapshotsForView(AnalyticsUserView view) {
-        if (view == null) {
-            return;
-        }
+        if (view == null) return;
         if (isCageReport(view)) {
             runAuditForView(view);
             return;
         }
         List<AnalyticsAuditLog> existing =
                 auditLogMapper.selectAllByView(view.getUserId(), view.getId(), 500);
-        log.warn(
-                "[analytics-audit] force refresh viewId={} existingSnapshots={} subscribed={}",
-                view.getId(),
-                existing.size(),
-                view.getIsSubscribed());
 
-        // Step 1: 回源清洗 — 确保 access_clean_package_item 有数据
-        preCleanForForceRecalc(view, existing);
+        log.warn("[analytics-audit] force-recalc start viewId={} snapshots={}",
+                view.getId(), existing.size());
 
-        // Step 2: 找出需要覆盖的日期范围
+        // Step 1: 回源清洗（最近7天安全网）
+        run("门禁数据回源清洗", () -> preCleanForForceRecalc(view, existing));
+
+        // Step 2: 计算回溯范围
         LocalDate today = LocalDate.now();
         LocalDate yesterday = today.minusDays(1);
         LocalDate backfillFrom;
         if (!existing.isEmpty()) {
-            // 从最早快照日期开始回溯，覆盖所有历史缺失
             LocalDate earliest = findEarliestSnapshotDate(existing);
             backfillFrom = earliest.isBefore(yesterday.minusDays(30))
                     ? yesterday.minusDays(30) : earliest;
         } else {
-            // 无已有快照：回溯最近 30 天
             backfillFrom = yesterday.minusDays(30);
         }
-        if (backfillFrom.isAfter(yesterday)) {
-            backfillFrom = yesterday;
+        final LocalDate bfFrom = backfillFrom.isAfter(yesterday) ? yesterday : backfillFrom;
+        final long totalDays = ChronoUnit.DAYS.between(bfFrom, yesterday) + 1;
+
+        log.warn("[analytics-audit] backfill viewId={} range=[{} -> {}] days={}",
+                view.getId(), bfFrom, yesterday, totalDays);
+
+        // Step 3: 历史回溯（带进度条）
+        int[] zeroDays = {0};
+        progress("隔离服统计回溯", (int) totalDays, tick -> {
+            for (LocalDate d = bfFrom; !d.isAfter(yesterday); d = d.plusDays(1)) {
+                long events = writeDayPeriod(view, d);
+                if (events == 0) zeroDays[0]++;
+                tick.accept(1);
+            }
+        });
+        if (zeroDays[0] > 0) {
+            log.warn("[analytics-audit] viewId={}: {} / {} 天返回 0 条记录",
+                    view.getId(), zeroDays[0], totalDays);
         }
 
-        // Step 3: 历史回溯 — 覆盖从 backfillFrom 到 yesterday 的所有天
-        log.warn(
-                "[analytics-audit] force refresh viewId={} backfill range=[{} -> {}]",
-                view.getId(), backfillFrom, yesterday);
-        backfillAuditForView(view, backfillFrom);
-
         // Step 4: 刷新已有快照中可能未被 backfill 覆盖的周/月周期
-        int idx = 0;
         for (AnalyticsAuditLog auditLog : existing) {
-            idx++;
             try {
-                refreshSnapshotPeriod(view, auditLog, idx, existing.size());
+                refreshSnapshotPeriod(view, auditLog, 1, 1);
             } catch (Exception e) {
-                log.warn(
-                        "[analytics-audit] refresh snapshot failed viewId={} {} {}: {}",
-                        view.getId(),
-                        auditLog.getPeriodType(),
-                        auditLog.getPeriodLabel(),
-                        e.getMessage());
+                log.warn("[analytics-audit] refresh snapshot failed viewId={} {} {}: {}",
+                        view.getId(), auditLog.getPeriodType(), auditLog.getPeriodLabel(), e.getMessage());
             }
         }
 
         // Step 5: 写最新周期（昨天/上周/上月）
         runAuditForView(view);
-        log.warn("[analytics-audit] force refresh complete viewId={}", view.getId());
+
+        log.warn("[analytics-audit] force-recalc done viewId={}", view.getId());
     }
 
     /** 从已有快照列表中找到最早的日期 */
@@ -213,26 +216,18 @@ public class AnalyticsAuditService {
      * 强制重算前置步骤：回源清洗门禁原表数据到清洗库。
      * 从已有快照中提取日期范围，对所有已启用通道执行全量（非增量）合并。
      */
+    /** 回源清洗最近7天，LoadingSpinner 自动显示 ✓ 或 ✗。失败仅 WARN，不阻塞后续回溯。 */
     private void preCleanForForceRecalc(AnalyticsUserView view, List<AnalyticsAuditLog> existing) {
-        try {
-            // pre-clean 仅覆盖最近 7 天，作为安全网。历史回溯走 backfillAuditForView 查已有清洗库。
-            LocalDate rangeEnd = LocalDate.now().minusDays(1);
-            LocalDate rangeStart = rangeEnd.minusDays(7);
-            String startTime = rangeStart.atStartOfDay().format(DT_FMT);
-            String endTime = rangeEnd.atTime(23, 59, 59).format(DT_FMT);
-            log.warn(
-                    "[analytics-audit] force-recalc pre-clean viewId={} range=[{}, {}]",
-                    view.getId(), startTime, endTime);
-            Map<String, Object> result = workspaceService.forceMergeAllChannelsForWindow(
-                    startTime, endTime, "FORCE_RECALC");
-            log.warn(
-                    "[analytics-audit] force-recalc pre-clean done viewId={}: ok={} fail={} included={}",
-                    view.getId(),
-                    result.get("ok"), result.get("fail"), result.get("totalIncluded"));
-        } catch (Exception e) {
-            log.warn(
-                    "[analytics-audit] force-recalc pre-clean failed viewId={}: {}",
-                    view.getId(), e.getMessage());
+        LocalDate rangeEnd = LocalDate.now().minusDays(1);
+        LocalDate rangeStart = rangeEnd.minusDays(7);
+        String startTime = rangeStart.atStartOfDay().format(DT_FMT);
+        String endTime = rangeEnd.atTime(23, 59, 59).format(DT_FMT);
+        Map<String, Object> result = workspaceService.forceMergeAllChannelsForWindow(
+                startTime, endTime, "FORCE_RECALC");
+        long fail = result.get("fail") instanceof Number n ? n.longValue() : 0;
+        if (fail > 0) {
+            log.warn("[analytics-audit] pre-clean viewId={}: {} channels failed — {}",
+                    view.getId(), fail, result.get("errors"));
         }
     }
 
@@ -401,24 +396,13 @@ public class AnalyticsAuditService {
         }
         int zeroDays = 0;
         int totalDays = 0;
-        long lastLog = System.currentTimeMillis();
         for (LocalDate d = start; !d.isAfter(endDay); d = d.plusDays(1)) {
             totalDays++;
-            long events = writeDayPeriod(view, d);
-            if (events == 0) {
-                zeroDays++;
-            }
-            // 每10天或每10秒输出一次进度
-            long now = System.currentTimeMillis();
-            if (totalDays % 10 == 0 || now - lastLog > 10_000) {
-                log.warn("[analytics-audit] viewId={} backfill progress: {}/{} days done, {} zero-event days so far",
-                        view.getId(), totalDays, span, zeroDays);
-                lastLog = now;
-            }
+            if (writeDayPeriod(view, d) == 0) zeroDays++;
         }
         if (zeroDays > 0) {
-            log.warn("[analytics-audit] viewId={} day backfill done: {} total, {} zero-event days",
-                    view.getId(), totalDays, zeroDays);
+            log.warn("[analytics-audit] viewId={} backfill: {} / {} 天返回 0 条记录",
+                    view.getId(), zeroDays, totalDays);
         }
     }
 
@@ -619,31 +603,8 @@ public class AnalyticsAuditService {
         if (existing != null) {
             row.setId(existing.getId());
             auditLogMapper.updatePeriodSnapshot(row);
-            if (cageReport) {
-                log.info(
-                        "[cage-occupancy-audit] snapshot refreshed viewId={} {} {} slots={}",
-                        view.getId(),
-                        periodType,
-                        periodLabel,
-                        curRounds);
-            } else {
-                log.warn(
-                        "[analytics-audit] snapshot refreshed viewId={} {} {} events={}",
-                        view.getId(),
-                        periodType,
-                        periodLabel,
-                        curRounds);
-            }
         } else {
             auditLogMapper.insert(row);
-            if (cageReport) {
-                log.info(
-                        "[cage-occupancy-audit] snapshot saved viewId={} {} {} slots={}",
-                        view.getId(),
-                        periodType,
-                        periodLabel,
-                        curRounds);
-            }
         }
         return curRounds;
     }

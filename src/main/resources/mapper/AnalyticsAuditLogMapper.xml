@@ -55,7 +55,8 @@
             previous_groups = #{previousGroups},
             delta_rounds = #{deltaRounds},
             delta_pct = #{deltaPct},
-            top_groups_json = #{topGroupsJson}
+            top_groups_json = #{topGroupsJson},
+            created_at = NOW()
         WHERE id = #{id}
     </update>
 

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
-import { usePendingMaterialRequests, useFinishedMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useDeleteMaterialRequest } from "@/api/hooks/useMaterial";
+import { usePendingMaterialRequests, useFinishedMaterialRequests, useApproveMaterialRequest, useRejectMaterialRequest, useRevokeMaterialRequest, useDeleteMaterialRequest } from "@/api/hooks/useMaterial";
 import { fetchAllMaterialDemands, resolveMaterialDemand, exportMaterialAuditTrail, type MaterialDemand } from "@/api/domains/material.api";
 import {
   fetchPendingScanDelayRequests,
@@ -115,6 +115,7 @@ export default function MaterialReviewPage() {
   const { data: finishedData, isLoading: finishedLoading } = useFinishedMaterialRequests(MATERIAL_REVIEW_FINISHED_PAGE);
   const approve = useApproveMaterialRequest();
   const reject = useRejectMaterialRequest();
+  const revoke = useRevokeMaterialRequest();
   const deleteReq = useDeleteMaterialRequest();
   const qc = useQueryClient();
   const { data: demandData, isLoading: demandLoading } = useQuery({
@@ -231,11 +232,9 @@ export default function MaterialReviewPage() {
 
   const materialToday = useMemo(() => filteredMaterialRequests.filter(r => isToday(r.createdAt)), [filteredMaterialRequests]);
   const materialHistory = useMemo(() => filteredMaterialRequests.filter(r => !isToday(r.createdAt)), [filteredMaterialRequests]);
-
-  const materialHistoryHasPending = useMemo(
-    () => materialHistory.some((r) => isMaterialPendingStatus(r.status)),
-    [materialHistory],
-  );
+  // 历史中的待审项独立分组，避免混入已审结列表被遗漏
+  const materialHistoryPending = useMemo(() => materialHistory.filter(r => isMaterialPendingStatus(r.status)), [materialHistory]);
+  const materialHistoryDone = useMemo(() => materialHistory.filter(r => !isMaterialPendingStatus(r.status)), [materialHistory]);
 
   /** 待审已由后端按审核人过滤；历史接口为全员可见，勿再用 optionReviewerMap 二次过滤 */
   const filteredScanDelayPending = scanDelayPending;
@@ -397,7 +396,7 @@ export default function MaterialReviewPage() {
                         </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                           {reqs.map(req => (
-                            <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                            <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
                           ))}
                         </div>
                       </div>
@@ -405,14 +404,39 @@ export default function MaterialReviewPage() {
                   </div>
                 </TimeGroup>
               )}
-              {materialHistory.length > 0 && (
+              {/* 历史中的待审项独立分组，避免混入已审结列表被遗漏 */}
+              {materialHistoryPending.length > 0 && (
                 <TimeGroup
-                  label={materialHistoryHasPending ? "历史（含待审）" : "历史"}
-                  count={materialHistory.length}
-                  defaultOpen={materialHistoryHasPending}
+                  label="待审核（历史）"
+                  count={materialHistoryPending.length}
+                  defaultOpen={true}
                 >
                   <div className="space-y-4">
-                    {Array.from(groupByItem(materialHistory)).map(([itemName, reqs]) => (
+                    {Array.from(groupByItem(materialHistoryPending)).map(([itemName, reqs]) => (
+                      <div key={itemName} className="space-y-2">
+                        <div className="flex items-center gap-2 pl-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                          <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
+                          <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          {reqs.map(req => (
+                            <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </TimeGroup>
+              )}
+              {materialHistoryDone.length > 0 && (
+                <TimeGroup
+                  label="历史"
+                  count={materialHistoryDone.length}
+                  defaultOpen={false}
+                >
+                  <div className="space-y-4">
+                    {Array.from(groupByItem(materialHistoryDone)).map(([itemName, reqs]) => (
                       <div key={itemName} className="space-y-2">
                         <div className="flex items-center gap-2 pl-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-[var(--twin-mute)]" />
@@ -421,7 +445,7 @@ export default function MaterialReviewPage() {
                         </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                           {reqs.map(req => (
-                            <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
+                            <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
                           ))}
                         </div>
                       </div>
@@ -452,8 +476,9 @@ function TimeGroup({ label, count, children, defaultOpen = true, className }: { 
   );
 }
 
-function MaterialRequestCard({ req, canDelete, approve, reject, deleteReq, handleExportPersonal }: { req: MaterialRequest; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void }) {
+function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal }: { req: MaterialRequest; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void }) {
   const isPending = req.status === "PENDING" || req.status === "FIRST_OK";
+  const canRevoke = req.status === "APPROVED" || req.status === "FULFILLED";
   return (
     <div className={`rounded-twin-lg border border-[var(--twin-hairline)] p-3 shadow-twin-level-1 flex flex-col gap-2 ${cardStatusTint(req.status)}`}>
       {/* 顶栏：ID + 状态 + 操作 */}
@@ -462,6 +487,7 @@ function MaterialRequestCard({ req, canDelete, approve, reject, deleteReq, handl
         <div className="flex items-center gap-1.5">
           <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${statusBadge(req.status)}`}>{statusLabel(req.status)}</span>
           <button onClick={() => handleExportPersonal(req.id)} className="text-[10px] text-blue-600 hover:underline shrink-0">导出</button>
+          {canRevoke && <button onClick={() => { if (!window.confirm("撤销此审核？申领将回到待审状态，库存将回退。")) return; revoke.mutate(req.id, { onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "撤销失败") }); }} className="text-[10px] text-amber-600 hover:underline shrink-0 font-medium">撤销</button>}
           {canDelete && <button onClick={() => { if (!window.confirm("删除此申领？")) return; deleteReq.mutate(req.id); }} className="text-[10px] text-red-500 hover:underline shrink-0">删除</button>}
         </div>
       </div>

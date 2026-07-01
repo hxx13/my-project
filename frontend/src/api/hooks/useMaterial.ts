@@ -9,7 +9,7 @@ import {
   restoreAdminMaterialRecycle, purgeAdminMaterialRecycle, purgeAdminMaterialRecycleByIds,
   purgeAllAdminMaterialRecycle, adjustMaterialStock, inboundMaterialItem, fetchPendingMaterialRequests,
   fetchAllMaterialRequests,
-  fetchFinishedMaterialRequests, approveMaterialRequest, rejectMaterialRequest, deleteMaterialRequest,
+  fetchFinishedMaterialRequests, approveMaterialRequest, rejectMaterialRequest, revokeMaterialRequest, deleteMaterialRequest,
   fulfillMaterialRequest, fetchMaterialStatsOverview, fetchMaterialAuditTrail,
 } from "@/api/domains/material.api";
 import { materialQueryKeys } from "@/api/hooks/queryKeys";
@@ -18,6 +18,7 @@ import {
   MATERIAL_REVIEW_FINISHED_PAGE,
   mergeMaterialReviewAfterApprove,
   mergeMaterialReviewAfterReject,
+  mergeMaterialReviewAfterRevoke,
   removeMaterialReviewRequestFromCaches,
 } from "@/features/student-review/materialReviewCache";
 
@@ -152,6 +153,16 @@ export function useRejectMaterialRequest() {
     mutationFn: rejectMaterialRequest,
     onSuccess: (_data, id) => {
       mergeMaterialReviewAfterReject(qc, id, MATERIAL_REVIEW_FINISHED_PAGE);
+      window.dispatchEvent(new Event("aro-admin-refresh-pending-badges"));
+    },
+  });
+}
+export function useRevokeMaterialRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: revokeMaterialRequest,
+    onSuccess: (_data, id) => {
+      mergeMaterialReviewAfterRevoke(qc, id, MATERIAL_REVIEW_FINISHED_PAGE);
       window.dispatchEvent(new Event("aro-admin-refresh-pending-badges"));
     },
   });

@@ -541,18 +541,49 @@ public class MaterialService {
         MaterialRequest request = requestMapper.selectById(id);
         if (request == null) return Result.error("申领单不存在");
         if (!user.getId().equals(request.getUserId())) return Result.error("只能撤回自己的申领");
-        if (!"PENDING".equals(request.getStatus()) && !"FIRST_OK".equals(request.getStatus()))
+        String status = request.getStatus();
+        if (!"PENDING".equals(status) && !"FIRST_OK".equals(status)
+            && !"APPROVED".equals(status) && !"FULFILLED".equals(status))
             return Result.error("当前状态不可撤回");
-        requestMapper.updateStatus(id, "DRAFT", LocalDateTime.now());
-        // 释放预占库存
-        List<MaterialRequestLine> withdrawLines = requestLineMapper.selectByRequestId(id);
-        for (MaterialRequestLine line : withdrawLines) {
-            MaterialItem item = itemMapper.selectById(line.getItemId());
-            if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
-                itemMapper.releaseLock(line.getItemId(), line.getQty());
+        LocalDateTime now = LocalDateTime.now();
+        if ("APPROVED".equals(status) || "FULFILLED".equals(status)) {
+            // 已审核通过 → 回退库存、流水、审核状态，相当于学生侧撤销已通过的申领
+            List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(id);
+            for (MaterialRequestLine line : lines) {
+                int qty = line.getFulfilledQty() != null ? line.getFulfilledQty() : 0;
+                if (qty <= 0) continue;
+                MaterialItem item = itemMapper.selectById(line.getItemId());
+                if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
+                    itemMapper.updateStock(line.getItemId(), qty);
+                }
+                requestLineMapper.updateFulfilledQty(line.getId(), 0);
+                int stockAfter = (item != null && item.getStockQty() != null ? item.getStockQty() : 0) + qty;
+                MaterialStockMovement m = new MaterialStockMovement();
+                m.setItemId(line.getItemId());
+                m.setMovementType("REVOKE_INBOUND");
+                m.setQty(qty);
+                m.setStockAfter(stockAfter);
+                m.setRequestId(id);
+                m.setRequestLineId(line.getId());
+                m.setOperatorUserId(user.getId());
+                m.setApplicantUserId(request.getUserId());
+                m.setRemark("学生撤销已通过申领");
+                stockMovementMapper.insert(m);
             }
+            requestMapper.resetForRevoke(id, now);
+            logOp("REQUEST", id, "STUDENT_REVOKE", Map.of("userId", user.getId()));
+        } else {
+            // 待审/初审通过 → 退回草稿，释放预占库存
+            requestMapper.updateStatus(id, "DRAFT", now);
+            List<MaterialRequestLine> withdrawLines = requestLineMapper.selectByRequestId(id);
+            for (MaterialRequestLine line : withdrawLines) {
+                MaterialItem item = itemMapper.selectById(line.getItemId());
+                if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
+                    itemMapper.releaseLock(line.getItemId(), line.getQty());
+                }
+            }
+            logOp("REQUEST", id, "WITHDRAW", null);
         }
-        logOp("REQUEST", id, "WITHDRAW", null);
         return Result.success(null);
     }
 
@@ -621,6 +652,21 @@ public class MaterialService {
             }
         }
         return true;
+    }
+
+    /** 不依赖申领单状态，直接比对物品审核人列表（用于撤销等操作） */
+    private boolean isItemReviewer(MaterialRequest request, User reviewer) {
+        if (reviewer == null || reviewer.getRole() == null || "MEMBER".equals(reviewer.getRole().name())) return false;
+        List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(request.getId());
+        if (lines.isEmpty()) return false;
+        for (MaterialRequestLine line : lines) {
+            MaterialItem item = itemMapper.selectById(line.getItemId());
+            if (item == null) return false;
+            // 检查一级审核人或二级审核人
+            if (isInReviewerList(item.getReviewerIds(), reviewer)) return true;
+            if (isInReviewerList(item.getSecondReviewerIds(), reviewer)) return true;
+        }
+        return false;
     }
 
     /** 供自动审批等模块判断当前审核人是否可处理该单（与 canReview 同源） */
@@ -864,6 +910,51 @@ public class MaterialService {
         }
         logOp("REQUEST", id, "REJECT", Map.of("reviewer", reviewer.getId()));
         publishMaterialEvent("COMPLETED", id, reviewer.getId(), request.getUserId(), "审核已拒绝");
+        return Result.success(null);
+    }
+
+    /** 撤销已通过的审核：回退库存、流水、审核状态，仅审核人可操作 */
+    @Transactional
+    public Result<?> revoke(User reviewer, String id) {
+        MaterialRequest request = requestMapper.selectById(id);
+        if (request == null) return Result.error("申领单不存在");
+        // 仅审核人或超管可撤销（canReview 依赖状态，对已审结单需直接比对物品审核人列表）
+        if (!isMaterialAuditSuperViewer(reviewer) && !isItemReviewer(request, reviewer)) {
+            return Result.error("无权撤销此申领单");
+        }
+        if (!"APPROVED".equals(request.getStatus()) && !"FULFILLED".equals(request.getStatus())) {
+            return Result.error("仅已通过/已出库的申领可撤销");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(id);
+        for (MaterialRequestLine line : lines) {
+            int qty = line.getFulfilledQty() != null ? line.getFulfilledQty() : 0;
+            if (qty <= 0) continue;
+            // 回退库存
+            MaterialItem item = itemMapper.selectById(line.getItemId());
+            if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
+                itemMapper.updateStock(line.getItemId(), qty);
+            }
+            // 重置行的履行数量
+            requestLineMapper.updateFulfilledQty(line.getId(), 0);
+            // 记录撤销入库流水（冲正原出库，stockAfter 需计入本次回退的 qty）
+            int stockAfter = (item != null && item.getStockQty() != null ? item.getStockQty() : 0) + qty;
+            MaterialStockMovement m = new MaterialStockMovement();
+            m.setItemId(line.getItemId());
+            m.setMovementType("REVOKE_INBOUND");
+            m.setQty(qty);
+            m.setStockAfter(stockAfter);
+            m.setRequestId(id);
+            m.setRequestLineId(line.getId());
+            m.setOperatorUserId(reviewer.getId());
+            m.setApplicantUserId(request.getUserId());
+            m.setRemark("撤销审核回退");
+            stockMovementMapper.insert(m);
+        }
+        // 重置申领单到待审状态
+        requestMapper.resetForRevoke(id, now);
+        logOp("REQUEST", id, "REVOKE", Map.of("reviewer", reviewer.getId()));
+        publishMaterialEvent("REVOKED", id, reviewer.getId(), request.getUserId(), "审核已撤销，回退待审");
         return Result.success(null);
     }
 
