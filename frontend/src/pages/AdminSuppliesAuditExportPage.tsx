@@ -110,6 +110,7 @@ type PersonalAggregateFlatRow = {
   ioType: string;
   fulfilledByDisp: string;
   applicantDisp: string;
+  specSnapshot?: string;
 };
 
 type AuditMergedRow =
@@ -350,6 +351,7 @@ export default function AdminSuppliesAuditExportPage() {
           ioType: lineIoType(o.status, line.fulfilledQty ?? 0),
           fulfilledByDisp: o.fulfilledByName || o.fulfilledBy || "-",
           applicantDisp: o.applicantName || o.userId || "-",
+          specSnapshot: line.specSnapshot,
         });
       }
     }
@@ -664,6 +666,7 @@ export default function AdminSuppliesAuditExportPage() {
                   <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                     <tr>
                       <th className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">物资名称</th>
+                      <th className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">规格</th>
                       <th className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">领用申请时间</th>
                       <th className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">出库完成时间</th>
                       <th className="border-b border-[var(--twin-hairline)] px-2 py-2">申请领用数量</th>
@@ -678,6 +681,7 @@ export default function AdminSuppliesAuditExportPage() {
                     {(claimDetail.lines || []).map((line) => (
                       <tr key={line.id} className="hover:bg-[var(--twin-canvas-soft)]">
                         <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{line.snapshotName}</td>
+                        <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{formatSpecLabel(line.specSnapshot) || "—"}</td>
                         <td className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">{toTimeText(claimDetail.createdAt)}</td>
                         <td className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">{toTimeText(claimDetail.fulfilledAt)}</td>
                         <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{line.qty}</td>
@@ -705,6 +709,7 @@ export default function AdminSuppliesAuditExportPage() {
                 <thead className="bg-[var(--twin-canvas-soft)] text-[var(--twin-body)]">
                   <tr>
                     <th className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">物资名称</th>
+                    <th className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">规格</th>
                     <th className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">领用申请时间</th>
                     <th className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">出库完成时间</th>
                     <th className="border-b border-[var(--twin-hairline)] px-2 py-2">申请领用数量</th>
@@ -719,6 +724,7 @@ export default function AdminSuppliesAuditExportPage() {
                   {aggregateFlatRows.map((row) => (
                     <tr key={row.rowKey} className="hover:bg-[var(--twin-canvas-soft)]">
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{row.snapshotName}</td>
+                      <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{formatSpecLabel(row.specSnapshot) || "—"}</td>
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">{toTimeText(row.createdAt)}</td>
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">{toTimeText(row.fulfilledAt)}</td>
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{row.qty}</td>
@@ -825,6 +831,7 @@ export default function AdminSuppliesAuditExportPage() {
                 <tr>
                   <th className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">变动时间</th>
                   <th className="border-b border-[var(--twin-hairline)] px-2 py-2">物资名称</th>
+                  <th className="border-b border-[var(--twin-hairline)] px-2 py-2">规格</th>
                   <th className="border-b border-[var(--twin-hairline)] px-2 py-2">类型</th>
                   <th className="border-b border-[var(--twin-hairline)] px-2 py-2">变动数量</th>
                   <th className="border-b border-[var(--twin-hairline)] px-2 py-2">现存</th>
@@ -848,6 +855,7 @@ export default function AdminSuppliesAuditExportPage() {
                       <tr key={rk} className="hover:bg-[var(--twin-canvas-soft)]">
                         <td className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">{toTimeText(m.createdAt)}</td>
                         <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{m.itemName || "-"}</td>
+                        <td className="border-b border-[var(--twin-hairline)] px-2 py-2 text-[var(--twin-mute)]">{formatSpecLabel((m as { specSnapshot?: string }).specSnapshot) || "—"}</td>
                         <td className="border-b border-[var(--twin-hairline)] px-2 py-2">
                           {movementInOutLabelRow(m.movementType, q)}
                         </td>
@@ -899,6 +907,7 @@ export default function AdminSuppliesAuditExportPage() {
                     <tr key={rk} className="hover:bg-violet-50/40">
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2 whitespace-nowrap">{toTimeText(h.outboundTime)}</td>
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{h.itemName || "-"}</td>
+                      <td className="border-b border-[var(--twin-hairline)] px-2 py-2 text-[var(--twin-body)]">{formatSpecLabel((h as { specSnapshot?: string }).specSnapshot) || "—"}</td>
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2">出库</td>
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2">{changeSigned}</td>
                       <td className="border-b border-[var(--twin-hairline)] px-2 py-2">
