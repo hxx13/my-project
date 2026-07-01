@@ -8,6 +8,8 @@ import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { resolveMaterialApplicantGroupForStudentSession } from "@/features/student/materialApplicant";
 import type { MaterialItem } from "@/api/domains/material.api";
 import { StudentCard, Skeleton, EmptyState, Badge } from "../components/ui";
+import { MaterialSpecPickControl } from "@/components/material/MaterialSpecPickerSheet";
+import { hasSpecSchema } from "@/utils/materialSpecHelpers";
 import { cn } from "@/lib/utils";
 import { webImageSrc } from "@/utils/mediaUrl";
 import toast from "react-hot-toast";
@@ -41,35 +43,6 @@ function parseCartKey(key: string): { itemId: number; specKey: string } {
   const idx = key.indexOf("::");
   if (idx === -1) return { itemId: Number(key), specKey: "" };
   return { itemId: Number(key.slice(0, idx)), specKey: key.slice(idx + 2) };
-}
-
-/** Generate cartesian-product specKeys from dimensions + selections */
-function generateSpecCombos(
-  dimensions: { name: string; options: string[] }[],
-  selected: Record<string, string>,
-): string[] {
-  const selectedDims = dimensions.filter((d) => selected[d.name]);
-  if (selectedDims.length === 0) return [];
-  let combos: Record<string, string>[] = [{}];
-  for (const dim of selectedDims) {
-    const opt = selected[dim.name];
-    combos = combos.map((c) => ({ ...c, [dim.name]: opt }));
-  }
-  const rest = dimensions.filter((d) => !selected[d.name]);
-  for (const dim of rest) {
-    const next: Record<string, string>[] = [];
-    for (const c of combos) {
-      for (const opt of dim.options) {
-        next.push({ ...c, [dim.name]: opt });
-      }
-    }
-    combos = next;
-  }
-  return combos.map((c) =>
-    Object.entries(c)
-      .map(([k, v]) => `${k}=${v}`)
-      .join("|"),
-  );
 }
 
 export default function StudentMaterialPage() {
@@ -227,7 +200,7 @@ export default function StudentMaterialPage() {
           ) : !items || items.length === 0 ? (
             <EmptyState icon={Package} title="暂无上架物品" />
           ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3 overflow-visible">
               {items.map((item) => (
                 <MaterialItemCard
                   key={item.id}
@@ -392,12 +365,6 @@ export default function StudentMaterialPage() {
   );
 }
 
-/** SKU type for spec combo display */
-interface SkuCombo {
-  specKey: string;
-  label: string;
-}
-
 function MaterialItemCard({
   item,
   cart,
@@ -409,301 +376,96 @@ function MaterialItemCard({
   maxStock?: number;
   onCartChange: (key: string, delta: number) => void;
 }) {
-  // Parse specSchema
-  const dimensions: { name: string; options: string[] }[] = useMemo(() => {
-    if (!item.specSchema) return [];
-    try {
-      const schema = JSON.parse(item.specSchema);
-      return schema.dimensions || [];
-    } catch {
-      return [];
-    }
-  }, [item.specSchema]);
+  const hasSpecs = hasSpecSchema(item.specSchema);
+  const cartKey = String(item.id);
+  const cartQty = cart[cartKey] || 0;
+  const atCap = maxStock != null && cartQty >= maxStock;
+  const soldOut = maxStock != null && maxStock <= 0;
 
-  const hasSpecs = dimensions.length > 0;
+  return (
+    <StudentCard className="flex items-start gap-3 p-3 overflow-visible hover:shadow-md hover:border-[var(--student-primary)]/20 transition-all duration-150">
+      <div className="size-14 shrink-0 rounded-lg bg-[var(--student-canvas-soft)] flex items-center justify-center overflow-hidden">
+        {item.coverUrl ? (
+          <img
+            src={webImageSrc(item.coverUrl) || item.coverUrl}
+            alt={item.name}
+            className="size-full object-cover"
+          />
+        ) : (
+          <span className="text-xl font-bold text-[var(--student-primary)]/30">{item.name?.charAt(0) || "物"}</span>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <h4 className="text-[14px] font-semibold truncate">{item.name}</h4>
+        {item.subtitle && (
+          <p className="text-[12px] text-[var(--student-mute)] mt-0.5 truncate">
+            {item.subtitle}
+          </p>
+        )}
+        {/* Stock info + action area — separated by border */}
+        <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-[var(--student-hairline)]">
+          {/* Stock capsule badge */}
+          <span className={cn(
+            "text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0",
+            item.stockMode === "UNLIMITED"
+              ? "bg-[var(--student-success-soft,#ecfdf5)] text-[var(--student-success,#059669)]"
+              : (item.stockQty || 0) <= 0
+                ? "bg-[var(--student-danger-soft,#fef2f2)] text-[var(--student-danger,#dc2626)]"
+                : (item.stockQty || 0) <= 3
+                  ? "bg-[var(--student-warning-soft,#fffbeb)] text-[var(--student-warning,#d97706)]"
+                  : "bg-[var(--student-canvas-soft)] text-[var(--student-mute)]",
+          )}>
+            {item.stockMode === "UNLIMITED"
+              ? "库存充足"
+              : (item.stockQty || 0) <= 0
+                ? "已售罄"
+                : (item.stockQty || 0) <= 3
+                  ? `仅剩 ${item.stockQty} 件`
+                  : "库存充足"}
+          </span>
 
-  if (!hasSpecs) {
-    // ---- simple item (no specs) ----
-    const cartKey = String(item.id);
-    const cartQty = cart[cartKey] || 0;
-    const atCap = maxStock != null && cartQty >= maxStock;
-    return (
-      <StudentCard className="flex items-start gap-3 p-3">
-        <div className="size-16 shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] flex items-center justify-center text-[var(--student-mute)] text-[11px] overflow-hidden">
-          {item.coverUrl ? (
-            <img
-              src={webImageSrc(item.coverUrl) || item.coverUrl}
-              alt={item.name}
-              className="size-full object-cover"
+          {/* Quantity stepper or spec picker */}
+          {hasSpecs ? (
+            <MaterialSpecPickControl
+              item={item}
+              cart={cart}
+              variant="student"
+              disabled={soldOut}
+              onAddKey={(key) => onCartChange(key, 1)}
+              onDecKey={(key) => onCartChange(key, -1)}
+              onAddPlain={() => onCartChange(cartKey, 1)}
+              onDecPlain={() => onCartChange(cartKey, -1)}
             />
           ) : (
-            "暂无图片"
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h4 className="text-[13px] font-semibold truncate">{item.name}</h4>
-          </div>
-          {item.subtitle && (
-            <p className="text-[11px] text-[var(--student-mute)] mt-0.5 line-clamp-2">
-              {item.subtitle}
-            </p>
-          )}
-          <div className="flex items-center justify-between gap-2 mt-1.5 flex-nowrap">
-            <span className="text-[11px] text-[var(--student-mute)] flex-1 min-w-0">
-              库存:{" "}
-              {item.stockMode === "UNLIMITED"
-                ? "无限"
-                : item.showStockQty === 0
-                  ? "有货"
-                  : item.stockQty || 0}
-            </span>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-0.5 shrink-0 border border-[var(--student-hairline)] rounded-lg overflow-hidden">
               {cartQty > 0 && (
-                <button
-                  onClick={() => onCartChange(cartKey, -1)}
-                  className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center"
-                >
-                  <Minus className="size-3" />
-                </button>
-              )}
-              {cartQty > 0 && (
-                <span className="text-[13px] w-5 text-center font-medium">
-                  {cartQty}
-                </span>
+                <>
+                  <button
+                    onClick={() => onCartChange(cartKey, -1)}
+                    className="size-7 flex items-center justify-center hover:bg-[var(--student-canvas-soft)] transition-colors"
+                  >
+                    <Minus className="size-3" />
+                  </button>
+                  <span className="w-6 text-center text-[13px] font-semibold tabular-nums">{cartQty}</span>
+                </>
               )}
               <button
                 onClick={() => onCartChange(cartKey, 1)}
-                disabled={atCap}
-                className="size-6 rounded border border-[var(--student-hairline)] flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
+                disabled={atCap || soldOut}
+                className={cn(
+                  "size-7 flex items-center justify-center transition-colors",
+                  cartQty > 0 ? "rounded-r-md" : "rounded-lg",
+                  atCap || soldOut
+                    ? "bg-[var(--student-hairline)] text-[var(--student-mute)] cursor-not-allowed"
+                    : "bg-[var(--student-primary)] text-white hover:opacity-90"
+                )}
               >
                 <Plus className="size-3" />
               </button>
             </div>
-          </div>
-        </div>
-      </StudentCard>
-    );
-  }
-
-  // ---- spec item — SKU panel ----
-  return (
-    <SpecItemCard
-      item={item}
-      dimensions={dimensions}
-      cart={cart}
-      maxStock={maxStock}
-      onCartChange={onCartChange}
-    />
-  );
-}
-
-/** Card for items that have spec dimensions */
-function SpecItemCard({
-  item,
-  dimensions,
-  cart,
-  maxStock,
-  onCartChange,
-}: {
-  item: MaterialItem;
-  dimensions: { name: string; options: string[] }[];
-  cart: Record<string, number>;
-  maxStock?: number;
-  onCartChange: (key: string, delta: number) => void;
-}) {
-  // which option is selected per dimension
-  const [selected, setSelected] = useState<Record<string, string>>({});
-  // local qty per SKU (not yet in main cart)
-  const [skuQtys, setSkuQtys] = useState<Record<string, number>>({});
-
-  // list of all spec combos given current selections
-  const combos: SkuCombo[] = useMemo(() => {
-    const keys = generateSpecCombos(dimensions, selected);
-    return keys.map((specKey) => ({
-      specKey,
-      label: formatSpecLabel(JSON.stringify(parseSpecKey(specKey))),
-    }));
-  }, [dimensions, selected]);
-
-  // subtotal of local SKU qtys
-  const subtotal = useMemo(
-    () => Object.values(skuQtys).reduce((a, b) => a + b, 0),
-    [skuQtys],
-  );
-
-  const allDimsSelected = dimensions.every((d) => selected[d.name]);
-  const specRequired = item.specRequired === 1;
-
-  /** Add local SKU qtys to main cart */
-  function handleAddToCart() {
-    for (const [specKey, qty] of Object.entries(skuQtys)) {
-      if (qty > 0) {
-        const cartKey = `${item.id}::${specKey}`;
-        onCartChange(cartKey, qty);
-      }
-    }
-    // reset local selections
-    setSkuQtys({});
-    setSelected({});
-  }
-
-  // When dimensions change, reset SKU qtys
-  function handleDimSelect(dimName: string, opt: string) {
-    setSelected((prev) => {
-      const cur = prev[dimName];
-      if (cur === opt) {
-        // deselect
-        const next = { ...prev };
-        delete next[dimName];
-        return next;
-      }
-      return { ...prev, [dimName]: opt };
-    });
-    // reset local qtys on dimension change
-    setSkuQtys({});
-  }
-
-  return (
-    <StudentCard className="p-3 space-y-2">
-      {/* Item header */}
-      <div className="flex items-start gap-3">
-        <div className="size-14 shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] flex items-center justify-center text-[var(--student-mute)] text-[10px] overflow-hidden">
-          {item.coverUrl ? (
-            <img
-              src={webImageSrc(item.coverUrl) || item.coverUrl}
-              alt={item.name}
-              className="size-full object-cover"
-            />
-          ) : (
-            "暂无图片"
           )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <h4 className="text-[13px] font-semibold truncate">{item.name}</h4>
-          {item.subtitle && (
-            <p className="text-[11px] text-[var(--student-mute)] mt-0.5 line-clamp-1">
-              {item.subtitle}
-            </p>
-          )}
-          <p className="text-[11px] text-[var(--student-mute)] mt-0.5">
-            库存:{" "}
-            {item.stockMode === "UNLIMITED"
-              ? "无限"
-              : item.showStockQty === 0
-                ? "有货"
-                : item.stockQty || 0}
-          </p>
         </div>
       </div>
-
-      {/* Dimension selectors */}
-      {dimensions.map((dim) => (
-        <div key={dim.name} className="flex items-center gap-1.5">
-          <span className="text-[11px] text-[var(--student-mute)] w-8 shrink-0">
-            {dim.name}
-          </span>
-          <div className="flex gap-1 flex-wrap">
-            {dim.options.map((opt) => {
-              const active = selected[dim.name] === opt;
-              return (
-                <button
-                  key={opt}
-                  onClick={() => handleDimSelect(dim.name, opt)}
-                  className={cn(
-                    "px-2 py-0.5 rounded-[var(--student-radius-pill)] text-[11px] border transition-colors",
-                    active
-                      ? "border-[var(--student-primary)] bg-[var(--student-primary-soft)] text-[var(--student-primary)]"
-                      : "border-[var(--student-hairline)] text-[var(--student-body)] hover:border-[var(--student-primary)]",
-                  )}
-                >
-                  {opt}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-
-      {/* SKU grid */}
-      {combos.length > 0 && (
-        <div className="border-t border-[var(--student-hairline)] pt-2 space-y-1">
-          {combos.map((combo) => {
-            const qty = skuQtys[combo.specKey] || 0;
-            const atCap = maxStock != null && qty >= maxStock;
-            return (
-              <div
-                key={combo.specKey}
-                className="flex items-center justify-between"
-              >
-                <span className="text-[11px] text-[var(--student-body)]">
-                  {combo.label}
-                </span>
-                <div className="flex items-center gap-1">
-                  {qty > 0 && (
-                    <button
-                      onClick={() =>
-                        setSkuQtys((prev) => {
-                          const nv = Math.max(0, qty - 1);
-                          const next = { ...prev };
-                          if (nv === 0) delete next[combo.specKey];
-                          else next[combo.specKey] = nv;
-                          return next;
-                        })
-                      }
-                      className="size-5 rounded border border-[var(--student-hairline)] flex items-center justify-center"
-                    >
-                      <Minus className="size-3" />
-                    </button>
-                  )}
-                  {qty > 0 && (
-                    <span className="text-[12px] w-4 text-center font-medium">
-                      {qty}
-                    </span>
-                  )}
-                  <button
-                    onClick={() =>
-                      setSkuQtys((prev) => {
-                        const cap = maxStock != null ? Math.min(999, maxStock) : 999;
-                        const nv = Math.min(cap, qty + 1);
-                        return { ...prev, [combo.specKey]: nv };
-                      })
-                    }
-                    disabled={atCap}
-                    className="size-5 rounded border border-[var(--student-hairline)] flex items-center justify-center disabled:opacity-30"
-                  >
-                    <Plus className="size-3" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          <div className="flex items-center justify-between pt-1.5 border-t border-[var(--student-hairline)]/50">
-            <span className="text-[11px] text-[var(--student-mute)]">
-              小计 {subtotal} 件
-            </span>
-            <button
-              onClick={handleAddToCart}
-              disabled={
-                subtotal === 0 ||
-                (specRequired && !allDimsSelected)
-              }
-              className="px-3 py-1 rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] text-white text-[12px] font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              加入购物车
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* If no combos yet (no dimension selected), show hint */}
-      {combos.length === 0 && (
-        <p className="text-[11px] text-[var(--student-mute)]">
-          {specRequired
-            ? "请选择所有规格"
-            : "请选择规格"}
-        </p>
-      )}
     </StudentCard>
   );
 }
