@@ -90,10 +90,10 @@ export function SpecSheet({
 }: SpecSheetProps) {
   const [selections, setSelections] = useState<MultiSpecSelections>({});
 
-  // Reset selections when sheet opens or item changes
+  // Reset selections only when switching to a different item
   useEffect(() => {
-    if (open) setSelections({});
-  }, [open, item.id]);
+    setSelections({});
+  }, [item.id]);
 
   const dimensions = useMemo(() => parseSpecDimensions(item.specSchema), [item.specSchema]);
   const allCombos = useMemo(() => generateSpecCombos(dimensions), [dimensions]);

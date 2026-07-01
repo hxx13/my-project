@@ -199,7 +199,7 @@ export default function StudentMaterialPage() {
             >
               <ShoppingCart className="size-4" /> 申领物品栏
               {cartCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-[var(--student-danger)] text-white text-[10px] flex items-center justify-center font-bold">
+                <span className="absolute -top-1.5 -right-1.5 size-5 rounded-full bg-[var(--student-danger,#dc2626)] text-white text-[10px] flex items-center justify-center font-bold">
                   {cartCount}
                 </span>
               )}
