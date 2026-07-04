@@ -497,7 +497,8 @@ public class MaterialAdminController {
         try {
             List<MaterialItemFlowExportRow> rows = materialService.collectItemFlowExportRows(itemId, from, to, applicantGroup);
             byte[] body = excelExportService.buildItemFlowSheet(rows);
-            String label = StringUtils.hasText(exportLabel) ? exportLabel : ("物品-" + itemId);
+            String label = StringUtils.hasText(exportLabel) ? exportLabel
+                    : (itemId != null && itemId > 0 ? ("物品-" + itemId) : "全部物品");
             String fn = MaterialService.buildAuditExportFilename(label, from, to);
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fn + "\"")

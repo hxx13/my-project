@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Search, X } from "lucide-react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { fetchDahuaDeviceChannels, type DahuaDeviceChannelRow } from "@/api/twinApi";
 import { cn } from "@/lib/utils";
 
@@ -133,12 +134,7 @@ export function ChannelMultiSelect({ selected, onChange, className }: Props) {
                         checked && "bg-indigo-50"
                       )}
                     >
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-neutral-300"
-                        checked={checked}
-                        onChange={() => toggle(ch.code)}
-                      />
+                      <AdminSwitchScaled size="sm" checked={checked} onChange={() => toggle(ch.code)} />
                       <span className="truncate">{ch.name}</span>
                       <span className="shrink-0 text-xs text-neutral-400">{ch.code}</span>
                     </label>

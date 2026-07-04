@@ -8,6 +8,7 @@ import {
 } from "@/api/domains/accessFusion.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminRightDrawer } from "@/components/admin/AdminRightDrawer";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 
 type Props = {
@@ -136,11 +137,10 @@ export function AccessDebounceDrawer({
           </label>
 
           <label className="flex items-start gap-2 rounded-lg border bg-slate-50 px-3 py-2 cursor-pointer">
-            <input
-              type="checkbox"
-              className="mt-0.5 rounded"
+            <AdminSwitchScaled
+              size="3.5"
               checked={autoCleanPackage === 1}
-              onChange={(e) => setAutoCleanPackage(e.target.checked ? 1 : 0)}
+              onChange={(checked) => setAutoCleanPackage(checked ? 1 : 0)}
             />
             <span className="text-xs text-slate-700 leading-relaxed">
               <strong>定时自动清洗并打包落库</strong>

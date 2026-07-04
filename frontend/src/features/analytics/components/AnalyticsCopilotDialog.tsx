@@ -23,6 +23,7 @@ import {
   type AnalyticsChatSession,
 } from "@/api/domains/analyticsChat.api";
 import type { AnalyticsReportKey } from "@/api/domains/analytics.api";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { ChatMarkdownBody } from "@/components/markdown/ChatMarkdownBody";
 import { cn } from "@/lib/utils";
 
@@ -373,12 +374,7 @@ export function AnalyticsCopilotDialog({ open, onClose, reportKey, configCount }
 
             <footer className="shrink-0 border-t border-neutral-100 bg-white p-3">
               <label className="mb-2 flex cursor-pointer items-center gap-2 text-[11px] text-neutral-500">
-                <input
-                  type="checkbox"
-                  checked={refreshContext}
-                  onChange={(e) => setRefreshContext(e.target.checked)}
-                  className="rounded border-neutral-300"
-                />
+                <AdminSwitchScaled size="3.5" checked={refreshContext} onChange={setRefreshContext} />
                 <RefreshCw className="h-3 w-3" />
                 发送前重新封箱全部配置的最新清算数据
               </label>

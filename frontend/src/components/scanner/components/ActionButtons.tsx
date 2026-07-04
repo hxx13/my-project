@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AnimatedRoomButton } from "@/components/scanner/AnimatedRoomButton";
 import { ScanDelayButton, ScanDelayMenuPortal } from "@/components/scanner/ScanDelayButtonMenu";
 import { RoomEnterConfirmDialog } from "@/components/scanner/RoomEnterConfirmDialog";
@@ -215,11 +216,10 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                         >
                             <div className="absolute top-1/2 -translate-y-1/2 right-full mr-2 w-[88px] opacity-0 group-hover:opacity-100 transition-all duration-300 z-10">
                                 <label className="flex items-center gap-1.5 text-[10px] text-[var(--app-color-text-tertiary)] whitespace-nowrap">
-                                    <input
-                                        type="checkbox"
+                                    <AdminSwitchScaled
+                                        size="3"
                                         checked={props.getKeepCardState(idx)}
-                                        onChange={(e) => props.setKeepCardState(idx, e.target.checked)}
-                                        className="accent-rose-500 w-3.5 h-3.5"
+                                        onChange={(checked) => props.setKeepCardState(idx, checked)}
                                     />
                                     长期占有
                                 </label>
@@ -301,11 +301,10 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                     >
                         <div className="absolute top-1/2 -translate-y-1/2 right-full mr-2 w-[88px] opacity-0 group-hover:opacity-100 transition-all duration-300 z-10">
                             <label className="flex items-center gap-1.5 text-[10px] text-[var(--app-color-text-tertiary)] whitespace-nowrap">
-                                <input
-                                    type="checkbox"
+                                <AdminSwitchScaled
+                                    size="3"
                                     checked={props.getKeepCardState(idx)}
-                                    onChange={(e) => props.setKeepCardState(idx, e.target.checked)}
-                                    className="accent-rose-500 w-3.5 h-3.5"
+                                    onChange={(checked) => props.setKeepCardState(idx, checked)}
                                 />
                                 不还卡出
                             </label>

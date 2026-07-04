@@ -8,6 +8,7 @@ public class MaterialItemFlowExportRow {
     private String time;
     private String eventType;
     private String itemName;
+    private String spec;
     private String qty;
     private String stockAfter;
     private String applicantName;

@@ -99,4 +99,49 @@
         </if>
         ORDER BY sample_at ASC, id ASC
     </select>
+
+    <select id="selectFleetAgg" resultType="com.example.demo.modules.telemetry.dto.archive.TelemetryFleetAggRow">
+        SELECT
+            room_canonical AS roomCanonical,
+            metric_kind_code AS metricKindCode,
+            SUBSTRING_INDEX(GROUP_CONCAT(variable_name ORDER BY sample_at DESC), ',', 1) AS variable_name,
+            SUBSTRING_INDEX(GROUP_CONCAT(numeric_value ORDER BY sample_at DESC), ',', 1) + 0 AS latest_value,
+            MIN(numeric_value) AS min_value,
+            MAX(numeric_value) AS max_value,
+            AVG(numeric_value) AS avg_value,
+            COUNT(1) AS sample_count,
+            MAX(sample_at) AS latest_at
+        FROM telemetry_value_archive
+        WHERE sample_at &gt;= #{from}
+          AND sample_at &lt;= #{to}
+          AND room_canonical IS NOT NULL
+          AND room_canonical != ''
+          AND numeric_value IS NOT NULL
+        <if test="metricKindCode != null and metricKindCode != ''">
+            AND metric_kind_code = #{metricKindCode}
+        </if>
+        <if test="floorFilter != null and floorFilter != ''">
+            AND room_canonical LIKE CONCAT(#{floorFilter}, '%')
+        </if>
+        GROUP BY room_canonical, metric_kind_code
+    </select>
+
+    <select id="selectPartitionBucketSamples" resultMap="ArchiveMap">
+        SELECT id, sample_at, variable_name, numeric_value, raw_value,
+               metric_kind_code, room_canonical, bundle_code,
+               schema_version, ingest_batch_id, ext_json
+        FROM telemetry_value_archive
+        WHERE sample_at &gt;= #{from}
+          AND sample_at &lt;= #{to}
+          AND numeric_value IS NOT NULL
+          AND room_canonical IS NOT NULL
+        <if test="metricKindCode != null and metricKindCode != ''">
+            AND metric_kind_code = #{metricKindCode}
+        </if>
+        <if test="floorFilter != null and floorFilter != ''">
+            AND room_canonical LIKE CONCAT(#{floorFilter}, '%')
+        </if>
+        ORDER BY sample_at ASC
+        LIMIT 50000
+    </select>
 </mapper>

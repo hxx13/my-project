@@ -22,6 +22,8 @@ import { listDahuaSwingStatsTasks, type DahuaSwingStatsPullTask } from "@/api/do
 
 import { OPEN_TYPE_OPTIONS } from "@/features/access-audit/AccessRecordFilterBar";
 
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
+
 import { AccessSwingRecordTable } from "@/features/dahua-swing-records/AccessSwingRecordTable";
 
 import {
@@ -716,13 +718,13 @@ export function AccessSwingRecordsPanel() {
 
           <label className="inline-flex items-center gap-1.5 cursor-pointer">
 
-            <input
+            <AdminSwitchScaled
 
-              type="checkbox"
+              size="3.5"
 
               checked={filters.requireMapping}
 
-              onChange={(e) => setFilters((p) => ({ ...p, requireMapping: e.target.checked }))}
+              onChange={(checked) => setFilters((p) => ({ ...p, requireMapping: checked }))}
 
             />
 
@@ -732,13 +734,13 @@ export function AccessSwingRecordsPanel() {
 
           <label className="inline-flex items-center gap-1.5 cursor-pointer">
 
-            <input
+            <AdminSwitchScaled
 
-              type="checkbox"
+              size="3.5"
 
               checked={filters.openSuccessOnly}
 
-              onChange={(e) => setFilters((p) => ({ ...p, openSuccessOnly: e.target.checked }))}
+              onChange={(checked) => setFilters((p) => ({ ...p, openSuccessOnly: checked }))}
 
             />
 

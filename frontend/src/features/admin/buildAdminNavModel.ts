@@ -106,6 +106,13 @@ function resolveHomeEntryBadgeText(
 /** 教职工 Twin 命名空间；Admin 壳实际挂载在 /console/admin 下 */
 export const STAFF_CONSOLE_NS = "/console";
 
+/** Twin 全屏入口（注册表 canonical 路径，不含 /console 前缀） */
+export const TWIN_FULLSCREEN_ENTRY_PATHS = new Set([
+  "/animal-room-telemetry",
+  "/animal-room-cockpit",
+  "/digital-twin-screen",
+]);
+
 /**
  * 规范化为注册表用的 canonical 路径（/admin/...）。
  * 兼容 location.pathname（/console/admin/...）与旧 /admin/... 链接。
@@ -118,6 +125,10 @@ export function normalizeAdminPath(path: string): string {
   if (withSlash.startsWith(`${STAFF_CONSOLE_NS}/admin/`)) {
     return withSlash.slice(STAFF_CONSOLE_NS.length);
   }
+  if (withSlash.startsWith(`${STAFF_CONSOLE_NS}/`)) {
+    const withoutConsole = withSlash.slice(STAFF_CONSOLE_NS.length);
+    if (TWIN_FULLSCREEN_ENTRY_PATHS.has(withoutConsole)) return withoutConsole;
+  }
   return withSlash;
 }
 
@@ -126,12 +137,30 @@ export function toAdminRoutePath(path: string): string {
   const canonical = normalizeAdminPath(path);
   if (!canonical || canonical === "/admin") return `${STAFF_CONSOLE_NS}/admin`;
   if (canonical.startsWith("/admin/")) return `${STAFF_CONSOLE_NS}${canonical}`;
+  if (TWIN_FULLSCREEN_ENTRY_PATHS.has(canonical)) return `${STAFF_CONSOLE_NS}${canonical}`;
   return path;
 }
 
 export function isAdminAreaPath(path: string): boolean {
   const p = normalizeAdminPath(path);
   return p === "/admin" || p.startsWith("/admin/");
+}
+
+export function isTwinFullscreenEntryPath(path: string): boolean {
+  return TWIN_FULLSCREEN_ENTRY_PATHS.has(normalizeAdminPath(path));
+}
+
+/** Twin 主大屏首页（含 /console 命名空间下的 index 与 dashboard 路由） */
+export function isTwinDashboardHomePath(pathname: string): boolean {
+  let p = normalizeAdminPath(pathname);
+  if (p === STAFF_CONSOLE_NS || p.startsWith(`${STAFF_CONSOLE_NS}/`)) {
+    p = p.slice(STAFF_CONSOLE_NS.length) || "/";
+  }
+  return p === "/" || p === "/dashboard" || p === "/dashboard-preview";
+}
+
+export function isStaffNavPersonalizationPath(path: string): boolean {
+  return isAdminAreaPath(path) || isTwinFullscreenEntryPath(path);
 }
 
 export function createAdminNavContext(role: string, permNodes: PublicPagePermissionNode[]): AdminNavContext {
@@ -223,6 +252,98 @@ function resolveNavEntryBadgeText(
     pendingBadges,
     (itemBadgeKey as keyof PendingBadges | undefined) ?? lookupRegistryBadgeKey(path),
   );
+}
+
+/** 收集侧栏/工作台已占用的 canonical 路径（防 registry 回填补重复） */
+function collectKnownNavPaths(
+  sidebarGroups: AdminSidebarNavGroup[],
+  homeSections?: AdminHomeSection[],
+  serverNodes?: AdminNavConfigNode[],
+): Set<string> {
+  const known = new Set<string>();
+  const add = (path: string | null | undefined) => {
+    const norm = normalizeAdminPath(path || "");
+    if (norm) known.add(norm);
+  };
+  for (const g of sidebarGroups) {
+    for (const it of g.items) add(it.to);
+    for (const sg of g.subgroups ?? []) {
+      for (const it of sg.items) add(it.to);
+    }
+  }
+  for (const s of homeSections ?? []) {
+    for (const e of s.entries) add(e.path);
+  }
+  if (serverNodes) {
+    const walk = (nodes: AdminNavConfigNode[]) => {
+      for (const n of nodes) {
+        if (n.type === "ITEM") add(n.itemPath);
+        if (n.children?.length) walk(n.children);
+      }
+    };
+    walk(serverNodes);
+  }
+  return known;
+}
+
+/** 侧栏全局按路径去重（保留首次出现；避免 server config + registry 回补双份） */
+function dedupeSidebarNavGroups(groups: AdminSidebarNavGroup[]): AdminSidebarNavGroup[] {
+  const seenGlobal = new Set<string>();
+  return groups
+    .map((g) => {
+      const seenLocal = new Set<string>();
+      const dedupe = (items: AdminSidebarNavItem[]) =>
+        items.filter((it) => {
+          const p = normalizeAdminPath(it.to);
+          if (!p || seenGlobal.has(p) || seenLocal.has(p)) return false;
+          seenGlobal.add(p);
+          seenLocal.add(p);
+          return true;
+        });
+      const items = dedupe(g.items);
+      const subgroups = g.subgroups
+        ?.map((sg) => ({ ...sg, items: dedupe(sg.items) }))
+        .filter((sg) => sg.items.length > 0);
+      return { ...g, items, subgroups: subgroups?.length ? subgroups : undefined };
+    })
+    .filter((g) => g.items.length > 0 || (g.subgroups?.length ?? 0) > 0);
+}
+
+/** 工作台分组内按路径去重（修复 React key `${title}:${path}` 冲突） */
+function dedupeHomeSections(sections: AdminHomeSection[]): AdminHomeSection[] {
+  const seenGlobal = new Set<string>();
+  return sections
+    .map((s) => {
+      const seenLocal = new Set<string>();
+      const entries = s.entries.filter((e) => {
+        const p = normalizeAdminPath(e.path);
+        if (!p || seenGlobal.has(p) || seenLocal.has(p)) return false;
+        seenGlobal.add(p);
+        seenLocal.add(p);
+        return true;
+      });
+      return { ...s, entries };
+    })
+    .filter((s) => s.entries.length > 0);
+}
+
+function registryItemToHomeEntry(
+  it: AdminNavRegistryItem,
+  ctx: AdminNavContext,
+  pendingBadges: PendingBadges | null,
+): AdminHomeEntry {
+  const effectiveMinRole = resolveEntryMinRole(ctx.permNodes, it.path, it.fallbackMinRole);
+  const roleOk = hasMinRole(ctx.role, effectiveMinRole);
+  const permOk = canShowWebEntry(ctx.permNodes, it.path, "sidebar", ctx.role, effectiveMinRole);
+  return {
+    title: it.label,
+    path: it.path,
+    minRole: effectiveMinRole,
+    icon: it.icon,
+    tone: it.homeTone,
+    enabled: roleOk && permOk,
+    badgeText: resolveHomeEntryBadgeText(it.path, it.badgeTextKey, pendingBadges),
+  };
 }
 
 const SIDEBAR_ICON_WRAP_PALETTE = [
@@ -355,10 +476,13 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
   }
   // Auto-discover disabled — only registry entries appear
 
+  const dedupedSidebarGroups = dedupeSidebarNavGroups(sidebarGroups);
+  const dedupedHomeSections = dedupeHomeSections(mergedHome);
+
   const registryLookup = new Map(ADMIN_NAV_REGISTRY.flatMap(g =>
     collectRegistryGroupItems(g).map(it => [it.id, it])
   ));
-  const flatNavigableItems: AdminCommandPaletteItem[] = sidebarGroups.flatMap((g) => {
+  const flatNavigableItems: AdminCommandPaletteItem[] = dedupedSidebarGroups.flatMap((g) => {
     const top = g.items.map((it) => {
       const reg = registryLookup.get(it.key);
       return {
@@ -385,8 +509,8 @@ function buildLegacyAdminNavModel(ctx: AdminNavContext, pendingBadges: PendingBa
   });
 
   return {
-    sidebarGroups,
-    homeSections: mergedHome,
+    sidebarGroups: dedupedSidebarGroups,
+    homeSections: dedupedHomeSections,
     flatNavigableItems,
   };
 }
@@ -527,13 +651,7 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
   }
 
   // Build flat navigable items (same logic as before, works with either source)
-  const knownPaths = new Set<string>();
-  for (const g of sidebarGroups) {
-    for (const it of g.items) knownPaths.add(normalizeAdminPath(it.to));
-    for (const sg of g.subgroups ?? []) {
-      for (const it of sg.items) knownPaths.add(normalizeAdminPath(it.to));
-    }
-  }
+  let knownPaths = collectKnownNavPaths(sidebarGroups, homeSections, serverConfig.length > 0 ? serverConfig : undefined);
 
   // 将硬编码 registry 中、服务器 config 中缺失的条目补回侧栏。
   // 这样新增的代码定义入口即使服务器 config 中不存在也可见。
@@ -553,10 +671,18 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
       targetGroup = { id: `fallback-${rg.id}`, title: rg.title, items: [] };
       sidebarGroups.push(targetGroup);
     }
+    let targetHome = homeSections.find((s) => s.title === rg.title);
+    if (!targetHome) {
+      targetHome = { title: rg.title, entries: [] };
+      homeSections.push(targetHome);
+    }
 
     for (const ri of missing) {
+      const norm = normalizeAdminPath(ri.path);
+      if (knownPaths.has(norm)) continue;
       targetGroup.items.push(registryItemToSidebar(ri, pendingBadges));
-      knownPaths.add(normalizeAdminPath(ri.path));
+      targetHome.entries.push(registryItemToHomeEntry(ri, ctx, pendingBadges));
+      knownPaths.add(norm);
       // 异步同步到后端 DB，使 AdminNavManager 可见
       if (serverConfig.length > 0) {
         syncQueue.push({
@@ -575,35 +701,6 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
       ensureNavItems(syncQueue).catch(() => {});
     });
   }
-
-  const registryLookup = new Map(ADMIN_NAV_REGISTRY.flatMap(g =>
-    collectRegistryGroupItems(g).map(it => [it.id, it])
-  ));
-  const flatNavigableItems: AdminCommandPaletteItem[] = sidebarGroups.flatMap((g) => {
-    const top = g.items.map((it) => {
-      const reg = registryLookup.get(it.key);
-      return {
-        id: it.key, path: it.to, label: it.label, groupTitle: g.title,
-        icon: it.icon ?? reg?.icon,
-        alias: reg?.alias,
-        telemetry: it.telemetry,
-        telemetryReturnStorageKey: it.telemetryReturnStorageKey,
-      };
-    });
-    const nested = (g.subgroups ?? []).flatMap((sg) =>
-      sg.items.map((it) => {
-        const reg = registryLookup.get(it.key);
-        return {
-          id: it.key, path: it.to, label: it.label, groupTitle: `${g.title} · ${sg.title}`,
-          icon: it.icon ?? reg?.icon,
-          alias: reg?.alias,
-          telemetry: it.telemetry,
-          telemetryReturnStorageKey: it.telemetryReturnStorageKey,
-        };
-      })
-    );
-    return [...top, ...nested];
-  });
 
   // Auto-discovered entries from page permissions (keep existing logic for unknown paths)
   const seenAutoPath = new Set<string>();
@@ -643,5 +740,38 @@ export async function buildAdminNavModel(ctx: AdminNavContext, pendingBadges: Pe
     }
   }
   // Auto-discover disabled — only registry entries appear
+
+  sidebarGroups = dedupeSidebarNavGroups(sidebarGroups);
+  mergedHome = dedupeHomeSections(mergedHome);
+
+  const registryLookup = new Map(ADMIN_NAV_REGISTRY.flatMap(g =>
+    collectRegistryGroupItems(g).map(it => [it.id, it])
+  ));
+  const flatNavigableItems: AdminCommandPaletteItem[] = sidebarGroups.flatMap((g) => {
+    const top = g.items.map((it) => {
+      const reg = registryLookup.get(it.key);
+      return {
+        id: it.key, path: it.to, label: it.label, groupTitle: g.title,
+        icon: it.icon ?? reg?.icon,
+        alias: reg?.alias,
+        telemetry: it.telemetry,
+        telemetryReturnStorageKey: it.telemetryReturnStorageKey,
+      };
+    });
+    const nested = (g.subgroups ?? []).flatMap((sg) =>
+      sg.items.map((it) => {
+        const reg = registryLookup.get(it.key);
+        return {
+          id: it.key, path: it.to, label: it.label, groupTitle: `${g.title} · ${sg.title}`,
+          icon: it.icon ?? reg?.icon,
+          alias: reg?.alias,
+          telemetry: it.telemetry,
+          telemetryReturnStorageKey: it.telemetryReturnStorageKey,
+        };
+      })
+    );
+    return [...top, ...nested];
+  });
+
   return { sidebarGroups, homeSections: mergedHome, flatNavigableItems };
 }

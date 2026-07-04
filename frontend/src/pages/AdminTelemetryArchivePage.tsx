@@ -6,6 +6,7 @@ import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { adminHttp } from "@/api/core/adminHttp";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import {
   fetchTelemetryArchivePurgeConfig,
   fetchTelemetryArchivePurgeProgress,
@@ -208,18 +209,18 @@ export default function AdminTelemetryArchivePage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+              <AdminSwitchScaled
+                size="sm"
                 checked={purgeForm.purgeEnabled}
-                onChange={(e) => setPurgeForm((f) => ({ ...f, purgeEnabled: e.target.checked }))}
+                onChange={(checked) => setPurgeForm((f) => ({ ...f, purgeEnabled: checked }))}
               />
               启用清理
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
+              <AdminSwitchScaled
+                size="sm"
                 checked={purgeForm.archiveWriteEnabled}
-                onChange={(e) => setPurgeForm((f) => ({ ...f, archiveWriteEnabled: e.target.checked }))}
+                onChange={(checked) => setPurgeForm((f) => ({ ...f, archiveWriteEnabled: checked }))}
               />
               继续写入归档
             </label>
@@ -251,10 +252,10 @@ export default function AdminTelemetryArchivePage() {
               />
             </label>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
-              <input
-                type="checkbox"
+              <AdminSwitchScaled
+                size="sm"
                 checked={purgeForm.optimizeAfterPurge}
-                onChange={(e) => setPurgeForm((f) => ({ ...f, optimizeAfterPurge: e.target.checked }))}
+                onChange={(checked) => setPurgeForm((f) => ({ ...f, optimizeAfterPurge: checked }))}
               />
               清理后执行 OPTIMIZE TABLE（释放磁盘，大表可能较慢）
             </label>

@@ -42,6 +42,7 @@ import {
 } from "@/utils/watchlistTagManagementTree";
 import { TELEMETRY_ANIMAL_ROOM_QUERY_KEY_PREFIX } from "@/api/telemetryApi";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { randomUUID } from "@/utils/randomUUID";
 
 const ZONES_KEY = ["telemetry", "watchlists", "zones-with-tags"] as const;
@@ -391,8 +392,7 @@ function ZoneEditor({
 
   useEffect(() => {
     const merged = zone.tags.map((t) => mergeInferredWatchlistBlanks({ ...t }, metricKinds));
-    const withAuto = applyMatchedLimitsAutoEnable(merged);
-    const sorted = sortTagsByManagementTreeOrderDesc(withAuto, tagRowKey);
+    const sorted = sortTagsByManagementTreeOrderDesc(merged, tagRowKey);
     setDraftRows(sorted);
     const tree = buildWatchlistManagementGroupsStable(sorted, tagRowKey);
     const nextCollapsed = new Set<string>();
@@ -697,13 +697,12 @@ function ZoneEditor({
           className="border-b border-slate-100 px-1.5 py-2 align-middle"
           onMouseEnter={() => onEnabledCellMouseEnter(row)}
         >
-          <input
-            type="checkbox"
+          <AdminSwitchScaled
+            size="sm"
             checked={row.enabled}
-            onChange={(e) => applyEnabledPaint(row, e.target.checked)}
+            onChange={(checked) => applyEnabledPaint(row, checked)}
             onMouseDown={(e) => onEnabledMouseDown(row, e)}
             onClick={(e) => e.preventDefault()}
-            className="h-4 w-4 cursor-pointer"
             title={enableCheckboxTitle}
           />
         </td>
@@ -834,12 +833,11 @@ function ZoneEditor({
             className="inline-flex shrink-0 cursor-pointer select-none items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
             title="参与 WinCC 后台拉数"
           >
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-slate-300"
+            <AdminSwitchScaled
+              size="md"
               checked={zone.bundle.includeInWinccPoll !== false}
               disabled={pollM.isPending}
-              onChange={(e) => void pollM.mutateAsync(e.target.checked)}
+              onChange={(checked) => void pollM.mutateAsync(checked)}
             />
             拉数
           </label>

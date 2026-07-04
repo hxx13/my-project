@@ -9,6 +9,7 @@ import {
   PlugZap,
   KeyRound,
   AlertTriangle,
+  LayoutDashboard,
   Search,
   ArrowLeft,
 } from "lucide-react";
@@ -25,7 +26,8 @@ const SETTINGS_SUB_PAGES = [
   { path: "scheduler",      label: "定时任务",   icon: CalendarClock,   minRole: "ADMIN" },
   { path: "integrations",   label: "集成与凭证", icon: PlugZap,         minRole: "SUPER_ADMIN" },
   { path: "permissions",    label: "页面权限",   icon: KeyRound,        minRole: "SUPER_ADMIN" },
-  { path: "danger-zone",    label: "危险操作",   icon: AlertTriangle,   minRole: "SUPER_ADMIN", danger: true },
+  { path: "danger-zone",       label: "危险操作",   icon: AlertTriangle,   minRole: "SUPER_ADMIN", danger: true },
+  { path: "dashboard-preview", label: "仪表盘预览", icon: LayoutDashboard,  minRole: "ADMIN" },
 ];
 
 const STAFF_NS = "/console";

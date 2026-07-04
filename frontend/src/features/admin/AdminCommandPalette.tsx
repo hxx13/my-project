@@ -4,9 +4,16 @@ import { Search } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ADMIN_NAV_REGISTRY } from "@/features/admin/adminNavRegistry";
 import { appendAdminNavRecent, resolveAdminNavUserId } from "@/features/admin/adminNavPersonalization";
-import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
-import { ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY } from "@/features/admin/adminTelemetryNav";
+import { navigateStaffNavEntry, type AdminHomeEntrySource } from "@/features/admin/adminTelemetryNav";
 import type { AdminCommandPaletteItem } from "@/features/admin/buildAdminNavModel";
+
+type PalettePickSource = Extract<AdminHomeEntrySource, "starred" | "recent" | "group">;
+
+function palettePickSource(section: string): PalettePickSource {
+  if (section === "⭐ 收藏") return "starred";
+  if (section === "🕐 最近") return "recent";
+  return "group";
+}
 
 function orderedGroupTitles(items: AdminCommandPaletteItem[]): string[] {
   const registryOrder = ADMIN_NAV_REGISTRY.map((g) => g.title);
@@ -88,18 +95,15 @@ export function AdminCommandPalette({
     }
   }, [open]);
 
-  const run = (it: AdminCommandPaletteItem) => {
+  const run = (it: AdminCommandPaletteItem, section: string) => {
     if (resolveAdminNavUserId()) appendAdminNavRecent(it.path);
-    const dest = toAdminRoutePath(it.path);
-    if (it.telemetry) {
-      try {
-        const returnKey = it.telemetryReturnStorageKey ?? ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY;
-        sessionStorage.setItem(returnKey, `${pathname}${search}`);
-      } catch { /* ignore */ }
-      void navigate(dest, { state: { returnTo: `${pathname}${search}` } });
-    } else {
-      void navigate(dest);
-    }
+    const source = palettePickSource(section);
+    navigateStaffNavEntry(
+      navigate,
+      it.path,
+      { pathname, search },
+      source === "group" ? { source, groupTitle: it.groupTitle } : { source },
+    );
     onOpenChange(false);
   };
 
@@ -112,7 +116,7 @@ export function AdminCommandPalette({
       setSelectedIdx((prev) => Math.max(prev - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (flatResults[selectedIdx]) run(flatResults[selectedIdx]);
+      if (flatResults[selectedIdx]) run(flatResults[selectedIdx], flatResults[selectedIdx]._section);
     } else if (e.key === "Escape") {
       onOpenChange(false);
     }
@@ -155,7 +159,7 @@ export function AdminCommandPalette({
               <div className="px-2 py-1.5 text-xs font-medium text-neutral-400">⭐ 收藏</div>
               {filteredStarred.map((it) => {
                 const idx = flatResults.findIndex((f) => f.id === it.id && f._section === "⭐ 收藏");
-                return renderRow(it, idx, selectedIdx, run);
+                return renderRow(it, idx, selectedIdx, (picked) => run(picked, "⭐ 收藏"));
               })}
             </div>
           )}
@@ -165,7 +169,7 @@ export function AdminCommandPalette({
               <div className="px-2 py-1.5 text-xs font-medium text-neutral-400">🕐 最近</div>
               {filteredRecent.map((it) => {
                 const idx = flatResults.findIndex((f) => f.id === it.id && f._section === "🕐 最近");
-                return renderRow(it, idx, selectedIdx, run);
+                return renderRow(it, idx, selectedIdx, (picked) => run(picked, "🕐 最近"));
               })}
             </div>
           )}
@@ -175,7 +179,7 @@ export function AdminCommandPalette({
               <div className="px-2 py-1.5 text-xs font-medium text-neutral-400">{g.title}</div>
               {g.list.map((it) => {
                 const idx = flatResults.findIndex((f) => f.id === it.id && f._section === g.title);
-                return renderRow(it, idx, selectedIdx, run);
+                return renderRow(it, idx, selectedIdx, (picked) => run(picked, g.title));
               })}
             </div>
           ))}

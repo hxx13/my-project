@@ -1,7 +1,7 @@
 package com.example.demo.modules.cageshelf.entity;
 
 /**
- * 特殊状态全量扫描落库实体。
+ * 笼位数据同步快照落库实体（含 NORMAL 和所有特殊状态）。
  */
 public class CageSpecialStatusSnapshot {
     private Long id;

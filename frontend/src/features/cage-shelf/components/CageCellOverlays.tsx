@@ -1,4 +1,10 @@
 import type { SpecialStatusEntry } from "@/api/domains/cageShelf.api";
+import {
+  SPECIAL_STATUS_LABELS,
+  SPECIAL_STATUS_BG_PRIORITY,
+  buildSpecialStatusEntriesFromCageBoxInfo,
+  formatSpecialStatusDisplayLabel,
+} from "@/utils/cageSpecialStatusLabels";
 import { DEFAULT_COLORS, useCageColors } from "./CageColorContext";
 
 /* ================================================================== */
@@ -6,11 +12,6 @@ import { DEFAULT_COLORS, useCageColors } from "./CageColorContext";
 /* ================================================================== */
 
 export { DEFAULT_COLORS };
-
-const STATUS_BG_PRIORITY = [
-  "HEALTH_ABNORMAL", "NEED_DIVIDE", "ANIMAL_TRANSFER",
-  "SPECIAL_FEEDING", "COHABITATION", "NORMAL",
-] as const;
 
 /* ================================================================== */
 /*  Helpers (accept colors param — callers pass from context)          */
@@ -24,36 +25,11 @@ function normalizeStatuses(raw: SpecialStatusEntry[] | string | undefined | null
   return raw;
 }
 
-/**
- * Fallback: when cached grid data predates the specialStatuses field,
- * derive status entries from cageBoxInfo flags (always populated by backend).
- */
+/** Fallback: derive status entries from cageBoxInfo when specialStatuses is stale. */
 function computeStatusesFromCageBoxInfo(
   cageBoxInfo: Record<string, unknown> | undefined | null,
 ): SpecialStatusEntry[] {
-  if (!cageBoxInfo) return [];
-  const results: SpecialStatusEntry[] = [];
-  const yn = (k: string) => cageBoxInfo[k] === 1 || cageBoxInfo[k] === "1";
-  const hasText = (k: string) => typeof cageBoxInfo[k] === "string" && (cageBoxInfo[k] as string).trim() !== "";
-
-  if (hasText("ClosingDate")) {
-    results.push({ code: "COHABITATION", label: "合笼/繁殖", iconKey: "cohabitation" });
-  }
-  if (yn("NeedFeedingYn")) {
-    const sn = typeof cageBoxInfo["SpecialBreedingName"] === "string" ? cageBoxInfo["SpecialBreedingName"] as string : undefined;
-    const sd = typeof cageBoxInfo["specialBreedingDescription"] === "string" ? cageBoxInfo["specialBreedingDescription"] as string : undefined;
-    results.push({ code: "SPECIAL_FEEDING", label: "特殊饲养", iconKey: "feeding", detailName: sn, detailDescription: sd });
-  }
-  if (yn("NeedDivideYn")) {
-    results.push({ code: "NEED_DIVIDE", label: "请分笼/密度超标", iconKey: "divide" });
-  }
-  if (yn("AbnormalHealthYn")) {
-    results.push({ code: "HEALTH_ABNORMAL", label: "动物健康异常", iconKey: "health" });
-  }
-  if (yn("NeedTransferYn")) {
-    results.push({ code: "ANIMAL_TRANSFER", label: "动物转移", iconKey: "transfer" });
-  }
-  return results.length > 0 ? results : [{ code: "NORMAL", label: "正常", iconKey: "normal" }];
+  return buildSpecialStatusEntriesFromCageBoxInfo(cageBoxInfo);
 }
 
 export function getDominantStatusCode(
@@ -73,7 +49,7 @@ export function getDominantStatusCode(
   if (codes.size === 0) return "NORMAL";
   // Only NORMAL flag → use NORMAL color
   if (codes.has("NORMAL") && codes.size === 1) return "NORMAL";
-  for (const c of STATUS_BG_PRIORITY) if (codes.has(c)) return c;
+  for (const c of SPECIAL_STATUS_BG_PRIORITY) if (codes.has(c)) return c;
   return "NORMAL"; // fallback: unrecognized codes → use normal color
 }
 
@@ -126,6 +102,22 @@ export const STATUS_ABBR: Record<string, string> = {
   COHABITATION: "合", SPECIAL_FEEDING: "饲", NEED_DIVIDE: "分",
   HEALTH_ABNORMAL: "疾", ANIMAL_TRANSFER: "迁",
 };
+
+/** @deprecated 使用 SPECIAL_STATUS_LABELS from @/utils/cageSpecialStatusLabels */
+export const STATUS_LABEL_MAP: Record<string, string> = SPECIAL_STATUS_LABELS;
+
+/** 格子内 PI 下方展示的状态文案（仅非 NORMAL；优先 API label） */
+export function getCellStatusDisplayLabel(
+  statuses: SpecialStatusEntry[] | string | undefined | null,
+  cageBoxInfo?: Record<string, unknown> | null,
+): string {
+  let list = normalizeStatuses(statuses);
+  if (list.length === 0 || (list.length === 1 && list[0].code === "NORMAL")) {
+    const fallback = computeStatusesFromCageBoxInfo(cageBoxInfo);
+    if (fallback.length > 0) list = fallback;
+  }
+  return formatSpecialStatusDisplayLabel(list);
+}
 
 /* ================================================================== */
 /*  Component                                                           */

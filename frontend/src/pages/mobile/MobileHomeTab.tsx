@@ -1,14 +1,6 @@
 /** 手机版 — 首页 Tab */
-import {
-  DoorOpen,
-  Package,
-  Bell,
-  LayoutGrid,
-  ClipboardList,
-  AlertTriangle,
-  Users,
-} from "lucide-react";
 import type { MobileCenterData, MobileAlertItem } from "@/api/domains/mobileStudent.api";
+import { MOBILE_STUDENT_ICON } from "./mobileStudentIcons";
 import type { LoginBranding } from "@/api/domains/publicSite.api";
 import HeroBanner from "./MobileHeroBanner";
 import { MobileHomeNoticeList } from "./MobileHomeNoticeList";
@@ -34,8 +26,10 @@ interface MobileHomeTabProps {
   /** 审核反馈条数（快捷入口角标） */
   feedbackCount?: number;
   html5PrivilegeBypass?: boolean;
-  /** WebSocket / 手动刷新时递增，触发进出状态重拉 */
+  /** WebSocket / 切回首页时递增，触发进出状态重拉 */
   presenceRefresh?: number;
+  /** 首页 Tab 是否当前可见（切走时暂停本地 tick） */
+  homeActive?: boolean;
   onNav: (tab: TabKey) => void;
   /** 首页下方「公告通知」、具体公告条目 */
   onOpenAnnouncements: (highlightKey?: string) => void;
@@ -51,6 +45,7 @@ export default function MobileHomeTab({
   token,
   jwtMode,
   presenceRefresh = 0,
+  homeActive = true,
   announcements,
   feedbackCount = 0,
   html5PrivilegeBypass = false,
@@ -59,7 +54,7 @@ export default function MobileHomeTab({
   onOpenFeedback,
 }: MobileHomeTabProps) {
   const { profile } = data.dashboard;
-  const presence = useMobilePresenceStatus(token, presenceRefresh, jwtMode);
+  const presence = useMobilePresenceStatus(token, presenceRefresh, jwtMode, homeActive);
 
   return (
     <div className="h-full min-h-0 overflow-y-auto flex flex-col" style={{ background: "transparent" }}>
@@ -110,28 +105,22 @@ export default function MobileHomeTab({
         >
           <div className="flex justify-around gap-2 px-1">
             {[
-              { id: "rooms", label: "房间", icon: DoorOpen, onClick: () => onNav("rooms") },
-              { id: "material", label: "申领", icon: Package, onClick: () => onNav("material") },
-              { id: "cage", label: "笼架", icon: LayoutGrid, onClick: () => onNav("cage") },
+              { id: "rooms", label: "房间", iconSrc: MOBILE_STUDENT_ICON.room, onClick: () => onNav("rooms") },
+              { id: "material", label: "申领", iconSrc: MOBILE_STUDENT_ICON.supplies, onClick: () => onNav("material") },
+              { id: "cage", label: "笼架", iconSrc: MOBILE_STUDENT_ICON.cage, onClick: () => onNav("cage") },
             ].map((item) => (
               <button
                 key={item.id}
                 onClick={item.onClick}
                 className="flex flex-col items-center gap-1.5 px-1 py-1 active:scale-[0.97] transition-transform"
               >
-                <div
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 14,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "linear-gradient(180deg, #f4f5ff, #eef0ff)",
-                    boxShadow: "0 3px 9px rgba(172,23,54,0.12)",
-                  }}
-                >
-                  <item.icon className="size-7" style={{ color: "#ac1736" }} strokeWidth={1.5} />
+                <div className="relative" style={{ width: 56, height: 56 }}>
+                  <img
+                    src={item.iconSrc}
+                    alt=""
+                    draggable={false}
+                    className="block w-full h-full object-contain select-none pointer-events-none"
+                  />
                 </div>
                 <span className="text-sm font-bold" style={{ color: "#323233" }}>
                   {item.label}
@@ -149,28 +138,27 @@ export default function MobileHomeTab({
 
           <div className="flex justify-around">
             {[
-              { id: "records2", label: "出入记录", icon: ClipboardList, onClick: () => onNav("records") },
-              { id: "notices", label: "通知", icon: Bell, onClick: () => onOpenFeedback(), badge: feedbackCount },
-              { id: "group", label: "课题组", icon: Users, onClick: () => onNav("group") },
-              { id: "violations", label: "违规记录", icon: AlertTriangle, onClick: () => onNav("violations") },
+              { id: "records2", label: "出入记录", iconSrc: MOBILE_STUDENT_ICON.records, onClick: () => onNav("records") },
+              { id: "notices", label: "通知", iconSrc: MOBILE_STUDENT_ICON.notify, onClick: () => onOpenFeedback(), badge: feedbackCount },
+              { id: "group", label: "课题组", iconSrc: MOBILE_STUDENT_ICON.group, onClick: () => onNav("group") },
+              { id: "violations", label: "违规记录", iconSrc: MOBILE_STUDENT_ICON.violation, onClick: () => onNav("violations") },
             ].map((item) => (
               <button
                 key={item.id}
                 onClick={item.onClick}
                 className="flex flex-col items-center gap-1.5 px-2 py-0.5 active:scale-[0.94] transition-transform relative"
               >
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center relative"
-                  style={{
-                    background: "linear-gradient(180deg, #f4f5ff, #eef0ff)",
-                    boxShadow: "0 3px 10px rgba(172,23,54,0.1)",
-                  }}
-                >
-                  <item.icon className="size-5" style={{ color: "#ac1736" }} strokeWidth={1.5} />
+                <div className="relative" style={{ width: 40, height: 40 }}>
+                  <img
+                    src={item.iconSrc}
+                    alt=""
+                    draggable={false}
+                    className="block w-full h-full object-contain select-none pointer-events-none"
+                  />
                   {item.badge != null && item.badge > 0 && (
                     <span
                       className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center text-white"
-                      style={{ background: "#ef4444" }}
+                      style={{ background: "#ee0a24" }}
                     >
                       {item.badge > 99 ? "99+" : item.badge}
                     </span>

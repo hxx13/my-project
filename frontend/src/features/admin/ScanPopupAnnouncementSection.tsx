@@ -14,6 +14,7 @@ import {
   type UnboundApplyRoleCode,
 } from "@/api/domains/scanPopupAnnouncement.api";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,7 @@ import {
 } from "@/features/admin/scanOperatorRoleHint";
 
 const inputBase =
-  "w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 shadow-sm outline-none transition placeholder:text-neutral-400 focus-visible:border-neutral-300 focus-visible:ring-2 focus-visible:ring-[#0070f3]/25";
+  "w-full rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] shadow-twin-level-1 outline-none transition placeholder:text-[var(--twin-mute)] focus-visible:border-[var(--twin-hairline-strong)] focus-visible:ring-2 focus-visible:ring-[color:var(--admin-focus-ring)]/40";
 
 function toDatetimeLocalValue(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -291,30 +292,28 @@ export function ScanPopupAnnouncementSection() {
   }, []);
 
   return (
-    <>
+    <div className="admin-violations-tab-panel">
       <AdminFormCard
         title="扫码弹窗公告"
         description="复用违规警示同款弹窗；支持富文本与插图，多条公告在扫码端翻页查看。生效范围与「未绑卡扫码提示」相同：按当前登录操作员 sys_user 角色（默认仅学生）。"
       >
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm text-neutral-800">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-neutral-300"
+        <div className="admin-violation-form-body">
+          <div className="admin-form-toggle-row">
+            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
+              <AdminSwitchScaled
+                size="sm"
                 checked={settings.enabled}
                 disabled={settingsLoading}
-                onChange={(e) => setSettings((s) => ({ ...s, enabled: e.target.checked }))}
+                onChange={(checked) => setSettings((s) => ({ ...s, enabled: checked }))}
               />
               启用扫码公告
             </label>
-            <label className="flex items-center gap-2 text-sm text-neutral-800">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-neutral-300"
+            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
+              <AdminSwitchScaled
+                size="sm"
                 checked={settings.showNoticeEveryScan}
                 disabled={settingsLoading}
-                onChange={(e) => setSettings((s) => ({ ...s, showNoticeEveryScan: e.target.checked }))}
+                onChange={(checked) => setSettings((s) => ({ ...s, showNoticeEveryScan: checked }))}
               />
               每次扫码自动展开
             </label>
@@ -330,9 +329,9 @@ export function ScanPopupAnnouncementSection() {
               保存全局配置
             </AdminButton>
           </div>
-          <div>
-            <label className="text-xs font-medium text-neutral-600">{SCAN_OPERATOR_ROLE_LABEL}</label>
-            <p className="mt-0.5 text-[11px] text-neutral-500">{SCAN_OPERATOR_ROLE_HINT_ANNOUNCEMENT}</p>
+          <div className="admin-form-field">
+            <label className="admin-form-field-label">{SCAN_OPERATOR_ROLE_LABEL}</label>
+            <p className="admin-form-field-hint">{SCAN_OPERATOR_ROLE_HINT_ANNOUNCEMENT}</p>
             <div className="mt-2 flex flex-wrap gap-3">
               {UNBOUND_APPLY_ROLE_OPTIONS.map((opt) => {
                 const checked = settings.applyRoleCodes.includes(opt.code);
@@ -341,18 +340,18 @@ export function ScanPopupAnnouncementSection() {
                     key={opt.code}
                     className={cn(
                       "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm",
-                      checked ? "border-violet-300 bg-violet-50 text-violet-900" : "border-neutral-200 bg-white",
+                      checked ? "border-indigo-300 bg-indigo-50 text-indigo-900" : "border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)]",
                       (settingsLoading || !settings.enabled) && "opacity-60"
                     )}
                   >
-                    <input
-                      type="checkbox"
+                    <AdminSwitchScaled
+                      size="sm"
                       checked={checked}
                       disabled={settingsLoading || !settings.enabled}
-                      onChange={(e) => {
+                      onChange={(nextChecked) => {
                         setSettings((s) => {
                           const set = new Set(s.applyRoleCodes);
-                          if (e.target.checked) set.add(opt.code);
+                          if (nextChecked) set.add(opt.code);
                           else set.delete(opt.code);
                           const next = Array.from(set) as UnboundApplyRoleCode[];
                           return { ...s, applyRoleCodes: next.length ? next : ["MEMBER"] };
@@ -369,28 +368,28 @@ export function ScanPopupAnnouncementSection() {
       </AdminFormCard>
 
       <AdminFormCard title={editId != null ? `编辑公告 #${editId}` : "新建公告"} description="正文支持富文本；图片可通过编辑器插入。">
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-neutral-600">标题</label>
-            <input className={cn(inputBase, "mt-1")} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <div className="admin-violation-form-body">
+          <div className="admin-form-field">
+            <label className="admin-form-field-label">标题</label>
+            <input className={inputBase} value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
-          <div>
-            <label className="text-xs font-medium text-neutral-600">正文（富文本）</label>
-            <div className="mt-1">
+          <div className="admin-form-field">
+            <label className="admin-form-field-label">正文（富文本）</label>
+            <div className="admin-rich-text-field">
               <RichTextEditor value={contentHtml} onChange={setContentHtml} />
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+              <AdminSwitchScaled size="sm" checked={enabled} onChange={setEnabled} />
               启用展示
             </label>
             <div>
-              <label className="text-xs text-neutral-600">排序（大靠前）</label>
+              <label className="admin-form-field-label">排序（大靠前）</label>
               <input className={cn(inputBase, "mt-1")} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
             </div>
             <div>
-              <label className="text-xs text-neutral-600">最早展示</label>
+              <label className="admin-form-field-label">最早展示</label>
               <input
                 type="datetime-local"
                 className={cn(inputBase, "mt-1")}
@@ -399,7 +398,7 @@ export function ScanPopupAnnouncementSection() {
               />
             </div>
             <div>
-              <label className="text-xs text-neutral-600">过期时间</label>
+              <label className="admin-form-field-label">过期时间</label>
               <input
                 type="datetime-local"
                 className={cn(inputBase, "mt-1")}
@@ -410,12 +409,12 @@ export function ScanPopupAnnouncementSection() {
           </div>
           {editId != null && editAutoSuppressCount > 0 ? (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-sm text-amber-950">
-              <input
+              <AdminSwitchScaled
+                size="sm"
                 id="clear-auto-suppress-checkbox"
-                type="checkbox"
-                className="mt-0.5 h-4 w-4 rounded border-amber-300 cursor-pointer"
+                className="mt-0.5"
                 checked={clearAutoSuppressOnSave}
-                onChange={(e) => setClearAutoSuppressOnSave(e.target.checked)}
+                onChange={setClearAutoSuppressOnSave}
               />
               <label htmlFor="clear-auto-suppress-checkbox" className="cursor-pointer">
                 <span className="font-medium">公告已更新，清空「下次不再弹出」记录</span>
@@ -425,7 +424,7 @@ export function ScanPopupAnnouncementSection() {
               </label>
             </div>
           ) : null}
-          <div className="flex flex-wrap gap-2 border-t border-neutral-100 pt-3">
+          <div className="admin-form-actions border-t border-[var(--twin-hairline)] pt-3">
             <AdminButton type="button" tone="primary" loading={saving} className="gap-1.5" onClick={() => void saveAnnouncement()}>
               <Save className="h-4 w-4" aria-hidden />
               {editId != null ? "保存修改" : "发布公告"}
@@ -437,7 +436,7 @@ export function ScanPopupAnnouncementSection() {
             ) : null}
           </div>
           {editId != null ? (
-            <p className="text-[11px] leading-relaxed text-neutral-500">
+            <p className="admin-form-field-hint">
               {editAutoSuppressCount > 0
                 ? "修改标题或正文后，是否让被扫码人员重新自动弹出，由上方勾选控制；未勾选时「不再弹出」偏好继续有效。"
                 : "新发布公告会自动弹出；当前尚无被扫码人员选择「不再弹出」此公告。"}
@@ -454,11 +453,11 @@ export function ScanPopupAnnouncementSection() {
           </AdminButton>
         </div>
         {listLoading ? (
-          <p className="text-sm text-neutral-500">加载中…</p>
+          <p className="text-sm text-[var(--twin-mute)]">加载中…</p>
         ) : rows.length === 0 ? (
-          <p className="text-sm text-neutral-500">暂无公告</p>
+          <p className="text-sm text-[var(--twin-mute)]">暂无公告</p>
         ) : (
-          <ul className="divide-y divide-neutral-100 rounded-lg border border-neutral-200">
+          <ul className="divide-y divide-[var(--twin-hairline)] rounded-twin-lg border border-[var(--twin-hairline)]">
             {rows.map((r, idx) => {
               const timeStatus = getTimeStatus(r);
               const statusMeta = TIME_STATUS_META[timeStatus];
@@ -468,7 +467,7 @@ export function ScanPopupAnnouncementSection() {
                 draggable
                 className={cn(
                   "flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm transition-colors",
-                  editId === r.id && "bg-violet-50/80",
+                  editId === r.id && "bg-indigo-50/80",
                   "cursor-default select-none"
                 )}
                 onDragStart={() => onDragStart(idx)}
@@ -478,24 +477,24 @@ export function ScanPopupAnnouncementSection() {
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span
-                    className="shrink-0 cursor-grab text-neutral-400 hover:text-neutral-600 active:cursor-grabbing"
+                    className="shrink-0 cursor-grab text-[var(--twin-mute)] hover:text-[var(--twin-body)] active:cursor-grabbing"
                     title="拖拽排序"
                   >
                     <GripVertical className="h-4 w-4" />
                   </span>
                   <div className="min-w-0">
-                    <div className="font-medium text-neutral-900">
+                    <div className="font-medium text-[var(--twin-ink)]">
                       #{r.id} {r.title}
                       {r.enabled === false ? (
-                        <span className="ml-2 text-xs text-neutral-400">（已停用）</span>
+                        <span className="ml-2 text-xs text-[var(--twin-mute)]">（已停用）</span>
                       ) : null}
                       {editId === r.id ? (
-                        <span className="ml-2 rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-violet-800">
+                        <span className="ml-2 rounded border border-indigo-200 bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[10px] font-medium text-indigo-800">
                           编辑中
                         </span>
                       ) : null}
                     </div>
-                    <div className="text-xs text-neutral-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <div className="text-xs text-[var(--twin-mute)] flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <span>排序 {r.sortOrder ?? 0}</span>
                       <span className={cn("rounded-full border px-1.5 py-px text-[10px] font-medium", statusMeta.color)}>
                         {statusMeta.label}
@@ -535,6 +534,6 @@ export function ScanPopupAnnouncementSection() {
           </ul>
         )}
       </AdminFormCard>
-    </>
+    </div>
   );
 }

@@ -708,3 +708,31 @@
 .admin-home-entry-card__label {
     color: var(--twin-ink);
 }
+
+@keyframes admin-home-entry-highlight-pulse {
+    0%,
+    100% {
+        box-shadow:
+            0 0 0 2px color-mix(in srgb, var(--app-color-accent) 55%, transparent),
+            0 0 10px color-mix(in srgb, var(--app-color-accent) 20%, transparent);
+    }
+    50% {
+        box-shadow:
+            0 0 0 3px color-mix(in srgb, var(--app-color-accent) 70%, transparent),
+            0 0 18px color-mix(in srgb, var(--app-color-accent) 35%, transparent);
+    }
+}
+
+.admin-home-entry-card--highlight {
+    border-color: var(--app-color-accent) !important;
+    box-shadow:
+        0 0 0 2px color-mix(in srgb, var(--app-color-accent) 55%, transparent),
+        0 0 14px color-mix(in srgb, var(--app-color-accent) 28%, transparent);
+    z-index: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .admin-home-entry-card--highlight {
+        animation: admin-home-entry-highlight-pulse 1.1s ease-out 2;
+    }
+}

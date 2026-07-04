@@ -15,7 +15,8 @@ import {
     type DahuaDeviceChannelRow, type DahuaDeviceChannelRemarkCategory, type CardMappingRow,
 } from "@/api/twinApi";
 import { AdminButton } from "@/components/admin/AdminButton";
-import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
+import { AdminFormCard, AdminPageShell, AdminFillScrollRegion } from "@/components/admin/AdminPageShell";
 import { AdminToolbarSearchField } from "@/components/admin/AdminToolbarSearchField";
 import { AdminToolbar, AdminToolbarActions } from "@/components/admin/AdminToolbar";
 import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
@@ -778,7 +779,7 @@ export default function DebugCardMappingPage() {
         <AdminPageShell
             title="大华发卡"
             description="大华卡号与 ARO 用户绑定、豁免与自动冻结策略。发卡流程按步骤下发人员、权限与落库映射。"
-            className="h-full"
+            fillHeight
         >
                     <AdminToolbar className="mb-4 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
                         <AdminToolbarActions className="ml-auto flex min-w-0 shrink-0 flex-nowrap items-center gap-2">
@@ -883,11 +884,11 @@ export default function DebugCardMappingPage() {
                     </AdminToolbar>
 
                     {isLoading && !isSearching ? (
-                        <div className="flex-1 flex justify-center items-center gap-3 text-xl font-bold text-[var(--app-color-text-tertiary)]">
+                        <div className="flex min-h-[200px] flex-1 items-center justify-center gap-3 text-xl font-bold text-[var(--app-color-text-tertiary)]">
                             <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" /> 正在加载映射矩阵...
                         </div>
                     ) : (
-                        <div className="flex-1 bg-[var(--app-color-surface-container)] border border-[var(--app-color-border-default)] rounded-xl shadow-[var(--app-elevation-card)] overflow-auto relative pb-24">
+                        <AdminFillScrollRegion className="relative rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] pb-24 shadow-[var(--app-elevation-card)]">
                     <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
                         <thead className="bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold border-b-2 border-[var(--app-color-border-strong)] sticky top-0 z-20 shadow-[var(--app-elevation-card)]">
                         <tr>
@@ -1026,7 +1027,7 @@ export default function DebugCardMappingPage() {
                         </tbody>
                     </table>
                     {isSearching && displayData.length === 0 && <div className="p-10 text-center font-bold text-[var(--app-color-text-tertiary)]">未在映射矩阵中找到关联记录...</div>}
-                        </div>
+                        </AdminFillScrollRegion>
                     )}
 
             {freezeSlotModal !== null && <Portal><div
@@ -1055,41 +1056,41 @@ export default function DebugCardMappingPage() {
 
                         {freezeSlotModal === 1 && (
                             <>
-                                <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] mb-3 cursor-pointer">
-                                    <input
-                                        type="checkbox"
+                                <div className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] mb-3 cursor-pointer">
+                                    <AdminSwitchScaled
+                                        size="sm"
                                         checked={freezeForm.enabled}
-                                        onChange={(e) => setFreezeForm((prev) => ({ ...prev, enabled: e.target.checked }))}
+                                        onChange={(checked) => setFreezeForm((prev) => ({ ...prev, enabled: checked }))}
                                     />
                                     启用每日自动冻结
-                                </label>
-                                <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] mb-4 cursor-pointer">
-                                    <input
-                                        type="checkbox"
+                                </div>
+                                <div className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] mb-4 cursor-pointer">
+                                    <AdminSwitchScaled
+                                        size="sm"
                                         checked={freezeForm.dailyExemptRevokeAutoSignoutEnabled}
-                                        onChange={(e) =>
+                                        onChange={(checked) =>
                                             setFreezeForm((prev) => ({
                                                 ...prev,
-                                                dailyExemptRevokeAutoSignoutEnabled: e.target.checked,
+                                                dailyExemptRevokeAutoSignoutEnabled: checked,
                                             }))
                                         }
                                     />
                                     （已迁移）请改在「定时管理 → 每日豁免权回收」勾选「回收后签离」
-                                </label>
+                                </div>
                             </>
                         )}
 
                         {freezeSlotModal === 2 && (
-                            <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] mb-4 cursor-pointer">
-                                <input
-                                    type="checkbox"
+                            <div className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] mb-4 cursor-pointer">
+                                <AdminSwitchScaled
+                                    size="sm"
                                     checked={freezeForm.secondFreezeAutoSignoutEnabled}
-                                    onChange={(e) =>
-                                        setFreezeForm((prev) => ({ ...prev, secondFreezeAutoSignoutEnabled: e.target.checked }))
+                                    onChange={(checked) =>
+                                        setFreezeForm((prev) => ({ ...prev, secondFreezeAutoSignoutEnabled: checked }))
                                     }
                                 />
                                 第二次冻结时：今日曾豁免且仍未离开者，自动执行完整离开
-                            </label>
+                            </div>
                         )}
 
                         <label className="block text-xs font-bold text-[var(--app-color-text-secondary)] mb-2">
@@ -1309,14 +1310,14 @@ export default function DebugCardMappingPage() {
                                 <div>
                                     <p className="text-[11px] font-bold text-[var(--app-color-text-tertiary)] uppercase tracking-wide mb-2">确认弹窗</p>
                                     <div className="space-y-2 bg-amber-50/60 border border-amber-200 rounded-lg p-3">
-                                        <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
-                                            <input
-                                                type="checkbox"
+                                        <div className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
+                                            <AdminSwitchScaled
+                                                size="sm"
                                                 checked={linkageForm.swipeExitSkipConfirm}
-                                                onChange={(e) => setLinkageForm((p) => ({ ...p, swipeExitSkipConfirm: e.target.checked }))}
+                                                onChange={(checked) => setLinkageForm((p) => ({ ...p, swipeExitSkipConfirm: checked }))}
                                             />
                                             二次刷卡离开跳过确认
-                                        </label>
+                                        </div>
                                         <p className="text-[11px] text-[var(--app-color-text-tertiary)] leading-snug ml-6">
                                             开启后，已进入状态再次扫码将直接执行离开，不弹出确认对话框。
                                         </p>
@@ -1325,43 +1326,43 @@ export default function DebugCardMappingPage() {
                                 <div>
                                     <p className="text-[11px] font-bold text-[var(--app-color-text-tertiary)] uppercase tracking-wide mb-2">权限（大华门禁规则）</p>
                                     <div className="space-y-2">
-                                        <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
-                                            <input
-                                                type="checkbox"
+                                        <div className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
+                                            <AdminSwitchScaled
+                                                size="sm"
                                                 checked={linkageForm.enterDispatchEnabled}
-                                                onChange={(e) => setLinkageForm((p) => ({ ...p, enterDispatchEnabled: e.target.checked }))}
+                                                onChange={(checked) => setLinkageForm((p) => ({ ...p, enterDispatchEnabled: checked }))}
                                             />
                                             进入时执行门禁规则（大华权限下发）
-                                        </label>
-                                        <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
-                                            <input
-                                                type="checkbox"
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
+                                            <AdminSwitchScaled
+                                                size="sm"
                                                 checked={linkageForm.exitDispatchEnabled}
-                                                onChange={(e) => setLinkageForm((p) => ({ ...p, exitDispatchEnabled: e.target.checked }))}
+                                                onChange={(checked) => setLinkageForm((p) => ({ ...p, exitDispatchEnabled: checked }))}
                                             />
                                             离开时执行门禁规则（大华权限回收）
-                                        </label>
+                                        </div>
                                     </div>
                                 </div>
                                 <div>
                                     <p className="text-[11px] font-bold text-[var(--app-color-text-tertiary)] uppercase tracking-wide mb-2">冻融（物理卡 / 大华人员状态）</p>
                                     <div className="space-y-2">
-                                        <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
-                                            <input
-                                                type="checkbox"
+                                        <div className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
+                                            <AdminSwitchScaled
+                                                size="sm"
                                                 checked={linkageForm.enterUnfreezeEnabled}
-                                                onChange={(e) => setLinkageForm((p) => ({ ...p, enterUnfreezeEnabled: e.target.checked }))}
+                                                onChange={(checked) => setLinkageForm((p) => ({ ...p, enterUnfreezeEnabled: checked }))}
                                             />
                                             进入时解冻物理卡（大华人员解冻）
-                                        </label>
-                                        <label className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
-                                            <input
-                                                type="checkbox"
+                                        </div>
+                                        <div className="flex items-center gap-2 text-sm text-[var(--app-color-text-secondary)] cursor-pointer">
+                                            <AdminSwitchScaled
+                                                size="sm"
                                                 checked={linkageForm.exitFreezeEnabled}
-                                                onChange={(e) => setLinkageForm((p) => ({ ...p, exitFreezeEnabled: e.target.checked }))}
+                                                onChange={(checked) => setLinkageForm((p) => ({ ...p, exitFreezeEnabled: checked }))}
                                             />
                                             离开时冻结物理卡（扫码/自动签退）
-                                        </label>
+                                        </div>
                                     </div>
                                 </div>
                                 <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
@@ -1628,16 +1629,15 @@ export default function DebugCardMappingPage() {
                                         取消勾选会按当前勾选重算步骤 5 的通道与门组并集。
                                     </div>
                                     {issueAccessPrefill.ruleMatches.map((m) => (
-                                        <label key={m.matchKey} className="flex items-start gap-2 text-xs text-[var(--app-color-text-primary)] cursor-pointer">
-                                            <input
-                                                type="checkbox"
+                                        <div key={m.matchKey} className="flex items-start gap-2 text-xs text-[var(--app-color-text-primary)] cursor-pointer">
+                                            <AdminSwitchScaled
+                                                size="3"
                                                 className="mt-0.5"
                                                 checked={issueRuleSelectedKeys.includes(m.matchKey)}
-                                                onChange={(e) => {
-                                                    const on = e.target.checked;
+                                                onChange={(checked) => {
                                                     setIssueRuleSelectedKeys((prev) => {
                                                         const s = new Set(prev);
-                                                        if (on) s.add(m.matchKey);
+                                                        if (checked) s.add(m.matchKey);
                                                         else s.delete(m.matchKey);
                                                         return Array.from(s);
                                                     });
@@ -1651,7 +1651,7 @@ export default function DebugCardMappingPage() {
                                                     <span className="text-amber-700">（规则未配通道/门组）</span>
                                                 ) : null}
                                             </span>
-                                        </label>
+                                        </div>
                                     ))}
                                 </div>
                             )}
@@ -1696,13 +1696,13 @@ export default function DebugCardMappingPage() {
                                     const code = normalizeChannelCode(ch.channelCode);
                                     const checked = bindForm.channelCodes.some((x) => normalizeChannelCode(x) === code);
                                     return (
-                                        <label key={ch.id} className="flex items-start gap-2 text-xs cursor-pointer">
-                                            <input
-                                                type="checkbox"
+                                        <div key={ch.id} className="flex items-start gap-2 text-xs cursor-pointer">
+                                            <AdminSwitchScaled
+                                                size="3"
                                                 className="mt-0.5"
                                                 disabled={!code}
                                                 checked={checked}
-                                                onChange={(e) => toggleIssueChannel(code, e.target.checked, ch)}
+                                                onChange={(on) => toggleIssueChannel(code, on, ch)}
                                             />
                                             <span className="break-all text-[var(--app-color-text-primary)]">
                                                 <span className="font-medium">{labelForChannelRow(ch)}</span>
@@ -1711,7 +1711,7 @@ export default function DebugCardMappingPage() {
                                             {ch.remarkCategoryName && (
                                                 <span className="text-[var(--app-color-text-tertiary)] shrink-0">[{ch.remarkCategoryName}]</span>
                                             )}
-                                        </label>
+                                        </div>
                                     );
                                 })}
                             </div>
@@ -1773,20 +1773,20 @@ export default function DebugCardMappingPage() {
                             {sortedDoorGroups.map((g) => {
                                 const checked = bindForm.doorGroupIds.includes(g.id);
                                 return (
-                                    <label key={g.id} className="flex items-center gap-2 py-1 px-1 rounded text-sm text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-page)]">
-                                        <input
-                                            type="checkbox"
+                                    <div key={g.id} className="flex items-center gap-2 py-1 px-1 rounded text-sm text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-page)]">
+                                        <AdminSwitchScaled
+                                            size="sm"
                                             checked={checked}
-                                            onChange={(e) => {
+                                            onChange={(on) => {
                                                 const set = new Set(bindForm.doorGroupIds);
-                                                if (e.target.checked) set.add(g.id);
+                                                if (on) set.add(g.id);
                                                 else set.delete(g.id);
                                                 setBindForm({ ...bindForm, doorGroupIds: Array.from(set) });
                                             }}
                                         />
                                         <span>{g.name || `门组${g.id}`}</span>
                                         <span className="text-xs text-[var(--app-color-text-tertiary)]">#{g.id}</span>
-                                    </label>
+                                    </div>
                                 );
                             })}
                             {sortedDoorGroups.length === 0 && <div className="text-xs text-[var(--app-color-text-tertiary)]">暂无门组缓存，请先刷新</div>}

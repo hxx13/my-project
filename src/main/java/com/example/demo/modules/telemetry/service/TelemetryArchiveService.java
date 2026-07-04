@@ -1,5 +1,6 @@
 package com.example.demo.modules.telemetry.service;
 
+import com.example.demo.modules.telemetry.dto.TelemetryWatchlistEnrichment;
 import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveAdminRowDto;
 import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveIngestItem;
 import com.example.demo.modules.telemetry.dto.archive.TelemetryArchivePointDto;
@@ -8,6 +9,16 @@ import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveQueryPageD
 import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveSeriesDto;
 import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveStorageStatsDto;
 import com.example.demo.modules.twin.common.support.TwinTimingDiagnostics;
+import com.example.demo.modules.telemetry.dto.archive.TelemetryArchiveSeriesBatchDto;
+import com.example.demo.modules.telemetry.dto.archive.TelemetryFleetAggRow;
+import com.example.demo.modules.telemetry.dto.archive.TelemetryFleetMatrixCellDto;
+import com.example.demo.modules.telemetry.dto.archive.TelemetryFleetMatrixDto;
+import com.example.demo.modules.telemetry.dto.archive.TelemetryPartitionSummaryDto;
+import com.example.demo.modules.telemetry.dto.watchlist.TelemetryGlobalAlarmLimitsDto;
+import com.example.demo.modules.telemetry.entity.TelemetryValueRollupRow;
+import com.example.demo.modules.telemetry.mapper.TelemetryValueRollupMapper;
+import com.example.demo.modules.telemetry.util.TelemetryArchiveDownsampleUtil;
+import com.example.demo.modules.telemetry.util.TelemetryArchiveDownsampleUtil.DisplayProfile;
 import com.example.demo.modules.telemetry.entity.TelemetryValueArchiveRow;
 import com.example.demo.modules.telemetry.mapper.TelemetryValueArchiveMapper;
 import org.slf4j.Logger;
@@ -26,7 +37,12 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.time.temporal.ChronoUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -42,8 +58,14 @@ public class TelemetryArchiveService {
     private static final int CONTINUOUS_MAX_BATCHES = 50_000;
     private static final Pattern LEADING_NUMBER = Pattern.compile("^(-?\\d+(?:\\.\\d*)?)");
 
+    private static final long ROLLUP_AUTO_HOURS = 48;
+
     private final TelemetryValueArchiveMapper archiveMapper;
+    private final TelemetryValueRollupMapper rollupMapper;
     private final TelemetryArchivePurgeConfigService purgeConfigService;
+    private final TelemetryDisplayProfileService displayProfileService;
+    private final TelemetryGlobalAlarmLimitsService globalAlarmLimitsService;
+    private final TelemetryWatchlistDbService watchlistDbService;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final PlatformTransactionManager transactionManager;
 
@@ -55,11 +77,19 @@ public class TelemetryArchiveService {
 
     public TelemetryArchiveService(
             TelemetryValueArchiveMapper archiveMapper,
+            TelemetryValueRollupMapper rollupMapper,
             TelemetryArchivePurgeConfigService purgeConfigService,
+            TelemetryDisplayProfileService displayProfileService,
+            TelemetryGlobalAlarmLimitsService globalAlarmLimitsService,
+            TelemetryWatchlistDbService watchlistDbService,
             org.springframework.jdbc.core.JdbcTemplate jdbcTemplate,
             PlatformTransactionManager transactionManager) {
         this.archiveMapper = archiveMapper;
+        this.rollupMapper = rollupMapper;
         this.purgeConfigService = purgeConfigService;
+        this.displayProfileService = displayProfileService;
+        this.globalAlarmLimitsService = globalAlarmLimitsService;
+        this.watchlistDbService = watchlistDbService;
         this.jdbcTemplate = jdbcTemplate;
         this.transactionManager = transactionManager;
     }
@@ -145,28 +175,384 @@ public class TelemetryArchiveService {
                 .build();
     }
 
-    /**
-     * @param seriesScope 为空或 {@code RANGE}：使用 from/to；{@code ROLLING}：服务端以当前时间为 to、向前 windowHours 小时为 from，忽略客户端 from/to
-     */
+    public TelemetryArchiveSeriesDto querySeries(String variableName,
+                                                 java.time.LocalDateTime from,
+                                                 java.time.LocalDateTime to,
+                                                 int maxPoints,
+                                                 String seriesScope,
+                                                 Integer windowHours,
+                                                 String displayProfile,
+                                                 Boolean fromRollup) {
+        ResolvedWindow w = resolveWindow(from, to, seriesScope, windowHours);
+        String profile = normalizeProfile(displayProfile);
+        int cap = resolveMaxPoints(maxPoints, profile);
+        DisplayProfile dp = toDisplayProfile(profile);
+        boolean useRollup = shouldUseRollup(w.effFrom, w.effTo, fromRollup);
+        List<TelemetryArchivePointDto> points;
+        if (useRollup) {
+            int bucketSec = windowSpanHours(w) > 168 ? 3600 : 300;
+            points = queryRollupPoints(variableName, w.effFrom, w.effTo, cap, dp, bucketSec);
+        } else {
+            List<TelemetryValueArchiveRow> rows = archiveMapper.selectSeriesAsc(trimVar(variableName), w.effFrom, w.effTo);
+            points = TelemetryArchiveDownsampleUtil.downsample(rows, cap, dp);
+        }
+        return TelemetryArchiveSeriesDto.builder()
+                .variableName(trimVar(variableName))
+                .points(points)
+                .displayProfile(profile)
+                .fromRollup(useRollup)
+                .queriedFrom(w.qFrom)
+                .queriedTo(w.qTo)
+                .build();
+    }
+
+    /** 兼容旧签名 */
     public TelemetryArchiveSeriesDto querySeries(String variableName,
                                                  java.time.LocalDateTime from,
                                                  java.time.LocalDateTime to,
                                                  int maxPoints,
                                                  String seriesScope,
                                                  Integer windowHours) {
+        return querySeries(variableName, from, to, maxPoints, seriesScope, windowHours, "STANDARD", null);
+    }
+
+    public TelemetryArchiveSeriesBatchDto querySeriesBatch(
+            List<String> variableNames,
+            java.time.LocalDateTime from,
+            java.time.LocalDateTime to,
+            int maxPoints,
+            String seriesScope,
+            Integer windowHours,
+            String displayProfile,
+            Boolean fromRollup) {
+        if (variableNames == null || variableNames.isEmpty()) {
+            throw new IllegalArgumentException("variableNames 不能为空");
+        }
+        List<TelemetryArchiveSeriesDto> series = new ArrayList<>();
+        ResolvedWindow w = resolveWindow(from, to, seriesScope, windowHours);
+        String profile = normalizeProfile(displayProfile);
+        for (String vn : variableNames) {
+            if (!StringUtils.hasText(vn)) {
+                continue;
+            }
+            series.add(querySeries(vn, w.effFrom, w.effTo, maxPoints, "RANGE", null, profile, fromRollup));
+        }
+        return TelemetryArchiveSeriesBatchDto.builder()
+                .displayProfile(profile)
+                .queriedFrom(w.qFrom)
+                .queriedTo(w.qTo)
+                .series(series)
+                .build();
+    }
+
+    public TelemetryFleetMatrixDto queryFleetMatrix(
+            java.time.LocalDateTime from,
+            java.time.LocalDateTime to,
+            String metricKindCode,
+            String floorFilter) {
+        return queryFleetMatrix(from, to, metricKindCode, floorFilter, false);
+    }
+
+    public TelemetryFleetMatrixDto queryFleetMatrix(
+            java.time.LocalDateTime from,
+            java.time.LocalDateTime to,
+            String metricKindCode,
+            String floorFilter,
+            boolean debug) {
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("from/to 不能为空");
+        }
+        if (to.isBefore(from)) {
+            throw new IllegalArgumentException("to 不能早于 from");
+        }
+        ZoneId z = ZoneId.systemDefault();
+        String metric = StringUtils.hasText(metricKindCode) ? metricKindCode.trim().toUpperCase() : null;
+        String floor = StringUtils.hasText(floorFilter) ? floorFilter.trim() : null;
+        List<TelemetryFleetAggRow> rows = archiveMapper.selectFleetAgg(from, to, metric, floor);
+        TelemetryGlobalAlarmLimitsDto limits = globalAlarmLimitsService.load();
+        TelemetryWatchlistEnrichment enrichment = watchlistDbService.loadActiveWatchlistEnrichment();
+        List<TelemetryFleetMatrixCellDto> cells = new ArrayList<>();
+        if (rows != null) {
+            for (TelemetryFleetAggRow r : rows) {
+                cells.add(buildFleetCell(r, limits, enrichment));
+            }
+        }
+        if (debug) {
+            log.info(
+                    "[telemetry-insights] fleet-matrix from={} to={} metric={} floor={} rawRows={} cells={}",
+                    from,
+                    to,
+                    metric,
+                    floor,
+                    rows == null ? 0 : rows.size(),
+                    cells.size());
+        }
+        return TelemetryFleetMatrixDto.builder()
+                .queriedFrom(from.atZone(z).toOffsetDateTime().toString())
+                .queriedTo(to.atZone(z).toOffsetDateTime().toString())
+                .metricKindCode(metric)
+                .floorFilter(floor)
+                .cells(cells)
+                .build();
+    }
+
+    public List<TelemetryPartitionSummaryDto> queryPartitionSummary(
+            java.time.LocalDateTime from,
+            java.time.LocalDateTime to,
+            String metricKindCode,
+            String floorFilter,
+            String displayProfile) {
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("from/to 不能为空");
+        }
+        ZoneId z = ZoneId.systemDefault();
+        String metric = StringUtils.hasText(metricKindCode) ? metricKindCode.trim().toUpperCase() : null;
+        String floor = StringUtils.hasText(floorFilter) ? floorFilter.trim() : null;
+        List<TelemetryValueArchiveRow> samples = archiveMapper.selectPartitionBucketSamples(from, to, metric, floor);
+        Map<String, Map<Long, List<Double>>> partitionBuckets = new LinkedHashMap<>();
+        for (TelemetryValueArchiveRow r : samples) {
+            if (r.getSampleAt() == null || r.getNumericValue() == null) {
+                continue;
+            }
+            String pk = partitionKey(r.getRoomCanonical());
+            long bucketMs = r.getSampleAt().atZone(z).toInstant().toEpochMilli();
+            bucketMs = bucketMs - (bucketMs % (15 * 60_000L));
+            partitionBuckets.computeIfAbsent(pk, k -> new TreeMap<>())
+                    .computeIfAbsent(bucketMs, k -> new ArrayList<>())
+                    .add(r.getNumericValue());
+        }
+        List<TelemetryPartitionSummaryDto> out = new ArrayList<>();
+        String qFrom = from.atZone(z).toOffsetDateTime().toString();
+        String qTo = to.atZone(z).toOffsetDateTime().toString();
+        for (Map.Entry<String, Map<Long, List<Double>>> pe : partitionBuckets.entrySet()) {
+            List<TelemetryArchivePointDto> medianPts = new ArrayList<>();
+            List<TelemetryArchivePointDto> p90Pts = new ArrayList<>();
+            for (Map.Entry<Long, List<Double>> be : pe.getValue().entrySet()) {
+                List<Double> vals = be.getValue();
+                vals.sort(Double::compareTo);
+                double med = percentile(vals, 0.5);
+                double p90 = percentile(vals, 0.9);
+                String t = java.time.Instant.ofEpochMilli(be.getKey()).atZone(z).toOffsetDateTime().toString();
+                medianPts.add(TelemetryArchivePointDto.builder().t(t).value(med).build());
+                p90Pts.add(TelemetryArchivePointDto.builder().t(t).value(p90).build());
+            }
+            out.add(TelemetryPartitionSummaryDto.builder()
+                    .partitionKey(pe.getKey())
+                    .partitionLabel(pe.getKey())
+                    .metricKindCode(metric)
+                    .medianPoints(medianPts)
+                    .p90Points(p90Pts)
+                    .queriedFrom(qFrom)
+                    .queriedTo(qTo)
+                    .build());
+        }
+        return out;
+    }
+
+    private TelemetryFleetMatrixCellDto buildFleetCell(
+            TelemetryFleetAggRow r,
+            TelemetryGlobalAlarmLimitsDto limits,
+            TelemetryWatchlistEnrichment enrichment) {
+        Double minL = null;
+        Double maxL = null;
+        String mk = r.getMetricKindCode() == null ? "" : r.getMetricKindCode().trim().toUpperCase();
+        if (mk.contains("TEMP") || "T".equals(mk)) {
+            minL = parseLimit(limits.getTempMin());
+            maxL = parseLimit(limits.getTempMax());
+        } else if (mk.contains("HUM") || mk.contains("RH") || "H".equals(mk)) {
+            minL = parseLimit(limits.getHumMin());
+            maxL = parseLimit(limits.getHumMax());
+        } else if (mk.contains("PRESS") || mk.contains("PA") || "P".equals(mk)) {
+            minL = parseLimit(limits.getPressureMin());
+            maxL = parseLimit(limits.getPressureMax());
+        }
+        Double latest = r.getLatestValue();
+        String status = "UNKNOWN";
+        Double deviation = null;
+        if (latest != null && minL != null && maxL != null) {
+            if (latest < minL) {
+                status = "LOW";
+                deviation = minL - latest;
+            } else if (latest > maxL) {
+                status = "HIGH";
+                deviation = latest - maxL;
+            } else {
+                status = "OK";
+                deviation = 0.0;
+            }
+        }
+        double compliance = 1.0;
+        if (latest != null && minL != null && maxL != null && (latest < minL || latest > maxL)) {
+            compliance = 0.0;
+        }
+        String vn = r.getVariableName();
+        String displayLabel = resolveWatchlistLabel(enrichment, vn);
+        if (!StringUtils.hasText(displayLabel) && StringUtils.hasText(r.getRoomCanonical())) {
+            displayLabel = r.getRoomCanonical();
+        }
+        String floorCode = resolveWatchlistField(enrichment.getFloorCodeByVariable(), vn);
+        String bundleCode = resolveWatchlistField(enrichment.getBundleCodeByVariable(), vn);
+        return TelemetryFleetMatrixCellDto.builder()
+                .roomCanonical(r.getRoomCanonical())
+                .metricKindCode(r.getMetricKindCode())
+                .variableName(vn)
+                .displayLabel(displayLabel)
+                .floorCode(floorCode)
+                .bundleCode(bundleCode)
+                .latestValue(latest)
+                .minValue(r.getMinValue())
+                .maxValue(r.getMaxValue())
+                .avgValue(r.getAvgValue())
+                .sampleCount(r.getSampleCount())
+                .complianceRate(compliance)
+                .complianceStatus(status)
+                .maxDeviation(deviation)
+                .build();
+    }
+
+    private static String resolveWatchlistLabel(TelemetryWatchlistEnrichment enrichment, String variableName) {
+        if (enrichment == null || !StringUtils.hasText(variableName)) {
+            return null;
+        }
+        String hit = enrichment.getDisplayLabelByVariable().get(variableName.trim());
+        if (StringUtils.hasText(hit)) {
+            return hit.trim();
+        }
+        for (Map.Entry<String, String> e : enrichment.getDisplayLabelByVariable().entrySet()) {
+            if (e.getKey() != null && e.getKey().equalsIgnoreCase(variableName.trim()) && StringUtils.hasText(e.getValue())) {
+                return e.getValue().trim();
+            }
+        }
+        return null;
+    }
+
+    private static String resolveWatchlistField(Map<String, String> map, String variableName) {
+        if (map == null || map.isEmpty() || !StringUtils.hasText(variableName)) {
+            return null;
+        }
+        String hit = map.get(variableName.trim());
+        if (StringUtils.hasText(hit)) {
+            return hit.trim();
+        }
+        for (Map.Entry<String, String> e : map.entrySet()) {
+            if (e.getKey() != null && e.getKey().equalsIgnoreCase(variableName.trim()) && StringUtils.hasText(e.getValue())) {
+                return e.getValue().trim();
+            }
+        }
+        return null;
+    }
+
+    private List<TelemetryArchivePointDto> queryRollupPoints(
+            String variableName, LocalDateTime from, LocalDateTime to, int cap, DisplayProfile dp, int bucketSec) {
+        ZoneId z = ZoneId.systemDefault();
+        List<TelemetryValueRollupRow> rows;
+        try {
+            rows = rollupMapper.selectSeriesAsc(trimVar(variableName), from, to, bucketSec);
+        } catch (Exception e) {
+            log.debug("[遥测归档] rollup 查询失败，回退 raw: {}", e.getMessage());
+            rows = List.of();
+        }
+        if (rows == null || rows.isEmpty()) {
+            List<TelemetryValueArchiveRow> raw = archiveMapper.selectSeriesAsc(trimVar(variableName), from, to);
+            return TelemetryArchiveDownsampleUtil.downsample(raw, cap, dp);
+        }
+        List<TelemetryArchivePointDto> rawPts = new ArrayList<>();
+        for (TelemetryValueRollupRow r : rows) {
+            if (r.getBucketStart() == null || r.getAvgValue() == null) {
+                continue;
+            }
+            String t = r.getBucketStart().atZone(z).toOffsetDateTime().toString();
+            rawPts.add(TelemetryArchivePointDto.builder().t(t).value(r.getAvgValue()).build());
+        }
+        return TelemetryArchiveDownsampleUtil.downsampleRollupPoints(rawPts, cap, dp);
+    }
+
+    private static double percentile(List<Double> sorted, double p) {
+        if (sorted.isEmpty()) {
+            return Double.NaN;
+        }
+        if (sorted.size() == 1) {
+            return sorted.get(0);
+        }
+        double idx = p * (sorted.size() - 1);
+        int lo = (int) Math.floor(idx);
+        int hi = (int) Math.ceil(idx);
+        if (lo == hi) {
+            return sorted.get(lo);
+        }
+        double w = idx - lo;
+        return sorted.get(lo) * (1 - w) + sorted.get(hi) * w;
+    }
+
+    private static String partitionKey(String roomCanonical) {
+        if (!StringUtils.hasText(roomCanonical)) {
+            return "_unknown";
+        }
+        String rc = roomCanonical.trim();
+        int dash = rc.indexOf('-');
+        return dash > 0 ? rc.substring(0, dash) : rc;
+    }
+
+    private static Double parseLimit(String s) {
+        if (!StringUtils.hasText(s)) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(s.trim().replace(',', '.'));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private boolean shouldUseRollup(LocalDateTime from, LocalDateTime to, Boolean fromRollup) {
+        if (Boolean.FALSE.equals(fromRollup)) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(fromRollup)) {
+            return true;
+        }
+        return ChronoUnit.HOURS.between(from, to) > ROLLUP_AUTO_HOURS;
+    }
+
+    private static long windowSpanHours(ResolvedWindow w) {
+        return ChronoUnit.HOURS.between(w.effFrom, w.effTo);
+    }
+
+    private int resolveMaxPoints(int maxPoints, String profile) {
+        if (maxPoints > 0 && maxPoints != 120) {
+            return Math.min(500, Math.max(2, maxPoints));
+        }
+        return displayProfileService.resolveMaxPoints(profile);
+    }
+
+    private static String normalizeProfile(String displayProfile) {
+        if (!StringUtils.hasText(displayProfile)) {
+            return "STANDARD";
+        }
+        String p = displayProfile.trim().toUpperCase();
+        return "PRESENTATION".equals(p) ? "PRESENTATION" : "STANDARD";
+    }
+
+    private static DisplayProfile toDisplayProfile(String profile) {
+        return "PRESENTATION".equals(profile) ? DisplayProfile.PRESENTATION : DisplayProfile.STANDARD;
+    }
+
+    private String trimVar(String variableName) {
         if (!StringUtils.hasText(variableName)) {
             throw new IllegalArgumentException("variableName 不能为空");
         }
         String vn = variableName.trim();
-        if (vn.length() > 500) {
-            vn = vn.substring(0, 500);
-        }
+        return vn.length() > 500 ? vn.substring(0, 500) : vn;
+    }
+
+    private ResolvedWindow resolveWindow(
+            LocalDateTime from, LocalDateTime to, String seriesScope, Integer windowHours) {
         ZoneId z = ZoneId.systemDefault();
-        java.time.LocalDateTime effFrom;
-        java.time.LocalDateTime effTo;
+        LocalDateTime effFrom;
+        LocalDateTime effTo;
         if (StringUtils.hasText(seriesScope) && "ROLLING".equalsIgnoreCase(seriesScope.trim())) {
             int wh = windowHours == null ? 6 : Math.min(168, Math.max(1, windowHours));
-            effTo = java.time.LocalDateTime.now(z);
+            effTo = LocalDateTime.now(z);
             effFrom = effTo.minusHours(wh);
         } else {
             if (from == null || to == null) {
@@ -178,52 +564,15 @@ public class TelemetryArchiveService {
             effFrom = from;
             effTo = to;
         }
-        int cap = Math.min(500, Math.max(2, maxPoints));
-        List<TelemetryValueArchiveRow> rows = archiveMapper.selectSeriesAsc(vn, effFrom, effTo);
-        List<TelemetryArchivePointDto> points = downsample(rows, cap);
-        String qFrom = effFrom.atZone(z).toOffsetDateTime().toString();
-        String qTo = effTo.atZone(z).toOffsetDateTime().toString();
-        return TelemetryArchiveSeriesDto.builder()
-                .variableName(vn)
-                .points(points)
-                .queriedFrom(qFrom)
-                .queriedTo(qTo)
-                .build();
+        return new ResolvedWindow(
+                effFrom,
+                effTo,
+                effFrom.atZone(z).toOffsetDateTime().toString(),
+                effTo.atZone(z).toOffsetDateTime().toString());
     }
 
-    private static List<TelemetryArchivePointDto> downsample(List<TelemetryValueArchiveRow> rows, int maxPoints) {
-        List<TelemetryArchivePointDto> out = new ArrayList<>();
-        if (rows == null || rows.isEmpty()) {
-            return out;
-        }
-        ZoneId z = ZoneId.systemDefault();
-        if (rows.size() <= maxPoints) {
-            for (TelemetryValueArchiveRow r : rows) {
-                out.add(toPoint(r, z));
-            }
-            return out;
-        }
-        int last = rows.size() - 1;
-        for (int i = 0; i < maxPoints; i++) {
-            double pos = i * last / (double) (maxPoints - 1);
-            int idx = (int) Math.round(pos);
-            if (idx < 0) {
-                idx = 0;
-            } else if (idx > last) {
-                idx = last;
-            }
-            out.add(toPoint(rows.get(idx), z));
-        }
-        return out;
-    }
-
-    private static TelemetryArchivePointDto toPoint(TelemetryValueArchiveRow r, ZoneId z) {
-        String t = r.getSampleAt() == null ? null : r.getSampleAt().atZone(z).toOffsetDateTime().toString();
-        Double v = r.getNumericValue();
-        if (v == null && StringUtils.hasText(r.getRawValue())) {
-            v = parseItemNumeric(r.getRawValue());
-        }
-        return TelemetryArchivePointDto.builder().t(t).value(v).build();
+    private record ResolvedWindow(
+            LocalDateTime effFrom, LocalDateTime effTo, String qFrom, String qTo) {
     }
 
     public int purgeExpired() {

@@ -24,4 +24,13 @@ class MpHtmlSanitizerTest {
         assertTrue(out.contains("ok"));
         assertTrue(!out.toLowerCase().contains("script"), () -> out);
     }
+
+    @Test
+    void preservesImageWidthPercentInlineStyle() {
+        String raw =
+                "<p><img src=\"/api/files/x.png\" alt=\"\" style=\"width: 45%; max-width: 100%; height: auto; display: inline-block; box-sizing: border-box;\"></p>";
+        String out = MpHtmlSanitizer.sanitizeBodyHtml(raw);
+        assertTrue(out.contains("width: 45%"), () -> out);
+        assertTrue(out.contains("max-width: 100%"), () -> out);
+    }
 }

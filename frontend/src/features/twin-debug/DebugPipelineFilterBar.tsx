@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Calendar, MapPin, Settings } from "lucide-react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { BlacklistManageModal } from "@/components/admin/BlacklistManageModal";
 import { AdminToolbar } from "@/components/admin/AdminToolbar";
 import type { DebugPipelineFilter } from "@/features/twin-debug/debugPipelineFilter";
@@ -128,20 +129,11 @@ export function DebugPipelineFilterBar({ filters, onChange, onClear, invalidateK
           <span className="mx-1 h-6 w-px bg-slate-200" />
 
           <label className={cn(DASH_NIGHT_CLASS.panel, "flex cursor-pointer items-center gap-2 px-3 py-1.5")}>
-            <div className="relative">
-              <input
-                type="checkbox"
-                className="sr-only"
-                checked={filters.excludeBlacklist}
-                onChange={(e) => onChange({ ...filters, excludeBlacklist: e.target.checked })}
-              />
-              <div
-                className={`block h-6 w-10 rounded-full transition-colors ${filters.excludeBlacklist ? "bg-indigo-500" : "bg-slate-300"}`}
-              />
-              <div
-                className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${filters.excludeBlacklist ? "translate-x-4" : ""}`}
-              />
-            </div>
+            <AdminSwitchScaled
+              size="3.5"
+              checked={filters.excludeBlacklist}
+              onChange={(checked) => onChange({ ...filters, excludeBlacklist: checked })}
+            />
             <span className={cn("select-none text-xs font-bold", DASH_NIGHT_CLASS.textMuted)}>排除黑名单</span>
           </label>
           <button

@@ -42,6 +42,7 @@ import {
 import { ScanLevelBadge } from "./ScanLevelBadge";
 import { ScanPopupBackdropDecor } from "./ScanPopupBackdropDecor";
 import { useTheme } from "@/features/theme/ThemeProvider";
+import { useScanAssistantStore } from "@/store/useScanAssistantStore";
 
 /** 预期核心在馆时间带 — 颜色由父级 schemeCssVars 注入的 --scan-chart-* / --scan-card-tint */
 const WeeklyRoutineMatrixChart = ({ predictions }: { predictions: any[] }) => {
@@ -142,9 +143,8 @@ export function UiverseProfilePopup(props: PopupProps) {
     const canOperateRiskState = hasMinRole(authStorage.getRole(), "STAFF");
     const { theme } = useTheme();
     const isDark = theme.mode === 'dark';
+    const assistantDockVisible = useScanAssistantStore((s) => s.dockVisible);
     const accentVariant = resolveScanAccentVariant(state.user?.gender);
-    const popupMessage = (state.inlineMessage || executeErrorMessage || "").trim();
-
     // ============================================================
     // 特殊通道学生入口 — 按钮显隐设计决策
     // ============================================================
@@ -363,20 +363,6 @@ export function UiverseProfilePopup(props: PopupProps) {
                         </div>
                     </div>
                     <div className="flex flex-col h-full min-h-0 pt-4 pb-6 gap-3 relative">
-                        {popupMessage && (
-                            <div className="w-full max-w-[340px] mx-auto shrink-0 flex justify-end pr-0 relative z-10">
-                                <div className="max-w-[min(260px,100%)] rounded-md border border-[var(--app-color-feedback-danger)]/30 bg-[var(--app-color-feedback-danger-soft)] px-2 py-1 text-[10px] leading-snug text-[var(--app-color-text-primary)] shadow-md flex items-start gap-1.5">
-                                    <span className="flex-1 min-w-0 break-words text-right">{popupMessage}</span>
-                                    <button
-                                        type="button"
-                                        onClick={actions.clearInlineMessage}
-                                        className="text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)] shrink-0 text-[10px] font-semibold"
-                                    >
-                                        关闭
-                                    </button>
-                                </div>
-                            </div>
-                        )}
                         {/* 上 2/5：面包机区贴底，预留动画空间；下 3/5 给操作按钮 */}
                         <div className="flex min-h-0 flex-[2] flex-col justify-end overflow-visible rounded-2xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)]/30 pb-0.5">
                             <div className="pointer-events-none flex h-[160px] w-full max-w-[300px] shrink-0 items-end justify-center self-center">

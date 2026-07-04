@@ -79,10 +79,12 @@ export interface MaterialStockMovementRow {
   applicantGroup?: string;
   remark?: string;
   createdAt?: string;
+  specSnapshot?: string;
 }
 
-export async function fetchItemStockMovements(itemId: number, params: { page: number; size: number; applicantGroup?: string }) {
-  const res = await authHttp.get<Result<{ data: MaterialStockMovementRow[]; total: number }>>(`/material/admin/audit/item/${itemId}/movements`, { params });
+export async function fetchItemStockMovements(itemId: number | null | undefined, params: { page: number; size: number; applicantGroup?: string }) {
+  const id = itemId && itemId > 0 ? itemId : 0;
+  const res = await authHttp.get<Result<{ data: MaterialStockMovementRow[]; total: number }>>(`/material/admin/audit/item/${id}/movements`, { params });
   return res.data.data;
 }
 
@@ -97,6 +99,7 @@ export interface MaterialItemClaimRow {
   fulfilledQty?: number;
   createdAt?: string;
   fulfilledAt?: string;
+  specSnapshot?: string;
 }
 
 export async function fetchAuditExportRequests(params: {
@@ -121,8 +124,9 @@ export async function fetchGroupsWithRecords(params?: { from?: string; to?: stri
   return res.data.data ?? [];
 }
 
-export async function fetchItemClaimLines(itemId: number, params: { from?: string; to?: string; applicantGroup?: string; page: number; size: number }) {
-  const res = await authHttp.get<Result<{ data: MaterialItemClaimRow[]; total: number }>>(`/material/admin/audit/item/${itemId}/claims`, { params });
+export async function fetchItemClaimLines(itemId: number | null | undefined, params: { from?: string; to?: string; applicantGroup?: string; page: number; size: number }) {
+  const id = itemId && itemId > 0 ? itemId : 0;
+  const res = await authHttp.get<Result<{ data: MaterialItemClaimRow[]; total: number }>>(`/material/admin/audit/item/${id}/claims`, { params });
   return res.data.data;
 }
 
@@ -408,10 +412,11 @@ export async function exportMaterialAuditTrail(params: {
 }
 
 export async function exportMaterialItemFlow(params: {
-  itemId: number; from?: string; to?: string; applicantGroup?: string; exportLabel?: string;
+  itemId?: number | null; from?: string; to?: string; applicantGroup?: string; exportLabel?: string;
 }): Promise<Blob> {
-  const { itemId, ...rest } = params;
-  const res = await authHttp.get(`/material/admin/audit/item/${itemId}/export`, {
+  const id = params.itemId && params.itemId > 0 ? params.itemId : 0;
+  const { itemId: _omit, ...rest } = params;
+  const res = await authHttp.get(`/material/admin/audit/item/${id}/export`, {
     params: rest,
     responseType: "blob",
   });

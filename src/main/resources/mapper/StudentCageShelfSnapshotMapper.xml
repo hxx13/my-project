@@ -161,4 +161,21 @@
         WHERE refreshed_by = #{userId}
     </select>
 
+    <select id="selectCageTypeCountsByShelveIds" resultType="map">
+        SELECT s.shelve_id AS shelveId,
+               s.animal_cage_type AS animalCageType,
+               COUNT(*) AS cnt
+        FROM student_cage_shelf_snapshot s
+        INNER JOIN (
+            SELECT shelve_id, MAX(snapshot_batch_id) AS latest_batch
+            FROM student_cage_shelf_snapshot
+            WHERE shelve_id IN
+            <foreach collection="shelveIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+            GROUP BY shelve_id
+        ) b ON s.shelve_id = b.shelve_id AND s.snapshot_batch_id = b.latest_batch
+        GROUP BY s.shelve_id, s.animal_cage_type
+    </select>
+
 </mapper>

@@ -32,12 +32,12 @@ export default function StudentMaterialRequestsPage() {
   const confirm = useConfirmMaterialReceive();
 
   return (
-    <div className="h-full bg-[var(--student-canvas-soft)] flex flex-col">
-      <div className="flex items-center gap-3 px-5 py-3 bg-white border-b border-[var(--student-hairline)]">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--student-canvas-soft)]">
+      <div className="flex shrink-0 items-center gap-3 px-5 py-3 bg-white border-b border-[var(--student-hairline)]">
         <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-[13px] text-[var(--student-mute)]"><ChevronLeft className="size-4" /> 返回</button>
         <h2 className="text-[15px] font-semibold">我的申领</h2>
       </div>
-      <div className="flex gap-1.5 px-5 py-2 bg-white border-b border-[var(--student-hairline)] overflow-x-auto">
+      <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-[var(--student-hairline)] bg-white px-5 py-2">
         {[{ label: "全部", value: undefined }, ...Object.entries(STATUS_LABELS).map(([k, v]) => ({ label: v, value: k }))].map((opt) => (
           <button key={opt.value ?? "all"} onClick={() => { setStatusFilter(opt.value); setPage(1); }}
             className={cn("px-3 py-1 rounded-[var(--student-radius-pill)] text-[12px] whitespace-nowrap transition-colors",
@@ -46,7 +46,7 @@ export default function StudentMaterialRequestsPage() {
           </button>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-4 space-y-2.5">
         {isLoading ? (
           Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[80px]" />)
         ) : !data?.data || data.data.length === 0 ? (

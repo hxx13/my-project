@@ -5,11 +5,13 @@ import {
   fetchExpSummary, fetchExpRecords,
   approveExpRecord, rejectExpRecord,
   batchApproveExpRecords, batchRejectExpRecords,
+  reconcileExpCatchUp, recalculateAllExp,
   type ExpRecord,
 } from "@/api/domains/expStats.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
 import toast from "react-hot-toast";
 
@@ -101,6 +103,8 @@ export default function AdminExpStatsPage() {
   const [feedSource, setFeedSource] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [reviewing, setReviewing] = useState(false);
+  const [catchingUp, setCatchingUp] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["expSummary"] as const,
@@ -204,6 +208,36 @@ export default function AdminExpStatsPage() {
       queryClient.invalidateQueries({ queryKey: ["expSummary"] });
     } catch (e: any) { toast.error(e?.message || "操作失败"); }
   };
+
+  const handleCatchUp = async () => {
+    setCatchingUp(true);
+    try {
+      const res = await reconcileExpCatchUp();
+      toast.success(res.message || `补漏完成：处理 ${res.datesProcessed ?? 0} 天`);
+      queryClient.invalidateQueries({ queryKey: ["expRecords"] });
+      queryClient.invalidateQueries({ queryKey: ["expSummary"] });
+    } catch (e: any) {
+      toast.error(e?.message || "增量补漏失败");
+    } finally {
+      setCatchingUp(false);
+    }
+  };
+
+  const handleFullRecalc = async () => {
+    if (!window.confirm("全量重算将清空全部经验流水并逐日重建，耗时较长。确认继续？")) return;
+    setRecalculating(true);
+    try {
+      const res = await recalculateAllExp();
+      toast.success(res.message || "全量重算完成");
+      queryClient.invalidateQueries({ queryKey: ["expRecords"] });
+      queryClient.invalidateQueries({ queryKey: ["expSummary"] });
+    } catch (e: any) {
+      toast.error(e?.message || "全量重算失败");
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
   const statCards = [
     {
       label: "总经验值",
@@ -251,6 +285,28 @@ export default function AdminExpStatsPage() {
         </span>
       }
       description="记录所有扫码经验值流水，支持排行、趋势与来源分布"
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminButton
+            type="button"
+            tone="primary"
+            size="sm"
+            disabled={catchingUp || recalculating}
+            onClick={handleCatchUp}
+          >
+            {catchingUp ? "补漏中…" : "增量补漏"}
+          </AdminButton>
+          <AdminButton
+            type="button"
+            tone="secondary"
+            size="sm"
+            disabled={catchingUp || recalculating}
+            onClick={handleFullRecalc}
+          >
+            {recalculating ? "全量重算中…" : "全量重算"}
+          </AdminButton>
+        </div>
+      }
     >
       <div className="flex flex-col gap-6">
         {/* Stat Cards Row */}
@@ -433,7 +489,11 @@ export default function AdminExpStatsPage() {
             <thead>
               <tr className="border-b bg-[var(--app-color-surface-hover)] text-left text-[var(--app-color-text-secondary)]">
                 <th className="px-1 py-1.5 w-8">
-                  <input type="checkbox" checked={rows.length > 0 && selectedIds.size === rows.length} onChange={toggleAll} className="h-3 w-3" />
+                  <AdminSwitchScaled
+                    size="3.5"
+                    checked={rows.length > 0 && selectedIds.size === rows.length}
+                    onChange={() => toggleAll()}
+                  />
                 </th>
                 <th className="px-2 py-1.5">时间</th>
                 <th className="px-2 py-1.5">用户ID</th>
@@ -455,7 +515,7 @@ export default function AdminExpStatsPage() {
                 return (
                 <tr key={r.id} className="border-b align-top hover:bg-[var(--app-color-surface-hover)]">
                   <td className="px-1 py-1.5">
-                    <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)} className="h-3 w-3" />
+                    <AdminSwitchScaled size="3.5" checked={selectedIds.has(r.id)} onChange={() => toggleSelect(r.id)} />
                   </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{toTime(r.createTime)}</td>
                   <td className="px-2 py-1.5 font-mono text-xs">{r.userId || "-"}</td>

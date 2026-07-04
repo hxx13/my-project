@@ -12,6 +12,7 @@ import {
   type ViolationRule,
 } from "@/api/domains/studentViolation.api";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AdminTableShell } from "@/components/admin/AdminPageShell";
 
 const RULE_CATEGORIES = [
@@ -420,11 +421,10 @@ function RuleFormModal({
 
         {/* 启用 */}
         <label className="flex items-center gap-2 text-sm mb-5">
-          <input
-            type="checkbox"
+          <AdminSwitchScaled
+            size="sm"
             checked={form.enabled === 1}
-            onChange={(e) => setForm({ ...form, enabled: e.target.checked ? 1 : 0 })}
-            className="accent-[var(--app-color-accent)]"
+            onChange={(checked) => setForm({ ...form, enabled: checked ? 1 : 0 })}
           />
           <span className="text-[var(--app-color-text-primary)]">启用此规则</span>
         </label>

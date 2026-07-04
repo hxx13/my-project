@@ -2,18 +2,21 @@
 import type { MobileAlertItem } from "@/api/domains/mobileStudent.api";
 import { AlertTriangle } from "lucide-react";
 import { alertKindColors, alertKindLabel } from "./MobileNoticesPanel";
-import MobileNoticeSuppressActions from "./MobileNoticeSuppressActions";
 import {
   extractViolationBodyForDisplay,
   MOBILE_NOTICE_BODY_CLASS,
   prepareMobileNoticeHtml,
 } from "./mobileNoticePresentation";
+import {
+  buildExemptListPreview,
+  parseExemptFields,
+  prepareExemptAlertBodyHtml,
+  resolveExemptAlertTitle,
+} from "./mobileExemptAlertHelpers";
 
 interface MobileNoticeDetailBodyProps {
   item: MobileAlertItem;
   html5PrivilegeBypass?: boolean;
-  token?: string;
-  onSuppressed?: () => void;
   /** 详情全屏：白底通栏、大图 100% 宽 */
   fullBleed?: boolean;
 }
@@ -92,17 +95,19 @@ function MobileViolationStatusCard({
 export default function MobileNoticeDetailBody({
   item,
   html5PrivilegeBypass = false,
-  token,
-  onSuppressed,
   fullBleed = false,
 }: MobileNoticeDetailBodyProps) {
   const needK = item.interactiveRequired && !html5PrivilegeBypass;
   const colors = alertKindColors(item.kind);
   const isViolation = item.kind === "violation";
+  const isExempt = item.kind === "exempt";
   const bodySource = isViolation
     ? extractViolationBodyForDisplay(String(item.contentHtml || ""))
-    : String(item.contentHtml || "");
-  const bodyHtml = prepareMobileNoticeHtml(bodySource);
+    : isExempt
+      ? prepareExemptAlertBodyHtml(item)
+      : String(item.contentHtml || "");
+  const bodyHtml = isExempt ? bodySource : prepareMobileNoticeHtml(bodySource);
+  const displayTitle = isExempt ? resolveExemptAlertTitle() : item.title;
   const metaTime =
     item.publishAt?.slice(0, 16) ||
     item.createdAt?.slice(0, 16) ||
@@ -146,21 +151,27 @@ export default function MobileNoticeDetailBody({
             </span>
           </>
         ) : null}
+        {item.autoOpenSuppressed ? (
+          <>
+            <span className="shrink-0 text-[11px]" style={{ color: "#dcdee0" }}>
+              ·
+            </span>
+            <span
+              className="shrink-0 text-[10px] font-semibold whitespace-nowrap"
+              style={{ color: "#969799" }}
+            >
+              已设置不再弹出
+            </span>
+          </>
+        ) : null}
       </div>
 
-      <div className="flex items-start justify-between gap-2">
-        <h3
-          className="flex-1 min-w-0 text-[17px] font-bold leading-snug break-words"
-          style={{ color: "#323233" }}
-        >
-          {item.title}
-        </h3>
-        <MobileNoticeSuppressActions
-          token={token}
-          item={item}
-          onSuppressed={onSuppressed}
-        />
-      </div>
+      <h3
+        className="text-[17px] font-bold leading-snug break-words"
+        style={{ color: "#323233" }}
+      >
+        {displayTitle}
+      </h3>
 
       {isViolation && (
         <MobileViolationStatusCard

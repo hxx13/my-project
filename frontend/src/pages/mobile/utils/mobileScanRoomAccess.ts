@@ -32,6 +32,9 @@ export interface NormalizedMobileScanAnalyze {
   scanPopupExemptRoomIds: string[];
   violationEnterLocked: boolean;
   unboundEnterLocked: boolean;
+  scanDelayEnabled: boolean;
+  scanDelayButtonLabel: string;
+  scanDelayOptionsByRoom: Record<string, Record<string, unknown>[]>;
 }
 
 export interface RoomPreviewAccessBundle {
@@ -141,7 +144,17 @@ export function normalizeMobileScanAnalyze(
         typeof unboundNotice === "object" &&
         (unboundNotice as { enterLocked?: boolean }).enterLocked,
     ),
+    scanDelayEnabled: asBool(safe.scanDelayEnabled) ?? false,
+    scanDelayButtonLabel:
+      typeof safe.scanDelayButtonLabel === "string" && safe.scanDelayButtonLabel.trim()
+        ? safe.scanDelayButtonLabel.trim()
+        : "延迟",
+    scanDelayOptionsByRoom:
+      safe.scanDelayOptionsByRoom && typeof safe.scanDelayOptionsByRoom === "object"
+        ? (safe.scanDelayOptionsByRoom as Record<string, Record<string, unknown>[]>)
+        : {},
   };
+
 }
 
 export function computeMobilePermissionBadge(
@@ -153,6 +166,61 @@ export function computeMobilePermissionBadge(
     return { key: "time", text: "非开放时段" };
   }
   return { key: "ok", text: "正常" };
+}
+
+/**
+ * 将 overview roomId 解析为扫码系统的 officialRoomId。
+ * 延迟选项按 officialRoomId 分组，而 H5 房间列表用的是 overview roomId，
+ * 需通过 allowedRooms 的匹配关系桥接。
+ */
+export function resolveScanOfficialRoomId(
+  overviewRoomId: string | number,
+  overviewIndex: MobileOverviewIndex,
+  analyze: NormalizedMobileScanAnalyze | null,
+): string | null {
+  if (!analyze?.success) return null;
+  const rid = String(overviewRoomId);
+  // 1) 直接命中
+  for (const r of analyze.allowedRooms) {
+    const oid = String(r.officialRoomId || r.id || "").trim();
+    if (oid === rid) return oid;
+  }
+  // 2) 通过 overviewIndex 匹配
+  for (const r of analyze.allowedRooms) {
+    const oid = String(r.officialRoomId || r.id || "").trim();
+    if (!oid) continue;
+    // 2a) capacityBindRoomId
+    for (const [key, ov] of overviewIndex.byRoomId) {
+      for (const bindId of splitCapacityBindRoomIds(ov.capacityBindRoomId)) {
+        if (bindId === oid && key === rid) return oid;
+      }
+    }
+    // 2b) name matching (same as findAllowedScanRoom logic)
+    for (const [key, ov] of overviewIndex.byRoomId) {
+      if (key !== rid) continue;
+      const rn = (ov.roomName || "").trim().replace(/[\s　]+/g, "").replace(/[—–]/g, "-").toLowerCase();
+      const dn = (r.displayName || r.name || "").trim().replace(/[\s　]+/g, "").replace(/[—–]/g, "-").toLowerCase();
+      if (rn && dn && (dn === rn || dn.includes(rn) || rn.includes(dn))) return oid;
+    }
+  }
+  return null;
+}
+
+/** 获取某房间的延迟免冻结菜单项（与 useProfilePopup.getDelayOptionsForRoom 同源） */
+export function getRoomDelayOptions(
+  analyze: NormalizedMobileScanAnalyze | null,
+  scanOfficialRoomId: string,
+): Record<string, unknown>[] {
+  if (!analyze?.scanDelayEnabled) return [];
+  const map = analyze.scanDelayOptionsByRoom;
+  if (!map) return [];
+  const key = scanOfficialRoomId;
+  if (map[key]?.length) return map[key];
+  // 回退：遍历所有分组查找 roomId 匹配的项
+  for (const items of Object.values(map)) {
+    if (items.some((it) => String(it.roomId ?? "") === key)) return items;
+  }
+  return [];
 }
 
 function normalizeRoomKey(s: string): string {

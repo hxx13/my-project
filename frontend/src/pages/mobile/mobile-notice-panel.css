@@ -18,9 +18,15 @@
   --rich-text-image-max-width: 100%;
 }
 
-.mobile-notice-detail-body.rich-text-content :where(p > img),
-.mobile-notice-detail-body.rich-text-content :where(img:not(p > img)) {
+.mobile-notice-detail-body.rich-text-content :where(p > img:not([style*="width:"][style*="%"]:not([style*="width: auto"]))),
+.mobile-notice-detail-body.rich-text-content :where(img:not(p > img):not([style*="width:"][style*="%"]:not([style*="width: auto"]))) {
   max-width: 100% !important;
   width: auto !important;
+  height: auto !important;
+}
+
+.mobile-notice-detail-body.rich-text-content :where(p > img[style*="width:"][style*="%"]:not([style*="width: auto"])),
+.mobile-notice-detail-body.rich-text-content :where(img:not(p > img)[style*="width:"][style*="%"]:not([style*="width: auto"])) {
+  max-width: 100% !important;
   height: auto !important;
 }

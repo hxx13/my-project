@@ -18,6 +18,9 @@ import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayOption;
 import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayRequest;
 import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayRequestMapper;
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -385,7 +388,7 @@ public class ScanDelayRequestService {
     }
 
     private Map<String, Object> grantExempt(String cardNo, TwinScanDelayOption opt, String roomId, String source) {
-        String roomIdsJson = configService.resolveExemptRoomIdsJson(opt, roomId);
+        String roomIdsJson = enrichExemptRoomIdsWithNames(configService.resolveExemptRoomIdsJson(opt, roomId));
         String mode = StringUtils.hasText(opt.getExemptMode()) ? opt.getExemptMode() : "TIME";
         Integer duration = opt.getDurationMinutes();
         String extendUntil = StringUtils.hasText(opt.getExtendUntilTime()) ? opt.getExtendUntilTime().trim() : null;
@@ -399,6 +402,52 @@ public class ScanDelayRequestService {
         out.put("status", "GRANTED");
         out.put("message", "已授予系统特权免冻结");
         return out;
+    }
+
+    /**
+     * 将豁免房间 ID JSON 从纯 ID 数组（如 ["roomId1"]）转换为含 roomName 的对象数组
+     * （如 [{"roomId":"roomId1","roomName":"会议室A"}]），与 dahua-issue 手动豁免格式一致，
+     * 确保前端 parseExemptRoomNames 能正确显示房间名称。
+     */
+    private String enrichExemptRoomIdsWithNames(String roomIdsJson) {
+        if (!StringUtils.hasText(roomIdsJson)) {
+            return roomIdsJson;
+        }
+        try {
+            JSONArray arr = JSON.parseArray(roomIdsJson.trim());
+            if (arr == null || arr.isEmpty()) {
+                return roomIdsJson;
+            }
+            JSONArray out = new JSONArray();
+            for (int i = 0; i < arr.size(); i++) {
+                Object item = arr.get(i);
+                String rid;
+                if (item instanceof JSONObject) {
+                    // 已是对象格式：补全 roomName（若缺失）
+                    JSONObject obj = (JSONObject) item;
+                    rid = obj.getString("roomId");
+                    String existingName = obj.getString("roomName");
+                    if (StringUtils.hasText(existingName)) {
+                        out.add(obj);
+                        continue;
+                    }
+                } else {
+                    rid = String.valueOf(item).trim();
+                }
+                if (!StringUtils.hasText(rid)) {
+                    continue;
+                }
+                String resolvedName = resolveRoomDisplayName(rid, null);
+                JSONObject enriched = new JSONObject();
+                enriched.put("roomId", rid.trim());
+                enriched.put("roomName", StringUtils.hasText(resolvedName) ? resolvedName.trim() : rid.trim());
+                out.add(enriched);
+            }
+            return out.toString();
+        } catch (Exception e) {
+            log.warn("[scan-delay] enrich exempt room ids failed, fallback to raw: {}", e.getMessage());
+            return roomIdsJson;
+        }
     }
 
     private boolean isConfiguredReviewerForOption(TwinScanDelayOption opt, String canonicalReviewerId) {

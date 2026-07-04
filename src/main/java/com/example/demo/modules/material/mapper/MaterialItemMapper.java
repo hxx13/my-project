@@ -12,6 +12,7 @@ public interface MaterialItemMapper {
     /** 按课题组过滤物品（仅返回有申领记录或库存流水的物品） */
     List<MaterialItem> selectByApplicantGroup(@Param("categoryId") Long categoryId, @Param("applicantGroup") String applicantGroup);
     MaterialItem selectById(@Param("id") Long id);
+    MaterialItem selectByIdForUpdate(@Param("id") Long id);
     int insert(MaterialItem item);
     int updateById(MaterialItem item);
     int softDelete(@Param("id") Long id, @Param("deletedBy") String deletedBy,

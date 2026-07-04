@@ -35,6 +35,8 @@ export function PageTransition({
     () => {
       if (!containerRef.current || variant === "none") return;
       const el = containerRef.current;
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (reducedMotion) return;
       gsap.set(el, { willChange: "transform, opacity" });
       if (variant === "fadeUp") {
         gsap.fromTo(el, { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration, delay, ease: "power2.out", clearProps: "willChange" });
@@ -48,7 +50,7 @@ export function PageTransition({
   );
 
   return (
-    <div ref={containerRef} className={className} style={{ minHeight: "100%" }}>
+    <div ref={containerRef} className={className ?? "h-full min-h-0"}>
       {children}
     </div>
   );

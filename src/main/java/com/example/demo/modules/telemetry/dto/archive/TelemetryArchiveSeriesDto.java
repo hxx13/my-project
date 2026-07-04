@@ -14,6 +14,10 @@ import java.util.List;
 public class TelemetryArchiveSeriesDto {
     private String variableName;
     private List<TelemetryArchivePointDto> points;
+    /** STANDARD | PRESENTATION */
+    private String displayProfile;
+    /** 是否来自 L1 rollup */
+    private Boolean fromRollup;
     /** 本次查询实际时间窗起点（ISO-8601）；ROLLING 时为服务端定窗 */
     private String queriedFrom;
     /** 本次查询实际时间窗终点（ISO-8601） */

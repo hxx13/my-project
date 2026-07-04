@@ -27,6 +27,7 @@
 
     <select id="getTodayRecords" resultType="map">
         SELECT id,
+               create_time,
                create_time  AS event_time,
                accessType AS action,
                feed_source AS feed_source,
@@ -40,6 +41,7 @@
         FROM aro_access_log
         WHERE user_id = #{userId}
           AND create_time >= #{todayStart}
+          AND (feed_source IS NULL OR feed_source != 'TWIN_AUTO_SIGNOUT')
         ORDER BY create_time ASC
     </select>
 

@@ -14,8 +14,9 @@ export const COCKPIT_TOP_BAR_OUTER = "w-full min-w-0 overflow-x-auto px-2 py-1.5
 
 export const COCKPIT_TOP_BAR_ROW = "flex w-full min-w-0 flex-nowrap items-center gap-1.5 sm:gap-2";
 
+/** 品牌区不收缩，避免 logo 右侧标题被挤没；窄屏时整行可横滑（见 OUTER overflow-x-auto） */
 export const COCKPIT_TOP_BAR_BRAND_ZONE =
-  "flex min-w-0 max-w-[min(42%,14rem)] shrink items-center gap-2 sm:max-w-[min(38%,16rem)] sm:gap-2.5";
+  "flex shrink-0 items-center gap-2 sm:gap-2.5";
 
 export const COCKPIT_TOP_BAR_DIVIDER = "mx-0.5 hidden h-7 w-px shrink-0 bg-cyan-500/15 sm:block";
 

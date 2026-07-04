@@ -51,6 +51,7 @@ import { AdminButton, adminPickableRowClass } from "@/components/admin/AdminButt
 import { AdminFilePickButton } from "@/components/admin/AdminFilePickButton";
 import { AdminPageTabs, AdminTabPanel } from "@/components/admin/AdminPageTabs";
 import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { isRichTextEmpty, richTextPlainPreview } from "@/utils/announcementHtml";
@@ -994,48 +995,45 @@ export default function AdminStudentViolationsPage() {
           id="violation-page-panel-unbound"
           tabId="unbound"
           activeTab={activeTab}
-          className="space-y-4"
+          className="admin-violations-tab-panel"
         >
       <AdminFormCard
         title="未绑卡扫码提示"
         description="扫描到尚未绑定物理卡的人员时展示警示；按当前网页登录人员的 sys_user 角色决定是否生效（与被扫人员身份无关）。"
       >
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-4">
+        <div className="admin-violation-form-body">
+          <div className="admin-form-toggle-row">
             <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
+              <AdminSwitchScaled
+                size="sm"
                 checked={unboundEnabled}
                 disabled={unboundLoading}
-                onChange={(e) => setUnboundEnabled(e.target.checked)}
+                onChange={(checked) => setUnboundEnabled(checked)}
               />
               启用未绑卡提示
             </label>
             <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
+              <AdminSwitchScaled
+                size="sm"
                 checked={unboundShowEvery}
                 disabled={unboundLoading}
-                onChange={(e) => setUnboundShowEvery(e.target.checked)}
+                onChange={(checked) => setUnboundShowEvery(checked)}
               />
               每次扫码都自动展开提示
             </label>
             <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
+              <AdminSwitchScaled
+                size="sm"
                 checked={unboundForbidEnter}
                 disabled={unboundLoading || !unboundEnabled}
-                onChange={(e) => setUnboundForbidEnter(e.target.checked)}
+                onChange={(checked) => setUnboundForbidEnter(checked)}
               />
               禁止扫码进入（未绑卡时，离开不受影响）
             </label>
           </div>
-          <div>
-            <label className="text-xs font-medium text-[var(--twin-body)]">{SCAN_OPERATOR_ROLE_LABEL}</label>
-            <p className="mt-0.5 text-[11px] text-[var(--twin-mute)]">{SCAN_OPERATOR_ROLE_HINT_UNBOUND}</p>
+          <div className="admin-form-field">
+            <label className="admin-form-field-label">{SCAN_OPERATOR_ROLE_LABEL}</label>
+            <p className="admin-form-field-hint">{SCAN_OPERATOR_ROLE_HINT_UNBOUND}</p>
             <div className="mt-2 flex flex-wrap gap-3">
               {UNBOUND_APPLY_ROLE_OPTIONS.map((opt) => {
                 const checked = unboundApplyRoles.includes(opt.code);
@@ -1048,14 +1046,13 @@ export default function AdminStudentViolationsPage() {
                       (unboundLoading || !unboundEnabled) && "cursor-not-allowed opacity-60"
                     )}
                   >
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
+                    <AdminSwitchScaled
+                      size="sm"
                       checked={checked}
                       disabled={unboundLoading || !unboundEnabled}
-                      onChange={(e) => {
+                      onChange={(nextChecked) => {
                         setUnboundApplyRoles((prev) => {
-                          if (e.target.checked) {
+                          if (nextChecked) {
                             return prev.includes(opt.code) ? prev : [...prev, opt.code];
                           }
                           const next = prev.filter((c) => c !== opt.code);
@@ -1069,21 +1066,21 @@ export default function AdminStudentViolationsPage() {
               })}
             </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-[var(--twin-body)]">提示文案（富文本）</label>
-            <div className="mt-1.5">
+          <div className="admin-form-field">
+            <label className="admin-form-field-label">提示文案（富文本）</label>
+            <div className="admin-rich-text-field">
               <RichTextEditor
                 value={unboundText}
                 onChange={setUnboundText}
                 disabled={unboundLoading || !unboundEnabled}
               />
             </div>
-            <p className="mt-1.5 text-[11px] text-[var(--twin-mute)]">
+            <p className="admin-form-field-hint">
               展示效果与「扫码弹窗公告」一致，支持插图与排版；历史纯文本配置仍可正常显示。
             </p>
           </div>
-          <div>
-            <label className="text-xs font-medium text-[var(--twin-body)]">提示附图（可选）</label>
+          <div className="admin-form-field">
+            <label className="admin-form-field-label">提示附图（可选）</label>
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <AdminFilePickButton
                 multiple
@@ -1114,15 +1111,17 @@ export default function AdminStudentViolationsPage() {
               </div>
             ) : null}
           </div>
-          <AdminButton
-            type="button"
-            tone="primary"
-            loading={unboundSaving}
-            disabled={unboundLoading}
-            onClick={() => void saveUnboundSettings()}
-          >
-            保存未绑卡提示
-          </AdminButton>
+          <div className="admin-form-actions">
+            <AdminButton
+              type="button"
+              tone="primary"
+              loading={unboundSaving}
+              disabled={unboundLoading}
+              onClick={() => void saveUnboundSettings()}
+            >
+              保存未绑卡提示
+            </AdminButton>
+          </div>
         </div>
       </AdminFormCard>
         </AdminTabPanel>
@@ -1131,7 +1130,7 @@ export default function AdminStudentViolationsPage() {
           id="violation-page-panel-announcement"
           tabId="announcement"
           activeTab={activeTab}
-          className="space-y-4"
+          className="admin-violations-tab-panel"
         >
       <ScanPopupAnnouncementSection />
         </AdminTabPanel>
@@ -1140,13 +1139,15 @@ export default function AdminStudentViolationsPage() {
           id="violation-page-panel-create"
           tabId="create"
           activeTab={activeTab}
+          className="admin-violations-tab-panel"
         >
         <AdminFormCard
           title="✋ 手动新建"
           description="单人锁定或按课题组批量勾选成员；提交后扫码侧按每人最新 ACTIVE 展示。"
         >
-          <div className="mb-4">
-            <label className="text-xs font-medium text-[var(--twin-body)]">锁定方式</label>
+          <div className="admin-violation-form-body">
+          <div className="admin-form-field">
+            <label className="admin-form-field-label">锁定方式</label>
             <div className="mt-1.5">
               <AdminSegmentedControl
                 options={LOCK_MODE_OPTIONS}
@@ -1345,11 +1346,10 @@ export default function AdminStudentViolationsPage() {
                             checked ? "border-indigo-200 bg-[var(--twin-canvas)]" : "border-transparent bg-[var(--twin-canvas-soft)] hover:bg-[var(--twin-canvas)]"
                           )}
                         >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 shrink-0 rounded border-[var(--twin-hairline-strong)]"
+                          <AdminSwitchScaled
+                            size="sm"
                             checked={checked}
-                            onChange={(e) => toggleBatchMember(m.userId, e.target.checked)}
+                            onChange={(nextChecked) => toggleBatchMember(m.userId, nextChecked)}
                           />
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)]">
                             {headSrc ? (
@@ -1375,8 +1375,8 @@ export default function AdminStudentViolationsPage() {
           )}
 
           {/* 选择触发规则 */}
-          <div>
-            <label className="block text-sm font-semibold text-[var(--twin-ink)] mb-1.5">
+          <div className="admin-form-field">
+            <label className="admin-form-field-label">
               触发规则
             </label>
             <select
@@ -1391,29 +1391,29 @@ export default function AdminStudentViolationsPage() {
                 </option>
               ))}
             </select>
-            <p className="text-[10px] text-[var(--twin-mute)] mt-1">
+            <p className="admin-form-field-hint">
               选择后将按该规则的解禁次数管控；不选则使用默认规则
             </p>
           </div>
 
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-[var(--twin-body)]">违规说明</label>
+          <div className="admin-form-field">
+            <div className="flex items-center justify-between gap-2">
+              <label className="admin-form-field-label">违规说明</label>
               <ViolationTemplateQuickSelect
                 onSelect={(text) => setViolationText(text)}
                 currentText={violationText}
               />
             </div>
-            <div className="mt-1.5">
+            <div className="admin-rich-text-field">
               <RichTextEditor value={violationText} onChange={setViolationText} />
             </div>
-            <p className="mt-1.5 text-[11px] text-[var(--twin-mute)]">
+            <p className="admin-form-field-hint">
               支持富文本与插图，展示效果与「扫码弹窗公告」一致；历史纯文本记录仍可正常显示。
             </p>
           </div>
 
-          <div>
-            <label className="text-xs font-medium text-[var(--twin-body)]">违规图片（可多选上传）</label>
+          <div className="admin-form-field">
+            <label className="admin-form-field-label">违规图片（可多选上传）</label>
             <div
               className="mt-1.5 rounded-twin-lg border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3 outline-none transition focus-within:border-[var(--twin-hairline-strong)] focus-within:ring-2 focus-within:ring-[#0070f3]/20"
               tabIndex={0}
@@ -1452,20 +1452,18 @@ export default function AdminStudentViolationsPage() {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-[var(--twin-hairline-strong)] text-[var(--twin-ink)] focus-visible:ring-2 focus-visible:ring-[#0070f3]/25"
+              <AdminSwitchScaled
+                size="sm"
                 checked={forbidEnter}
-                onChange={(e) => handleForbidEnterChange(e.target.checked, newInteractiveChallenge)}
+                onChange={(checked) => handleForbidEnterChange(checked, newInteractiveChallenge)}
               />
               立即禁止扫码进入
             </label>
             <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-[var(--twin-hairline-strong)] text-[var(--twin-ink)] focus-visible:ring-2 focus-visible:ring-[#0070f3]/25"
+              <AdminSwitchScaled
+                size="sm"
                 checked={showEvery}
-                onChange={(e) => setShowEvery(e.target.checked)}
+                onChange={(checked) => setShowEvery(checked)}
               />
               每次扫码都提示违规内容
             </label>
@@ -1481,11 +1479,10 @@ export default function AdminStudentViolationsPage() {
               />
               {newInteractiveChallenge.trim() ? (
                 <label className="mt-2 flex items-center gap-2 text-sm text-[var(--twin-ink)]">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
+                  <AdminSwitchScaled
+                    size="sm"
                     checked={newInteractiveUnlockOnVerify}
-                    onChange={(e) => setNewInteractiveUnlockOnVerify(e.target.checked)}
+                    onChange={(checked) => setNewInteractiveUnlockOnVerify(checked)}
                   />
                   验证完成后自动解除禁入
                 </label>
@@ -1513,7 +1510,8 @@ export default function AdminStudentViolationsPage() {
             </div>
           </div>
 
-          <div className="border-t border-[var(--twin-hairline)] pt-4">
+          <hr className="admin-form-divider" />
+          <div className="admin-form-actions">
             <AdminButton
               type="button"
               tone="primary"
@@ -1526,6 +1524,7 @@ export default function AdminStudentViolationsPage() {
               {lockMode === "batch" ? `批量提交（${batchSelectedIds.size} 人）` : "提交违规记录"}
             </AdminButton>
           </div>
+          </div>
         </AdminFormCard>
 
         {/* ---- Auto-stranded config ---- */}
@@ -1536,18 +1535,21 @@ export default function AdminStudentViolationsPage() {
           {strandedConfigLoading ? (
             <p className="text-sm text-[var(--twin-mute)]">加载配置中…</p>
           ) : (
-            <div className="space-y-4">
+            <div className="admin-violation-form-body">
               {/* Auto signout */}
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" className="h-4 w-4" checked={strandedAutoSignout}
-                  onChange={(e) => setStrandedAutoSignout(e.target.checked)} />
+                <AdminSwitchScaled
+                  size="sm"
+                  checked={strandedAutoSignout}
+                  onChange={(checked) => setStrandedAutoSignout(checked)}
+                />
                 同时执行签退操作（帮助滞留人员离开）
               </label>
 
               {/* Violation text template */}
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-[var(--twin-body)]">
+              <div className="admin-form-field">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="admin-form-field-label">
                     违规文案模板（富文本）
                   </label>
                   <ViolationTemplateQuickSelect
@@ -1555,14 +1557,14 @@ export default function AdminStudentViolationsPage() {
                     currentText={strandedViolationTpl}
                   />
                 </div>
-                <div className="mt-1.5">
+                <div className="admin-rich-text-field">
                   <RichTextEditor
                     value={strandedViolationTpl}
                     onChange={setStrandedViolationTpl}
                     disabled={strandedConfigLoading}
                   />
                 </div>
-                <p className="mt-1.5 text-[11px] text-[var(--twin-mute)]">
+                <p className="admin-form-field-hint">
                   支持富文本与插图，展示效果与「扫码弹窗公告」一致；可用变量：{'${name}'}、{'${dept}'}、{'${date}'}（留空则使用系统默认文案）。
                 </p>
               </div>
@@ -1570,10 +1572,11 @@ export default function AdminStudentViolationsPage() {
               {/* Forbid enter + expire */}
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" className="h-4 w-4"
+                  <AdminSwitchScaled
+                    size="sm"
                     checked={strandedForbidEnter}
-                    onChange={(e) => setStrandedForbidEnter(e.target.checked)}
- />
+                    onChange={(checked) => setStrandedForbidEnter(checked)}
+                  />
                   立即禁止扫码进入
                 </label>
                 <div>
@@ -1602,8 +1605,11 @@ export default function AdminStudentViolationsPage() {
               {/* Interactive challenge config */}
               <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 space-y-3">
                 <label className="flex items-center gap-2 text-sm font-medium">
-                  <input type="checkbox" className="h-4 w-4" checked={interactiveChallengeEnabled}
-                    onChange={(e) => setInteractiveChallengeEnabled(e.target.checked)} />
+                  <AdminSwitchScaled
+                    size="sm"
+                    checked={interactiveChallengeEnabled}
+                    onChange={(checked) => setInteractiveChallengeEnabled(checked)}
+                  />
                   🧩 启用交互式违规确认
                 </label>
                 {interactiveChallengeEnabled && (
@@ -1618,11 +1624,10 @@ export default function AdminStudentViolationsPage() {
                       placeholder="一人一卡,严禁尾随"
                     />
                     <label className="mt-2 flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4"
+                      <AdminSwitchScaled
+                        size="sm"
                         checked={strandedInteractiveUnlockOnVerify}
-                        onChange={(e) => setStrandedInteractiveUnlockOnVerify(e.target.checked)}
+                        onChange={(checked) => setStrandedInteractiveUnlockOnVerify(checked)}
                       />
                       验证完成后自动解除禁入
                     </label>
@@ -1631,10 +1636,12 @@ export default function AdminStudentViolationsPage() {
               </div>
 
               {/* Save button */}
-              <AdminButton type="button" tone="primary" loading={strandedConfigSaving}
-                className="gap-1.5" onClick={() => { saveStrandedConfig(); }}>
-                <Save className="h-4 w-4" />保存配置
-              </AdminButton>
+              <div className="admin-form-actions">
+                <AdminButton type="button" tone="primary" loading={strandedConfigSaving}
+                  className="gap-1.5" onClick={() => { saveStrandedConfig(); }}>
+                  <Save className="h-4 w-4" />保存配置
+                </AdminButton>
+              </div>
             </div>
           )}
         </AdminFormCard>
@@ -1646,13 +1653,12 @@ export default function AdminStudentViolationsPage() {
           {strandedSignout2Loading ? (
             <p className="text-sm text-[var(--twin-mute)]">加载配置中…</p>
           ) : (
-            <div className="space-y-4">
+            <div className="admin-violation-form-body">
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
+                <AdminSwitchScaled
+                  size="sm"
                   checked={strandedSignout2Enabled}
-                  onChange={(e) => setStrandedSignout2Enabled(e.target.checked)}
+                  onChange={(checked) => setStrandedSignout2Enabled(checked)}
                 />
                 执行签退操作（帮助滞留人员离开）
               </label>
@@ -1661,16 +1667,18 @@ export default function AdminStudentViolationsPage() {
                   上次执行：{strandedSignout2LastResult}
                 </p>
               ) : null}
-              <AdminButton
-                type="button"
-                tone="primary"
-                loading={strandedSignout2Saving}
-                className="gap-1.5"
-                onClick={() => { void saveStrandedSignoutConfig(); }}
-              >
-                <Save className="h-4 w-4" />
-                保存配置
-              </AdminButton>
+              <div className="admin-form-actions">
+                <AdminButton
+                  type="button"
+                  tone="primary"
+                  loading={strandedSignout2Saving}
+                  className="gap-1.5"
+                  onClick={() => { void saveStrandedSignoutConfig(); }}
+                >
+                  <Save className="h-4 w-4" />
+                  保存配置
+                </AdminButton>
+              </div>
             </div>
           )}
         </AdminFormCard>
@@ -1680,7 +1688,7 @@ export default function AdminStudentViolationsPage() {
           title="🧪 手动测试"
           description="对指定人员单独执行滞留检测，验证配置是否正确。"
         >
-          <div className="space-y-3">
+          <div className="admin-violation-form-body">
             {testPickedUser ? (
               <div className="flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
                 <Check className="h-4 w-4 text-indigo-600" />
@@ -1753,16 +1761,21 @@ export default function AdminStudentViolationsPage() {
             )}
 
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="h-4 w-4" checked={testSignout}
-                onChange={(e) => setTestSignout(e.target.checked)} />
+              <AdminSwitchScaled
+                size="sm"
+                checked={testSignout}
+                onChange={(checked) => setTestSignout(checked)}
+              />
               同时执行签退
             </label>
 
-            <AdminButton type="button" tone="primary" loading={testRunning}
-              disabled={!testPickedUser}
-              className="gap-1.5" onClick={() => { runTestOnUser(); }}>
-              <Beaker className="h-4 w-4" />对该人员执行检测
-            </AdminButton>
+            <div className="admin-form-actions">
+              <AdminButton type="button" tone="primary" loading={testRunning}
+                disabled={!testPickedUser}
+                className="gap-1.5" onClick={() => { runTestOnUser(); }}>
+                <Beaker className="h-4 w-4" />对该人员执行检测
+              </AdminButton>
+            </div>
           </div>
         </AdminFormCard>
         </AdminTabPanel>
@@ -1771,9 +1784,9 @@ export default function AdminStudentViolationsPage() {
           id="violation-page-panel-records"
           tabId="records"
           activeTab={activeTab}
-          className="space-y-3"
+          className="admin-violations-tab-panel"
         >
-          <p className="text-xs text-[var(--twin-mute)]">
+          <p className="admin-form-field-hint">
             {picked
               ? `当前筛选：「${picked.name}」的最近 400 条（在「新建违规」页锁定人员后生效）`
               : "显示全员最近 400 条；扫码与大屏仅取每人最新「生效中」记录。「已被覆盖」为同一人再次新建时系统自动归档的旧记录。"}
@@ -1889,7 +1902,7 @@ export default function AdminStudentViolationsPage() {
           id="violation-page-panel-swipe-alert"
           tabId="swipe-alert"
           activeTab={activeTab}
-          className="space-y-4"
+          className="admin-violations-tab-panel"
         >
           <SwipeAlertRuleList
             onEdit={setEditingSwipeRule}
@@ -1909,7 +1922,7 @@ export default function AdminStudentViolationsPage() {
           id="violation-page-panel-rules"
           tabId="rules"
           activeTab={activeTab}
-          className="space-y-4"
+          className="admin-violations-tab-panel"
         >
           <ViolationRuleManager />
         </AdminTabPanel>
@@ -1918,7 +1931,7 @@ export default function AdminStudentViolationsPage() {
           id="violation-page-panel-homepage-content"
           tabId="homepage-content"
           activeTab={activeTab}
-          className="space-y-4"
+          className="admin-violations-tab-panel"
         >
           <HomepageContentTab />
         </AdminTabPanel>
@@ -1932,7 +1945,7 @@ export default function AdminStudentViolationsPage() {
           onClick={() => !savingEdit && setEditOpen(false)}
         >
           <div
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-4 ring-1 ring-black/[0.04]"
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-4 ring-1 ring-black/[0.04]"
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-violation-title"
@@ -1957,24 +1970,24 @@ export default function AdminStudentViolationsPage() {
                 <X className="h-4 w-4" />
               </AdminButton>
             </div>
-            <div className="space-y-3 px-5 py-4">
-              <div>
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-[var(--twin-body)]">违规说明</label>
+            <div className="admin-violation-edit-dialog-body px-5 py-4">
+              <div className="admin-form-field">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="admin-form-field-label">违规说明</label>
                   <ViolationTemplateQuickSelect
                     onSelect={(text) => setEditText(text)}
                     currentText={editText}
                   />
                 </div>
-                <div className="mt-1.5">
+                <div className="admin-rich-text-field">
                   <RichTextEditor key={editId} value={editText} onChange={setEditText} />
                 </div>
-                <p className="mt-1.5 text-[11px] text-[var(--twin-mute)]">
+                <p className="admin-form-field-hint">
                   支持富文本与插图；可用变量：{'${name}'}、{'${dept}'}、{'${date}'}（扫码展示时按当事人自动替换）。
                 </p>
               </div>
-              <div>
-                <label className="text-xs font-medium text-[var(--twin-body)]">图片</label>
+              <div className="admin-form-field">
+                <label className="admin-form-field-label">图片</label>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
                   <AdminFilePickButton
                     multiple
@@ -2006,20 +2019,18 @@ export default function AdminStudentViolationsPage() {
                 ) : null}
               </div>
               <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
+                <AdminSwitchScaled
+                  size="sm"
                   checked={editForbid}
-                  onChange={(e) => handleEditForbidChange(e.target.checked)}
+                  onChange={(checked) => handleEditForbidChange(checked)}
                 />
                 立即禁止扫码进入
               </label>
               <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-[var(--twin-hairline-strong)]"
+                <AdminSwitchScaled
+                  size="sm"
                   checked={editShowEvery}
-                  onChange={(e) => setEditShowEvery(e.target.checked)}
+                  onChange={(checked) => setEditShowEvery(checked)}
                 />
                 每次扫码都提示违规内容
               </label>
@@ -2035,11 +2046,10 @@ export default function AdminStudentViolationsPage() {
                 />
                 {editInteractiveChallenge.trim() ? (
                   <label className="mt-2 flex items-center gap-2 text-sm text-[var(--twin-ink)]">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4"
+                    <AdminSwitchScaled
+                      size="sm"
                       checked={editInteractiveUnlockOnVerify}
-                      onChange={(e) => setEditInteractiveUnlockOnVerify(e.target.checked)}
+                      onChange={(checked) => setEditInteractiveUnlockOnVerify(checked)}
                     />
                     验证完成后自动解除禁入
                   </label>

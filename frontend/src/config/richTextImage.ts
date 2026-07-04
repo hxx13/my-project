@@ -92,14 +92,22 @@ export function parseMaxWidthPercent(maxWidth: string): number {
   return Math.min(100, Math.max(10, Math.round(n)));
 }
 
+/** 从 img inline style 解析 width N%（用于回显工具栏滑块） */
+export function parseWidthPercentFromStyle(style: string | null | undefined): number | null {
+  if (!style?.trim()) return null;
+  const match = style.match(/(?:^|;)\s*width\s*:\s*(\d+(?:\.\d+)?)\s*%/i);
+  if (!match) return null;
+  return parseMaxWidthPercent(`${match[1]}%`);
+}
+
 export function formatMaxWidthPercent(percent: number): string {
   const n = Math.min(100, Math.max(10, Math.round(percent)));
   return `${n}%`;
 }
 
-/** 写入 img style，扫码端无编辑器 CSS 变量时仍可保持图宽；高度随宽度等比缩放 */
+/** 写入 img style：width % 可放大/缩小（max-width 仅缩小）；扫码端无 CSS 变量时仍生效 */
 export function richTextImageInlineStyle(maxWidth: string): string {
-  return `max-width: ${maxWidth}; width: auto; height: auto; display: inline-block; box-sizing: border-box;`;
+  return `width: ${maxWidth}; max-width: 100%; height: auto; display: inline-block; box-sizing: border-box;`;
 }
 
 export function richTextImageHelpText(config: RichTextImageConfig): string {

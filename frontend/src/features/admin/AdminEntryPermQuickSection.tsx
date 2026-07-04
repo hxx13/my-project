@@ -7,6 +7,7 @@ import {
   type PagePermissionLookupRow,
   type PagePlatform,
 } from "@/api/domains/pagePermission.api";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 
 const ROLE_OPTIONS: MinRole[] = ["MEMBER", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
 
@@ -112,11 +113,10 @@ export function AdminEntryPermQuickSection({
             </select>
           </label>
           <label className="flex cursor-pointer items-center gap-2 text-[11px] text-slate-300">
-            <input
-              type="checkbox"
-              className="rounded border-white/30"
+            <AdminSwitchScaled
+              size="3.5"
               checked={draftEnabled === 1}
-              onChange={(e) => setDraftEnabled(e.target.checked ? 1 : 0)}
+              onChange={(checked) => setDraftEnabled(checked ? 1 : 0)}
             />
             启用该节点
           </label>

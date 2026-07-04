@@ -26,6 +26,7 @@ import com.example.demo.modules.material.service.MaterialService;
 import com.example.demo.modules.student.service.StudentCageShelfService;
 import com.example.demo.modules.student.support.StudentMobileHtml5Privilege;
 import com.example.demo.modules.twin.dashboard.service.TwinDashboardAggregationService;
+import com.example.demo.modules.twin.scan.delay.service.ScanDelayRequestService;
 import com.example.demo.modules.twin.scan.dto.ScanAnalyzeResponseDTO;
 import com.example.demo.modules.twin.scan.service.TwinScanAppService;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
@@ -68,6 +69,7 @@ public class StudentMobileCenterController {
     private final MobileCenterAlertService mobileCenterAlertService;
     private final StudentActivityService studentActivityService;
     private final StudentNotificationService studentNotificationService;
+    private final ScanDelayRequestService scanDelayRequestService;
 
     public StudentMobileCenterController(StudentMobileTokenService tokenService,
                                          StudentDashboardService dashboardService,
@@ -86,7 +88,8 @@ public class StudentMobileCenterController {
                                          StudentViolationService studentViolationService,
                                          MobileCenterAlertService mobileCenterAlertService,
                                          StudentActivityService studentActivityService,
-                                         StudentNotificationService studentNotificationService) {
+                                         StudentNotificationService studentNotificationService,
+                                         ScanDelayRequestService scanDelayRequestService) {
         this.tokenService = tokenService;
         this.dashboardService = dashboardService;
         this.studentRoomService = studentRoomService;
@@ -105,6 +108,7 @@ public class StudentMobileCenterController {
         this.mobileCenterAlertService = mobileCenterAlertService;
         this.studentActivityService = studentActivityService;
         this.studentNotificationService = studentNotificationService;
+        this.scanDelayRequestService = scanDelayRequestService;
     }
 
     /** ======== 公开接口：token 直达学生中心（无需登录） ======== */
@@ -166,6 +170,33 @@ public class StudentMobileCenterController {
         resp.put("analyze", analyze);
         resp.put("userId", userId);
         return Result.success(resp);
+    }
+
+    /** ======== 公开接口：手机 token 提交延迟免冻结申请（与扫码弹窗同源） ======== */
+    @PostMapping("/api/public/mobile-center/{token}/scan-delay/request")
+    @Operation(summary = "手机 token 提交延迟免冻结申请")
+    public Result<Map<String, Object>> submitScanDelayRequest(@PathVariable String token,
+                                                               @RequestBody Map<String, Object> body,
+                                                               HttpServletRequest request) {
+        String clientIp = getClientIp(request);
+        String userId = tokenService.validateToken(token, clientIp);
+        User user = userMapper.findById(userId);
+        if (user == null) {
+            return Result.fail(404, "用户不存在");
+        }
+        try {
+            String subjectUserId = body.get("subjectUserId") != null ? body.get("subjectUserId").toString() : null;
+            String roomId = body.get("roomId") != null ? body.get("roomId").toString() : null;
+            Long optionId = body.get("optionId") != null ? Long.parseLong(body.get("optionId").toString()) : null;
+            String reviewerUserId = body.get("reviewerUserId") != null ? body.get("reviewerUserId").toString() : null;
+            Map<String, Object> out = scanDelayRequestService.submitRequest(
+                    subjectUserId, roomId, optionId, reviewerUserId, user.getId());
+            return Result.success(out);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        } catch (Exception e) {
+            return Result.error("提交失败: " + e.getMessage());
+        }
     }
 
     /** ======== 公开接口：获取学生房间列表（按 campus/floors 分组） ======== */
@@ -420,6 +451,18 @@ public class StudentMobileCenterController {
         if (user == null) return Result.fail(404, "用户不存在");
         boolean html5Privilege = StudentMobileHtml5Privilege.isPrivileged(user);
         return Result.success(cageShelfService.getShelfDetail(user, shelveId, html5Privilege));
+    }
+
+    @GetMapping("/api/public/mobile-center/{token}/cage-shelves/special-status-overview")
+    @Operation(summary = "特殊状态总览（手机 token：学生按课题组过滤，教职工 STAFF+ 全量）")
+    public Result<Map<String, Object>> getMobileCageSpecialStatusOverview(@PathVariable String token,
+                                                                             HttpServletRequest request) {
+        String clientIp = getClientIp(request);
+        String userId = tokenService.validateToken(token, clientIp);
+        User user = userMapper.findById(userId);
+        if (user == null) return Result.fail(404, "用户不存在");
+        boolean html5Privilege = StudentMobileHtml5Privilege.isPrivileged(user);
+        return Result.success(cageShelfService.getSpecialStatusOverview(user, html5Privilege));
     }
 
     @GetMapping("/api/public/mobile-center/{token}/cage-shelves/{shelveId}/cells/{x}/{y}/annotation")

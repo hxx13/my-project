@@ -8,6 +8,7 @@ import {
   type MobileShellTabKey,
   type MobileTabBarKey,
 } from "./mobileShellLayout";
+import { MOBILE_STUDENT_ICON } from "./mobileStudentIcons";
 
 type SvgIcon = ComponentType<{ active: boolean }>;
 
@@ -22,6 +23,7 @@ const stroke = (active: boolean) => ({
   strokeLinejoin: "round" as const,
 });
 
+/** 小程序 van-icon home-o */
 const IconHome: SvgIcon = ({ active }) => (
   <svg {...stroke(active)}>
     <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" />
@@ -29,33 +31,7 @@ const IconHome: SvgIcon = ({ active }) => (
   </svg>
 );
 
-const IconRooms: SvgIcon = ({ active }) => (
-  <svg {...stroke(active)}>
-    <rect x="3" y="3" width="7" height="7" rx="1.5" />
-    <rect x="14" y="3" width="7" height="7" rx="1.5" />
-    <rect x="3" y="14" width="7" height="7" rx="1.5" />
-    <rect x="14" y="14" width="7" height="7" rx="1.5" />
-  </svg>
-);
-
-const IconMaterial: SvgIcon = ({ active }) => (
-  <svg {...stroke(active)}>
-    <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" />
-    <line x1="3" y1="6" x2="21" y2="6" />
-    <path d="M16 10a4 4 0 01-8 0" />
-  </svg>
-);
-
-const IconCage: SvgIcon = ({ active }) => (
-  <svg {...stroke(active)}>
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <line x1="3" y1="9" x2="21" y2="9" />
-    <line x1="3" y1="15" x2="21" y2="15" />
-    <line x1="9" y1="3" x2="9" y2="21" />
-    <line x1="15" y1="3" x2="15" y2="21" />
-  </svg>
-);
-
+/** 小程序 van-icon manager-o */
 const IconMine: SvgIcon = ({ active }) => (
   <svg {...stroke(active)}>
     <circle cx="12" cy="8" r="4" />
@@ -63,13 +39,39 @@ const IconMine: SvgIcon = ({ active }) => (
   </svg>
 );
 
-const TAB_ICONS: Record<MobileTabBarKey, SvgIcon> = {
+const TAB_ICON_SRC: Partial<Record<MobileTabBarKey, string>> = {
+  rooms: MOBILE_STUDENT_ICON.room,
+  material: MOBILE_STUDENT_ICON.supplies,
+  cage: MOBILE_STUDENT_ICON.cage,
+};
+
+const TAB_SVG_ICONS: Partial<Record<MobileTabBarKey, SvgIcon>> = {
   home: IconHome,
-  rooms: IconRooms,
-  material: IconMaterial,
-  cage: IconCage,
   mine: IconMine,
 };
+
+function TabIcon({ tabKey, active }: { tabKey: MobileTabBarKey; active: boolean }) {
+  const iconSrc = TAB_ICON_SRC[tabKey];
+  if (iconSrc) {
+    return (
+      <img
+        src={iconSrc}
+        alt=""
+        draggable={false}
+        className="block object-contain select-none pointer-events-none"
+        style={{
+          width: 22,
+          height: 22,
+          opacity: active ? 1 : 0.72,
+        }}
+      />
+    );
+  }
+
+  const Svg = TAB_SVG_ICONS[tabKey];
+  if (!Svg) return null;
+  return <Svg active={active} />;
+}
 
 interface MobileBottomTabBarProps {
   active: MobileShellTabKey;
@@ -81,7 +83,7 @@ export default function MobileBottomTabBar({ active, onChange }: MobileBottomTab
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-[var(--z-sticky,50)]"
+      className="relative shrink-0 w-full z-[var(--z-sticky)]"
       style={{
         background: "#ffffff",
         borderTop: "1px solid #ebedf0",
@@ -94,7 +96,6 @@ export default function MobileBottomTabBar({ active, onChange }: MobileBottomTab
       <div className="flex items-stretch" style={{ height: MOBILE_TAB_BAR_CONTENT_H }}>
         {MOBILE_TAB_BAR_KEYS.map((key) => {
           const isOn = highlight === key;
-          const Icon = TAB_ICONS[key];
           return (
             <button
               key={key}
@@ -108,7 +109,7 @@ export default function MobileBottomTabBar({ active, onChange }: MobileBottomTab
                 className="flex items-center justify-center transition-transform duration-75"
                 style={{ transform: isOn ? "scale(1.1)" : "scale(1)" }}
               >
-                <Icon active={isOn} />
+                <TabIcon tabKey={key} active={isOn} />
               </span>
               <span
                 className="text-[11px] leading-none font-medium truncate max-w-full px-1"

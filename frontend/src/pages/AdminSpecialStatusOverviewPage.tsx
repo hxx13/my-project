@@ -225,7 +225,7 @@ export default function AdminSpecialStatusOverviewPage() {
           特殊状态总览
         </span>
       }
-      description="所有带特殊状态标记的笼位，同一笼位含多个标记时合并显示。点击行查看详情。"
+      description="所有带特殊状态标记的笼位，同一笼位含多个标记时合并显示。数据来自最近一次「全量笼位数据同步」。点击行查看详情。"
       actions={
         <AdminButton type="button" tone="secondary" size="sm" onClick={() => refetch()}>
           刷新数据
@@ -252,7 +252,7 @@ export default function AdminSpecialStatusOverviewPage() {
 
         {!isLoading && !error && data && allMerged.length === 0 && (
           <div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] py-12 text-center text-sm text-[var(--twin-mute)]">
-            暂无特殊状态笼位数据。请先通过「定时管理」执行全量扫描。
+            暂无特殊状态笼位数据。请先通过「定时管理」执行「全量笼位数据同步」。
           </div>
         )}
 

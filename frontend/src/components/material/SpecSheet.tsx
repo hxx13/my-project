@@ -1,10 +1,9 @@
 /**
- * 规格选择器 — 替代锚点弹窗，全端统一，响应式双形态。
- * ≥640px：居中 Dialog（桌面/平板/管理后台）
- * <640px：Bottom Sheet（手机 H5）
+ * 规格选择器 — 全端统一居中 Dialog。
+ * 规格维度默认折叠，点击展开；组合行仅在各维度均有选中项后展示。
  */
 import { useEffect, useMemo, useState } from "react";
-import { X, Minus, Plus } from "lucide-react";
+import { X, Minus, Plus, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { webImageSrc } from "@/utils/mediaUrl";
 import type { MaterialSpecPickerItem, MultiSpecSelections } from "@/utils/materialSpecHelpers";
@@ -45,30 +44,63 @@ function SheetQtyStepper({
   onAdd: () => void;
   onDec: () => void;
 }) {
-  return (
-    <div className="flex items-center gap-0.5 shrink-0 border border-[var(--student-hairline)] rounded-lg overflow-hidden">
-      {qty > 0 && (
-        <>
-          <button
-            type="button"
-            onClick={onDec}
-            disabled={disabled || qty <= 0}
-            className="size-7 flex items-center justify-center hover:bg-[var(--student-canvas-soft)] transition-colors disabled:opacity-30"
-          >
-            <Minus className="size-3" />
-          </button>
-          <span className="w-6 text-center text-[13px] font-semibold tabular-nums">{qty}</span>
-        </>
-      )}
+  const soldOut = disabled || max <= 0;
+  const atMax = qty >= max;
+  const ctrlRadius = "rounded-[var(--student-radius-sm)]";
+
+  if (qty <= 0) {
+    return (
       <button
         type="button"
         onClick={onAdd}
-        disabled={disabled || qty >= max}
+        disabled={soldOut || atMax}
+        aria-label="增加数量"
         className={cn(
-          "size-7 flex items-center justify-center transition-colors",
-          qty > 0 ? "rounded-r-md" : "rounded-lg",
-          disabled || qty >= max
-            ? "bg-[var(--student-hairline)] text-[var(--student-mute)] cursor-not-allowed"
+          "size-7 flex shrink-0 items-center justify-center border border-[var(--student-hairline)] transition-colors",
+          ctrlRadius,
+          soldOut || atMax
+            ? "cursor-not-allowed bg-[var(--student-hairline)] text-[var(--student-mute)]"
+            : "bg-[var(--student-primary)] text-white hover:opacity-90",
+        )}
+      >
+        <Plus className="size-3" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="inline-flex shrink-0 items-center gap-0.5" role="group" aria-label="数量">
+      <button
+        type="button"
+        onClick={onDec}
+        disabled={soldOut}
+        aria-label="减少数量"
+        className={cn(
+          "size-7 flex items-center justify-center border border-[var(--student-hairline)] bg-[var(--student-surface)] transition-colors",
+          ctrlRadius,
+          "hover:bg-[var(--student-canvas-soft)] disabled:opacity-30",
+        )}
+      >
+        <Minus className="size-3" />
+      </button>
+      <span
+        className={cn(
+          "flex size-7 items-center justify-center border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] text-center text-[11px] font-semibold tabular-nums leading-none text-[var(--student-ink)]",
+          ctrlRadius,
+        )}
+      >
+        {qty}
+      </span>
+      <button
+        type="button"
+        onClick={onAdd}
+        disabled={soldOut || atMax}
+        aria-label="增加数量"
+        className={cn(
+          "size-7 flex items-center justify-center border border-[var(--student-hairline)] transition-colors",
+          ctrlRadius,
+          soldOut || atMax
+            ? "cursor-not-allowed bg-[var(--student-hairline)] text-[var(--student-mute)]"
             : "bg-[var(--student-primary)] text-white hover:opacity-90",
         )}
       >
@@ -76,6 +108,12 @@ function SheetQtyStepper({
       </button>
     </div>
   );
+}
+
+function selectedSummary(selections: MultiSpecSelections, dimName: string): string | null {
+  const opts = selections[dimName];
+  if (!opts?.length) return null;
+  return opts.join("、");
 }
 
 export function SpecSheet({
@@ -89,17 +127,27 @@ export function SpecSheet({
   onDecPlain,
 }: SpecSheetProps) {
   const [selections, setSelections] = useState<MultiSpecSelections>({});
+  const [expandedDims, setExpandedDims] = useState<Set<string>>(new Set());
 
-  // Reset selections only when switching to a different item
   useEffect(() => {
     setSelections({});
+    setExpandedDims(new Set());
   }, [item.id]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOpenChange(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onOpenChange]);
 
   const dimensions = useMemo(() => parseSpecDimensions(item.specSchema), [item.specSchema]);
   const allCombos = useMemo(() => generateSpecCombos(dimensions), [dimensions]);
   const selectionReady = isMultiSpecSelectionReady(dimensions, selections);
   const activeCombos = useMemo(() => {
-    if (!selectionReady) return allCombos; // show all combos when nothing selected yet
+    if (!selectionReady) return [];
     return filterCombosByMultiSelections(allCombos, selections);
   }, [allCombos, selectionReady, selections]);
 
@@ -109,44 +157,53 @@ export function SpecSheet({
   const showPlainRow = !specRequired && !hasAnyMultiSpecSelection(selections);
   const itemCartQty = sumCartQtyForItem(cart, item.id);
 
+  const toggleDimExpanded = (dimName: string) => {
+    setExpandedDims((prev) => {
+      const next = new Set(prev);
+      if (next.has(dimName)) next.delete(dimName);
+      else next.add(dimName);
+      return next;
+    });
+  };
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[var(--z-modal)] flex flex-col justify-end sm:items-center sm:justify-center">
-      {/* Overlay */}
+    <div
+      className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="spec-sheet-title"
+    >
       <div
-        className="absolute inset-0 bg-black/40 animate-in fade-in-0 duration-200"
+        className="absolute inset-0 bg-black/40 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-200"
         onClick={() => onOpenChange(false)}
       />
 
-      {/* Sheet body — bottom sheet on mobile, centered dialog on desktop */}
       <div
-        className="relative bg-white rounded-t-2xl sm:rounded-2xl max-h-[85vh] sm:max-h-[90vh] sm:max-w-md sm:w-full sm:shadow-2xl flex flex-col animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 overflow-hidden"
-        style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+        className={cn(
+          "relative w-full max-w-md max-h-[min(85vh,640px)] flex flex-col overflow-hidden",
+          "rounded-[var(--student-radius-md,12px)] bg-[var(--student-canvas)] shadow-[var(--student-shadow-modal)]",
+          "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-200",
+        )}
       >
-        {/* Drag handle — mobile only */}
-        <div className="flex justify-center pt-3 pb-1 sm:hidden">
-          <div className="w-8 h-1 rounded-full bg-[var(--student-hairline)]" />
-        </div>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-2">
-          <h3 className="text-[16px] font-bold text-[var(--student-ink)]">选择规格</h3>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--student-hairline)]">
+          <h3 id="spec-sheet-title" className="text-[16px] font-bold text-[var(--student-ink)]">
+            选择规格
+          </h3>
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="p-1.5 rounded-full hover:bg-[var(--student-canvas-soft)] text-[var(--student-mute)] transition-colors"
+            className="p-2 -mr-1 rounded-[var(--student-radius-sm)] hover:bg-[var(--student-canvas-soft)] text-[var(--student-mute)] transition-colors"
             aria-label="关闭"
           >
             <X className="size-4" />
           </button>
         </div>
 
-        {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-4">
-          {/* Item context */}
-          <div className="flex items-start gap-3 p-3 rounded-xl bg-[var(--student-canvas-soft)]">
-            <div className="size-14 shrink-0 rounded-lg bg-[var(--student-canvas-soft)] flex items-center justify-center overflow-hidden">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+          <div className="flex items-start gap-3 p-3 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)]">
+            <div className="size-14 shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas)] flex items-center justify-center overflow-hidden">
               {item.coverUrl ? (
                 <img
                   src={webImageSrc(item.coverUrl) || item.coverUrl}
@@ -154,7 +211,7 @@ export function SpecSheet({
                   className="size-full object-cover"
                 />
               ) : (
-                <span className="text-xl font-bold text-[var(--student-primary)]/30">
+                <span className="text-xl font-bold text-[var(--student-mute)]">
                   {item.name?.charAt(0) || "物"}
                 </span>
               )}
@@ -167,43 +224,76 @@ export function SpecSheet({
             </div>
           </div>
 
-          {/* Spec dimensions */}
-          {dimensions.map((dim) => (
-            <div key={dim.name}>
-              <p className="text-[12px] font-medium text-[var(--student-mute)] mb-2">{dim.name}</p>
-              <div className="flex flex-wrap gap-2">
-                {dim.options.map((opt) => {
-                  const active = isSpecOptionSelected(selections, dim.name, opt);
-                  return (
+          {dimensions.length > 0 && (
+            <div className="space-y-2">
+              {dimensions.map((dim) => {
+                const expanded = expandedDims.has(dim.name);
+                const summary = selectedSummary(selections, dim.name);
+                return (
+                  <div
+                    key={dim.name}
+                    className="rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] overflow-hidden"
+                  >
                     <button
-                      key={opt}
                       type="button"
-                      onClick={() => setSelections((prev) => toggleMultiSpecOption(prev, dim.name, opt))}
-                      className={cn(
-                        "px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors",
-                        active
-                          ? "border-[var(--student-primary)] bg-[var(--student-primary-soft)] text-[var(--student-primary)] border-2"
-                          : "border-[var(--student-hairline)] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]",
-                      )}
+                      onClick={() => toggleDimExpanded(dim.name)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 min-h-[44px] text-left hover:bg-[var(--student-canvas-soft)] transition-colors"
+                      aria-expanded={expanded}
                     >
-                      {opt}
+                      <ChevronDown
+                        className={cn(
+                          "size-4 shrink-0 text-[var(--student-mute)] transition-transform motion-safe:duration-200",
+                          !expanded && "-rotate-90",
+                        )}
+                      />
+                      <span className="flex-1 min-w-0 text-[13px] font-semibold text-[var(--student-ink)]">
+                        {dim.name}
+                      </span>
+                      {summary && !expanded && (
+                        <span className="shrink-0 max-w-[45%] truncate text-[12px] text-[var(--student-primary)]">
+                          {summary}
+                        </span>
+                      )}
                     </button>
-                  );
-                })}
-              </div>
+                    {expanded && (
+                      <div className="px-3 pb-3 pt-0 border-t border-[var(--student-hairline)]">
+                        <div className="flex flex-wrap gap-2 pt-3">
+                          {dim.options.map((opt) => {
+                            const active = isSpecOptionSelected(selections, dim.name, opt);
+                            return (
+                              <button
+                                key={opt}
+                                type="button"
+                                onClick={() =>
+                                  setSelections((prev) => toggleMultiSpecOption(prev, dim.name, opt))
+                                }
+                                className={cn(
+                                  "px-3.5 py-2 min-h-[40px] rounded-[var(--student-radius-sm)] text-[13px] font-medium border transition-colors",
+                                  active
+                                    ? "border-[var(--student-primary)] bg-[var(--student-primary-soft)] text-[var(--student-primary)] border-2"
+                                    : "border-[var(--student-hairline)] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]",
+                                )}
+                              >
+                                {opt}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          ))}
+          )}
 
-          {/* Combos — show all when nothing selected, filtered when specs chosen */}
-          {activeCombos.length > 0 && (
-            <div className="space-y-2 pt-2 border-t border-[var(--student-hairline)]">
-              <p className="text-[11px] font-medium text-[var(--student-mute)] uppercase tracking-wide">
-                {selectionReady ? "已选规格组合" : "可选规格组合"}
-              </p>
+          {selectionReady && activeCombos.length > 0 && (
+            <div className="space-y-2 pt-1">
+              <p className="text-[12px] font-medium text-[var(--student-mute)]">已选规格组合</p>
               {activeCombos.map((combo) => (
                 <div
                   key={combo.key}
-                  className="flex items-center justify-between gap-2 rounded-lg bg-[var(--student-canvas-soft)] px-3 py-2"
+                  className="flex items-center justify-between gap-3 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] px-3 py-2.5"
                 >
                   <span className="text-[13px] font-medium text-[var(--student-body)] truncate">
                     {combo.label}
@@ -220,9 +310,14 @@ export function SpecSheet({
             </div>
           )}
 
-          {/* Plain row (no spec selected, optional spec) */}
+          {!selectionReady && dimensions.length > 0 && !showPlainRow && (
+            <p className="text-[12px] text-[var(--student-mute)] text-center py-1">
+              展开上方规格分类并选择后，将显示可申领的组合
+            </p>
+          )}
+
           {showPlainRow && (
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-dashed border-[var(--student-hairline)]">
+            <div className="flex items-center justify-between gap-3 pt-1 border-t border-dashed border-[var(--student-hairline)]">
               <span className="text-[13px] text-[var(--student-mute)]">默认（不选规格）</span>
               <SheetQtyStepper
                 qty={cart[String(item.id)] || 0}
@@ -234,30 +329,12 @@ export function SpecSheet({
             </div>
           )}
 
-          {/* Sold out notice */}
           {soldOut && (
             <p className="text-center text-[12px] text-[var(--student-danger)] py-2">该物品已售罄</p>
           )}
         </div>
 
-        {/* Bottom bar — mobile: single button */}
-        <div className="shrink-0 px-5 py-3 border-t border-[var(--student-hairline)] flex items-center justify-between sm:hidden">
-          <span className="text-[13px] text-[var(--student-mute)]">
-            已选{" "}
-            <strong className="text-[var(--student-ink)] text-[15px]">{itemCartQty}</strong>{" "}
-            件
-          </span>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="px-6 py-2.5 rounded-lg bg-[var(--student-primary)] text-white text-[14px] font-semibold hover:opacity-90 transition-opacity"
-          >
-            完成
-          </button>
-        </div>
-
-        {/* Bottom bar — desktop: cancel + confirm */}
-        <div className="hidden sm:flex shrink-0 items-center justify-between px-5 py-3 border-t border-[var(--student-hairline)] bg-[var(--student-canvas-soft)]">
+        <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-3 border-t border-[var(--student-hairline)] bg-[var(--student-canvas-soft)]">
           <span className="text-[13px] text-[var(--student-mute)]">
             已选{" "}
             <strong className="text-[var(--student-ink)] text-[15px]">{itemCartQty}</strong>{" "}
@@ -267,14 +344,14 @@ export function SpecSheet({
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              className="px-4 py-2 rounded-lg border border-[var(--student-hairline)] bg-white text-[13px] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] transition-colors"
+              className="px-4 py-2.5 min-h-[44px] rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas)] text-[13px] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] transition-colors"
             >
               取消
             </button>
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              className="px-5 py-2 rounded-lg bg-[var(--student-primary)] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity"
+              className="px-5 py-2.5 min-h-[44px] rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] text-white text-[13px] font-semibold hover:opacity-90 transition-opacity"
             >
               确认
             </button>

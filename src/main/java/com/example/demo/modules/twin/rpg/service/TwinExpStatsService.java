@@ -22,7 +22,7 @@ public class TwinExpStatsService {
     private TwinExpRecordMapper twinExpRecordMapper;
 
     /**
-     * @deprecated 方案 A 下扫码不写流水；仅保留供内部/测试调用。
+     * @deprecated 请使用带 feedSource 的重载；实时扫码路径请走 {@link TwinExpStatsService#recordExp} 完整参数版。
      */
     @Deprecated
     public void recordExp(String userId, String userName, int expAmount,
@@ -51,7 +51,7 @@ public class TwinExpStatsService {
         record.setSessionDurationMinutes(sessionDurationMinutes);
         twinExpRecordMapper.insert(record);
 
-        // 方案 A：不在扫码时写 personnel.total_exp，由慢轨对账统一汇总
+        // 实时流水写入 twin_exp_record；personnel.total_exp 由慢轨对账/补漏汇总更新
         log.info("[XP流水] 写入成功 userId={} exp={} source={} accessType={} feedSource={}",
                 userId, expAmount, sourceType, accessType, feedSource);
     }

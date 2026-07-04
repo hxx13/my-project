@@ -1,13 +1,26 @@
-import { createElement, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AdminFullWidthPage } from "@/components/ui/AdminFullWidthPage";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { fetchPublicPagePermissions, WEB_PUBLIC_PAGE_PERMISSIONS_UPDATED, type MinRole } from "@/api/domains/pagePermission.api";
 import { fetchPendingBadges } from "@/api/domains/me.api";
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
-import { buildAdminNavModel, createAdminNavContext, normalizeAdminPath, toAdminRoutePath, type AdminHomeEntry } from "@/features/admin/buildAdminNavModel";
+import {
+  clearAdminHomeHighlightPending,
+  consumeAdminHomeHighlightPending,
+  matchesAdminHomeHighlightTarget,
+  navigateStaffNavEntry,
+  readAdminHomeScrollPosition,
+  restoreAdminHomeScrollPosition,
+  clearAdminHomeScrollPosition,
+  saveAdminHomeScrollPosition,
+  type AdminHomeEntrySource,
+  type AdminHomeHighlightTarget,
+  type AdminHomeReturnState,
+} from "@/features/admin/adminTelemetryNav";
+import { buildAdminNavModel, createAdminNavContext, normalizeAdminPath, type AdminHomeEntry } from "@/features/admin/buildAdminNavModel";
 import { ADMIN_NAV_PERSONALIZATION_EVENT, isAdminNavStarred, readAdminNavRecent, toggleAdminNavStar } from "@/features/admin/adminNavPersonalization";
 import { ADMIN_PENDING_BADGES_REFRESH_EVENT } from "@/features/admin/adminPendingBadgesEvents";
 import { ADMIN_NAV_REGISTRY, collectRegistryGroupItems, titleForUnknownAdminPath } from "@/features/admin/adminNavRegistry";
@@ -70,12 +83,49 @@ type HomeCardModel = AdminHomeEntry & {
 const HOME_CARD_GRID_CLASS =
   "grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(5.75rem,5.75rem))]";
 
+const HOME_ENTRY_HIGHLIGHT_MS = 3000;
+
+function resolveAdminHomeHighlightTarget(
+  location: ReturnType<typeof useLocation>,
+): AdminHomeHighlightTarget | null {
+  const state = location.state as AdminHomeReturnState | null;
+  if (state?.highlightTarget) {
+    clearAdminHomeHighlightPending();
+    return state.highlightTarget;
+  }
+  return consumeAdminHomeHighlightPending();
+}
+
+function adminHomeHighlightHasRenderableMatch(
+  target: AdminHomeHighlightTarget,
+  cards: HomeCardModel[],
+  starredCards: HomeCardModel[],
+  recentCards: HomeCardModel[],
+): boolean {
+  if (target.source === "sidebar" || target.source === "palette") return false;
+  const pool =
+    target.source === "starred" ? starredCards
+    : target.source === "recent" ? recentCards
+    : cards;
+  return pool.some(
+    (c) =>
+      c.enabled
+      && matchesAdminHomeHighlightTarget(c.path, target.source, c.groupTitle, target),
+  );
+}
+
 export default function AdminHomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
   const role = authStorage.getRole() || "MEMBER";
   const [navBump, setNavBump] = useState(0);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [highlightTarget, setHighlightTarget] = useState<AdminHomeHighlightTarget | null>(null);
+  const highlightTimerRef = useRef<number | null>(null);
+  const savedScrollYRef = useRef<number | null>(readAdminHomeScrollPosition());
+  const scrollRestoreCompleteRef = useRef(false);
+  const [scrollContentVisible, setScrollContentVisible] = useState(() => savedScrollYRef.current == null);
 
   const { data: permNodes = [] } = useQuery({
     queryKey: ["publicPagePermissions", "WEB"] as const,
@@ -161,9 +211,70 @@ export default function AdminHomePage() {
   const enabledCount = allCards.filter((e) => e.enabled).length;
   const toggleGroup = (title: string) => setCollapsed(p => { const n = new Set(p); n.has(title) ? n.delete(title) : n.add(title); return n; });
 
+  useLayoutEffect(() => {
+    savedScrollYRef.current = readAdminHomeScrollPosition();
+    scrollRestoreCompleteRef.current = false;
+    setScrollContentVisible(savedScrollYRef.current == null);
+    setHighlightTarget(resolveAdminHomeHighlightTarget(location));
+  }, [location.key, location.state]);
+
+  /** 返回工作台：useLayoutEffect 同步设 Y，rAF 仅修正 layout 漂移；隐藏内容直至稳定，避免可见的从上往下滚 */
+  useLayoutEffect(() => {
+    const savedY = savedScrollYRef.current;
+    if (savedY == null || !navModel) return;
+
+    const handle = restoreAdminHomeScrollPosition({
+      savedY,
+      clearOnStable: !scrollRestoreCompleteRef.current,
+      onStable: () => {
+        scrollRestoreCompleteRef.current = true;
+        savedScrollYRef.current = null;
+        clearAdminHomeScrollPosition();
+        setScrollContentVisible(true);
+      },
+    });
+    return () => handle.cancel();
+  }, [navModel, navBump, recent.length, starred.length, groups.length, location.key]);
+
+  /** 高亮仅视觉反馈（accent ring），不滚动到卡片；无精确匹配则不高亮 */
+  useEffect(() => {
+    if (!highlightTarget || !navModel) return;
+    if (!adminHomeHighlightHasRenderableMatch(highlightTarget, allCards, starred, recent)) {
+      setHighlightTarget(null);
+      return;
+    }
+
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+    }
+    highlightTimerRef.current = window.setTimeout(() => {
+      setHighlightTarget(null);
+      highlightTimerRef.current = null;
+    }, HOME_ENTRY_HIGHLIGHT_MS);
+
+    return () => {
+      if (highlightTimerRef.current !== null) {
+        window.clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = null;
+      }
+    };
+  }, [highlightTarget, navModel, allCards, starred, recent]);
+
+  useEffect(() => () => {
+    if (highlightTimerRef.current !== null) {
+      window.clearTimeout(highlightTimerRef.current);
+    }
+  }, []);
+
   return (
     <AdminFullWidthPage>
-      <div className="min-h-full space-y-6 bg-transparent p-4 sm:p-6">
+      <div
+        className={cn(
+          "min-h-full space-y-6 bg-transparent p-4 sm:p-6",
+          !scrollContentVisible && "invisible",
+        )}
+        aria-hidden={!scrollContentVisible}
+      >
         <section className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--app-color-accent-secondary)]">
@@ -182,7 +293,17 @@ export default function AdminHomePage() {
               <Star className="h-3 w-3 fill-[var(--app-color-accent)] text-[var(--app-color-accent)]" />收藏
             </h2>
             <HomeCardGrid>
-              {starred.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} starred />)}
+              {starred.map(e => (
+                <HomeCard
+                  key={`starred:${e.path}`}
+                  entry={e}
+                  location={location}
+                  navigate={navigate}
+                  source="starred"
+                  starred
+                  highlighted={matchesAdminHomeHighlightTarget(e.path, "starred", undefined, highlightTarget)}
+                />
+              ))}
             </HomeCardGrid>
           </section>
         )}
@@ -191,7 +312,16 @@ export default function AdminHomePage() {
           <section>
             <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--app-color-text-tertiary)]">最近访问</h2>
             <HomeCardGrid>
-              {recent.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} />)}
+              {recent.map(e => (
+                <HomeCard
+                  key={`recent:${e.path}`}
+                  entry={e}
+                  location={location}
+                  navigate={navigate}
+                  source="recent"
+                  highlighted={matchesAdminHomeHighlightTarget(e.path, "recent", undefined, highlightTarget)}
+                />
+              ))}
             </HomeCardGrid>
           </section>
         )}
@@ -213,7 +343,17 @@ export default function AdminHomePage() {
               </button>
               {!isCollapsed && (
                 <HomeCardGrid>
-                  {enabled.map(e => <HomeCard key={e.path} entry={e} navigate={navigate} />)}
+                  {enabled.map(e => (
+                    <HomeCard
+                      key={`${title}:${normalizeAdminPath(e.path)}`}
+                      entry={e}
+                      location={location}
+                      navigate={navigate}
+                      source="group"
+                      groupTitle={title}
+                      highlighted={matchesAdminHomeHighlightTarget(e.path, "group", title, highlightTarget)}
+                    />
+                  ))}
                 </HomeCardGrid>
               )}
             </section>
@@ -244,20 +384,37 @@ function HomePendingBadge({ text }: { text?: string }) {
 function HomeCard({
   entry,
   navigate,
+  location,
+  source,
+  groupTitle,
   starred,
+  highlighted,
 }: {
   entry: HomeCardModel;
-  navigate: (p: string) => void;
+  navigate: ReturnType<typeof useNavigate>;
+  location: ReturnType<typeof useLocation>;
+  source: AdminHomeEntrySource;
+  groupTitle?: string;
   starred?: boolean;
+  highlighted?: boolean;
 }) {
   const [isStarred, setIsStarred] = useState(starred ?? isAdminNavStarred(entry.path));
+  const entryPath = normalizeAdminPath(entry.path);
   return (
     <button
       type="button"
-      onClick={() => entry.enabled && navigate(toAdminRoutePath(entry.path))}
+      data-admin-home-entry-path={entryPath}
+      data-admin-home-entry-source={source}
+      {...(groupTitle ? { "data-admin-home-entry-group": groupTitle } : {})}
+      onClick={() => {
+        if (!entry.enabled) return;
+        saveAdminHomeScrollPosition();
+        navigateStaffNavEntry(navigate, entry.path, location, { source, groupTitle });
+      }}
       disabled={!entry.enabled}
       className={cn(
         "admin-home-entry-card group relative box-border flex h-[6.25rem] w-[5.75rem] shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl border p-2 text-center transition-all duration-200",
+        highlighted && "admin-home-entry-card--highlight",
         entry.enabled
           ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"
           : "cursor-not-allowed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] opacity-50",

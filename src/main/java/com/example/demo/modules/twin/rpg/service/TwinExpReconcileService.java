@@ -15,7 +15,7 @@ import java.util.*;
 
 /**
  * 经验值慢轨对账 —— 以 aro_access_log 为唯一数据源，写入 twin_exp_record 并同步 aro_personnel。
- * 方案 A：扫码不写流水，仅本服务（定时/手动重算）写入权威数据。
+ * 快轨：扫码实时写入 twin_exp_record；慢轨：本服务按日对账/补漏，以门禁流水为准校正。
  */
 @Service
 public class TwinExpReconcileService {
@@ -129,6 +129,95 @@ public class TwinExpReconcileService {
         summary.put("usersUpdated", userIds.size());
         summary.put("message", "全量历史重算完成：" + dates.size() + " 天，写入 " + totalRecords + " 条记录，更新 " + userIds.size() + " 人");
         log.info("[XP对账] 全量历史完成: {}", summary);
+        return summary;
+    }
+
+    /**
+     * 增量补漏：从已有经验流水的最大业务日继续对账，并补齐 cutoff 之后仍无流水的门禁日期。
+     * 单日幂等（先删后建），不清空全表。
+     */
+    public Map<String, Object> reconcileCatchUp() {
+        String cutoffStart = rpgExpCutoffService.cutoffStartForQuery();
+        List<String> accessLogDates = rpgMapper.getDistinctAccessLogDates(cutoffStart);
+        List<String> expRecordDates = twinExpRecordMapper.getDistinctEventDates(cutoffStart);
+        String maxExpDate = twinExpRecordMapper.selectMaxEventDate(cutoffStart);
+
+        Set<String> expDateSet = new HashSet<>(expRecordDates);
+        TreeSet<String> datesToProcess = new TreeSet<>();
+
+        for (String dateStr : accessLogDates) {
+            try {
+                LocalDate date = LocalDate.parse(dateStr);
+                if (!rpgExpCutoffService.isOnOrAfterCutoff(date)) {
+                    continue;
+                }
+                if (maxExpDate == null || dateStr.compareTo(maxExpDate) >= 0) {
+                    datesToProcess.add(dateStr);
+                } else if (!expDateSet.contains(dateStr)) {
+                    datesToProcess.add(dateStr);
+                }
+            } catch (Exception e) {
+                log.warn("[XP对账·补漏] 跳过非法日期 {}: {}", dateStr, e.getMessage());
+            }
+        }
+
+        if (datesToProcess.isEmpty()) {
+            Map<String, Object> noop = new LinkedHashMap<>();
+            noop.put("datesProcessed", 0);
+            noop.put("lastExpDate", maxExpDate);
+            noop.put("message", "无需补漏：经验流水已与门禁流水对齐");
+            log.info("[XP对账·补漏] {}", noop.get("message"));
+            return noop;
+        }
+
+        log.info("[XP对账·补漏] 从 lastExpDate={} 起处理 {} 天: {}",
+                maxExpDate, datesToProcess.size(), datesToProcess);
+
+        int totalRecords = 0;
+        int totalAnomalies = 0;
+        int totalSkipped = 0;
+
+        for (String dateStr : datesToProcess) {
+            try {
+                Map<String, Object> dayResult = reconcileDate(LocalDate.parse(dateStr));
+                if (Boolean.TRUE.equals(dayResult.get("skipped"))) {
+                    continue;
+                }
+                totalRecords += intVal(dayResult, "recordsCreated");
+                totalAnomalies += intVal(dayResult, "anomaliesFlagged");
+                totalSkipped += intVal(dayResult, "recordsSkippedCrossDay");
+            } catch (Exception e) {
+                log.error("[XP对账·补漏] 日期 {} 失败: {}", dateStr, e.getMessage(), e);
+            }
+        }
+
+        Set<String> affectedUserIds = new LinkedHashSet<>();
+        for (String dateStr : datesToProcess) {
+            LocalDate date = LocalDate.parse(dateStr);
+            affectedUserIds.addAll(rpgMapper.getDistinctUserIdsByDate(
+                    date.toString() + " 00:00:00",
+                    date.plusDays(1).toString() + " 00:00:00"));
+        }
+        for (String userId : affectedUserIds) {
+            try {
+                long total = recalcPersonnelTotalFromExpRecords(userId);
+                rpgMapper.updatePersonnelTotalExp(userId, total);
+            } catch (Exception e) {
+                log.error("[XP对账·补漏] 更新 personnel 失败 userId={}: {}", userId, e.getMessage());
+            }
+        }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("lastExpDateBefore", maxExpDate);
+        summary.put("datesProcessed", datesToProcess.size());
+        summary.put("processedDates", new ArrayList<>(datesToProcess));
+        summary.put("totalRecordsCreated", totalRecords);
+        summary.put("totalAnomaliesFlagged", totalAnomalies);
+        summary.put("totalCrossDaySkipped", totalSkipped);
+        summary.put("usersUpdated", affectedUserIds.size());
+        summary.put("message", "增量补漏完成：处理 " + datesToProcess.size() + " 天，写入 "
+                + totalRecords + " 条，更新 " + affectedUserIds.size() + " 人");
+        log.info("[XP对账·补漏] 完成: {}", summary);
         return summary;
     }
 

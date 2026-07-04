@@ -1,5 +1,5 @@
 /** 首页进出状态 — 事件驱动拉取（WebSocket 通知）+ 本地秒级计时 */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchMobileRoomDashboard,
   type MobileRoomAnalyzeDto,
@@ -118,19 +118,23 @@ export type MobilePresenceSnapshot = {
 };
 
 /**
- * @param refreshNonce 递增时拉取 room-dashboard（首次进入、WebSocket presence 通知）
+ * @param refreshNonce 递增时拉取 room-dashboard（首次进入、WebSocket presence 通知、切回首页）
+ * @param active 首页可见时启用本地秒级 tick（切 Tab 暂停，与小程序 onHide stopPresenceTick 一致）
  */
 export function useMobilePresenceStatus(
   token: string | undefined,
   refreshNonce = 0,
   jwtMode = false,
+  active = true,
 ): MobilePresenceSnapshot {
   const [bundle, setBundle] = useState<MobileRoomDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+  const initializedRef = useRef(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoading: boolean) => {
+    if (showLoading) setLoading(true);
     if (jwtMode) {
       try {
         const data = await fetchStudentMobileRoomDashboard();
@@ -140,6 +144,7 @@ export function useMobilePresenceStatus(
         /* 静默 */
       } finally {
         setLoading(false);
+        initializedRef.current = true;
       }
       return;
     }
@@ -152,11 +157,13 @@ export function useMobilePresenceStatus(
       /* 静默 */
     } finally {
       setLoading(false);
+      initializedRef.current = true;
     }
   }, [token, jwtMode]);
 
   useEffect(() => {
-    void load();
+    // 首次进入展示 loading；回到首页/WebSocket 静默拉取 — post-save-no-full-refresh.mdc
+    void load(!initializedRef.current);
   }, [load, refreshNonce]);
 
   /** JWT 模式：独立拉取豁免状态 */
@@ -175,11 +182,12 @@ export function useMobilePresenceStatus(
     return () => { cancelled = true; };
   }, [jwtMode, refreshNonce]);
 
-  /** 仅本地 UI 计时，不发起 HTTP */
+  /** 仅本地 UI 计时，不发起 HTTP；切 Tab 暂停 tick */
   useEffect(() => {
+    if (!active) return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [active]);
 
   return useMemo(() => {
     void tick;

@@ -22,9 +22,10 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 笼位特殊状态全量扫描服务。
- * 遍历全部笼架，调用 ARO /back 接口收集 cageBoxVo 特殊标记，
- * 过滤 NORMAL 后批量落库到 cage_special_status_snapshot。
+ * 全量笼位数据同步服务。
+ * 遍历全部笼架，逐架调用 ARO /back 接口拉取最新笼盒详情（含特殊标记），
+ * 全部笼位（NORMAL + 特殊状态）批量落库到 cage_special_status_snapshot，
+ * 扫描完成后 diff 新旧批次生成 cage_event_log 事件。
  */
 @Service
 public class CageSpecialStatusScanService {
@@ -88,12 +89,12 @@ public class CageSpecialStatusScanService {
         List<Map<String, Object>> shelves = cageShelfMapper.listIndexes(null, null, null, null, 100000, 0);
         int totalShelves = shelves.size();
         if (totalShelves == 0) {
-            log.warn("[cage-scan] 无笼架索引数据，跳过扫描");
+            log.warn("[cage-sync] 无笼架索引数据，跳过同步");
             automationLogService.write(
                     TwinAutomationLogService.TYPE_SCHEDULER,
                     "CAGE_SPECIAL_STATUS_SCAN", "TIMER", "SCHEDULE_TICK",
                     null, "CAGE_SPECIAL_STATUS_SCAN", true,
-                    "无笼架索引数据，跳过扫描", triggeredBy);
+                    "无笼架索引数据，跳过同步", triggeredBy);
             return Map.of("scanned", false, "reason", "无笼架索引数据");
         }
 
@@ -107,7 +108,7 @@ public class CageSpecialStatusScanService {
                 TwinAutomationLogService.TYPE_SCHEDULER,
                 "CAGE_SPECIAL_STATUS_SCAN", "TIMER", "SCHEDULE_TICK",
                 null, "CAGE_SPECIAL_STATUS_SCAN", true,
-                "开始全量笼架特殊状态扫描，共 " + totalShelves + " 个笼架", triggeredBy);
+                "开始全量笼位数据同步，共 " + totalShelves + " 个笼架", triggeredBy);
 
         int shelvesSucceeded = 0;
         int shelvesFailed = 0;
@@ -133,7 +134,7 @@ public class CageSpecialStatusScanService {
                 if (raw == null || raw.isEmpty() || !isAroSuccess(raw)) {
                     shelvesFailed++;
                     progressService.onShelfDone(shelvesSucceeded + shelvesFailed, false);
-                    log.warn("[cage-scan] ARO 返回空 shelveId={}", shelveId);
+                    log.warn("[cage-sync] ARO 返回空 shelveId={}", shelveId);
                     continue;
                 }
 
@@ -165,10 +166,8 @@ public class CageSpecialStatusScanService {
                     Map<String, Object> cageBoxVo = castMap(cage.get("cageBoxVo"));
                     List<SpecialStatusEntry> statuses = SpecialStatusComputer.compute(cageBoxVo);
 
-                    // 仅记录有特殊标记的（排除 NORMAL）
+                    // 记录所有状态（包括 NORMAL），确保 diff 能检测 NORMAL ↔ SPECIAL 变化和笼盒移动
                     for (SpecialStatusEntry se : statuses) {
-                        if (SpecialStatusComputer.CODE_NORMAL.equals(se.getCode())) continue;
-
                         CageSpecialStatusSnapshot row = new CageSpecialStatusSnapshot();
                         row.setScanBatchId(scanBatchId);
                         row.setShelveId(shelveId);
@@ -191,7 +190,10 @@ public class CageSpecialStatusScanService {
                         row.setScannedAt(now);
 
                         buffer.add(row);
-                        cagesWithStatus++;
+                        // Only count non-NORMAL for the "special status" tally
+                        if (!SpecialStatusComputer.CODE_NORMAL.equals(se.getCode())) {
+                            cagesWithStatus++;
+                        }
 
                         // 分块写入
                         if (buffer.size() >= INSERT_CHUNK_SIZE) {
@@ -209,7 +211,7 @@ public class CageSpecialStatusScanService {
                 try {
                     cageShelfService.refreshShelfDetail(shelveIdStr);
                 } catch (Exception e) {
-                    log.warn("[cage-scan] 网格缓存写入失败 shelveId={} err={}", shelveId, e.getMessage());
+                    log.warn("[cage-sync] 网格缓存写入失败 shelveId={} err={}", shelveId, e.getMessage());
                 }
 
                 // Save ALL 80 cage positions to cell snapshot table
@@ -217,13 +219,13 @@ public class CageSpecialStatusScanService {
             } catch (Exception e) {
                 shelvesFailed++;
                 progressService.onShelfDone(shelvesSucceeded + shelvesFailed, false);
-                log.warn("[cage-scan] 笼架扫描失败 shelveId={} err={}", shelveId, e.getMessage());
+                log.warn("[cage-sync] 笼架扫描失败 shelveId={} err={}", shelveId, e.getMessage());
             }
 
             // 批次间休眠（每 SHELF_BATCH_SIZE 个笼架休息一次）
             if ((i + 1) % SHELF_BATCH_SIZE == 0 && i + 1 < shelves.size()) {
                 try {
-                    log.info("[cage-scan] 批次完成 {}/{}，休眠 {}ms", i + 1, totalShelves, BATCH_SLEEP_MS);
+                    log.info("[cage-sync] 批次完成 {}/{}，休眠 {}ms", i + 1, totalShelves, BATCH_SLEEP_MS);
                     Thread.sleep(BATCH_SLEEP_MS);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -243,19 +245,22 @@ public class CageSpecialStatusScanService {
             try {
                 eventsGenerated = diffService.diffAndLog(oldBatchId, scanBatchId, LocalDateTime.now());
             } catch (Exception e) {
-                log.warn("[cage-scan] diff 失败 oldBatch={} newBatch={} err={}", oldBatchId, scanBatchId, e.getMessage());
+                log.warn("[cage-sync] diff 失败 oldBatch={} newBatch={} err={}", oldBatchId, scanBatchId, e.getMessage());
             }
             // 删除旧批次（diff 完成后）
             snapshotMapper.deleteByScanBatchId(oldBatchId);
+        } else {
+            // 首次同步：无旧批次可对比，写入一条基线事件供 event-log 可见
+            eventsGenerated = diffService.writeBaselineEvent(scanBatchId, cagesScanned, cagesWithStatus, LocalDateTime.now());
         }
 
         // 标记完成
         progressService.done(cagesScanned, cagesWithStatus);
 
         String summary = String.format(
-                "扫描完成: %d/%d 笼架成功, 共扫描 %d 个笼位, 发现 %d 个特殊状态标记",
-                shelvesSucceeded, totalShelves, cagesScanned, cagesWithStatus);
-        log.info("[cage-scan] {}", summary);
+                "同步完成: %d/%d 笼架成功, 共扫描 %d 个笼位, 写入 %d 条快照记录, 其中特殊状态 %d 个",
+                shelvesSucceeded, totalShelves, cagesScanned, cagesScanned, cagesWithStatus);
+        log.info("[cage-sync] {}", summary);
 
         automationLogService.write(
                 TwinAutomationLogService.TYPE_SCHEDULER,
@@ -318,7 +323,7 @@ public class CageSpecialStatusScanService {
             }
         }
         cellSnapshotMapper.batchInsert(rows);
-        log.info("[CageShelf] Saved {} cell rows for roomId={} shelveId={} batch={}",
+        log.info("[cage-sync] Saved {} cell snapshot rows for roomId={} shelveId={} batch={}",
                 rows.size(), roomId, shelveId, scanBatchId);
     }
 

@@ -1,6 +1,6 @@
 /**
- * 规格选择触发按钮 + Bottom Sheet 弹出层。
- * 所有场景（student / scanner / mobile）统一使用 SpecSheet 底部抽屉。
+ * 规格选择触发按钮 + 居中 Dialog 弹出层。
+ * 所有场景（student / scanner / mobile）统一使用 SpecSheet。
  */
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -8,7 +8,7 @@ import type { MaterialSpecPickerItem } from "@/utils/materialSpecHelpers";
 import { sumCartQtyForItem, maxQtyForMaterialItem } from "@/utils/materialSpecHelpers";
 import { SpecSheet } from "./SpecSheet";
 
-/** 卡片内嵌：选择规格按钮 + SpecSheet 底部抽屉 */
+/** 卡片内嵌：选择规格按钮 + SpecSheet 居中弹窗 */
 export function MaterialSpecPickControl({
   item,
   cart,
@@ -45,11 +45,14 @@ export function MaterialSpecPickControl({
         )
       : variant === "mobile"
         ? cn(
-            "relative shrink-0 px-3 h-7 rounded-full text-xs font-semibold border transition-colors",
+            "relative shrink-0 h-7 px-2 rounded-[var(--student-radius-sm)] text-[10px] font-medium border transition-colors",
             open
-              ? "border-[#ac1736] bg-[rgba(172,23,54,0.14)] text-[#ac1736]"
-              : "border-[rgba(172,23,54,0.25)] bg-[rgba(172,23,54,0.08)] text-[#ac1736]",
-            soldOut && "opacity-45",
+              ? "border-[var(--student-primary)] bg-[var(--student-primary-soft)] text-[var(--student-primary)]"
+              : "border-[var(--student-primary-muted)] bg-transparent text-[var(--student-primary)]",
+            "hover:bg-[var(--student-primary-soft)] active:bg-[var(--student-primary-muted)]",
+            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--student-primary)]",
+            "motion-reduce:transition-none",
+            soldOut && "opacity-45 cursor-not-allowed",
           )
         : cn(
             "relative shrink-0 px-3 h-7 rounded-full text-[12px] font-semibold border transition-colors",
@@ -71,7 +74,7 @@ export function MaterialSpecPickControl({
         {itemCartQty > 0 && (
           <span
             className={cn(
-              "absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 text-[10px] text-white text-center leading-4 rounded-full bg-[var(--student-danger,#dc2626)]",
+              "absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 text-[10px] text-white text-center leading-4 rounded-[var(--student-radius-sm)] bg-[var(--student-danger,#dc2626)]",
               variant === "scanner" && "min-w-[14px] h-3.5 text-[9px] leading-[14px] -top-1 -right-1",
             )}
           >

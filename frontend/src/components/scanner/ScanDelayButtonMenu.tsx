@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { Clock, Loader2, ChevronLeft } from "lucide-react";
 import type { ScanDelayOptionSummary } from "@/api/types/scanner";
+import type { ScanDelayRequestResult } from "@/api/domains/scanDelay.api";
 import { formatExemptTimeRule } from "@/constants/exemptDurationPresets";
 import { submitScanDelayRequest } from "@/api/domains/scanDelay.api";
 import { Z_INDEX } from "@/constants/zIndex";
@@ -19,6 +20,16 @@ type Props = {
   buttonLabel: string;
   onClose: () => void;
   onSuccess: () => void;
+  /** 定位模式：anchor=相对按钮定位（扫码弹窗），center=居中卡片（H5） */
+  positioning?: "anchor" | "center";
+  /** H5 移动端适配：增大触控区域与字号 */
+  mobile?: boolean;
+  /** 自定义提交函数（H5 token 模式传入 token-aware 实现） */
+  onSubmitRequest?: (payload: {
+    subjectUserId: string;
+    roomId: string;
+    optionId: number;
+  }) => Promise<ScanDelayRequestResult>;
 };
 
 function formatDelayHint(option: ScanDelayOptionSummary): string {
@@ -70,6 +81,9 @@ export function ScanDelayMenuPortal({
   roomId,
   onClose,
   onSuccess,
+  positioning = "anchor",
+  mobile = false,
+  onSubmitRequest,
 }: Props) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const [step, setStep] = useState<MenuStep>("options");
@@ -146,7 +160,8 @@ export function ScanDelayMenuPortal({
   const doSubmit = async (option: ScanDelayOptionSummary) => {
     setSubmitting(true);
     try {
-      const res = await submitScanDelayRequest({
+      const submitFn = onSubmitRequest ?? submitScanDelayRequest;
+      const res = await submitFn({
         subjectUserId,
         roomId,
         optionId: option.id,
@@ -185,81 +200,102 @@ export function ScanDelayMenuPortal({
   if (!open || typeof document === "undefined") return null;
 
   const hint = pendingOption ? formatDelayHint(pendingOption) : "";
+  const isCenter = positioning === "center";
+  const z = isCenter ? Z_INDEX.mobileDelayMenu : Z_INDEX.scanDelayMenu;
+  const textSm = mobile ? "text-[13px]" : "text-[12px]";
+  const textXs = mobile ? "text-[12px]" : "text-[11px]";
+  const textTiny = mobile ? "text-[11px]" : "text-[10px]";
+  const btnPy = mobile ? "py-3" : "py-2";
+  const optionPy = mobile ? "py-3" : "py-2";
+  const spacing = mobile ? "space-y-1.5" : "space-y-1";
 
   return createPortal(
-    <div
-      ref={menuRef}
-      className="fixed min-w-[220px] max-w-[min(92vw,300px)] rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2 shadow-[var(--app-elevation-popover)]"
-      style={{ top: pos.top, left: pos.left, zIndex: Z_INDEX.scanDelayMenu }}
-      role="menu"
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      {step === "confirm" && pendingOption ? (
-        <div className="space-y-2 px-1 py-1">
-          <button
-            type="button"
-            className="flex items-center gap-1 text-[10px] font-bold text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]"
-            onClick={() => setStep("options")}
-          >
-            <ChevronLeft className="h-3 w-3" />
-            返回选项
-          </button>
-          <p className="text-[12px] font-bold text-[var(--app-color-text-primary)]">确认申请延迟免冻结</p>
-          <p className="text-[11px] leading-relaxed text-[var(--app-color-text-secondary)]">
-            已选「{pendingOption.optionLabel}」
-            {hint ? `（${hint}）` : ""}。
-            {pendingOption.requireApproval
-              ? "确认后将提交至后台配置的审核教职工。"
-              : "确认后将立即通过。"}
-          </p>
-          <div className="flex gap-2 pt-1">
+    <>
+      {isCenter && (
+        <div
+          className="fixed inset-0 bg-black/40"
+          style={{ zIndex: z - 1 }}
+          onClick={onClose}
+        />
+      )}
+      <div
+        ref={menuRef}
+        className={`fixed rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2 shadow-[var(--app-elevation-popover)] ${
+          isCenter
+            ? "top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 min-w-[260px] max-w-[min(92vw,340px)]"
+            : "min-w-[220px] max-w-[min(92vw,300px)]"
+        }`}
+        style={isCenter ? { zIndex: z } : { top: pos.top, left: pos.left, zIndex: z }}
+        role="menu"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {step === "confirm" && pendingOption ? (
+          <div className="space-y-2 px-1 py-1">
             <button
               type="button"
-              disabled={submitting}
-              className="flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] px-3 py-2 text-[11px] font-bold text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-50"
+              className={`flex items-center gap-1 ${textTiny} font-bold text-[var(--app-color-text-tertiary)] hover:text-[var(--app-color-text-primary)]`}
               onClick={() => setStep("options")}
             >
-              取消
+              <ChevronLeft className="h-3 w-3" />
+              返回选项
             </button>
-            <button
-              type="button"
-              disabled={submitting}
-              className="flex-1 rounded-[var(--app-radius-element)] bg-[var(--app-color-accent)] px-3 py-2 text-[11px] font-bold text-[var(--app-color-text-inverse)] disabled:opacity-50"
-              onClick={() => void handleConfirmApply()}
-            >
-              {pendingOption.requireApproval ? "提交审核" : "确认"}
-            </button>
-          </div>
-        </div>
-      ) : options.length === 0 ? (
-        <p className="px-2 py-3 text-[11px] text-[var(--app-color-text-tertiary)]">该房间暂无可用延迟选项</p>
-      ) : (
-        <ul className="space-y-1">
-          {options.map((opt) => (
-            <li key={opt.id}>
+            <p className={`${textSm} font-bold text-[var(--app-color-text-primary)]`}>确认申请延迟免冻结</p>
+            <p className={`${textXs} leading-relaxed text-[var(--app-color-text-secondary)]`}>
+              已选「{pendingOption.optionLabel}」
+              {hint ? `（${hint}）` : ""}。
+              {pendingOption.requireApproval
+                ? "确认后将提交至后台配置的审核教职工。"
+                : "确认后将立即通过。"}
+            </p>
+            <div className="flex gap-2 pt-1">
               <button
                 type="button"
                 disabled={submitting}
-                className="w-full rounded-[var(--app-radius-element)] px-3 py-2 text-left text-[12px] font-bold text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-50"
-                onClick={() => handlePickOption(opt)}
+                className={`flex-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] px-3 ${btnPy} ${textXs} font-bold text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-50`}
+                onClick={() => setStep("options")}
               >
-                {opt.optionLabel}
-                {opt.requireApproval ? (
-                  <span className="ml-1 text-[10px] font-normal text-[var(--app-color-feedback-warning)]">
-                    点击申请
-                  </span>
-                ) : null}
+                取消
               </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {submitting ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[inherit] bg-[var(--app-color-surface-container)]/80">
-          <Loader2 className="h-5 w-5 animate-spin text-[var(--app-color-accent)]" />
-        </div>
-      ) : null}
-    </div>,
+              <button
+                type="button"
+                disabled={submitting}
+                className={`flex-1 rounded-[var(--app-radius-element)] bg-[var(--app-color-accent)] px-3 ${btnPy} ${textXs} font-bold text-[var(--app-color-text-inverse)] disabled:opacity-50`}
+                onClick={() => void handleConfirmApply()}
+              >
+                {pendingOption.requireApproval ? "提交审核" : "确认"}
+              </button>
+            </div>
+          </div>
+        ) : options.length === 0 ? (
+          <p className={`px-2 py-3 ${textXs} text-[var(--app-color-text-tertiary)]`}>该房间暂无可用延迟选项</p>
+        ) : (
+          <ul className={spacing}>
+            {options.map((opt) => (
+              <li key={opt.id}>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  className={`w-full rounded-[var(--app-radius-element)] px-3 ${optionPy} text-left ${textSm} font-bold text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-50`}
+                  onClick={() => handlePickOption(opt)}
+                >
+                  {opt.optionLabel}
+                  {opt.requireApproval ? (
+                    <span className={`ml-1 ${textTiny} font-normal text-[var(--app-color-feedback-warning)]`}>
+                      点击申请
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {submitting ? (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[inherit] bg-[var(--app-color-surface-container)]/80">
+            <Loader2 className="h-5 w-5 animate-spin text-[var(--app-color-accent)]" />
+          </div>
+        ) : null}
+      </div>
+    </>,
     document.body
   );
 }

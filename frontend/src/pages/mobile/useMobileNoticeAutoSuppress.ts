@@ -5,6 +5,7 @@ import {
   suppressMobileNoticeAutoOpen,
   type MobileAlertItem,
 } from "@/api/domains/mobileStudent.api";
+import { suppressStudentMobileNoticeAutoOpen } from "@/api/domains/studentMobile.api";
 import { NOTICE_DISMISS_WAIT_SECONDS } from "@/components/scanner/scanNoticeDismissStorage";
 
 export type MobileSuppressNoticeKind = "announcement" | "violation";
@@ -23,11 +24,14 @@ export function resolveMobileNoticeRecordId(item: MobileAlertItem): number | nul
 
 export function useMobileNoticeAutoSuppress({
   token,
+  jwtMode = false,
   item,
   alreadySuppressed = false,
   onSuppressed,
 }: {
   token?: string;
+  /** JWT 登录态：走 /student/mobile/notice-auto-suppress（与扫码弹窗同源服务） */
+  jwtMode?: boolean;
   item: MobileAlertItem;
   alreadySuppressed?: boolean;
   onSuppressed?: () => void;
@@ -69,14 +73,17 @@ export function useMobileNoticeAutoSuppress({
 
   useEffect(() => {
     if (countdown !== 0) return;
-    if (!token?.trim() || !noticeKind || recordId == null) {
+    if ((!jwtMode && !token?.trim()) || !noticeKind || recordId == null) {
       setCountdown(null);
       return;
     }
     let cancelled = false;
     const session = sessionRef.current;
     setSaving(true);
-    void suppressMobileNoticeAutoOpen(token.trim(), { noticeKind, recordId })
+    const suppressPromise = jwtMode
+      ? suppressStudentMobileNoticeAutoOpen({ noticeKind, recordId })
+      : suppressMobileNoticeAutoOpen(token!.trim(), { noticeKind, recordId });
+    void suppressPromise
       .then(() => {
         if (cancelled || session !== sessionRef.current) return;
         setSuppressed(true);
@@ -95,9 +102,11 @@ export function useMobileNoticeAutoSuppress({
     return () => {
       cancelled = true;
     };
-  }, [countdown, token, noticeKind, recordId, onSuppressed]);
+  }, [countdown, token, jwtMode, noticeKind, recordId, onSuppressed]);
 
-  const canSuppress = Boolean(token?.trim() && noticeKind && recordId != null && !suppressed);
+  const canSuppress = Boolean(
+    (jwtMode || token?.trim()) && noticeKind && recordId != null && !suppressed,
+  );
 
   const startSuppress = useCallback(() => {
     if (!canSuppress || countdown != null || saving) return;

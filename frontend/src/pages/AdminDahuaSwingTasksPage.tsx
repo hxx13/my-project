@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AccessFusionWorkspacePanel } from "@/features/access-fusion/AccessFusionWorkspacePanel";
 import { DahuaSwingStatsAuditPanel } from "@/features/dahua-swing-stats/DahuaSwingStatsAuditPanel";
 import { AccessSwingRecordsPanel } from "@/features/dahua-swing-records/AccessSwingRecordsPanel";
@@ -374,10 +375,10 @@ export default function AdminDahuaSwingTasksPage() {
           />
         </label>
         <label className="text-xs text-[var(--twin-body)] inline-flex items-center gap-2">
-          <input
-            type="checkbox"
+          <AdminSwitchScaled
+            size="3.5"
             checked={form.enabled === 1}
-            onChange={(e) => setForm((p) => ({ ...p, enabled: e.target.checked ? 1 : 0 }))}
+            onChange={(checked) => setForm((p) => ({ ...p, enabled: checked ? 1 : 0 }))}
           />
           启用任务（开启后可被批量执行）
         </label>
@@ -647,11 +648,10 @@ export default function AdminDahuaSwingTasksPage() {
               const checked = form.channelCodes.some((c) => normalizeChannelCode(c) === code);
               return (
                 <label key={`task-channel-${ch.id}`} className="flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
+                  <AdminSwitchScaled
+                    size="3.5"
                     checked={checked}
-                    onChange={(e) => {
-                      const on = e.target.checked;
+                    onChange={(on) => {
                       const name = (ch.channelName || "").trim();
                       if (on) {
                         setTaskChannelLabelExtra((prev) => ({

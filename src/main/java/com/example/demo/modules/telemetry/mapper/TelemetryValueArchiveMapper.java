@@ -40,4 +40,16 @@ public interface TelemetryValueArchiveMapper {
             @Param("variableName") String variableName,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
+
+    List<com.example.demo.modules.telemetry.dto.archive.TelemetryFleetAggRow> selectFleetAgg(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("metricKindCode") String metricKindCode,
+            @Param("floorFilter") String floorFilter);
+
+    List<TelemetryValueArchiveRow> selectPartitionBucketSamples(
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("metricKindCode") String metricKindCode,
+            @Param("floorFilter") String floorFilter);
 }

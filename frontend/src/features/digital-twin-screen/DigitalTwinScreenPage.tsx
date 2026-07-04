@@ -1,7 +1,6 @@
 import "@/features/digital-twin-screen/digitalTwinScreen.css";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import { defaultDigitalTwinScreenConfig } from "@/features/digital-twin-screen/defaultDigitalTwinScreenConfig";
 import { mergeDigitalTwinScreenConfig } from "@/features/digital-twin-screen/mergeDigitalTwinScreenConfig";
 import { digitalTwinThemeStyleVars } from "@/features/digital-twin-screen/themeCssVars";
@@ -12,7 +11,11 @@ import { DtDuctSvg } from "@/features/digital-twin-screen/DtDuctSvg";
 import { DtRoomGrid } from "@/features/digital-twin-screen/DtRoomGrid";
 import { computeDuctChannels, type DuctSceneLayout, type DuctZoneColumnBinding } from "@/features/digital-twin-screen/computeDuctPaths";
 import { useMockRoomTelemetrySnapshot } from "@/features/digital-twin-screen/useRoomTelemetrySnapshot";
-import { DIGITAL_TWIN_SCREEN_RETURN_TO_KEY } from "@/features/admin/adminTelemetryNav";
+import {
+  DIGITAL_TWIN_SCREEN_RETURN_TO_KEY,
+  useTwinFullscreenReturn,
+} from "@/features/admin/adminTelemetryNav";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import type { DuctPlanPolyline } from "@/features/digital-twin-screen/layout/ductLayoutTypes";
 import { newPointId, newPolylineId } from "@/features/digital-twin-screen/layout/ductLayoutTypes";
 import { DuctLayoutEditor } from "@/features/digital-twin-screen/layout/DuctLayoutEditor";
@@ -211,8 +214,6 @@ function syntheticAcStripsForMeasure(W: number, H: number): { leftAc: DuctSceneL
 }
 
 export default function DigitalTwinScreenPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
 
   const config = useMemo(
     () => mergeDigitalTwinScreenConfig(defaultDigitalTwinScreenConfig, undefined),
@@ -550,26 +551,7 @@ export default function DigitalTwinScreenPage() {
     }
   }, [showLegacy32RoomGrid]);
 
-  const returnToPath = useMemo(() => {
-    const st = (location.state as { returnTo?: string } | null)?.returnTo?.trim();
-    if (st) return st;
-    try {
-      const s = sessionStorage.getItem(DIGITAL_TWIN_SCREEN_RETURN_TO_KEY);
-      return s?.trim() || null;
-    } catch {
-      return null;
-    }
-  }, [location.state, location.key]);
-
-  const handleBack = useCallback(() => {
-    try {
-      sessionStorage.removeItem(DIGITAL_TWIN_SCREEN_RETURN_TO_KEY);
-    } catch {
-      /* ignore */
-    }
-    const target = returnToPath || "/admin";
-    void navigate(target, { replace: true });
-  }, [navigate, returnToPath]);
+  const { handleReturn: handleBack } = useTwinFullscreenReturn(DIGITAL_TWIN_SCREEN_RETURN_TO_KEY);
 
   const [ductScene, setDuctScene] = useState<DuctSceneLayout | null>(null);
 
@@ -1974,36 +1956,34 @@ export default function DigitalTwinScreenPage() {
       >
         重置视口
       </button>
-      <label
+      <div
         className="inline-flex cursor-pointer select-none items-center gap-1 rounded border border-slate-600/60 bg-slate-900/50 px-1.5 py-0.5 text-[10px] text-slate-200 sm:text-[11px]"
         title="场景中一旦存在风管折线即按折线渲染；无折线时走内置网格示意"
       >
-        <input type="checkbox" className="h-3 w-3 rounded border-slate-500" checked={sceneDoc.ducts.length > 0} disabled />
+        <AdminSwitchScaled size="3" checked={sceneDoc.ducts.length > 0} disabled onChange={() => {}} />
         自定义管
-      </label>
-      <label className="inline-flex cursor-pointer select-none items-center gap-1 rounded border border-slate-600/60 bg-slate-900/50 px-1.5 py-0.5 text-[10px] text-slate-200 sm:text-[11px]">
-        <input
-          type="checkbox"
-          className="h-3 w-3 rounded border-slate-500"
+      </div>
+      <div className="inline-flex cursor-pointer select-none items-center gap-1 rounded border border-slate-600/60 bg-slate-900/50 px-1.5 py-0.5 text-[10px] text-slate-200 sm:text-[11px]">
+        <AdminSwitchScaled
+          size="3"
           checked={useCustomRooms}
           disabled={sceneDoc.rooms.length === 0}
-          onChange={(e) => setUseCustomRooms(e.target.checked)}
+          onChange={(checked) => setUseCustomRooms(checked)}
         />
         自定义房间
-      </label>
-      <label className="inline-flex cursor-pointer select-none items-center gap-1 rounded border border-slate-600/60 bg-slate-900/50 px-1.5 py-0.5 text-[10px] text-slate-200 sm:text-[11px]">
-        <input
-          type="checkbox"
-          className="h-3 w-3 rounded border-slate-500"
+      </div>
+      <div className="inline-flex cursor-pointer select-none items-center gap-1 rounded border border-slate-600/60 bg-slate-900/50 px-1.5 py-0.5 text-[10px] text-slate-200 sm:text-[11px]">
+        <AdminSwitchScaled
+          size="3"
           checked={showLegacy32RoomGrid}
-          onChange={(e) => setShowLegacy32RoomGrid(e.target.checked)}
+          onChange={(checked) => setShowLegacy32RoomGrid(checked)}
         />
         标准网格房间
-      </label>
-      <label className="inline-flex cursor-pointer select-none items-center gap-1 rounded border border-slate-600/60 bg-slate-900/50 px-1.5 py-0.5 text-[10px] text-slate-200 sm:text-[11px]">
-        <input type="checkbox" className="h-3 w-3 rounded border-slate-500" checked={snap45} onChange={(e) => setSnap45(e.target.checked)} />
+      </div>
+      <div className="inline-flex cursor-pointer select-none items-center gap-1 rounded border border-slate-600/60 bg-slate-900/50 px-1.5 py-0.5 text-[10px] text-slate-200 sm:text-[11px]">
+        <AdminSwitchScaled size="3" checked={snap45} onChange={(checked) => setSnap45(checked)} />
         45°吸附
-      </label>
+      </div>
       {layoutEditMode ? (
         <>
           <button

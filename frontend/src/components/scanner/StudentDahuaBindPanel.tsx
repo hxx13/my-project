@@ -57,15 +57,14 @@ export function StudentDahuaBindPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅随 userId 刷新
   }, [userId]);
 
-  // 弹窗打开时聚焦输入框，重置 buffer
+  // 弹窗打开时重置 buffer（不再聚焦输入框 — 全局 keydown 捕获无需 focus，
+  // 且 touch 设备上 focus 会触发系统软键盘遮挡界面）
   useEffect(() => {
     cardScanBufferRef.current = "";
     if (cardScanResetTimer.current) {
       clearTimeout(cardScanResetTimer.current);
       cardScanResetTimer.current = null;
     }
-    const t = window.setTimeout(() => inputRef.current?.focus(), 0);
-    return () => window.clearTimeout(t);
   }, []);
 
   // 清理 timer
@@ -89,11 +88,12 @@ export function StudentDahuaBindPanel({
     }, 1200);
   }, []);
 
-  /** 与 DebugCardMappingPage / 首页程序坞扫码一致：window capture 处理按键，避免中文输入法抢占读卡器字符 */
+  /** 与 DebugCardMappingPage / 首页程序坞扫码一致：window capture 处理按键，避免中文输入法抢占读卡器字符。
+   *  不再要求 input 聚焦 — 全局 keydown 捕获读卡器即可，避免 touch 设备软键盘弹出。 */
   useEffect(() => {
     const onWinKeyDown = (e: KeyboardEvent) => {
       const el = inputRef.current;
-      if (!el || document.activeElement !== el) return;
+      if (!el) return;
       if (e.isComposing || e.key === "Process" || (e as KeyboardEvent & { keyCode?: number }).keyCode === 229) {
         return;
       }

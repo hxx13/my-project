@@ -15,7 +15,7 @@ import {
   Star,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PageTransition } from "@/components/animation/PageTransition";
@@ -98,7 +98,13 @@ import { PageHelpHost } from "@/features/page-help/PageHelpHost";
 import {
   ADMIN_SIDEBAR_OPEN_GROUPS_SESSION_KEY,
   ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY,
+  hasPendingAdminHomeScrollRestore,
+  isAdminHomeLocation,
+  markAdminHomeHighlightPending,
+  navigateAdminReturnTo,
+  readAdminHomeScrollPosition,
   readAdminSidebarOpenGroupsSession,
+  scrollAdminContentTo,
 } from "@/features/admin/adminTelemetryNav";
 import { Button } from "@/components/ui/button";
 import {
@@ -406,6 +412,28 @@ export default function AdminLayout() {
   );
   const adminHeaderTitle = useMemo(() => adminChromeTitle(pathname), [pathname]);
 
+  const skipAdminHomeEnterAnimation = useMemo(() => {
+    if (!isAdminHomeLocation(pathname)) return false;
+    const state = location.state as { skipAdminHomeEnterAnimation?: boolean } | null;
+    return state?.skipAdminHomeEnterAnimation === true || hasPendingAdminHomeScrollRestore();
+  }, [pathname, location.state, location.key]);
+
+  /** 返回工作台：paint 前禁用浏览器 scroll restoration 并同步设 Y，减轻顶栏闪一下 */
+  useLayoutEffect(() => {
+    if (!isAdminHomeLocation(pathname) || !hasPendingAdminHomeScrollRestore()) return;
+    try {
+      if ("scrollRestoration" in window.history) {
+        window.history.scrollRestoration = "manual";
+      }
+    } catch {
+      /* ignore */
+    }
+    const savedY = readAdminHomeScrollPosition();
+    if (savedY != null) {
+      scrollAdminContentTo(savedY, "instant");
+    }
+  }, [pathname, location.key]);
+
   const showFriendsSidebarShortcut = useMemo(
     () =>
       hasMinRole(role, "STAFF") &&
@@ -653,6 +681,9 @@ export default function AdminLayout() {
             } catch {
               /* ignore */
             }
+            if (isAdminHomeLocation(pathname)) {
+              markAdminHomeHighlightPending(it.to, { source: "sidebar" });
+            }
             onAfterNav?.();
           }}
           className={({ isActive }) => cn(navLinkClass(isActive, { inGroup, collapsed }), "relative", !collapsed && "flex-1 min-w-0")}
@@ -692,7 +723,13 @@ export default function AdminLayout() {
         data-admin-nav-label={it.label}
         end={it.end}
         title={collapsed ? it.label : undefined}
-        onClick={() => onAfterNav?.()}
+        state={isAdminHomeLocation(pathname) ? { returnTo: `${pathname}${location.search}` } : undefined}
+        onClick={() => {
+          if (isAdminHomeLocation(pathname)) {
+            markAdminHomeHighlightPending(it.to, { source: "sidebar" });
+          }
+          onAfterNav?.();
+        }}
         className={({ isActive }) =>
           cn(navLinkClass(isActive, { inGroup, collapsed }), !collapsed && "flex-1 min-w-0", justifyBetween && "justify-between")
         }
@@ -1037,12 +1074,12 @@ export default function AdminLayout() {
                 aria-label="返回上一页"
                 onClick={() => {
                   const stateReturn = (location.state as { returnTo?: unknown } | null)?.returnTo;
-                  if (typeof stateReturn === 'string' && stateReturn.startsWith('/') && !stateReturn.startsWith('//')) {
-                    navigate(stateReturn);
+                  if (typeof stateReturn === "string" && stateReturn.startsWith("/") && !stateReturn.startsWith("//")) {
+                    navigateAdminReturnTo(navigate, stateReturn);
                     return;
                   }
                   if (window.history.length > 1) navigate(-1);
-                  else navigate(resolveAdminShellBackTo(pathname, location.state));
+                  else navigateAdminReturnTo(navigate, resolveAdminShellBackTo(pathname, location.state));
                 }}
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-ink)] hover:bg-[var(--twin-canvas-soft)]"
               >
@@ -1188,16 +1225,22 @@ export default function AdminLayout() {
         </header>
 
         <main
+          data-admin-main-scroll
           className={cn(
-            "relative z-[1] flex w-full min-w-0 flex-1 flex-col overflow-x-hidden",
+            "relative z-[1] flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden",
             isDark ? "bg-transparent" : "bg-[var(--twin-canvas-soft)]"
           )}
         >
           {lockRedirectTarget ? <Navigate to={lockRedirectTarget} replace /> : null}
           <BackfillAutoGlobalBanner />
-          <div className="admin-page-content mx-auto w-full max-w-[1600px] flex-1">
+          <div className="admin-page-content mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col">
             {!pendingLockRedirect ? (
-              <PageTransition animateKey={location.pathname} variant="fadeUp" duration={0.3} className="h-full">
+              <PageTransition
+                animateKey={location.pathname}
+                variant={skipAdminHomeEnterAnimation ? "none" : "fadeUp"}
+                duration={0.3}
+                className="flex h-full min-h-0 flex-col"
+              >
                 <Outlet />
               </PageTransition>
             ) : null}

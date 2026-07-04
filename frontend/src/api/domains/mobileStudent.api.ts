@@ -8,6 +8,8 @@ import type {
   StudentActivityResult,
   StudentActivitySummary,
 } from "@/api/domains/analytics.api";
+import type { ScanDelayRequestResult } from "@/api/domains/scanDelay.api";
+import type { ScanDelayOptionSummary } from "@/api/types/scanner";
 import type { CageShelfDetail } from "@/features/student/api/student.api";
 import { normalizeMobileCageShelfDetail } from "@/pages/mobile/mobileCageShelfGrid";
 
@@ -166,6 +168,8 @@ export interface MobileRoomAnalyzeDto {
   autoSignoutScheduledAt?: string | null;
   autoSignoutSecondsRemaining?: number | null;
   scanDelayEnabled?: boolean;
+  scanDelayButtonLabel?: string;
+  scanDelayOptionsByRoom?: Record<string, ScanDelayOptionSummary[]>;
   exemptStatus?: ExemptStatus | null;
 }
 
@@ -376,6 +380,8 @@ export interface MobileMaterialItem {
   stockMode?: string;
   showStockQty?: number;
   thumbnailUrl?: string;
+  specSchema?: string;
+  specRequired?: number;
 }
 
 export interface MobileMaterialsData {
@@ -392,10 +398,24 @@ export async function fetchMobileMaterials(token: string): Promise<MobileMateria
   return resp.data.data;
 }
 
+function normalizeMaterialRequestLines(
+  lines: { itemId: number; qty: number; specSnapshot?: string | Record<string, string> }[],
+) {
+  return lines.map((line) => ({
+    itemId: line.itemId,
+    qty: line.qty,
+    specSnapshot: line.specSnapshot
+      ? typeof line.specSnapshot === "string"
+        ? line.specSnapshot
+        : JSON.stringify(line.specSnapshot)
+      : undefined,
+  }));
+}
+
 /** HTML5 学生中心：用手机 token 提交申领（非 JWT，后端按 token 解析学生身份） */
 export async function submitMobileMaterialRequest(
   token: string,
-  lines: { itemId: number; qty: number }[],
+  lines: { itemId: number; qty: number; specSnapshot?: string }[],
   applicantGroup?: string,
 ) {
   const resp = await publicHttp.post<{
@@ -404,7 +424,7 @@ export async function submitMobileMaterialRequest(
     message?: string;
     data: unknown;
   }>(`/public/mobile-center/${encodeURIComponent(token)}/material/requests`, {
-    lines,
+    lines: normalizeMaterialRequestLines(lines),
     applicantGroup,
   });
   if (!resp.data.success) throw new Error(resp.data.message || "提交失败");
@@ -516,6 +536,24 @@ export async function saveMobileCageCellAnnotation(
   if (!resp.data.success) {
     throw new Error(resp.data.message || "保存标注失败");
   }
+}
+
+/** 特殊状态总览（公开 token 接口） */
+export async function fetchMobileSpecialStatusOverview(
+  token: string,
+): Promise<import("@/api/domains/cageShelf.api").SpecialStatusOverview> {
+  const resp = await publicHttp.get<{
+    code: number;
+    success: boolean;
+    message: string;
+    data: import("@/api/domains/cageShelf.api").SpecialStatusOverview;
+  }>(
+    `/public/mobile-center/${encodeURIComponent(token)}/cage-shelves/special-status-overview`,
+  );
+  if (!resp.data.success) {
+    throw new Error(resp.data.message || "加载特殊状态失败");
+  }
+  return resp.data.data;
 }
 
 // ======================== 违规记录 API ========================
@@ -705,4 +743,18 @@ export async function generateMobileToken(
 /** 将所有反馈类通知标记为已读（公开 token 接口） */
 export async function markMobileAlertsReadAll(token: string): Promise<void> {
   await publicHttp.post(`/public/mobile-center/${encodeURIComponent(token)}/alerts/read-all`);
+}
+
+// ======================== 延迟免冻结申请（token 模式） ========================
+
+/** 手机 token 提交延迟免冻结申请（与扫码弹窗 submitScanDelayRequest 同源） */
+export async function submitMobileScanDelayRequest(
+  token: string,
+  payload: { subjectUserId: string; roomId: string; optionId: number; reviewerUserId?: string },
+): Promise<ScanDelayRequestResult> {
+  const resp = await publicHttp.post<{
+    code: number; success: boolean; message: string; data: ScanDelayRequestResult;
+  }>(`/public/mobile-center/${encodeURIComponent(token)}/scan-delay/request`, payload);
+  if (!resp.data.success || !resp.data.data) throw new Error(resp.data.message || "提交失败");
+  return resp.data.data;
 }

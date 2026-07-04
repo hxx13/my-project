@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Search, X } from "lucide-react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { fetchDahuaDepartments, type DahuaDepartmentRow } from "@/api/twinApi";
 import { cn } from "@/lib/utils";
 
@@ -117,12 +118,7 @@ export function DepartmentMultiSelect({ selected, onChange, className }: Props) 
                         checked && "bg-violet-50"
                       )}
                     >
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-neutral-300"
-                        checked={checked}
-                        onChange={() => toggle(name)}
-                      />
+                      <AdminSwitchScaled size="sm" checked={checked} onChange={() => toggle(name)} />
                       {name}
                     </label>
                   );

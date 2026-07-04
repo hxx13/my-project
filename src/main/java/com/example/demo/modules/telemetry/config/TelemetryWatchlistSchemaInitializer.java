@@ -34,7 +34,7 @@ public class TelemetryWatchlistSchemaInitializer implements StartupRunner {
 
     @Override
     public StartupResult run(StartupContext ctx) {
-        int ok = 0, total = 12;
+        int ok = 0;
 
         ctx.subtask("watchlist-schema", () -> runCore("db/telemetry-watchlist-schema.sql", false)); ok++;
         ctx.subtask("tag-add-columns", () -> runBestEffort("db/telemetry-watchlist-tag-add-columns.sql")); ok++;
@@ -48,8 +48,10 @@ public class TelemetryWatchlistSchemaInitializer implements StartupRunner {
         ctx.subtask("global-alarm", () -> runBestEffort("db/telemetry-global-alarm-limits.sql")); ok++;
         ctx.subtask("alarm-override", () -> runBestEffort("db/telemetry-watchlist-tag-alarm-override.sql")); ok++;
         ctx.subtask("value-archive", () -> runBestEffort("db/telemetry-value-archive.sql")); ok++;
+        ctx.subtask("insights-tables", () -> runBestEffort("db/telemetry-insights.sql")); ok++;
+        ctx.subtask("chart-group-metadata", () -> runBestEffort("db/telemetry-chart-group-metadata-column.sql")); ok++;
 
-        return StartupResult.success("12 个脚本已同步");
+        return StartupResult.success("14 个脚本已同步");
     }
 
     private void runCore(String path, boolean continueOnError) {

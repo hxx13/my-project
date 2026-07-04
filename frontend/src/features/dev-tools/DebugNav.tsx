@@ -5,7 +5,7 @@ import {motion, AnimatePresence} from 'framer-motion';
 // 💥 加上 Map as MapIcon
 import {
     LayoutDashboard, ScrollText, Users, BrainCircuit, Sparkles, ScanFace, Loader2, X, ShoppingCart, Map as MapIcon,
-    LogOut
+    Eraser
 } from 'lucide-react';
 import { useAnalyzeScanMutation, useExecuteAccessMutation } from '@/api/hooks/useScanner';
 import type { AnalyzeResponse, RoomInfo } from '@/api/types/scanner';
@@ -20,7 +20,6 @@ import { authStorage } from '@/features/auth/authStorage';
 import { hasMinRole } from '@/features/auth/roleAccess';
 import { useTwinChromeTheme } from '@/features/twin-chrome/TwinChromeThemeContext';
 import { useTheme } from '@/features/theme/ThemeProvider';
-import { ThemeSwitcher } from '@/features/theme/ThemeSwitcher';
 import type { ExecutePayload } from '@/api/types/scanner';
 import {
     cancelScheduledAutoExit,
@@ -47,7 +46,12 @@ import type { ScanStatus } from '@/components/face-verify';
 import { uploadBaselinePhoto } from '@/api/domains/face.api';
 import { specialChannelLoginByFace } from '@/components/scanner/specialChannel.api';
 import type { AuthData } from '@/api/domains/auth.api';
-import { useCardReaderEnterGuard } from '@/components/scanner/useCardReaderEnterGuard';
+import { useCardReaderEnterGuard, setGlobalScannerOpen } from '@/components/scanner/useCardReaderEnterGuard';
+import {
+    greetScanAssistantUser,
+    notifyScanPopupVisible,
+} from '@/components/scanner/scan-assistant/scanAssistantSpeak';
+import { isTwinDashboardHomePath } from '@/features/admin/buildAdminNavModel';
 import toast from 'react-hot-toast';
 
 const DEBUG_NAV_RUNTIME_STAMP = "debug-nav-runtime-2026-04-16-r4";
@@ -55,7 +59,7 @@ const DEBUG_NAV_RUNTIME_STAMP = "debug-nav-runtime-2026-04-16-r4";
 export default function DebugNav() {
     const navigate = useNavigate();
     const location = useLocation();
-    const { themeId, setThemeId } = useTwinChromeTheme();
+    const { setThemeId } = useTwinChromeTheme();
     const { themeId: bentoThemeId } = useTheme();
 
     // 🍱 System A → System B 桥接：Bento 主题切换时同步 Twin Chrome 霓虹效果
@@ -71,9 +75,17 @@ export default function DebugNav() {
 
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
+    useEffect(() => {
+        inputValueRef.current = inputValue;
+    }, [inputValue]);
     const [errorMsg, setErrorMsg] = useState('');
     const errorDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const inputClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const scannerInputRef = useRef<HTMLInputElement>(null);
+    const inputValueRef = useRef('');
+    const cardReaderIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastInputChangeAtRef = useRef(0);
+    const rapidInputBurstRef = useRef(0);
 
     /** 设置错误消息并在 5 秒后自动消失 */
     const setAutoDismissError = useCallback((msg: string) => {
@@ -96,8 +108,18 @@ export default function DebugNav() {
         inputClearTimerRef.current = setTimeout(() => {
             setInputValue('');
             setErrorMsg('');
+            rapidInputBurstRef.current = 0;
         }, 2000);
     }, []);
+
+    /** 仅清空输入框内容，保持扫码条展开 */
+    const clearScannerInputOnly = useCallback(() => {
+        if (cardReaderIdleTimerRef.current) clearTimeout(cardReaderIdleTimerRef.current);
+        setInputValue('');
+        rapidInputBurstRef.current = 0;
+        clearErrorMsg();
+        requestAnimationFrame(() => scannerInputRef.current?.focus());
+    }, [clearErrorMsg]);
 
     const [executeErrorMessage, setExecuteErrorMessage] = useState('');
     const [lastScannedId, setLastScannedId] = useState('');
@@ -136,6 +158,7 @@ export default function DebugNav() {
             const uid = data.userInfo?.userId ? String(data.userInfo.userId) : '';
             setScanPopupSession(uid || null, lastScannedIdRef.current);
             setAutoActionRoomId('');
+            greetScanAssistantUser(data);
             const isBanned = Number(data.globalUserState) === 3;
             const autoSignoutActive = data.autoSignoutSecondsRemaining != null && data.autoSignoutSecondsRemaining > 0;
             if (
@@ -202,6 +225,7 @@ export default function DebugNav() {
             resetCloseTimer();
             const uid = data.userInfo?.userId ? String(data.userInfo.userId) : "";
             setScanPopupSession(uid || null, lastScannedIdRef.current);
+            greetScanAssistantUser(data);
             // 每次扫码清空上一个视觉钢印
             setAutoActionRoomId('');
 
@@ -345,7 +369,22 @@ export default function DebugNav() {
     }, [isWorking]);
 
     // 🔒 读卡器 Enter 键防护：capture 阶段拦截，防止连续刷卡时意外触发聚焦按钮
-    useCardReaderEnterGuard("debug-scanner-input");
+    // 扫码条展开且无网络请求时禁用 guard：避免 guard 的 stopPropagation 拦截刷卡器 Enter，
+    // 导致 bubble 阶段的全局 keydown listener 收不到事件而静默丢卡（程序坞聚焦"卡住"根因）。
+    useCardReaderEnterGuard("debug-scanner-input", isScannerOpen && !isWorking ? true : undefined);
+
+    /** 扫码条展开后不再自动聚焦输入框 — 全局 keydown 监听器已捕获读卡器输入，
+     *  无需 focus；touch 设备上 focus 会触发系统软键盘遮挡界面。 */
+
+    /** 网络请求完成后不再自动重聚焦 — 全局 keydown 监听器已独立于 input focus 工作。 */
+
+    /** 同步全局 scanner 展开状态：App.tsx 的全局 useCardReaderEnterGuard 通过此信号
+     *  在 scanner 展开时自动放行刷卡器 Enter（避免全局 guard 的 capture stopPropagation
+     *  阻断 DebugNav bubble 阶段 keydown listener）。 */
+    useEffect(() => {
+        setGlobalScannerOpen(isScannerOpen);
+        return () => { setGlobalScannerOpen(false); };
+    }, [isScannerOpen]);
 
     const resetCloseTimer = () => {
         if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
@@ -357,6 +396,8 @@ export default function DebugNav() {
             analyzeMutation.reset();
             executeMutation.reset();
             setIsScannerOpen(false);
+            setScanPopupSession(null, null);
+            cancelScheduledAutoExit();
         }, 120000);
     };
 
@@ -399,9 +440,33 @@ export default function DebugNav() {
         // eslint-disable-next-line react-hooks/exhaustive-deps -- 扫码枪缓冲逻辑稳定，仅依赖 handleScanAction 闭包最新实现
     }, []);
 
-    const handleLogout = () => {
-        authStorage.clear();
-        navigate('/login');
+    /** 读卡器快速连字符后自动提交（无 Enter 的读卡器兜底） */
+    const scheduleCardReaderAutoSubmit = (value: string) => {
+        if (cardReaderIdleTimerRef.current) clearTimeout(cardReaderIdleTimerRef.current);
+        const trimmed = value.trim();
+        if (trimmed.length < 3 || scannerLockRef.current) return;
+        cardReaderIdleTimerRef.current = setTimeout(() => {
+            if (Date.now() - lastInputChangeAtRef.current < 120) return;
+            const latest = inputValueRef.current.trim();
+            if (latest.length >= 3 && !scannerLockRef.current) {
+                handleScanAction(latest);
+            }
+        }, 120);
+    };
+
+    const handleScannerInputChange = (raw: string) => {
+        const now = Date.now();
+        if (now - lastInputChangeAtRef.current < 50) {
+            rapidInputBurstRef.current += 1;
+        } else {
+            rapidInputBurstRef.current = 1;
+        }
+        lastInputChangeAtRef.current = now;
+        setInputValue(raw);
+        clearErrorMsg();
+        if (rapidInputBurstRef.current >= 3) {
+            scheduleCardReaderAutoSubmit(raw);
+        }
     };
 
     type DockLink = {
@@ -415,17 +480,15 @@ export default function DebugNav() {
     let links: DockLink[];
     if (isStudentTwinDock) {
         links = [
-            { key: 'home', name: '主大屏', path: '/', icon: LayoutDashboard },
-            { key: 'logout', name: '退出登录', path: '/_dock-logout', icon: LogOut, onClick: handleLogout },
+            { key: 'home', name: '主大屏', path: '/console/dashboard', icon: LayoutDashboard },
         ];
     } else {
         links = [
-            { key: 'home', name: '主大屏', path: '/', icon: LayoutDashboard },
+            { key: 'home', name: '主大屏', path: '/console/dashboard', icon: LayoutDashboard },
             { key: 'debug', name: '流水线', path: '/debug', icon: ScrollText },
             { key: 'personnel', name: '档案库', path: '/debug-personnel', icon: Users },
             { key: 'ai', name: 'AI推演', path: '/debug-prediction', icon: BrainCircuit },
             { key: 'heatmap', name: '空间雷达', path: '/debug-heatmap', icon: MapIcon },
-            { key: 'logout', name: '退出登录', path: '/_dock-logout', icon: LogOut, onClick: handleLogout },
         ];
         if (hasMinRole(role || 'STUDENT', 'STAFF')) {
             links.splice(3, 0, { key: 'cards', name: '房卡调度', path: '/debug-cards', icon: CreditCard });
@@ -457,13 +520,15 @@ export default function DebugNav() {
         if (fv.faceVerifyActive) {
             fv.abortFaceVerifySession();
         }
+        if (cardReaderIdleTimerRef.current) clearTimeout(cardReaderIdleTimerRef.current);
         setInputValue('');
         setLastScannedId('');
         lastScannedIdRef.current = '';
+        rapidInputBurstRef.current = 0;
         clearErrorMsg();
         if (inputClearTimerRef.current) clearTimeout(inputClearTimerRef.current);
         setIsScannerOpen(false);
-    }, [fv]);
+    }, [fv, clearErrorMsg]);
 
     const handlePopupFaceVerifyRequest = useCallback(() => {
         if (!activeResult) return;
@@ -486,6 +551,18 @@ export default function DebugNav() {
     const showGateFaceCamera = isGateFace;
     const pipUserId = activeResult?.userInfo?.userId ? String(activeResult.userInfo.userId) : '';
     const pipMonitorActive = Boolean(pipUserId) && !fv.faceVerifyActive && fv.pipMonitorUrls.length > 0;
+
+    /** 同步扫码弹窗可见性：关闭后启动助手气泡自动倒计时（无弹窗时才生效） */
+    useEffect(() => {
+        notifyScanPopupVisible(showScanPopup);
+    }, [showScanPopup]);
+
+    /** 人脸验证结束但未产生 activeResult（失败/耗尽/取消/底库缺失）时清理会话守卫 */
+    useEffect(() => {
+        if (!fv.faceVerifyActive && !activeResult) {
+            setScanPopupSession(null, null);
+        }
+    }, [fv.faceVerifyActive, activeResult]);
 
     return (
         <>
@@ -702,7 +779,7 @@ export default function DebugNav() {
                 >
                     <button
                         type="button"
-                        title="登录页（不退出账号）"
+                        title="登录页"
                         aria-label="打开登录页，保持当前登录状态"
                         onClick={() => navigate('/login')}
                         className="pr-3 mr-1 border-r border-slate-700 flex items-center justify-center bg-transparent p-0 text-inherit focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 focus-visible:ring-offset-2 focus-visible:ring-offset-[#18181b] rounded-l-full"
@@ -713,11 +790,11 @@ export default function DebugNav() {
                         </div>
                     </button>
 
-                    {/* 🍱 Bento 主题切换：亮色 / 暗色 / 科幻 */}
-                    <ThemeSwitcher className="ml-0.5 h-9 rounded-full px-2.5 text-[11px] font-medium text-[var(--app-color-text-tertiary)] hover:bg-white/5 hover:text-[var(--app-color-text-primary)] transition-colors" />
-
                     {links.map((link) => {
-                        const isActive = location.pathname === link.path;
+                        const isActive =
+                            link.key === 'home'
+                                ? isTwinDashboardHomePath(location.pathname)
+                                : location.pathname === link.path;
                         const Icon = link.icon;
                         return (
                             <div
@@ -769,51 +846,87 @@ export default function DebugNav() {
                         layout
                         className="flex items-center overflow-hidden"
                         initial={false}
-                        animate={{width: isScannerOpen ? 220 : 40}}
+                        animate={{width: isScannerOpen ? 260 : 40}}
                     >
                         {isScannerOpen ? (
                             <motion.div
                                 initial={{opacity: 0}}
                                 animate={{opacity: 1}}
-                                className={`relative w-full flex items-center h-10 px-2 bg-black/40 rounded-full border shadow-[inset_0_0_10px_rgba(59,130,246,0.1)] transition-colors
+                                className={`relative w-full flex items-center h-10 px-1.5 bg-black/40 rounded-full border shadow-[inset_0_0_10px_rgba(59,130,246,0.1)] transition-colors
                                     ${isWorking ? 'border-amber-500/50' : 'border-blue-500/30'}`}
                             >
                                 <ScanFace
                                     className={`w-4 h-4 shrink-0 ml-1 transition-colors ${isWorking ? 'text-amber-400 animate-pulse' : 'text-blue-400'}`}/>
                                 <input
+                                    ref={scannerInputRef}
                                     id="debug-scanner-input"
-                                    autoFocus
+                                    autoComplete="off"
+                                    autoCorrect="off"
+                                    spellCheck={false}
+                                    inputMode="none"
                                     type="text"
                                     value={inputValue}
-                                    onChange={(e) => {
-                                        setInputValue(e.target.value);
-                                        clearErrorMsg();
+                                    onChange={(e) => handleScannerInputChange(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            const val = e.currentTarget.value.trim();
+                                            if (val) handleScanAction(val);
+                                        } else if (e.key === 'Escape') {
+                                            e.preventDefault();
+                                            collapseScannerDock();
+                                        }
                                     }}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleScanAction(inputValue)}
-                                    placeholder={isWorking ? "系统通讯中..." : "键入 ID 或刷卡..."}
-                                    className="flex-1 bg-transparent border-none outline-none text-white text-[12px] font-mono px-2 placeholder:text-slate-600 disabled:opacity-60"
+                                    onPaste={(e) => {
+                                        const text = e.clipboardData.getData('text').trim();
+                                        if (text.length >= 3 && !isWorking) {
+                                            e.preventDefault();
+                                            setInputValue(text);
+                                            handleScanAction(text);
+                                        }
+                                    }}
+                                    placeholder={isWorking ? '系统通讯中…' : '键入 ID 或刷卡，Enter 提交'}
+                                    className="flex-1 min-w-0 bg-transparent border-none outline-none text-white text-[12px] font-mono px-2 placeholder:text-slate-600 disabled:opacity-60"
                                     disabled={isWorking}
+                                    aria-label="扫码或键入人员 ID"
                                 />
                                 {isWorking ? (
-                                    <Loader2 className="w-4 h-4 text-blue-400 animate-spin shrink-0 mr-1"/>
+                                    <Loader2 className="w-4 h-4 text-blue-400 animate-spin shrink-0 mr-1" aria-hidden />
                                 ) : (
-                                    <button
-                                        type="button"
-                                        onClick={collapseScannerDock}
-                                        className="shrink-0 p-1 hover:bg-white/10 rounded-full transition-colors"
-                                        title="收起并清空"
-                                        aria-label="收起扫码输入并清空"
-                                    >
-                                        <X className="w-3.5 h-3.5 text-slate-400 hover:text-white"/>
-                                    </button>
+                                    <>
+                                        {inputValue.trim().length > 0 ? (
+                                            <button
+                                                type="button"
+                                                onClick={clearScannerInputOnly}
+                                                className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40"
+                                                title="清空输入"
+                                                aria-label="清空扫码输入"
+                                            >
+                                                <Eraser className="h-4 w-4" />
+                                            </button>
+                                        ) : null}
+                                        <button
+                                            type="button"
+                                            onClick={collapseScannerDock}
+                                            className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full text-slate-300 transition-colors hover:bg-white/15 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40"
+                                            title="收起并清空"
+                                            aria-label="收起扫码输入并清空"
+                                        >
+                                            <X className="h-5 w-5" strokeWidth={2.25} />
+                                        </button>
+                                    </>
                                 )}
                             </motion.div>
                         ) : (
                             <motion.button
+                                type="button"
                                 onClick={() => setIsScannerOpen(true)}
                                 whileHover={{scale: 1.15, y: -2}}
                                 whileTap={{scale: 0.95}}
                                 className="relative w-10 h-10 rounded-full flex items-center justify-center transition-colors duration-300 hover:bg-white/5 text-slate-400 hover:text-white"
+                                title="打开扫码输入"
+                                aria-label="打开扫码输入"
+                                aria-expanded={false}
                             >
                                 <ScanFace className="w-5 h-5"/>
                                 {isWorking && <span
@@ -822,6 +935,7 @@ export default function DebugNav() {
                         )}
                     </motion.div>
                 </motion.div>
+
             </div>
 
             {/* 离开确认弹窗：统一拦截所有 EXIT（高于所有弹窗） */}

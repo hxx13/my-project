@@ -17,6 +17,7 @@ import {
   mimeFromGraphicFile,
 } from "@/features/digital-twin-screen/layout/dtGraphicImport";
 import { DT_WIDGET_PLATE_MIN } from "@/features/digital-twin-screen/layout/dtWidgetPlateLimits";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import {
   DT_GRAPHIC_LIBRARY_CHANGED_EVENT,
   dtGraphicLibraryList,
@@ -380,14 +381,14 @@ export function DtWidgetDetailsPanel({
                 <option value="commandSurface">整图点击写指令槽</option>
               </select>
             </label>
-            <label className="flex items-center gap-1.5 text-[9px] text-slate-500">
-              <input
-                type="checkbox"
+            <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
+              <AdminSwitchScaled
+                size="3"
                 checked={widget.showReadoutOverlay === true}
-                onChange={(e) => patch({ showReadoutOverlay: e.target.checked })}
+                onChange={(checked) => patch({ showReadoutOverlay: checked })}
               />
               叠加显示主绑定数值（可与装饰/写点同开）
-            </label>
+            </div>
             {widget.assetInteractionMode === "commandSurface" && !widget.bindings.some((b) => b.bindingKind === "command") ? (
               <p className="text-[8px] leading-snug text-amber-400/95">需至少一个绑定槽设为「指令 / 写 WinCC」并填写变量名。</p>
             ) : null}

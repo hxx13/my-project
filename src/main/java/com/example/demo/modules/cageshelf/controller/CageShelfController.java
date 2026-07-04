@@ -141,7 +141,7 @@ public class CageShelfController {
     }
 
     @GetMapping("/scan-progress")
-    @Operation(summary = "获取笼位特殊状态扫描进度")
+    @Operation(summary = "获取笼位数据同步进度")
     public Result<?> scanProgress(@RequestHeader(value = "Authorization", required = false) String authorization) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);

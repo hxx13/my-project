@@ -26,7 +26,12 @@ function serveModelsPlugin(): Plugin {
     }
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+    define: {
+        // 前端构建版本标识：生产构建用时间戳，开发模式固定 'dev'
+        // WebSocket 连接时与后端 app.frontend.expected-version 比对，不一致则自动刷新页面
+        __BUILD_ID__: JSON.stringify(mode === 'production' ? `0.0.0-${Date.now()}` : 'dev'),
+    },
     plugins: [react(), serveModelsPlugin()],
     resolve: {
         alias: {
@@ -82,4 +87,4 @@ export default defineConfig({
         },
     },
 
-})
+}))

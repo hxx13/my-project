@@ -22,6 +22,7 @@ import { Portal } from "@/components/Portal";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
@@ -285,10 +286,10 @@ export default function AdminSuppliesProcessPage() {
               <div key={row.id} className="flex items-center justify-between rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2 text-sm">
                 <span className="text-[var(--twin-body)]">{row.id}（{applicantLabel(row)} / {claimStatusText(row.status)}）</span>
                 <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
+                  <AdminSwitchScaled
+                    size="sm"
                     checked={selectedRecycleIds.includes(row.id)}
-                    onChange={(e) => setSelectedRecycleIds((prev) => e.target.checked ? [...prev, row.id] : prev.filter((id) => id !== row.id))}
+                    onChange={(checked) => setSelectedRecycleIds((prev) => checked ? [...prev, row.id] : prev.filter((id) => id !== row.id))}
                   />
                   <button
                     type="button"
@@ -381,10 +382,10 @@ export default function AdminSuppliesProcessPage() {
                             </div>
                             {canProcess && detail.status === "PENDING" ? (
                               <label className="inline-flex items-center gap-1.5 text-xs text-[var(--twin-body)] shrink-0">
-                                <input
-                                  type="checkbox"
+                                <AdminSwitchScaled
+                                  size="3.5"
                                   checked={!!grantMap[line.id]}
-                                  onChange={(e) => setGrantMap((prev) => ({ ...prev, [line.id]: e.target.checked }))}
+                                  onChange={(checked) => setGrantMap((prev) => ({ ...prev, [line.id]: checked }))}
                                 />
                                 出库
                               </label>

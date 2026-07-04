@@ -3,6 +3,10 @@ import type { ManagerOptions } from "socket.io-client";
 /** Socket.IO 与 Spring HTTP 分端口时，默认把 API 端口换为 9092 */
 const DEFAULT_SOCKET_PORT = 9092;
 
+/** 前端构建版本标识：Vite define 注入，开发模式为 'dev'，生产构建为时间戳 */
+export const APP_BUILD_ID: string =
+    (typeof __BUILD_ID__ !== 'undefined') ? __BUILD_ID__ : 'dev';
+
 /**
  * 全局 Socket.IO 客户端选项：断线后持续重连（不设 reconnectionAttempts 上限），
  * 避免「重试 10 次后永久离线」导致「同步在线页」广播收不到。

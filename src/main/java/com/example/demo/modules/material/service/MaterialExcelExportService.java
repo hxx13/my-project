@@ -56,7 +56,7 @@ public class MaterialExcelExportService {
             Sheet sh = wb.createSheet(WorkbookUtil.createSafeSheetName("物品来去流水"));
             int r = 0;
             Row head = sh.createRow(r++);
-            String[] cols = { "时间", "类型", "物品", "变动数量", "库存", "申领人", "课题组", "关联单号", "备注" };
+            String[] cols = { "时间", "类型", "物品", "规格", "变动数量", "库存", "申领人", "课题组", "关联单号", "备注" };
             for (int i = 0; i < cols.length; i++) head.createCell(i).setCellValue(cols[i]);
 
             for (MaterialItemFlowExportRow row : rows) {
@@ -64,12 +64,13 @@ public class MaterialExcelExportService {
                 data.createCell(0).setCellValue(safe(row.getTime()));
                 data.createCell(1).setCellValue(safe(row.getEventType()));
                 data.createCell(2).setCellValue(safe(row.getItemName()));
-                data.createCell(3).setCellValue(safe(row.getQty()));
-                data.createCell(4).setCellValue(safe(row.getStockAfter()));
-                data.createCell(5).setCellValue(safe(row.getApplicantName()));
-                data.createCell(6).setCellValue(safe(row.getApplicantGroup()));
-                data.createCell(7).setCellValue(safe(row.getRequestId()));
-                data.createCell(8).setCellValue(safe(row.getRemark()));
+                data.createCell(3).setCellValue(safe(row.getSpec()));
+                data.createCell(4).setCellValue(safe(row.getQty()));
+                data.createCell(5).setCellValue(safe(row.getStockAfter()));
+                data.createCell(6).setCellValue(safe(row.getApplicantName()));
+                data.createCell(7).setCellValue(safe(row.getApplicantGroup()));
+                data.createCell(8).setCellValue(safe(row.getRequestId()));
+                data.createCell(9).setCellValue(safe(row.getRemark()));
             }
             ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sh, 0, cols.length - 1);
             wb.write(out);

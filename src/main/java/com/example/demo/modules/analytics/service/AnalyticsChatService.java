@@ -1,5 +1,6 @@
 package com.example.demo.modules.analytics.service;
 
+import com.example.demo.common.exception.SseClientDisconnectedException;
 import com.example.demo.modules.analytics.entity.AnalyticsAuditLog;
 import com.example.demo.modules.analytics.entity.AnalyticsChatMessage;
 import com.example.demo.modules.analytics.entity.AnalyticsChatSession;
@@ -289,7 +290,7 @@ public class AnalyticsChatService {
         try {
             emitter.send(SseEmitter.event().name(name).data(data));
         } catch (IOException e) {
-            throw new IllegalStateException("SSE 发送失败: " + e.getMessage(), e);
+            throw new SseClientDisconnectedException("SSE 客户端已断开: " + e.getMessage(), e);
         }
     }
 

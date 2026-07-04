@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   ANIMAL_ROOM_TELEMETRY_PAGE_QUERY_KEY,
@@ -10,7 +9,10 @@ import {
   formatTelemetryTs,
 } from "@/api/telemetryApi";
 import { buildSyntheticHvacStructTab } from "@/telemetry-view/animalTelemetryHvacUnits";
-import { ANIMAL_ROOM_COCKPIT_RETURN_TO_KEY } from "@/features/admin/adminTelemetryNav";
+import {
+  ANIMAL_ROOM_COCKPIT_RETURN_TO_KEY,
+  useTwinFullscreenReturn,
+} from "@/features/admin/adminTelemetryNav";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import type { CockpitFloorBlock } from "./animalRoomCockpit/buildCockpitFloorBlocks";
 import { buildCockpitFloorBlocks, COCKPIT_B1F_MERGED_TAB_KEY, mergeB1FPrefixedRoomsIntoSingleCockpitColumn } from "./animalRoomCockpit/buildCockpitFloorBlocks";
@@ -24,16 +26,19 @@ import {
   findRobotArmTagItems,
 } from "./animalRoomCockpit/CockpitRobotArmMetricSlots";
 import { CockpitTopBarFirstRow } from "./animalRoomCockpit/CockpitTopBarLayout";
-import { ArrowLeft, ChevronLeft, ChevronRight, Clock, Cpu, Factory, Forklift, Gauge, Zap } from "lucide-react";
+import { AnimalRoomConsoleBackButton } from "./animalRoomShared/AnimalRoomConsoleBackButton";
+import { ChevronLeft, ChevronRight, Clock, Cpu, Factory, Forklift, Gauge, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
+import "./animalRoomCockpit/cockpitPage.css";
 
 const COCKPIT_HIDDEN_PARTITIONS_KEY = "animalRoomCockpit.hiddenPartitionTabKeys";
 /** 旧版仅 B1F 开关，迁移一次后删除 */
 const COCKPIT_SHOW_B1F_LEGACY_KEY = "animalRoomCockpit.showB1F";
 
-const COCKPIT_SIDEBAR_DOCK_KEY = "animalRoomCockpit.sidebarDockV2";
+const COCKPIT_SIDEBAR_DOCK_KEY = "animalRoomCockpit.sidebarDockV3";
 /** 展开侧栏固定宽度（px），不可拖拽缩放 */
-const COCKPIT_SIDEBAR_PANEL_PX = 200;
+const COCKPIT_SIDEBAR_PANEL_PX = 240;
 
 type CockpitSidebarDock = { leftOpen: boolean; rightOpen: boolean };
 
@@ -43,14 +48,14 @@ function readSidebarDockFromStorage(): CockpitSidebarDock {
     if (raw) {
       const j = JSON.parse(raw) as { leftOpen?: unknown; rightOpen?: unknown };
       return {
-        leftOpen: typeof j.leftOpen === "boolean" ? j.leftOpen : true,
-        rightOpen: typeof j.rightOpen === "boolean" ? j.rightOpen : true,
+        leftOpen: typeof j.leftOpen === "boolean" ? j.leftOpen : false,
+        rightOpen: typeof j.rightOpen === "boolean" ? j.rightOpen : false,
       };
     }
   } catch {
     /* ignore */
   }
-  return { leftOpen: true, rightOpen: true };
+  return { leftOpen: false, rightOpen: false };
 }
 
 function saveSidebarDockToStorage(d: CockpitSidebarDock): void {
@@ -231,8 +236,6 @@ function CockpitPartitionColumn({
 }
 
 export default function AnimalRoomCockpitPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
   const [gateTick, setGateTick] = useState(0);
   const [hiddenPartitionTabKeys, setHiddenPartitionTabKeys] = useState<Set<string>>(readHiddenPartitionTabKeysFromStorage);
   const [headerLogoFailed, setHeaderLogoFailed] = useState(false);
@@ -254,29 +257,7 @@ export default function AnimalRoomCockpitPage() {
     }
   }, [hiddenPartitionTabKeys]);
 
-  const returnToPath = useMemo(() => {
-    const st = (location.state as { returnTo?: string } | null)?.returnTo?.trim();
-    if (st) return st;
-    try {
-      const s = sessionStorage.getItem(ANIMAL_ROOM_COCKPIT_RETURN_TO_KEY);
-      return s?.trim() || null;
-    } catch {
-      return null;
-    }
-  }, [location.state, location.key]);
-
-  const handleReturn = useCallback(() => {
-    try {
-      sessionStorage.removeItem(ANIMAL_ROOM_COCKPIT_RETURN_TO_KEY);
-    } catch {
-      /* ignore */
-    }
-    if (returnToPath) {
-      navigate(returnToPath, { replace: true });
-    } else {
-      navigate(-1);
-    }
-  }, [navigate, returnToPath]);
+  const { returnToPath, handleReturn } = useTwinFullscreenReturn(ANIMAL_ROOM_COCKPIT_RETURN_TO_KEY);
 
   useEffect(() => {
     const id = window.setInterval(() => setGateTick((n) => n + 1), 30_000);
@@ -410,6 +391,7 @@ export default function AnimalRoomCockpitPage() {
 
   return (
     <div
+      data-animal-cockpit-root
       className={cn(
         "flex h-full min-h-0 w-full flex-col overflow-hidden",
         "bg-gradient-to-br from-slate-950 via-indigo-950/90 to-slate-950 text-slate-100"
@@ -432,6 +414,7 @@ export default function AnimalRoomCockpitPage() {
         <CockpitTopBarFirstRow
           brand={
             <>
+              <AnimalRoomConsoleBackButton onClick={handleReturn} returnToPath={returnToPath} variant="scifi" />
               <div
                 className={cn(
                   "relative box-border flex shrink-0 items-center leading-none",
@@ -457,8 +440,8 @@ export default function AnimalRoomCockpitPage() {
                   </div>
                 )}
               </div>
-              <div className="min-w-0 flex-1 leading-tight">
-                <h1 className="animal-telemetry-page-title truncate text-base font-extrabold leading-none sm:text-lg bg-gradient-to-r from-cyan-100 via-sky-200 to-cyan-100 bg-clip-text text-transparent">
+              <div className="shrink-0 leading-tight">
+                <h1 className="animal-telemetry-page-title whitespace-nowrap text-base font-extrabold leading-none sm:text-lg bg-gradient-to-r from-cyan-100 via-sky-200 to-cyan-100 bg-clip-text text-transparent">
                   动物房驾驶舱
                 </h1>
               </div>
@@ -469,19 +452,18 @@ export default function AnimalRoomCockpitPage() {
               <>
                 <span className="pointer-events-none shrink-0 text-[9px] font-medium text-cyan-500/90 sm:text-[10px]">分区</span>
                 {cockpitFloors.map((f) => (
-                  <label
+                  <div
                     key={f.tabKey}
                     className="pointer-events-auto flex max-w-[5.5rem] shrink-0 cursor-pointer items-center gap-0.5 rounded border border-cyan-500/25 bg-slate-950/90 px-1 py-0.5 text-[9px] font-medium text-cyan-100/90 shadow-sm backdrop-blur-sm sm:max-w-[6.5rem] sm:gap-1 sm:px-1.5 sm:py-1 sm:text-[10px]"
                     title={`${f.title}：取消勾选则隐藏该列；剩余列均分宽度。柱图横轴为房号或末段简称（无编号时），角度随宽度自动，悬停查看全名。`}
                   >
-                    <input
-                      type="checkbox"
-                      className="h-2.5 w-2.5 shrink-0 accent-cyan-400 sm:h-3 sm:w-3"
+                    <AdminSwitchScaled
+                      size="3"
                       checked={!hiddenPartitionTabKeys.has(f.tabKey)}
-                      onChange={(e) => setPartitionVisible(f.tabKey, e.target.checked)}
+                      onChange={(checked) => setPartitionVisible(f.tabKey, checked)}
                     />
                     <span className="min-w-0 truncate">{f.title}</span>
-                  </label>
+                  </div>
                 ))}
                 <div
                   className="shrink-0 rounded border border-slate-600/35 bg-slate-950/90 px-1.5 py-0.5 text-[9px] text-slate-400 shadow-sm backdrop-blur-sm sm:px-2 sm:py-1 sm:text-[10px]"
@@ -507,15 +489,6 @@ export default function AnimalRoomCockpitPage() {
               {showRefreshing ? (
                 <span className="shrink-0 whitespace-nowrap text-[9px] text-cyan-300/80 sm:text-[10px]">刷新中…</span>
               ) : null}
-              <button
-                type="button"
-                onClick={handleReturn}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-cyan-500/35 bg-slate-900/90 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-50 shadow-sm transition-colors hover:bg-slate-800/95 sm:px-2 sm:text-xs"
-                title={returnToPath ? "返回进入前页面" : "返回上一页"}
-              >
-                <ArrowLeft className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" aria-hidden />
-                <span>返回</span>
-              </button>
             </>
           }
         />
@@ -571,7 +544,7 @@ export default function AnimalRoomCockpitPage() {
                 <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
               </button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2 sm:p-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2 sm:p-3" data-animal-cockpit-sidebar-scroll>
               <CockpitMachineRoomSidebar tab={cockpitMachineRoomTab} winccEnabled={page?.winccEnabled === true} />
             </div>
           </aside>
@@ -654,7 +627,7 @@ export default function AnimalRoomCockpitPage() {
               </button>
               <span className="text-[10px] font-semibold text-cyan-200/90">右侧</span>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2 sm:p-3">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-2 sm:p-3" data-animal-cockpit-sidebar-scroll>
               <p className="text-[10px] leading-relaxed text-slate-400">
                 固定宽度 {COCKPIT_SIDEBAR_PANEL_PX}px；收起后主区边缘会显示悬浮展开钮。
               </p>

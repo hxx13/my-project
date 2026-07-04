@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import {
   getAccessCleanTaskSettings,
   listAccessExecutionLogs,
@@ -70,11 +71,11 @@ export function StatsTaskAutoCleanSettings({ statsTaskId, compact, onSaved }: Pr
         className="inline-flex items-center gap-1 text-[10px] text-slate-600"
         onClick={(e) => e.stopPropagation()}
       >
-        <input
-          type="checkbox"
+        <AdminSwitchScaled
+          size="3"
           checked={autoClean}
           disabled={loading || saving || !statsTaskId}
-          onChange={(e) => void toggle(e.target.checked)}
+          onChange={(checked) => void toggle(checked)}
         />
         拉取后自动清洗
       </label>
@@ -85,11 +86,11 @@ export function StatsTaskAutoCleanSettings({ statsTaskId, compact, onSaved }: Pr
     <div className="rounded-lg border border-violet-100 bg-violet-50/50 p-3 space-y-2">
       <div className="text-[11px] font-semibold text-violet-900">清洗入库控制</div>
       <label className="flex items-center gap-2 text-xs">
-        <input
-          type="checkbox"
+        <AdminSwitchScaled
+          size="3.5"
           checked={autoClean}
           disabled={loading || saving || !statsTaskId}
-          onChange={(e) => void toggle(e.target.checked)}
+          onChange={(checked) => void toggle(checked)}
         />
         <span>拉取成功后自动清洗并写入总库（任务级开关，与清洗规则方案无关）</span>
       </label>

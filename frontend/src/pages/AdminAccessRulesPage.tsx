@@ -23,6 +23,7 @@ import {
 } from "@/api/twinApi";
 import { Portal } from "@/components/Portal";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
 import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
@@ -475,7 +476,7 @@ export default function AdminAccessRulesPage() {
                   <input className={adminInputClass} value={formName} onChange={(e) => setFormName(e.target.value)} />
                 </label>
                 <label className="inline-flex cursor-pointer items-center gap-2 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2.5 md:mt-6">
-                  <input type="checkbox" className="h-4 w-4 rounded-twin-sm border-[var(--twin-hairline)]" checked={formEnabled} onChange={(e) => setFormEnabled(e.target.checked)} />
+                  <AdminSwitchScaled size="sm" checked={formEnabled} onChange={(checked) => setFormEnabled(checked)} />
                   <span className="text-sm text-[var(--twin-ink)]">{formEnabled ? "已启用" : "已停用"}</span>
                 </label>
               </div>
@@ -530,10 +531,10 @@ export default function AdminAccessRulesPage() {
                         const checked = (it.doorGroupIds || []).includes(g.id);
                         return (
                           <label key={g.id} className="flex items-center gap-2 py-0.5 text-sm">
-                            <input
-                              type="checkbox"
+                            <AdminSwitchScaled
+                              size="sm"
                               checked={checked}
-                              onChange={(e) => toggleDoor(idx, g.id, e.target.checked)}
+                              onChange={(nextChecked) => toggleDoor(idx, g.id, nextChecked)}
                             />
                             <span className="text-[var(--twin-ink)]">{g.name || `门组${g.id}`}</span>
                             <span className="text-xs text-[var(--twin-mute)]">#{g.id}</span>
@@ -619,12 +620,11 @@ export default function AdminAccessRulesPage() {
                             const name = (ch.channelName || "").trim();
                             return (
                               <label key={ch.id} className="flex items-start gap-2 text-xs">
-                                <input
-                                  type="checkbox"
-                                  className="mt-0.5"
+                                <AdminSwitchScaled
+                                  size="3.5"
                                   disabled={!code}
                                   checked={checked}
-                                  onChange={(e) => toggleChannel(idx, code, e.target.checked, ch)}
+                                  onChange={(nextChecked) => toggleChannel(idx, code, nextChecked, ch)}
                                 />
                                 <span className="break-all">
                                   <span className="font-medium text-[var(--twin-ink)]">{name || "未命名通道"}</span>

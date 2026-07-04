@@ -196,9 +196,10 @@ public class TwinCardMappingService {
 
     /**
      * 返回用户当前有效的免冻结扫码进入授权房间 ID（与 freeze_exempt_room_ids 同源）。
+     * 以 DB 为准（与 {@link #isFreezeExemptForPolicy} 一致），避免多实例缓存不一致导致豁免失效。
      */
     public List<String> listScanEntryExemptRoomIds(String userId) {
-        TwinCardMapping m = resolveMappingByAroUserId(userId);
+        TwinCardMapping m = loadMappingByAroUserIdFromDb(userId);
         if (!isFreezeExempt(m) || !hasScanEntryExemptCountRemaining(m)) {
             return List.of();
         }
@@ -208,12 +209,13 @@ public class TwinCardMappingService {
     /**
      * 检查免冻结用户是否对指定房间有扫码时段豁免。
      * 条件：freeze_exempt_flag=1 未过期 AND freeze_exempt_room_ids JSON 数组包含 roomId。
+     * 以 DB 为准（与 {@link #isFreezeExemptForPolicy} 一致），避免多实例缓存不一致导致豁免失效。
      */
     public boolean isRoomExemptForScanEntry(String userId, String roomId) {
         if (userId == null || userId.isBlank() || roomId == null || roomId.isBlank()) {
             return false;
         }
-        TwinCardMapping m = resolveMappingByAroUserId(userId);
+        TwinCardMapping m = loadMappingByAroUserIdFromDb(userId);
         if (!isFreezeExempt(m) || !hasScanEntryExemptCountRemaining(m)) {
             return false;
         }

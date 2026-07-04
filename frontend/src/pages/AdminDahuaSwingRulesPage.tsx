@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getDahuaSwingRuleConfig, saveDahuaSwingRuleConfig, type DahuaSwingRuleConfig } from "@/api/domains/dahuaSwing.api";
 import { fetchDahuaDeviceChannels, type DahuaDeviceChannelRow } from "@/api/twinApi";
 import { normalizeChannelCode, resolveChannelLabelsByCodes } from "@/utils/dahuaChannelUtils";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 
 type TimeBand = { startHm: string; endHm: string };
@@ -192,11 +193,10 @@ export default function AdminDahuaSwingRulesPage() {
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded border border-[var(--twin-hairline)] p-2 space-y-2">
             <label className="flex items-center gap-2 cursor-pointer text-sm text-[var(--twin-ink)]">
-              <input
-                type="checkbox"
-                className="shrink-0"
+              <AdminSwitchScaled
+                size="sm"
                 checked={form.scanPopupEntryWindowEnabled}
-                onChange={(e) => setForm((p) => ({ ...p, scanPopupEntryWindowEnabled: e.target.checked }))}
+                onChange={(checked) => setForm((p) => ({ ...p, scanPopupEntryWindowEnabled: checked }))}
               />
               <span>启用扫码弹窗入口时段限制</span>
             </label>
@@ -291,11 +291,10 @@ export default function AdminDahuaSwingRulesPage() {
         <h2 className="text-base font-semibold text-[var(--twin-ink)]">门禁联动规则</h2>
         <div className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-2">
           <label className="flex items-center gap-2 cursor-pointer text-sm text-[var(--twin-ink)]">
-            <input
-              type="checkbox"
-              className="shrink-0"
+            <AdminSwitchScaled
+              size="sm"
               checked={form.autoRiskActionEnabled}
-              onChange={(e) => setForm((p) => ({ ...p, autoRiskActionEnabled: e.target.checked }))}
+              onChange={(checked) => setForm((p) => ({ ...p, autoRiskActionEnabled: checked }))}
             />
             <span>自动签退后续联动（大华 revoke + 卡片冻结）</span>
           </label>
@@ -324,13 +323,13 @@ export default function AdminDahuaSwingRulesPage() {
                     const checked = form.exitChannelCodes.includes(code);
                     return (
                       <label key={`exit-${ch.id}`} className="flex items-center gap-2 text-xs">
-                        <input
-                          type="checkbox"
+                        <AdminSwitchScaled
+                          size="3.5"
                           checked={checked}
-                          onChange={(e) =>
+                          onChange={(nextChecked) =>
                             setForm((p) => ({
                               ...p,
-                              exitChannelCodes: e.target.checked
+                              exitChannelCodes: nextChecked
                                 ? Array.from(new Set([...p.exitChannelCodes.map(normalizeChannelCode).filter(Boolean), code]))
                                 : p.exitChannelCodes.filter((c) => normalizeChannelCode(c) !== code),
                             }))
@@ -387,13 +386,13 @@ export default function AdminDahuaSwingRulesPage() {
                     const checked = form.toggleChannelCodes.includes(code);
                     return (
                       <label key={`toggle-${ch.id}`} className="flex items-center gap-2 text-xs">
-                        <input
-                          type="checkbox"
+                        <AdminSwitchScaled
+                          size="3.5"
                           checked={checked}
-                          onChange={(e) =>
+                          onChange={(nextChecked) =>
                             setForm((p) => ({
                               ...p,
-                              toggleChannelCodes: e.target.checked
+                              toggleChannelCodes: nextChecked
                                 ? Array.from(new Set([...p.toggleChannelCodes.map(normalizeChannelCode).filter(Boolean), code]))
                                 : p.toggleChannelCodes.filter((c) => normalizeChannelCode(c) !== code),
                             }))
@@ -440,13 +439,13 @@ export default function AdminDahuaSwingRulesPage() {
                     const checked = form.activatedReswipeExitChannelCodes.includes(code);
                     return (
                       <label key={`activated-reswipe-exit-${ch.id}`} className="flex items-center gap-2 text-xs">
-                        <input
-                          type="checkbox"
+                        <AdminSwitchScaled
+                          size="3.5"
                           checked={checked}
-                          onChange={(e) =>
+                          onChange={(nextChecked) =>
                             setForm((p) => ({
                               ...p,
-                              activatedReswipeExitChannelCodes: e.target.checked
+                              activatedReswipeExitChannelCodes: nextChecked
                                 ? Array.from(new Set([...p.activatedReswipeExitChannelCodes.map(normalizeChannelCode).filter(Boolean), code]))
                                 : p.activatedReswipeExitChannelCodes.filter((c) => normalizeChannelCode(c) !== code),
                             }))

@@ -30,6 +30,12 @@ import {
   ADMIN_NOTIFICATION_SSE_PUSH_EVENT,
   ADMIN_PENDING_BADGES_REFRESH_EVENT,
 } from "@/features/admin/adminPendingBadgesEvents";
+import {
+  groupScanDelayByOption,
+  scanDelayOptionDisplayLabel,
+  scanDelayOptionWebColor,
+  type ScanDelayOptionGroup,
+} from "@/utils/scanDelayReviewDisplay";
 
 type TabKey = "material" | "scanDelay" | "demands";
 
@@ -261,6 +267,8 @@ export default function MaterialReviewPage() {
 
   const scanDelayToday = useMemo(() => allScanDelay.filter(r => isToday(r.createdAt)), [allScanDelay]);
   const scanDelayHistoryFiltered = useMemo(() => allScanDelay.filter(r => !isToday(r.createdAt)), [allScanDelay]);
+  const scanDelayGroupedToday = useMemo(() => groupScanDelayByOption(scanDelayToday), [scanDelayToday]);
+  const scanDelayGroupedHistory = useMemo(() => groupScanDelayByOption(scanDelayHistoryFiltered), [scanDelayHistoryFiltered]);
 
   // Loading state
   const loading = tab === "material"
@@ -328,28 +336,22 @@ export default function MaterialReviewPage() {
             <div className="space-y-6">
               {scanDelayToday.length > 0 && (
                 <TimeGroup label="今天" count={scanDelayToday.length}>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {scanDelayToday.map((item) =>
-                      item._kind === "pending" ? (
-                        <ScanDelayPendingCard key={`p-${item.id}`} req={item} highlightRequestId={highlightRequestId} onReview={handleScanDelayReview} />
-                      ) : (
-                        <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} />
-                      ),
-                    )}
-                  </div>
+                  <ScanDelayOptionGroupedList
+                    groups={scanDelayGroupedToday}
+                    highlightRequestId={highlightRequestId}
+                    reviewerNameMap={reviewerNameMap}
+                    onReview={handleScanDelayReview}
+                  />
                 </TimeGroup>
               )}
               {scanDelayHistoryFiltered.length > 0 && (
                 <TimeGroup label="历史" count={scanDelayHistoryFiltered.length} defaultOpen={false}>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    {scanDelayHistoryFiltered.map((item) =>
-                      item._kind === "pending" ? (
-                        <ScanDelayPendingCard key={`p-${item.id}`} req={item} highlightRequestId={highlightRequestId} onReview={handleScanDelayReview} />
-                      ) : (
-                        <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} />
-                      ),
-                    )}
-                  </div>
+                  <ScanDelayOptionGroupedList
+                    groups={scanDelayGroupedHistory}
+                    highlightRequestId={highlightRequestId}
+                    reviewerNameMap={reviewerNameMap}
+                    onReview={handleScanDelayReview}
+                  />
                 </TimeGroup>
               )}
             </div>
@@ -584,24 +586,70 @@ function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteRe
   );
 }
 
+type ScanDelayListItem = (ScanDelayPendingRequest | ScanDelayHistoryRequest) & { _kind: "pending" | "history" };
+
+function ScanDelayOptionAccentText({ label, color }: { label: string; color: string }) {
+  return (
+    <span className="text-sm font-medium leading-tight" style={{ color }}>
+      {label}
+    </span>
+  );
+}
+
+function ScanDelayOptionGroupedList({
+  groups,
+  highlightRequestId,
+  reviewerNameMap,
+  onReview,
+}: {
+  groups: ScanDelayOptionGroup<ScanDelayListItem>[];
+  highlightRequestId: string | null;
+  reviewerNameMap: Map<string, string>;
+  onReview: (req: ScanDelayPendingRequest, approve: boolean) => Promise<void>;
+}) {
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <div key={group.groupKey} className="space-y-2">
+          <div className="flex items-center gap-2 pl-1">
+            <span className="text-xs font-medium text-[var(--twin-body)]">{group.optionLabel}</span>
+            <span className="text-[11px] text-[var(--twin-mute)]">{group.count} 条</span>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {group.items.map((item) =>
+              item._kind === "pending" ? (
+                <ScanDelayPendingCard
+                  key={`p-${item.id}`}
+                  req={item}
+                  highlightRequestId={highlightRequestId}
+                  onReview={onReview}
+                />
+              ) : (
+                <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} />
+              ),
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ScanDelayPendingCard({ req, highlightRequestId, onReview }: { req: ScanDelayPendingRequest; highlightRequestId: string | null; onReview: (req: ScanDelayPendingRequest, approve: boolean) => Promise<void> }) {
+  const optionLabel = scanDelayOptionDisplayLabel(req);
   return (
     <div className={`rounded-twin-lg border bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2 ${highlightRequestId && String(req.id) === highlightRequestId ? "border-[var(--twin-primary)] ring-2 ring-[var(--twin-primary)]/30" : "border-[var(--twin-hairline)]"}`}>
-      {/* 顶栏：ID + 状态 */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-mono text-[var(--twin-mute)]">#{req.id}</span>
         <span className="text-[10px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200 shrink-0">待审核</span>
       </div>
-      {/* 主体：横向双栏 — 左：人员+房间 | 右：统计+操作 */}
       <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <ScanDelayOptionAccentText label={optionLabel} color={scanDelayOptionWebColor(req)} />
+          <p className="text-xs text-[var(--twin-mute)] truncate">{req.roomName || req.roomId}</p>
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-bold text-sm text-[var(--twin-primary)]">{req.subjectDisplayName || req.subjectUserId}</span>
             <span className="text-[11px] text-[var(--twin-mute)]">{req.subjectGroupName || "未标注课题组"}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-[var(--twin-body)]">
-            <span>{req.roomName || req.roomId}</span>
-            <span className="text-[var(--twin-mute)]">· {req.optionLabel || "延迟免冻结"}</span>
           </div>
           <p className="text-[11px] text-[var(--twin-mute)]">
             历史通过 {req.approvedCount ?? 0} 次{(req.referenceSeq ?? 0) > 0 ? ` · 第 ${req.referenceSeq} 次` : ""}
@@ -621,23 +669,20 @@ function ScanDelayPendingCard({ req, highlightRequestId, onReview }: { req: Scan
 
 function ScanDelayHistoryCard({ req, reviewerNameMap }: { req: ScanDelayHistoryRequest; reviewerNameMap: Map<string, string> }) {
   const reviewerDisplay = req.reviewedBy ? (reviewerNameMap.get(req.reviewedBy) || req.reviewedBy) : null;
+  const optionLabel = scanDelayOptionDisplayLabel(req);
   return (
     <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2">
-      {/* 顶栏：ID + 状态 */}
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-mono text-[var(--twin-mute)]">#{req.id}</span>
         <span className={`text-[10px] px-2 py-0.5 rounded-full border ${req.status === "APPROVED" ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>{req.status === "APPROVED" ? "已通过" : "已拒绝"}</span>
       </div>
-      {/* 主体 */}
       <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <ScanDelayOptionAccentText label={optionLabel} color={scanDelayOptionWebColor(req)} />
+          <p className="text-xs text-[var(--twin-mute)] truncate">{req.roomName || req.roomId}</p>
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-bold text-sm text-[var(--twin-primary)]">{req.subjectDisplayName || req.subjectUserId}</span>
             <span className="text-[11px] text-[var(--twin-mute)]">{req.subjectGroupName || "未标注课题组"}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-[var(--twin-body)]">
-            <span>{req.roomName || req.roomId}</span>
-            <span className="text-[var(--twin-mute)]">· {req.optionLabel || "延迟免冻结"}</span>
           </div>
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1 min-w-[140px]">

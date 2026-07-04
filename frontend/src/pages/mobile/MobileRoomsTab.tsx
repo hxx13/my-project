@@ -3,7 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DoorOpen, Loader2, WifiOff } from "lucide-react";
 import MobileRoomDotCard from "./MobileRoomDotCard";
 import MobileRoomDetailDialog from "./MobileRoomDetailDialog";
-import { evaluateMobileRoomAccess, computeMobilePermissionBadge } from "./utils/mobileScanRoomAccess";
+import MobileRoomAuditPanel from "./MobileRoomAuditPanel";
+import { authStorage } from "@/features/auth/authStorage";
+import { hasMinRole } from "@/features/auth/roleAccess";
+import { evaluateMobileRoomAccess, computeMobilePermissionBadge, getRoomDelayOptions, resolveScanOfficialRoomId } from "./utils/mobileScanRoomAccess";
+import { submitScanDelayRequest } from "@/api/domains/scanDelay.api";
+import { submitMobileScanDelayRequest } from "@/api/domains/mobileStudent.api";
+import type { ScanDelayOptionSummary } from "@/api/types/scanner";
 import { buildDetailRoom, type DetailRoom } from "./utils/roomPreviewMeta";
 import {
   buildCampusDisplayList,
@@ -40,6 +46,12 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bundle, setBundle] = useState<MobileRoomsPageBundle | null>(null);
+  const [auditOpen, setAuditOpen] = useState(false);
+
+  const showAuditEntry = useMemo(() => {
+    if (!jwtMode) return false;
+    return hasMinRole(authStorage.getRole(), "SENIOR");
+  }, [jwtMode]);
 
   const [sidebarView, setSidebarView] = useState<SidebarView>("mine");
   const [expandedCampus, setExpandedCampus] = useState<Record<string, boolean>>({
@@ -165,6 +177,28 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
     }));
   }, [bundle, currentRoomPreviews]);
 
+  // 延迟免冻结：当前选中房间的可用菜单项
+  const currentRoomDelayOptions = useMemo<ScanDelayOptionSummary[]>(() => {
+    if (!detailRoom || !bundle?.scanAnalyze?.scanDelayEnabled) return [];
+    const scanId = resolveScanOfficialRoomId(detailRoom.roomId, bundle.overviewIndex, bundle.scanAnalyze);
+    if (!scanId) return [];
+    return getRoomDelayOptions(bundle.scanAnalyze, scanId) as ScanDelayOptionSummary[];
+  }, [detailRoom, bundle?.scanAnalyze, bundle?.overviewIndex]);
+
+  // 延迟申请提交：JWT 用 authHttp，token 用 publicHttp
+  const handleDelaySubmit = useCallback(
+    async (payload: { subjectUserId: string; roomId: string; optionId: number }) => {
+      if (jwtMode) return submitScanDelayRequest(payload);
+      return submitMobileScanDelayRequest(token, payload);
+    },
+    [jwtMode, token],
+  );
+
+  // 延迟申请成功后刷新房间数据
+  const handleDelaySuccess = useCallback(() => {
+    refresh({ silent: true, preserveSelection: true });
+  }, [refresh]);
+
   const panelTitle =
     sidebarView === "mine" ? "我的" : `${campusNav.campus} ${campusNav.floor}`.trim();
 
@@ -173,6 +207,10 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
     : { key: "none" as const, text: "无权限" };
 
   const badgeStyle = PERMISSION_BADGE_STYLE[permissionBadge.key];
+
+  if (auditOpen) {
+    return <MobileRoomAuditPanel onBack={() => setAuditOpen(false)} />;
+  }
 
   if (loading && !loadedOnceRef.current) {
     return (
@@ -202,8 +240,8 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
   return (
     <>
       <div
-        className="h-full flex min-h-0 relative z-10"
-        style={{ background: "linear-gradient(180deg, #eef2f7 0%, #f7f8fa 32%)" }}
+        className="h-full flex min-h-0"
+        style={{ background: "#eef0f6" }}
       >
         <aside
           className="shrink-0 flex flex-col min-h-0"
@@ -299,6 +337,25 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
               </div>
             ))}
           </div>
+
+          {showAuditEntry ? (
+            <div
+              className="shrink-0 border-t"
+              style={{ borderColor: "#ebedf0", boxShadow: "0 -8px 20px rgba(15,23,42,0.06)" }}
+            >
+              <button
+                type="button"
+                onClick={() => setAuditOpen(true)}
+                className="w-full py-3 text-center text-[12px] font-bold active:opacity-80"
+                style={{
+                  color: "#c2410c",
+                  background: "linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%)",
+                }}
+              >
+                审核入口
+              </button>
+            </div>
+          ) : null}
         </aside>
 
         <section className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
@@ -374,7 +431,16 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
       </div>
 
       {detailRoom && (
-        <MobileRoomDetailDialog detail={detailRoom} onClose={() => setDetailRoom(null)} />
+        <MobileRoomDetailDialog
+          detail={detailRoom}
+          onClose={() => setDetailRoom(null)}
+          scanDelayEnabled={bundle?.scanAnalyze?.scanDelayEnabled ?? false}
+          scanDelayButtonLabel={bundle?.scanAnalyze?.scanDelayButtonLabel ?? "延迟"}
+          delayOptions={currentRoomDelayOptions}
+          subjectUserId={bundle?.userId}
+          onSubmitDelay={handleDelaySubmit}
+          onDelaySuccess={handleDelaySuccess}
+        />
       )}
     </>
   );

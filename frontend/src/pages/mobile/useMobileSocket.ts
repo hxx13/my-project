@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
-import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
+import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS, APP_BUILD_ID } from "@/config/socketUrl";
 import { authStorage } from "@/features/auth/authStorage";
 import type { MobileAlertItem } from "@/api/domains/mobileStudent.api";
 import { isFeedbackKind } from "./mobileAlertSplit";
@@ -55,6 +55,7 @@ export function useMobileSocket(mobileToken?: string, jwtMode = false): UseMobil
         query.mobileToken = mobileToken.trim();
       }
     }
+    query.v = APP_BUILD_ID;
     const socket = io(socketUrl, {
       ...SOCKET_IO_CLIENT_OPTIONS,
       query,

@@ -15,6 +15,7 @@ import {
 import type { PopupActions, PopupProps, PopupState } from "@/components/scanner/components/types";
 import { sortScanRoomsPudongFirst } from "@/components/scanner/roomCampusSort";
 import { hasActiveAutoSignoutCountdown } from "@/utils/formatCountdown";
+import { useScanAssistantStore } from "@/store/useScanAssistantStore";
 
 const POPUP_RUNTIME_STAMP = "popup-runtime-2026-04-16-r3";
 
@@ -144,6 +145,13 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     const [finishedRooms, setFinishedRooms] = useState<string[]>([]);
     const [actedRoomId, setActedRoomId] = useState<string | null>(null);
     const [inlineMessage, setInlineMessage] = useState("");
+
+    /** 红色 toast 文案改由首页右下角智能助手对话框播报 */
+    useEffect(() => {
+        const msg = inlineMessage.trim();
+        if (!msg) return;
+        useScanAssistantStore.getState().speak(msg, "alert");
+    }, [inlineMessage]);
     const [exitCelebrateRoomId, setExitCelebrateRoomId] = useState<string | null>(null);
     const [enterCelebrateRoomId, setEnterCelebrateRoomId] = useState<string | null>(null);
     const [enterMotionAtCorner, setEnterMotionAtCorner] = useState(false);
@@ -304,7 +312,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
     }, [currentState, enterCelebrateRoomId, exitCelebrateRoomId, targetRooms, user?.userId]);
 
     useEffect(() => {
-        const uid = user?.userId;
+        const uid = user?.userId ? String(user.userId) : undefined;
         if (prevPopupUserIdRef.current !== undefined && prevPopupUserIdRef.current !== uid) {
             setEnterCelebrateRoomId(null);
             setEnterMotionAtCorner(false);
@@ -316,7 +324,7 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             insideCornerInitKeyRef.current = null;
         }
         prevPopupUserIdRef.current = uid;
-    }, [user?.userId]);
+    }, [user?.userId, result]);
 
     useEffect(() => {
         setKeepCardStates(new Array(Math.max(targetRooms.length, 1)).fill(false));
@@ -367,16 +375,11 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
 
     useEffect(() => {
         if (!isExecuteSuccess) return;
-        const hint = (executeData?.dahuaHint || "").trim();
-        const debug = (executeData?.accessRuleDebug || "").trim();
-        if (!hint && !debug) return;
-        const message = debug ? `${hint || "门禁规则调试信息"} | ${debug}` : hint;
-        setInlineMessage(message);
         if (executeData?.unboundForDahuaRule) {
             setEntryMode("BORROWED");
             localStorage.setItem("TWIN_ENTRY_MODE", "BORROWED");
         }
-    }, [isExecuteSuccess, executeData?.unboundForDahuaRule, executeData?.dahuaHint, executeData?.accessRuleDebug]);
+    }, [isExecuteSuccess, executeData?.unboundForDahuaRule]);
 
     useEffect(() => {
         if (!isExecuteSuccess || !onExecuteReset) return;

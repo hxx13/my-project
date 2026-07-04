@@ -1,22 +1,29 @@
 /** 手机版 — 笼架 Tab（列表 → 8×10 网格页 → 笼盒详情弹窗） */
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
-import { ChevronLeft, ChevronDown, ChevronRight, LayoutGrid, Loader2, Search, WifiOff } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronDown, ChevronRight, LayoutGrid, Loader2, RefreshCw, Search, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CageShelfCell, CageShelfDetail } from "@/features/student/api/student.api";
 import {
   fetchMobileCageShelfDetail,
   fetchMobileCageShelvesAll,
+  fetchMobileSpecialStatusOverview,
   type MobileCageShelfSummary,
 } from "@/api/domains/mobileStudent.api";
 import {
   fetchStudentMobileCageShelvesAll,
   fetchStudentMobileCageShelfDetail,
+  fetchStudentMobileSpecialStatusOverview,
 } from "@/api/domains/studentMobile.api";
 import CageCellOverlays, {
   CAGE_TYPE_LABEL,
+  getCellStatusDisplayLabel,
   getDominantStatusCode,
   useStatusStyle,
 } from "@/features/cage-shelf/components/CageCellOverlays";
+import { formatSpecialStatusCodesForDisplay } from "@/utils/cageSpecialStatusLabels";
+import { hasMinRole } from "@/features/auth/roleAccess";
+import { authStorage } from "@/features/auth/authStorage";
+import MobileSpecialStatusPanel from "./MobileSpecialStatusPanel";
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
 import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
 import MobileCageCellDetailDialog from "./MobileCageCellDetailDialog";
@@ -24,6 +31,8 @@ import { buildPlaceholderGridCells } from "./mobileCageShelfGrid";
 
 const PAGE_BG = "#eef0f6";
 const BRAND = "#ac1736";
+
+const CAMPUS_ORDER = ["浦东", "浦西"] as const;
 
 interface RoomShelfGroup {
   key: string;
@@ -33,11 +42,18 @@ interface RoomShelfGroup {
   shelves: MobileCageShelfSummary[];
 }
 
+interface CampusShelfGroup {
+  key: string;
+  campusName: string;
+  rooms: RoomShelfGroup[];
+  shelfCount: number;
+}
+
 function buildRoomGroups(shelves: MobileCageShelfSummary[]): RoomShelfGroup[] {
   const map = new Map<string, RoomShelfGroup>();
   for (const s of shelves) {
     const roomName = s.roomName || "其他";
-    const campusName = s.campusName || "";
+    const campusName = s.campusName || "其他";
     const key = `${campusName}::${roomName}`;
     const existing = map.get(key);
     if (existing) {
@@ -47,12 +63,70 @@ function buildRoomGroups(shelves: MobileCageShelfSummary[]): RoomShelfGroup[] {
         key,
         roomName,
         campusName,
-        label: campusName ? `${roomName} · ${campusName}` : roomName,
+        label: roomName,
         shelves: [s],
       });
     }
   }
-  return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, "zh-CN"));
+  return Array.from(map.values()).sort((a, b) => {
+    const campusCmp = a.campusName.localeCompare(b.campusName, "zh-CN");
+    if (campusCmp !== 0) return campusCmp;
+    return a.roomName.localeCompare(b.roomName, "zh-CN");
+  });
+}
+
+function buildCampusGroups(shelves: MobileCageShelfSummary[]): CampusShelfGroup[] {
+  const roomGroups = buildRoomGroups(shelves);
+  const byCampus = new Map<string, RoomShelfGroup[]>();
+  for (const rg of roomGroups) {
+    const campus = rg.campusName || "其他";
+    const list = byCampus.get(campus) ?? [];
+    list.push(rg);
+    byCampus.set(campus, list);
+  }
+  const orderedCampuses = [
+    ...CAMPUS_ORDER.filter((c) => byCampus.has(c)),
+    ...Array.from(byCampus.keys()).filter((c) => !CAMPUS_ORDER.includes(c as (typeof CAMPUS_ORDER)[number])),
+  ];
+  return orderedCampuses.map((campusName) => {
+    const rooms = byCampus.get(campusName) ?? [];
+    return {
+      key: campusName,
+      campusName,
+      rooms,
+      shelfCount: rooms.reduce((n, r) => n + r.shelves.length, 0),
+    };
+  });
+}
+
+function campusHeaderStyle(campusName: string): {
+  background: string;
+  color: string;
+  badgeBackground: string;
+  badgeColor: string;
+} {
+  if (campusName === "浦东") {
+    return {
+      background: "var(--student-accent-telemetry-soft, #e0f2fe)",
+      color: "var(--student-accent-telemetry, #0284c7)",
+      badgeBackground: "color-mix(in srgb, var(--student-accent-telemetry, #0284c7) 14%, transparent)",
+      badgeColor: "var(--student-accent-telemetry, #0284c7)",
+    };
+  }
+  if (campusName === "浦西") {
+    return {
+      background: "var(--student-accent-alert-soft, #fef3c7)",
+      color: "var(--student-accent-alert, #d97706)",
+      badgeBackground: "color-mix(in srgb, var(--student-accent-alert, #d97706) 14%, transparent)",
+      badgeColor: "var(--student-accent-alert, #d97706)",
+    };
+  }
+  return {
+    background: "rgba(255,255,255,0.85)",
+    color: "#323233",
+    badgeBackground: "#f2f3f5",
+    badgeColor: "#646566",
+  };
 }
 
 function roomNameMatchesQuery(roomName: string, q: string): boolean {
@@ -87,25 +161,12 @@ const GridCellButton = memo(function GridCellButton({
   const dominant = getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
   const statusStyle = useStatusStyle(dominant);
   const piName = nonEmptyText(cell.projectPiName) ? cell.projectPiName!.trim() : "";
+  const statusLabel = cell.empty || !cell.visible ? "" : getCellStatusDisplayLabel(cell.specialStatuses, cell.cageBoxInfo);
 
-  const statusCodes = (() => {
-    const raw = cell.specialStatuses;
-    if (!raw || (Array.isArray(raw) && raw.length === 0)) {
-      const bi = cell.cageBoxInfo;
-      if (!bi) return "";
-      const parts: string[] = [];
-      if (bi["ClosingDate"]) parts.push("合笼");
-      if (bi["NeedFeedingYn"] === 1) parts.push("特殊饲养");
-      if (bi["NeedDivideYn"] === 1) parts.push("请分笼");
-      if (bi["AbnormalHealthYn"] === 1) parts.push("健康异常");
-      if (bi["NeedTransferYn"] === 1) parts.push("动物转移");
-      return parts.length > 0 ? parts.join("+") : "";
-    }
-    if (Array.isArray(raw)) {
-      return raw.map((s) => s.code).filter((c) => c !== "NORMAL").join("+");
-    }
-    return "";
-  })();
+  const statusCodes = formatSpecialStatusCodesForDisplay(
+    Array.isArray(cell.specialStatuses) ? cell.specialStatuses : undefined,
+    cell.cageBoxInfo,
+  );
 
   const tooltip = cell.empty
     ? undefined
@@ -128,7 +189,7 @@ const GridCellButton = memo(function GridCellButton({
       type="button"
       className={cn(
         "relative min-h-[48px] rounded-md text-[9px] leading-tight transition",
-        !cell.empty && cell.visible ? "ring-1 ring-[var(--student-primary)]/50" : "",
+        !cell.empty && cell.visible ? "ring-1 ring-[var(--student-primary-muted)]" : "",
         cageCardTone(cell),
       )}
       style={statusStyle}
@@ -140,11 +201,21 @@ const GridCellButton = memo(function GridCellButton({
         <div className="w-full font-bold text-[8px]">{cell.position}</div>
         {cell.visible ? (
           <>
-            {nonEmptyText(cell.departmentName) && (
-              <div className="w-full truncate text-[7px] font-medium opacity-70">{cell.departmentName}</div>
-            )}
             {nonEmptyText(piName) && (
-              <div className="w-full truncate text-[8px] font-semibold text-[var(--student-ink)]">{piName}</div>
+              <div
+                className="w-full truncate text-[8px] font-semibold"
+                style={{ color: "var(--app-color-text-primary, #1e293b)" }}
+              >
+                {piName}
+              </div>
+            )}
+            {nonEmptyText(statusLabel) && (
+              <div
+                className="w-full truncate text-[7px] font-medium leading-tight"
+                style={{ color: "var(--app-color-text-secondary, #475569)" }}
+              >
+                {statusLabel}
+              </div>
             )}
           </>
         ) : (
@@ -164,61 +235,53 @@ function CageShelfListView({
   shelves,
   onRetry,
   onOpenShelf,
+  onOpenSpecialStatus,
+  showSpecialStatusEntry,
 }: {
   loading: boolean;
   error: string | null;
   shelves: MobileCageShelfSummary[];
   onRetry: () => void;
   onOpenShelf: (shelf: MobileCageShelfSummary) => void;
+  onOpenSpecialStatus: () => void;
+  showSpecialStatusEntry: boolean;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [roomFilter, setRoomFilter] = useState("");
+  const [expandedCampuses, setExpandedCampuses] = useState<Record<string, boolean>>({});
   const [expandedRooms, setExpandedRooms] = useState<Record<string, boolean>>({});
-
-  const allRoomGroups = useMemo(() => buildRoomGroups(shelves), [shelves]);
-
-  const roomFilterOptions = useMemo(
-    () =>
-      allRoomGroups.map((g) => ({
-        value: g.key,
-        label: g.label,
-      })),
-    [allRoomGroups],
-  );
 
   const filteredShelves = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
+    if (!q) return shelves;
     return shelves.filter((s) => {
-      if (roomFilter) {
-        const roomName = s.roomName || "其他";
-        const campusName = s.campusName || "";
-        const key = `${campusName}::${roomName}`;
-        if (key !== roomFilter) return false;
-      }
-      if (!q) return true;
       const roomName = s.roomName || "其他";
       return roomNameMatchesQuery(roomName, q);
     });
-  }, [shelves, searchQuery, roomFilter]);
+  }, [shelves, searchQuery]);
 
-  const visibleGroups = useMemo(() => buildRoomGroups(filteredShelves), [filteredShelves]);
-
-  useEffect(() => {
-    if (!roomFilter) return;
-    setExpandedRooms((prev) => ({ ...prev, [roomFilter]: true }));
-  }, [roomFilter]);
+  const campusGroups = useMemo(() => buildCampusGroups(filteredShelves), [filteredShelves]);
 
   useEffect(() => {
     if (searchQuery.trim()) return;
+    setExpandedCampuses({});
     setExpandedRooms({});
   }, [searchQuery]);
+
+  const toggleCampus = (key: string) => {
+    setExpandedCampuses((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const toggleRoom = (key: string) => {
     setExpandedRooms((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const collapseAllRooms = () => {
+    setExpandedCampuses({});
     setExpandedRooms({});
+  };
+
+  const clearFilters = () => {
+    setSearchQuery("");
   };
 
   if (loading) {
@@ -250,14 +313,48 @@ function CageShelfListView({
     <div className="h-full overflow-y-auto" style={{ background: PAGE_BG }}>
       <div className="sticky top-0 z-10 px-3 pt-2 pb-2 space-y-2" style={{ background: PAGE_BG }}>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-medium" style={{ color: "#64748b" }}>
-            共 {shelves.length} 个笼架
-          </span>
-          {filteredShelves.length !== shelves.length && (
-            <span className="text-[10px]" style={{ color: "#94a3b8" }}>
-              筛选 {filteredShelves.length} 个
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[11px] font-medium" style={{ color: "#64748b" }}>
+              共 {shelves.length} 个笼架
             </span>
-          )}
+            {filteredShelves.length !== shelves.length && (
+              <span className="text-[10px]" style={{ color: "#94a3b8" }}>
+                筛选 {filteredShelves.length} 个
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {showSpecialStatusEntry && (
+              <button
+                type="button"
+                onClick={onOpenSpecialStatus}
+                className="flex items-center gap-0.5 px-2 py-1.5 rounded-xl active:bg-black/5"
+                style={{
+                  color: BRAND,
+                  background: "rgba(255,255,255,0.92)",
+                  border: "1px solid rgba(30,55,90,0.08)",
+                  boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
+                }}
+                aria-label="特殊状态总览"
+              >
+                <AlertTriangle className="size-3.5" />
+                <span className="text-[10px] font-medium whitespace-nowrap">特殊状态</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onRetry}
+              className="flex items-center justify-center size-8 rounded-full active:bg-black/5"
+              style={{
+                background: "rgba(255,255,255,0.92)",
+                border: "1px solid rgba(30,55,90,0.08)",
+                boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
+              }}
+              aria-label="刷新笼架列表"
+            >
+              <RefreshCw className="size-3.5" style={{ color: "#969799" }} />
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -293,23 +390,6 @@ function CageShelfListView({
             收起全部
           </button>
         </div>
-
-        <select
-          value={roomFilter}
-          onChange={(e) => setRoomFilter(e.target.value)}
-          className="w-full rounded-xl px-3 py-2.5 text-[13px] outline-none appearance-none"
-          style={{
-            color: "#323233",
-            background: "rgba(255,255,255,0.92)",
-            border: "1px solid rgba(30,55,90,0.08)",
-            boxShadow: "0 1px 4px rgba(15,23,42,0.04)",
-          }}
-        >
-          <option value="">全部房间</option>
-          {roomFilterOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
       </div>
 
       <div className="px-3 pt-1 pb-4">
@@ -326,83 +406,123 @@ function CageShelfListView({
               type="button"
               className="mt-3 text-[12px] font-medium"
               style={{ color: BRAND }}
-              onClick={() => {
-                setSearchQuery("");
-                setRoomFilter("");
-              }}
+              onClick={clearFilters}
             >
               清除筛选
             </button>
           </div>
         ) : (
-          visibleGroups.map((group) => {
-            const expanded = expandedRooms[group.key] === true;
-            const hasOwnGroup = group.shelves.some((s) => s.highlight);
+          campusGroups.map((campus) => {
+            const campusExpanded = expandedCampuses[campus.key] === true;
+            const campusStyle = campusHeaderStyle(campus.campusName);
             return (
-              <div key={group.key} className="mb-2">
+              <div key={campus.key} className="mb-3">
                 <button
                   type="button"
-                  onClick={() => toggleRoom(group.key)}
-                  className="w-full flex items-center justify-between gap-2 px-2 py-2.5 rounded-xl mb-1.5 active:scale-[0.99] transition-transform"
+                  onClick={() => toggleCampus(campus.key)}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl mb-1.5 active:scale-[0.99] transition-transform"
                   style={{
-                    background: hasOwnGroup ? "rgba(172, 23, 54, 0.06)" : "rgba(255,255,255,0.75)",
-                    border: hasOwnGroup ? `1px solid rgba(172, 23, 54, 0.22)` : "1px solid rgba(30,55,90,0.06)",
+                    background: campusStyle.background,
+                    border: "1px solid rgba(30,55,90,0.08)",
+                    boxShadow: "0 2px 8px rgba(15,23,42,0.06)",
                   }}
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
-                    {expanded ? (
-                      <ChevronDown className="size-4 shrink-0" style={{ color: hasOwnGroup ? BRAND : "#969799" }} />
+                    {campusExpanded ? (
+                      <ChevronDown className="size-4 shrink-0" style={{ color: campusStyle.color }} />
                     ) : (
-                      <ChevronRight className="size-4 shrink-0" style={{ color: hasOwnGroup ? BRAND : "#969799" }} />
+                      <ChevronRight className="size-4 shrink-0" style={{ color: campusStyle.color }} />
                     )}
-                    <span
-                      className="text-[12px] font-semibold truncate"
-                      style={{ color: hasOwnGroup ? BRAND : "#323233" }}
-                    >
-                      {group.label}
-                      {hasOwnGroup && (
-                        <span className="ml-1.5 text-[10px] font-medium opacity-80">本组</span>
-                      )}
+                    <span className="text-[13px] font-bold truncate" style={{ color: campusStyle.color }}>
+                      {campus.campusName}校区
                     </span>
                   </div>
                   <span
-                    className="text-[10px] shrink-0 px-1.5 py-0.5 rounded-full"
-                    style={{ color: "#969799", background: "#f2f3f5" }}
+                    className="text-[10px] shrink-0 px-1.5 py-0.5 rounded-full font-medium"
+                    style={{
+                      color: campusStyle.badgeColor,
+                      background: campusStyle.badgeBackground,
+                    }}
                   >
-                    {group.shelves.length} 架
+                    {campus.shelfCount} 架
                   </span>
                 </button>
 
-                {expanded && (
-                  <div className="grid grid-cols-2 gap-2 pl-1">
-                    {group.shelves.map((s) => (
-                      <button
-                        key={s.shelveId}
-                        type="button"
-                        onClick={() => onOpenShelf(s)}
-                        className="rounded-xl px-3 py-3 text-left flex items-center gap-2.5 active:scale-[0.98] transition-transform"
-                        style={{
-                          background: s.highlight ? "rgba(172, 23, 54, 0.08)" : "rgba(255,255,255,0.7)",
-                          border: s.highlight ? `1.5px solid rgba(172, 23, 54, 0.35)` : "1px solid rgba(30,55,90,0.06)",
-                          boxShadow: s.highlight ? "0 2px 10px rgba(172, 23, 54, 0.12)" : "0 2px 8px rgba(15,23,42,0.03)",
-                        }}
-                      >
-                        <LayoutGrid
-                          className="size-5 shrink-0"
-                          style={{ color: s.highlight ? BRAND : BRAND }}
-                          strokeWidth={1.5}
-                        />
-                        <span
-                          className="text-[11px] font-semibold truncate"
-                          style={{ color: s.highlight ? BRAND : "#1e293b" }}
-                        >
-                          {s.shelveName || s.shelveId}
-                          {s.highlight && (
-                            <span className="ml-1 text-[9px] font-medium opacity-75">本组</span>
+                {campusExpanded && (
+                  <div className="space-y-2 pl-1">
+                    {campus.rooms.map((group) => {
+                      const expanded = expandedRooms[group.key] === true;
+                      const hasOwnGroup = group.shelves.some((s) => s.highlight);
+                      return (
+                        <div key={group.key}>
+                          <button
+                            type="button"
+                            onClick={() => toggleRoom(group.key)}
+                            className="w-full flex items-center justify-between gap-2 px-2 py-2 rounded-xl mb-1 active:scale-[0.99] transition-transform"
+                            style={{
+                              background: hasOwnGroup ? "rgba(172, 23, 54, 0.06)" : "rgba(255,255,255,0.75)",
+                              border: hasOwnGroup ? `1px solid rgba(172, 23, 54, 0.22)` : "1px solid rgba(30,55,90,0.06)",
+                            }}
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              {expanded ? (
+                                <ChevronDown className="size-3.5 shrink-0" style={{ color: hasOwnGroup ? BRAND : "#969799" }} />
+                              ) : (
+                                <ChevronRight className="size-3.5 shrink-0" style={{ color: hasOwnGroup ? BRAND : "#969799" }} />
+                              )}
+                              <span
+                                className="text-[12px] font-semibold truncate"
+                                style={{ color: hasOwnGroup ? BRAND : "#323233" }}
+                              >
+                                {group.roomName}
+                                {hasOwnGroup && (
+                                  <span className="ml-1.5 text-[10px] font-medium opacity-80">本组</span>
+                                )}
+                              </span>
+                            </div>
+                            <span
+                              className="text-[10px] shrink-0 px-1.5 py-0.5 rounded-full"
+                              style={{ color: "#969799", background: "#f2f3f5" }}
+                            >
+                              {group.shelves.length} 架
+                            </span>
+                          </button>
+
+                          {expanded && (
+                            <div className="grid grid-cols-2 gap-2 pl-1 pb-1">
+                              {group.shelves.map((s) => (
+                                <button
+                                  key={s.shelveId}
+                                  type="button"
+                                  onClick={() => onOpenShelf(s)}
+                                  className="rounded-xl px-3 py-3 text-left flex items-center gap-2.5 active:scale-[0.98] transition-transform"
+                                  style={{
+                                    background: s.highlight ? "rgba(172, 23, 54, 0.08)" : "rgba(255,255,255,0.7)",
+                                    border: s.highlight ? `1.5px solid rgba(172, 23, 54, 0.35)` : "1px solid rgba(30,55,90,0.06)",
+                                    boxShadow: s.highlight ? "0 2px 10px rgba(172, 23, 54, 0.12)" : "0 2px 8px rgba(15,23,42,0.03)",
+                                  }}
+                                >
+                                  <LayoutGrid
+                                    className="size-5 shrink-0"
+                                    style={{ color: BRAND }}
+                                    strokeWidth={1.5}
+                                  />
+                                  <span
+                                    className="text-[11px] font-semibold truncate"
+                                    style={{ color: s.highlight ? BRAND : "#1e293b" }}
+                                  >
+                                    {s.shelveName || s.shelveId}
+                                    {s.highlight && (
+                                      <span className="ml-1 text-[9px] font-medium opacity-75">本组</span>
+                                    )}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
                           )}
-                        </span>
-                      </button>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -450,7 +570,7 @@ function CageShelfGridView({
           <ChevronLeft className="size-5" />
           <span className="text-[13px] font-medium">返回</span>
         </button>
-        <div className="flex-1 min-w-0 text-center pr-8">
+        <div className="flex-1 min-w-0 text-center">
           <p className="text-[13px] font-bold truncate" style={{ color: "#1e293b" }}>{title}</p>
           {meta && (
             <p className="text-[10px] truncate" style={{ color: "#94a3b8" }}>
@@ -460,6 +580,7 @@ function CageShelfGridView({
             </p>
           )}
         </div>
+        <div className="w-8 shrink-0" aria-hidden />
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3">
@@ -518,11 +639,13 @@ export type MobileCageShelfTabHandle = {
 interface MobileCageShelfTabProps {
   token: string;
   jwtMode?: boolean;
+  /** ADMIN+ 手机特权；token 模式由 mobile-center profile 注入 */
+  html5PrivilegeBypass?: boolean;
   onScreenChange?: (screen: "list" | "grid", shelfTitle?: string) => void;
 }
 
 export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
-  function MobileCageShelfTab({ token, jwtMode, onScreenChange }, ref) {
+  function MobileCageShelfTab({ token, jwtMode, html5PrivilegeBypass = false, onScreenChange }, ref) {
   const [screen, setScreen] = useState<"list" | "grid">("list");
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -536,6 +659,17 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   const [detailReloadKey, setDetailReloadKey] = useState(0);
 
   const [selectedCell, setSelectedCell] = useState<CageShelfCell | null>(null);
+  const [specialStatusOpen, setSpecialStatusOpen] = useState(false);
+
+  const staffSpecialStatusView =
+    html5PrivilegeBypass ||
+    (jwtMode && hasMinRole(authStorage.getRole(), "STAFF"));
+
+  const specialStatusApiFn = useCallback(() => {
+    return jwtMode
+      ? fetchStudentMobileSpecialStatusOverview()
+      : fetchMobileSpecialStatusOverview(token);
+  }, [jwtMode, token]);
 
   useEffect(() => {
     if (!jwtMode && !token) return;
@@ -582,6 +716,10 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   };
 
   const popNavigation = useCallback((): boolean => {
+    if (specialStatusOpen) {
+      setSpecialStatusOpen(false);
+      return true;
+    }
     if (selectedCell) {
       setSelectedCell(null);
       return true;
@@ -591,7 +729,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       return true;
     }
     return false;
-  }, [selectedCell, screen, goBackToList]);
+  }, [specialStatusOpen, selectedCell, screen, goBackToList]);
 
   useImperativeHandle(ref, () => ({ pop: popNavigation }), [popNavigation]);
 
@@ -608,7 +746,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   return (
     <CageColorProvider>
       <div className="relative h-full overflow-hidden">
-        {/* 列表层保持挂载，返回时保留滚动位置与筛选/展开状态 */}
+        {/* 列表层保持挂载，返回时保留滚动位置与展开状态 */}
         <div
           className={screen === "grid" ? "hidden" : "h-full"}
           aria-hidden={screen === "grid"}
@@ -619,6 +757,8 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
             shelves={shelves}
             onRetry={() => setListReloadKey((k) => k + 1)}
             onOpenShelf={openShelf}
+            onOpenSpecialStatus={() => setSpecialStatusOpen(true)}
+            showSpecialStatusEntry
           />
         </div>
 
@@ -646,6 +786,13 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
             onClose={() => setSelectedCell(null)}
           />
         )}
+
+        <MobileSpecialStatusPanel
+          open={specialStatusOpen}
+          onClose={() => setSpecialStatusOpen(false)}
+          apiFn={specialStatusApiFn}
+          variant={staffSpecialStatusView ? "staff" : "student"}
+        />
       </div>
     </CageColorProvider>
   );

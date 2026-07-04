@@ -11,6 +11,7 @@ import {
 import { fetchDahuaDeviceChannels, type DahuaDeviceChannelRow } from "@/api/twinApi";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminRightDrawer } from "@/components/admin/AdminRightDrawer";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -183,8 +184,8 @@ export function AccessChannelScopeDrawer({ open, onOpenChange, statsTaskId, task
                     key={s.channelCode}
                     className="flex cursor-pointer items-center gap-2 px-2 py-1.5 hover:bg-slate-50"
                   >
-                    <input
-                      type="checkbox"
+                    <AdminSwitchScaled
+                      size="3.5"
                       checked={selectedSet.has(s.channelCode)}
                       onChange={() =>
                         toggle({
@@ -223,8 +224,8 @@ export function AccessChannelScopeDrawer({ open, onOpenChange, statsTaskId, task
                     key={ch.id ?? code}
                     className="flex cursor-pointer items-center gap-2 px-2 py-1.5 hover:bg-slate-50"
                   >
-                    <input
-                      type="checkbox"
+                    <AdminSwitchScaled
+                      size="3.5"
                       checked={selectedSet.has(code)}
                       onChange={() =>
                         toggle({

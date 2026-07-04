@@ -1,0 +1,273 @@
+<div style="max-width:1000px;margin:0 auto">
+
+<h2>规格选择交互 — 从「锚点弹窗」到「Bottom Sheet」</h2>
+<p class="subtitle">当前方案的问题不在 bug，在架构选型。锚点定位类弹窗天然脆弱——换一条路。</p>
+
+<!-- ============ 问题诊断 ============ -->
+<div class="section">
+  <h3>一、为什么锚点弹窗是死胡同</h3>
+  <div class="pros-cons">
+    <div class="cons"><h4>🔴 结构性缺陷（修不完）</h4>
+      <ul>
+        <li><strong>Portal 脱离文档流</strong> → 丢失滚动容器的 overflow 上下文</li>
+        <li><strong>手动算坐标</strong> → 视口检测/ResizeObserver/scroll 监听三层补丁</li>
+        <li><strong>每增加一个使用场景</strong>（scan面板、H5、学生页）→ 多一套 variant 分支</li>
+        <li><strong>页面滚动/容器内滚动</strong> → 弹窗不跟随，需要额外 scroll 监听</li>
+        <li><strong>卡片在 Grid 中</strong> → overflow:visible 才能让弹窗不被裁切</li>
+        <li><strong>移动端 H5</strong> → 弹出方向/安全区/键盘遮挡 全部失效</li>
+      </ul>
+    </div>
+    <div class="pros"><h4>🟢 目标方案的特征</h4>
+      <ul>
+        <li><strong>零锚点计算</strong> — 不需要知道按钮在哪里</li>
+        <li><strong>全端统一</strong> — 桌面/平板/手机/H5 同一套代码</li>
+        <li><strong>视口固定</strong> — 始终在屏幕底部，不受滚动/overflow 影响</li>
+        <li><strong>行业标准</strong> — 京东/淘宝/美团/Apple Store 全部用这个</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 方案对比 ============ -->
+<div class="section">
+  <h3>二、两种路线对比</h3>
+
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">❌ 当前：锚点弹窗（Portal Popover）</div>
+      <div class="mockup-body" style="font-size:12px;padding:16px">
+        <div style="border:1px dashed #d97706;padding:12px;border-radius:8px;margin-bottom:10px">
+          <p style="color:#d97706;font-weight:600;margin:0 0 4px">⚠ 脆弱链路</p>
+          <p style="color:#92400e;font-size:11px;margin:0">
+            按钮 BoundingRect → 视口剩余空间检测 → 选 left/right → Portal 渲染 → ResizeObserver 回测 → 滚动监听补丁 → 翻上/翻下 → 仍在 overflow 容器中被裁切
+          </p>
+        </div>
+        <div style="display:flex;gap:10px;align-items:start">
+          <div style="border:1px solid #d1d5db;border-radius:8px;padding:10px;width:140px">
+            <div style="font-size:10px;color:#9ca3af;margin-bottom:4px">卡片 Grid</div>
+            <div style="width:48px;height:48px;background:#f3f4f6;border-radius:4px;margin-bottom:6px"></div>
+            <div style="height:6px;width:60%;background:#e5e7eb;border-radius:3px;margin-bottom:4px"></div>
+            <div style="height:6px;width:40%;background:#e5e7eb;border-radius:3px;margin-bottom:8px"></div>
+            <button style="padding:2px 10px;border-radius:9999px;border:1px solid;font-size:10px">选择规格 ▾</button>
+          </div>
+          <div style="border:2px solid #dc2626;border-radius:10px;padding:8px;background:#fff;box-shadow:0 4px 16px rgba(0,0,0,0.15);width:160px">
+            <div style="color:#dc2626;font-size:9px;font-weight:600;margin-bottom:6px">⬆ 脱离文档流<br>手动算坐标<br>随时被裁切</div>
+            <div style="font-size:10px;font-weight:600;margin-bottom:4px">选择规格 ✕</div>
+            <div style="font-size:9px;color:#6b7280;margin-bottom:4px">颜色</div>
+            <div style="display:flex;gap:3px;margin-bottom:6px">
+              <span style="padding:1px 6px;border-radius:9999px;border:1px solid #93c5fd;background:#dbeafe;font-size:8px">红色</span>
+              <span style="padding:1px 6px;border-radius:9999px;border:1px solid #d1d5db;font-size:8px">蓝色</span>
+            </div>
+            <div style="font-size:9px;color:#6b7280;margin-bottom:4px">尺寸</div>
+            <div style="display:flex;gap:3px;margin-bottom:6px">
+              <span style="padding:1px 6px;border-radius:9999px;border:1px solid #d1d5db;font-size:8px">M</span>
+              <span style="padding:1px 6px;border-radius:9999px;border:1px solid #d1d5db;font-size:8px">L</span>
+            </div>
+            <div style="border-top:1px solid #e5e7eb;padding-top:4px">
+              <div style="display:flex;justify-content:space-between;align-items:center;font-size:8px">
+                <span>红色·M</span>
+                <span style="border:1px solid #d1d5db;border-radius:4px;padding:0 3px">− 0 +</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">✅ 目标：Bottom Sheet（底部抽屉）</div>
+      <div class="mockup-body" style="font-size:12px;padding:16px">
+        <div style="border:1px dashed #059669;padding:12px;border-radius:8px;margin-bottom:10px">
+          <p style="color:#059669;font-weight:600;margin:0 0 4px">✅ 可靠链路</p>
+          <p style="color:#065f46;font-size:11px;margin:0">
+            点击按钮 → state.open = true → Sheet 从底部滑入 → 固定在视口底部 → 用户选择 → 点击完成/遮罩关闭 → state.open = false
+          </p>
+        </div>
+        <div style="position:relative;border:1px solid #d1d5db;border-radius:8px;height:180px;overflow:hidden">
+          <div style="padding:10px">
+            <div style="font-size:10px;color:#9ca3af;margin-bottom:4px">卡片 Grid（完整可见）</div>
+            <div style="display:flex;gap:8px">
+              <div style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;width:120px">
+                <div style="width:36px;height:36px;background:#f3f4f6;border-radius:4px;margin-bottom:4px"></div>
+                <div style="height:4px;width:70%;background:#e5e7eb;border-radius:2px;margin-bottom:3px"></div>
+                <button style="padding:1px 8px;border-radius:9999px;border:1px solid;font-size:9px;background:var(--student-primary-soft,#dbeafe);color:var(--student-primary,#2563eb)">选择规格 ▾</button>
+              </div>
+            </div>
+          </div>
+          <!-- Bottom Sheet overlay -->
+          <div style="position:absolute;inset:0;background:rgba(0,0,0,0.3)"></div>
+          <div style="position:absolute;bottom:0;left:0;right:0;background:#fff;border-radius:16px 16px 0 0;padding:12px 16px 16px;box-shadow:0 -4px 20px rgba(0,0,0,0.1)">
+            <div style="width:32px;height:4px;background:#d1d5db;border-radius:2px;margin:0 auto 10px"></div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <span style="font-weight:700;font-size:13px">选择规格</span>
+              <span style="font-size:16px;cursor:pointer">✕</span>
+            </div>
+            <div style="display:flex;gap:10px;margin-bottom:10px">
+              <div style="width:48px;height:48px;background:#f3f4f6;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--student-primary)">物</div>
+              <div>
+                <div style="font-weight:600;font-size:12px">物品名称</div>
+                <div style="font-size:10px;color:#9ca3af">副标题描述</div>
+              </div>
+            </div>
+            <div style="font-size:10px;color:#6b7280;margin-bottom:4px">颜色</div>
+            <div style="display:flex;gap:4px;margin-bottom:6px">
+              <span style="padding:2px 10px;border-radius:9999px;border:2px solid;font-size:10px;font-weight:600">红色</span>
+              <span style="padding:2px 10px;border-radius:9999px;border:1px solid #d1d5db;font-size:10px">蓝色</span>
+            </div>
+            <div style="font-size:10px;color:#6b7280;margin-bottom:4px">尺寸</div>
+            <div style="display:flex;gap:4px;margin-bottom:8px">
+              <span style="padding:2px 10px;border-radius:9999px;border:2px solid;font-size:10px;font-weight:600">M</span>
+              <span style="padding:2px 10px;border-radius:9999px;border:1px solid #d1d5db;font-size:10px">L</span>
+            </div>
+            <div style="background:#f9fafb;border-radius:8px;padding:6px 8px;margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-size:10px">红色 · M</span>
+                <span style="display:flex;align-items:center;gap:4px;border:1px solid #d1d5db;border-radius:6px;overflow:hidden">
+                  <button style="width:22px;height:22px;border:none;background:transparent">−</button>
+                  <span style="font-size:10px;font-weight:600">1</span>
+                  <button style="width:22px;height:22px;border:none;background:var(--student-primary);color:#fff;border-radius:0">+</button>
+                </span>
+              </div>
+            </div>
+            <button style="width:100%;padding:10px;border:none;background:var(--student-primary);color:#fff;border-radius:8px;font-weight:600;font-size:12px">完成</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 业界参考 ============ -->
+<div class="section">
+  <h3>三、业界标准参考 — 全用 Bottom Sheet</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr style="background:var(--student-canvas-soft)">
+      <th style="padding:10px 12px;text-align:left;width:18%">产品</th>
+      <th style="padding:10px 12px;text-align:left;width:22%">场景</th>
+      <th style="padding:10px 12px;text-align:left;width:60%">交互模式</th>
+    </tr>
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline)"><strong>京东/淘宝</strong></td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">商品 SKU 选择</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">底部弹出面板：商品图+价格+已选规格+尺寸/颜色 chip + 数量步进器 + "加入购物车"按钮。从不做锚点弹窗。</td>
+    </tr>
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline)"><strong>美团/饿了么</strong></td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">菜品规格（辣度/大小/配料）</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">底部抽屉：菜品名+图片+规格选项 radio/chip + 数量 + 加入购物车。全端统一 Bottom Sheet。</td>
+    </tr>
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline)"><strong>Apple Store</strong></td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">iPhone 选购（颜色/容量）</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">点击"选择"→ 从底部滑出面板，选颜色/容量/storage。桌面端同样底部弹出（非锚点）。</td>
+    </tr>
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline)"><strong>Shopify</strong></td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">商品 variants</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">默认用 variant picker block（内嵌在商品页），弹窗场景用 drawer/bottom sheet。</td>
+    </tr>
+    <tr>
+      <td style="padding:10px 12px"><strong>瑞幸/星巴克小程序</strong></td>
+      <td style="padding:10px 12px;font-size:12px">饮品规格（杯型/温度/甜度）</td>
+      <td style="padding:10px 12px;font-size:12px">点击"规格"→ 底部半屏弹出，选完后点"完成"。H5 和小程序完全一致。</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ============ 目标设计 ============ -->
+<div class="section">
+  <h3>四、目标组件设计：<code>&lt;SpecSheet&gt;</code></h3>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-body">
+        <h3>触发方式</h3>
+        <ul style="font-size:13px;color:var(--student-mute);padding-left:16px;line-height:2">
+          <li>卡片中保留"选择规格"按钮（样式不变）</li>
+          <li>点击 → <code>setOpen(true)</code></li>
+          <li>按钮上仍显示已选数量 badge</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>Sheet 布局</h3>
+        <ul style="font-size:13px;color:var(--student-mute);padding-left:16px;line-height:2">
+          <li><strong>顶部</strong>：拖拽手柄 + "选择规格" 标题 + 关闭按钮</li>
+          <li><strong>中上</strong>：物品缩略图 + 名称 + 副标题（确认在选哪件东西）</li>
+          <li><strong>中</strong>：规格维度 chips（颜色/尺寸等）</li>
+          <li><strong>中下</strong>：已选组合 + 步进器（每行一个 combo）</li>
+          <li><strong>底部</strong>：总数量 + "完成" 按钮</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>技术实现</h3>
+        <ul style="font-size:13px;color:var(--student-mute);padding-left:16px;line-height:2">
+          <li><strong>渲染方式</strong>：固定定位 <code>position: fixed; bottom: 0; left: 0; right: 0</code></li>
+          <li><strong>零锚点计算</strong>：不需要知道按钮位置</li>
+          <li><strong>动画</strong>：<code>translateY(100%) → translateY(0)</code>，200ms ease-out</li>
+          <li><strong>遮罩</strong>：半透明黑色 overlay，click to dismiss</li>
+          <li><strong>安全区</strong>：<code>padding-bottom: env(safe-area-inset-bottom)</code></li>
+          <li><strong>一个组件</strong>：替代 student/scanner/mobile 三套 variant 分支</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>与现有代码的关系</h3>
+        <ul style="font-size:13px;color:var(--student-mute);padding-left:16px;line-height:2">
+          <li>新组件：<code>frontend/src/components/material/SpecSheet.tsx</code></li>
+          <li>废弃：<code>MaterialSpecPickerSheet.tsx</code> 中的 Popover 定位逻辑（保留工具函数）</li>
+          <li>三个页面的"选择规格"按钮改为 <code>onClick={() => setSpecSheetOpen(true)}</code></li>
+          <li>数据流（cart/specSchema/selections）完全不变</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 统一性 ============ -->
+<div class="section">
+  <h3>五、全端统一 — 一个组件覆盖所有场景</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr style="background:var(--student-canvas-soft)">
+      <th style="padding:10px 12px;text-align:left;width:20%">使用场景</th>
+      <th style="padding:10px 12px;text-align:left;width:20%">当前</th>
+      <th style="padding:10px 12px;text-align:left;width:20%">目标</th>
+      <th style="padding:10px 12px;text-align:left;width:40%">说明</th>
+    </tr>
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline)"><code>/student/material</code></td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px;color:#dc2626">Popover variant="student"</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px;color:#059669">SpecSheet</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">桌面学生中心，卡片 Grid 中触发</td>
+    </tr>
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline)">scan 快捷业务面板</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px;color:#dc2626">Popover variant="scanner"</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px;color:#059669">SpecSheet</td>
+      <td style="padding:10px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">后台管理面板，可能有 overflow 容器</td>
+    </tr>
+    <tr>
+      <td style="padding:10px 12px"><code>/m/home</code> H5</td>
+      <td style="padding:10px 12px;font-size:12px;color:#dc2626">Popover variant="mobile"</td>
+      <td style="padding:10px 12px;font-size:12px;color:#059669">SpecSheet</td>
+      <td style="padding:10px 12px;font-size:12px">移动端 H5，底部 Sheet 天然符合手机交互习惯</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>六、实施范围</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr style="background:var(--student-canvas-soft)"><th style="padding:8px 12px;text-align:left">文件</th><th style="padding:8px 12px;text-align:left">操作</th></tr>
+    <tr><td style="padding:8px 12px;border-bottom:1px solid var(--student-hairline)"><code>components/material/SpecSheet.tsx</code></td><td style="padding:8px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px"><strong>新建</strong> — Bottom Sheet 规格选择组件，约 200 行</td></tr>
+    <tr><td style="padding:8px 12px;border-bottom:1px solid var(--student-hairline)"><code>components/material/MaterialSpecPickerSheet.tsx</code></td><td style="padding:8px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px"><strong>大幅简化</strong> — 删除 Popover 定位/Portal/ResizeObserver，保留工具函数（parseSpecDimensions/generateSpecCombos 等）</td></tr>
+    <tr><td style="padding:8px 12px;border-bottom:1px solid var(--student-hairline)"><code>pages/student-material.tsx</code></td><td style="padding:8px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">替换 MaterialSpecPickControl → SpecSheet 触发</td></tr>
+    <tr><td style="padding:8px 12px;border-bottom:1px solid var(--student-hairline)"><code>components/scanner/MaterialBizPanel.tsx</code></td><td style="padding:8px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">替换扫描面板中的规格选择</td></tr>
+    <tr><td style="padding:8px 12px;border-bottom:1px solid var(--student-hairline)"><code>pages/mobile/MobileMaterialTab.tsx</code></td><td style="padding:8px 12px;border-bottom:1px solid var(--student-hairline);font-size:12px">替换 H5 中的规格选择</td></tr>
+  </table>
+</div>
+
+</div>

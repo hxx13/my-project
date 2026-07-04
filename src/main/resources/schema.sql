@@ -1341,6 +1341,51 @@ CREATE TABLE IF NOT EXISTS telemetry_archive_purge_config (
     update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='温湿度归档清理策略';
 
+-- 遥测历史可视化中心（详见 src/main/resources/db/telemetry-insights.sql）
+CREATE TABLE IF NOT EXISTS telemetry_value_rollup (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    bucket_start DATETIME(3) NOT NULL,
+    bucket_sec INT NOT NULL,
+    variable_name VARCHAR(512) NOT NULL,
+    min_value DOUBLE NULL,
+    max_value DOUBLE NULL,
+    avg_value DOUBLE NULL,
+    sample_count INT NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_tvr_var_bucket (variable_name(255), bucket_start, bucket_sec),
+    KEY idx_tvr_bucket (bucket_start)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='遥测 L1 预聚合';
+
+CREATE TABLE IF NOT EXISTS telemetry_chart_group (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(128) NOT NULL,
+    description VARCHAR(512) NULL,
+    variable_names_json TEXT NOT NULL,
+    variable_metadata_json TEXT NULL COMMENT '变量元数据 JSON 数组（variableName/displayLabel/floorCode/metricKindCode/bundleCode/roomCanonical）',
+    layout_mode VARCHAR(32) NOT NULL DEFAULT 'small_multiples',
+    source VARCHAR(32) NOT NULL DEFAULT 'manual',
+    sort_order INT NOT NULL DEFAULT 0,
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='遥测对比组';
+
+CREATE TABLE IF NOT EXISTS telemetry_display_profile (
+    code VARCHAR(32) PRIMARY KEY,
+    label VARCHAR(64) NOT NULL,
+    config_json TEXT NOT NULL,
+    update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='遥测展示配置档';
+
+CREATE TABLE IF NOT EXISTS telemetry_view_snapshot (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    captured_at DATETIME(3) NOT NULL,
+    profile_code VARCHAR(32) NOT NULL,
+    time_range_json TEXT NOT NULL,
+    chart_group_id BIGINT NULL,
+    payload_json MEDIUMTEXT NOT NULL,
+    create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_tvs_captured (captured_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='遥测视图快照';
+
 -- 人脸识别调试 + 底库（一人多张，详见 scripts/face_baseline_multi.ddl.sql）
 CREATE TABLE IF NOT EXISTS face_debug_photo (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,

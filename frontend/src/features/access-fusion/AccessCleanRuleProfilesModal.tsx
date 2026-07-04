@@ -11,6 +11,7 @@ import {
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminRightDrawer } from "@/components/admin/AdminRightDrawer";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import {
   Dialog,
   DialogContent,
@@ -274,18 +275,18 @@ export function AccessCleanRuleProfilesModal({ open, onOpenChange }: Props) {
             </select>
           </label>
           <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
+            <AdminSwitchScaled
+              size="sm"
               checked={form.requireMapping === 1}
-              onChange={(e) => setForm({ ...form, requireMapping: e.target.checked ? 1 : 0 })}
+              onChange={(checked) => setForm({ ...form, requireMapping: checked ? 1 : 0 })}
             />
             <span>仅纳入已在系统中映射 ARO 的刷卡人（未映射记录排除）</span>
           </label>
           <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
+            <AdminSwitchScaled
+              size="sm"
               checked={form.openSuccessOnly !== 0}
-              onChange={(e) => setForm({ ...form, openSuccessOnly: e.target.checked ? 1 : 0 })}
+              onChange={(checked) => setForm({ ...form, openSuccessOnly: checked ? 1 : 0 })}
             />
             <span>仅纳入开门成功记录</span>
           </label>

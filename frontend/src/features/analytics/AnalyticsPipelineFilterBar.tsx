@@ -1,6 +1,7 @@
 ﻿import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Settings } from "lucide-react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { BlacklistManageModal } from "@/components/admin/BlacklistManageModal";
 import {
   CAMPUS_OPTIONS,
@@ -133,11 +134,10 @@ export function AnalyticsPipelineFilterBar({
           <>
             <span className="mx-0.5 h-5 w-px shrink-0 bg-[var(--app-color-border-default)]" />
             <label className={cn("flex shrink-0 cursor-pointer items-center gap-1 rounded-md border px-2 py-1", analyticsChipIdle)}>
-              <input
-                type="checkbox"
-                className="h-3.5 w-3.5 rounded border-[var(--app-color-border-default)] text-[var(--app-color-accent)]"
+              <AdminSwitchScaled
+                size="3"
                 checked={filters.excludeBlacklist}
-                onChange={(e) => onChange({ ...filters, excludeBlacklist: e.target.checked })}
+                onChange={(checked) => onChange({ ...filters, excludeBlacklist: checked })}
               />
               <span className="text-[10px] font-semibold text-[var(--app-color-text-secondary)]">排除黑名单</span>
             </label>

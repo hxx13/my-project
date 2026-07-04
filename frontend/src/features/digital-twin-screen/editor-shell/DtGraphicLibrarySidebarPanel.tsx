@@ -19,6 +19,7 @@ import {
 } from "@/features/digital-twin-screen/layout/dtGraphicLibraryIdb";
 import type { DtWidgetGraphicAsset } from "@/features/digital-twin-screen/layout/sceneLayoutTypes";
 import { mimeFromGraphicFile } from "@/features/digital-twin-screen/layout/dtGraphicImport";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 
 function mimeShort(m: DtGraphicLibraryListItem["mime"]): string {
   if (m === "image/svg+xml") return "SVG";
@@ -127,15 +128,15 @@ function GraphicLibraryRow({
 
   return (
     <div className="flex items-center gap-1 [content-visibility:auto] [contain-intrinsic-size:auto_2.25rem]">
-      <input
-        type="checkbox"
-        className="h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-slate-500 accent-cyan-600"
-        checked={selectedIds.has(it.id)}
-        onChange={() => onToggleSelect(it.id)}
-        aria-label={`多选：${it.name || it.id}`}
-        title="勾选后可批量删除"
-        onClick={(e) => e.stopPropagation()}
-      />
+      <div onClick={(e) => e.stopPropagation()}>
+        <AdminSwitchScaled
+          size="3"
+          checked={selectedIds.has(it.id)}
+          onChange={() => onToggleSelect(it.id)}
+          aria-label={`多选：${it.name || it.id}`}
+          title="勾选后可批量删除"
+        />
+      </div>
       <LibraryItemThumb it={it} />
       <button
         type="button"

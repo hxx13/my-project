@@ -17,6 +17,7 @@
 @import "@/styles/night-sky-surface-theme.css";
 @import "@/styles/page-help-theme.css";
 @import "@/styles/rich-text-content.css";
+@import "@/styles/admin-violations-page.css";
 
 /* ── 学生端独立令牌（保留，后续逐步合并） ── */
 @import "@/features/student/config/student-design-tokens.css";

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryDisplayProfileMapper">
+
+    <resultMap id="ProfileMap" type="com.example.demo.modules.telemetry.entity.TelemetryDisplayProfileRow">
+        <id column="code" property="code"/>
+        <result column="label" property="label"/>
+        <result column="config_json" property="configJson"/>
+        <result column="update_time" property="updateTime"/>
+    </resultMap>
+
+    <select id="selectAll" resultMap="ProfileMap">
+        SELECT code, label, config_json, update_time FROM telemetry_display_profile ORDER BY code
+    </select>
+
+    <select id="selectByCode" resultMap="ProfileMap">
+        SELECT code, label, config_json, update_time FROM telemetry_display_profile WHERE code = #{code}
+    </select>
+
+    <insert id="upsert">
+        INSERT INTO telemetry_display_profile (code, label, config_json)
+        VALUES (#{code}, #{label}, #{configJson})
+        ON DUPLICATE KEY UPDATE
+            label = VALUES(label),
+            config_json = VALUES(config_json)
+    </insert>
+</mapper>

@@ -27,6 +27,25 @@ export async function uploadAdminLoginBrandingImage(file: File): Promise<string>
   return result.url;
 }
 
+/* ── Dashboard Preview config (same pattern as login branding) ── */
+
+export interface DashboardPreviewConfig {
+  sectionTexts?: string[];
+}
+
+export async function fetchDashboardPreviewConfig(): Promise<DashboardPreviewConfig> {
+  const res = await authHttp.get<Result<DashboardPreviewConfig>>("/admin/site/dashboard-preview");
+  if (!res.data?.success) throw new Error(res.data?.message || "读取失败");
+  return res.data.data ?? {};
+}
+
+export async function putDashboardPreviewConfig(body: DashboardPreviewConfig): Promise<DashboardPreviewConfig> {
+  const res = await authHttp.put<Result<DashboardPreviewConfig>>("/admin/site/dashboard-preview", body);
+  if (!res.data?.success) throw new Error(res.data?.message || "保存失败");
+  return res.data.data ?? {};
+}
+
+
 export type RegistrationInviteRow = {
   id: string;
   expiresAt: string;

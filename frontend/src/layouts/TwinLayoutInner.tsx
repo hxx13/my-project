@@ -3,7 +3,12 @@ import { Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { PageTransition } from "@/components/animation/PageTransition";
 import DebugNav from "@/features/dev-tools/DebugNav";
+import { appendAdminNavRecent, resolveAdminNavUserId } from "@/features/admin/adminNavPersonalization";
+import { isTwinFullscreenEntryPath, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import { AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { TwinChromeContextMenu, type TwinChromeContextMenuPayload } from "@/features/twin-chrome/TwinChromeContextMenu";
+import { ScanAssistantCarrier } from "@/components/scanner/ScanAssistantCarrier";
+import { AutoSwitchToggle } from "@/features/dashboard-ops-wall/AutoSwitchToggle";
 import { twinChromeGlobalPointerShouldBypass } from "@/features/twin-chrome/twinChromeGlobalPointerBypass";
 import { useTwinChromeTheme } from "@/features/twin-chrome/TwinChromeThemeContext";
 import { useTheme } from "@/features/theme/ThemeProvider";
@@ -16,23 +21,19 @@ import "@/features/twin-chrome/twinChromeAnimalTelemetryRoomFx.css";
 import { NightSkyBackdropDecor } from "@/features/night-sky/NightSkyBackdropDecor";
 import { PageHelpHost } from "@/features/page-help/PageHelpHost";
 
+/** 全屏后台入口：隐藏程序坞（pathname 含 /console 前缀，须 normalize） */
 function hideDockPath(pathname: string) {
-    const p = pathname.replace(/\/+$/, "") || "/";
-    return (
-        p === "/animal-room-telemetry" ||
-        p === "/animal-room-cockpit" ||
-        p === "/digital-twin-screen"
-    );
+    return isTwinFullscreenEntryPath(pathname) || pathname.includes("/dashboard-preview");
 }
 
 function isDebugShellPath(pathname: string): boolean {
-    const p = pathname.replace(/\/+$/, "") || "/";
+    const p = normalizeAdminPath(pathname);
     return p === "/debug" || p.startsWith("/debug-");
 }
 
 /** 动物房温湿度 / 驾驶舱：科幻壳单独分层，避免与 debug 全局霓虹混用（报警色保持 index.css 语义） */
 function isAnimalRoomTelemetryPath(pathname: string): boolean {
-    const p = pathname.replace(/\/+$/, "") || "/";
+    const p = normalizeAdminPath(pathname);
     return p === "/animal-room-telemetry" || p === "/animal-room-cockpit";
 }
 
@@ -46,11 +47,11 @@ export default function TwinLayoutInner() {
     const debugShell = isDebugShellPath(pathname);
     const debugNightShell = debugShell && isDark;
     /** 驾驶舱页固定科幻壳；动物房页仍随 Twin 主题 dashboardSciFi 切换 */
-    const pNorm = pathname.replace(/\/+$/, "") || "/";
-    const isPreview = pNorm === "/dashboard-preview";
+    const pNorm = normalizeAdminPath(pathname);
+    const isPreview = pNorm === "/dashboard-preview" || pathname.includes("/dashboard-preview");
     const cockpitSciFi = pNorm === "/animal-room-cockpit";
     const animalSciFiShell =
-        cockpitSciFi || (isAnimalRoomTelemetryPath(pathname) && themeId === "dashboardSciFi");
+        isPreview || cockpitSciFi || (isAnimalRoomTelemetryPath(pathname) && themeId === "dashboardSciFi");
 
     useEffect(() => {
         const onCtx = (e: MouseEvent) => {
@@ -88,16 +89,31 @@ export default function TwinLayoutInner() {
         };
     }, [animalSciFiShell]);
 
+    /** AdminLayout 卸载时无法记入「常用」；全屏 Twin 页在此补记（与侧栏 appendAdminNavRecent 规则一致） */
+    useEffect(() => {
+        const recordRecent = () => {
+            if (!isTwinFullscreenEntryPath(pathname)) return;
+            if (!resolveAdminNavUserId()) return;
+            appendAdminNavRecent(pathname);
+        };
+        recordRecent();
+        window.addEventListener(AUTH_USERINFO_UPDATED_EVENT, recordRecent);
+        return () => window.removeEventListener(AUTH_USERINFO_UPDATED_EVENT, recordRecent);
+    }, [pathname]);
+
     return (
         <div
-            className={cn("fixed inset-0 w-screen m-0 p-0 overflow-x-hidden", theme.className, isDark && 'dark', isPreview ? "min-h-screen overflow-y-auto" : "h-screen overflow-y-auto")}
+            className={cn(
+                "fixed inset-0 w-screen m-0 p-0 overflow-x-hidden h-screen",
+                isPreview ? "overflow-hidden" : "overflow-y-auto",
+                theme.className,
+                isDark && "dark"
+            )}
             data-twin-debug-night={debugNightShell ? "1" : undefined}
             style={{
-                backgroundColor: isPreview
-                    ? "#0A0014"
-                    : isDark
-                      ? "var(--app-color-scan-backdrop-from)"
-                      : "#f8f9fa",
+                backgroundColor: isDark
+                    ? "var(--app-color-scan-backdrop-from)"
+                    : "var(--app-color-surface-page, #f8f9fa)",
             }}
         >
             <style>{`
@@ -118,13 +134,12 @@ export default function TwinLayoutInner() {
                 }
             `}</style>
 
-            {!isDark && !isPreview ? <div className="nebula-bg absolute inset-0 z-0 pointer-events-none" /> : null}
+            {!isDark && !animalSciFiShell ? <div className="nebula-bg absolute inset-0 z-0 pointer-events-none" /> : null}
 
-            <div className={cn("relative z-10 w-full", isPreview ? "min-h-full" : "h-full min-h-0")}>
+            <div className={cn("relative z-10 w-full h-full min-h-0")}>
                 <div
                     className={cn(
-                        "relative",
-                        isPreview ? "min-h-full w-full" : "h-full min-h-0 w-full",
+                        "relative h-full min-h-0 w-full",
                         debugNightShell && "twin-chrome-debug-root twin-chrome-debug-root--night-sky",
                         debugShell && !debugNightShell && themeId === "dashboardSciFi" && "twin-chrome-debug-root",
                         animalSciFiShell && "twin-chrome-animal-telemetry-scifi"
@@ -149,6 +164,8 @@ export default function TwinLayoutInner() {
 
             {showDock ? <DebugNav /> : null}
 
+            {!isPreview ? <ScanAssistantCarrier /> : null}
+
 {/* TEMP: 暂时移除 PageHelpHost 以诊断 React 错误 #185 */}
             {/*
             {!isPreview ? (
@@ -166,6 +183,8 @@ export default function TwinLayoutInner() {
                 payload={ctxMenu}
                 onClose={() => setCtxMenu(null)}
             />
+
+            <AutoSwitchToggle />
         </div>
     );
 }

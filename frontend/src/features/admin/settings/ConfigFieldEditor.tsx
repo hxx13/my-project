@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 /** 多行纯文本（非 HTML） */
 const PLAIN_MULTILINE_KEYS = new Set([
   "telemetry.facility.rules_json",
+  "llm.assistant.prompt.archive",
 ]);
 
 /** 富文本（TipTap 编辑器，输出 HTML，前台通过 dangerouslySetInnerHTML 渲染） */
@@ -123,11 +124,13 @@ export function ConfigFieldEditor({
     if (isMultilineConfigKey(cfg.configKey)) {
       if (RICH_TEXT_KEYS.has(cfg.configKey)) {
         return (
-          <RichTextEditor
-            value={cfg.configValue || ""}
-            onChange={onChange}
-            disabled={saving}
-          />
+          <div className="admin-rich-text-field">
+            <RichTextEditor
+              value={cfg.configValue || ""}
+              onChange={onChange}
+              disabled={saving}
+            />
+          </div>
         );
       }
       return (

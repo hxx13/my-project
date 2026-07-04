@@ -268,7 +268,7 @@ public class NotificationSettingsService {
         }
         if ("NUMBER".equals(type)) {
             try {
-                Integer.parseInt(value);
+                new java.math.BigDecimal(value);
             } catch (Exception ex) {
                 return false;
             }

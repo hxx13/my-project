@@ -68,12 +68,15 @@ import AnimalRoomCockpitPage from "@/pages/AnimalRoomCockpitPage";
 import DigitalTwinScreenPage from "@/pages/DigitalTwinScreenPage";
 import AdminTelemetryWatchlistsPage from "@/pages/AdminTelemetryWatchlistsPage";
 import AdminTelemetryArchivePage from "@/pages/AdminTelemetryArchivePage";
+import AdminTelemetryInsightsPage from "@/pages/AdminTelemetryInsightsPage";
+import AdminTelemetryInsightsConfigPage from "@/pages/AdminTelemetryInsightsConfigPage";
 import StaffMessagesPage from "@/pages/StaffMessagesPage";
 import AdminInviteCodesPage from "@/pages/AdminInviteCodesPage";
 import AdminContentHubPage from "@/pages/AdminContentHubPage";
 import AdminKnowledgeHomePage from "@/pages/AdminKnowledgeHomePage";
 import AdminAnalyticsPage from "@/pages/AdminAnalyticsPage";
 import AdminNavManager from "@/features/admin/AdminNavManager";
+import AdminConversationArchivePage from "@/pages/AdminConversationArchivePage";
 import AdminSettingsLayout from "@/features/admin/settings/AdminSettingsLayout";
 import GeneralSettings from "@/features/admin/settings/GeneralSettings";
 import AppearanceSettings from "@/features/admin/settings/AppearanceSettings";
@@ -83,6 +86,7 @@ import SchedulerSettings from "@/features/admin/settings/SchedulerSettings";
 import IntegrationsSettings from "@/features/admin/settings/IntegrationsSettings";
 import PermissionsSettings from "@/features/admin/settings/PermissionsSettings";
 import DangerZoneSettings from "@/features/admin/settings/DangerZoneSettings";
+import DashboardPreviewSettings from "@/features/admin/settings/DashboardPreviewSettings";
 import StudentRegisterPage from "@/features/student/pages/student-register";
 import StudentLayout from "@/features/student/components/layout/student-layout";
 import StudentHomePage from "@/features/student/pages/student-home";
@@ -255,6 +259,8 @@ export const router = createHashRouter([
               { path: "automation-logs", element: <AdminAutomationLogsPage /> },
               { path: "telemetry-watchlists", element: <AdminTelemetryWatchlistsPage /> },
               { path: "telemetry-archive", element: <AdminTelemetryArchivePage /> },
+              { path: "telemetry-insights", element: <AdminTelemetryInsightsPage /> },
+              { path: "telemetry-insights-config", element: <AdminTelemetryInsightsConfigPage /> },
               {
                 element: <AdminGuard />,
                 children: [
@@ -299,6 +305,7 @@ export const router = createHashRouter([
                       { path: "integrations", element: <IntegrationsSettings /> },
                       { path: "permissions", element: <PermissionsSettings /> },
                       { path: "danger-zone", element: <DangerZoneSettings /> },
+                      { path: "dashboard-preview", element: <DashboardPreviewSettings /> },
                     ],
                   },
                   { path: "schedule-manager", element: <Navigate to={`${STAFF_NS}/admin/settings/scheduler`} replace /> },
@@ -319,6 +326,7 @@ export const router = createHashRouter([
                   { path: "supplies/manage", element: <AdminSuppliesManagePage /> },
                   { path: "supplies/process", element: <AdminSuppliesProcessPage /> },
                   { path: "nav-manager", element: <AdminNavManager /> },
+                  { path: "conversation-archive", element: <AdminConversationArchivePage /> },
                 ],
               },
             ],

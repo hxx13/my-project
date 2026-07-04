@@ -1,8 +1,10 @@
 package com.example.demo.modules.aro.service;
 
 import com.example.demo.modules.aro.dto.AroRecord;
+import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.mapper.AroDatabaseMapper;
 import com.example.demo.modules.twin.card.service.TwinAccessLogCorrelationService;
+import com.example.demo.modules.twin.scan.service.PreGeneratedConversationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,8 +12,10 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class AroDatabaseService {
@@ -24,12 +28,25 @@ public class AroDatabaseService {
     @Autowired
     private TwinAccessLogCorrelationService twinAccessLogCorrelationService;
 
+    @Autowired
+    private PreGeneratedConversationService preGeneratedConversationService;
+
     // 💥 你的核心业务批量入库逻辑 (已追加特权字段支持)
-    public void batchInsert(List<com.example.demo.modules.aro.dto.AroRecord> records) {
+    public void batchInsert(List<AroRecord> records) {
         if (records == null || records.isEmpty()) return;
 
         aroDatabaseMapper.batchInsertAccessLogs(records);
         twinAccessLogCorrelationService.reconcileNewOfficialRecords(records);
+
+        Set<String> userIds = new LinkedHashSet<>();
+        for (AroRecord record : records) {
+            if (record != null && record.getUserId() != null && !record.getUserId().isBlank()) {
+                userIds.add(record.getUserId().trim());
+            }
+        }
+        for (String userId : userIds) {
+            preGeneratedConversationService.scheduleEnsureWelcomeAsync(userId);
+        }
     }
 
     // ==========================================

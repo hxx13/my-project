@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { AlertTriangle } from "lucide-react";
 import { purgeAccessCleanLibrary } from "@/api/domains/accessFusion.api";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 
 type Props = {
   open: boolean;
@@ -59,11 +60,11 @@ export function AccessFusionPurgeLibraryModal({ open, onClose, channelCodes, onP
           </div>
         </div>
         <label className="mt-4 flex items-center gap-2">
-          <input
-            type="checkbox"
+          <AdminSwitchScaled
+            size="md"
             checked={scopeChannels}
             disabled={channelCodes.length === 0}
-            onChange={(e) => setScopeChannels(e.target.checked)}
+            onChange={setScopeChannels}
           />
           <span>
             仅清空当前筛选的 {channelCodes.length} 个通道
@@ -71,7 +72,7 @@ export function AccessFusionPurgeLibraryModal({ open, onClose, channelCodes, onP
           </span>
         </label>
         <label className="mt-2 flex items-center gap-2">
-          <input type="checkbox" checked={deleteLogs} onChange={(e) => setDeleteLogs(e.target.checked)} />
+          <AdminSwitchScaled size="md" checked={deleteLogs} onChange={setDeleteLogs} />
           <span>同时删除全部入库执行日志</span>
         </label>
         <label className="mt-3 flex flex-col gap-1">

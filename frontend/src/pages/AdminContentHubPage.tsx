@@ -4,6 +4,7 @@ import DOMPurify from "dompurify";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AdminPageShell, AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { Button } from "@/components/ui/button";
 import {
@@ -375,7 +376,7 @@ export default function AdminContentHubPage() {
             <RichTextEditor value={annBody} onChange={setAnnBody} disabled={annSaving} />
             <div className="flex flex-wrap items-center gap-4">
               <label className="inline-flex items-center gap-2 text-sm text-[var(--twin-body)]">
-                <input type="checkbox" checked={annEnabled} onChange={(e) => setAnnEnabled(e.target.checked)} />
+                <AdminSwitchScaled size="sm" checked={annEnabled} onChange={setAnnEnabled} />
                 上线展示
               </label>
               <label className="inline-flex items-center gap-2 text-sm text-[var(--twin-body)]">
@@ -436,12 +437,7 @@ export default function AdminContentHubPage() {
             <label className="block text-sm font-medium text-[var(--twin-body)]">正文</label>
             <RichTextEditor value={relBody} onChange={setRelBody} disabled={relSaving || !canOwnerRelease} />
             <label className="inline-flex items-center gap-2 text-sm text-[var(--twin-body)]">
-              <input
-                type="checkbox"
-                checked={relSplash}
-                onChange={(e) => setRelSplash(e.target.checked)}
-                disabled={!canOwnerRelease}
-              />
+              <AdminSwitchScaled size="sm" checked={relSplash} onChange={setRelSplash} disabled={!canOwnerRelease} />
               作为打开小程序时的首屏公告
             </label>
           </div>

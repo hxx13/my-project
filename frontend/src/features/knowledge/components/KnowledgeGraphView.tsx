@@ -14,6 +14,7 @@ import { fetchKnowledgeGraph } from "@/api/domains/knowledge.api";
 import { useKnowledgePage } from "@/features/knowledge/hooks/useKnowledgePage";
 import { KnowledgePageRenderer } from "./KnowledgePageRenderer";
 import { X, ExternalLink, Filter } from "lucide-react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import type { GraphNode, KnowledgeTreeNode } from "@/features/knowledge/types";
 
 interface Props {
@@ -192,15 +193,15 @@ export function KnowledgeGraphView({ tree, onSelectPage, onClose }: Props) {
       {filterOpen && (
         <div className="absolute top-10 left-3 z-20 rounded-[var(--app-radius-container)] bg-black/90 backdrop-blur border border-white/10 p-3 text-xs text-white/80 min-w-[220px] max-h-[60vh] overflow-y-auto">
           <div className="font-semibold mb-2 text-white/60 text-[10px] uppercase tracking-wider">连线类型</div>
-          <label className="flex items-center gap-2 cursor-pointer py-1"><input type="checkbox" checked={!showAuto} onChange={e => setShowAuto(!e.target.checked)} />仅手动 wikilink</label>
-          <label className="flex items-center gap-2 cursor-pointer py-1"><input type="checkbox" checked={showAuto} onChange={e => setShowAuto(e.target.checked)} />含自动发现</label>
+          <div className="flex items-center gap-2 cursor-pointer py-1"><AdminSwitchScaled size="3" checked={!showAuto} onChange={(checked) => setShowAuto(!checked)} />仅手动 wikilink</div>
+          <div className="flex items-center gap-2 cursor-pointer py-1"><AdminSwitchScaled size="3" checked={showAuto} onChange={(checked) => setShowAuto(checked)} />含自动发现</div>
           <div className="border-t border-white/10 my-2" />
           <div className="font-semibold mb-2 text-white/60 text-[10px] uppercase tracking-wider">显示分类</div>
           {tree.map(cat => (
             <div key={cat.categoryId}>
-              <label className="flex items-center gap-2 cursor-pointer py-0.5 font-medium"><input type="checkbox" checked={selectedCats.has(cat.categoryId)} onChange={() => toggleCat(cat.categoryId)} />{cat.categoryName}</label>
+              <div className="flex items-center gap-2 cursor-pointer py-0.5 font-medium"><AdminSwitchScaled size="3" checked={selectedCats.has(cat.categoryId)} onChange={() => toggleCat(cat.categoryId)} />{cat.categoryName}</div>
               {cat.children.map(sub => (
-                <label key={sub.categoryId} className="flex items-center gap-2 cursor-pointer py-0.5 ml-3 text-white/60"><input type="checkbox" checked={selectedCats.has(sub.categoryId)} onChange={() => toggleCat(sub.categoryId)} />{sub.categoryName}</label>
+                <div key={sub.categoryId} className="flex items-center gap-2 cursor-pointer py-0.5 ml-3 text-white/60"><AdminSwitchScaled size="3" checked={selectedCats.has(sub.categoryId)} onChange={() => toggleCat(sub.categoryId)} />{sub.categoryName}</div>
               ))}
             </div>
           ))}

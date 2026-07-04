@@ -5,6 +5,7 @@
     --rich-text-image-max-width: 50%;
     --rich-text-image-row-max: 1;
     --rich-text-image-row-gap: 0.5rem;
+    --rich-text-image-max-height: none;
   }
 
   /* 含图段落：默认居中（单图一行） */
@@ -15,10 +16,10 @@
     text-align: center;
   }
 
-  /* 段内 ≥2 张图：同行横排（仅用户主动设置「同行 ≥2」插入时产生） */
-  .rich-text-content :where(p:has(> img + img)),
-  .page-help-rich-editor .ProseMirror :where(p:has(> img + img)),
-  .page-help-prose :where(p:has(> img + img)) {
+  /* 段内 ≥2 张图：同行横排（仅 RichTextEditor 在「同行 ≥2」时加 .rich-text-multi-row） */
+  .rich-text-content.rich-text-multi-row :where(p:has(> img + img)),
+  .page-help-rich-editor.rich-text-multi-row .ProseMirror :where(p:has(> img + img)),
+  .page-help-prose.rich-text-multi-row :where(p:has(> img + img)) {
     display: flex;
     flex-wrap: wrap;
     gap: var(--rich-text-image-row-gap);
@@ -31,11 +32,11 @@
   .page-help-rich-editor .ProseMirror :where(p > img),
   .page-help-prose :where(p > img),
   .rich-text-content :where(img:not(p > img)),
+  .page-help-rich-editor .ProseMirror :where(img:not(p > img)),
   .page-help-prose :where(img:not(p > img)) {
     box-sizing: border-box;
     display: inline-block;
-    width: auto;
-    height: auto;
+    height: auto !important;
     margin: 0;
     object-fit: contain;
     border-radius: var(--app-radius-element);
@@ -43,29 +44,69 @@
     transition: opacity var(--app-motion-hover), box-shadow var(--app-motion-hover);
   }
 
-  /* 单图段落：段内仅一张图（TipTap 段内常有 br，勿用 :only-child） */
-  .rich-text-content :where(p:has(> img):not(:has(> img + img)) > img),
-  .page-help-rich-editor .ProseMirror :where(p:has(> img):not(:has(> img + img)) > img),
-  .page-help-prose :where(p:has(> img):not(:has(> img + img)) > img),
-  .rich-text-content :where(p > img:only-of-type),
-  .page-help-rich-editor .ProseMirror :where(p > img:only-of-type),
-  .page-help-prose :where(p > img:only-of-type) {
+  /* 无编辑器 width % 时保持自然宽度；粘贴的 px 宽也会被压回 auto */
+  .rich-text-content :where(p > img:not([style*="width:"][style*="%"]:not([style*="width: auto"]))),
+  .page-help-rich-editor .ProseMirror :where(p > img:not([style*="width:"][style*="%"]:not([style*="width: auto"]))),
+  .page-help-prose :where(p > img:not([style*="width:"][style*="%"]:not([style*="width: auto"]))),
+  .rich-text-content :where(img:not(p > img):not([style*="width:"][style*="%"]:not([style*="width: auto"]))),
+  .page-help-rich-editor .ProseMirror :where(img:not(p > img):not([style*="width:"][style*="%"]:not([style*="width: auto"]))),
+  .page-help-prose :where(img:not(p > img):not([style*="width:"][style*="%"]:not([style*="width: auto"]))) {
+    width: auto !important;
+  }
+
+  /* 展示态：无 inline width % 时回退 CSS 变量（仅缩小大图） */
+  .rich-text-content:not(.page-help-rich-editor) :where(img:not([style*="width:"][style*="%"]:not([style*="width: auto"]))),
+  .page-help-prose :where(img:not([style*="width:"][style*="%"]:not([style*="width: auto"]))) {
+    max-width: min(100%, var(--rich-text-image-max-width, 100%)) !important;
+    max-height: var(--rich-text-image-max-height, none);
+  }
+
+  /* 展示态：编辑器保存的 width % — 小图可放大、大图可缩小 */
+  .rich-text-content:not(.page-help-rich-editor) :where(img[style*="width:"][style*="%"]:not([style*="width: auto"])),
+  .page-help-prose :where(img[style*="width:"][style*="%"]:not([style*="width: auto"])) {
+    max-width: 100% !important;
+    max-height: var(--rich-text-image-max-height, none);
+  }
+
+  /* 编辑器：尊重 TipTap 写入的 inline width/max-width，无 style 时回退 CSS 变量 */
+  .page-help-rich-editor .ProseMirror :where(img:not([style*="width:"][style*="%"]:not([style*="width: auto"])):not([style*="max-width"])) {
+    max-width: min(100%, var(--rich-text-image-max-width, 100%));
+    max-height: var(--rich-text-image-max-height, none);
+  }
+
+  .page-help-rich-editor .ProseMirror :where(img[style*="width:"][style*="%"]:not([style*="width: auto"]), img[style*="max-width"]) {
+    max-height: var(--rich-text-image-max-height, none);
+  }
+
+  /* 单图段落：展示态用 CSS 变量；有 inline width % 时由 style 控制 */
+  .rich-text-content:not(.page-help-rich-editor) :where(p:has(> img):not(:has(> img + img)) > img:not([style*="width:"][style*="%"]:not([style*="width: auto"]))),
+  .page-help-prose :where(p:has(> img):not(:has(> img + img)) > img:not([style*="width:"][style*="%"]:not([style*="width: auto"]))),
+  .rich-text-content:not(.page-help-rich-editor) :where(p > img:only-of-type:not([style*="width:"][style*="%"]:not([style*="width: auto"]))),
+  .page-help-prose :where(p > img:only-of-type:not([style*="width:"][style*="%"]:not([style*="width: auto"]))) {
     max-width: var(--rich-text-image-max-width);
   }
 
-  /* 同行多图：按 row-max 均分宽度 */
-  .rich-text-content :where(p:has(> img + img) > img),
-  .page-help-rich-editor .ProseMirror :where(p:has(> img + img) > img),
-  .page-help-prose :where(p:has(> img + img) > img) {
+  .page-help-rich-editor .ProseMirror :where(p:has(img)) {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  /* 同行多图：按 row-max 均分宽度（仅 .rich-text-multi-row）；图宽 % 可进一步收窄 */
+  .rich-text-content.rich-text-multi-row :where(p:has(> img + img) > img),
+  .page-help-rich-editor.rich-text-multi-row .ProseMirror :where(p:has(> img + img) > img),
+  .page-help-prose.rich-text-multi-row :where(p:has(> img + img) > img) {
     display: block;
     flex: 1 1
       calc(
         (100% - var(--rich-text-image-row-gap) * (var(--rich-text-image-row-max) - 1)) /
           var(--rich-text-image-row-max)
       );
-    max-width: calc(
-      (100% - var(--rich-text-image-row-gap) * (var(--rich-text-image-row-max) - 1)) /
-        var(--rich-text-image-row-max)
+    max-width: min(
+      var(--rich-text-image-max-width, 100%),
+      calc(
+        (100% - var(--rich-text-image-row-gap) * (var(--rich-text-image-row-max) - 1)) /
+          var(--rich-text-image-row-max)
+      )
     );
   }
 

@@ -270,6 +270,44 @@ public class PagePermissionSchemaMigrator implements ApplicationRunner {
                         min_role, default_min_role, enabled, parent_node_key, chain_key,
                         auto_discovered, manual_override
                     ) VALUES (
+                        'MINI', 'page:mini:student-cage-shelf', 'PAGE', '笼架', '/pages/studentCageShelf/index', NULL,
+                        'STUDENT', 'STUDENT', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'entry:mini:tabbar:student-cage-shelf', 'ENTRY', '笼架', '/pages/studentCageShelf/index', 'tabbar',
+                        'STUDENT', 'STUDENT', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
+                        'MINI', 'entry:mini:home:student-cage-shelf', 'ENTRY', '笼架', '/pages/studentCageShelf/index', 'home',
+                        'STAFF', 'STAFF', 1, NULL, NULL,
+                        0, 0
+                    )
+                    """);
+            log.info("[page-permission-schema] 已种子 MINI：笼架 PAGE + tabbar/home 入口（INSERT IGNORE）");
+        } catch (Exception e) {
+            log.debug("[page-permission-schema] MINI student-cage-shelf 入口种子跳过: {}", e.getMessage());
+        }
+        try {
+            jdbcTemplate.execute("""
+                    INSERT IGNORE INTO page_permission_item(
+                        platform, node_key, node_type, display_name, path_or_route, entry_source,
+                        min_role, default_min_role, enabled, parent_node_key, chain_key,
+                        auto_discovered, manual_override
+                    ) VALUES (
                         'WEB', 'entry:web:twin:animal-room-telemetry', 'ENTRY', '动物房温湿度监测', '/animal-room-telemetry', 'sidebar',
                         'ADMIN', 'ADMIN', 1, NULL, NULL,
                         0, 0

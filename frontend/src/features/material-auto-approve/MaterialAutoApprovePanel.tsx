@@ -17,6 +17,7 @@ import {
 } from "@/api/domains/materialAutoApprove.api";
 import { fetchAdminMaterialItems, type MaterialItem } from "@/api/domains/material.api";
 import { AdminCenteredPanelShell } from "@/components/admin/AdminCenteredPanelShell";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import {
   AutoApproveCandidateSelect,
   type AutoApproveCandidate,
@@ -453,13 +454,13 @@ export function MaterialAutoApprovePanel({ open, onClose }: Props) {
                   const checked = batchForm.itemIds?.includes(o.id!) ?? false;
                   return (
                     <label key={o.id} className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
+                      <AdminSwitchScaled
+                        size="3.5"
                         checked={checked}
-                        onChange={(e) => {
+                        onChange={(nextChecked) => {
                           setBatchForm((f) => {
                             const set = new Set(f.itemIds ?? []);
-                            if (e.target.checked && o.id) set.add(o.id);
+                            if (nextChecked && o.id) set.add(o.id);
                             else if (o.id) set.delete(o.id);
                             return { ...f, itemIds: [...set] };
                           });

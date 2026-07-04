@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import ReactDOM from "react-dom";
 import { X } from "lucide-react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AccessChannelMultiSelect } from "@/features/analytics/AccessChannelMultiSelect";
 import { CompareCyclesField } from "@/features/analytics/components/CompareCyclesField";
 import {
@@ -124,12 +125,7 @@ export function SaveAnalyticsConfigModal({
           ) : null}
           <CompareCyclesField value={compareCycles} onChange={setCompareCycles} />
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-violet-200 bg-violet-50/50 px-3 py-2">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-neutral-300 text-violet-600"
-              checked={subscribe}
-              onChange={(e) => setSubscribe(e.target.checked)}
-            />
+            <AdminSwitchScaled size="sm" checked={subscribe} onChange={setSubscribe} />
             <span className="text-sm text-neutral-800">
               {subscribeHint ?? "保存后立即订阅（每日自动清算）"}
             </span>
@@ -154,12 +150,7 @@ export function SaveAnalyticsConfigModal({
             </div>
           ) : null}
           <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-amber-300 text-amber-600"
-              checked={isPublic}
-              onChange={(e) => setIsPublic(e.target.checked)}
-            />
+            <AdminSwitchScaled size="sm" checked={isPublic} onChange={setIsPublic} />
             <span className="text-sm text-amber-900">
               对所有人可见（STAFF+ 角色用户均可查看和使用此配置）
             </span>

@@ -5,9 +5,11 @@ import { Bell, ChevronLeft } from "lucide-react";
 import type { MobileAlertItem } from "@/api/domains/mobileStudent.api";
 import MobileNoticeDetailBody from "./MobileNoticeDetailBody";
 import MobileNoticeListRow from "./MobileNoticeListRow";
+import MobileNoticeSuppressActions from "./MobileNoticeSuppressActions";
 import {
   MOBILE_NOTICE_LIST_CARD_STYLE,
 } from "./mobileNoticePresentation";
+import { resolveExemptAlertTitle, sortMobileAnnouncementsForDisplay } from "./mobileExemptAlertHelpers";
 import "./mobile-notice-panel.css";
 
 export { alertKindLabel, alertKindColors } from "./mobileNoticePresentation";
@@ -24,6 +26,8 @@ interface MobileNoticesPanelProps {
   /** 首页点击某条时直接进详情；未传则先进列表 */
   initialFocusKey?: string | null;
   token?: string;
+  /** JWT 登录态（无 token 链接） */
+  jwtMode?: boolean;
   /** 某条公告/违规 suppress 成功后就地合并，禁止整表 load — post-save-no-full-refresh.mdc */
   onNoticeSuppressed?: (itemKey: string) => void;
 }
@@ -35,6 +39,7 @@ export default function MobileNoticesPanel({
   html5PrivilegeBypass = false,
   initialFocusKey = null,
   token,
+  jwtMode = false,
   onNoticeSuppressed,
 }: MobileNoticesPanelProps) {
   const [viewKey, setViewKey] = useState<string | null>(null);
@@ -63,7 +68,8 @@ export default function MobileNoticesPanel({
 
   if (!open) return null;
 
-  const focusedItem = viewKey ? alerts.find((a) => itemKey(a) === viewKey) : null;
+  const sortedAlerts = sortMobileAnnouncementsForDisplay(alerts);
+  const focusedItem = viewKey ? sortedAlerts.find((a) => itemKey(a) === viewKey) : null;
   const isDetailView = Boolean(focusedItem);
 
   const handleBack = () => {
@@ -81,9 +87,13 @@ export default function MobileNoticesPanel({
   };
 
   const headerTitle = isDetailView
-    ? focusedItem!.title.length > 12
-      ? `${focusedItem!.title.slice(0, 12)}…`
-      : focusedItem!.title
+    ? (() => {
+        const t =
+          focusedItem!.kind === "exempt"
+            ? resolveExemptAlertTitle()
+            : focusedItem!.title;
+        return t.length > 12 ? `${t.slice(0, 12)}…` : t;
+      })()
     : "通知公告";
 
   const panel = (
@@ -94,7 +104,7 @@ export default function MobileNoticesPanel({
       }}
     >
       <div
-        className="shrink-0 flex items-center px-2"
+        className="grid shrink-0 grid-cols-[40px_minmax(0,1fr)_minmax(0,auto)] items-center gap-1 overflow-hidden px-2"
         style={{
           background: "#fff",
           borderBottom: "1px solid #ebedf0",
@@ -105,17 +115,30 @@ export default function MobileNoticesPanel({
         <button
           type="button"
           onClick={handleBack}
-          className="flex items-center justify-center min-w-[40px] h-9 rounded-lg active:opacity-70"
+          className="flex h-9 w-10 items-center justify-center rounded-lg active:opacity-70"
           aria-label="返回"
         >
           <ChevronLeft className="size-6" style={{ color: "#323233" }} />
         </button>
         <h2
-          className="flex-1 text-center text-[16px] font-semibold px-2 truncate pr-10"
+          className="min-w-0 truncate px-1 text-center text-[16px] font-semibold"
           style={{ color: "#323233" }}
         >
           {headerTitle}
         </h2>
+        {isDetailView && focusedItem ? (
+          <div className="flex min-w-0 max-w-[min(46vw,9.5rem)] justify-end overflow-hidden">
+            <MobileNoticeSuppressActions
+              token={token}
+              jwtMode={jwtMode}
+              item={focusedItem}
+              compact
+              onSuppressed={() => onNoticeSuppressed?.(itemKey(focusedItem))}
+            />
+          </div>
+        ) : (
+          <div className="w-10" aria-hidden />
+        )}
       </div>
 
       <div
@@ -128,13 +151,11 @@ export default function MobileNoticesPanel({
           <MobileNoticeDetailBody
             item={focusedItem}
             html5PrivilegeBypass={html5PrivilegeBypass}
-            token={token}
             fullBleed
-            onSuppressed={() => onNoticeSuppressed?.(itemKey(focusedItem))}
           />
-        ) : alerts.length > 0 ? (
+        ) : sortedAlerts.length > 0 ? (
           <div style={MOBILE_NOTICE_LIST_CARD_STYLE}>
-            {alerts.map((item, idx) => {
+            {sortedAlerts.map((item, idx) => {
               const key = itemKey(item);
               return (
                 <MobileNoticeListRow

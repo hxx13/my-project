@@ -29,12 +29,18 @@ function parseRegistry(registry) {
   const slice = arrayStart >= 0 ? registry.slice(arrayStart) : registry;
 
   const groupSpans = [];
-  const groupRe = /\bid:\s*"([^"]+)"\s*,[\s\S]*?\btitle:\s*"([^"]+)"/g;
+  // 仅匹配顶级/子级 GROUP 块（4 或 6 空格缩进的 id + title），避免把 ITEM 的 id 误判为分组
+  const groupRe = /^\s{4}id:\s*"([^"]+)"\s*,\s*\n\s{4}title:\s*"([^"]+)"/gm;
   let gm;
   while ((gm = groupRe.exec(slice)) !== null) {
-    if (gm[1].startsWith("item-") || gm[1].startsWith("sg-")) continue;
     groupSpans.push({ index: gm.index, groupTitle: gm[2] });
   }
+  // SUBGROUP：6 空格 id + title（嵌套在 subgroups 数组内）
+  const subgroupRe = /^\s{6}id:\s*"([^"]+)"\s*,\s*\n\s{6}title:\s*"([^"]+)"/gm;
+  while ((gm = subgroupRe.exec(slice)) !== null) {
+    groupSpans.push({ index: gm.index, groupTitle: gm[2] });
+  }
+  groupSpans.sort((a, b) => a.index - b.index);
 
   function groupTitleForIndex(idx) {
     let title = "未分组";

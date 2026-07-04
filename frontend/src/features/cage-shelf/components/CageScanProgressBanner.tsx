@@ -36,10 +36,10 @@ export default function CageScanProgressBanner({ progress }: Props) {
         {isRunning && <Loader2 className="h-4 w-4 animate-spin shrink-0" />}
         <span className="font-semibold">
           {isRunning
-            ? "笼位特殊状态扫描中…"
+            ? "笼位数据同步中…"
             : isDone
-              ? "笼位特殊状态扫描完成"
-              : "笼位特殊状态扫描失败"}
+              ? "笼位数据同步完成"
+              : "笼位数据同步失败"}
         </span>
         {progress.startedAt && (
           <span className="opacity-60">· 开始于 {progress.startedAt}</span>
@@ -63,8 +63,8 @@ export default function CageScanProgressBanner({ progress }: Props) {
                 {progress.currentShelveName ? ` · ${progress.currentShelveName}` : ""}
               </span>
             )}
-            <span>已扫描笼位: {progress.cagesScanned}</span>
-            <span>已发现特殊状态: {progress.cagesWithStatus}</span>
+            <span>已拉取笼位: {progress.cagesScanned}</span>
+            <span>特殊状态: {progress.cagesWithStatus}</span>
           </div>
         </>
       )}

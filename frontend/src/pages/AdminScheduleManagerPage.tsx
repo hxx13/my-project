@@ -20,6 +20,7 @@ import {
   type DahuaSwingStatsPullTask,
 } from "@/api/domains/dahuaSwingStats.api";
 import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import {
   STATS_PULL_SCHEDULE_JOB,
@@ -502,7 +503,7 @@ export default function AdminScheduleManagerPage() {
                           <tr key={r.jobKey}>
                             <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.jobName}</td>
                             <td className="border border-[var(--twin-hairline)] px-2 py-2">
-                              <input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDraft(r.jobKey, { enabled: e.target.checked ? 1 : 0 })} />
+                              <AdminSwitchScaled size="3.5" checked={d.enabled === 1} onChange={(checked) => updateDraft(r.jobKey, { enabled: checked ? 1 : 0 })} />
                             </td>
                             <td className="border border-[var(--twin-hairline)] px-2 py-2">
                               <select className={inputClass} value={d.scheduleType || "DAILY"} onChange={(e) => updateDraft(r.jobKey, { scheduleType: e.target.value as "DAILY" | "WEEKLY" })}>
@@ -596,7 +597,7 @@ export default function AdminScheduleManagerPage() {
                       return (
                         <tr key={r.id}>
                           <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.name || `任务#${r.id}`}</td>
-                          <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDahuaDraft(r.id!, { enabled: e.target.checked ? 1 : 0 })} /></td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2"><AdminSwitchScaled size="3.5" checked={d.enabled === 1} onChange={(checked) => updateDahuaDraft(r.id!, { enabled: checked ? 1 : 0 })} /></td>
                           <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="number" className="w-24 rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1" min={10} value={d.pollIntervalSeconds} onChange={(e) => updateDahuaDraft(r.id!, { pollIntervalSeconds: Number(e.target.value || 60) })} /></td>
                           <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="time" className={inputClass} value={d.startTime} onChange={(e) => updateDahuaDraft(r.id!, { startTime: e.target.value })} /></td>
                           <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="time" className={inputClass} value={d.endTime} onChange={(e) => updateDahuaDraft(r.id!, { endTime: e.target.value })} /></td>
@@ -673,11 +674,11 @@ export default function AdminScheduleManagerPage() {
                                 <tr key={r.id}>
                                   <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.name || `任务#${r.id}`}</td>
                                   <td className="border border-[var(--twin-hairline)] px-2 py-2">
-                                    <input
-                                      type="checkbox"
+                                    <AdminSwitchScaled
+                                      size="3.5"
                                       checked={d.enabled === 1}
-                                      onChange={(e) =>
-                                        updateStatsDraft(r.id!, { enabled: e.target.checked ? 1 : 0 })
+                                      onChange={(checked) =>
+                                        updateStatsDraft(r.id!, { enabled: checked ? 1 : 0 })
                                       }
                                     />
                                   </td>
@@ -765,7 +766,7 @@ export default function AdminScheduleManagerPage() {
                       return (
                         <tr key={r.jobKey}>
                           <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.jobName}</td>
-                          <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDraft(r.jobKey, { enabled: e.target.checked ? 1 : 0 })} /></td>
+                          <td className="border border-[var(--twin-hairline)] px-2 py-2"><AdminSwitchScaled size="3.5" checked={d.enabled === 1} onChange={(checked) => updateDraft(r.jobKey, { enabled: checked ? 1 : 0 })} /></td>
                           <td className="border border-[var(--twin-hairline)] px-2 py-2">
                             <select className={inputClass} value={d.scheduleType || "DAILY"} onChange={(e) => updateDraft(r.jobKey, { scheduleType: e.target.value as "DAILY" | "WEEKLY" })}>
                               <option value="DAILY">每天</option>
@@ -792,11 +793,11 @@ export default function AdminScheduleManagerPage() {
                           <td className="border border-[var(--twin-hairline)] px-2 py-2">
                             {r.jobKey === DAILY_EXEMPT_RESET_KEY ? (
                               <label className="flex items-center gap-1 text-xs cursor-pointer">
-                                <input
-                                  type="checkbox"
+                                <AdminSwitchScaled
+                                  size="3.5"
                                   checked={(d.revokeAutoSignoutEnabled ?? 0) === 1}
-                                  onChange={(e) =>
-                                    updateDraft(r.jobKey, { revokeAutoSignoutEnabled: e.target.checked ? 1 : 0 })
+                                  onChange={(checked) =>
+                                    updateDraft(r.jobKey, { revokeAutoSignoutEnabled: checked ? 1 : 0 })
                                   }
                                 />
                                 今日曾豁免且仍在馆
@@ -854,7 +855,7 @@ export default function AdminScheduleManagerPage() {
                         return (
                           <tr key={r.jobKey}>
                             <td className="border border-[var(--twin-hairline)] px-2 py-2">{r.jobName}</td>
-                            <td className="border border-[var(--twin-hairline)] px-2 py-2"><input type="checkbox" checked={d.enabled === 1} onChange={(e) => updateDraft(r.jobKey, { enabled: e.target.checked ? 1 : 0 })} /></td>
+                            <td className="border border-[var(--twin-hairline)] px-2 py-2"><AdminSwitchScaled size="3.5" checked={d.enabled === 1} onChange={(checked) => updateDraft(r.jobKey, { enabled: checked ? 1 : 0 })} /></td>
                             <td className="border border-[var(--twin-hairline)] px-2 py-2">
                               <select className={inputClass} value={d.scheduleType || "DAILY"} onChange={(e) => updateDraft(r.jobKey, { scheduleType: e.target.value as "DAILY" | "WEEKLY" })}>
                                 <option value="DAILY">每天</option>

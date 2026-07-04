@@ -19,4 +19,6 @@ public class MaterialStockMovementView {
     private String createdAt;
     private String applicantName;
     private String applicantGroup;
+    /** 关联申领行规格快照 JSON */
+    private String specSnapshot;
 }

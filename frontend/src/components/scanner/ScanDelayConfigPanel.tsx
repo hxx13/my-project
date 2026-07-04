@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Plus, Trash2, Loader2, Search, ChevronDown, Check } from "lucide-react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
 import {
   deleteScanDelayCarrier,
@@ -329,12 +330,7 @@ function CheckboxPicker({
               key={it.key}
               className="flex cursor-pointer items-start gap-2 rounded-[var(--app-radius-element)] px-2 py-1.5 hover:bg-[var(--app-color-surface-hover)]"
             >
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={selected.has(it.key)}
-                onChange={() => toggle(it.key)}
-              />
+              <AdminSwitchScaled size="sm" checked={selected.has(it.key)} onChange={() => toggle(it.key)} />
               <span className="min-w-0 flex-1">
                 <span className="block font-medium text-[var(--app-color-text-primary)]">{it.label}</span>
                 {it.sub ? <span className="block text-[11px] font-mono text-[var(--app-color-text-tertiary)]">{it.sub}</span> : null}
@@ -854,11 +850,11 @@ export function ScanDelayConfigPanel() {
             </p>
           </div>
           <label className="flex items-center gap-2 shrink-0 text-sm font-medium">
-            <input
-              type="checkbox"
+            <AdminSwitchScaled
+              size="sm"
               disabled={masterLoading || masterSaving}
               checked={masterEnabled}
-              onChange={(e) => void saveMaster({ enabled: e.target.checked })}
+              onChange={(checked) => void saveMaster({ enabled: checked })}
             />
             {masterSaving ? "保存中…" : masterEnabled ? "已开启" : "已关闭"}
           </label>
@@ -1076,11 +1072,10 @@ export function ScanDelayConfigPanel() {
               </label>
 
               <label className="flex items-start gap-2 text-sm md:col-span-2">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
+                <AdminSwitchScaled
+                  size="sm"
                   checked={Boolean(form.requireApproval)}
-                  onChange={(e) => setForm((f) => ({ ...f, requireApproval: e.target.checked }))}
+                  onChange={(checked) => setForm((f) => ({ ...f, requireApproval: checked }))}
                 />
                 <span>
                   <span className="font-medium text-[var(--app-color-text-secondary)]">需要教职工审核后生效</span>
@@ -1098,11 +1093,10 @@ export function ScanDelayConfigPanel() {
                 />
               ) : null}
               <label className="flex items-start gap-2 text-sm md:col-span-2">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
+                <AdminSwitchScaled
+                  size="sm"
                   checked={form.enabled !== false}
-                  onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
+                  onChange={(checked) => setForm((f) => ({ ...f, enabled: checked }))}
                 />
                 <span>
                   <span className="font-medium text-[var(--app-color-text-secondary)]">启用本选项</span>

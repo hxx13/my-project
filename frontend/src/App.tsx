@@ -1,17 +1,19 @@
-import { Component, useEffect, useRef, type ErrorInfo, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { router } from "@/router";
 import { io, Socket } from "socket.io-client";
 import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 Store
-import { Toaster } from "react-hot-toast";
-import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS } from "@/config/socketUrl";
+import toast, { Toaster } from "react-hot-toast";
+import { Z_INDEX } from "@/constants/zIndex";
+import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS, APP_BUILD_ID } from "@/config/socketUrl";
 import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS } from "@/config/socketEvents";
 import { AdminGlobalDynamicIslandLayer } from "@/components/admin/AdminGlobalDynamicIslandLayer";
 import { useCardReaderEnterGuard } from "@/components/scanner/useCardReaderEnterGuard";
 import { ScanDelayPendingAlertSync } from "@/features/scan-delay-alert/ScanDelayPendingAlertSync";
 import { useSwipeAlertStore } from "@/store/useSwipeAlertStore";
-import { authStorage } from "@/features/auth/authStorage";
+import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
+import { doRefresh } from "@/api/core/tokenRefresh";
 import { ThemeProvider } from "@/features/theme/ThemeProvider";
 import type { AnimalRoomTelemetryPageDto, TelemetryTagItem } from "@/api/telemetryApi";
 import {
@@ -49,6 +51,27 @@ const queryClient = new QueryClient({
     },
 });
 
+/** 教职工 /console 路由 + 已登录：才建立 Socket（须在 Router 外，故订阅 hash 与登录事件） */
+function useStaffConsoleSocketGate(): boolean {
+    const [routeHash, setRouteHash] = useState(() => window.location.hash);
+    const [hasToken, setHasToken] = useState(() => Boolean(authStorage.getToken()));
+
+    useEffect(() => {
+        const syncRoute = () => setRouteHash(window.location.hash);
+        const syncAuth = () => setHasToken(Boolean(authStorage.getToken()));
+        window.addEventListener("hashchange", syncRoute);
+        window.addEventListener("popstate", syncRoute);
+        window.addEventListener(AUTH_USERINFO_UPDATED_EVENT, syncAuth);
+        return () => {
+            window.removeEventListener("hashchange", syncRoute);
+            window.removeEventListener("popstate", syncRoute);
+            window.removeEventListener(AUTH_USERINFO_UPDATED_EVENT, syncAuth);
+        };
+    }, []);
+
+    return hasToken && routeHash.startsWith("#/console");
+}
+
 // 💥 隐形的全局监听基站 (无渲染组件)
 function GlobalSocketListener() {
     const addEvent = useEventStore((state) => state.addEvent);
@@ -56,25 +79,38 @@ function GlobalSocketListener() {
     const setPieStats = useEventStore((state) => state.setPieStats);
     const queryClient = useQueryClient();
     const socketRef = useRef<Socket | null>(null);
+    const shouldConnect = useStaffConsoleSocketGate();
+
+    // 🔑 Token 过期恢复：connect_error 时刷新 token 并触发 socket 重建
+    const [socketEpoch, setSocketEpoch] = useState(0);
+    const recoveryInProgressRef = useRef(false);
+    const recoveryAttemptRef = useRef(0);
+    const MAX_RECOVERY_ATTEMPTS = 3;
+    const disconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
+        if (!shouldConnect) return;
+
         const token = authStorage.getToken();
         if (!token) return; // 未登录不建立连接，避免服务端拒绝
-
-        // 仅教职工视角路由 (/console) 建立 WebSocket 连接
-        // 学生端、手机端等非教职工路由不连接
-        if (!window.location.hash.startsWith('#/console')) return;
 
         const socketUrl = resolveSocketUrl();
         const socket = io(socketUrl, {
             ...SOCKET_IO_CLIENT_OPTIONS,
-            query: { token },
+            query: { token, v: APP_BUILD_ID },
         });
         socketRef.current = socket;
 
         socket.on("connect", () => {
             console.log("🟢 [数字孪生基站] WebSocket 链路已接通！");
             setConnected(true);
+            recoveryInProgressRef.current = false;
+            recoveryAttemptRef.current = 0;
+            if (disconnectTimerRef.current) {
+                clearTimeout(disconnectTimerRef.current);
+                disconnectTimerRef.current = null;
+            }
+            toast.dismiss("socket-disconnect");
             // Expose socket globally for swipe-alert ACK emission
             (window as any).__swipeAlertSocket = socket;
         });
@@ -82,6 +118,13 @@ function GlobalSocketListener() {
         socket.on("reconnect", () => {
             console.log("🟡 [数字孪生基站] WebSocket 已重新连接");
             setConnected(true);
+            recoveryInProgressRef.current = false;
+            recoveryAttemptRef.current = 0;
+            if (disconnectTimerRef.current) {
+                clearTimeout(disconnectTimerRef.current);
+                disconnectTimerRef.current = null;
+            }
+            toast.dismiss("socket-disconnect");
             // Re-expose after reconnect (new socket instance)
             (window as any).__swipeAlertSocket = socket;
         });
@@ -89,10 +132,64 @@ function GlobalSocketListener() {
         socket.on("disconnect", (reason) => {
             console.warn("🔴 [数字孪生基站] WebSocket 链路断开，将持续重连。原因:", reason);
             setConnected(false);
+            // 30 秒后仍未恢复 → 用户可见提示
+            if (!disconnectTimerRef.current) {
+                disconnectTimerRef.current = setTimeout(() => {
+                    toast.error(
+                        "实时连接已断开超过 30 秒，数据可能已过期。正在尝试恢复…",
+                        { id: "socket-disconnect", duration: 6000 },
+                    );
+                }, 30_000);
+            }
         });
 
         socket.on("connect_error", (err) => {
-            console.warn("[数字孪生基站] WebSocket 连接失败，将继续重试:", err.message);
+            const msg = (err?.message ?? '').toLowerCase();
+            // 🔑 区分两类错误：
+            //   ① 网络/服务器不可达 → 不干预，交给 Socket.IO 内置无限重连
+            //   ② 认证失败（token 过期被服务端拒绝）→ 刷新 token 后重建
+            const isAuthError =
+                msg.includes('not authorized') ||
+                msg.includes('unauthorized') ||
+                (err as any)?.data === 'not authorized';
+
+            if (!isAuthError) {
+                console.warn("[数字孪生基站] 连接失败（服务器不可达或网络波动），等待 Socket.IO 内置重连:", err.message);
+                return; // ← 不 disconnect、不刷新 token，让 Socket.IO 自己重试
+            }
+
+            // 认证错误：服务端明确拒绝了 token
+            console.warn("[数字孪生基站] 认证失败:", err.message);
+            if (recoveryInProgressRef.current) return;
+            if (recoveryAttemptRef.current >= MAX_RECOVERY_ATTEMPTS) {
+                console.error("[数字孪生基站] Token 恢复已达上限，触发强制登出");
+                socket.disconnect();
+                window.dispatchEvent(new Event("AUTH_FORCE_LOGOUT"));
+                return;
+            }
+            recoveryInProgressRef.current = true;
+            recoveryAttemptRef.current += 1;
+            socket.disconnect();
+            // 尝试刷新 token，成功后触发 effect 重建 socket
+            doRefresh().then((newToken) => {
+                if (!socketRef.current) return; // 组件已卸载
+                if (newToken) {
+                    console.log("[数字孪生基站] Token 已刷新，用新 token 重建连接");
+                    setSocketEpoch((e) => e + 1);
+                } else {
+                    console.warn("[数字孪生基站] Token 刷新失败，触发强制登出");
+                    window.dispatchEvent(new Event("AUTH_FORCE_LOGOUT"));
+                }
+            }).catch(() => {
+                console.warn("[数字孪生基站] Token 刷新异常，触发强制登出");
+                window.dispatchEvent(new Event("AUTH_FORCE_LOGOUT"));
+            }).finally(() => {
+                recoveryInProgressRef.current = false;
+            });
+        });
+
+        socket.on("reconnect_attempt", (attempt) => {
+            console.log(`[数字孪生基站] 第 ${attempt} 次重连尝试…`);
         });
 
         // 📡 监听 1：实时进出人员流水
@@ -169,6 +266,11 @@ function GlobalSocketListener() {
 
         return () => {
             window.removeEventListener("AUTH_FORCE_LOGOUT", handleForceLogout);
+            if (disconnectTimerRef.current) {
+                clearTimeout(disconnectTimerRef.current);
+                disconnectTimerRef.current = null;
+            }
+            toast.dismiss("socket-disconnect");
             socket.off(SOCKET_TELEMETRY_ANIMAL_ROOM_TAG_DELTA, onTelemetryTagDelta);
             socket.off(SOCKET_TELEMETRY_ANIMAL_ROOM_SNAPSHOT_FULL, onTelemetrySnapshotFull);
             socket.off(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
@@ -179,7 +281,7 @@ function GlobalSocketListener() {
             delete (window as any).__swipeAlertSocket;
             socket.disconnect();
         };
-    }, [addEvent, setConnected, setPieStats, queryClient]);
+    }, [shouldConnect, socketEpoch, addEvent, setConnected, setPieStats, queryClient]);
 
     return null; // 它是个幽灵基站，不需要渲染任何 UI
 }
@@ -203,9 +305,15 @@ function App() {
                 <DiagnosticErrorBoundary>
                     <RouterProvider router={router} />
                 </DiagnosticErrorBoundary>
-                <Toaster position="top-right" />
-                <AdminGlobalDynamicIslandLayer />
-                <ScanDelayPendingAlertSync />
+                {!window.location.hash.includes('/dashboard-preview') && (
+                  <Toaster position="top-right" containerStyle={{ zIndex: Z_INDEX.globalToast }} />
+                )}
+                {!window.location.hash.includes('/dashboard-preview') && (
+                  <AdminGlobalDynamicIslandLayer />
+                )}
+                {!window.location.hash.includes('/dashboard-preview') && (
+                  <ScanDelayPendingAlertSync />
+                )}
             </ThemeProvider>
         </QueryClientProvider>
     );

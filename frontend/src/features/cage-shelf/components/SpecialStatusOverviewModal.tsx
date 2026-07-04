@@ -105,7 +105,7 @@ export default function SpecialStatusOverviewModal({ open, onClose, apiFn, varia
               <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40" />
               暂无特殊状态笼位数据
               <br />
-              <span className="text-[11px]">请先通过定时管理页面执行全量扫描</span>
+              <span className="text-[11px]">请先通过定时管理页面执行「全量笼位数据同步」</span>
             </div>
           )}
           {!loading &&

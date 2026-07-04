@@ -1,4 +1,5 @@
 /** 手机版学生中心 — 壳组件：数据加载、Tab 切换、底部导航、WebSocket、实时提醒 */
+import "./mobile-student-shell.css";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Loader2, WifiOff, X } from "lucide-react";
@@ -16,6 +17,7 @@ import { hasMobileHtml5Privilege } from "@/features/auth/roleAccess";
 import { authStorage } from "@/features/auth/authStorage";
 import { useMobileSocket, mergeMobileUserNotify } from "./useMobileSocket";
 import { isFeedbackKind } from "./mobileAlertSplit";
+import { sortMobileAnnouncementsForDisplay } from "./mobileExemptAlertHelpers";
 import MobileHomeTab from "./MobileHomeTab";
 import MobileRoomsTab from "./MobileRoomsTab";
 import MobileMaterialTab from "./MobileMaterialTab";
@@ -34,7 +36,6 @@ import {
   MOBILE_SUBPAGE_TABS,
   MOBILE_TAB_TITLES,
   MOBILE_TOP_NAV_CSS,
-  MOBILE_TAB_BAR_TOTAL_CSS,
   type MobileShellTabKey,
   type MobileTabBarKey,
 } from "./mobileShellLayout";
@@ -113,13 +114,14 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
   const [presenceRefresh, setPresenceRefresh] = useState(0);
   const cageShelfRef = useRef<MobileCageShelfTabHandle>(null);
   const [cageShelfNavTitle, setCageShelfNavTitle] = useState<string | undefined>();
+  const prevTabRef = useRef<MobileShellTabKey>("home");
 
   const loadAlerts = useCallback(async () => {
     if (!token) {
       // JWT mode
       try {
         const resp = await loadJwtAlerts();
-        const ann = resp.announcements ?? resp.items ?? [];
+        const ann = sortMobileAnnouncementsForDisplay(resp.announcements ?? resp.items ?? []);
         const fb = resp.feedbacks ?? [];
         setAnnouncements(ann);
         setFeedbacks(fb);
@@ -129,7 +131,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
     // Token mode (original logic, unchanged)
     try {
       const resp = await fetchMobileAlerts(token);
-      const ann = resp.announcements ?? resp.items ?? [];
+      const ann = sortMobileAnnouncementsForDisplay(resp.announcements ?? resp.items ?? []);
       const fb = resp.feedbacks ?? [];
       setAnnouncements(ann);
       setFeedbacks(fb);
@@ -225,6 +227,16 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
     void load();
     void loadAlerts();
   }, [token, load, loadAlerts]);
+
+  /** 切回首页：静默刷新进出状态与公告，不卸载 Home Tab — 对齐小程序 onShow */
+  useEffect(() => {
+    const prev = prevTabRef.current;
+    prevTabRef.current = activeTab;
+    if (activeTab !== "home" || prev === "home") return;
+    setPresenceRefresh((n) => n + 1);
+    void loadAlerts();
+  }, [activeTab, loadAlerts]);
+
   useEffect(() => { if (lastAlert) setDismissedAlert(null); }, [lastAlert]);
 
   useEffect(() => {
@@ -284,7 +296,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
 
   return (
     <div
-      className="fixed inset-0 flex flex-col overflow-hidden"
+      className="mobile-student-shell fixed inset-0 flex flex-col overflow-hidden"
       style={{
         background: PAGE_BG,
         fontFamily:
@@ -338,13 +350,15 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         </div>
       )}
       <main
-        className="flex-1 min-h-0 overflow-hidden relative z-10"
+        className="flex-1 min-h-0 overflow-hidden"
         style={{
           paddingTop: isHome ? undefined : MOBILE_TOP_NAV_CSS,
-          paddingBottom: showTabBar ? MOBILE_TAB_BAR_TOTAL_CSS : undefined,
         }}
       >
-        {activeTab === "home" && (
+        <div
+          className="h-full min-h-0"
+          style={{ display: activeTab === "home" ? undefined : "none" }}
+        >
           <MobileHomeTab
             data={data}
             branding={branding}
@@ -353,6 +367,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             token={token}
             jwtMode={jwtMode}
             presenceRefresh={presenceRefresh}
+            homeActive={activeTab === "home"}
             announcements={announcements}
             feedbackCount={feedbacks.filter(f => !f.isRead).length}
             html5PrivilegeBypass={
@@ -362,7 +377,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             onOpenAnnouncements={openAnnouncements}
             onOpenFeedback={openFeedback}
           />
-        )}
+        </div>
         {activeTab === "rooms" && <MobileRoomsTab token={token!} jwtMode={jwtMode} />}
         {activeTab === "material" && <MobileMaterialTab token={token!} jwtMode={jwtMode} />}
         {activeTab === "records" && <MobileRecordsTab token={token!} jwtMode={jwtMode} />}
@@ -379,6 +394,9 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
             ref={cageShelfRef}
             token={token!}
             jwtMode={jwtMode}
+            html5PrivilegeBypass={
+              data.html5PrivilegeBypass === true || html5PrivilegeBypass
+            }
             onScreenChange={(_screen, shelfTitle) => setCageShelfNavTitle(shelfTitle)}
           />
         )}
@@ -403,6 +421,7 @@ export default function MobileStudentCenterPage({ token: tokenProp }: { token?: 
         }
         initialFocusKey={announcementFocusKey}
         token={token}
+        jwtMode={jwtMode}
         onNoticeSuppressed={handleNoticeSuppressed}
       />
       <MobileFeedbackPanel

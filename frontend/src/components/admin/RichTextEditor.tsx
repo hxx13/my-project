@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import toast from "react-hot-toast";
 import { FileText, Image as ImageIcon } from "lucide-react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import { NodeSelection } from "prosemirror-state";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import { TextStyle } from "@tiptap/extension-text-style";
@@ -13,6 +14,7 @@ import { cn } from "@/lib/utils";
 import {
   formatMaxWidthPercent,
   parseMaxWidthPercent,
+  parseWidthPercentFromStyle,
   resolveRichTextImageConfig,
   richTextImageConfigToCssVars,
   richTextImageHelpText,
@@ -49,6 +51,9 @@ const swatchBtnClass =
 const toolbarInputClass =
   "w-10 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-1 py-0.5 text-center text-xs text-[var(--app-color-text-primary)] disabled:opacity-40";
 
+const toolbarRangeClass =
+  "h-1.5 min-w-[72px] flex-1 cursor-pointer accent-[var(--app-color-accent-secondary)] disabled:cursor-not-allowed disabled:opacity-40";
+
 /** 保留 style 属性，便于图宽百分比写入 HTML；忽略 width/height 以免高度被锁死 */
 const RichTextImage = Image.extend({
   addAttributes() {
@@ -76,10 +81,75 @@ const RichTextImage = Image.extend({
   },
 });
 
+function countImagesInParent(doc: Editor["state"]["doc"], pos: number): number {
+  const parent = doc.resolve(pos).parent;
+  let imgCount = 0;
+  parent.forEach((child) => {
+    if (child.type.name === "image") imgCount += 1;
+  });
+  return imgCount;
+}
+
+function findFirstImageWidthPct(editor: Editor): number | null {
+  let found: number | null = null;
+  editor.state.doc.descendants((node) => {
+    if (found != null) return false;
+    if (node.type.name !== "image") return;
+    const pct = parseWidthPercentFromStyle(node.attrs.style);
+    if (pct != null) found = pct;
+  });
+  return found;
+}
+
+function readActiveImageStyle(editor: Editor): string | null | undefined {
+  if (editor.isActive("image")) {
+    return editor.getAttributes("image").style as string | undefined;
+  }
+  const { selection } = editor.state;
+  if (selection instanceof NodeSelection && selection.node.type.name === "image") {
+    return selection.node.attrs.style as string | undefined;
+  }
+  return undefined;
+}
+
+function hasActiveImageSelection(editor: Editor): boolean {
+  return readActiveImageStyle(editor) !== undefined;
+}
+
+/** 将工具栏图宽写入单图段落的 inline style（width %，可放大/缩小）；同行多图（rowMax≥2）由 flex 规则控制 */
+function applyImageWidthStyles(
+  editor: Editor,
+  style: string,
+  rowMax: number,
+): boolean {
+  if (editor.isDestroyed) return false;
+  const { tr } = editor.state;
+  let changed = false;
+
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== "image") return;
+    if (countImagesInParent(editor.state.doc, pos) > 1 && rowMax >= 2) return;
+    if (node.attrs.style === style) return;
+    tr.setNodeMarkup(pos, undefined, { ...node.attrs, style });
+    changed = true;
+  });
+
+  if (changed) editor.view.dispatch(tr);
+  return changed;
+}
+
 export function RichTextEditor({ value, onChange, disabled, className, maxWidth, rowMax }: Props) {
   const lastEmittedHtmlRef = useRef<string | null>(null);
   const mdFileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<Editor | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  const emitEditorHtml = useCallback((editor: Editor) => {
+    const html = editor.getHTML();
+    lastEmittedHtmlRef.current = html;
+    onChangeRef.current(html);
+  }, []);
 
   const initialImageLayout = useMemo(
     () => resolveRichTextImageConfig({ maxWidth, rowMax }),
@@ -112,6 +182,34 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
   const singleImageStyle = useCallback(() => {
     return richTextImageInlineStyle(formatMaxWidthPercent(imageWidthPctRef.current));
   }, []);
+
+  /** 滑块调整图宽：选中单图时仅改该图；未选中时批量改单图段落（并同步父级 HTML 以便保存） */
+  const applyWidthPct = useCallback(
+    (pct: number) => {
+      const editor = editorRef.current;
+      if (!editor || editor.isDestroyed || disabled) return;
+      const style = richTextImageInlineStyle(formatMaxWidthPercent(pct));
+      if (hasActiveImageSelection(editor)) {
+        editor.chain().focus().updateAttributes("image", { style }).run();
+        return;
+      }
+      if (applyImageWidthStyles(editor, style, imageRowMaxRef.current)) {
+        emitEditorHtml(editor);
+      }
+    },
+    [disabled, emitEditorHtml],
+  );
+
+  const onImageWidthSliderInput = useCallback(
+    (raw: string) => {
+      const n = Number.parseInt(raw, 10);
+      if (!Number.isFinite(n)) return;
+      const clamped = Math.min(100, Math.max(10, n));
+      setImageWidthPct(clamped);
+      applyWidthPct(clamped);
+    },
+    [applyWidthPct],
+  );
 
   const insertUploadedImages = useCallback(async (editor: Editor, files: File[]) => {
     const imgs = files.filter((f) => f.type.startsWith("image/"));
@@ -249,28 +347,22 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
     editor.setEditable(!disabled);
   }, [editor, disabled]);
 
-  /** 调整图宽 % 时同步单图段落的 inline style（同行横排多图由 flex 规则控制） */
+  /** 选中图片时，滑块回显该图已保存的 width % */
   useEffect(() => {
-    if (!editor || editor.isDestroyed) return;
-    const style = singleImageStyle();
-    const { tr } = editor.state;
-    let changed = false;
-
-    editor.state.doc.descendants((node, pos) => {
-      if (node.type.name !== "image") return;
-      const parent = editor.state.doc.resolve(pos).parent;
-      let imgCount = 0;
-      parent.forEach((child) => {
-        if (child.type.name === "image") imgCount += 1;
-      });
-      if (imgCount > 1 && imageRowMaxRef.current >= 2) return;
-      if (node.attrs.style === style) return;
-      tr.setNodeMarkup(pos, undefined, { ...node.attrs, style });
-      changed = true;
-    });
-
-    if (changed) editor.view.dispatch(tr);
-  }, [editor, imageWidthPct, singleImageStyle]);
+    if (!editor) return;
+    const syncSliderFromSelection = () => {
+      const style = readActiveImageStyle(editor);
+      if (style === undefined) return;
+      const pct = parseWidthPercentFromStyle(style);
+      if (pct != null && pct !== imageWidthPctRef.current) {
+        setImageWidthPct(pct);
+      }
+    };
+    editor.on("selectionUpdate", syncSliderFromSelection);
+    return () => {
+      editor.off("selectionUpdate", syncSliderFromSelection);
+    };
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) return;
@@ -285,14 +377,9 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
     }
     lastEmittedHtmlRef.current = null;
 
-    // 从正文中提取第一张图片的 max-width 百分比，同步到工具栏"图宽"输入框
-    // 避免切换不同公告/违规时工具栏仍显示上一次的宽度值
-    const match = incoming.match(/<img[^>]*style="[^"]*max-width:\s*(\d+)%/i);
-    if (match) {
-      const pct = parseMaxWidthPercent(match[1] + "%");
-      if (pct !== imageWidthPctRef.current) {
-        setImageWidthPct(pct);
-      }
+    const pctFromDoc = findFirstImageWidthPct(editor);
+    if (pctFromDoc != null && pctFromDoc !== imageWidthPctRef.current) {
+      setImageWidthPct(pctFromDoc);
     }
   }, [value, editor]);
 
@@ -350,7 +437,11 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
   return (
     <div
       ref={containerRef}
-      className={cn("page-help-rich-editor rich-text-content space-y-2", className)}
+      className={cn(
+        "page-help-rich-editor rich-text-content space-y-2",
+        imageRowMax >= 2 && "rich-text-multi-row",
+        className,
+      )}
       style={imageCssVars}
     >
       <div className="flex flex-col gap-1 rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-1">
@@ -396,23 +487,26 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
         </button>
         <input ref={mdFileInputRef} type="file" accept=".md,.markdown,.txt,text/plain" className="hidden" onChange={(e) => void onMarkdownFileChange(e)} />
           <span className="mx-0.5 h-4 w-px bg-[var(--app-color-border-default)] self-center" aria-hidden />
-          <label className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--app-color-text-tertiary)]">
-            图宽
+          <label className="inline-flex min-w-[148px] flex-1 items-center gap-2 text-[10px] font-medium text-[var(--app-color-text-tertiary)]">
+            <span className="shrink-0">图宽</span>
             <input
-              type="number"
+              type="range"
               min={10}
               max={100}
-              step={5}
+              step={1}
               disabled={disabled}
-              className={toolbarInputClass}
+              className={toolbarRangeClass}
               value={imageWidthPct}
-              title="单图最大宽度（%）"
-              onChange={(e) => {
-                const n = Number.parseInt(e.target.value, 10);
-                if (Number.isFinite(n)) setImageWidthPct(Math.min(100, Math.max(10, n)));
-              }}
+              title="单图宽度（%）；选中图片时仅调整该图，否则调整全部单图段落"
+              aria-valuemin={10}
+              aria-valuemax={100}
+              aria-valuenow={imageWidthPct}
+              aria-valuetext={`${imageWidthPct}%`}
+              onInput={(e) => onImageWidthSliderInput(e.currentTarget.value)}
             />
-            <span>%</span>
+            <span className="w-9 shrink-0 text-right tabular-nums text-[var(--app-color-text-secondary)]">
+              {imageWidthPct}%
+            </span>
           </label>
           <label className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--app-color-text-tertiary)]">
             同行
@@ -481,7 +575,7 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
       </div>
       <EditorContent
         editor={editor}
-        className="min-h-[220px] rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2 text-sm text-[var(--app-color-text-primary)]"
+        className="min-h-[220px] overflow-x-hidden rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2 text-sm text-[var(--app-color-text-primary)]"
       />
       <p className="text-[11px] leading-relaxed text-[var(--app-color-text-tertiary)]">
         {helpText} 点击图片可放大预览。

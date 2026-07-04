@@ -12,15 +12,19 @@ import { useMemo, useState } from "react";
 
 const LLM_CONFIG_ORDER = [
   "llm.enabled",
+  "llm.provider",
   "llm.base_url",
   "llm.model",
   "llm.model_fallback",
   "llm.max_tokens",
   "llm.temperature",
+  "llm.assistant.enabled",
+  "llm.assistant.max_tokens",
+  "llm.assistant.temperature",
+  "llm.assistant.prompt.archive",
   "llm.auto_insight",
   "llm.auto_insight_on_open",
   "llm.auto_insight_batch_limit",
-  "llm.api_key",
 ];
 
 function llmConfigSortRank(key: string): number {

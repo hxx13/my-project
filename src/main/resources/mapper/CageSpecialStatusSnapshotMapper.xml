@@ -81,6 +81,7 @@
                COUNT(*) AS count
         FROM cage_special_status_snapshot
         WHERE scan_batch_id = #{scanBatchId}
+          AND status_code != 'NORMAL'
         GROUP BY status_code, status_label
         ORDER BY COUNT(*) DESC
     </select>

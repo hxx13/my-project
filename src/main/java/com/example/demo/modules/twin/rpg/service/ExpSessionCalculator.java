@@ -142,6 +142,18 @@ public final class ExpSessionCalculator {
         return minutes * EXP_PER_MINUTE;
     }
 
+    /** 从流水行读取事件时间（兼容 create_time / event_time 别名） */
+    public static LocalDateTime parseRecordTimeFromRow(Map<String, Object> record) {
+        if (record == null) {
+            return null;
+        }
+        LocalDateTime t = parseRecordTime(record.get("create_time"));
+        if (t == null) {
+            t = parseRecordTime(record.get("event_time"));
+        }
+        return t;
+    }
+
     public static LocalDateTime parseRecordTime(Object obj) {
         return parseRecordTime(obj, FMT);
     }

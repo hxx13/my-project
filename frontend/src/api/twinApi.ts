@@ -611,6 +611,54 @@ export const runManualReaper = async () => {
     return res.data;
 };
 
+export interface AuditPendingPersonRow {
+    userId: string;
+    userName?: string;
+    entryTime?: string;
+    entryType?: string;
+    projectGroupName?: string;
+    roomId?: string;
+    roomName?: string;
+    hasMapping?: boolean;
+    cardNo?: string;
+    dahuaSeq?: string;
+    cardStatus?: string;
+    freezeExemptFlag?: number;
+    freezeExemptRoomIds?: string | null;
+    mappingUserName?: string;
+}
+
+export interface AuditFloorRow {
+    floor: string;
+    floorPersonCount?: number;
+    persons?: AuditPendingPersonRow[];
+    rooms?: Array<{
+        roomId?: string;
+        roomName?: string;
+        persons?: AuditPendingPersonRow[];
+    }>;
+}
+
+export interface AuditCampusRow {
+    campus: string;
+    floors: AuditFloorRow[];
+}
+
+export const fetchAuditPendingByFloor = async (): Promise<{ campuses: AuditCampusRow[] }> => {
+    const res = await authHttp.get(`/v1/twin/audit/pending-by-floor`);
+    return asData(res.data, { campuses: [] });
+};
+
+export const submitAuditManualExit = async (payload: {
+    userId: string;
+    userName?: string;
+    roomId?: string;
+    roomName?: string;
+}) => {
+    const res = await authHttp.post(`/v1/twin/audit/manual-exit`, payload);
+    return res.data;
+};
+
 export interface DahuaDepartmentRow {
     id: number;
     parentId?: number | null;

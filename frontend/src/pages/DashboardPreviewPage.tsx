@@ -1,200 +1,266 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import StarfieldCanvas from "@/features/dashboard-cosmos/StarfieldCanvas";
-import PulseSection from "@/features/dashboard-cosmos/PulseSection";
-import TideSection from "@/features/dashboard-cosmos/TideSection";
-import ResearchTaskSection from "@/features/dashboard-cosmos/ResearchTaskSection";
-import RankingsSection from "@/features/dashboard-cosmos/RankingsSection";
-import CodexSection from "@/features/dashboard-cosmos/CodexSection";
-import { useEventStore } from "@/store/useEventStore";
-import { ArrowLeft } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Lightfall } from '@/components/lightfall';
+import type { LightfallProps } from '@/components/lightfall';
+import { SplitText } from '@/components/split-text';
+import { ScrollReveal } from '@/components/scroll-reveal';
+import { DecryptedText } from '@/components/decrypted-text';
+import { TextType } from '@/components/text-type';
+import { SHSMU_LOGO_URL } from '@/constants/shsmuBranding';
+import { useScrollSnap } from '@/hooks/useScrollSnap';
+import { notifyLastSectionReached } from '@/features/dashboard-ops-wall/useAutoPageSwitch';
+import '@/features/dashboard-ops-wall/dashboardPreviewPage.css';
 
-const HEADER_H = 48;
+/* ═══════════════════════════════════════════
+   Dashboard Preview — Scroll Narrative
+   ═══════════════════════════════════════════ */
 
-const SECTIONS = [
-  { key: "pulse", label: "脉冲", color: "#06b6d4" },
-  { key: "tide", label: "潮汐", color: "#3b82f6" },
-  { key: "research", label: "科研", color: "#a78bfa" },
-  { key: "rankings", label: "圣殿", color: "#fbbf24" },
-  { key: "codex", label: "法典", color: "#a855f7" },
-] as const;
+const SECTION_COUNT = 5;
+const SECTION_LABELS = ['欢迎', '设施', '品种', '技术', '支撑'];
+const ZOOM_MIN = 1.0;
+const ZOOM_MAX = 2.5;
 
-const AUTO_ADVANCE_MS = 12_000;
-const RESUME_DELAY_MS = 8_000;
-const WEEKDAYS = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+const BASE_CONFIG: LightfallProps = {
+  colors: ['#A6C8FF', '#7B61FF', '#C084FC'],
+  backgroundColor: '#1E1B4B',
+  speed: 0.5, streakCount: 2, streakWidth: 1, streakLength: 1,
+  glow: 1, density: 0.6, twinkle: 1, backgroundGlow: 0.5, opacity: 1,
+  mouseInteraction: true, mouseStrength: 0.5, mouseRadius: 1, mouseDampening: 0.15,
+};
 
 export default function DashboardPreviewPage() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isManualRef = useRef(false);
-  const isConnected = useEventStore((s) => s.isConnected);
-  const navigate = useNavigate();
+  const { bindScroll, activeSection, scrollTop, scrollHeight, viewHeight, isSnapping } =
+    useScrollSnap(SECTION_COUNT, 0.4, 0.25, 400);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const [dateStr, setDateStr] = useState("");
+  const maxScroll = Math.max(1, scrollHeight - viewHeight);
+  const zoom = ZOOM_MIN + Math.max(0, Math.min(1, scrollTop / maxScroll)) * (ZOOM_MAX - ZOOM_MIN);
+  const lightfallConfig = useMemo(() => ({ ...BASE_CONFIG, zoom }), [zoom]);
+
+  const scrollToSection = useCallback((index: number) => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: index * el.clientHeight, behavior: 'smooth' });
+  }, []);
+
+  /* ── Auto-scroll page turning (stop at last section) ── */
+  // Section 2 (4 sentences × ~4s each ≈ 16s) needs time to finish typewriter cycle
+  const SCENE_DURATIONS = [4000, 4000, 20000, 4000, 0];
+  const [autoScrollPaused, setAutoScrollPaused] = useState(false);
+  const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [allTextDone, setAllTextDone] = useState(false);
+  const completedSentencesRef = useRef<Set<string>>(new Set());
+  const TOTAL_SENTENCES = 9; // scene 2: 4 sentences + scene 4: 5 sentences
+
+  const onSentenceDone = useCallback((sentence: string) => {
+    completedSentencesRef.current.add(sentence);
+    if (completedSentencesRef.current.size >= TOTAL_SENTENCES) {
+      setAllTextDone(true);
+    }
+  }, []);
+
+  // Reset on page mount
   useEffect(() => {
-    const tick = () => {
-      const n = new Date();
-      setDateStr(`${n.getFullYear()}年${n.getMonth() + 1}月${n.getDate()}日 ${WEEKDAYS[n.getDay()]} ${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}:${String(n.getSeconds()).padStart(2, "0")}`);
+    completedSentencesRef.current = new Set();
+    setAllTextDone(false);
+  }, []);
+
+  // Auto-advance to next section (stop at last)
+  useEffect(() => {
+    if (autoScrollPaused || activeSection >= SECTION_COUNT - 1) return;
+    const duration = SCENE_DURATIONS[activeSection] || 4000;
+    const timer = setTimeout(() => {
+      scrollToSection(activeSection + 1);
+    }, duration);
+    return () => clearTimeout(timer);
+  }, [activeSection, autoScrollPaused, scrollToSection]);
+
+  // Pause auto-scroll on user interaction, resume after 10s
+  const pauseAutoScroll = useCallback(() => {
+    setAutoScrollPaused(true);
+    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+    pauseTimerRef.current = setTimeout(() => setAutoScrollPaused(false), 10000);
+  }, []);
+
+  // Detect user scroll (non-snap) or dot nav click
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const onUserScroll = () => {
+      if (!isSnapping) pauseAutoScroll();
     };
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, []);
-
-  const scrollTo = useCallback((index: number) => {
-    const el = containerRef.current;
-    if (!el) return;
-    const children = el.children;
-    if (index < 0 || index >= children.length) return;
-    const target = children[index] as HTMLElement;
-    el.scrollTo({ top: target.offsetTop, behavior: "smooth" });
-  }, []);
-
-  const startAuto = useCallback(() => {
-    if (autoTimerRef.current) clearInterval(autoTimerRef.current);
-    autoTimerRef.current = setInterval(() => {
-      if (isManualRef.current) return;
-      setActiveIndex((prev) => {
-        const next = (prev + 1) % SECTIONS.length;
-        scrollTo(next);
-        return next;
-      });
-    }, AUTO_ADVANCE_MS);
-  }, [scrollTo]);
-
-  const pauseAuto = useCallback(() => {
-    isManualRef.current = true;
-    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-    resumeTimerRef.current = setTimeout(() => { isManualRef.current = false; }, RESUME_DELAY_MS);
-  }, []);
-
-  useEffect(() => { startAuto(); return () => { if (autoTimerRef.current) clearInterval(autoTimerRef.current); if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current); }; }, [startAuto]);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const handleScroll = () => {
-      const idx = Math.round(el.scrollTop / el.clientHeight);
-      if (idx !== activeIndex && idx >= 0 && idx < SECTIONS.length) setActiveIndex(idx);
+    el.addEventListener('wheel', onUserScroll, { passive: true });
+    el.addEventListener('touchstart', onUserScroll, { passive: true });
+    return () => {
+      el.removeEventListener('wheel', onUserScroll);
+      el.removeEventListener('touchstart', onUserScroll);
     };
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => el.removeEventListener("scroll", handleScroll);
-  }, [activeIndex]);
+  }, [isSnapping, pauseAutoScroll]);
 
+  // Cleanup pause timer on unmount
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const onWheel = () => pauseAuto();
-    const onTouch = () => pauseAuto();
-    el.addEventListener("wheel", onWheel, { passive: true });
-    el.addEventListener("touchstart", onTouch, { passive: true });
-    return () => { el.removeEventListener("wheel", onWheel); el.removeEventListener("touchstart", onTouch); };
-  }, [pauseAuto]);
+    return () => { if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current); };
+  }, []);
+
+  // Notify auto-page-switch when last section reached + text animations done
+  useEffect(() => {
+    if (activeSection === 4 && allTextDone) notifyLastSectionReached();
+  }, [activeSection, allTextDone]);
 
   return (
-    <>
-      {/* Global reset — prevent any body-level overflow */}
-      <style>{`
-        html, body, #root {
-          margin:0 !important; padding:0 !important;
-          width:100% !important; height:100% !important;
-          overflow:hidden !important;
-          background:#030712;
-        }
-        /* Force no horizontal scroll anywhere */
-        html { overflow-x:hidden !important; }
-        body { overflow-x:hidden !important; }
-        /* Dark scrollbar — Webkit */
-        .cosmos-scroll::-webkit-scrollbar { width:6px; height:6px; }
-        .cosmos-scroll::-webkit-scrollbar-track { background:rgba(255,255,255,0.02); border-radius:3px; }
-        .cosmos-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.10); border-radius:3px; }
-        .cosmos-scroll::-webkit-scrollbar-thumb:hover { background:rgba(255,255,255,0.18); }
-        .cosmos-scroll::-webkit-scrollbar-corner { background:transparent; }
-        /* Dark scrollbar — Firefox */
-        .cosmos-scroll { scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.10) rgba(255,255,255,0.02); }
-      `}</style>
+    <div className="dash-preview-root">
+      <div className="dash-preview-bg"><Lightfall {...lightfallConfig} /></div>
 
-      {/* Layer 0: Starfield background — fixed to viewport, deepest layer */}
-      <StarfieldCanvas />
+      <header className="dash-preview-header">
+        <img className="dash-preview-logo" src={SHSMU_LOGO_URL} alt="上海交通大学医学院" />
+      </header>
 
-      {/* Layer 1: Main viewport container */}
-      <div style={{
-        position: "fixed", inset: 0, zIndex: 1,
-        display: "flex", flexDirection: "column",
-        pointerEvents: "none", // let clicks pass through to header buttons etc.
-      }}>
-        {/* Header — takes pointer events */}
-        <header style={{
-          flexShrink: 0, height: HEADER_H, zIndex: 200,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 24px", pointerEvents: "auto",
-          background: "rgba(3,7,18,0.85)", backdropFilter: "blur(12px)",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
-        }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.55)", letterSpacing: 1, fontVariantNumeric: "tabular-nums" }}>
-            {dateStr}
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: isConnected ? "#22c55e" : "#ef4444", boxShadow: isConnected ? "0 0 6px #22c55e" : "0 0 6px #ef4444" }} />
-              <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.3)", letterSpacing: 1 }}>{isConnected ? "在线" : "离线"}</span>
-            </div>
-            <button onClick={() => navigate(-1)} style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)", fontSize: 12, fontWeight: 600, cursor: "pointer", letterSpacing: 1, transition: "all 0.2s" }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "rgba(255,255,255,0.5)"; }}
-            ><ArrowLeft size={14} />返回</button>
+      <nav className="dash-section-nav">
+        {SECTION_LABELS.map((label, i) => (
+          <button key={label} type="button"
+            className={`dash-section-nav__dot ${i === activeSection ? 'dash-section-nav__dot--active' : ''}`}
+            onClick={() => { scrollToSection(i); pauseAutoScroll(); }} title={label}>
+            <span className="dash-section-nav__mark" />
+            <span className="dash-section-nav__label">{label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <div id="dash-scroll-root"
+        ref={(el) => { scrollContainerRef.current = el; bindScroll(el); }}
+        className={`dash-scroll-root ${isSnapping ? 'dash-scroll-root--snapping' : ''}`}>
+
+        {/* ═══ Scene 0 — Welcome ═══ */}
+        <section className="dash-scene" data-scene={0}>
+          <div className="dash-scene__content dash-scene__content--hero">
+            <SplitText text="欢迎来到 实验动物科学部" tag="h1" className="dash-scene-headline"
+              delay={100} duration={0.6} ease="power3.out" splitType="chars"
+              from={{ opacity: 0, y: 40 }} to={{ opacity: 1, y: 0 }}
+              threshold={0.1} rootMargin="-100px" textAlign="center" />
+            <p className="dash-scene-subtitle">上海交通大学医学院 · 实验动物科学部</p>
           </div>
-        </header>
+        </section>
 
-        {/* Scroll area — locked to vertical only */}
-        <div
-          ref={containerRef}
-          className="cosmos-scroll"
-          style={{
-            flex: 1, minHeight: 0,
-            overflow: "hidden scroll",
-            overflowX: "hidden",
-            overflowY: "scroll",
-            overscrollBehavior: "contain",
-            scrollSnapType: "y mandatory",
-            scrollSnapStop: "always",
-            background: "transparent",
-            pointerEvents: "auto",
-            contain: "paint layout style",
-          }}
-        >
-          <PulseSection />
-          <TideSection />
-          <ResearchTaskSection />
-          <RankingsSection />
-          <CodexSection />
-        </div>
+        {/* ═══ Scene 1 — 设施规模 ═══ */}
+        <section className="dash-scene dash-scene--content-page" data-scene={1}>
+          <div className="dash-scene__content dash-scene__content--page">
+            <h2 className="dash-page-title">
+              <DecryptedText text="实验动物设施单体最大" speed={40} maxIterations={15} sequential
+                revealDirection="center" animateOn="view" useOriginalCharsOnly rootRef={scrollContainerRef} className="dash-decrypted" />
+            </h2>
+            <div className="dash-body-wide">
+              <ScrollReveal scrollContainerRef={scrollContainerRef}
+                containerClassName="dash-reveal-container" textClassName="dash-reveal-text"
+                baseOpacity={0.1} enableBlur blurStrength={4} baseRotation={1}
+                rotationEnd="top center" wordAnimationEnd="top center">
+                实验动物科学部占地面积约2482.72m²，建筑面积17602m²，地上5层，地下1层，设计笼位5.2万。第5层为华东地区唯一可从事非人灵长类实验的高等级生物安全设施（ABSL3）。
+              </ScrollReveal>
+            </div>
+            <div className="dash-stat-row">
+              <div className="dash-stat-chip">
+                <span className="dash-stat-chip__label">饲养体量</span>
+                <span className="dash-stat-chip__value">17,602m² · 5.2万笼</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ Scene 2 — 品种品系 ═══ */}
+        <section className="dash-scene dash-scene--content-page" data-scene={2}>
+          <div className="dash-scene__content dash-scene__content--page">
+            <h2 className="dash-page-title">
+              <DecryptedText text="动物品种品系最齐全" speed={40} maxIterations={12} sequential
+                revealDirection="center" animateOn="view" useOriginalCharsOnly rootRef={scrollContainerRef} className="dash-decrypted" />
+            </h2>
+            <div className="dash-typewriter">
+              <TextType
+                text={[
+                  '普通动物饲养品种：犬、猴、猪、兔、仓鼠、豚鼠、小鼠、大鼠',
+                  '特殊实验动物品种：裸鼹鼠、地松鼠等',
+                  '依托胚胎生物技术平台，保有2122个基因编辑动物品系',
+                  '教育部生物样本库项目重要组成部分',
+                ]}
+                typingSpeed={60} pauseDuration={2000} deletingSpeed={25} loop
+                showCursor cursorCharacter="▍" cursorBlinkDuration={0.4}
+                cursorClassName="dash-cursor" startOnVisible onSentenceComplete={onSentenceDone} rootRef={scrollContainerRef}
+              />
+            </div>
+            <div className="dash-stat-row">
+              <div className="dash-stat-chip">
+                <span className="dash-stat-chip__label">动物品种</span>
+                <span className="dash-stat-chip__value">10个品种 · 2122个品系</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ Scene 3 — 技术服务 ═══ */}
+        <section className="dash-scene dash-scene--content-page" data-scene={3}>
+          <div className="dash-scene__content dash-scene__content--page">
+            <h2 className="dash-page-title">
+              <DecryptedText text="技术服务资质最完善" speed={40} maxIterations={12} sequential
+                revealDirection="center" animateOn="view" useOriginalCharsOnly rootRef={scrollContainerRef} className="dash-decrypted" />
+            </h2>
+            <div className="dash-body-wide">
+              <ScrollReveal scrollContainerRef={scrollContainerRef}
+                containerClassName="dash-reveal-container" textClassName="dash-reveal-text"
+                baseOpacity={0.1} enableBlur blurStrength={4} baseRotation={1}
+                rotationEnd="top center" wordAnimationEnd="top center">
+                建设有实验动物代谢研究平台、实验动物影像技术平台等20多个实验动物研究平台，全国高校唯一同时拥有国内（CNAS）和国际（AAALAC）认可的实验动物技术服务平台。
+              </ScrollReveal>
+            </div>
+            <div className="dash-badge-row">
+              <span className="dash-badge">
+                <span className="dash-badge-text">国内 CNAS</span>
+              </span>
+              <span className="dash-badge">
+                <span className="dash-badge-text">国际 AAALAC 认可</span>
+              </span>
+            </div>
+            <div className="dash-stat-row">
+              <div className="dash-stat-chip">
+                <span className="dash-stat-chip__label">技术服务</span>
+                <span className="dash-stat-chip__value">100多项技术检测</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ═══ Scene 4 — 科研支撑 ═══ */}
+        <section className="dash-scene dash-scene--content-page" data-scene={4}>
+          <div className="dash-scene__content dash-scene__content--page">
+            <h2 className="dash-page-title">
+              <DecryptedText text="科研及产业最强支撑" speed={40} maxIterations={12} sequential
+                revealDirection="center" animateOn="view" useOriginalCharsOnly rootRef={scrollContainerRef} className="dash-decrypted" />
+            </h2>
+            <div className="dash-typewriter">
+              <TextType
+                text={[
+                  '坚持临床科研一体化，服务医学院本部、13家附属医院及校外企业共计302个项目',
+                  '2025年协助医学院系统获得920项国家自然科学基金',
+                  '连续十六年保持全国医学院校第一',
+                  '勇当全球生物医药创新主力军，协助张江加快打造原始创新策源地',
+                  '浦东打造世界级生物医药产业集群，为上海建设世界级科创中心贡献硬核力量',
+                ]}
+                typingSpeed={50} pauseDuration={2500} deletingSpeed={25} loop
+                showCursor cursorCharacter="▍" cursorBlinkDuration={0.4}
+                cursorClassName="dash-cursor" startOnVisible onSentenceComplete={onSentenceDone} rootRef={scrollContainerRef}
+              />
+            </div>
+            <div className="dash-stat-row">
+              <div className="dash-stat-chip">
+                <span className="dash-stat-chip__label">科研 / 产业支撑</span>
+                <span className="dash-stat-chip__value">302个课题组 · 920项国自然</span>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
-      {/* Layer 2: Nav dots — on top of everything */}
-      <nav style={{
-        position: "fixed", right: 16, top: "50%", transform: "translateY(-50%)",
-        zIndex: 300, display: "flex", flexDirection: "column", gap: 12, alignItems: "center",
-      }}>
-        {SECTIONS.map((s, i) => {
-          const isActive = i === activeIndex;
-          return (
-            <button
-              key={s.key} type="button" aria-label={s.label}
-              onClick={() => { pauseAuto(); setActiveIndex(i); scrollTo(i); }}
-              style={{
-                width: isActive ? 10 : 6, height: isActive ? 10 : 6,
-                borderRadius: "50%", border: "none",
-                background: isActive ? s.color : "rgba(255,255,255,0.2)",
-                boxShadow: isActive ? `0 0 10px ${s.color}` : "none",
-                cursor: "pointer", transition: "all 0.4s ease", padding: 0,
-              }}
-            />
-          );
-        })}
-      </nav>
-    </>
+      <div className="dash-scene-indicator">
+        <span className="dash-scene-indicator__label">
+          {SECTION_LABELS[activeSection]} · zoom {zoom.toFixed(1)}×
+        </span>
+      </div>
+    </div>
   );
 }

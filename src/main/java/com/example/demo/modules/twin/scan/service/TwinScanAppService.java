@@ -2,6 +2,7 @@ package com.example.demo.modules.twin.scan.service;
 
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.twin.scan.dto.ScanAnalyzeResponseDTO;
 import com.example.demo.modules.twin.scan.dto.scan.ScanUserInfoDTO;
 import com.example.demo.modules.twin.scan.dto.scan.ScanUserRpgDTO;
@@ -98,6 +99,9 @@ public class TwinScanAppService {
     private TwinScanDelayOptionMapper scanDelayOptionMapper;
 
     @Autowired
+    private UserMapper userMapper;
+
+    @Autowired
     private com.example.demo.modules.roommapping.mapper.RoomMappingRoomMapper roomMappingRoomMapper;
 
     @Autowired
@@ -155,6 +159,13 @@ public class TwinScanAppService {
                     }
                 }
             } else {
+                // 区分「已注册但无人员档案的系统/管理账号」与「完全未知的人员」
+                User sysUser = userMapper.findById(cleanInput);
+                if (sysUser != null) {
+                    result.setSuccess(false);
+                    result.setMessage("系统账号不支持扫码进出: " + cleanInput);
+                    return result;
+                }
                 result.setSuccess(false);
                 result.setMessage("未找到人员档案: " + cleanInput);
                 return result;

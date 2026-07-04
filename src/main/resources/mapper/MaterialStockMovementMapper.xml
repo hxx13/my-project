@@ -19,14 +19,19 @@
                m.applicant_user_id AS applicantUserId, m.remark,
                DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
                COALESCE(r.applicant_name, p.name) AS applicantName,
-               COALESCE(r.applicant_group, p.project_group_name) AS applicantGroup
+               COALESCE(r.applicant_group, p.project_group_name) AS applicantGroup,
+               rl.spec_snapshot AS specSnapshot
         FROM material_stock_movement m
         LEFT JOIN material_item i ON m.item_id = i.id
         LEFT JOIN material_request r ON m.request_id = r.id
+        LEFT JOIN material_request_line rl ON m.request_line_id = rl.id
         LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
         LEFT JOIN aro_personnel op ON m.operator_user_id = op.user_id
         LEFT JOIN sys_user op2 ON m.operator_user_id = op2.id
-        WHERE m.item_id = #{itemId}
+        WHERE 1=1
+        <if test="itemId != null and itemId > 0">
+            AND m.item_id = #{itemId}
+        </if>
         <if test="applicantGroup != null and applicantGroup != ''">
             AND (r.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup})
         </if>
@@ -37,7 +42,10 @@
         SELECT COUNT(1) FROM material_stock_movement m
         LEFT JOIN material_request r ON m.request_id = r.id
         LEFT JOIN aro_personnel p ON m.applicant_user_id = p.user_id
-        WHERE m.item_id = #{itemId}
+        WHERE 1=1
+        <if test="itemId != null and itemId > 0">
+            AND m.item_id = #{itemId}
+        </if>
         <if test="applicantGroup != null and applicantGroup != ''">
             AND (r.applicant_group = #{applicantGroup} OR p.project_group_name = #{applicantGroup})
         </if>

@@ -13,6 +13,7 @@ import {
 const EVENT_TYPES = Object.keys(EVENT_TYPE_LABELS);
 
 function eventColor(type: string): string {
+  if (type === "BASELINE_ESTABLISHED") return "bg-emerald-100 text-emerald-800 border-emerald-300";
   if (type.startsWith("BOX_")) return "bg-blue-100 text-blue-800 border-blue-300";
   if (type.startsWith("STATUS_")) return "bg-amber-100 text-amber-800 border-amber-300";
   if (type === "TYPE_CHANGED") return "bg-purple-100 text-purple-800 border-purple-300";
@@ -56,7 +57,7 @@ export default function AdminCageEventLogPage() {
           笼位事件日志
         </span>
       }
-      description="追踪笼盒移动、类型变更、特殊状态变化、归属变更等全生命周期事件。执行全量扫描后自动生成。"
+      description="追踪笼盒移动、类型变更、特殊状态变化、归属变更等全生命周期事件。执行「全量笼位数据同步」后自动生成。"
     >
       <div className="space-y-4">
         {/* Filter bar */}
@@ -122,7 +123,7 @@ export default function AdminCageEventLogPage() {
             <Clock className="h-8 w-8 mx-auto mb-2 opacity-40" />
             暂无事件日志
             <br />
-            <span className="text-[11px]">执行全量扫描后，系统会自动对比新旧快照生成事件</span>
+            <span className="text-[11px]">首次同步建立基线，第二次及之后自动 diff 生成变更事件</span>
           </div>
         )}
 

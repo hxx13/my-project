@@ -5,6 +5,7 @@ import { fetchAutomationLogs, type AutomationLogRow } from "@/api/twinApi";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { adminHintClass } from "@/features/admin/adminFormUi";
 import { detailTextToLines } from "@/utils/detailTextToLines";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
@@ -215,12 +216,11 @@ export default function AdminAutomationLogsPage() {
               </AdminButton>
             </div>
             <label className={`flex shrink-0 cursor-pointer items-center gap-1.5 self-end whitespace-nowrap pb-1 ${adminHintClass}`} title="含 ARO 穿甲同步、大屏排行榜刷新等高频定时任务">
-              <input
-                type="checkbox"
-                className="h-3.5 w-3.5 rounded border-neutral-300"
+              <AdminSwitchScaled
+                size="3.5"
                 checked={showPenetrationLogs}
-                onChange={(e) => {
-                  setShowPenetrationLogs(e.target.checked);
+                onChange={(checked) => {
+                  setShowPenetrationLogs(checked);
                   setPage(1);
                 }}
               />

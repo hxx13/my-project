@@ -31,6 +31,11 @@ export function setScanPopupSession(userId: string | null, scanKey: string | nul
   popupOpenedAt = popupUserId || popupScanKey ? Date.now() : 0;
 }
 
+/** 扫码会话是否仍进行中（含人脸验证阶段 activeResult 暂空但弹窗未真正关闭） */
+export function isScanPopupSessionActive(): boolean {
+  return Boolean(popupUserId || popupScanKey);
+}
+
 export function setScanExecutePending(userId: string | null) {
   executePendingUserId = userId ? normalizeKey(userId) : null;
 }

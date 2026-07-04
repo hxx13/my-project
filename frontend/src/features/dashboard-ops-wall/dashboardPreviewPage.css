@@ -1,0 +1,487 @@
+/* ═══════════════════════════════════════════
+   Dashboard Preview — Scroll Narrative
+   Lightfall WebGL × SplitText × Smart Snap
+   ═══════════════════════════════════════════ */
+
+/* ── Root ── */
+
+.dash-preview-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── WebGL background (fixed, behind everything) ── */
+
+.dash-preview-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+.dash-preview-bg .lightfall-container {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Fixed logo (top-left, always on top) ── */
+
+.dash-preview-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--z-sticky, 300);
+  padding: 1.25rem clamp(1rem, 3vw, 2.5rem);
+  pointer-events: none;
+}
+
+.dash-preview-logo {
+  display: block;
+  height: 4rem;
+  width: auto;
+  max-width: min(100%, 20rem);
+  object-fit: contain;
+  object-position: left;
+  filter: brightness(0) invert(1);
+  opacity: 0.92;
+}
+
+/* ── Scroll container ── */
+
+.dash-scroll-root {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dash-scroll-root::-webkit-scrollbar {
+  display: none;
+}
+
+.dash-scroll-root--snapping {
+  pointer-events: none;
+}
+
+/* ── Scene (full viewport section) ── */
+
+.dash-scene {
+  position: relative;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.dash-scene__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  pointer-events: none;
+}
+
+.dash-scene__content--hero {
+  gap: 1.5rem;
+}
+
+/* ── Hero headline ── */
+
+.dash-scene-headline {
+  font-size: clamp(2.5rem, 7vw, 5.5rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.35);
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.dash-scene-subtitle {
+  margin: 0;
+  font-size: clamp(1rem, 1.8vw, 1.35rem);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.6);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* ── Reveal scene layout ── */
+
+.dash-scene--reveal .dash-scene__content {
+  max-width: min(72ch, 90vw);
+  text-align: center;
+}
+
+.dash-scene__content--reveal {
+  gap: 2rem;
+}
+
+/* ── Scene number watermark ── */
+
+.dash-scene-number {
+  font-size: clamp(3rem, 8vw, 6rem);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.08);
+}
+
+/* ── ScrollReveal text ── */
+
+.scroll-reveal {
+  margin: 0;
+}
+
+.dash-reveal-container {
+  width: 100%;
+}
+
+.dash-reveal-text {
+  font-size: clamp(1.6rem, 4vw, 2.8rem);
+  line-height: 1.6;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
+  text-wrap: balance;
+}
+
+.dash-reveal-text .word {
+  display: inline-block;
+}
+
+/* ── Section dot nav (right side, fixed) ── */
+
+.dash-section-nav {
+  position: fixed;
+  top: 50%;
+  right: clamp(0.5rem, 2vw, 1.5rem);
+  z-index: var(--z-sticky, 300);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  transform: translateY(-50%);
+}
+
+.dash-section-nav__dot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--app-radius-pill, 9999px);
+  transition: background-color 220ms ease;
+}
+
+.dash-section-nav__dot:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dash-section-nav__dot--active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dash-section-nav__mark {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 220ms ease;
+}
+
+.dash-section-nav__dot--active .dash-section-nav__mark {
+  transform: scale(1.5);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.dash-section-nav__label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.35);
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: opacity 220ms ease,
+    max-width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 200ms ease;
+}
+
+.dash-section-nav__dot:hover .dash-section-nav__label,
+.dash-section-nav__dot--active .dash-section-nav__label {
+  opacity: 1;
+  max-width: 3rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ── Scene indicator (bottom-left) ── */
+
+.dash-scene-indicator {
+  position: fixed;
+  bottom: 1.5rem;
+  left: clamp(1rem, 3vw, 2.5rem);
+  z-index: var(--z-sticky, 300);
+  pointer-events: none;
+}
+
+.dash-scene-indicator__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Content pages (scenes 1-4) ── */
+
+.dash-scene--content-page .dash-scene__content {
+  max-width: min(80ch, 92vw);
+  text-align: center;
+}
+
+.dash-scene__content--page {
+  gap: 1.5rem;
+}
+
+.dash-page-title {
+  margin: 0;
+  font-size: clamp(2.25rem, 6vw, 4rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.92);
+  text-wrap: balance;
+}
+
+.dash-page-lead {
+  margin: 0;
+  font-size: clamp(1.15rem, 2.2vw, 1.6rem);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+  text-wrap: balance;
+}
+
+.dash-page-body {
+  margin: 0;
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.7;
+}
+
+.dash-page-footer {
+  margin: 0;
+  font-size: clamp(0.95rem, 1.6vw, 1.15rem);
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.7;
+}
+
+/* ── DecryptedText styling ── */
+
+.dash-decrypted {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dash-decrypted--dim {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.dash-decrypted--gold {
+  color: #fbbf24;
+  font-weight: 900;
+}
+
+.dash-decrypted--badge {
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 700;
+}
+
+/* ── Stat hero number ── */
+
+.dash-stat-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.dash-stat-hero__num {
+  font-size: clamp(3.5rem, 10vw, 7rem);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: #fbbf24;
+  text-shadow: 0 0 40px rgba(251, 191, 36, 0.3);
+}
+
+.dash-stat-hero__unit {
+  font-size: clamp(1rem, 1.8vw, 1.35rem);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ── Typewriter ── */
+
+.dash-typewriter {
+  margin-top: 0.5rem;
+}
+
+.text-type {
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  font-weight: 500;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.8);
+  display: block;
+  text-align: center;
+}
+
+.dash-cursor {
+  color: #fbbf24;
+  font-weight: 300;
+}
+
+/* ── Badge row ── */
+
+.dash-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.dash-badge {
+  padding: 0.5rem 1.5rem;
+  border-radius: var(--app-radius-pill, 9999px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(4px);
+}
+
+.dash-badge-text {
+  font-size: clamp(1rem, 1.8vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ── Wide body text ── */
+
+.dash-body-wide {
+  max-width: min(88ch, 94vw);
+  width: 100%;
+}
+
+.dash-body-wide .dash-reveal-text {
+  font-size: clamp(1.05rem, 2vw, 1.3rem);
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ── Stat chip row ── */
+
+.dash-stat-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+.dash-stat-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.6rem 1.5rem;
+  border-radius: var(--app-radius-container, 0.75rem);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(4px);
+}
+
+.dash-stat-chip__label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.dash-stat-chip__value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.8);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Lightfall container ── */
+
+.lightfall-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Auto-switch toggle ── */
+
+.auto-switch-toggle {
+  position: fixed;
+  bottom: 1.5rem;
+  right: clamp(1rem, 3vw, 2.5rem);
+  z-index: var(--z-sticky, 300);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--app-radius-pill, 9999px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: border-color 200ms ease, background 200ms ease;
+}
+
+.auto-switch-toggle:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.auto-switch-toggle__icon {
+  width: 1rem;
+  height: 1rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.auto-switch-toggle__label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Reduce motion ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-scene-headline {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+
+  .dash-scroll-root {
+    scroll-behavior: auto;
+  }
+}

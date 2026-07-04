@@ -100,12 +100,12 @@ export default function StudentLayout() {
       )}
 
       {/* Right content area */}
-      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
+      <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
         <StudentHeader onMenuClick={() => setMobileMenuOpen(true)} />
 
         <main
           className={cn(
-            "flex-1 overflow-auto p-6",
+            "min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6",
             isDark && "bg-transparent",
           )}
         >

@@ -21,6 +21,7 @@ import type { SupplyItem } from "@/api/domains/supplies.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import { webImageSrc } from "@/utils/mediaUrl";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 
@@ -238,13 +239,13 @@ export default function AdminSuppliesManagePage() {
             </label>
             {/* ── 规格配置 ── */}
             <label className="flex items-center gap-2 pt-2">
-              <input type="checkbox" checked={createSpecEnabled} onChange={e => setCreateSpecEnabled(e.target.checked)} className="rounded" />
+              <AdminSwitchScaled size="3.5" checked={createSpecEnabled} onChange={(checked) => setCreateSpecEnabled(checked)} />
               <span className="text-xs text-[var(--twin-body)]">启用规格</span>
             </label>
             {createSpecEnabled && (
               <div className="col-span-full w-full space-y-2 border border-[var(--twin-hairline)] rounded-twin-md p-3 bg-[var(--twin-canvas)]">
                 <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={createSpecRequired} onChange={e => setCreateSpecRequired(e.target.checked)} className="rounded" />
+                  <AdminSwitchScaled size="3.5" checked={createSpecRequired} onChange={(checked) => setCreateSpecRequired(checked)} />
                   <span className="text-xs text-[var(--twin-body)]">强制选择规格</span>
                 </label>
                 {createSpecDimensions.map((dim, di) => (
@@ -696,13 +697,13 @@ export default function AdminSuppliesManagePage() {
               </label>
               {/* ── 规格配置 ── */}
               <label className="flex items-center gap-2 col-span-2 pt-2">
-                <input type="checkbox" checked={editSpecEnabled} onChange={e => setEditSpecEnabled(e.target.checked)} className="rounded" />
+                <AdminSwitchScaled size="3.5" checked={editSpecEnabled} onChange={(checked) => setEditSpecEnabled(checked)} />
                 <span className="text-xs text-[var(--twin-body)]">启用规格</span>
               </label>
               {editSpecEnabled && (
                 <div className="col-span-2 space-y-2 border border-[var(--twin-hairline)] rounded-twin-md p-3 bg-[var(--twin-canvas)]">
                   <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={editSpecRequired} onChange={e => setEditSpecRequired(e.target.checked)} className="rounded" />
+                    <AdminSwitchScaled size="3.5" checked={editSpecRequired} onChange={(checked) => setEditSpecRequired(checked)} />
                     <span className="text-xs text-[var(--twin-body)]">强制选择规格</span>
                   </label>
                   {editSpecDimensions.map((dim, di) => (

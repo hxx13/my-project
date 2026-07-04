@@ -393,6 +393,14 @@ public class StudentMobileController {
         }
     }
 
+    @GetMapping("/cage-shelves/special-status-overview")
+    @Operation(summary = "特殊状态总览（JWT：学生按课题组过滤，教职工 STAFF+ 全量）")
+    public Result<Map<String, Object>> getCageSpecialStatusOverview(HttpServletRequest request) {
+        User user = requireCurrentUser(request);
+        boolean html5Privilege = StudentMobileHtml5Privilege.isPrivileged(user);
+        return Result.success(cageShelfService.getSpecialStatusOverview(user, html5Privilege));
+    }
+
     // ============================================================
     // Violations
     // ============================================================

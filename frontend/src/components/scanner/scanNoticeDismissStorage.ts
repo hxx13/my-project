@@ -1,6 +1,6 @@
 import type { NoticeKind } from "./scanPopupTheme";
 
-export const NOTICE_DISMISS_WAIT_SECONDS = 30;
+export const NOTICE_DISMISS_WAIT_SECONDS = 5;
 
 export type ScanNoticeAutoSuppressPayload = {
   targetUserId: string;

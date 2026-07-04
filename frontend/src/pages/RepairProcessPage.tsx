@@ -16,6 +16,7 @@ import { uploadSingleImage } from "@/api/domains/upload.api";
 import { WorkorderImageThumb } from "@/components/WorkorderImageThumb";
 import { WorkorderNotificationReadButton } from "@/components/WorkorderNotificationReadButton";
 import { useWorkorderUnreadFlags } from "@/features/notification/useWorkorderUnreadFlags";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 import EmptyState from "@/components/ui/EmptyState";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
@@ -233,12 +234,12 @@ export default function RepairProcessPage() {
               <div key={row.id} className="flex items-center justify-between rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm">
                 <span className="text-[var(--twin-body)]">{row.location}（{row.status}）</span>
                 <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
+                  <AdminSwitchScaled
+                    size="sm"
                     checked={selectedRecycleIds.includes(row.id)}
-                    onChange={(e) =>
+                    onChange={(checked) =>
                       setSelectedRecycleIds((prev) =>
-                        e.target.checked ? [...prev, row.id] : prev.filter((id) => id !== row.id)
+                        checked ? [...prev, row.id] : prev.filter((id) => id !== row.id)
                       )
                     }
                   />

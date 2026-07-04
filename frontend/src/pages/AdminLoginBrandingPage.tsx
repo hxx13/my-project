@@ -6,6 +6,7 @@ import {
   putAdminLoginBranding,
   uploadAdminLoginBrandingImage,
 } from "@/api/domains/siteAdmin.api";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 
 function parseUrlLines(text: string): string[] {
   return text
@@ -108,12 +109,7 @@ export default function AdminLoginBrandingPage() {
           <p className="text-xs text-[var(--twin-mute)]">关闭后登录页不再切换背景图（仍保留底部装饰与主题文案）。</p>
         </div>
         <label className="inline-flex cursor-pointer items-center gap-2 self-start sm:self-auto">
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded-twin-sm border-[var(--twin-hairline)]"
-            checked={heroCarouselEnabled}
-            onChange={(e) => setHeroCarouselEnabled(e.target.checked)}
-          />
+          <AdminSwitchScaled size="sm" checked={heroCarouselEnabled} onChange={setHeroCarouselEnabled} />
           <span className="text-sm text-[var(--twin-body)]">启用背景轮播</span>
         </label>
       </div>

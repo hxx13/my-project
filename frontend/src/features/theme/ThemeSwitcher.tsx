@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { createPortal } from "react-dom";
 import { useTheme } from "./ThemeProvider";
 import { Sun, Moon, Sparkles, Clock, ChevronDown } from "lucide-react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_LIGHT_END,
@@ -185,12 +186,7 @@ export function ThemeSwitcher({ className }: { className?: string }) {
                 </button>
 
                 <label className="flex cursor-pointer items-center gap-2 rounded-[var(--app-radius-element)] px-2 py-1.5 text-xs text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]">
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5 rounded border-[var(--app-color-border-default)]"
-                    checked={autoScheduleEnabled}
-                    onChange={(e) => setAutoScheduleEnabled(e.target.checked)}
-                  />
+                  <AdminSwitchScaled size="3.5" checked={autoScheduleEnabled} onChange={setAutoScheduleEnabled} />
                   <span className="min-w-0 flex-1 leading-snug">
                     定时自动切换
                     <span className="block text-[10px] text-[var(--app-color-text-tertiary)]">

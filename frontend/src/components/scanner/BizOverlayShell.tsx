@@ -133,7 +133,7 @@ export function BizOverlayShell({ userId, scanUser, title, onCancel }: BizOverla
                         userId={userId}
                         scanUser={scanUser}
                         pin=""
-                        onDone={close}
+                        onDone={handleBack}
                         onError={(msg) => console.error(`[${selected.id}]`, msg)}
                       />
                     )}

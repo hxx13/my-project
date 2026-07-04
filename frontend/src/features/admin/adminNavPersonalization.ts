@@ -1,6 +1,10 @@
 import type { AdminCommandPaletteItem } from "@/features/admin/buildAdminNavModel";
 import type { AdminSidebarNavGroup, AdminSidebarNavItem } from "@/features/admin/buildAdminNavModel";
-import { buildFriendsNavSidebarItem, isAdminAreaPath, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import {
+  buildFriendsNavSidebarItem,
+  isStaffNavPersonalizationPath,
+  normalizeAdminPath,
+} from "@/features/admin/buildAdminNavModel";
 import {
   defaultMiniPreferences,
   fetchMiniPreferences,
@@ -201,7 +205,7 @@ export function readAdminNavStars(): string[] {
 /** 记录最近访问的后台路径（仅 pathname，不含 query） */
 export function appendAdminNavRecent(pathname: string): void {
   const p = normalizeAdminPath(pathname);
-  if (!isAdminAreaPath(p) || p === "/admin") return;
+  if (!isStaffNavPersonalizationPath(p) || p === "/admin") return;
   try {
     const prev = readAdminNavRecent().filter((x) => x !== p);
     const next = [p, ...prev].slice(0, RECENT_MAX);
@@ -216,7 +220,7 @@ export function appendAdminNavRecent(pathname: string): void {
 /** @returns 收藏后是否为「已收藏」 */
 export function toggleAdminNavStar(pathname: string): boolean {
   const p = normalizeAdminPath(pathname);
-  if (!isAdminAreaPath(p)) return false;
+  if (!isStaffNavPersonalizationPath(p)) return false;
   try {
     const set = new Set(readAdminNavStars());
     const was = set.has(p);
@@ -246,7 +250,7 @@ export function readAdminNavLock(): string | null {
 /** 切换锁定状态；同一时间仅允许锁定一个页面。返回是否已锁定。 */
 export function toggleAdminNavLock(pathname: string): boolean {
   const p = normalizeAdminPath(pathname);
-  if (!isAdminAreaPath(p)) return false;
+  if (!isStaffNavPersonalizationPath(p)) return false;
   try {
     const current = readAdminNavLock();
     if (current === p) {

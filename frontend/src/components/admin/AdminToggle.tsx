@@ -1,3 +1,5 @@
+import { useId } from "react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { cn } from "@/lib/utils";
 
 export type AdminToggleProps = {
@@ -11,11 +13,11 @@ export type AdminToggleProps = {
   description?: string;
   disabled?: boolean;
   className?: string;
+  id?: string;
 };
 
 /**
- * Admin toggle/switch component following the Bento design system.
- * Uses --app-color-* semantic tokens for all colors.
+ * Admin toggle with label — wraps AdminSwitch (iOS-style).
  */
 export function AdminToggle({
   checked,
@@ -24,48 +26,40 @@ export function AdminToggle({
   description,
   disabled = false,
   className,
+  id,
 }: AdminToggleProps) {
+  const autoId = useId();
+  const switchId = id ?? autoId;
+
   return (
-    <label
+    <div
       className={cn(
-        "inline-flex cursor-pointer items-center gap-3",
-        disabled && "cursor-not-allowed opacity-50",
+        "inline-flex items-center gap-3",
+        disabled && "opacity-50",
         className,
       )}
     >
-      <div className="relative">
-        <input
-          type="checkbox"
-          className="peer sr-only"
-          checked={checked}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <div
-          className={cn(
-            "h-5 w-9 rounded-full border-2 transition-colors duration-150",
-            checked
-              ? "border-[var(--app-color-accent)] bg-[var(--app-color-accent)]"
-              : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)]",
-          )}
-        />
-        <div
-          className={cn(
-            "absolute left-0.5 top-0.5 h-3.5 w-3.5 rounded-full bg-[var(--color-white)] shadow-sm transition-transform duration-150",
-            checked && "translate-x-4",
-          )}
-        />
-      </div>
-      <div className="flex flex-col">
-        <span className="text-sm font-medium text-[var(--app-color-text-primary)] select-none">
+      <AdminSwitchScaled
+        id={switchId}
+        size="sm"
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+      />
+      <label
+        htmlFor={switchId}
+        className={cn(
+          "flex flex-col",
+          disabled ? "cursor-not-allowed" : "cursor-pointer",
+        )}
+      >
+        <span className="select-none text-sm font-medium text-[var(--app-color-text-primary)]">
           {label}
         </span>
         {description ? (
-          <span className="text-xs text-[var(--app-color-text-tertiary)]">
-            {description}
-          </span>
+          <span className="text-xs text-[var(--app-color-text-tertiary)]">{description}</span>
         ) : null}
-      </div>
-    </label>
+      </label>
+    </div>
   );
 }

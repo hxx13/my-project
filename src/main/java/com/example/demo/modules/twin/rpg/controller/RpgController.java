@@ -40,8 +40,14 @@ public class RpgController {
     // 💥 重算全量历史经验：逐日对账 aro_access_log → 写入 twin_exp_record + 更新 aro_personnel
     @GetMapping("/recalculate-all")
     @Operation(summary = "重算全量历史经验（逐日对账→写入流水→更新全员档案）")
-    public Map<String, Object> recalculateAll() {
-        return twinExpReconcileService.reconcileAllHistorical();
+    public Result<Map<String, Object>> recalculateAll() {
+        return Result.success(twinExpReconcileService.reconcileAllHistorical());
+    }
+
+    @PostMapping("/reconcile-catch-up")
+    @Operation(summary = "增量补漏经验（从已有流水最大业务日继续对账，不清空全表）")
+    public Result<Map<String, Object>> reconcileCatchUp() {
+        return Result.success(twinExpReconcileService.reconcileCatchUp());
     }
 
     // 暴露给前端的"全量同步人员库"核弹按钮接口

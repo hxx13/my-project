@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import toast from "react-hot-toast";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import type { PurchaseOrderRecord } from "@/api/domains/purchase.api";
@@ -91,10 +92,10 @@ export function WorkOrderInlineDetail({
               </div>
               {isAdmin && claimDetail.status === "PENDING" ? (
                 <label className="flex items-center gap-1 text-xs">
-                  <input
-                    type="checkbox"
+                  <AdminSwitchScaled
+                    size="3.5"
                     checked={claimGrantMap[l.id] === true}
-                    onChange={(e) => setClaimGrantMap((m) => ({ ...m, [l.id]: e.target.checked }))}
+                    onChange={(checked) => setClaimGrantMap((m) => ({ ...m, [l.id]: checked }))}
                   />
                   发放
                 </label>

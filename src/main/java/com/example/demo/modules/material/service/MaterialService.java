@@ -871,6 +871,13 @@ public class MaterialService {
         if (finalApproved) {
             // 确认扣减锁定库存并同步出库（审核通过即出库，不再单独确认出库）
             List<MaterialRequestLine> approveLines = requestLineMapper.selectByRequestId(id);
+            Set<Long> stockItemIds = new LinkedHashSet<>();
+            for (MaterialRequestLine line : approveLines) {
+                if (line.getItemId() != null) stockItemIds.add(line.getItemId());
+            }
+            for (Long stockItemId : stockItemIds) {
+                itemMapper.selectByIdForUpdate(stockItemId);
+            }
             for (MaterialRequestLine line : approveLines) {
                 MaterialItem item = itemMapper.selectById(line.getItemId());
                 if (item != null && ("LIMITED".equals(item.getStockMode()) || "QUANTIFIED".equals(item.getStockMode()))) {
@@ -885,6 +892,12 @@ public class MaterialService {
     /** 审核通过后自动出库：写库存流水并置 FULFILLED（库存已在申领预占时扣减，此处不再 updateStock） */
     private void fulfillAllLinesOnApprove(String requestId, User operator, MaterialRequest request) {
         List<MaterialRequestLine> lines = requestLineMapper.selectByRequestId(requestId);
+        Map<Long, Integer> batchRemainingByItem = new HashMap<>();
+        for (MaterialRequestLine line : lines) {
+            int qty = line.getQty() != null ? line.getQty() : 0;
+            if (qty <= 0) continue;
+            batchRemainingByItem.merge(line.getItemId(), qty, Integer::sum);
+        }
         int outboundLines = 0;
         List<String> itemNames = new ArrayList<>();
         for (MaterialRequestLine line : lines) {
@@ -895,7 +908,7 @@ public class MaterialService {
             if (item != null && org.springframework.util.StringUtils.hasText(item.getName())) {
                 itemNames.add(item.getName().trim());
             }
-            int stockAfter = item != null && item.getStockQty() != null ? item.getStockQty() : 0;
+            int stockAfter = resolveOutboundMovementStockAfter(item, line.getItemId(), qty, batchRemainingByItem);
             MaterialStockMovement m = new MaterialStockMovement();
             m.setItemId(line.getItemId());
             m.setMovementType("OUTBOUND");
@@ -1052,16 +1065,84 @@ public class MaterialService {
 
     // ==================== 库存流水审计 ====================
 
+    /**
+     * 申领出库流水的 stock_after：库存已在提交时 lockStock 扣减，fulfill 时 stock_qty 不再变化。
+     * 需叠加其他申领仍锁定量 + 本单同物品后续行，得到该笔出库记账后的库存快照。
+     */
+    private int resolveOutboundMovementStockAfter(MaterialItem item, Long itemId, int outboundQty,
+                                                  Map<Long, Integer> batchRemainingByItem) {
+        int currentStock = item != null && item.getStockQty() != null ? item.getStockQty() : 0;
+        int lockedQty = item != null && item.getLockedQty() != null ? item.getLockedQty() : 0;
+        int remainingInBatch = batchRemainingByItem.getOrDefault(itemId, outboundQty);
+        int remainingAfterThis = remainingInBatch - outboundQty;
+        batchRemainingByItem.put(itemId, remainingAfterThis);
+        return currentStock + lockedQty + remainingAfterThis;
+    }
+
+    private Map<Long, Integer> loadCurrentStockByItemIds(Collection<Long> itemIds) {
+        Map<Long, Integer> stocks = new HashMap<>();
+        if (itemIds == null) return stocks;
+        for (Long itemId : itemIds) {
+            if (itemId == null || itemId <= 0) continue;
+            MaterialItem item = itemMapper.selectById(itemId);
+            stocks.put(itemId, item != null && item.getStockQty() != null ? item.getStockQty() : 0);
+        }
+        return stocks;
+    }
+
+    /**
+     * 从当前库存锚点倒推各笔流水 stock_after，修正历史出库快照写入错误（并发 fulfill 读同一 stock_qty）。
+     */
+    private void recomputeMovementStockAfter(List<MaterialStockMovementView> movements,
+                                             Map<Long, Integer> currentStockByItemId) {
+        if (movements == null || movements.isEmpty() || currentStockByItemId == null || currentStockByItemId.isEmpty()) {
+            return;
+        }
+        Map<Long, List<MaterialStockMovementView>> byItem = new HashMap<>();
+        for (MaterialStockMovementView movement : movements) {
+            if (movement == null || movement.getItemId() == null) continue;
+            byItem.computeIfAbsent(movement.getItemId(), k -> new ArrayList<>()).add(movement);
+        }
+        for (Map.Entry<Long, List<MaterialStockMovementView>> entry : byItem.entrySet()) {
+            Integer currentStock = currentStockByItemId.get(entry.getKey());
+            if (currentStock == null) continue;
+            List<MaterialStockMovementView> sorted = new ArrayList<>(entry.getValue());
+            sorted.sort((a, b) -> {
+                String ta = a.getCreatedAt() != null ? a.getCreatedAt() : "";
+                String tb = b.getCreatedAt() != null ? b.getCreatedAt() : "";
+                int cmp = tb.compareTo(ta);
+                if (cmp != 0) return cmp;
+                long idA = a.getId() != null ? a.getId() : 0L;
+                long idB = b.getId() != null ? b.getId() : 0L;
+                return Long.compare(idB, idA);
+            });
+            int running = currentStock;
+            for (MaterialStockMovementView movement : sorted) {
+                movement.setStockAfter(running);
+                running -= movement.getQty() != null ? movement.getQty() : 0;
+            }
+        }
+    }
+
     public Result<Map<String, Object>> listItemStockMovements(Long itemId, String applicantGroup, int page, int size) {
+        Long queryItemId = (itemId != null && itemId > 0) ? itemId : null;
         int offset = (page - 1) * size;
-        List<MaterialStockMovementView> views = stockMovementMapper.selectViewsByItemId(itemId, offset, size, applicantGroup);
+        List<MaterialStockMovementView> views = stockMovementMapper.selectViewsByItemId(queryItemId, offset, size, applicantGroup);
         for (MaterialStockMovementView v : views) {
             if (v.getCreatedAt() != null) {
                 v.setCreatedAt(com.example.demo.common.time.WallClockDisplayFormat.fromJdbcValue(v.getCreatedAt()));
             }
             enrichMovementApplicant(v);
         }
-        int total = stockMovementMapper.countViewsByItemId(itemId, applicantGroup);
+        Set<Long> itemIds = views.stream()
+                .map(MaterialStockMovementView::getItemId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (queryItemId != null) {
+            itemIds.add(queryItemId);
+        }
+        recomputeMovementStockAfter(views, loadCurrentStockByItemIds(itemIds));
+        int total = stockMovementMapper.countViewsByItemId(queryItemId, applicantGroup);
         Map<String, Object> result = new HashMap<>();
         result.put("data", views);
         result.put("total", total);
@@ -1224,19 +1305,27 @@ public class MaterialService {
      * 按物品来去流水导出数据：与 Web 预览 buildItemFlowRows 逻辑一致。
      */
     public List<MaterialItemFlowExportRow> collectItemFlowExportRows(Long itemId, String from, String to, String applicantGroup) {
-        if (itemId == null || itemId <= 0) return List.of();
+        Long queryItemId = (itemId != null && itemId > 0) ? itemId : null;
         String fromDay = trimDay(from);
         String toDay = trimDay(to);
 
-        List<MaterialStockMovementView> movements = stockMovementMapper.selectViewsByItemId(itemId, 0, 500, applicantGroup);
+        List<MaterialStockMovementView> movements = stockMovementMapper.selectViewsByItemId(queryItemId, 0, 500, applicantGroup);
         for (MaterialStockMovementView v : movements) {
             if (v.getCreatedAt() != null) {
                 v.setCreatedAt(com.example.demo.common.time.WallClockDisplayFormat.fromJdbcValue(v.getCreatedAt()));
             }
             enrichMovementApplicant(v);
         }
+        Set<Long> stockItemIds = movements.stream()
+                .map(MaterialStockMovementView::getItemId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (queryItemId != null) {
+            stockItemIds.add(queryItemId);
+        }
+        recomputeMovementStockAfter(movements, loadCurrentStockByItemIds(stockItemIds));
 
-        List<Map<String, Object>> claimMaps = requestMapper.selectClaimLinesByItemId(itemId, fromDay, toDay, applicantGroup, 0, 500);
+        List<Map<String, Object>> claimMaps = requestMapper.selectClaimLinesByItemId(queryItemId, fromDay, toDay, applicantGroup, 0, 500);
         for (Map<String, Object> row : claimMaps) {
             com.example.demo.common.time.WallClockDisplayFormat.normalizeMapDateTimeKeys(row, "createdAt", "fulfilledAt");
             String userId = row.get("userId") != null ? String.valueOf(row.get("userId")) : "";
@@ -1262,6 +1351,7 @@ public class MaterialService {
             row.setTime(displayTime(m.getCreatedAt()));
             row.setEventType(movementTypeZh(type));
             row.setItemName(displayCell(m.getItemName()));
+            row.setSpec(formatSpecLabelDisplay(m.getSpecSnapshot()));
             row.setQty(movementQtyDisplay(type, m.getQty()));
             row.setStockAfter(m.getStockAfter() != null ? String.valueOf(m.getStockAfter()) : "无");
             row.setApplicantName(displayCell(m.getApplicantName()));
@@ -1286,6 +1376,7 @@ public class MaterialService {
             row.setTime(displayTime(outboundTime));
             row.setEventType("出库");
             row.setItemName(displayCell(c.get("itemName") != null ? String.valueOf(c.get("itemName")) : null));
+            row.setSpec(formatSpecLabelDisplay(c.get("specSnapshot") != null ? String.valueOf(c.get("specSnapshot")) : null));
             row.setQty("-" + fulfilled);
             row.setStockAfter("无");
             row.setApplicantName(displayCell(c.get("applicantName") != null ? String.valueOf(c.get("applicantName")) : null));
@@ -1327,13 +1418,15 @@ public class MaterialService {
     }
 
     private static boolean dateInRangeDay(String v, String from, String to) {
-        if (!StringUtils.hasText(v) || !StringUtils.hasText(from) || !StringUtils.hasText(to)) return false;
+        if (!StringUtils.hasText(v)) return false;
+        if (!StringUtils.hasText(from) || !StringUtils.hasText(to)) return true;
         String d = v.length() >= 10 ? v.substring(0, 10) : v;
         return d.compareTo(from) >= 0 && d.compareTo(to) <= 0;
     }
 
     private static boolean dateInRangeDayFromDateTime(LocalDateTime dt, String from, String to) {
-        if (dt == null || !StringUtils.hasText(from) || !StringUtils.hasText(to)) return false;
+        if (dt == null) return false;
+        if (!StringUtils.hasText(from) || !StringUtils.hasText(to)) return true;
         return dateInRangeDay(dt.toLocalDate().toString(), from, to);
     }
 
@@ -1344,6 +1437,9 @@ public class MaterialService {
 
     public static String buildAuditExportFilename(String label, String from, String to) {
         String base = sanitizeExportFilenamePart(label);
+        if (!StringUtils.hasText(from) && !StringUtils.hasText(to)) {
+            return base + "-全部时间.xlsx";
+        }
         String f = StringUtils.hasText(from) ? from.trim() : "start";
         String t = StringUtils.hasText(to) ? to.trim() : "end";
         return base + "-" + f + "_" + t + ".xlsx";
@@ -1408,6 +1504,26 @@ public class MaterialService {
         return t;
     }
 
+    /** 规格快照 JSON → 展示文案（与前端 formatSpecLabel 一致） */
+    private static String formatSpecLabelDisplay(String specSnapshot) {
+        if (!StringUtils.hasText(specSnapshot)) return "无";
+        String raw = specSnapshot.trim();
+        if (!raw.startsWith("{")) return displayCell(raw);
+        try {
+            com.alibaba.fastjson2.JSONObject obj = com.alibaba.fastjson2.JSON.parseObject(raw);
+            if (obj == null || obj.isEmpty()) return "无";
+            List<String> parts = new ArrayList<>();
+            for (Object val : obj.values()) {
+                if (val == null) continue;
+                String vs = String.valueOf(val).trim();
+                if (!vs.isEmpty()) parts.add(vs);
+            }
+            return parts.isEmpty() ? "无" : String.join("·", parts);
+        } catch (Exception e) {
+            return displayCell(raw);
+        }
+    }
+
     private static int toInt(Object v) {
         if (v instanceof Number n) return n.intValue();
         try {
@@ -1427,8 +1543,9 @@ public class MaterialService {
 
     public Result<Map<String, Object>> listItemClaimLines(Long itemId, String from, String to,
                                                           String applicantGroup, int page, int size) {
+        Long queryItemId = (itemId != null && itemId > 0) ? itemId : null;
         int offset = (page - 1) * size;
-        List<Map<String, Object>> rows = requestMapper.selectClaimLinesByItemId(itemId, from, to, applicantGroup, offset, size);
+        List<Map<String, Object>> rows = requestMapper.selectClaimLinesByItemId(queryItemId, from, to, applicantGroup, offset, size);
         for (Map<String, Object> row : rows) {
             com.example.demo.common.time.WallClockDisplayFormat.normalizeMapDateTimeKeys(
                     row, "createdAt", "fulfilledAt");
@@ -1440,7 +1557,7 @@ public class MaterialService {
                 row.put("applicantGroup", resolveApplicantGroup(userId, null));
             }
         }
-        int total = requestMapper.countClaimLinesByItemId(itemId, from, to, applicantGroup);
+        int total = requestMapper.countClaimLinesByItemId(queryItemId, from, to, applicantGroup);
         Map<String, Object> result = new HashMap<>();
         result.put("data", rows);
         result.put("total", total);

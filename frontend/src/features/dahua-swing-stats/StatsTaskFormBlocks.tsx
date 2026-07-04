@@ -1,4 +1,5 @@
 import { useMemo, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { labelForChannelRow, normalizeChannelCode } from "@/utils/dahuaChannelUtils";
 import type { DahuaDepartmentRow } from "@/api/twinApi";
 import { OPEN_TYPE_OPTIONS } from "@/features/access-audit/AccessRecordFilterBar";
@@ -26,7 +27,7 @@ export function StatsTaskNameEnabled({
       </label>
       {!hideEnabled ? (
         <label className="flex items-center gap-2">
-          <input type="checkbox" checked={form.enabled === 1} onChange={(e) => setForm({ ...form, enabled: e.target.checked ? 1 : 0 })} />
+          <AdminSwitchScaled size="md" checked={form.enabled === 1} onChange={(checked) => setForm({ ...form, enabled: checked ? 1 : 0 })} />
           {enabledHint}
         </label>
       ) : null}
@@ -201,8 +202,8 @@ export function StatsTaskDahuaFilters({ ed, deptRadioName }: { ed: Editor; deptR
             const checked = ed.form.channelCodes.includes(code);
             return (
               <label key={code} className="flex items-center gap-2 px-1 py-0.5 hover:bg-slate-50">
-                <input
-                  type="checkbox"
+                <AdminSwitchScaled
+                  size="3.5"
                   checked={checked}
                   onChange={() => {
                     if (!checked) {

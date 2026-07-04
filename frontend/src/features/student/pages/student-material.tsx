@@ -115,6 +115,20 @@ export default function StudentMaterialPage() {
     return Array.from(grouped.values());
   }, [cart, items]);
 
+  /** 确认弹窗用扁平列表，避免嵌套 map 导致序号计算错误（如 groupIdx+1+entryIdx+1） */
+  const confirmLines = useMemo(
+    () =>
+      cartItems.flatMap((group) =>
+        group.entries.map((entry) => ({
+          key: entry.key,
+          item: group.item,
+          qty: entry.qty,
+          specLabel: entry.specLabel,
+        })),
+      ),
+    [cartItems],
+  );
+
   function updateCartQty(key: string, delta: number, maxStock?: number) {
     if (!cart) return;
     const next = { ...cart };
@@ -139,14 +153,20 @@ export default function StudentMaterialPage() {
         };
       });
     const group = resolveMaterialApplicantGroupForStudentSession();
-    await createRequest.mutateAsync({ lines, applicantGroup: group });
-    saveCart.mutate({}); // 清空申领物品栏
-    navigate("/student/material/requests");
+    try {
+      const data = await createRequest.mutateAsync({ lines, applicantGroup: group });
+      const count = Array.isArray(data) ? data.length : 1;
+      saveCart.mutate({}); // 清空申领物品栏，保存后仅合并购物车，禁止整表 load — post-save-no-full-refresh.mdc
+      toast.success(`已提交 ${count} 张申领单`);
+      navigate("/student/material/requests");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "提交失败");
+    }
   }
 
   return (
-    <div className="flex h-full bg-[var(--student-canvas)]">
-      <aside className="w-[200px] shrink-0 border-r border-[var(--student-hairline)] bg-[var(--student-canvas)] p-3 space-y-1 overflow-y-auto">
+    <div className="flex h-full min-h-0 bg-[var(--student-canvas)]">
+      <aside className="w-[200px] shrink-0 min-h-0 overflow-y-auto overscroll-y-contain border-r border-[var(--student-hairline)] bg-[var(--student-canvas)] p-3 space-y-1">
         <button
           onClick={() => setActiveCategoryId(undefined)}
           className={cn(
@@ -174,9 +194,9 @@ export default function StudentMaterialPage() {
         ))}
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* 标题栏：左侧返回+标题，右侧操作入口（对齐教职工领用页布局） */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--student-hairline)] bg-[var(--student-surface)]">
+        <div className="flex shrink-0 items-center justify-between px-5 py-3 border-b border-[var(--student-hairline)] bg-[var(--student-surface)]">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => navigate(-1)}
@@ -208,7 +228,7 @@ export default function StudentMaterialPage() {
         </div>
 
         {/* 搜索栏（对齐教职工领用页搜索框） */}
-        <div className="px-5 py-2 bg-[var(--student-surface)] border-b border-[var(--student-hairline)]">
+        <div className="shrink-0 px-5 py-2 bg-[var(--student-surface)] border-b border-[var(--student-hairline)]">
           <input
             type="text"
             value={searchKeyword}
@@ -218,7 +238,7 @@ export default function StudentMaterialPage() {
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-4">
           {itemsLoading ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -256,7 +276,7 @@ export default function StudentMaterialPage() {
 
         {/* 需求建议（受开关控制） */}
         {demandEntryVisible && (
-          <div className="p-4 border-t border-[var(--student-hairline)]">
+          <div className="shrink-0 p-4 border-t border-[var(--student-hairline)]">
             {!showDemandForm ? (
               <button
                 onClick={() => setShowDemandForm(true)}
@@ -311,8 +331,8 @@ export default function StudentMaterialPage() {
       </main>
 
       {showCart && (
-        <aside className="w-[320px] shrink-0 border-l border-[var(--student-hairline)] bg-[var(--student-surface)] flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--student-hairline)]">
+        <aside className="flex w-[320px] min-h-0 shrink-0 flex-col border-l border-[var(--student-hairline)] bg-[var(--student-surface)]">
+          <div className="flex shrink-0 items-center justify-between px-4 py-3 border-b border-[var(--student-hairline)]">
             <div className="flex items-center gap-2">
               <h3 className="text-[15px] font-bold text-[var(--student-ink)]">申领物品栏</h3>
               {cartCount > 0 && (
@@ -329,7 +349,7 @@ export default function StudentMaterialPage() {
               <X className="size-4" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-3 space-y-2">
             {cartItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
                 <Package className="size-10 text-[var(--student-mute)]/30 mb-3" />
@@ -417,68 +437,73 @@ export default function StudentMaterialPage() {
           <DialogDescription>请核对以下物品，提交后将进入审核流程</DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[40vh] overflow-y-auto space-y-2 my-3">
-          {cartItems.map((group) =>
-            group.entries.map((entry) => (
-              <div
-                key={entry.key}
-                className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--student-canvas-soft)]"
-              >
-                <div className="size-9 shrink-0 rounded-md bg-[var(--student-canvas-soft)] flex items-center justify-center text-sm font-bold text-[var(--student-primary)]/40">
-                  {group.item.name?.charAt(0) || "物"}
+        <div className="min-h-0 max-h-[40vh] overflow-y-auto overscroll-y-contain space-y-2">
+          {confirmLines.map((line, index) => (
+            <div
+              key={line.key}
+              className="flex items-center gap-3 rounded-lg bg-[var(--student-canvas-soft)] p-2.5"
+            >
+              {line.item.coverUrl ? (
+                <img
+                  src={webImageSrc(line.item.coverUrl) || line.item.coverUrl}
+                  alt=""
+                  className="size-9 shrink-0 rounded-md border border-[var(--student-hairline)] object-cover"
+                />
+              ) : (
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[var(--student-surface)] text-sm font-bold tabular-nums text-[var(--student-primary)]">
+                  {index + 1}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-semibold text-[var(--student-ink)] truncate">
-                    {group.item.name}
-                  </p>
-                  <p className="text-[11px] text-[var(--student-mute)]">
-                    {entry.specLabel || "默认"}
-                  </p>
-                </div>
-                <span className="text-[13px] font-semibold text-[var(--student-ink)] shrink-0">
-                  ×{entry.qty}
-                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-semibold text-[var(--student-ink)]">
+                  {line.item.name}
+                </p>
+                <p className="text-[11px] text-[var(--student-mute)]">
+                  {line.specLabel || "默认"}
+                </p>
               </div>
-            ))
-          )}
+              <span className="shrink-0 text-[13px] font-semibold tabular-nums text-[var(--student-ink)]">
+                ×{line.qty}
+              </span>
+            </div>
+          ))}
         </div>
 
-        <div className="flex items-center justify-between py-2 border-t border-[var(--student-hairline)]">
+        <DialogFooter className="justify-between">
           <span className="text-[13px] text-[var(--student-mute)]">
             合计{" "}
-            <strong className="text-[var(--student-ink)] text-[15px]">{cartCount} 件</strong>
+            <strong className="text-[15px] text-[var(--student-ink)]">{cartCount} 件</strong>
           </span>
-        </div>
-
-        <DialogFooter>
-          <button
-            type="button"
-            onClick={() => setConfirmOpen(false)}
-            className="px-4 py-2 rounded-lg border border-[var(--student-hairline)] text-[13px] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)] transition-colors"
-          >
-            取消
-          </button>
-          <button
-            type="button"
-            onClick={async () => {
-              setConfirmOpen(false);
-              await handleSubmit();
-            }}
-            disabled={createRequest.isPending}
-            className="px-5 py-2 rounded-lg bg-[var(--student-primary)] text-white text-[13px] font-semibold disabled:opacity-50 flex items-center gap-2 transition-opacity"
-          >
-            {createRequest.isPending ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                提交中…
-              </>
-            ) : (
-              <>
-                <Send className="size-4" />
-                确认提交
-              </>
-            )}
-          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setConfirmOpen(false)}
+              className="rounded-lg border border-[var(--student-hairline)] px-4 py-2 text-[13px] text-[var(--student-body)] transition-colors hover:bg-[var(--student-canvas-soft)]"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                setConfirmOpen(false);
+                await handleSubmit();
+              }}
+              disabled={createRequest.isPending}
+              className="flex items-center gap-2 rounded-lg bg-[var(--student-primary)] px-5 py-2 text-[13px] font-semibold text-white transition-opacity disabled:opacity-50"
+            >
+              {createRequest.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  提交中…
+                </>
+              ) : (
+                <>
+                  <Send className="size-4" />
+                  确认提交
+                </>
+              )}
+            </button>
+          </div>
         </DialogFooter>
       </Dialog>
     </div>

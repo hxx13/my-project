@@ -25,7 +25,7 @@ function forceLogout() {
     }
 }
 
-async function doRefresh(): Promise<string | null> {
+export async function doRefresh(): Promise<string | null> {
     const oldToken = authStorage.getToken();
     if (!oldToken) return null;
     try {

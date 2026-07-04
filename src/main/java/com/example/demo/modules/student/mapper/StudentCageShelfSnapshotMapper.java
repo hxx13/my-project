@@ -42,4 +42,7 @@ public interface StudentCageShelfSnapshotMapper {
 
     /** Count any existing snapshots refreshed by this user (for first-access detection) */
     int countByRefreshedBy(@Param("userId") String userId);
+
+    /** Get cage type counts (animalCageType → count) per shelveId for latest batch */
+    List<Map<String, Object>> selectCageTypeCountsByShelveIds(@Param("shelveIds") List<String> shelveIds);
 }

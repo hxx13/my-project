@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryValueRollupMapper">
+
+    <resultMap id="RollupMap" type="com.example.demo.modules.telemetry.entity.TelemetryValueRollupRow">
+        <id column="id" property="id"/>
+        <result column="bucket_start" property="bucketStart"/>
+        <result column="bucket_sec" property="bucketSec"/>
+        <result column="variable_name" property="variableName"/>
+        <result column="min_value" property="minValue"/>
+        <result column="max_value" property="maxValue"/>
+        <result column="avg_value" property="avgValue"/>
+        <result column="sample_count" property="sampleCount"/>
+    </resultMap>
+
+    <insert id="upsertBatch">
+        INSERT INTO telemetry_value_rollup (
+            bucket_start, bucket_sec, variable_name,
+            min_value, max_value, avg_value, sample_count
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.bucketStart}, #{item.bucketSec}, #{item.variableName},
+            #{item.minValue}, #{item.maxValue}, #{item.avgValue}, #{item.sampleCount})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            min_value = LEAST(min_value, VALUES(min_value)),
+            max_value = GREATEST(max_value, VALUES(max_value)),
+            avg_value = (avg_value * sample_count + VALUES(avg_value) * VALUES(sample_count))
+                / (sample_count + VALUES(sample_count)),
+            sample_count = sample_count + VALUES(sample_count)
+    </insert>
+
+    <select id="selectSeriesAsc" resultMap="RollupMap">
+        SELECT id, bucket_start, bucket_sec, variable_name,
+               min_value, max_value, avg_value, sample_count
+        FROM telemetry_value_rollup
+        WHERE variable_name = #{variableName}
+          AND bucket_sec = #{bucketSec}
+        <if test="from != null">
+            AND bucket_start &gt;= #{from}
+        </if>
+        <if test="to != null">
+            AND bucket_start &lt;= #{to}
+        </if>
+        ORDER BY bucket_start ASC
+    </select>
+
+    <select id="selectMaxBucketStart" resultType="java.time.LocalDateTime">
+        SELECT MAX(bucket_start) FROM telemetry_value_rollup
+        WHERE variable_name = #{variableName} AND bucket_sec = #{bucketSec}
+    </select>
+
+    <delete id="deleteOlderThan">
+        DELETE FROM telemetry_value_rollup WHERE bucket_start &lt; #{cutoff}
+    </delete>
+</mapper>

@@ -84,4 +84,10 @@ public interface TwinExpRecordMapper {
 
     /** 删除截止日期前的经验流水 */
     int deleteBeforeCutoff(@Param("cutoffStart") String cutoffStart);
+
+    /** 已有经验流水的最大业务日（yyyy-MM-dd），无记录时返回 null */
+    String selectMaxEventDate(@Param("cutoffStart") String cutoffStart);
+
+    /** 已有经验流水覆盖的业务日列表（升序） */
+    List<String> getDistinctEventDates(@Param("cutoffStart") String cutoffStart);
 }

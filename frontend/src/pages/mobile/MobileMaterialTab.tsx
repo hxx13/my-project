@@ -1,6 +1,7 @@
 /** 手机版 — 申领 Tab（布局对齐小程序 studentMaterial，数据走学生中心 token API） */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, WifiOff, ChevronLeft } from "lucide-react";
+import { Loader2, WifiOff, ChevronLeft, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 import {
   fetchMobileMaterials,
@@ -17,15 +18,21 @@ import {
   buildCartLines,
   cartTotalQty,
   decorateMaterialItems,
+  enrichWithCartQty,
   formatMaterialTime,
+  loadPersistedCart,
   maxQtyForItem,
+  persistCart,
   reconcileCartWithStock,
   requestStatusText,
-  type DecoratedMaterialItem,
   type CartLine,
 } from "./utils/mobileMaterialHelpers";
-
-const CART_BAR_H = 54;
+import { parseSpecCartKey } from "./utils/mobileSpecHelpers";
+import { MaterialSpecPickControl } from "@/components/material/MaterialSpecPickerSheet";
+import { MobileMaterialQtyStepper } from "@/components/material/MobileMaterialQtyStepper";
+import { SplitSidebarScrollLayout } from "@/components/layout/ScrollFillLayout";
+import { MobileMaterialCategoryRail } from "./components/MobileMaterialCategoryRail";
+import { MobileMaterialCartBar } from "./components/MobileMaterialCartBar";
 
 /* ---- localStorage 购物车（学生中心 token / JWT） ---- */
 const JWT_CART_KEY = "mobile_material_cart_jwt";
@@ -35,90 +42,16 @@ function cartStorageKey(token: string, jwtMode?: boolean) {
   return `mobile_material_cart_${token.slice(0, 8)}`;
 }
 
-function loadCart(token: string, jwtMode?: boolean): Record<number, number> {
-  try {
-    const raw = localStorage.getItem(cartStorageKey(token, jwtMode));
-    if (!raw) return {};
-    const o = JSON.parse(raw) as Record<string, number>;
-    const cart: Record<number, number> = {};
-    for (const [k, v] of Object.entries(o)) {
-      const id = Number(k);
-      const qty = Number(v);
-      if (Number.isFinite(id) && id > 0 && Number.isFinite(qty) && qty > 0) {
-        cart[id] = Math.min(Math.floor(qty), 999);
-      }
-    }
-    return cart;
-  } catch {
-    return {};
-  }
+function loadCart(token: string, jwtMode?: boolean): Record<string, number> {
+  return loadPersistedCart(cartStorageKey(token, jwtMode));
 }
 
-function persistCart(token: string, cart: Record<number, number>, jwtMode?: boolean) {
-  localStorage.setItem(cartStorageKey(token, jwtMode), JSON.stringify(cart));
+function persistCartForTab(token: string, cart: Record<string, number>, jwtMode?: boolean) {
+  persistCart(cartStorageKey(token, jwtMode), cart);
 }
 
 function clearCartStorage(token: string, jwtMode?: boolean) {
   localStorage.removeItem(cartStorageKey(token, jwtMode));
-}
-
-/* ---- 步进器（对齐小程序 step-inline） ---- */
-function QtyStepper({
-  qty,
-  max,
-  onAdd,
-  onDec,
-  onQtyBlur,
-  compact,
-}: {
-  qty: number;
-  max: number;
-  onAdd: () => void;
-  onDec: () => void;
-  onQtyBlur: (raw: string) => void;
-  compact?: boolean;
-}) {
-  const btnCls = compact ? "w-6 h-6 text-sm" : "w-7 h-7 text-base";
-  const inputCls = compact ? "w-[34px] h-6 text-xs" : "w-[38px] h-6 text-xs";
-  return (
-    <div
-      className="flex items-center shrink-0 overflow-hidden rounded-lg"
-      style={{ border: "1px solid #dcdee0", background: "#fff" }}
-    >
-      <button
-        type="button"
-        onClick={onDec}
-        disabled={qty <= 0}
-        className={`${btnCls} flex items-center justify-center font-medium`}
-        style={{
-          color: "#323233",
-          opacity: qty <= 0 ? 0.35 : 1,
-        }}
-      >
-        −
-      </button>
-      <input
-        type="number"
-        className={`${inputCls} text-center font-semibold border-x`}
-        style={{
-          color: "#323233",
-          background: "#f7f8fa",
-          borderColor: "#ebecef",
-        }}
-        value={qty}
-        onChange={(e) => onQtyBlur(e.target.value)}
-        onBlur={(e) => onQtyBlur(e.target.value)}
-      />
-      <button
-        type="button"
-        onClick={onAdd}
-        className={`${btnCls} flex items-center justify-center font-medium`}
-        style={{ color: "#fff", background: "#1989fa" }}
-      >
-        +
-      </button>
-    </div>
-  );
 }
 
 function mapRequestRow(r: MaterialRequest) {
@@ -153,7 +86,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
 
   const [activeCat, setActiveCat] = useState<"all" | number>("all");
   const [searchKeyword, setSearchKeyword] = useState("");
-  const [cart, setCart] = useState<Record<number, number>>({});
+  const [cart, setCart] = useState<Record<string, number>>({});
 
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -176,7 +109,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
         const decorated = decorateMaterialItems(d.items ?? []);
         const local = loadCart(token!, jwtMode);
         const reconciled = reconcileCartWithStock(local, decorated);
-        if (reconciled !== local) persistCart(token!, reconciled, jwtMode);
+        if (reconciled !== local) persistCartForTab(token!, reconciled, jwtMode);
         setCart(reconciled);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "加载失败"))
@@ -201,13 +134,16 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
 
   const filteredItems = useMemo(() => {
     const kw = searchKeyword.trim().toLowerCase();
-    if (!kw) return categoryItems;
-    return categoryItems.filter((it) => {
-      const name = String(it.name || "").toLowerCase();
-      const sub = String(it.subtitle || "").toLowerCase();
-      return name.includes(kw) || sub.includes(kw);
-    });
-  }, [categoryItems, searchKeyword]);
+    let list = categoryItems;
+    if (kw) {
+      list = categoryItems.filter((it) => {
+        const name = String(it.name || "").toLowerCase();
+        const sub = String(it.subtitle || "").toLowerCase();
+        return name.includes(kw) || sub.includes(kw);
+      });
+    }
+    return enrichWithCartQty(list, cart);
+  }, [categoryItems, searchKeyword, cart]);
 
   const cartCount = cartTotalQty(cart);
   const cartLines = useMemo(
@@ -225,36 +161,42 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
   }, [myRequestsRaw, requestStatusFilter]);
 
   const syncCart = useCallback(
-    (next: Record<number, number>) => {
-      persistCart(token, next, jwtMode);
+    (next: Record<string, number>) => {
+      persistCartForTab(token, next, jwtMode);
       setCart(next);
     },
     [token, jwtMode],
   );
 
-  const addCart = (id: number) => {
-    const item = allDecorated.find((x) => x.id === id);
+  const addCartKey = (key: string) => {
+    const parsed = parseSpecCartKey(key);
+    const item = allDecorated.find((x) => x.id === parsed.itemId);
     const max = maxQtyForItem(item);
     if (max <= 0) {
       toast.error("暂无库存");
       return;
     }
-    const cur = cart[id] || 0;
-    syncCart({ ...cart, [id]: Math.min(cur + 1, max) });
+    const cur = cart[key] || 0;
+    syncCart({ ...cart, [key]: Math.min(cur + 1, max) });
   };
 
-  const decCart = (id: number) => {
-    const cur = cart[id] || 0;
+  const decCartKey = (key: string) => {
+    const cur = cart[key] || 0;
     if (cur <= 0) return;
     const next = { ...cart };
     const nv = cur - 1;
-    if (nv <= 0) delete next[id];
-    else next[id] = nv;
+    if (nv <= 0) delete next[key];
+    else next[key] = nv;
     syncCart(next);
   };
 
-  const onQtyBlur = (id: number, raw: string) => {
-    const item = allDecorated.find((x) => x.id === id);
+  const addCart = (id: number) => addCartKey(String(id));
+
+  const decCart = (id: number) => decCartKey(String(id));
+
+  const onQtyBlur = (key: string, raw: string) => {
+    const parsed = parseSpecCartKey(key);
+    const item = allDecorated.find((x) => x.id === parsed.itemId);
     const max = maxQtyForItem(item);
     if (max <= 0) {
       toast.error("暂无库存");
@@ -264,13 +206,13 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
     const num = Number(trimmed);
     const next = { ...cart };
     if (!trimmed || Number.isNaN(num) || num <= 0) {
-      delete next[id];
+      delete next[key];
       syncCart(next);
       return;
     }
     const v = Math.min(Math.floor(num), max);
     if (num > max) toast.error(`最多 ${max}`);
-    next[id] = v;
+    next[key] = v;
     syncCart(next);
   };
 
@@ -298,7 +240,16 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
     if (submitting) return;
     const lines = Object.entries(cart)
       .filter(([, qty]) => qty > 0)
-      .map(([itemId, qty]) => ({ itemId: Number(itemId), qty }));
+      .map(([key, qty]) => {
+        const parsed = parseSpecCartKey(key);
+        return {
+          itemId: parsed.itemId,
+          qty,
+          specSnapshot: parsed.specSnapshot
+            ? JSON.stringify(parsed.specSnapshot)
+            : undefined,
+        };
+      });
     if (!lines.length) {
       toast.error("请选择物品");
       return;
@@ -362,22 +313,21 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="size-6 animate-spin" style={{ color: "#94a3b8" }} />
+      <div className="flex h-full items-center justify-center bg-[var(--student-canvas)]">
+        <Loader2 className="size-6 animate-spin text-[var(--student-mute)] motion-reduce:animate-none" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-3">
-        <WifiOff className="size-8" style={{ color: "#c8c9cc" }} />
-        <p className="text-xs" style={{ color: "#969799" }}>{error}</p>
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-[var(--student-canvas)]">
+        <WifiOff className="size-8 text-[var(--student-mute)]" />
+        <p className="text-xs text-[var(--student-mute)]">{error}</p>
         <button
           type="button"
           onClick={load}
-          className="rounded-full px-4 py-1.5 text-xs font-medium text-white"
-          style={{ background: "#ac1736" }}
+          className="rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-4 py-2 text-xs font-medium text-[var(--student-primary-foreground)] hover:bg-[var(--student-primary-hover)] active:bg-[var(--student-primary-pressed)]"
         >
           重试
         </button>
@@ -387,45 +337,26 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
 
   return (
     <>
-      <div
-        className="flex flex-col relative z-10 h-full"
-        style={{ background: "#f4f5f7" }}
-      >
+      <div className="flex h-full min-h-0 flex-col bg-[var(--student-canvas)]">
         {/* 顶栏：搜索 + 我的记录 */}
-        <div
-          className="shrink-0 flex items-center justify-between gap-2 px-3.5 py-2"
-          style={{ background: "#fff", borderBottom: "1px solid #ebecef" }}
-        >
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--student-hairline)] bg-[var(--student-surface)] px-3 py-1.5">
           <input
             type="search"
             placeholder="搜索物品"
             value={searchKeyword}
             onChange={(e) => setSearchKeyword(e.target.value)}
-            className="flex-1 min-w-0 h-[30px] px-2.5 text-xs rounded-full border"
-            style={{
-              borderColor: "#e6e8eb",
-              background: "#f7f8fa",
-              color: "#323233",
-            }}
+            className="h-8 min-w-0 flex-1 rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-2.5 text-xs text-[var(--student-ink)] placeholder:text-[var(--student-mute)] focus:border-[var(--student-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--student-primary-muted)]"
           />
           <button
             type="button"
             onClick={() => setShowRequests(true)}
-            className="relative shrink-0 text-xs px-3 py-1.5 rounded-full"
-            style={{
-              color: "#576b95",
-              background: "#f0f2f5",
-              border: "1px solid #e6e8eb",
-            }}
+            className="relative shrink-0 rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-2.5 py-1 text-[11px] text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)]"
           >
             我的记录
             {myRequestsRaw.some((r) => String(r.status).toUpperCase() === "FULFILLED") && (
               <span
-                className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 text-[10px] font-bold text-white rounded-full text-center leading-4"
-                style={{
-                  background: "linear-gradient(135deg, #3d9eff, #1989fa)",
-                  border: "1px solid #fff",
-                }}
+                className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-[var(--student-radius-sm)] bg-[var(--student-danger)] px-1 text-[10px] font-bold leading-none text-white"
+                aria-hidden
               >
                 !
               </span>
@@ -434,255 +365,181 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
         </div>
 
         {/* 分类 + 物品列表 */}
-        <div className="flex flex-1 min-h-0">
-          <div
-            className="shrink-0 overflow-y-auto"
-            style={{
-              width: 84,
-              background: "#fff",
-              borderRight: "1px solid #ebecef",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setActiveCat("all")}
-              className="w-full py-2.5 text-xs text-center"
-              style={{
-                color: activeCat === "all" ? "#1989fa" : "#646566",
-                fontWeight: activeCat === "all" ? 600 : 400,
-                background: activeCat === "all" ? "#f4f9ff" : "transparent",
-                borderLeft:
-                  activeCat === "all" ? "2px solid #1989fa" : "2px solid transparent",
-              }}
-            >
-              全部
-            </button>
-            {cats.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setActiveCat(c.id)}
-                className="w-full py-2.5 text-xs text-center leading-snug"
-                style={{
-                  color: activeCat === c.id ? "#1989fa" : "#646566",
-                  fontWeight: activeCat === c.id ? 600 : 400,
-                  background: activeCat === c.id ? "#f4f9ff" : "transparent",
-                  borderLeft:
-                    activeCat === c.id ? "2px solid #1989fa" : "2px solid transparent",
-                }}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 min-w-0 overflow-y-auto px-2.5 pt-2 pb-1">
+        <SplitSidebarScrollLayout
+          sidebarClassName="w-[76px] shrink-0 border-r border-[var(--student-hairline)] bg-[var(--student-canvas-soft)]"
+          contentClassName="px-2 pt-1.5 pb-3"
+          sidebar={
+            <MobileMaterialCategoryRail
+              activeCat={activeCat}
+              categories={cats}
+              onSelect={setActiveCat}
+            />
+          }
+        >
             {filteredItems.length === 0 ? (
-              <p className="text-center text-[13px] py-10" style={{ color: "#969799" }}>
-                暂无上架物品
+              <p className="py-10 text-center text-[13px] text-[var(--student-mute)]">
+                {searchKeyword.trim() ? "未找到匹配物品" : "暂无上架物品"}
               </p>
             ) : (
-              filteredItems.map((item) => (
-                <div
+              <ul className="divide-y divide-[var(--student-hairline)] overflow-hidden rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)]">
+              {filteredItems.map((item) => (
+                <li
                   key={item.id}
-                  className="flex gap-2.5 mb-2 p-2.5 rounded-[10px]"
-                  style={{
-                    background: "#fff",
-                    border: "1px solid #ebecef",
-                  }}
+                  className="flex gap-2 p-2"
                 >
                   {item.coverAbsUrl ? (
                     <button
                       type="button"
                       onClick={() => previewImage(item.coverAbsUrl!)}
-                      className="shrink-0 rounded-lg overflow-hidden"
-                      style={{ width: 52, height: 52, background: "#f2f3f5" }}
+                      className="size-12 shrink-0 overflow-hidden rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)]"
                     >
                       <img
                         src={item.coverAbsUrl}
                         alt=""
-                        className="w-full h-full object-cover"
+                        className="size-full object-cover"
                       />
                     </button>
                   ) : (
-                    <div
-                      className="shrink-0 flex items-center justify-center rounded-lg text-base font-semibold"
-                      style={{
-                        width: 52,
-                        height: 52,
-                        background: "#f2f3f5",
-                        color: "#c8c9cc",
-                      }}
-                    >
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] text-sm font-semibold text-[var(--student-mute)]">
                       {item.nameInitial}
                     </div>
                   )}
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className="text-sm font-semibold leading-snug break-words"
-                      style={{ color: "#323233" }}
-                    >
-                      {item.name}
-                    </p>
-                    {item.subtitle && (
-                      <p
-                        className="text-[11px] mt-0.5 break-words"
-                        style={{ color: "#969799" }}
-                      >
-                        {item.subtitle}
+                  <div className="flex min-w-0 flex-1 items-stretch gap-2">
+                    <div className="min-w-0 flex-1 py-0.5">
+                      <p className="break-words text-[13px] font-semibold leading-snug text-[var(--student-ink)]">
+                        {item.name}
                       </p>
-                    )}
-                    <div className="flex items-center justify-between gap-2 mt-1 min-w-0">
-                      <p
-                        className="text-[11px] flex-1 min-w-0 leading-snug"
-                        style={{ color: "#969799" }}
-                      >
+                      {item.subtitle && (
+                        <p className="mt-0.5 break-words text-[10px] leading-snug text-[var(--student-mute)]">
+                          {item.subtitle}
+                        </p>
+                      )}
+                      <p className="mt-1 text-[10px] leading-snug text-[var(--student-mute)]">
                         {item.stockLineText}
                       </p>
-                      <QtyStepper
-                        qty={cart[item.id] || 0}
-                        max={maxQtyForItem(item)}
-                        onAdd={() => addCart(item.id)}
-                        onDec={() => decCart(item.id)}
-                        onQtyBlur={(raw) => onQtyBlur(item.id, raw)}
-                      />
+                    </div>
+                    <div className="flex shrink-0 items-end pb-0.5">
+                      {item.hasSpec ? (
+                        <MaterialSpecPickControl
+                          item={item}
+                          cart={cart}
+                          variant="mobile"
+                          disabled={item._outOfStock}
+                          onAddKey={addCartKey}
+                          onDecKey={decCartKey}
+                          onAddPlain={() => addCart(item.id)}
+                          onDecPlain={() => decCart(item.id)}
+                        />
+                      ) : (
+                        <MobileMaterialQtyStepper
+                          qty={cart[String(item.id)] || 0}
+                          max={maxQtyForItem(item)}
+                          disabled={item._outOfStock}
+                          onAdd={() => addCart(item.id)}
+                          onDec={() => decCart(item.id)}
+                          onQtyBlur={(raw) => onQtyBlur(String(item.id), raw)}
+                        />
+                      )}
                     </div>
                   </div>
-                </div>
-              ))
+                </li>
+              ))}
+              </ul>
             )}
-          </div>
-        </div>
+        </SplitSidebarScrollLayout>
 
-        {/* 底部申领栏（对齐小程序 cart-bar，与底栏 Tab 同属 flex 壳层） */}
-        <div
-          className="shrink-0 flex items-center justify-between gap-3 px-3 py-2"
-          style={{
-            height: CART_BAR_H,
-            background: "rgba(255,255,255,0.96)",
-            borderTop: "1px solid #ebecef",
-            backdropFilter: "blur(10px)",
-          }}
-        >
-          <button
-            type="button"
-            onClick={openCartSheet}
-            className="relative flex items-center justify-center min-w-[88px] px-3.5 py-2.5 rounded-full"
-            style={{
-              background: "#f7f8fa",
-              border: "1px solid #e6e8eb",
-            }}
-          >
-            <span className="text-sm font-medium" style={{ color: "#323233" }}>
-              申领栏
-            </span>
-            {cartCount > 0 && (
-              <span
-                className="absolute top-0.5 right-1.5 min-w-[16px] h-4 px-1 text-[10px] text-white text-center leading-4 rounded-full"
-                style={{ background: "#ee0a24" }}
-              >
-                {cartCount}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={submitOrder}
-            disabled={submitting || cartCount === 0}
-            className="flex-1 text-center text-sm font-semibold text-white py-2.5 rounded-full disabled:opacity-45"
-            style={{
-              background: "linear-gradient(180deg, #42a5f5 0%, #1989fa 100%)",
-              boxShadow: cartCount > 0 ? "0 4px 12px rgba(25,137,250,0.22)" : "none",
-            }}
-          >
-            {submitting ? "提交中…" : "提交申领"}
-          </button>
-        </div>
+        <MobileMaterialCartBar
+          cartCount={cartCount}
+          submitting={submitting}
+          onOpenCart={openCartSheet}
+          onSubmit={submitOrder}
+        />
       </div>
 
       {/* 申领栏 Sheet */}
       {cartSheetOpen && (
-        <div className="fixed inset-0 z-[90] flex flex-col justify-end">
+        <div className="fixed inset-0 z-[var(--z-modal)] flex flex-col justify-end">
           <div
-            className="absolute inset-0 bg-black/35"
+            className="absolute inset-0 bg-black/35 motion-reduce:transition-none"
             onClick={() => setCartSheetOpen(false)}
+            aria-hidden
           />
           <div
-            className="relative rounded-t-2xl overflow-hidden"
-            style={{
-              maxHeight: "70vh",
-              background: "#fff",
-              paddingBottom: "env(safe-area-inset-bottom, 0px)",
-            }}
+            className="relative max-h-[70vh] overflow-hidden rounded-t-[var(--student-radius-lg)] bg-[var(--student-surface-raised)]"
+            style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mobile-cart-sheet-title"
           >
-            <p
-              className="text-center text-base font-bold py-4 border-b"
-              style={{ color: "#323233", borderColor: "#f2f3f5" }}
-            >
-              申领栏
-            </p>
-            <div className="max-h-[52vh] overflow-y-auto px-3">
+            <div className="flex items-center justify-between border-b border-[var(--student-hairline)] px-4 py-3">
+              <p id="mobile-cart-sheet-title" className="text-base font-bold text-[var(--student-ink)]">
+                申领栏
+              </p>
+              <button
+                type="button"
+                onClick={() => setCartSheetOpen(false)}
+                className="flex size-8 items-center justify-center rounded-[var(--student-radius-sm)] text-[var(--student-mute)] hover:bg-[var(--student-canvas-soft)] hover:text-[var(--student-ink)]"
+                aria-label="关闭申领栏"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="max-h-[52vh] overflow-y-auto overscroll-y-contain px-3">
               {cartLines.map((line) => (
                 <div
                   key={line.id}
-                  className="flex items-center gap-2.5 py-3 border-b"
-                  style={{ borderColor: "#f2f3f5" }}
+                  className="flex items-center gap-2.5 border-b border-[var(--student-hairline)] py-3 last:border-b-0"
                 >
                   {line.coverAbsUrl ? (
                     <img
                       src={line.coverAbsUrl}
                       alt=""
-                      className="w-11 h-11 rounded-lg object-cover shrink-0"
-                      style={{ background: "#f2f3f5" }}
+                      className="size-11 shrink-0 rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] object-cover"
                     />
                   ) : (
-                    <div
-                      className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0 text-sm font-semibold"
-                      style={{ background: "#f2f3f5", color: "#c8c9cc" }}
-                    >
+                    <div className="flex size-11 shrink-0 items-center justify-center rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] text-sm font-semibold text-[var(--student-mute)]">
                       {line.nameInitial}
                     </div>
                   )}
-                  <div className="flex-1 min-w-0 flex items-end justify-between gap-2">
-                    <p
-                      className="text-sm font-medium break-words flex-1 min-w-0 leading-snug"
-                      style={{ color: "#323233" }}
-                    >
-                      {line.name}
-                    </p>
-                    <QtyStepper
-                      compact
-                      qty={cart[line.id] || 0}
-                      max={maxQtyForItem(allDecorated.find((x) => x.id === line.id))}
-                      onAdd={() => addCart(line.id)}
-                      onDec={() => decCart(line.id)}
-                      onQtyBlur={(raw) => onQtyBlur(line.id, raw)}
-                    />
-                  </div>
+                    <div className="flex min-w-0 flex-1 items-end justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="break-words text-sm font-medium leading-snug text-[var(--student-ink)]">
+                          {line.name}
+                        </p>
+                        {line.specLabel && (
+                          <p className="mt-0.5 text-[11px] text-[var(--student-mute)]">
+                            {line.specLabel}
+                          </p>
+                        )}
+                      </div>
+                      <MobileMaterialQtyStepper
+                        compact
+                        qty={cart[line.id] || 0}
+                        max={maxQtyForItem(allDecorated.find((x) => x.id === line.itemId))}
+                        onAdd={() => addCartKey(line.id)}
+                        onDec={() => decCartKey(line.id)}
+                        onQtyBlur={(raw) => onQtyBlur(line.id, raw)}
+                      />
+                    </div>
                 </div>
               ))}
             </div>
-            <div
-              className="flex items-center justify-between px-4 py-3 border-t"
-              style={{ borderColor: "#f2f3f5", background: "#fafbfc" }}
-            >
-              <span className="text-sm" style={{ color: "#646566" }}>
+            <div className="flex items-center justify-between border-t border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] px-4 py-2.5">
+              <span className="text-xs text-[var(--student-body)]">
                 共 {cartCount} 件
               </span>
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setCartSheetOpen(false)}
-                  className="text-sm px-3 py-1.5"
-                  style={{ color: "#1989fa" }}
+                  className="rounded-[var(--student-radius-sm)] px-2 py-1.5 text-xs text-[var(--student-body)] hover:bg-[var(--student-surface)]"
                 >
                   收起
                 </button>
                 <button
                   type="button"
                   onClick={submitOrder}
-                  className="text-sm font-semibold text-white px-4 py-2 rounded-full"
-                  style={{ background: "#1989fa" }}
+                  className="h-8 rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-3 text-xs font-semibold text-[var(--student-primary-foreground)] hover:bg-[var(--student-primary-hover)]"
                 >
                   去提交
                 </button>
@@ -695,56 +552,55 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
       {/* 确认提交弹窗 */}
       {confirmOpen && (
         <div
-          className="fixed inset-0 z-[95] flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.45)" }}
+          className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/45 p-4"
           onClick={() => setConfirmOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-2xl overflow-hidden flex flex-col"
-            style={{ maxHeight: "76vh", background: "#fff" }}
+            className="flex w-full max-w-sm flex-col overflow-hidden rounded-[var(--student-radius-lg)] bg-[var(--student-surface-raised)]"
+            style={{ maxHeight: "76vh" }}
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mobile-confirm-title"
           >
-            <div className="px-4 py-3 border-b" style={{ borderColor: "#f2f3f5" }}>
-              <p className="text-[15px] font-semibold" style={{ color: "#323233" }}>
+            <div className="border-b border-[var(--student-hairline)] px-4 py-3">
+              <p id="mobile-confirm-title" className="text-[15px] font-semibold text-[var(--student-ink)]">
                 确认提交申领
               </p>
-              <p className="text-xs mt-1" style={{ color: "#969799" }}>请核对以下物品</p>
+              <p className="mt-1 text-xs text-[var(--student-mute)]">请核对以下物品</p>
             </div>
-            <div className="overflow-y-auto px-4 max-h-[48vh]">
+            <div className="max-h-[48vh] overflow-y-auto overscroll-y-contain px-4">
               {confirmLines.map((line) => (
                 <div
                   key={line.id}
-                  className="flex items-center gap-3 py-3 border-b border-dashed"
-                  style={{ borderColor: "#eceef0" }}
+                  className="flex items-center gap-3 border-b border-dashed border-[var(--student-hairline)] py-3 last:border-b-0"
                 >
                   {line.coverAbsUrl ? (
                     <img
                       src={line.coverAbsUrl}
                       alt=""
-                      className="w-9 h-9 rounded-lg object-cover shrink-0 border"
-                      style={{ borderColor: "#ebedf0" }}
+                      className="size-9 shrink-0 rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] object-cover"
                     />
                   ) : (
-                    <div
-                      className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-sm"
-                      style={{ background: "#f5f6f7", color: "#969799" }}
-                    >
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-[var(--student-radius-sm)] bg-[var(--student-canvas-soft)] text-sm text-[var(--student-mute)]">
                       {line.nameInitial}
                     </div>
                   )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm" style={{ color: "#323233" }}>{line.name}</p>
-                    <p className="text-xs mt-0.5" style={{ color: "#969799" }}>×{line.qty}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-[var(--student-ink)]">{line.name}</p>
+                    {line.specLabel && (
+                      <p className="mt-0.5 text-xs text-[var(--student-mute)]">{line.specLabel}</p>
+                    )}
+                    <p className="mt-0.5 text-xs text-[var(--student-mute)]">×{line.qty}</p>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="flex justify-end gap-2 px-4 py-3 border-t" style={{ borderColor: "#f2f3f5" }}>
+            <div className="flex justify-end gap-2 border-t border-[var(--student-hairline)] px-4 py-3">
               <button
                 type="button"
                 onClick={() => setConfirmOpen(false)}
-                className="min-w-[72px] text-center text-sm py-2 rounded-lg border"
-                style={{ color: "#646566", borderColor: "#dcdee0" }}
+                className="h-8 min-w-[64px] rounded-[var(--student-radius-sm)] border border-[var(--student-hairline)] px-3 text-center text-xs text-[var(--student-body)] hover:bg-[var(--student-canvas-soft)]"
               >
                 取消
               </button>
@@ -752,8 +608,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
                 type="button"
                 onClick={confirmSubmit}
                 disabled={submitting}
-                className="min-w-[72px] text-center text-sm py-2 rounded-lg text-white disabled:opacity-50"
-                style={{ background: "#1989fa" }}
+                className="h-8 min-w-[64px] rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-3 text-center text-xs text-[var(--student-primary-foreground)] disabled:opacity-50 hover:bg-[var(--student-primary-hover)]"
               >
                 {submitting ? "提交中…" : "确认提交"}
               </button>
@@ -762,17 +617,14 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
         </div>
       )}
 
-      {/* 我的记录（全屏浮层，对齐 studentMaterialRequests） */}
+      {/* 我的记录（全屏浮层） */}
       {showRequests && (
         <div
-          className="fixed inset-0 z-[100] flex flex-col"
-          style={{ background: "#f4f5f7" }}
+          className="fixed inset-0 z-[var(--z-modal)] flex min-h-0 flex-col bg-[var(--student-canvas)]"
         >
           <div
-            className="shrink-0 flex items-center px-2 border-b"
+            className="flex shrink-0 items-center border-b border-[var(--student-hairline)] bg-[var(--student-surface)] px-2"
             style={{
-              background: "#fff",
-              borderColor: "#ebecef",
               paddingTop: "env(safe-area-inset-top, 0px)",
               height: "calc(44px + env(safe-area-inset-top, 0px))",
             }}
@@ -780,38 +632,37 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
             <button
               type="button"
               onClick={() => setShowRequests(false)}
-              className="flex items-center justify-center w-10 h-9"
+              className="flex h-11 w-10 items-center justify-center"
               aria-label="返回"
             >
-              <ChevronLeft className="size-6" style={{ color: "#323233" }} />
+              <ChevronLeft className="size-6 text-[var(--student-ink)]" />
             </button>
-            <h2 className="flex-1 text-center text-base font-semibold pr-10" style={{ color: "#323233" }}>
+            <h2 className="flex-1 pr-10 text-center text-base font-semibold text-[var(--student-ink)]">
               我的申领记录
             </h2>
           </div>
 
-          <div className="shrink-0 overflow-x-auto px-3 py-2 flex gap-2">
+          <div className="flex shrink-0 gap-2 overflow-x-auto px-3 py-2">
             {REQUEST_STATUS_FILTERS.map((f) => (
               <button
                 key={f.value}
                 type="button"
                 onClick={() => setRequestStatusFilter(f.value)}
-                className="shrink-0 text-xs px-3 py-1.5 rounded-full"
-                style={{
-                  color: requestStatusFilter === f.value ? "#1989fa" : "#646566",
-                  background: requestStatusFilter === f.value ? "#e8f3ff" : "#f0f2f5",
-                  border: `1px solid ${requestStatusFilter === f.value ? "#d4e5fc" : "#e6e8eb"}`,
-                  fontWeight: requestStatusFilter === f.value ? 600 : 400,
-                }}
+                className={cn(
+                  "shrink-0 rounded-[var(--student-radius-sm)] border px-2.5 py-1 text-[11px] transition-colors motion-reduce:transition-none",
+                  requestStatusFilter === f.value
+                    ? "border-[var(--student-primary-muted)] bg-[var(--student-primary-soft)] font-semibold text-[var(--student-primary)]"
+                    : "border-[var(--student-hairline)] bg-[var(--student-canvas-soft)] font-normal text-[var(--student-body)] hover:bg-[var(--student-canvas-soft-2)]",
+                )}
               >
                 {f.label}
               </button>
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 pb-6">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-6">
             {requestRows.length === 0 ? (
-              <p className="text-center text-sm py-16" style={{ color: "#969799" }}>
+              <p className="py-16 text-center text-sm text-[var(--student-mute)]">
                 暂无申领记录
               </p>
             ) : (
@@ -822,45 +673,39 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
                 return (
                   <div
                     key={row.id}
-                    className="mb-2.5 p-3.5 rounded-xl"
-                    style={{
-                      background: "#fff",
-                      border: "1px solid #ebecef",
-                    }}
+                    className="mb-2.5 rounded-[var(--student-radius-md)] border border-[var(--student-hairline)] bg-[var(--student-surface)] p-3.5"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <p
-                        className="text-sm font-medium flex-1 min-w-0"
-                        style={{ color: "#323233" }}
-                      >
+                      <p className="min-w-0 flex-1 text-sm font-medium text-[var(--student-ink)]">
                         {row.displayTitle}
                       </p>
                       <span
-                        className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                        style={{
-                          color: isReject ? "#ee0a24" : isWarn ? "#ed6a0c" : "#07c160",
-                          background: isReject ? "#fde8ea" : isWarn ? "#fff7ef" : "#e8f8ef",
-                        }}
+                        className={cn(
+                          "shrink-0 rounded-[var(--student-radius-sm)] px-2 py-0.5 text-[10px] font-semibold",
+                          isReject
+                            ? "bg-[var(--student-danger-soft)] text-[var(--student-danger)]"
+                            : isWarn
+                              ? "bg-[var(--student-warning-soft)] text-[var(--student-warning)]"
+                              : "bg-[var(--student-success-soft)] text-[var(--student-success)]",
+                        )}
                       >
                         {row.statusText}
                       </span>
                     </div>
-                    <p className="text-xs mt-1" style={{ color: "#969799" }}>
+                    <p className="mt-1 text-xs text-[var(--student-mute)]">
                       {row.createdAtText}
                     </p>
                     {row.lineSummary && (
-                      <p className="text-xs mt-0.5" style={{ color: "#969799" }}>
+                      <p className="mt-0.5 text-xs text-[var(--student-mute)]">
                         {row.lineSummary}
                       </p>
                     )}
-                    {/* 操作按钮 */}
-                    <div className="flex gap-2 mt-2 pt-2" style={{ borderTop: "1px solid #f2f3f5" }}>
+                    <div className="mt-2 flex gap-2 border-t border-[var(--student-hairline)] pt-2">
                       {row.canWithdraw && (
                         <button
                           type="button"
                           onClick={() => handleWithdraw(row.id)}
-                          className="text-xs px-3 py-1 rounded-full font-medium"
-                          style={{ color: "#ee0a24", background: "#fde8ea", border: "1px solid #f8d0d4" }}
+                          className="rounded-[var(--student-radius-sm)] border border-[var(--student-danger-soft)] bg-[var(--student-danger-soft)] px-3 py-1.5 text-xs font-medium text-[var(--student-danger)]"
                         >
                           撤回
                         </button>
@@ -869,8 +714,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
                         <button
                           type="button"
                           onClick={() => handleRevoke(row.id)}
-                          className="text-xs px-3 py-1 rounded-full font-medium"
-                          style={{ color: "#d97706", background: "#fef3c7", border: "1px solid #fde68a" }}
+                          className="rounded-[var(--student-radius-sm)] border border-[var(--student-warning-soft)] bg-[var(--student-warning-soft)] px-3 py-1.5 text-xs font-medium text-[var(--student-warning)]"
                         >
                           撤销
                         </button>
@@ -879,8 +723,7 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
                         <button
                           type="button"
                           onClick={() => handleConfirmReceive(row.id)}
-                          className="text-xs px-3 py-1 rounded-full font-medium"
-                          style={{ color: "#1989fa", background: "#e8f3ff", border: "1px solid #d4e5fc" }}
+                          className="rounded-[var(--student-radius-sm)] border border-[var(--student-primary-muted)] bg-[var(--student-primary-soft)] px-3 py-1.5 text-xs font-medium text-[var(--student-primary)]"
                         >
                           确认领取
                         </button>

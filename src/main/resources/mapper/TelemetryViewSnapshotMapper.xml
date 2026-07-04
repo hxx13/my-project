@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.telemetry.mapper.TelemetryViewSnapshotMapper">
+
+    <resultMap id="SnapshotMap" type="com.example.demo.modules.telemetry.entity.TelemetryViewSnapshotRow">
+        <id column="id" property="id"/>
+        <result column="captured_at" property="capturedAt"/>
+        <result column="profile_code" property="profileCode"/>
+        <result column="time_range_json" property="timeRangeJson"/>
+        <result column="chart_group_id" property="chartGroupId"/>
+        <result column="payload_json" property="payloadJson"/>
+        <result column="create_time" property="createTime"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO telemetry_view_snapshot (
+            captured_at, profile_code, time_range_json, chart_group_id, payload_json
+        ) VALUES (
+            #{capturedAt}, #{profileCode}, #{timeRangeJson}, #{chartGroupId}, #{payloadJson}
+        )
+    </insert>
+
+    <sql id="pageWhere">
+        <where>
+            <if test="from != null">AND captured_at &gt;= #{from}</if>
+            <if test="to != null">AND captured_at &lt;= #{to}</if>
+            <if test="profileCode != null and profileCode != ''">AND profile_code = #{profileCode}</if>
+        </where>
+    </sql>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(1) FROM telemetry_view_snapshot
+        <include refid="pageWhere"/>
+    </select>
+
+    <select id="selectPage" resultMap="SnapshotMap">
+        SELECT id, captured_at, profile_code, time_range_json, chart_group_id, payload_json, create_time
+        FROM telemetry_view_snapshot
+        <include refid="pageWhere"/>
+        ORDER BY captured_at DESC, id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectById" resultMap="SnapshotMap">
+        SELECT id, captured_at, profile_code, time_range_json, chart_group_id, payload_json, create_time
+        FROM telemetry_view_snapshot WHERE id = #{id}
+    </select>
+</mapper>

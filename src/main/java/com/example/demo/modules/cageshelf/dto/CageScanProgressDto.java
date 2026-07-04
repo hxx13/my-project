@@ -1,7 +1,7 @@
 package com.example.demo.modules.cageshelf.dto;
 
 /**
- * 笼位特殊状态扫描进度（前端轮询用）。
+ * 笼位数据同步进度（前端轮询用）。
  */
 public class CageScanProgressDto {
     private String status;           // idle | running | done | failed

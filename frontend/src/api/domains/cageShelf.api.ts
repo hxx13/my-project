@@ -157,6 +157,8 @@ export interface SpecialStatusGroup {
 
 export interface SpecialStatusCage {
   shelveId: string;
+  shelveName: string;
+  floorName: string;
   campusName: string;
   roomName: string;
   position: string;
@@ -331,6 +333,7 @@ export interface CageEventLogEntry {
 }
 
 export const EVENT_TYPE_LABELS: Record<string, string> = {
+  BASELINE_ESTABLISHED: "基线建立",
   BOX_ARRIVED: "笼盒到达",
   BOX_DEPARTED: "笼盒移出",
   BOX_MOVED: "笼盒移动",

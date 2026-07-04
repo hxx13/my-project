@@ -673,17 +673,27 @@ public class CageShelfService {
                     specialStatusSnapshotMapper.selectByBatchId(scanBatchId, statusCode, 0, 200);
 
             List<Map<String, Object>> cageList = new ArrayList<>();
+            Map<String, CageShelfIndex> indexCache = new HashMap<>();
             for (var row : cages) {
                 Map<String, Object> item = new LinkedHashMap<>();
-                item.put("shelveId", String.valueOf(row.getShelveId()));
+                String shelveIdStr = String.valueOf(row.getShelveId());
+                item.put("shelveId", shelveIdStr);
+                CageShelfIndex idx = indexCache.computeIfAbsent(
+                        shelveIdStr, id -> cageShelfMapper.findByShelveId(id));
                 // campusName 回退：存量数据可能为空，从 shelter index 补充
                 String campusName = row.getCampusName();
                 if (campusName == null || campusName.isBlank()) {
-                    CageShelfIndex idx = cageShelfMapper.findByShelveId(String.valueOf(row.getShelveId()));
                     campusName = idx != null ? idx.getCampusName() : "";
                 }
                 item.put("campusName", campusName != null ? campusName : "");
-                item.put("roomName", row.getRoomName());
+                String roomName = row.getRoomName();
+                if ((roomName == null || roomName.isBlank()) && idx != null) {
+                    roomName = idx.getRoomName();
+                }
+                item.put("roomName", roomName != null ? roomName : "");
+                item.put("shelveName", idx != null && idx.getShelveName() != null && !idx.getShelveName().isBlank()
+                        ? idx.getShelveName() : shelveIdStr);
+                item.put("floorName", idx != null && idx.getFloorName() != null ? idx.getFloorName() : "");
                 item.put("position", row.getPositionLabel());
                 item.put("positionX", row.getPositionX());
                 item.put("positionY", row.getPositionY());

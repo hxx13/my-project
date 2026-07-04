@@ -68,7 +68,11 @@ public class JobExecutionRegistry {
     public static final String JOB_ACCESS_CLEAN_PACKAGE_DAILY = "ACCESS_CLEAN_PACKAGE_DAILY";
     /** WinCC 温湿度归档表 telemetry_value_archive 按保留天数分批清理 */
     public static final String JOB_TELEMETRY_ARCHIVE_PURGE = "TELEMETRY_ARCHIVE_PURGE";
-    /** 笼架·特殊状态全量扫描（每周一次，数万笼位级） */
+    /** Raw → L1 rollup（5min/1h bucket） */
+    public static final String JOB_TELEMETRY_ARCHIVE_ROLLUP = "TELEMETRY_ARCHIVE_ROLLUP";
+    /** 遥测视图快照（PRESENTATION profile 矩阵/对比组 JSON） */
+    public static final String JOB_TELEMETRY_VIEW_SNAPSHOT = "TELEMETRY_VIEW_SNAPSHOT";
+    /** 笼架·全量笼位数据同步（每周，逐架拉取 ARO 最新笼盒详情 + 特殊标记，diff 生成事件日志） */
     public static final String JOB_CAGE_SPECIAL_STATUS_SCAN = "CAGE_SPECIAL_STATUS_SCAN";
     public static final String JOB_STRANDED_VIOLATION_CHECK = "STRANDED_VIOLATION_CHECK";
     /** 第二道滞留检测：口径与 {@link #JOB_STRANDED_VIOLATION_CHECK} 相同，仅签退、不创建违规 */
@@ -114,6 +118,8 @@ public class JobExecutionRegistry {
     private final ExamRoomPermissionSyncService examRoomPermissionSyncService;
     private final TelemetrySnapshotService telemetrySnapshotService;
     private final TelemetryArchiveService telemetryArchiveService;
+    private final com.example.demo.modules.telemetry.service.TelemetryArchiveRollupService telemetryArchiveRollupService;
+    private final com.example.demo.modules.telemetry.service.TelemetryViewSnapshotService telemetryViewSnapshotService;
     private final DahuaSwingStatsPullService dahuaSwingStatsPullService;
     private final com.example.demo.modules.accessfusion.service.AccessSwingCleanWorkspaceService accessSwingCleanWorkspaceService;
     private final AnalyticsPipelineHook analyticsPipelineHook;
@@ -145,6 +151,8 @@ public class JobExecutionRegistry {
             ExamRoomPermissionSyncService examRoomPermissionSyncService,
             TelemetrySnapshotService telemetrySnapshotService,
             TelemetryArchiveService telemetryArchiveService,
+            com.example.demo.modules.telemetry.service.TelemetryArchiveRollupService telemetryArchiveRollupService,
+            com.example.demo.modules.telemetry.service.TelemetryViewSnapshotService telemetryViewSnapshotService,
             DahuaSwingStatsPullService dahuaSwingStatsPullService,
             com.example.demo.modules.accessfusion.service.AccessSwingCleanWorkspaceService accessSwingCleanWorkspaceService,
             AnalyticsPipelineHook analyticsPipelineHook,
@@ -165,6 +173,8 @@ public class JobExecutionRegistry {
         this.examRoomPermissionSyncService = examRoomPermissionSyncService;
         this.telemetrySnapshotService = telemetrySnapshotService;
         this.telemetryArchiveService = telemetryArchiveService;
+        this.telemetryArchiveRollupService = telemetryArchiveRollupService;
+        this.telemetryViewSnapshotService = telemetryViewSnapshotService;
         this.dahuaSwingStatsPullService = dahuaSwingStatsPullService;
         this.accessSwingCleanWorkspaceService = accessSwingCleanWorkspaceService;
         this.analyticsPipelineHook = analyticsPipelineHook;
@@ -206,7 +216,9 @@ public class JobExecutionRegistry {
                 "审计门禁·水位增量（仅 SINCE_LAST 任务）");
         jobs.put(JOB_ACCESS_CLEAN_PACKAGE_DAILY, "门禁统计·自动入库总库（每日到点，仅增量）");
         jobs.put(JOB_TELEMETRY_ARCHIVE_PURGE, "温湿度·WinCC归档自动清理");
-        jobs.put(JOB_CAGE_SPECIAL_STATUS_SCAN, "笼架·特殊状态全量扫描（每周）");
+        jobs.put(JOB_TELEMETRY_ARCHIVE_ROLLUP, "温湿度·归档 L1 预聚合");
+        jobs.put(JOB_TELEMETRY_VIEW_SNAPSHOT, "遥测·视图快照捕获");
+        jobs.put(JOB_CAGE_SPECIAL_STATUS_SCAN, "笼架·全量笼位数据同步（每周）");
         jobs.put(JOB_DASHBOARD_RANKING_ACTIVITY, "大屏·进出活跃排行榜刷新");
         jobs.put(JOB_DASHBOARD_RANKING_ANIMAL, "大屏·动物消耗排行榜刷新");
         jobs.put(JOB_EXP_RECONCILE, "经验值·每日流水对账重算");
@@ -346,6 +358,15 @@ public class JobExecutionRegistry {
                     }
                     yield JobRunOutcome.ok(jobKey, summary, purgeMetrics);
                 }
+                case JOB_TELEMETRY_ARCHIVE_ROLLUP -> {
+                    var summary = telemetryArchiveRollupService.runRollupJob();
+                    yield JobRunOutcome.ok(jobKey, "Rollup 完成 upsert5="
+                            + summary.get("upserted5min") + " upsert1h=" + summary.get("upserted1h"), summary);
+                }
+                case JOB_TELEMETRY_VIEW_SNAPSHOT -> {
+                    var summary = telemetryViewSnapshotService.captureSnapshot("PRESENTATION", null, null, null);
+                    yield JobRunOutcome.ok(jobKey, "视图快照已捕获 id=" + summary.get("snapshotId"), summary);
+                }
                 case JOB_ACCESS_CLEAN_PACKAGE_DAILY -> {
                     Map<String, Object> stats = accessSwingCleanWorkspaceService.autoPublishAllEnabledChannels();
                     analyticsPipelineHook.afterAccessDataPipeline();
@@ -373,7 +394,7 @@ public class JobExecutionRegistry {
                     Object cagesWithStatus = result.get("cagesWithStatus");
                     int cws = cagesWithStatus instanceof Number n ? n.intValue() : 0;
                     yield JobRunOutcome.ok(jobKey,
-                            "全量笼架特殊状态扫描完成，发现 " + cws + " 个特殊状态笼位", result);
+                            "全量笼位数据同步完成，扫描 " + result.get("cagesScanned") + " 个笼位，其中特殊状态 " + cws + " 个", result);
                 }
                 case JOB_EXP_RECONCILE -> {
                     if (twinExpReconcileService == null) {

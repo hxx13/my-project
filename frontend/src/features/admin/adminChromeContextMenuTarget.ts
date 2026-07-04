@@ -1,4 +1,4 @@
-import { isAdminAreaPath, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
+import { isStaffNavPersonalizationPath, normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 
 export type AdminNavContextMenuTarget = {
   path: string;
@@ -19,17 +19,20 @@ export type AdminFriendRowContextMenuTarget = {
   contactGroupId: string;
 };
 
+const STAFF_NAV_HREF_SEGMENT =
+  "(?:admin[^?#]*|animal-room-telemetry|animal-room-cockpit|digital-twin-screen)";
+
 function parseAdminPathFromHref(href: string): string | null {
   const trimmed = (href || "").trim();
   if (!trimmed) return null;
-  const hashMatch = trimmed.match(/#(\/(?:console\/)?admin[^?#]*)/);
+  const hashMatch = trimmed.match(new RegExp(`#(\\/(?:console\\/)?${STAFF_NAV_HREF_SEGMENT})`));
   if (hashMatch) return normalizeAdminPath(hashMatch[1]);
-  const relMatch = trimmed.match(/^(\/(?:console\/)?admin[^?#]*)/);
+  const relMatch = trimmed.match(new RegExp(`^(\\/(?:console\\/)?${STAFF_NAV_HREF_SEGMENT})`));
   if (relMatch) return normalizeAdminPath(relMatch[1]);
   try {
     const pathname = new URL(trimmed, window.location.href).pathname;
     const p = normalizeAdminPath(pathname);
-    if (isAdminAreaPath(p)) return p;
+    if (isStaffNavPersonalizationPath(p)) return p;
   } catch {
     /* ignore */
   }
@@ -47,7 +50,7 @@ export function parseAdminNavLinkFromEventTarget(target: EventTarget | null): Ad
 
   if (sidebarItem && navRoot?.contains(sidebarItem)) {
     const path = normalizeAdminPath(sidebarItem.getAttribute("data-admin-nav-path") || "");
-    if (!isAdminAreaPath(path)) return null;
+    if (!isStaffNavPersonalizationPath(path)) return null;
     const label =
       (sidebarItem.getAttribute("data-admin-nav-label") || "").trim() ||
       path;
@@ -57,7 +60,7 @@ export function parseAdminNavLinkFromEventTarget(target: EventTarget | null): Ad
   const a = target.closest("a[href]");
   if (!a) return null;
   const path = parseAdminPathFromHref(a.getAttribute("href") || "");
-  if (!path || !isAdminAreaPath(path)) return null;
+  if (!path || !isStaffNavPersonalizationPath(path)) return null;
   const label =
     (a.getAttribute("data-admin-nav-label") || "").trim() ||
     (a.getAttribute("title") || "").trim() ||

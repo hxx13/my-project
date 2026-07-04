@@ -186,3 +186,61 @@ export function resolveDefaultCampusFloor(campusTree: CampusTreeNode[]): { campu
   }
   return { campus: "浦东", floor: "" };
 }
+
+/** 与小程序 buildAuditCampusDisplayList 一致：仅浦东/浦西 */
+export function buildAuditCampusDisplayList(
+  campusTree: AuditCampusTreeNode[],
+  expandedMap: Record<string, boolean>,
+): AuditCampusDisplayItem[] {
+  const fixed = ["浦东", "浦西"];
+  return fixed.map((campus) => {
+    const node = campusTree.find((i) => i.campus === campus) || { campus, floors: [] };
+    return {
+      campus,
+      expanded: !!expandedMap[campus],
+      floors: node.floors || [],
+    };
+  });
+}
+
+export interface AuditPendingPerson {
+  userId: string;
+  userName?: string;
+  entryTime?: string;
+  entryType?: string;
+  projectGroupName?: string;
+  roomId?: string;
+  roomName?: string;
+  hasMapping?: boolean;
+  cardNo?: string;
+  dahuaSeq?: string;
+  cardStatus?: string;
+  freezeExemptFlag?: number;
+  freezeExemptRoomIds?: string | null;
+  mappingUserName?: string;
+}
+
+export interface AuditRoomGroup {
+  roomId?: string;
+  roomName: string;
+  roomKey: string;
+  persons: AuditPendingPerson[];
+}
+
+export interface AuditFloorNode {
+  floor: string;
+  floorPersonCount: number;
+  persons?: AuditPendingPerson[];
+  rooms?: AuditRoomGroup[];
+}
+
+export interface AuditCampusTreeNode {
+  campus: string;
+  floors: AuditFloorNode[];
+}
+
+export interface AuditCampusDisplayItem {
+  campus: string;
+  expanded: boolean;
+  floors: AuditFloorNode[];
+}

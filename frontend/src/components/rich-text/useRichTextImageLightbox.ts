@@ -27,8 +27,9 @@ export function useRichTextImageLightbox(resetDeps: unknown[] = []) {
       setLightbox({ src, alt: target.alt || "" });
     };
 
-    root.addEventListener("click", onClick);
-    return () => root.removeEventListener("click", onClick);
+    // capture：先于 ProseMirror 选区处理，避免部分图片点击被编辑器吞掉
+    root.addEventListener("click", onClick, true);
+    return () => root.removeEventListener("click", onClick, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 由调用方传入 html 等重置键
   }, resetDeps);
 

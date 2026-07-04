@@ -20,6 +20,7 @@ import { hasMinRole } from "@/features/auth/roleAccess";
 import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 import { sanitizeExportFilenamePart } from "@/features/report-form/utils/reportFormExportFilename";
+import { recomputeMovementStockAfter } from "@/utils/materialStockAfterHelpers";
 
 type TabKey = "personal" | "group" | "item" | "item-group";
 
@@ -64,12 +65,31 @@ function formatSpecLabel(specJson: string | undefined | null): string {
     return Object.values(obj).join('·');
   } catch { return ''; }
 }
-function iso(d: Date) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-function monthStart() { const t = new Date(); return { from: iso(new Date(t.getFullYear(), t.getMonth(), 1)), to: iso(t) }; }
+
+function auditDateParams(from: string, to: string): { from?: string; to?: string } {
+  const f = from.trim();
+  const t = to.trim();
+  if (!f && !t) return {};
+  return { ...(f ? { from: f } : {}), ...(t ? { to: t } : {}) };
+}
+
+function dateRangeLabel(from: string, to: string): string {
+  const f = from.trim();
+  const t = to.trim();
+  if (!f && !t) return "全部时间";
+  if (f && t) return `${f} ～ ${t}`;
+  if (f) return `${f} 起`;
+  return `至 ${t}`;
+}
 
 function buildAuditExportFilename(label: string, from: string, to: string) {
   const base = sanitizeExportFilenamePart(label) || "申领审计";
-  return `${base}-${from}_${to}.xlsx`;
+  const f = from.trim();
+  const t = to.trim();
+  if (!f && !t) return `${base}-全部时间.xlsx`;
+  const fromPart = f || "start";
+  const toPart = t || "end";
+  return `${base}-${fromPart}_${toPart}.xlsx`;
 }
 
 type ItemFlowRow = {
@@ -77,6 +97,7 @@ type ItemFlowRow = {
   time: string;
   eventType: string;
   itemName: string;
+  specLabel: string;
   qty: string;
   stockAfter: string;
   applicantName: string;
@@ -88,6 +109,7 @@ type ItemFlowRow = {
 const FLOW_PAGE_SIZE = 30;
 
 function dateInRange(v: string | null | undefined, from: string, to: string): boolean {
+  if (!from.trim() || !to.trim()) return !!v;
   if (!v) return false;
   const d = v.slice(0, 10);
   return d >= from && d <= to;
@@ -120,7 +142,11 @@ function buildItemFlowRows(
   movements: MaterialStockMovementRow[],
   from: string,
   to: string,
+  currentStockByItemId?: ReadonlyMap<number, number>,
 ): ItemFlowRow[] {
+  const stockAfterByMovementId = currentStockByItemId
+    ? recomputeMovementStockAfter(movements, currentStockByItemId)
+    : new Map<number, number>();
   const rows: ItemFlowRow[] = [];
   const outboundRequestIds = new Set<string>();
 
@@ -134,8 +160,11 @@ function buildItemFlowRows(
       time: m.createdAt || "",
       eventType: movementTypeZh(type),
       itemName: cellZh(m.itemName),
+      specLabel: formatSpecLabel(m.specSnapshot) || "无",
       qty: movementQtyDisplay(type, m.qty),
-      stockAfter: m.stockAfter != null ? String(m.stockAfter) : "无",
+      stockAfter: stockAfterByMovementId.has(m.id)
+        ? String(stockAfterByMovementId.get(m.id))
+        : (m.stockAfter != null ? String(m.stockAfter) : "无"),
       applicantName: cellZh(m.applicantName),
       applicantGroup: cellZh(m.applicantGroup),
       requestId: cellZh(m.requestId),
@@ -155,6 +184,7 @@ function buildItemFlowRows(
       time: outboundTime || "",
       eventType: "出库",
       itemName: cellZh(c.itemName),
+      specLabel: formatSpecLabel(c.specSnapshot) || "无",
       qty: `-${fulfilled}`,
       stockAfter: "无",
       applicantName: cellZh(c.applicantName),
@@ -174,58 +204,26 @@ export default function MaterialAuditExportPage() {
   const selfUserId = authStorage.getUserInfo()?.id?.trim() ?? "";
 
   const [tab, setTab] = useState<TabKey>("personal");
-  const dr = useMemo(() => monthStart(), []);
-  const [from, setFrom] = useState(dr.from);
-  const [to, setTo] = useState(dr.to);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [exporting, setExporting] = useState(false);
 
-  const [selectedUserId, setSelectedUserId] = useState(selfUserId);
+  const [selectedUserId, setSelectedUserId] = useState("");
   const { data: applicantList = [] } = useQuery({
     queryKey: ["material", "applicants-with-records", from, to],
-    queryFn: () => fetchApplicantsWithRecords({ from, to }),
+    queryFn: () => fetchApplicantsWithRecords(auditDateParams(from, to)),
     enabled: isStaff && tab === "personal",
   });
-
-  useEffect(() => {
-    if (tab !== "personal" || !isStaff) return;
-    if (applicantList.length === 0) {
-      if (selectedUserId) setSelectedUserId("");
-      return;
-    }
-    const exists = applicantList.some((a) => a.userId === selectedUserId);
-    if (!exists) setSelectedUserId(applicantList[0].userId);
-  }, [applicantList, tab, isStaff, selectedUserId]);
 
   const [selectedGroup, setSelectedGroup] = useState("");
   const { data: groupList = [] } = useQuery({
     queryKey: ["material", "groups-with-records", from, to],
-    queryFn: () => fetchGroupsWithRecords({ from, to }),
+    queryFn: () => fetchGroupsWithRecords(auditDateParams(from, to)),
     enabled: tab === "group" || tab === "item-group",
   });
 
-  useEffect(() => {
-    if (tab !== "group") return;
-    if (groupList.length === 0) {
-      if (selectedGroup) setSelectedGroup("");
-      return;
-    }
-    if (!selectedGroup || !groupList.includes(selectedGroup)) {
-      setSelectedGroup(groupList[0]);
-    }
-  }, [groupList, tab, selectedGroup]);
-
   // 物品+课题组 tab 的课题组筛选
   const [selectedItemGroup, setSelectedItemGroup] = useState("");
-  useEffect(() => {
-    if (tab !== "item-group") return;
-    if (groupList.length === 0) {
-      if (selectedItemGroup) setSelectedItemGroup("");
-      return;
-    }
-    if (!selectedItemGroup || !groupList.includes(selectedItemGroup)) {
-      setSelectedItemGroup(groupList[0]);
-    }
-  }, [groupList, tab, selectedItemGroup]);
 
   const itemApplicantGroup = tab === "item-group" ? (selectedItemGroup || undefined) : undefined;
 
@@ -234,15 +232,16 @@ export default function MaterialAuditExportPage() {
   const [selectedItemId, setSelectedItemId] = useState<number | "">("");
   const [flowPage, setFlowPage] = useState(1);
 
-  const queryUserId = tab === "personal" ? (isStaff ? selectedUserId : selfUserId) : undefined;
+  const queryUserId = tab === "personal"
+    ? (isStaff ? (selectedUserId || undefined) : selfUserId)
+    : undefined;
   const queryGroup = tab === "group" && isStaff ? (selectedGroup || undefined) : undefined;
   const { data: queryData, isLoading: requestsLoading } = useQuery({
     queryKey: ["material", "audit", "requests", { tab, from, to, applicantUserId: queryUserId, applicantGroup: queryGroup }],
     queryFn: () => fetchAuditExportRequests({
       page: 1,
       size: 500,
-      from,
-      to,
+      ...auditDateParams(from, to),
       applicantUserId: queryUserId,
       applicantGroup: queryGroup,
     }),
@@ -295,19 +294,30 @@ export default function MaterialAuditExportPage() {
     queryFn: () => fetchAdminMaterialItems(categoryId === "" ? undefined : categoryId, itemApplicantGroup),
     enabled: isStaff && isItemTab,
   });
+  const selectedItemLabel = selectedItemId === ""
+    ? "全部物品"
+    : (items.find((it) => it.id === selectedItemId)?.name || String(selectedItemId));
+
   const { data: movementData, isLoading: movementsLoading } = useQuery({
-    queryKey: ["material", "movements", selectedItemId, from, to, itemApplicantGroup],
-    queryFn: () => fetchItemStockMovements(Number(selectedItemId), { page: 1, size: 500, applicantGroup: itemApplicantGroup }),
-    enabled: isItemTab && !!selectedItemId,
+    queryKey: ["material", "movements", selectedItemId || "all", from, to, itemApplicantGroup],
+    queryFn: () => fetchItemStockMovements(selectedItemId === "" ? null : Number(selectedItemId), { page: 1, size: 500, applicantGroup: itemApplicantGroup }),
+    enabled: isItemTab,
   });
   const { data: claimData, isLoading: claimsLoading } = useQuery({
-    queryKey: ["material", "item-claims", selectedItemId, from, to, itemApplicantGroup],
-    queryFn: () => fetchItemClaimLines(Number(selectedItemId), { from, to, page: 1, size: 500, applicantGroup: itemApplicantGroup }),
-    enabled: isItemTab && !!selectedItemId,
+    queryKey: ["material", "item-claims", selectedItemId || "all", from, to, itemApplicantGroup],
+    queryFn: () => fetchItemClaimLines(selectedItemId === "" ? null : Number(selectedItemId), { ...auditDateParams(from, to), page: 1, size: 500, applicantGroup: itemApplicantGroup }),
+    enabled: isItemTab,
   });
+  const currentStockByItemId = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const item of items) {
+      if (item.id != null) map.set(item.id, Number(item.stockQty) || 0);
+    }
+    return map;
+  }, [items]);
   const itemFlowRows = useMemo(
-    () => buildItemFlowRows(claimData?.data ?? [], movementData?.data ?? [], from, to),
-    [claimData, movementData, from, to],
+    () => buildItemFlowRows(claimData?.data ?? [], movementData?.data ?? [], from, to, currentStockByItemId),
+    [claimData, movementData, from, to, currentStockByItemId],
   );
   const itemFlowTotalPages = Math.max(1, Math.ceil(itemFlowRows.length / FLOW_PAGE_SIZE));
   const itemFlowPageRows = useMemo(() => {
@@ -340,20 +350,19 @@ export default function MaterialAuditExportPage() {
   };
 
   const currentLabel = tab === "personal"
-    ? (isStaff && selectedUserId ? applicantLabel(selectedUserId) : "本人")
-    : (selectedGroup || "未分配");
+    ? (isStaff ? (selectedUserId ? applicantLabel(selectedUserId) : "全部申领人") : "本人")
+    : (isStaff ? (selectedGroup || "全部课题组") : (selectedGroup || "未分配"));
 
   const handleExport = async () => {
     setExporting(true);
     try {
       const exportLabel = tab === "personal"
-        ? `个人审计-${isStaff && selectedUserId ? applicantLabel(selectedUserId) : "本人"}`
-        : `课题组审计-${isStaff ? (selectedGroup || "未分配") : (selectedGroup || studentGroup || "未分配")}`;
+        ? `个人审计-${isStaff ? (selectedUserId ? applicantLabel(selectedUserId) : "全部申领人") : "本人"}`
+        : `课题组审计-${isStaff ? (selectedGroup || "全部课题组") : (selectedGroup || studentGroup || "未分配")}`;
       const blob = await exportMaterialAuditTrail({
-        from,
-        to,
+        ...auditDateParams(from, to),
         exportLabel,
-        applicantUserId: tab === "personal" && isStaff ? selectedUserId || undefined : undefined,
+        applicantUserId: tab === "personal" && isStaff && selectedUserId ? selectedUserId : undefined,
         applicantGroup: tab === "group"
           ? (isStaff ? (selectedGroup || undefined) : (studentGroup || undefined))
           : undefined,
@@ -363,8 +372,7 @@ export default function MaterialAuditExportPage() {
     } catch { toast.error("导出失败"); } finally { setExporting(false); }
   };
   const handleExportAudit = async () => {
-    if (selectedItemId === "") return;
-    const itemName = items.find((it) => it.id === selectedItemId)?.name || String(selectedItemId);
+    const itemName = selectedItemLabel;
     const groupSuffix = itemApplicantGroup ? `-${itemApplicantGroup}` : "";
     const exportLabel = tab === "item-group"
       ? `物品+课题组审计-${itemName}${groupSuffix}`
@@ -372,9 +380,8 @@ export default function MaterialAuditExportPage() {
     setExporting(true);
     try {
       const blob = await exportMaterialItemFlow({
-        itemId: Number(selectedItemId),
-        from,
-        to,
+        itemId: selectedItemId === "" ? null : Number(selectedItemId),
+        ...auditDateParams(from, to),
         applicantGroup: itemApplicantGroup,
         exportLabel,
       });
@@ -404,15 +411,11 @@ export default function MaterialAuditExportPage() {
                   className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[180px]"
                   value={selectedUserId}
                   onChange={(e) => setSelectedUserId(e.target.value)}
-                  disabled={applicantList.length === 0}
                 >
-                  {applicantList.length === 0 ? (
-                    <option value="">暂无申领记录</option>
-                  ) : (
-                    applicantList.map((a) => (
-                      <option key={a.userId} value={a.userId}>{a.applicantName || a.userId}</option>
-                    ))
-                  )}
+                  <option value="">全部申领人</option>
+                  {applicantList.map((a) => (
+                    <option key={a.userId} value={a.userId}>{a.applicantName || a.userId}</option>
+                  ))}
                 </select>
               </div>
             )}
@@ -423,25 +426,21 @@ export default function MaterialAuditExportPage() {
                   className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[180px]"
                   value={selectedGroup}
                   onChange={(e) => setSelectedGroup(e.target.value)}
-                  disabled={groupList.length === 0}
                 >
-                  {groupList.length === 0 ? (
-                    <option value="">暂无课题组记录</option>
-                  ) : (
-                    groupList.map((g) => <option key={g} value={g}>{g}</option>)
-                  )}
+                  <option value="">全部课题组</option>
+                  {groupList.map((g) => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
             )}
             {tab === "personal" && !isStaff && <span className="text-sm text-[var(--twin-body)] pb-2">申领人：本人</span>}
             {tab === "group" && !isStaff && <span className="text-sm text-[var(--twin-body)] pb-2">课题组：{selectedGroup || "未分配"}</span>}
-            <div><label className="mb-1 block text-xs text-[var(--twin-body)]">开始日期</label><input type="date" className={inputCls} value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+            <div><label className="mb-1 block text-xs text-[var(--twin-body)]">开始日期</label><input type="date" className={inputCls} value={from} onChange={(e) => setFrom(e.target.value)} placeholder="全部时间" /></div>
             <span className="pb-2 text-sm text-[var(--twin-mute)]">～</span>
-            <div><label className="mb-1 block text-xs text-[var(--twin-body)]">结束日期</label><input type="date" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} /></div>
+            <div><label className="mb-1 block text-xs text-[var(--twin-body)]">结束日期</label><input type="date" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} placeholder="全部时间" /></div>
             <button onClick={handleExport} disabled={exporting} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{exporting ? "导出中…" : "导出表格"}</button>
           </div>
           <p className="text-xs text-[var(--twin-mute)]">
-            {currentLabel} · 共 {currentRows.length} 行 · {from} ～ {to}
+            {currentLabel} · 共 {currentRows.length} 行 · {dateRangeLabel(from, to)}
             {requestsLoading ? " · 加载中…" : ""}
           </p>
 
@@ -483,13 +482,9 @@ export default function MaterialAuditExportPage() {
                   className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[160px]"
                   value={selectedItemGroup}
                   onChange={(e) => { setSelectedItemGroup(e.target.value); setFlowPage(1); }}
-                  disabled={groupList.length === 0}
                 >
-                  {groupList.length === 0 ? (
-                    <option value="">暂无课题组记录</option>
-                  ) : (
-                    groupList.map((g) => <option key={g} value={g}>{g}</option>)
-                  )}
+                  <option value="">全部课题组</option>
+                  {groupList.map((g) => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
             )}
@@ -506,7 +501,7 @@ export default function MaterialAuditExportPage() {
             <div>
               <label className="mb-1 block text-xs text-[var(--twin-body)]">选择物品</label>
               <select className={`${inputCls} min-w-[180px]`} value={selectedItemId === "" ? "" : String(selectedItemId)} onChange={(e) => { setSelectedItemId(e.target.value === "" ? "" : Number(e.target.value)); setFlowPage(1); }}>
-                <option value="">请选择物品</option>{filteredItems.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+                <option value="">全部物品</option>{filteredItems.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
               </select>
             </div>
             <div>
@@ -518,11 +513,12 @@ export default function MaterialAuditExportPage() {
               <label className="mb-1 block text-xs text-[var(--twin-body)]">结束日期</label>
               <input type="date" className={inputCls} value={to} onChange={(e) => { setTo(e.target.value); setFlowPage(1); }} />
             </div>
-            <button onClick={handleExportAudit} disabled={exporting || selectedItemId === ""} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{exporting ? "导出中…" : "导出表格"}</button>
+            <button onClick={handleExportAudit} disabled={exporting} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{exporting ? "导出中…" : "导出表格"}</button>
           </div>
 
           <p className="text-xs text-[var(--twin-mute)]">
-            {tab === "item-group" ? `物品+课题组来去流水 · ${selectedItemGroup || "未分配"} · ` : "物品来去流水 · "}共 {itemFlowRows.length} 条 · {from} ～ {to}
+            {tab === "item-group" ? `物品+课题组来去流水 · ${selectedItemGroup || "全部课题组"} · ` : "物品来去流水 · "}
+            {selectedItemLabel} · 共 {itemFlowRows.length} 条 · {dateRangeLabel(from, to)}
             {itemFlowLoading ? " · 加载中…" : ""}
           </p>
           <div className="overflow-x-auto rounded-twin-lg border border-[var(--twin-hairline)]">
@@ -531,6 +527,7 @@ export default function MaterialAuditExportPage() {
                 <th className="px-2 py-2 text-left">时间</th>
                 <th className="px-2 py-2 text-left">类型</th>
                 <th className="px-2 py-2 text-left">物品</th>
+                <th className="px-2 py-2">规格</th>
                 <th className="px-2 py-2">变动数量</th>
                 <th className="px-2 py-2">库存</th>
                 <th className="px-2 py-2 text-left">申领人</th>
@@ -544,6 +541,7 @@ export default function MaterialAuditExportPage() {
                     <td className="px-2 py-2 whitespace-nowrap">{toTime(row.time)}</td>
                     <td className="px-2 py-2">{row.eventType}</td>
                     <td className="px-2 py-2">{row.itemName}</td>
+                    <td className="px-2 py-2 text-center text-[10px]">{row.specLabel}</td>
                     <td className="px-2 py-2 text-center font-medium">{row.qty}</td>
                     <td className="px-2 py-2 text-center">{row.stockAfter}</td>
                     <td className="px-2 py-2">{row.applicantName}</td>
@@ -555,10 +553,9 @@ export default function MaterialAuditExportPage() {
               </tbody>
             </table>
             {itemFlowLoading && <p className="p-4 text-center text-xs text-[var(--twin-mute)]">加载中…</p>}
-            {!itemFlowLoading && selectedItemId !== "" && itemFlowRows.length === 0 && (
+            {!itemFlowLoading && itemFlowRows.length === 0 && (
               <p className="p-4 text-center text-xs text-[var(--twin-mute)]">该区间暂无流水记录</p>
             )}
-            {selectedItemId === "" && <p className="p-4 text-center text-xs text-[var(--twin-mute)]">请选择物品查看来去流水</p>}
           </div>
           {itemFlowRows.length > FLOW_PAGE_SIZE && (
             <div className="flex items-center gap-2 text-xs">

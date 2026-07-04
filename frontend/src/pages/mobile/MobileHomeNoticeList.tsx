@@ -1,6 +1,7 @@
 /** 手机版 — 首页公告列表行（小程序 news-card + van-cell） */
 import type { MobileAlertItem } from "@/api/domains/mobileStudent.api";
 import { MOBILE_NOTICE_LIST_CARD_STYLE } from "./mobileNoticePresentation";
+import { sortMobileAnnouncementsForDisplay } from "./mobileExemptAlertHelpers";
 import MobileNoticeListRow from "./MobileNoticeListRow";
 import { mobileNoticeItemKey } from "./MobileNoticesPanel";
 
@@ -23,9 +24,11 @@ export function MobileHomeNoticeList({
     );
   }
 
+  const sorted = sortMobileAnnouncementsForDisplay(items);
+
   return (
     <div style={MOBILE_NOTICE_LIST_CARD_STYLE}>
-      {items.slice(0, 4).map((item, idx) => (
+      {sorted.slice(0, 4).map((item, idx) => (
         <MobileNoticeListRow
           key={mobileNoticeItemKey(item)}
           item={item}

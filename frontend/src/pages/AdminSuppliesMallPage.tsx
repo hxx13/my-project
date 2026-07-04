@@ -500,29 +500,20 @@ export default function AdminSuppliesMallPage() {
 
   return (
     <div className="flex h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] min-h-0 flex-col gap-2">
-      <div className="shrink-0">
-        <h2 className="text-lg font-semibold text-[var(--twin-ink)]">领用物资</h2>
-        <p className="text-xs text-[var(--twin-mute)]">
-          选择分类与数量，提交后待管理员确认出库（下单不占库存）。购物车已保存到服务端，与小程序领用物资页同一账号互通，换设备可继续选购。
-        </p>
-      </div>
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] shadow-twin-level-2">
-      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2">
-        <div className="min-w-0 flex-1">
-          <input
-            type="text"
-            value={searchKeyword}
-            onChange={(e) => setSearchKeyword(e.target.value)}
-            placeholder="搜索当前物资"
-            className="h-8 w-full max-w-md rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 text-xs outline-none ring-sky-500 focus:ring-2"
-          />
+      {/* 标题栏：左侧标题+副标题，右侧操作入口（与小程序布局一致） */}
+      <div className="shrink-0 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-[var(--twin-ink)]">领用物资</h2>
+          <p className="text-xs text-[var(--twin-mute)] mt-0.5">
+            选择分类与数量，提交后待管理员确认出库（下单不占库存）。购物车已保存到服务端，与小程序领用物资页同一账号互通，换设备可继续选购。
+          </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
           {showProcessEntry ? (
             <Link
               to={toAdminRoutePath("/admin/supplies/process")}
               state={{ returnTo: returnToForChild }}
-              className="relative rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:opacity-90"
+              className="relative rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:opacity-90 whitespace-nowrap"
             >
               物资处理
               {processBadgeText ? (
@@ -536,7 +527,7 @@ export default function AdminSuppliesMallPage() {
             <Link
               to={toAdminRoutePath("/admin/supplies/manage")}
               state={{ returnTo: returnToForChild }}
-              className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-800 hover:opacity-90"
+              className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-800 hover:opacity-90 whitespace-nowrap"
             >
               管理
             </Link>
@@ -544,7 +535,7 @@ export default function AdminSuppliesMallPage() {
           <button
             type="button"
             onClick={() => setRecordsPanelOpen(true)}
-            className="relative rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-1.5 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft-2)]"
+            className="relative rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-1.5 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft-2)] whitespace-nowrap"
           >
             我的记录
             {mineBadgeText ? (
@@ -554,13 +545,35 @@ export default function AdminSuppliesMallPage() {
             ) : null}
           </button>
         </div>
-      </header>
+      </div>
 
-      {noveltyCounts.total > 0 ? (
-        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900">
-          近期更新：上新 {noveltyCounts.newItem} 件，进货 {noveltyCounts.newInbound} 件
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] shadow-twin-level-2">
+      {/* 搜索栏 + 近期更新标签（内联合并，消除独立横幅行） */}
+      <div className="flex shrink-0 items-center gap-2 bg-[var(--twin-canvas)] px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <input
+            type="text"
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+            placeholder="搜索当前物资"
+            className="h-8 w-full max-w-md rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 text-xs outline-none ring-sky-500 focus:ring-2"
+          />
         </div>
-      ) : null}
+        {noveltyCounts.total > 0 ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            {noveltyCounts.newItem > 0 ? (
+              <span className="inline-flex items-center rounded-full bg-orange-50 border border-orange-200 px-2 py-0.5 text-[10px] font-medium text-orange-700 whitespace-nowrap">
+                新品 +{noveltyCounts.newItem}
+              </span>
+            ) : null}
+            {noveltyCounts.newInbound > 0 ? (
+              <span className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-medium text-emerald-700 whitespace-nowrap">
+                补货 +{noveltyCounts.newInbound}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
       <div className="flex min-h-0 flex-1 flex-row">
         <aside className="w-[128px] shrink-0 overflow-y-auto border-r border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] py-2">

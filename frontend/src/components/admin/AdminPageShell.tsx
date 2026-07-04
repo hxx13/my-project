@@ -8,21 +8,37 @@ type AdminPageShellProps = {
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** 占满 AdminLayout 剩余高度：工具栏固定、表格区独立滚动（见 UI 规范 §高度链） */
+  fillHeight?: boolean;
 };
 
 /**
  * 后台内容区统一页头：与 `AdminLayout` 外层 `main` 的 `p-6` 配合，壳内不再重复外边距。
  */
-export function AdminPageShell({ title, description, actions, children, className }: AdminPageShellProps) {
+export function AdminPageShell({ title, description, actions, children, className, fillHeight }: AdminPageShellProps) {
   return (
-    <div className={cn("space-y-6", className)}>
-      <div className="flex flex-col gap-3 border-b border-[var(--app-color-border-default)] pb-5 sm:flex-row sm:items-start sm:justify-between">
+    <div className={cn(fillHeight ? "flex h-full min-h-0 flex-col gap-6" : "space-y-6", className)}>
+      <div className="flex shrink-0 flex-col gap-3 border-b border-[var(--app-color-border-default)] pb-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1.5">
           <h2 className="text-xl font-semibold tracking-tight text-[var(--app-color-text-primary)] sm:text-2xl">{title}</h2>
           {description ? <div className="max-w-3xl text-sm leading-relaxed text-[var(--app-color-text-secondary)]">{description}</div> : null}
         </div>
         {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
+      {fillHeight ? <div className="flex min-h-0 flex-1 flex-col">{children}</div> : children}
+    </div>
+  );
+}
+
+type AdminFillScrollRegionProps = {
+  children: ReactNode;
+  className?: string;
+};
+
+/** fillHeight 页壳内的可滚动主体（表格、长列表） */
+export function AdminFillScrollRegion({ children, className }: AdminFillScrollRegionProps) {
+  return (
+    <div className={cn("min-h-0 flex-1 overflow-auto overscroll-y-contain", className)}>
       {children}
     </div>
   );

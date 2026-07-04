@@ -6,6 +6,11 @@ import {
   alertKindLabel,
   formatNoticeListSubtitle,
 } from "./mobileNoticePresentation";
+import {
+  buildExemptListPreview,
+  parseExemptFields,
+  resolveExemptAlertTitle,
+} from "./mobileExemptAlertHelpers";
 
 export default function MobileNoticeListRow({
   item,
@@ -20,7 +25,11 @@ export default function MobileNoticeListRow({
 }) {
   const colors = alertKindColors(item.kind);
   const needK = item.interactiveRequired && !html5PrivilegeBypass;
-  const subtitle = formatNoticeListSubtitle(item);
+  const subtitle =
+    item.kind === "exempt"
+      ? buildExemptListPreview(parseExemptFields(item))
+      : formatNoticeListSubtitle(item);
+  const title = item.kind === "exempt" ? resolveExemptAlertTitle() : item.title;
 
   return (
     <button
@@ -44,7 +53,7 @@ export default function MobileNoticeListRow({
             className="flex-1 min-w-0 text-[14px] font-medium truncate leading-snug"
             style={{ color: "#323233" }}
           >
-            {item.title}
+            {title}
           </span>
           {needK && (
             <span className="shrink-0 text-[10px] font-semibold" style={{ color: "#d97706" }}>

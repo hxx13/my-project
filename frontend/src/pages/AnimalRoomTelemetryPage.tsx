@@ -13,7 +13,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Portal } from "@/components/Portal";
-import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AnimalRoomHubViewChunk, AnimalRoomTelemetryPageDto } from "@/api/telemetryApi";
 import {
@@ -76,10 +75,10 @@ import type {
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { cn } from "@/lib/utils";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import {
   ArrowBigDown,
   ArrowBigUp,
-  ArrowLeft,
   Clock,
   Droplets,
   Gauge,
@@ -91,7 +90,10 @@ import {
 import { Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useTelemetryArchiveRollingSeries } from "@/hooks/useTelemetryArchiveRollingSeries";
 
-import { ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY } from "@/features/admin/adminTelemetryNav";
+import {
+  ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY,
+  useTwinFullscreenReturn,
+} from "@/features/admin/adminTelemetryNav";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import {
   AnimalTelemetryFxIconVariantContext,
@@ -101,8 +103,9 @@ import { AnimalTelemetryRoomFxIcon } from "@/features/twin-chrome/AnimalTelemetr
 import { AnimalTelemetryWindStreamSvg } from "@/features/twin-chrome/AnimalTelemetryWindStreamSvg";
 import { inferAnimalTelemetryRoomFx } from "@/features/twin-chrome/animalTelemetryRoomFx";
 import "./animalRoomTelemetryPage.css";
+import { AnimalRoomConsoleBackButton } from "./animalRoomShared/AnimalRoomConsoleBackButton";
 import {
-  AnimalRoomTelemetryPartitionDock,
+  AnimalRoomTelemetryPartitionHeaderNav,
   partitionDockElevatorDisplayLabel,
   type AnimalRoomTelemetryPartitionDockItem,
 } from "./AnimalRoomTelemetryPartitionDock";
@@ -2285,31 +2288,9 @@ function StructuredFloorContent({
 
 export default function AnimalRoomTelemetryPage() {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const returnToPath = useMemo(() => {
-    const st = (location.state as { returnTo?: string } | null)?.returnTo?.trim();
-    if (st) return st;
-    try {
-      const s = sessionStorage.getItem(ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY);
-      return s?.trim() || null;
-    } catch {
-      return null;
-    }
-  }, [location.state, location.key]);
-
-  const handleReturnToPriorPage = useCallback(() => {
-    try {
-      sessionStorage.removeItem(ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY);
-    } catch {
-      /* ignore */
-    }
-    if (returnToPath) {
-      navigate(returnToPath, { replace: true });
-    } else {
-      navigate(-1);
-    }
-  }, [navigate, returnToPath]);
+  const { returnToPath, handleReturn: handleReturnToPriorPage } = useTwinFullscreenReturn(
+    ANIMAL_ROOM_TELEMETRY_RETURN_TO_KEY,
+  );
 
   const [gateTick, setGateTick] = useState(0);
 
@@ -2683,9 +2664,14 @@ export default function AnimalRoomTelemetryPage() {
             : "border-zinc-200/90 bg-white/90 supports-[backdrop-filter]:bg-white/80"
         )}
       >
-        <div className="w-full px-2 py-1 sm:px-3">
-          <div className="flex flex-nowrap items-center gap-2 sm:gap-2.5">
-            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
+        <div className="w-full min-w-0 overflow-x-auto px-2 py-1 sm:px-3">
+          <div className="flex w-full min-w-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
+              <AnimalRoomConsoleBackButton
+                onClick={handleReturnToPriorPage}
+                returnToPath={returnToPath}
+                variant={telemetryFxIconVariant ? "scifi" : "standard"}
+              />
               <div
                 className={cn(
                   "relative box-border flex shrink-0 items-center leading-none text-base sm:text-lg",
@@ -2720,10 +2706,10 @@ export default function AnimalRoomTelemetryPage() {
                   </div>
                 )}
               </div>
-              <div className="min-w-0 flex-1 leading-tight">
+              <div className="min-w-0 shrink-0 leading-tight">
                 <h1
                   className={cn(
-                    "animal-telemetry-page-title truncate text-base font-extrabold leading-none sm:text-lg",
+                    "animal-telemetry-page-title whitespace-nowrap text-base font-extrabold leading-none sm:text-lg",
                     telemetryFxIconVariant
                       ? "bg-gradient-to-r from-cyan-100 via-sky-200 to-cyan-100 bg-clip-text text-transparent"
                       : "bg-gradient-to-r from-slate-800 via-sky-700 to-slate-800 bg-clip-text text-transparent"
@@ -2741,7 +2727,29 @@ export default function AnimalRoomTelemetryPage() {
                 </p>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
+            {tabCount > 0 ? (
+              <>
+                <div
+                  className={cn(
+                    "mx-0.5 hidden h-7 w-px shrink-0 sm:block",
+                    telemetryFxIconVariant ? "bg-cyan-500/15" : "bg-zinc-200/90"
+                  )}
+                  aria-hidden
+                />
+                <AnimalRoomTelemetryPartitionHeaderNav
+                  scifi={telemetryFxIconVariant}
+                  items={partitionDockItems}
+                  activeIndex={activeTab}
+                  onSelect={selectPartitionTab}
+                />
+              </>
+            ) : null}
+            <div
+              className={cn(
+                "flex shrink-0 items-center gap-1 border-l pl-1.5 sm:gap-1.5 sm:pl-2",
+                telemetryFxIconVariant ? "border-cyan-500/15" : "border-zinc-200/90"
+              )}
+            >
               {page?.fetchedAt ? (
                 <span
                   className={cn(
@@ -2766,7 +2774,7 @@ export default function AnimalRoomTelemetryPage() {
                   刷新中…
                 </span>
               ) : null}
-              <label
+              <div
                 className={cn(
                   "inline-flex cursor-pointer select-none items-center gap-1 rounded-md border px-1.5 py-0 text-[10px] font-medium shadow-sm ring-zinc-900/5 sm:gap-1.5 sm:px-2 sm:text-[11px]",
                   telemetryFxIconVariant
@@ -2774,11 +2782,10 @@ export default function AnimalRoomTelemetryPage() {
                     : "border-zinc-200/90 bg-white text-zinc-700"
                 )}
               >
-                <input
-                  type="checkbox"
-                  className="h-3 w-3 shrink-0 rounded border-zinc-300 text-sky-600 focus:ring-sky-500"
+                <AdminSwitchScaled
+                  size="3"
                   checked={highFreqVisibleTabPoll}
-                  onChange={(e) => persistHighFreqVisibleTabPoll(e.target.checked)}
+                  onChange={(checked) => persistHighFreqVisibleTabPoll(checked)}
                   disabled={page?.winccEnabled === false}
                 />
                 <span className="hidden whitespace-nowrap sm:inline" title="仅请求当前标签页变量 snapshot，每 10 秒合并数值">
@@ -2787,21 +2794,7 @@ export default function AnimalRoomTelemetryPage() {
                 <span className="sm:hidden" title="当前分区 10 秒定点拉数">
                   10s
                 </span>
-              </label>
-              <button
-                type="button"
-                onClick={handleReturnToPriorPage}
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold shadow-sm transition-colors sm:px-2 sm:text-xs",
-                  telemetryFxIconVariant
-                    ? "border-cyan-500/35 bg-slate-900/90 text-cyan-50 hover:bg-slate-800/95"
-                    : "border-sky-200/90 bg-gradient-to-b from-sky-50 to-white text-sky-900 hover:from-sky-100 hover:to-sky-50"
-                )}
-                title={returnToPath ? "返回进入前页面" : "返回上一页"}
-              >
-                <ArrowLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span className="hidden min-[380px]:inline">返回</span>
-              </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2867,15 +2860,6 @@ export default function AnimalRoomTelemetryPage() {
           </div>
         )}
       </main>
-
-      {tabCount > 0 ? (
-        <AnimalRoomTelemetryPartitionDock
-          scifi={telemetryFxIconVariant}
-          items={partitionDockItems}
-          activeIndex={activeTab}
-          onSelect={selectPartitionTab}
-        />
-      ) : null}
     </div>
         </TelemetryDialogsProvider>
       </WinccAnimalRoomWriteContext.Provider>

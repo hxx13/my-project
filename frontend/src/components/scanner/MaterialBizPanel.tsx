@@ -14,7 +14,10 @@ import {
   formatMaterialApplicantGroupLabel,
   resolveMaterialApplicantGroup,
 } from "@/features/student/materialApplicant";
+import { MaterialSpecPickControl } from "@/components/material/MaterialSpecPickerSheet";
+import { hasSpecSchema } from "@/utils/materialSpecHelpers";
 import { webImageSrc } from "@/utils/mediaUrl";
+import { FillHeightScroll } from "@/components/layout/ScrollFillLayout";
 import { cn } from "@/lib/utils";
 
 // 明暗主题适配令牌
@@ -52,35 +55,6 @@ function parseCartKey(key: string): { itemId: number; specKey: string } {
   return { itemId: Number(key.slice(0, idx)), specKey: key.slice(idx + 2) };
 }
 
-/** Generate cartesian-product specKeys from dimensions + selections */
-function generateSpecCombos(
-  dimensions: { name: string; options: string[] }[],
-  selected: Record<string, string>,
-): string[] {
-  const selectedDims = dimensions.filter((d) => selected[d.name]);
-  if (selectedDims.length === 0) return [];
-  let combos: Record<string, string>[] = [{}];
-  for (const dim of selectedDims) {
-    const opt = selected[dim.name];
-    combos = combos.map((c) => ({ ...c, [dim.name]: opt }));
-  }
-  const rest = dimensions.filter((d) => !selected[d.name]);
-  for (const dim of rest) {
-    const next: Record<string, string>[] = [];
-    for (const c of combos) {
-      for (const opt of dim.options) {
-        next.push({ ...c, [dim.name]: opt });
-      }
-    }
-    combos = next;
-  }
-  return combos.map((c) =>
-    Object.entries(c)
-      .map(([k, v]) => `${k}=${v}`)
-      .join("|"),
-  );
-}
-
 /**
  * 快捷业务-申领物品面板（明暗主题适配）
  * 登记信息与学生中心 /student/material 一致：PIN 后以被扫人员身份提交，applicantGroup 同规则。
@@ -93,6 +67,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
   const [cart, setCart] = useState<MaterialCart>({});
   const [submitting, setSubmitting] = useState(false);
   const [showKeypad, setShowKeypad] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const applicantName = scanUser?.userName?.trim() || userId;
   const applicantGroupLabel = formatMaterialApplicantGroupLabel(scanUser);
@@ -155,9 +130,14 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
       try {
         const results = await createMaterialRequestWithToken(authData.token, lines, applicantGroup);
         const count = Array.isArray(results) ? results.length : 1;
-        toast.success(`已为 ${applicantName} 提交 ${count} 张申领单`);
+        const message = `已为 ${applicantName} 提交 ${count} 张申领单`;
+        setSuccessMessage(message);
         setCart({});
-        onDone();
+        toast.success(message, { duration: 4000 });
+        window.setTimeout(() => {
+          setSuccessMessage(null);
+          onDone();
+        }, 1800);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "提交失败");
       } finally {
@@ -189,7 +169,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
         <div className="flex min-h-0 flex-1">
           {/* 分类 — 左侧纵向 */}
           <div
-            className={`flex shrink-0 flex-col gap-0.5 overflow-y-auto border-r ${CARD_BORDER} px-1.5 py-2`}
+            className={`flex min-h-0 shrink-0 flex-col gap-0.5 overflow-y-auto overscroll-y-contain border-r ${CARD_BORDER} px-1.5 py-2`}
             style={{ width: 72 }}
           >
             <button
@@ -216,8 +196,8 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
           </div>
 
           {/* 物品卡片 + 购物车 — 右侧 */}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex-1 overflow-y-auto px-2 pt-2">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <FillHeightScroll className="px-2 pt-2">
               <div className="grid grid-cols-2 gap-2 pb-2">
                 {items.map((item) => {
                   const max =
@@ -237,10 +217,23 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                   );
                 })}
               </div>
-            </div>
+            </FillHeightScroll>
 
             {/* 底部购物车 + 提交 */}
             <div className={`shrink-0 border-t ${CARD_BORDER} p-2`}>
+              {successMessage ? (
+                <div
+                  className="rounded-xl border border-[var(--app-color-feedback-success)]/30 bg-[var(--app-color-feedback-success-soft)] px-3 py-3 text-center"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <p className="text-sm font-semibold text-[var(--app-color-feedback-success)]">
+                    提交成功
+                  </p>
+                  <p className={`mt-1 text-xs text-[var(--app-color-text-secondary)]`}>{successMessage}</p>
+                </div>
+              ) : (
+                <>
               {cartCount > 0 && (
                 <div className="mb-2 max-h-[25vh] overflow-y-auto space-y-1">
                   {cartLines.map((line) => (
@@ -278,6 +271,8 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
               >
                 {submitting ? "提交中…" : `提交领用 (${cartCount})`}
               </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -286,12 +281,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
   );
 }
 
-interface SkuCombo {
-  specKey: string;
-  label: string;
-}
-
-/** 物品卡片 — 明暗主题适配，支持 SKU 规格选择 */
+/** 物品卡片 — 固定尺寸，有规格时仅显示「选择规格」局部弹窗 */
 function MaterialItemCard({
   item,
   cart,
@@ -303,269 +293,65 @@ function MaterialItemCard({
   maxStock: number;
   onCartChange: (key: string, delta: number) => void;
 }) {
-  // Parse specSchema
-  const dimensions: { name: string; options: string[] }[] = useMemo(() => {
-    if (!item.specSchema) return [];
-    try {
-      const schema = JSON.parse(item.specSchema);
-      return schema.dimensions || [];
-    } catch {
-      return [];
-    }
-  }, [item.specSchema]);
-
-  const hasSpecs = dimensions.length > 0;
+  const hasSpecs = hasSpecSchema(item.specSchema);
   const imgSrc = webImageSrc(item.coverUrl);
   const soldOut = maxStock <= 0;
-
-  if (!hasSpecs) {
-    // ---- simple item ----
-    const cartKey = String(item.id);
-    const cartQty = cart[cartKey] || 0;
-    return (
-      <div className={cn(`rounded-xl border ${CARD_BORDER} ${CARD_BG} p-2`, soldOut && "opacity-40")}>
-        <div className="flex gap-2">
-          {imgSrc ? (
-            <img src={imgSrc} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
-          ) : (
-            <div
-              className={`h-12 w-12 shrink-0 rounded-lg ${BTN_GHOST} flex items-center justify-center text-lg ${TEXT_MUTED}`}
-            >
-              {item.name.charAt(0)}
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <div className={`text-xs font-medium truncate ${TEXT}`}>{item.name}</div>
-            {item.subtitle && <div className={`text-[10px] truncate ${TEXT_MUTED}`}>{item.subtitle}</div>}
-            <div className={`mt-1 text-[10px] ${TEXT_SEC}`}>
-              {item.stockMode === "QUANTIFIED" ? `库存 ${item.stockQty}` : item.stockQty >= 1 ? "有货" : "缺货"}
-            </div>
-          </div>
-        </div>
-        {!soldOut && (
-          <div className="mt-2 flex items-center justify-end gap-1">
-            <button
-              onClick={() => onCartChange(cartKey, -1)}
-              disabled={cartQty <= 0}
-              className={`h-6 w-6 rounded ${BTN_GHOST} text-xs ${TEXT} hover:opacity-80 disabled:opacity-20`}
-            >
-              <Minus className="h-3 w-3 mx-auto" />
-            </button>
-            <span className={`w-8 text-center text-xs tabular-nums ${TEXT}`}>{cartQty}</span>
-            <button
-              onClick={() => onCartChange(cartKey, 1)}
-              disabled={cartQty >= maxStock}
-              className="h-6 w-6 rounded bg-cyan-500/30 text-xs text-cyan-400 hover:bg-cyan-500/50 disabled:opacity-20"
-            >
-              <Plus className="h-3 w-3 mx-auto" />
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ---- spec item — SKU panel ----
-  return (
-    <SpecItemCard
-      item={item}
-      dimensions={dimensions}
-      cart={cart}
-      maxStock={maxStock}
-      imgSrc={imgSrc}
-      soldOut={soldOut}
-      onCartChange={onCartChange}
-    />
-  );
-}
-
-/** Compact SKU panel for scanner UI */
-function SpecItemCard({
-  item,
-  dimensions,
-  cart,
-  maxStock,
-  imgSrc,
-  soldOut,
-  onCartChange,
-}: {
-  item: MaterialItem;
-  dimensions: { name: string; options: string[] }[];
-  cart: Record<string, number>;
-  maxStock: number;
-  imgSrc: string | null;
-  soldOut: boolean;
-  onCartChange: (key: string, delta: number) => void;
-}) {
-  const [selected, setSelected] = useState<Record<string, string>>({});
-  const [skuQtys, setSkuQtys] = useState<Record<string, number>>({});
-
-  const combos: SkuCombo[] = useMemo(() => {
-    const keys = generateSpecCombos(dimensions, selected);
-    return keys.map((specKey) => ({
-      specKey,
-      label: formatSpecLabel(JSON.stringify(parseSpecKey(specKey))),
-    }));
-  }, [dimensions, selected]);
-
-  const subtotal = useMemo(
-    () => Object.values(skuQtys).reduce((a, b) => a + b, 0),
-    [skuQtys],
-  );
-
-  const allDimsSelected = dimensions.every((d) => selected[d.name]);
-  const specRequired = item.specRequired === 1;
-
-  function handleAddToCart() {
-    for (const [specKey, qty] of Object.entries(skuQtys)) {
-      if (qty > 0) {
-        const cartKey = `${item.id}::${specKey}`;
-        onCartChange(cartKey, qty);
-      }
-    }
-    setSkuQtys({});
-    setSelected({});
-  }
-
-  if (soldOut) {
-    return (
-      <div className={cn(`rounded-xl border ${CARD_BORDER} ${CARD_BG} p-2 opacity-40`)}>
-        <div className="flex gap-2">
-          {imgSrc ? (
-            <img src={imgSrc} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
-          ) : (
-            <div className={`h-12 w-12 shrink-0 rounded-lg ${BTN_GHOST} flex items-center justify-center text-lg ${TEXT_MUTED}`}>
-              {item.name.charAt(0)}
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <div className={`text-xs font-medium truncate ${TEXT}`}>{item.name}</div>
-            <div className={`mt-1 text-[10px] ${TEXT_SEC}`}>缺货</div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const cartKey = String(item.id);
+  const cartQty = cart[cartKey] || 0;
 
   return (
-    <div className={`rounded-xl border ${CARD_BORDER} ${CARD_BG} p-2 text-xs`}>
-      {/* Header */}
+    <div className={cn(`rounded-xl border ${CARD_BORDER} ${CARD_BG} p-2 overflow-visible`, soldOut && "opacity-40")}>
       <div className="flex gap-2">
         {imgSrc ? (
-          <img src={imgSrc} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+          <img src={imgSrc} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
         ) : (
-          <div className={`h-10 w-10 shrink-0 rounded-lg ${BTN_GHOST} flex items-center justify-center text-base ${TEXT_MUTED}`}>
+          <div
+            className={`h-12 w-12 shrink-0 rounded-lg ${BTN_GHOST} flex items-center justify-center text-lg ${TEXT_MUTED}`}
+          >
             {item.name.charAt(0)}
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className={`font-medium truncate ${TEXT}`}>{item.name}</div>
-          <div className={`text-[10px] ${TEXT_SEC}`}>
-            {item.stockMode === "QUANTIFIED" ? `库存 ${item.stockQty}` : "有货"}
+          <div className={`text-xs font-medium truncate ${TEXT}`}>{item.name}</div>
+          {item.subtitle && <div className={`text-[10px] truncate ${TEXT_MUTED}`}>{item.subtitle}</div>}
+          <div className={`mt-1 text-[10px] ${TEXT_SEC}`}>
+            {item.stockMode === "QUANTIFIED" ? `库存 ${item.stockQty}` : item.stockQty >= 1 ? "有货" : "缺货"}
           </div>
         </div>
       </div>
-
-      {/* Dimension selectors */}
-      {dimensions.map((dim) => (
-        <div key={dim.name} className="mt-1.5 flex items-center gap-1">
-          <span className={`text-[10px] ${TEXT_MUTED} w-7 shrink-0`}>{dim.name}</span>
-          <div className="flex gap-0.5 flex-wrap">
-            {dim.options.map((opt) => {
-              const active = selected[dim.name] === opt;
-              return (
-                <button
-                  key={opt}
-                  onClick={() => {
-                    setSelected((prev) => {
-                      const cur = prev[dim.name];
-                      if (cur === opt) {
-                        const next = { ...prev };
-                        delete next[dim.name];
-                        return next;
-                      }
-                      return { ...prev, [dim.name]: opt };
-                    });
-                    setSkuQtys({});
-                  }}
-                  className={cn(
-                    "px-1.5 py-0.5 rounded text-[10px] border transition-colors",
-                    active
-                      ? "border-cyan-400 bg-cyan-500/20 text-cyan-400"
-                      : `border-[var(--app-color-border-default)] ${TEXT_MUTED} hover:border-cyan-400/50`,
-                  )}
-                >
-                  {opt}
-                </button>
-              );
-            })}
-          </div>
+      {!soldOut && (
+        <div className="mt-2 flex items-center justify-end">
+          {hasSpecs ? (
+            <MaterialSpecPickControl
+              item={item}
+              cart={cart}
+              variant="scanner"
+              disabled={soldOut}
+              onAddKey={(key) => onCartChange(key, 1)}
+              onDecKey={(key) => onCartChange(key, -1)}
+              onAddPlain={() => onCartChange(cartKey, 1)}
+              onDecPlain={() => onCartChange(cartKey, -1)}
+            />
+          ) : (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => onCartChange(cartKey, -1)}
+                disabled={cartQty <= 0}
+                className={`h-6 w-6 rounded ${BTN_GHOST} text-xs ${TEXT} hover:opacity-80 disabled:opacity-20`}
+              >
+                <Minus className="h-3 w-3 mx-auto" />
+              </button>
+              <span className={`w-8 text-center text-xs tabular-nums ${TEXT}`}>{cartQty}</span>
+              <button
+                onClick={() => onCartChange(cartKey, 1)}
+                disabled={cartQty >= maxStock}
+                className="h-6 w-6 rounded bg-cyan-500/30 text-xs text-cyan-400 hover:bg-cyan-500/50 disabled:opacity-20"
+              >
+                <Plus className="h-3 w-3 mx-auto" />
+              </button>
+            </div>
+          )}
         </div>
-      ))}
-
-      {/* SKU grid */}
-      {combos.length > 0 && (
-        <div className="mt-1.5 pt-1.5 border-t border-[var(--app-color-border-subtle)] space-y-0.5">
-          {combos.map((combo) => {
-            const qty = skuQtys[combo.specKey] || 0;
-            const atCap = maxStock > 0 && qty >= maxStock;
-            return (
-              <div key={combo.specKey} className="flex items-center justify-between">
-                <span className={`text-[10px] ${TEXT}`}>{combo.label}</span>
-                <div className="flex items-center gap-0.5">
-                  {qty > 0 && (
-                    <button
-                      onClick={() =>
-                        setSkuQtys((prev) => {
-                          const nv = Math.max(0, qty - 1);
-                          const next = { ...prev };
-                          if (nv === 0) delete next[combo.specKey];
-                          else next[combo.specKey] = nv;
-                          return next;
-                        })
-                      }
-                      className={`h-5 w-5 rounded ${BTN_GHOST} flex items-center justify-center`}
-                    >
-                      <Minus className="h-2.5 w-2.5" />
-                    </button>
-                  )}
-                  {qty > 0 && (
-                    <span className={`w-4 text-center text-[10px] tabular-nums ${TEXT}`}>{qty}</span>
-                  )}
-                  <button
-                    onClick={() =>
-                      setSkuQtys((prev) => {
-                        const cap = maxStock > 0 ? Math.min(999, maxStock) : 999;
-                        const nv = Math.min(cap, qty + 1);
-                        return { ...prev, [combo.specKey]: nv };
-                      })
-                    }
-                    disabled={atCap}
-                    className="h-5 w-5 rounded bg-cyan-500/30 text-cyan-400 hover:bg-cyan-500/50 disabled:opacity-20"
-                  >
-                    <Plus className="h-2.5 w-2.5 mx-auto" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          <div className="flex items-center justify-between pt-1 border-t border-[var(--app-color-border-subtle)]">
-            <span className={`text-[10px] ${TEXT_MUTED}`}>小计 {subtotal} 件</span>
-            <button
-              onClick={handleAddToCart}
-              disabled={subtotal === 0 || (specRequired && !allDimsSelected)}
-              className="px-2 py-0.5 rounded bg-cyan-500 text-white text-[10px] font-medium disabled:opacity-30"
-            >
-              加入购物车
-            </button>
-          </div>
-        </div>
-      )}
-
-      {combos.length === 0 && (
-        <p className={`mt-1.5 text-[10px] ${TEXT_MUTED}`}>
-          {specRequired ? "请选择所有规格" : "请选择规格"}
-        </p>
       )}
     </div>
   );

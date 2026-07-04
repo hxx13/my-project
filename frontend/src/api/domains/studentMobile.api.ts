@@ -131,8 +131,22 @@ export async function fetchStudentMobileMaterials(): Promise<MobileMaterialsData
   return resp.data.data;
 }
 
+function normalizeMaterialRequestLines(
+  lines: { itemId: number; qty: number; specSnapshot?: string | Record<string, string> }[],
+) {
+  return lines.map((line) => ({
+    itemId: line.itemId,
+    qty: line.qty,
+    specSnapshot: line.specSnapshot
+      ? typeof line.specSnapshot === "string"
+        ? line.specSnapshot
+        : JSON.stringify(line.specSnapshot)
+      : undefined,
+  }));
+}
+
 export async function submitStudentMobileMaterialRequest(
-  lines: { itemId: number; qty: number }[],
+  lines: { itemId: number; qty: number; specSnapshot?: string }[],
   applicantGroup?: string
 ) {
   const resp = await authHttp.post<{
@@ -141,7 +155,7 @@ export async function submitStudentMobileMaterialRequest(
     message?: string;
     data: unknown;
   }>(`/student/mobile/material/requests`, {
-    lines,
+    lines: normalizeMaterialRequestLines(lines),
     applicantGroup,
   });
   if (!resp.data.success) throw new Error(resp.data.message || "提交失败");
@@ -209,6 +223,17 @@ export async function saveStudentMobileCageCellAnnotation(
     { position, ...data }
   );
   if (!resp.data.success) throw new Error(resp.data.message || "保存标注失败");
+}
+
+export async function fetchStudentMobileSpecialStatusOverview(): Promise<import("@/api/domains/cageShelf.api").SpecialStatusOverview> {
+  const resp = await authHttp.get<{
+    code: number;
+    success: boolean;
+    message: string;
+    data: import("@/api/domains/cageShelf.api").SpecialStatusOverview;
+  }>(`/student/mobile/cage-shelves/special-status-overview`);
+  if (!resp.data.success) throw new Error(resp.data.message || "加载特殊状态失败");
+  return resp.data.data;
 }
 
 // ======================== Violations ========================

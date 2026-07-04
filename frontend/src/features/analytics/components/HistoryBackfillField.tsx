@@ -1,4 +1,5 @@
-﻿import { cn } from "@/lib/utils";
+﻿import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
+import { cn } from "@/lib/utils";
 
 /** 默认回溯 90 天（含） */
 export function defaultBackfillUntilDate(): string {
@@ -41,13 +42,7 @@ export function HistoryBackfillField({
           disabled && "cursor-not-allowed opacity-50"
         )}
       >
-        <input
-          type="checkbox"
-          className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-violet-600"
-          checked={enabled}
-          disabled={disabled}
-          onChange={(e) => onEnabledChange(e.target.checked)}
-        />
+        <AdminSwitchScaled size="sm" checked={enabled} disabled={disabled} onChange={onEnabledChange} />
         <span className="text-sm text-neutral-800">
           生成历史清算记录
           <span className="mt-0.5 block text-[11px] font-normal text-neutral-500">

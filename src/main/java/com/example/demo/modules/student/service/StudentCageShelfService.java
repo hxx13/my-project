@@ -91,28 +91,65 @@ public class StudentCageShelfService {
 
     /** 手机 HTML5 笼架列表：非管理员仅返回本课题组有占用笼位的笼架 */
     public List<Map<String, Object>> listAllShelvesForMobile(User user, boolean html5PrivilegeBypass) {
+        List<Map<String, Object>> rows;
         if (isAdminUser(user) || html5PrivilegeBypass) {
-            List<Map<String, Object>> rows = cageShelfMapper.listAllShelfSummaries();
-            return rows == null ? List.of() : new ArrayList<>(rows);
+            rows = cageShelfMapper.listAllShelfSummaries();
+        } else {
+            Set<String> ownGroupShelveIds = resolveOwnGroupShelveIds(user);
+            if (ownGroupShelveIds.isEmpty()) {
+                return List.of();
+            }
+            rows = cageShelfMapper.listAllShelfSummaries();
+            if (rows == null || rows.isEmpty()) {
+                return List.of();
+            }
+            List<Map<String, Object>> filtered = new ArrayList<>();
+            for (Map<String, Object> row : rows) {
+                if (row == null) continue;
+                String shelveId = objToStr(row.get("shelveId"));
+                if (!ownGroupShelveIds.contains(shelveId)) continue;
+                Map<String, Object> shelf = new LinkedHashMap<>(row);
+                shelf.put("highlight", true);
+                filtered.add(shelf);
+            }
+            rows = filtered;
         }
-        Set<String> ownGroupShelveIds = resolveOwnGroupShelveIds(user);
-        if (ownGroupShelveIds.isEmpty()) {
-            return List.of();
+        if (rows == null || rows.isEmpty()) return List.of();
+
+        // 批量查询笼位类型分布
+        List<String> allShelveIds = rows.stream()
+                .map(r -> objToStr(r.get("shelveId")))
+                .filter(id -> !id.isEmpty())
+                .distinct()
+                .toList();
+        Map<String, Map<String, Long>> typeCountsMap = new java.util.LinkedHashMap<>();
+        if (!allShelveIds.isEmpty()) {
+            List<Map<String, Object>> counts = studentCageShelfSnapshotMapper.selectCageTypeCountsByShelveIds(allShelveIds);
+            if (counts != null) {
+                for (Map<String, Object> row : counts) {
+                    String sid = objToStr(row.get("shelveId"));
+                    Object typeObj = row.get("animalCageType");
+                    Object cntObj = row.get("cnt");
+                    String typeKey = typeObj == null ? "0" : String.valueOf(typeObj);
+                    long cnt = 0;
+                    if (cntObj instanceof Number n) cnt = n.longValue();
+                    typeCountsMap.computeIfAbsent(sid, k -> new java.util.LinkedHashMap<>()).put(typeKey, cnt);
+                }
+            }
         }
-        List<Map<String, Object>> rows = cageShelfMapper.listAllShelfSummaries();
-        if (rows == null || rows.isEmpty()) {
-            return List.of();
+        // 注入到每个 shelf
+        for (Map<String, Object> shelf : rows) {
+            String sid = objToStr(shelf.get("shelveId"));
+            Map<String, Long> tc = typeCountsMap.getOrDefault(sid, Map.of());
+            Map<String, Object> countsOut = new java.util.LinkedHashMap<>();
+            // 顺序：饲养中(3) → 待分配(1) → 异常(4) → 空笼盒(2)
+            countsOut.put("3", tc.getOrDefault("3", 0L));
+            countsOut.put("1", tc.getOrDefault("1", 0L));
+            countsOut.put("4", tc.getOrDefault("4", 0L));
+            countsOut.put("2", tc.getOrDefault("2", 0L));
+            shelf.put("cageTypeCounts", countsOut);
         }
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> row : rows) {
-            if (row == null) continue;
-            String shelveId = objToStr(row.get("shelveId"));
-            if (!ownGroupShelveIds.contains(shelveId)) continue;
-            Map<String, Object> shelf = new LinkedHashMap<>(row);
-            shelf.put("highlight", true);
-            out.add(shelf);
-        }
-        return out;
+        return rows;
     }
 
     // ---- shelf detail (grid) ----
@@ -596,6 +633,18 @@ public class StudentCageShelfService {
         return user.getRole().getLevel() >= RoleEnum.ADMIN.getLevel();
     }
 
+    /** 教职工（STAFF+）或手机 HTML5 特权用户查看特殊状态总览时不做课题组过滤。 */
+    private boolean shouldUseFullSpecialStatusOverview(User user, boolean mobileHtml5PrivilegeBypass) {
+        if (mobileHtml5PrivilegeBypass || isAdminUser(user)) {
+            return true;
+        }
+        if (user != null && user.getRole() != null
+                && user.getRole().getLevel() >= RoleEnum.STAFF.getLevel()) {
+            return true;
+        }
+        return false;
+    }
+
     private boolean isCellVisible(Map<String, Object> cell, List<String> groupNames) {
         if (groupNames == null || groupNames.isEmpty()) {
             return false;
@@ -928,13 +977,18 @@ public class StudentCageShelfService {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getSpecialStatusOverview(User user) {
-        // 暂委托教职工端获取全量数据 —— StudentCageShelfService 注入了 cageShelfService
-        // 注意：这里直接走 admin overview 再过滤更简单
+        return getSpecialStatusOverview(user, false);
+    }
+
+    /**
+     * @param mobileHtml5PrivilegeBypass 手机 H5 特权（ADMIN+）或小程序教职工视角：跳过课题组过滤
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getSpecialStatusOverview(User user, boolean mobileHtml5PrivilegeBypass) {
         Map<String, Object> adminOverview = cageShelfService.getSpecialStatusOverview();
 
-        boolean isAdmin = isAdminUser(user);
-        if (isAdmin) {
-            return adminOverview; // 高级角色看全部
+        if (shouldUseFullSpecialStatusOverview(user, mobileHtml5PrivilegeBypass)) {
+            return adminOverview;
         }
 
         List<String> groupNames = resolveUserGroupNames(user.getId());

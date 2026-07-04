@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-01T04:44:26.512Z",
+  "generatedAt": "2026-07-04T06:14:14.943Z",
   "pages": [
     {
       "path": "/admin",
@@ -13,85 +13,92 @@
       "path": "/admin/access-rules",
       "label": "门禁规则配置",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "access-rules"
     },
     {
       "path": "/admin/analytics",
       "label": "统计与审计",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "analytics"
     },
     {
       "path": "/admin/api-docs",
       "label": "接口中心",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "api-docs"
     },
     {
       "path": "/admin/aro-rooms",
       "label": "ARO房间",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "aro-rooms"
     },
     {
       "path": "/admin/asset-records",
       "label": "资产记录",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "asset-rec"
     },
     {
       "path": "/admin/asset-transfer-records",
       "label": "转移记录",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "asset-xfer"
     },
     {
       "path": "/admin/automation-logs",
       "label": "自动化日志",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "auto-logs"
     },
     {
       "path": "/admin/cage-shelf-indexes",
       "label": "笼架落库索引",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "cage-index"
     },
     {
       "path": "/admin/cage-shelves",
       "label": "笼架信息",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "cage"
     },
     {
       "path": "/admin/cage-shelves/event-log",
       "label": "笼位事件日志",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "cage-event-log"
     },
     {
       "path": "/admin/cage-shelves/special-status",
       "label": "笼架特殊状态",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "cage-special-status"
     },
     {
       "path": "/admin/content-hub",
       "label": "小程序内容中心",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "系统与安全",
+      "groupTitle": "组织与通知",
       "registryId": "content-hub"
+    },
+    {
+      "path": "/admin/conversation-archive",
+      "label": "用户对话存档",
+      "fallbackMinRole": "SUPER_ADMIN",
+      "groupTitle": "AI 实验室",
+      "registryId": "conversation-archive"
     },
     {
       "path": "/admin/dahua-issue",
@@ -104,35 +111,35 @@
       "path": "/admin/dahua-swing-rules",
       "label": "门禁联动规则",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "swing-rules"
     },
     {
       "path": "/admin/dahua-swing-tasks",
       "label": "门禁数据工作台",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "swing-tasks"
     },
     {
       "path": "/admin/department-storage",
       "label": "部门落库",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "dept-storage"
     },
     {
       "path": "/admin/device-channels",
       "label": "通道编码",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "device-ch"
     },
     {
       "path": "/admin/door-control",
       "label": "门禁控制",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "door-control"
     },
     {
@@ -146,14 +153,14 @@
       "path": "/admin/exp-stats",
       "label": "经验值统计",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "exp-stats"
     },
     {
       "path": "/admin/face-debug",
       "label": "人脸识别调试",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "face-debug"
     },
     {
@@ -167,21 +174,21 @@
       "path": "/admin/file-templates",
       "label": "文件模板库",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "file-templates"
     },
     {
       "path": "/admin/knowledge",
       "label": "知识库",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "knowledge"
     },
     {
       "path": "/admin/logging-console",
       "label": "日志控制台",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "logging-console"
     },
     {
@@ -209,14 +216,14 @@
       "path": "/admin/nav-manager",
       "label": "侧栏导航管理",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "nav-manager"
     },
     {
       "path": "/admin/notifications",
       "label": "消息通知",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "系统与安全",
+      "groupTitle": "组织与通知",
       "registryId": "notifications"
     },
     {
@@ -230,56 +237,56 @@
       "path": "/admin/profile-security",
       "label": "账号与安全",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "profile-security"
     },
     {
       "path": "/admin/purchase-process",
       "label": "采购处理",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "物资领用",
+      "groupTitle": "报修与物资领用",
       "registryId": "purchase-proc"
     },
     {
       "path": "/admin/purchase-request",
       "label": "采购申请",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "采购管理",
+      "groupTitle": "报修与物资领用",
       "registryId": "purchase-req"
     },
     {
       "path": "/admin/registration-invites",
       "label": "注册推荐码",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "registration-invites"
     },
     {
       "path": "/admin/repair-process",
       "label": "报修处理",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "采购管理",
+      "groupTitle": "报修与物资领用",
       "registryId": "repair-proc"
     },
     {
       "path": "/admin/repair-request",
       "label": "报修申请",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修管理",
+      "groupTitle": "报修与物资领用",
       "registryId": "repair-req"
     },
     {
       "path": "/admin/report-fill",
       "label": "填报中心",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "report-fill"
     },
     {
       "path": "/admin/report-form",
       "label": "填报报表管理",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "report-form"
     },
     {
@@ -300,56 +307,70 @@
       "path": "/admin/student-violations",
       "label": "警告与弹窗公告",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "系统与安全",
+      "groupTitle": "组织与通知",
       "registryId": "student-warnings"
     },
     {
       "path": "/admin/supplies",
       "label": "领用物资",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "物资领用",
+      "groupTitle": "报修与物资领用",
       "registryId": "supplies-mall"
     },
     {
       "path": "/admin/supplies/audit-export",
       "label": "领用导出",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "学生审核",
+      "groupTitle": "报修与物资领用",
       "registryId": "supplies-audit-export"
     },
     {
       "path": "/admin/telemetry-archive",
       "label": "温湿度数据归档",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "telemetry-arch"
+    },
+    {
+      "path": "/admin/telemetry-insights",
+      "label": "遥测历史分析",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "门禁、元数据与环境",
+      "registryId": "telemetry-insights"
+    },
+    {
+      "path": "/admin/telemetry-insights-config",
+      "label": "遥测对比组配置",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "门禁、元数据与环境",
+      "registryId": "telemetry-insights-config"
     },
     {
       "path": "/admin/telemetry-watchlists",
       "label": "WinCC 变量导入",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "telemetry-wl"
     },
     {
       "path": "/animal-room-cockpit",
       "label": "动物房驾驶舱",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "animal-cockpit"
     },
     {
       "path": "/animal-room-telemetry",
       "label": "动物房温湿度监测",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "animal-tel"
     },
     {
       "path": "/digital-twin-screen",
       "label": "数字孪生大屏",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "digital-twin-screen"
     }
   ],
@@ -358,7 +379,7 @@
       "path": "/admin/access-rules",
       "label": "门禁规则配置",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "access-rules",
       "entrySource": "sidebar"
     },
@@ -366,7 +387,7 @@
       "path": "/admin/analytics",
       "label": "统计与审计",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "analytics",
       "entrySource": "sidebar"
     },
@@ -374,7 +395,7 @@
       "path": "/admin/api-docs",
       "label": "接口中心",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "api-docs",
       "entrySource": "sidebar"
     },
@@ -382,7 +403,7 @@
       "path": "/admin/aro-rooms",
       "label": "ARO房间",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "aro-rooms",
       "entrySource": "sidebar"
     },
@@ -390,7 +411,7 @@
       "path": "/admin/asset-records",
       "label": "资产记录",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "asset-rec",
       "entrySource": "sidebar"
     },
@@ -398,7 +419,7 @@
       "path": "/admin/asset-transfer-records",
       "label": "转移记录",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "asset-xfer",
       "entrySource": "sidebar"
     },
@@ -406,7 +427,7 @@
       "path": "/admin/automation-logs",
       "label": "自动化日志",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "auto-logs",
       "entrySource": "sidebar"
     },
@@ -414,7 +435,7 @@
       "path": "/admin/cage-shelf-indexes",
       "label": "笼架落库索引",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "cage-index",
       "entrySource": "sidebar"
     },
@@ -422,7 +443,7 @@
       "path": "/admin/cage-shelves",
       "label": "笼架信息",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "cage",
       "entrySource": "sidebar"
     },
@@ -430,7 +451,7 @@
       "path": "/admin/cage-shelves/event-log",
       "label": "笼位事件日志",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "cage-event-log",
       "entrySource": "sidebar"
     },
@@ -438,7 +459,7 @@
       "path": "/admin/cage-shelves/special-status",
       "label": "笼架特殊状态",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "cage-special-status",
       "entrySource": "sidebar"
     },
@@ -446,8 +467,16 @@
       "path": "/admin/content-hub",
       "label": "小程序内容中心",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "系统与安全",
+      "groupTitle": "组织与通知",
       "registryId": "content-hub",
+      "entrySource": "sidebar"
+    },
+    {
+      "path": "/admin/conversation-archive",
+      "label": "用户对话存档",
+      "fallbackMinRole": "SUPER_ADMIN",
+      "groupTitle": "AI 实验室",
+      "registryId": "conversation-archive",
       "entrySource": "sidebar"
     },
     {
@@ -462,7 +491,7 @@
       "path": "/admin/dahua-swing-rules",
       "label": "门禁联动规则",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "swing-rules",
       "entrySource": "sidebar"
     },
@@ -470,7 +499,7 @@
       "path": "/admin/dahua-swing-tasks",
       "label": "门禁数据工作台",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "swing-tasks",
       "entrySource": "sidebar"
     },
@@ -478,7 +507,7 @@
       "path": "/admin/department-storage",
       "label": "部门落库",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "dept-storage",
       "entrySource": "sidebar"
     },
@@ -486,7 +515,7 @@
       "path": "/admin/device-channels",
       "label": "通道编码",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "资产与运维",
+      "groupTitle": "ARO 房间与联动",
       "registryId": "device-ch",
       "entrySource": "sidebar"
     },
@@ -494,7 +523,7 @@
       "path": "/admin/door-control",
       "label": "门禁控制",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "door-control",
       "entrySource": "sidebar"
     },
@@ -510,7 +539,7 @@
       "path": "/admin/exp-stats",
       "label": "经验值统计",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "exp-stats",
       "entrySource": "sidebar"
     },
@@ -518,7 +547,7 @@
       "path": "/admin/face-debug",
       "label": "人脸识别调试",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "face-debug",
       "entrySource": "sidebar"
     },
@@ -534,7 +563,7 @@
       "path": "/admin/file-templates",
       "label": "文件模板库",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "file-templates",
       "entrySource": "sidebar"
     },
@@ -542,7 +571,7 @@
       "path": "/admin/knowledge",
       "label": "知识库",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "knowledge",
       "entrySource": "sidebar"
     },
@@ -550,7 +579,7 @@
       "path": "/admin/logging-console",
       "label": "日志控制台",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "logging-console",
       "entrySource": "sidebar"
     },
@@ -582,7 +611,7 @@
       "path": "/admin/nav-manager",
       "label": "侧栏导航管理",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "nav-manager",
       "entrySource": "sidebar"
     },
@@ -590,7 +619,7 @@
       "path": "/admin/notifications",
       "label": "消息通知",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "系统与安全",
+      "groupTitle": "组织与通知",
       "registryId": "notifications",
       "entrySource": "sidebar"
     },
@@ -606,7 +635,7 @@
       "path": "/admin/profile-security",
       "label": "账号与安全",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "profile-security",
       "entrySource": "sidebar"
     },
@@ -614,7 +643,7 @@
       "path": "/admin/purchase-process",
       "label": "采购处理",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "物资领用",
+      "groupTitle": "报修与物资领用",
       "registryId": "purchase-proc",
       "entrySource": "sidebar"
     },
@@ -622,7 +651,7 @@
       "path": "/admin/purchase-request",
       "label": "采购申请",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "采购管理",
+      "groupTitle": "报修与物资领用",
       "registryId": "purchase-req",
       "entrySource": "sidebar"
     },
@@ -630,7 +659,7 @@
       "path": "/admin/registration-invites",
       "label": "注册推荐码",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "门禁、元数据与环境",
+      "groupTitle": "系统与安全",
       "registryId": "registration-invites",
       "entrySource": "sidebar"
     },
@@ -638,7 +667,7 @@
       "path": "/admin/repair-process",
       "label": "报修处理",
       "fallbackMinRole": "SUPER_ADMIN",
-      "groupTitle": "采购管理",
+      "groupTitle": "报修与物资领用",
       "registryId": "repair-proc",
       "entrySource": "sidebar"
     },
@@ -646,7 +675,7 @@
       "path": "/admin/repair-request",
       "label": "报修申请",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修管理",
+      "groupTitle": "报修与物资领用",
       "registryId": "repair-req",
       "entrySource": "sidebar"
     },
@@ -654,7 +683,7 @@
       "path": "/admin/report-fill",
       "label": "填报中心",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "report-fill",
       "entrySource": "sidebar"
     },
@@ -662,7 +691,7 @@
       "path": "/admin/report-form",
       "label": "填报报表管理",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "报修与物资领用",
+      "groupTitle": "资产与运维",
       "registryId": "report-form",
       "entrySource": "sidebar"
     },
@@ -686,7 +715,7 @@
       "path": "/admin/student-violations",
       "label": "警告与弹窗公告",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "系统与安全",
+      "groupTitle": "组织与通知",
       "registryId": "student-warnings",
       "entrySource": "sidebar"
     },
@@ -694,7 +723,7 @@
       "path": "/admin/supplies",
       "label": "领用物资",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "物资领用",
+      "groupTitle": "报修与物资领用",
       "registryId": "supplies-mall",
       "entrySource": "sidebar"
     },
@@ -702,7 +731,7 @@
       "path": "/admin/supplies/audit-export",
       "label": "领用导出",
       "fallbackMinRole": "STAFF",
-      "groupTitle": "学生审核",
+      "groupTitle": "报修与物资领用",
       "registryId": "supplies-audit-export",
       "entrySource": "sidebar"
     },
@@ -710,15 +739,31 @@
       "path": "/admin/telemetry-archive",
       "label": "温湿度数据归档",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "telemetry-arch",
+      "entrySource": "sidebar"
+    },
+    {
+      "path": "/admin/telemetry-insights",
+      "label": "遥测历史分析",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "门禁、元数据与环境",
+      "registryId": "telemetry-insights",
+      "entrySource": "sidebar"
+    },
+    {
+      "path": "/admin/telemetry-insights-config",
+      "label": "遥测对比组配置",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "门禁、元数据与环境",
+      "registryId": "telemetry-insights-config",
       "entrySource": "sidebar"
     },
     {
       "path": "/admin/telemetry-watchlists",
       "label": "WinCC 变量导入",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "telemetry-wl",
       "entrySource": "sidebar"
     },
@@ -726,7 +771,7 @@
       "path": "/animal-room-cockpit",
       "label": "动物房驾驶舱",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "animal-cockpit",
       "entrySource": "sidebar"
     },
@@ -734,7 +779,7 @@
       "path": "/animal-room-telemetry",
       "label": "动物房温湿度监测",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "animal-tel",
       "entrySource": "sidebar"
     },
@@ -742,7 +787,7 @@
       "path": "/digital-twin-screen",
       "label": "数字孪生大屏",
       "fallbackMinRole": "ADMIN",
-      "groupTitle": "ARO 房间与联动",
+      "groupTitle": "门禁、元数据与环境",
       "registryId": "digital-twin-screen",
       "entrySource": "sidebar"
     }

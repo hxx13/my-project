@@ -29,6 +29,14 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
                 "VALUES ('item-knowledge', 'system-security', 'ITEM', '知识库', '/admin/knowledge', 'BookOpen', 9)");
 
+            // 确保遥测分析入口始终存在（registry 新增项；已有 DB 时 seedIfEmpty 会跳过）
+            jdbcTemplate.update(
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-telemetry-insights', 'access-meta-env', 'ITEM', '遥测历史分析', '/admin/telemetry-insights', 'PieChart', 10)");
+            jdbcTemplate.update(
+                "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, item_path, item_icon, sort_order) " +
+                "VALUES ('item-telemetry-insights-config', 'access-meta-env', 'ITEM', '遥测对比组配置', '/admin/telemetry-insights-config', 'LineChart', 11)");
+
             // 确保「学生审核」分组与入口始终存在
             jdbcTemplate.update(
                 "INSERT IGNORE INTO admin_nav_config (id, parent_id, type, title, sort_order) " +
@@ -158,9 +166,11 @@ public class AdminNavConfigSchemaMigrator implements ApplicationRunner {
         seedItem("access-meta-env", 7, "item-dept-storage", "/admin/department-storage", "部门落库", "GitBranch", null);
         seedItem("access-meta-env", 8, "item-telemetry-wl", "/admin/telemetry-watchlists", "WinCC 变量导入", "Table2", null);
         seedItem("access-meta-env", 9, "item-telemetry-arch", "/admin/telemetry-archive", "温湿度数据归档", "Archive", null);
-        seedItem("access-meta-env", 10, "item-animal-tel", "/animal-room-telemetry", "动物房温湿度监测", "Thermometer", null);
-        seedItem("access-meta-env", 11, "item-animal-cockpit", "/animal-room-cockpit", "动物房驾驶舱", "BarChart3", null);
-        seedItem("access-meta-env", 12, "item-digital-twin-screen", "/digital-twin-screen", "数字孪生大屏", "Monitor", null);
+        seedItem("access-meta-env", 10, "item-telemetry-insights", "/admin/telemetry-insights", "遥测历史分析", "PieChart", null);
+        seedItem("access-meta-env", 11, "item-telemetry-insights-config", "/admin/telemetry-insights-config", "遥测对比组配置", "LineChart", null);
+        seedItem("access-meta-env", 12, "item-animal-tel", "/animal-room-telemetry", "动物房温湿度监测", "Thermometer", null);
+        seedItem("access-meta-env", 13, "item-animal-cockpit", "/animal-room-cockpit", "动物房驾驶舱", "BarChart3", null);
+        seedItem("access-meta-env", 14, "item-digital-twin-screen", "/digital-twin-screen", "数字孪生大屏", "Monitor", null);
 
         // ARO 房间与联动
         seedGroup(null, 3, "aro-room-link", "ARO 房间与联动");

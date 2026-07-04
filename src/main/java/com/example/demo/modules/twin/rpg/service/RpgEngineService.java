@@ -72,8 +72,9 @@ public class RpgEngineService {
             for (Map<String, Object> record : todayRecords) {
                 String action = String.valueOf(record.get("action"));
                 if (ExpSessionCalculator.isEnterAction(action)) {
-                    lastEnterTime = ExpSessionCalculator.parseRecordTime(record.get("create_time"));
-                } else if (ExpSessionCalculator.isExitAction(action)) {
+                    lastEnterTime = ExpSessionCalculator.parseRecordTimeFromRow(record);
+                } else if (ExpSessionCalculator.isExitAction(action)
+                        && !ExpSessionCalculator.isAutoSignoutExit(record, action)) {
                     lastEnterTime = null;
                 }
             }
@@ -83,8 +84,11 @@ public class RpgEngineService {
                 if (!lastEnterTime.toLocalDate().equals(now.toLocalDate())) {
                     return new PredictResult(0, null);
                 }
+                long rawMinutes = java.time.Duration.between(lastEnterTime, now).toMinutes();
+                int cappedMinutes = (int) Math.min(Math.max(0, rawMinutes), ExpSessionCalculator.MAX_SESSION_MINUTES);
                 int exp = (int) ExpSessionCalculator.sessionTimeExp(lastEnterTime, now);
-                return new PredictResult(exp, exp > 0 ? ExpSessionCalculator.SOURCE_TIME_BASED : null);
+                return new PredictResult(exp, exp > 0 ? ExpSessionCalculator.SOURCE_TIME_BASED : null,
+                        exp > 0 ? cappedMinutes : null);
             }
         }
         return new PredictResult(0, null);

@@ -100,10 +100,14 @@
                r.applicant_group AS applicantGroup, r.status AS status,
                DATE_FORMAT(r.created_at, '%Y-%m-%d %H:%i:%s') AS createdAt,
                DATE_FORMAT(r.fulfilled_at, '%Y-%m-%d %H:%i:%s') AS fulfilledAt,
-               l.qty AS qty, l.fulfilled_qty AS fulfilledQty, l.snapshot_name AS itemName
+               l.qty AS qty, l.fulfilled_qty AS fulfilledQty, l.snapshot_name AS itemName,
+               l.spec_snapshot AS specSnapshot
         FROM material_request_line l
         JOIN material_request r ON l.request_id = r.id
-        WHERE r.deleted = 0 AND l.item_id = #{itemId}
+        WHERE r.deleted = 0
+        <if test="itemId != null and itemId > 0">
+            AND l.item_id = #{itemId}
+        </if>
         <if test="applicantGroup != null and applicantGroup != ''">
             AND r.applicant_group = #{applicantGroup}
         </if>
@@ -121,7 +125,10 @@
         SELECT COUNT(1)
         FROM material_request_line l
         JOIN material_request r ON l.request_id = r.id
-        WHERE r.deleted = 0 AND l.item_id = #{itemId}
+        WHERE r.deleted = 0
+        <if test="itemId != null and itemId > 0">
+            AND l.item_id = #{itemId}
+        </if>
         <if test="applicantGroup != null and applicantGroup != ''">
             AND r.applicant_group = #{applicantGroup}
         </if>

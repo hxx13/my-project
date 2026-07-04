@@ -32,6 +32,9 @@
     <select id="selectById" resultType="com.example.demo.modules.material.entity.MaterialItem">
         SELECT * FROM material_item WHERE id = #{id}
     </select>
+    <select id="selectByIdForUpdate" resultType="com.example.demo.modules.material.entity.MaterialItem">
+        SELECT * FROM material_item WHERE id = #{id} FOR UPDATE
+    </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO material_item (category_id, name, subtitle, cover_url, shelf_status, stock_mode, stock_qty, show_stock_qty, workflow_type, reviewer_ids, second_reviewer_ids, spec_schema, spec_required)
         VALUES (#{categoryId}, #{name}, #{subtitle}, #{coverUrl}, #{shelfStatus}, #{stockMode}, #{stockQty}, #{showStockQty}, #{workflowType}, #{reviewerIds}, #{secondReviewerIds}, #{specSchema}, #{specRequired})

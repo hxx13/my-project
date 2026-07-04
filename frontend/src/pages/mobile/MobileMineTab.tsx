@@ -49,7 +49,7 @@ export default function MobileMineTab({
   };
 
   return (
-    <div className="h-full overflow-y-auto pb-4 relative z-10">
+    <div className="h-full overflow-y-auto pb-4">
       {/* Profile Card */}
       <div
         className="relative mx-4 mt-4 rounded-3xl px-5 pt-6 pb-5 overflow-hidden"
@@ -265,13 +265,7 @@ export default function MobileMineTab({
       {/* Footer */}
       <div className="text-center py-8 mt-4">
         <p className="text-[10px]" style={{ color: "rgba(100,116,139,0.4)" }}>
-          四川省医学科学院·四川省人民医院实验动物研究所
-        </p>
-        <p
-          className="text-[10px] mt-0.5"
-          style={{ color: "rgba(100,116,139,0.25)" }}
-        >
-          扫码直达 · 学生中心
+          上海交通大学医学院·实验动物科学部
         </p>
       </div>
     </div>

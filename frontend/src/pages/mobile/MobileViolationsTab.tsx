@@ -114,7 +114,7 @@ export default function MobileViolationsTab({ token, jwtMode }: { token: string;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="h-full overflow-y-auto flex flex-col px-3 pt-3 pb-4 relative z-10">
+    <div className="h-full overflow-y-auto flex flex-col px-3 pt-3 pb-4">
       <h2 className="text-[17px] font-extrabold px-1 mb-3" style={{ color: "#1e293b" }}>违规记录</h2>
 
       {violations.length > 0 ? (

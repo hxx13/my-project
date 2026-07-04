@@ -9,6 +9,7 @@ import {
 } from "@/api/domains/swipeAlert.api";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { ROLE_LEVEL_MAP } from "@/features/auth/roleAccess";
 import { DepartmentMultiSelect } from "@/features/swipe-alert/DepartmentMultiSelect";
 import { ChannelMultiSelect } from "@/features/swipe-alert/ChannelMultiSelect";
@@ -202,7 +203,7 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
           </div>
           <div className="flex items-end pb-1">
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" className="h-4 w-4" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+              <AdminSwitchScaled size="sm" checked={enabled} onChange={setEnabled} />
               启用规则
             </label>
           </div>
@@ -224,12 +225,12 @@ export function SwipeAlertRuleForm({ editing, onSaved, onCancel }: Props) {
                       checked ? "border-red-300 bg-red-50 text-red-900" : "border-neutral-200 bg-white"
                     }`}
                   >
-                    <input
-                      type="checkbox"
+                    <AdminSwitchScaled
+                      size="3.5"
                       checked={checked}
-                      onChange={(e) => {
+                      onChange={(nextChecked) => {
                         const set = new Set(openTypes.split(",").filter(Boolean));
-                        e.target.checked ? set.add(opt.value) : set.delete(opt.value);
+                        nextChecked ? set.add(opt.value) : set.delete(opt.value);
                         setOpenTypes(Array.from(set).join(",") || "52");
                       }}
                     />

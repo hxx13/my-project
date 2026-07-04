@@ -195,4 +195,23 @@
         WHERE create_time &lt; #{cutoffStart}
     </delete>
 
+    <select id="selectMaxEventDate" resultType="string">
+        SELECT DATE_FORMAT(MAX(create_time), '%Y-%m-%d')
+        FROM twin_exp_record
+        WHERE 1 = 1
+        <if test="cutoffStart != null and cutoffStart != ''">
+            AND create_time &gt;= #{cutoffStart}
+        </if>
+    </select>
+
+    <select id="getDistinctEventDates" resultType="string">
+        SELECT DISTINCT DATE_FORMAT(create_time, '%Y-%m-%d') AS event_date
+        FROM twin_exp_record
+        WHERE 1 = 1
+        <if test="cutoffStart != null and cutoffStart != ''">
+            AND create_time &gt;= #{cutoffStart}
+        </if>
+        ORDER BY event_date ASC
+    </select>
+
 </mapper>

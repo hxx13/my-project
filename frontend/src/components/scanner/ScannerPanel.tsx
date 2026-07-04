@@ -32,6 +32,10 @@ import type { ScanStatus } from '@/components/face-verify';
 import { uploadBaselinePhoto } from '@/api/domains/face.api';
 import { specialChannelLoginByFace } from './specialChannel.api';
 import type { AuthData } from '@/api/domains/auth.api';
+import {
+    greetScanAssistantUser,
+    notifyScanPopupVisible,
+} from '@/components/scanner/scan-assistant/scanAssistantSpeak';
 
 const toHalfWidth = (value: string) =>
     value.replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0)).replace(/\u3000/g, " ");
@@ -65,6 +69,7 @@ export default function ScannerPanel() {
             const uid = data.userInfo?.userId ? String(data.userInfo.userId) : '';
             setScanPopupSession(uid || null, lastScannedIdRef.current);
             resetCloseTimer();
+            // 欢迎语仅在弹窗换人时触发，见下方 person-change effect
         });
     }, [fv.handleFaceDone]);
 
@@ -78,6 +83,8 @@ export default function ScannerPanel() {
             setExecuteErrorMessage('');
             analyzeMutation.reset();
             executeMutation.reset();
+            setScanPopupSession(null, null);
+            cancelScheduledAutoExit();
         }, 600000); // 10min 兜底，实际由 PIP 人脸监测控制
     };
 
@@ -95,6 +102,7 @@ export default function ScannerPanel() {
             setActiveResult(data);
             setScanPopupSession(uid || null, lastScannedIdRef.current);
             resetCloseTimer();
+            // 欢迎语仅在弹窗换人时触发，见下方 person-change effect
         },
         onError: (error) => setErrorMsg(error.message || '无法解析该人员')
     });
@@ -241,6 +249,35 @@ export default function ScannerPanel() {
     const pipUserId = activeResult?.userInfo?.userId ? String(activeResult.userInfo.userId) : '';
     const pipMonitorActive = Boolean(pipUserId) && !fv.faceVerifyActive && fv.pipMonitorUrls.length > 0;
 
+    /** 同步扫码弹窗可见性：关闭后启动助手气泡自动倒计时（无弹窗时才生效） */
+    useEffect(() => {
+        notifyScanPopupVisible(showScanPopup);
+    }, [showScanPopup]);
+
+    /** 人脸验证结束但未产生 activeResult（失败/耗尽/取消/底库缺失）时清理会话守卫，
+     *  避免 popupUserId 泄漏导致气泡自动关闭定时器被 isScanPopupSessionActive() 永久阻塞 */
+    useEffect(() => {
+        if (!fv.faceVerifyActive && !activeResult) {
+            setScanPopupSession(null, null);
+        }
+    }, [fv.faceVerifyActive, activeResult]);
+
+    /** 弹窗人员变化（含首次打开）：触发存档加载 + 流式播报 */
+    const prevPopupUserIdRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+        const uid = activeResult?.userInfo?.userId ? String(activeResult.userInfo.userId) : undefined;
+        if (
+            showScanPopup &&
+            uid &&
+            activeResult &&
+            activeResult.success !== false &&
+            prevPopupUserIdRef.current !== uid
+        ) {
+            greetScanAssistantUser(activeResult);
+        }
+        prevPopupUserIdRef.current = uid;
+    }, [activeResult, showScanPopup]);
+
     return (
         <div className="h-full w-full flex flex-col relative">
             <div style={{
@@ -291,7 +328,7 @@ export default function ScannerPanel() {
                         autoCapitalize="off"
                         autoCorrect="off"
                         spellCheck={false}
-                        inputMode="text"
+                        inputMode="none"
                         lang="en"
                         className="w-full bg-[#f8f9fa] border border-[#dcdfe6] rounded-[10px] pl-9 pr-4 py-2.5 font-mono text-[13px] text-[#1d1d1f] focus:bg-white focus:border-[#2d5cf7] focus:shadow-[0_0_0_3px_rgba(45,92,247,0.1)] outline-none transition-all"
                         disabled={isWorking}

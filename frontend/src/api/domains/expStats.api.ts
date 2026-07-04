@@ -84,3 +84,24 @@ export async function batchApproveExpRecords(ids: number[]): Promise<void> {
 export async function batchRejectExpRecords(ids: number[]): Promise<void> {
   await authHttp.post("/v1/twin/rpg/review/batch-reject", { ids });
 }
+
+export interface ExpReconcileResult {
+  message?: string;
+  datesProcessed?: number;
+  totalRecordsCreated?: number;
+  usersUpdated?: number;
+  lastExpDateBefore?: string | null;
+  processedDates?: string[];
+}
+
+/** 增量补漏：从已有经验流水最大业务日继续对账（不清空全表） */
+export async function reconcileExpCatchUp(): Promise<ExpReconcileResult> {
+  const res = await authHttp.post("/v1/twin/rpg/reconcile-catch-up");
+  return (res.data?.data ?? res.data ?? {}) as ExpReconcileResult;
+}
+
+/** 全量重算：清空 twin_exp_record 后逐日重建（重量级） */
+export async function recalculateAllExp(): Promise<ExpReconcileResult> {
+  const res = await authHttp.get("/v1/twin/rpg/recalculate-all");
+  return (res.data?.data ?? res.data ?? {}) as ExpReconcileResult;
+}

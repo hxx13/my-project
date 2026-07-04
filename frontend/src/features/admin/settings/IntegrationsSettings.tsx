@@ -12,7 +12,7 @@ import { CredentialsTestPanel } from "@/features/admin/settings/CredentialsTestP
 /**
  * IntegrationsSettings sub-page for AdminSettingsLayout.
  * Merges three config modules into one view:
- * 1. AI / LLM (DeepSeek)
+ * 1. AI / LLM (DeepSeek 模型预设与连接)
  * 2. External system credentials (Dahua + ARO)
  * 3. WinCC integration
  */
@@ -49,7 +49,7 @@ export default function IntegrationsSettings() {
     <div className="space-y-6">
       <AdminFormCard
         title="AI 大模型"
-        description="DeepSeek：主模型 + 备用列表自动切换；可开启日批与打开清算时自动生成 AI 解读。"
+        description="DeepSeek 大模型：预设卡片一键切换模型与参数；支持 API Key 配置与连接测试；可开启日批与清算时自动生成 AI 解读。"
       >
         <LlmSettingsPanel
           configs={llmConfigs}

@@ -5,6 +5,7 @@ import com.example.demo.modules.cageshelf.entity.CageEventLog;
 import com.example.demo.modules.cageshelf.entity.CageSpecialStatusSnapshot;
 import com.example.demo.modules.cageshelf.mapper.CageEventLogMapper;
 import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
+import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -132,12 +133,12 @@ public class CageEventDiffService {
                     }
                 }
 
-                // STATUS changes
+                // STATUS changes (skip NORMAL — it's the baseline, not an event)
                 Set<String> oldCodes = statusCodeSet(oldStatuses);
                 Set<String> newCodes = statusCodeSet(newStatuses);
 
                 for (String code : newCodes) {
-                    if (!oldCodes.contains(code)) {
+                    if (!oldCodes.contains(code) && !SpecialStatusComputer.CODE_NORMAL.equals(code)) {
                         events.add(buildEventDetail(newBatchId, CageEventLog.STATUS_ADDED,
                                 newBoxQr, newRef,
                                 JSON.toJSONString(Map.of("prevStatuses", oldCodes)),
@@ -147,7 +148,7 @@ public class CageEventDiffService {
                     }
                 }
                 for (String code : oldCodes) {
-                    if (!newCodes.contains(code)) {
+                    if (!newCodes.contains(code) && !SpecialStatusComputer.CODE_NORMAL.equals(code)) {
                         events.add(buildEventDetail(newBatchId, CageEventLog.STATUS_REMOVED,
                                 newBoxQr, newRef,
                                 JSON.toJSONString(Map.of("prevStatuses", oldCodes)),
@@ -303,4 +304,22 @@ public class CageEventDiffService {
     }
 
     private static String nullToEmpty(String s) { return s == null ? "" : s.trim(); }
+
+    /**
+     * 首次同步时写入一条基线事件，让 event-log 页面有可见记录。
+     * 后续同步通过 diffAndLog 对比新旧快照生成变更事件。
+     */
+    public int writeBaselineEvent(String scanBatchId, int cagesScanned, int cagesWithStatus, LocalDateTime at) {
+        eventLogMapper.ensureTable();
+        CageEventLog ev = new CageEventLog();
+        ev.setScanBatchId(scanBatchId);
+        ev.setEventType("BASELINE_ESTABLISHED");
+        ev.setChangedAt(at);
+        ev.setDetailSummary(String.format(
+                "基线建立：首次全量同步完成，共 %d 个笼位，其中特殊状态 %d 个。后续同步将自动对比生成变更事件。",
+                cagesScanned, cagesWithStatus));
+        eventLogMapper.batchInsert(java.util.List.of(ev));
+        log.info("[cage-diff] baseline event written for batch={} cages={} special={}", scanBatchId, cagesScanned, cagesWithStatus);
+        return 1;
+    }
 }

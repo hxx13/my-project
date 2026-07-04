@@ -17,7 +17,8 @@ import {
   ErrorRetry,
 } from "../components/ui";
 import { CellDetailPanel } from "./cage-shelf-detail-panel";
-import CageCellOverlays, { getDominantStatusCode, useStatusStyle, CAGE_TYPE_LABEL } from "@/features/cage-shelf/components/CageCellOverlays";
+import CageCellOverlays, { getCellStatusDisplayLabel, getDominantStatusCode, useStatusStyle, CAGE_TYPE_LABEL } from "@/features/cage-shelf/components/CageCellOverlays";
+import { formatSpecialStatusCodesForDisplay } from "@/utils/cageSpecialStatusLabels";
 import CageShelfLegend from "@/features/cage-shelf/components/CageShelfLegend";
 import SpecialStatusOverviewModal from "@/features/cage-shelf/components/SpecialStatusOverviewModal";
 import { CageColorProvider } from "@/features/cage-shelf/components/CageColorContext";
@@ -132,23 +133,12 @@ const GridCellButton = memo(function GridCellButton({ cell, isSelected, onSelect
   const dominant = getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
   const statusStyle = useStatusStyle(dominant);
   const piName = nonEmptyText(cell.projectPiName) ? cell.projectPiName!.trim() : "";
+  const statusLabel = cell.empty || !cell.visible ? "" : getCellStatusDisplayLabel(cell.specialStatuses, cell.cageBoxInfo);
 
-  const statusCodes = (() => {
-    const raw = cell.specialStatuses;
-    if (!raw || (Array.isArray(raw) && raw.length === 0)) {
-      const bi = cell.cageBoxInfo;
-      if (!bi) return "";
-      const parts: string[] = [];
-      if (bi["ClosingDate"]) parts.push("合笼");
-      if (bi["NeedFeedingYn"] === 1) parts.push("特殊饲养");
-      if (bi["NeedDivideYn"] === 1) parts.push("请分笼");
-      if (bi["AbnormalHealthYn"] === 1) parts.push("健康异常");
-      if (bi["NeedTransferYn"] === 1) parts.push("动物转移");
-      return parts.length > 0 ? parts.join("+") : "";
-    }
-    if (Array.isArray(raw)) return raw.map((s: { code: string }) => s.code).filter((c: string) => c !== "NORMAL").join("+");
-    return "";
-  })();
+  const statusCodes = formatSpecialStatusCodesForDisplay(
+    Array.isArray(cell.specialStatuses) ? cell.specialStatuses : undefined,
+    cell.cageBoxInfo,
+  );
 
   const tooltip = cell.empty ? undefined
     : `${cell.position} · ${CAGE_TYPE_LABEL[cell.animalCageType ?? 0] || cell.stateLabel}${statusCodes ? ` [${statusCodes}]` : ""}`;
@@ -174,13 +164,13 @@ const GridCellButton = memo(function GridCellButton({ cell, isSelected, onSelect
           <>
             {cell.visible ? (
               <>
-                {nonEmptyText(cell.departmentName) && <div className="w-full truncate text-[9px] font-medium opacity-70">{cell.departmentName}</div>}
                 {nonEmptyText(piName) && <div className="w-full truncate text-[11px] font-semibold text-[var(--student-ink)]">{piName}</div>}
+                {nonEmptyText(statusLabel) && <div className="w-full truncate text-[9px] font-medium text-[var(--student-body)] opacity-80">{statusLabel}</div>}
               </>
             ) : (
               <div className="text-[9px] text-[var(--student-mute)]">***</div>
             )}
-            <div className="w-full text-[9px] opacity-70">{CAGE_TYPE_LABEL[cell.animalCageType ?? 0] || cageTypeLabel(cell.animalCageType)}</div>
+            <div className="w-full truncate text-[9px] opacity-70">{CAGE_TYPE_LABEL[cell.animalCageType ?? 0] || cageTypeLabel(cell.animalCageType)}</div>
           </>
         )}
       </div>
@@ -192,6 +182,7 @@ function BookmarkCellButton({ cell, isSelected, onSelect }: { cell: CageShelfCel
   const dominant = getDominantStatusCode(cell.specialStatuses, cell.cageBoxInfo);
   const statusStyle = useStatusStyle(dominant);
   const piName = nonEmptyText(cell.projectPiName) ? cell.projectPiName!.trim() : "";
+  const statusLabel = cell.empty || !cell.visible ? "" : getCellStatusDisplayLabel(cell.specialStatuses, cell.cageBoxInfo);
 
   return (
     <button type="button"
@@ -209,13 +200,13 @@ function BookmarkCellButton({ cell, isSelected, onSelect }: { cell: CageShelfCel
           <>
             {cell.visible ? (
               <>
-                {nonEmptyText(cell.departmentName) && <div className="w-full truncate text-[9px] font-medium opacity-70">{cell.departmentName}</div>}
                 {nonEmptyText(piName) && <div className="w-full truncate text-[11px] font-semibold text-[var(--student-ink)]">{piName}</div>}
+                {nonEmptyText(statusLabel) && <div className="w-full truncate text-[9px] font-medium text-[var(--student-body)] opacity-80">{statusLabel}</div>}
               </>
             ) : (
               <div className="text-[9px] text-[var(--student-mute)]">***</div>
             )}
-            <div className="w-full text-[9px] opacity-70">{CAGE_TYPE_LABEL[cell.animalCageType ?? 0] || cageTypeLabel(cell.animalCageType)}</div>
+            <div className="w-full truncate text-[9px] opacity-70">{CAGE_TYPE_LABEL[cell.animalCageType ?? 0] || cageTypeLabel(cell.animalCageType)}</div>
           </>
         )}
       </div>

@@ -17,6 +17,7 @@ import {
 } from "@/api/domains/scanDelayAutoApprove.api";
 import { fetchScanDelayOptions, type ScanDelayOption } from "@/api/domains/scanDelay.api";
 import { AdminCenteredPanelShell } from "@/components/admin/AdminCenteredPanelShell";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import {
   AutoApproveCandidateSelect,
   type AutoApproveCandidate,
@@ -474,13 +475,13 @@ export function ScanDelayAutoApprovePanel({ open, onClose }: Props) {
                   const checked = batchForm.optionIds?.includes(o.id) ?? false;
                   return (
                     <label key={o.id} className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
+                      <AdminSwitchScaled
+                        size="3.5"
                         checked={checked}
-                        onChange={(e) => {
+                        onChange={(nextChecked) => {
                           setBatchForm((f) => {
                             const set = new Set(f.optionIds ?? []);
-                            if (e.target.checked) set.add(o.id);
+                            if (nextChecked) set.add(o.id);
                             else set.delete(o.id);
                             return { ...f, optionIds: [...set] };
                           });

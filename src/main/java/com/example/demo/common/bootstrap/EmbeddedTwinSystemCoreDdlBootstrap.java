@@ -83,6 +83,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements StartupRunner {
         total++; if (runScript("db/migration/V20260616__face_verify_audit.sql", ctx)) success++;
         total++; if (runScript("db/V20260624140000__student_mobile_token.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-add-account-source.sql", ctx)) success++;
+        total++; if (runScript("db/migration/V20260703__llm_conversation.sql", ctx)) success++;
 
         if (success == total) {
             return StartupResult.success(total + "/" + total + " 就绪");

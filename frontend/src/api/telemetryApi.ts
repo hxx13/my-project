@@ -691,6 +691,8 @@ export type TelemetryArchiveSeriesPoint = { t: string; value: number | null };
 export type TelemetryArchiveSeries = {
   variableName: string;
   points: TelemetryArchiveSeriesPoint[];
+  displayProfile?: string | null;
+  fromRollup?: boolean | null;
   /** 服务端实际查询窗起点（ISO-8601）；ROLLING 定窗时与请求无关 */
   queriedFrom?: string | null;
   queriedTo?: string | null;
@@ -701,10 +703,17 @@ export async function fetchTelemetryArchiveSeries(
   variableName: string,
   fromIso: string,
   toIso: string,
-  maxPoints = 120
+  maxPoints = 120,
+  displayProfile?: "STANDARD" | "PRESENTATION"
 ): Promise<TelemetryArchiveSeries> {
   const res = await authHttp.get<ApiResult<TelemetryArchiveSeries>>("/v1/telemetry/archive/series", {
-    params: { variableName, from: fromIso, to: toIso, maxPoints },
+    params: {
+      variableName,
+      from: fromIso,
+      to: toIso,
+      maxPoints,
+      ...(displayProfile ? { displayProfile } : {}),
+    },
   });
   const body = res.data;
   if (!body?.success || body.data == null) {
@@ -716,7 +725,7 @@ export async function fetchTelemetryArchiveSeries(
 /** 服务端定窗 ROLLING：以当前时间为窗末、向前 windowHours 小时；降采样 maxPoints */
 export async function fetchTelemetryArchiveSeriesRolling(
   variableName: string,
-  options?: { windowHours?: number; maxPoints?: number }
+  options?: { windowHours?: number; maxPoints?: number; displayProfile?: "STANDARD" | "PRESENTATION" }
 ): Promise<TelemetryArchiveSeries> {
   const windowHours = options?.windowHours ?? 6;
   const maxPoints = options?.maxPoints ?? 120;
@@ -726,6 +735,7 @@ export async function fetchTelemetryArchiveSeriesRolling(
       seriesScope: "ROLLING",
       windowHours,
       maxPoints,
+      ...(options?.displayProfile ? { displayProfile: options.displayProfile } : {}),
     },
   });
   const body = res.data;

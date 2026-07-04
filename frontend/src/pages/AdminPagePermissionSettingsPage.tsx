@@ -13,6 +13,7 @@ import {
   type PagePlatform,
 } from "@/api/domains/pagePermission.api";
 import { AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { normalizeAdminPath } from "@/features/admin/buildAdminNavModel";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 
@@ -437,15 +438,15 @@ export default function AdminPagePermissionSettingsPage() {
                     </select>
                   </td>
                   <td className="border-b border-[var(--twin-hairline)] px-2 py-2 text-xs">
-                    <input
-                      type="checkbox"
+                    <AdminSwitchScaled
+                      size="3.5"
                       checked={(draftByNode[row.nodeKey]?.enabled ?? row.enabled) === 1}
-                      onChange={(e) =>
+                      onChange={(checked) =>
                         setDraftByNode((prev) => ({
                           ...prev,
                           [row.nodeKey]: {
                             minRole: prev[row.nodeKey]?.minRole ?? (row.minRole as MinRole),
-                            enabled: e.target.checked ? 1 : 0,
+                            enabled: checked ? 1 : 0,
                           },
                         }))
                       }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { fetchDahuaDeviceChannels, type DahuaDeviceChannelRow } from "@/api/twinApi";
 import { cn } from "@/lib/utils";
 import { SWING_DIRECTION_OPTIONS, type SwingDirectionFilter } from "@/features/access-fusion/swingDirection";
@@ -414,18 +415,18 @@ export function AccessRecordFilterBar({
           </div>
 
           <label className="flex h-8 items-center gap-1 text-[11px] text-slate-600 whitespace-nowrap">
-            <input
-              type="checkbox"
+            <AdminSwitchScaled
+              size="3.5"
               checked={filters.requireMapping}
-              onChange={(e) => onChange({ ...filters, requireMapping: e.target.checked })}
+              onChange={(checked) => onChange({ ...filters, requireMapping: checked })}
             />
             已映射
           </label>
           <label className="flex h-8 items-center gap-1 text-[11px] text-slate-600 whitespace-nowrap">
-            <input
-              type="checkbox"
+            <AdminSwitchScaled
+              size="3.5"
               checked={filters.openSuccessOnly}
-              onChange={(e) => onChange({ ...filters, openSuccessOnly: e.target.checked })}
+              onChange={(checked) => onChange({ ...filters, openSuccessOnly: checked })}
             />
             开门成功
           </label>

@@ -16,15 +16,15 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
           className={cn(
-            "fixed inset-0 z-50 bg-black/50",
+            "fixed inset-0 z-[var(--z-modal)] bg-black/50",
             "data-[state=open]:animate-in data-[state=open]:fade-in-0",
             "data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
           )}
         />
         <DialogPrimitive.Content
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
-            "w-full max-w-lg rounded-lg bg-[var(--student-canvas)]",
+            "fixed left-1/2 top-1/2 z-[var(--z-modal)] -translate-x-1/2 -translate-y-1/2",
+            "flex w-full max-w-lg flex-col overflow-hidden rounded-lg bg-[var(--student-canvas)] p-5",
             "shadow-[var(--student-shadow-modal)]",
             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
             "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
@@ -49,7 +49,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
 function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("mb-4", className)}
+      className={cn("mb-3 shrink-0 border-b border-[var(--student-hairline)] pb-3 pr-8", className)}
       {...props}
     />
   )
@@ -76,7 +76,10 @@ function DialogDescription({ className, ...props }: React.HTMLAttributes<HTMLPar
 function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("mt-6 flex justify-end gap-3", className)}
+      className={cn(
+        "mt-4 flex shrink-0 items-center justify-end gap-3 border-t border-[var(--student-hairline)] pt-4",
+        className,
+      )}
       {...props}
     />
   )

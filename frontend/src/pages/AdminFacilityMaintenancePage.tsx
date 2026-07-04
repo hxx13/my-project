@@ -5,6 +5,7 @@ import { Activity, ArrowDown, ArrowUp, Download, Plus, RefreshCw, Settings, Tras
 import { Portal } from "@/components/Portal";
 import DailyInspectionPanel from "@/components/facility-maintenance/DailyInspectionPanel";
 import { AdminButton } from "@/components/admin/AdminButton";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
 import { adminLabelClass } from "@/features/admin/adminFormUi";
@@ -1299,12 +1300,10 @@ export default function AdminFacilityMaintenancePage() {
                   .filter((s) => Number(s.disabled) !== 1)
                   .map((s) => (
                     <label key={s.id} className="flex cursor-pointer items-center gap-2 text-sm text-[var(--twin-ink)]">
-                      <input
-                        type="checkbox"
-                        className="rounded border-[var(--twin-hairline-strong)]"
+                      <AdminSwitchScaled
+                        size="sm"
                         checked={tplSiteIds.includes(s.id)}
-                        onChange={(e) => {
-                          const on = e.target.checked;
+                        onChange={(on) => {
                           setTplSiteIds((prev) => {
                             if (on) return prev.includes(s.id) ? prev : [...prev, s.id];
                             return prev.filter((x) => x !== s.id);
@@ -1363,11 +1362,11 @@ export default function AdminFacilityMaintenancePage() {
                     </select>
                   )}
                   <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-[var(--twin-body)]">
-                    <input
-                      type="checkbox"
+                    <AdminSwitchScaled
+                      size="3.5"
                       checked={row.required}
-                      onChange={(e) =>
-                        setTplItemRows((r) => r.map((x, i) => (i === idx ? { ...x, required: e.target.checked } : x)))
+                      onChange={(checked) =>
+                        setTplItemRows((r) => r.map((x, i) => (i === idx ? { ...x, required: checked } : x)))
                       }
                     />
                     必填

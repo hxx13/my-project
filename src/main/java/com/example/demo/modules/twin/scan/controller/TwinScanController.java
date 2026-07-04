@@ -375,12 +375,33 @@ public class TwinScanController {
             }
 
             // =================================================================
-            // 🎯 第三关：读取经验增量用于前端展示（实际写入已在 executeAccessAction 核心层完成）
+            // 🎯 第三关：读取经验增量用于前端展示 + 实时写入 twin_exp_record
             // =================================================================
             com.example.demo.modules.twin.rpg.service.PredictResult predictResult = rpgEngineService.predictActionReward(userId, accessType);
             int expAdded = Math.max(0, predictResult.getExpAdded());
             result.setExpAdded(expAdded);
             result.setExpSource(predictResult.getExpSource());
+
+            // 实时写入经验流水（方案 A 快轨）：设计规格 §5.2 —— 扫码即写，不等待定时对账
+            if (expAdded > 0 && predictResult.getExpSource() != null) {
+                try {
+                    twinExpStatsService.recordExp(
+                            userId,
+                            userName,
+                            expAdded,
+                            predictResult.getExpSource(),
+                            accessType,
+                            effectiveRoomId,
+                            roomName,
+                            "WEB_SCAN",
+                            predictResult.getSessionDurationMinutes()
+                    );
+                } catch (Exception expWriteEx) {
+                    // XP 写入失败不阻断扫码成功
+                    log.error("[扫码·登记] 经验流水写入失败 userId={} exp={} source={}: {}",
+                            userId, expAdded, predictResult.getExpSource(), expWriteEx.getMessage());
+                }
+            }
 
             // EXIT：大华回收 + 豁免关闭 + 冻结已由 WebScanExitDahuaLinkageService 处理（可配置延迟）；ENTER 无此处冻结
 

@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type MouseEvent } from "react";
+import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import toast from "react-hot-toast";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import {
@@ -686,8 +687,8 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
       {stackedNotifyColumn ? (
         <>
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
-            <label className="text-sm text-slate-700">
-              <input type="checkbox" checked={onlyUnread} onChange={(e) => setOnlyUnread(e.target.checked)} className="mr-2" />
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <AdminSwitchScaled size="sm" checked={onlyUnread} onChange={setOnlyUnread} />
               仅看未读
             </label>
             {canStaff ? (
@@ -841,8 +842,8 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
         <>
           {activeTab === "notice" && (
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
-              <label className="text-sm text-slate-700">
-                <input type="checkbox" checked={onlyUnread} onChange={(e) => setOnlyUnread(e.target.checked)} className="mr-2" />
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <AdminSwitchScaled size="sm" checked={onlyUnread} onChange={setOnlyUnread} />
                 仅看未读
               </label>
               {canStaff && <span className="text-xs text-slate-500">工单类提醒已归并到「待处理 / 已处理」</span>}
@@ -1036,10 +1037,10 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
                   </div>
                   {isAdmin && claimDetail.status === "PENDING" ? (
                     <label className="flex items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
+                      <AdminSwitchScaled
+                        size="3.5"
                         checked={grantMap[l.id] === true}
-                        onChange={(e) => setGrantMap((m) => ({ ...m, [l.id]: e.target.checked }))}
+                        onChange={(checked) => setGrantMap((m) => ({ ...m, [l.id]: checked }))}
                       />
                       发放
                     </label>

@@ -91,13 +91,24 @@ public final class ScanPopupFlowLog {
         String id = abbrev(userId, 32);
         String name = abbrev(userName, 24);
         if (!success) {
-            log.warn(
-                    "[扫码·解析] trace={} | 失败 | 方式={} 键入={} | {} | {}ms",
-                    traceId,
-                    inputMode,
-                    id,
-                    abbrev(message, 80),
-                    costMs);
+            // 系统/管理账号无人员档案属于正常情况，降级为 INFO 避免日志告警噪音
+            if (message != null && message.startsWith("系统账号不支持扫码进出")) {
+                log.info(
+                        "[扫码·解析] trace={} | 跳过 | 方式={} 键入={} | {} | {}ms",
+                        traceId,
+                        inputMode,
+                        id,
+                        abbrev(message, 80),
+                        costMs);
+            } else {
+                log.warn(
+                        "[扫码·解析] trace={} | 失败 | 方式={} 键入={} | {} | {}ms",
+                        traceId,
+                        inputMode,
+                        id,
+                        abbrev(message, 80),
+                        costMs);
+            }
             return;
         }
         String pending = joinRoomNames(pendingRooms);

@@ -6,8 +6,8 @@ import org.springframework.stereotype.Service;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 笼位特殊状态扫描进度（进程内内存，单例）。
- * 同一时刻仅有一个扫描任务运行。
+ * 笼位数据同步进度（进程内内存，单例）。
+ * 同一时刻仅有一个同步任务运行。
  */
 @Service
 public class CageScanProgressService {
@@ -18,15 +18,22 @@ public class CageScanProgressService {
     private static final String STATUS_FAILED = "failed";
 
     private final AtomicReference<CageScanProgressDto> state = new AtomicReference<>();
+    /** 上一次扫描的 batchId（在 start() 覆盖前暂存，供 diff 使用） */
+    private volatile String previousBatchId;
 
     public void start(String scanBatchId, int totalShelves) {
+        // 在覆盖 state 之前，先把当前 batchId 存为 previousBatchId
+        CageScanProgressDto old = state.get();
+        if (old != null && old.getScanBatchId() != null) {
+            this.previousBatchId = old.getScanBatchId();
+        }
         CageScanProgressDto dto = new CageScanProgressDto();
         dto.setStatus(STATUS_RUNNING);
         dto.setScanBatchId(scanBatchId);
         dto.setTotalShelves(totalShelves);
         dto.setProcessedShelves(0);
         dto.setPercent(0);
-        dto.setMessage("准备扫描笼架…");
+        dto.setMessage("准备拉取笼位数据…");
         dto.setStartedAt(java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         touch(dto);
         state.set(dto);
@@ -45,7 +52,7 @@ public class CageScanProgressService {
                 ? Math.min(99, dto.getProcessedShelves() * 100 / dto.getTotalShelves())
                 : 0;
         dto.setPercent(pct);
-        dto.setMessage("已处理 " + processedShelves + " / " + dto.getTotalShelves() + " 个笼架");
+        dto.setMessage("已同步 " + processedShelves + " / " + dto.getTotalShelves() + " 个笼架");
         touch(dto);
     }
 
@@ -64,7 +71,7 @@ public class CageScanProgressService {
         dto.setCagesScanned(cagesScanned);
         dto.setCagesWithStatus(cagesWithStatus);
         dto.setPercent(100);
-        dto.setMessage("扫描完成，共发现 " + cagesWithStatus + " 个特殊状态笼位");
+        dto.setMessage("同步完成，共 " + cagesScanned + " 个笼位，其中特殊状态 " + cagesWithStatus + " 个");
         touch(dto);
     }
 
@@ -72,7 +79,7 @@ public class CageScanProgressService {
         CageScanProgressDto dto = state.get();
         if (dto == null) return;
         dto.setStatus(STATUS_FAILED);
-        dto.setMessage(error != null ? error : "扫描失败");
+        dto.setMessage(error != null ? error : "同步失败");
         touch(dto);
     }
 
@@ -81,10 +88,9 @@ public class CageScanProgressService {
         return dto != null ? dto : idleDto();
     }
 
-    /** 上次扫描的 batchId（用于写入前清理旧数据）。 */
+    /** 上次扫描的 batchId（用于写入前清理旧数据）。在 start() 覆盖前从旧 state 中提取并保存。 */
     public String getOldBatchId() {
-        CageScanProgressDto dto = state.get();
-        return dto != null ? dto.getScanBatchId() : null;
+        return previousBatchId;
     }
 
     public boolean isRunning() {
@@ -95,7 +101,7 @@ public class CageScanProgressService {
     private static CageScanProgressDto idleDto() {
         CageScanProgressDto dto = new CageScanProgressDto();
         dto.setStatus(STATUS_IDLE);
-        dto.setMessage("无扫描任务");
+        dto.setMessage("无同步任务");
         return dto;
     }
 
