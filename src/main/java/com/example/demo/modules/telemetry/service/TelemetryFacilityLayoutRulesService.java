@@ -164,7 +164,10 @@ public class TelemetryFacilityLayoutRulesService {
             return d;
         }
         if (partial.getFacilitySmallRoomKeywords() != null && !partial.getFacilitySmallRoomKeywords().isEmpty()) {
-            d.setFacilitySmallRoomKeywords(List.copyOf(partial.getFacilitySmallRoomKeywords()));
+            // 数据库配置与代码默认值合并（取并集），确保新增关键词不因 DB 旧值被覆盖
+            java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>(partial.getFacilitySmallRoomKeywords());
+            merged.addAll(d.getFacilitySmallRoomKeywords());
+            d.setFacilitySmallRoomKeywords(List.copyOf(merged));
         }
         if (partial.getGongShui() != null) {
             FacilityLayoutRulesV1.GongShuiConfig g = new FacilityLayoutRulesV1.GongShuiConfig();
