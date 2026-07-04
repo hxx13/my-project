@@ -349,6 +349,76 @@ LoginPage
 4. **管理端导航是注册表驱动**：`adminNavRegistry.ts` + `buildAdminNavModel.ts` 构建动态导航树
 5. **Zustand 使用克制**：仅 3 个 store（事件、特殊通道、刷卡告警），大部分状态走 React Query
 6. **守卫组件分层**：AuthGuard（通用）→ AdminAccessGuard（管理端）→ SuperAdminGuard（超管），层层嵌套
+7. **双滚动布局**（2026-07-04）：后台页面默认不传 title/actions 给 AdminPageShell，页面内容直接顶满。需要 header 时显式传 title/actions。
+
+---
+
+## 十一、管理端双滚动布局
+
+### 设计原则
+
+- AdminPageShell 的 header 区域按需渲染：`hasHeader = !!(title || description || actions)`
+- 不传任何 header props 时，内容区零 header 直接顶满，页面自行管理内部滚动
+- 页面内的滚动容器使用 CSS 变量 `--admin-chrome-offset` 计算高度上限
+
+### CSS 变量
+
+`--admin-chrome-offset` 定义在 `.admin-page-content` 规则块内（`index.css`）：
+
+```css
+--admin-chrome-offset: calc(64px + var(--page-pad-y) * 2);
+/* = sticky header(64px) + 上下 page padding */
+/* sm 断点自动跟随 --page-pad-y 增长（1.5rem → 2rem） */
+```
+
+### 标准用法
+
+```tsx
+<AdminPageShell>                          {/* 无 header */}
+  {/* 可选：页面级 toolbar（shrink-0，不参与滚动） */}
+  <div className="flex items-center gap-3 shrink-0">
+    <h3>页面标题</h3>
+    <div className="flex-1" />
+    <Button>操作</Button>
+  </div>
+
+  {/* 滚动容器：有 toolbar 时额外减 48px */}
+  <div className="max-h-[calc(100dvh-var(--admin-chrome-offset)-48px)] min-h-[200px] overflow-y-auto">
+    {content}
+  </div>
+</AdminPageShell>
+```
+
+**双栏模式**（左树/导航 + 右内容）：
+
+```tsx
+<AdminPageShell>
+  <div className="flex gap-2">
+    <div className="w-48 xl:w-52 shrink-0 flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+      <div className="shrink-0">{toolbar}</div>
+      <div className="flex-1 min-h-0 overflow-y-auto">{tree}</div>
+    </div>
+    <div className="flex-1 min-w-0 max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
+      {content}
+    </div>
+  </div>
+</AdminPageShell>
+```
+
+### Header actions 搬迁模式
+
+| 模式 | 适用场景 | 目标位置 |
+|------|----------|----------|
+| A: 页面工具栏 | 页面级操作（按钮/链接） | `<AdminPageShell>` 与滚动容器之间 |
+| B: 左栏顶部 | 与左侧导航强相关 | 左栏 flex 最顶部 `shrink-0` |
+| C: 右栏顶部 | 与当前 tab 绑定 | 右栏内容区 `sticky top-0` |
+| D: 丢弃 | 纯装饰性说明文字 | 删除 |
+
+### 已知限制
+
+- 内部滚动容器的滚动位置**不会**在浏览器 back/forward 时自动恢复
+- 移动端响应式双栏折叠暂未适配（后台移动端使用率极低）
+- `fillHeight` prop 保留（DebugCardMappingPage 仍在使用），与双滚动模式互斥
 
 ---
 

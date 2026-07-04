@@ -170,7 +170,9 @@ export default function ReportFormListPage() {
     .sort((a, b) => (a.pinned && b.pinned) ? 0 : a.pinned ? -1 : b.pinned ? 1 : 0);
 
   return (
-    <AdminPageShell title="填报报表管理" description="创建、设计、发布填报报表">
+    <AdminPageShell>
+      <h2 className="text-lg font-semibold text-[var(--app-color-text-primary)] mb-1">填报报表管理</h2>
+      <p className="text-sm text-[var(--app-color-text-secondary)] mb-4">创建、设计、发布填报报表</p>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <input
           placeholder="搜索报表..."
@@ -291,18 +293,19 @@ export default function ReportFormListPage() {
         )}
       </div>
 
-      {error ? (
-        <div className="p-4 rounded-[var(--app-radius-container)] bg-[var(--app-color-feedback-danger-soft)] text-sm text-[var(--app-color-feedback-danger)]">
-          加载失败: {String(error)}
-        </div>
-      ) : isLoading ? (
-        <div className="text-sm text-app-text-tertiary py-4">加载中...</div>
-      ) : filtered.length === 0 ? (
-        <div className="text-sm text-app-text-tertiary py-4">暂无报表，从 Excel 创建或新建空白报表</div>
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {filtered.map(form => (
-            <FormRow
+      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
+        {error ? (
+          <div className="p-4 rounded-[var(--app-radius-container)] bg-[var(--app-color-feedback-danger-soft)] text-sm text-[var(--app-color-feedback-danger)]">
+            加载失败: {String(error)}
+          </div>
+        ) : isLoading ? (
+          <div className="text-sm text-app-text-tertiary py-4">加载中...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-sm text-app-text-tertiary py-4">暂无报表，从 Excel 创建或新建空白报表</div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {filtered.map(form => (
+              <FormRow
               key={form.id}
               form={form}
               selected={selected.has(form.id)}
@@ -340,8 +343,9 @@ export default function ReportFormListPage() {
               status={form.status}
             />
           ))}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
       {/* PublishWizard modal */}
       {publishWizardFormId && (() => {
         const form = rawList.find(f => f.id === publishWizardFormId);

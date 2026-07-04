@@ -73,6 +73,13 @@ public class CageShelfDataController {
         return Result.success(groupByShelf(cells));
     }
 
+    /** GET /api/cage-shelves/full-tree — 全量校区→区域→楼层→房间→笼架树，前端一次拉取无需级联 */
+    @GetMapping("/full-tree")
+    public Result<?> getFullTree() {
+        List<Map<String, Object>> rows = shelfMapper.listFullTree();
+        return Result.success(rows == null ? List.of() : rows);
+    }
+
     // ── Bookmark ───────────────────────────────────────────────────
 
     /** PUT /api/cage-shelves/{roomId}/{shelveId}/bookmark — 切换收藏 */

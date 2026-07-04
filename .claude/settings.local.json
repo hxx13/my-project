@@ -124,7 +124,8 @@
       "Bash(ls -la \"D:/weichatstudio/微信web开发者工具/code/\" 2>&1 | head -5 ; echo \"---\" ; ls d:/codex/verson.1.2/20260416/.claude/worktrees/ 2>&1 | head -5)",
       "Read(//d/weichatstudio/微信web开发者工具/code/**)",
       "Bash(dir \"D:\\\\weichatstudio\")",
-      "Bash(dir \"D:\\\\weichatstudio\\\\*miniprogram*\")"
+      "Bash(dir \"D:\\\\weichatstudio\\\\*miniprogram*\")",
+      "Bash(git commit -m 'feat: 全局双滚动架构 — AdminPageShell 条件 header + 16 页迁移 *)"
     ],
     "additionalDirectories": [
       "d:\\codex\\verson.1.2\\20260416\\.claude",

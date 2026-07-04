@@ -442,6 +442,21 @@ export function dedupeBookmarks(list: BookmarkEntry[]): BookmarkEntry[] {
   return [...seen.values()];
 }
 
+export interface CageShelfTreeNode {
+  campusId: string; campusName: string;
+  areaId: string; areaName: string;
+  floorId: string; floorName: string;
+  roomId: string; roomName: string;
+  shelveId: string; shelveName: string;
+}
+
+/** GET /api/cage-shelves/full-tree — 全量树，前端缓存无需级联 */
+export async function fetchFullTree(): Promise<CageShelfTreeNode[]> {
+  const res = await authHttp.get<Result<CageShelfTreeNode[]>>("/cage-shelves/full-tree");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载笼架树失败");
+  return res.data.data ?? [];
+}
+
 /** GET /api/cage-shelves/bookmarks */
 export async function fetchBookmarks(): Promise<BookmarkEntry[]> {
   const res = await authHttp.get<Result<Record<string, unknown>[]>>(`/cage-shelves/bookmarks`);

@@ -347,22 +347,18 @@ export default function AdminAccessRulesPage() {
   const sortedDoorGroups = [...doorGroups].sort((a, b) => (a.name || "").localeCompare(b.name || "", "zh-CN"));
 
   return (
-    <AdminPageShell
-      title={
+    <AdminPageShell>
+      <div className="flex items-center gap-3 shrink-0">
         <span className="inline-flex items-center gap-2">
           <Shield className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
           门禁规则配置
         </span>
-      }
-      description="配置房间、大华门组与通道；ARO 人员为可选。匹配顺序：同房间下优先匹配「房间+人员」，无人员项时按「仅房间」兜底。"
-      actions={
-        <AdminButton type="button" tone="primary" className="inline-flex items-center gap-2" onClick={() => void openCreate()}>
+        <AdminButton type="button" tone="primary" className="inline-flex items-center gap-2 ml-auto" onClick={() => void openCreate()}>
           <Plus className="h-4 w-4" aria-hidden />
           新增规则
         </AdminButton>
-      }
-    >
-    <div className="flex flex-col gap-4">
+      </div>
+      <div className="flex flex-col gap-4 max-h-[calc(100dvh-var(--admin-chrome-offset)-48px)] min-h-[200px] overflow-y-auto">
       <AdminFormCard title="筛选" description={`共 ${total} 条规则`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex min-w-0 flex-1 flex-col gap-1">

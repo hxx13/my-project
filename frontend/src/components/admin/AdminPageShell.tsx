@@ -3,7 +3,8 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 type AdminPageShellProps = {
-  title: ReactNode;
+  /** 页标题。不传时 header 区域完全不渲染（紧凑双滚动布局） */
+  title?: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
@@ -13,18 +14,26 @@ type AdminPageShellProps = {
 };
 
 /**
- * 后台内容区统一页头：与 `AdminLayout` 外层 `main` 的 `p-6` 配合，壳内不再重复外边距。
+ * 后台内容区统一页壳。
+ * 当 title / description / actions 均未传入时，不渲染 header 区域，内容区直接顶满。
  */
 export function AdminPageShell({ title, description, actions, children, className, fillHeight }: AdminPageShellProps) {
+  const hasHeader = !!(title || description || actions);
+
   return (
-    <div className={cn(fillHeight ? "flex h-full min-h-0 flex-col gap-6" : "space-y-6", className)}>
-      <div className="flex shrink-0 flex-col gap-3 border-b border-[var(--app-color-border-default)] pb-5 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-1.5">
-          <h2 className="text-xl font-semibold tracking-tight text-[var(--app-color-text-primary)] sm:text-2xl">{title}</h2>
-          {description ? <div className="max-w-3xl text-sm leading-relaxed text-[var(--app-color-text-secondary)]">{description}</div> : null}
+    <div className={cn(
+      fillHeight ? "flex h-full min-h-0 flex-col gap-6" : hasHeader ? "space-y-6" : "",
+      className
+    )}>
+      {hasHeader && (
+        <div className="flex shrink-0 flex-col gap-3 border-b border-[var(--app-color-border-default)] pb-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1.5">
+            {title ? <h2 className="text-xl font-semibold tracking-tight text-[var(--app-color-text-primary)] sm:text-2xl">{title}</h2> : null}
+            {description ? <div className="max-w-3xl text-sm leading-relaxed text-[var(--app-color-text-secondary)]">{description}</div> : null}
+          </div>
+          {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </div>
-        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
-      </div>
+      )}
       {fillHeight ? <div className="flex min-h-0 flex-1 flex-col">{children}</div> : children}
     </div>
   );

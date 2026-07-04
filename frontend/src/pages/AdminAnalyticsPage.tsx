@@ -89,19 +89,14 @@ export default function AdminAnalyticsPage() {
 
   return (
     <AdminFullWidthPage>
-      <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <BarChart3 className="h-7 w-7 text-[var(--app-color-accent)]" />
-          统计与审计
-        </span>
-      }
-    >
+      <AdminPageShell>
       <div className="flex flex-col gap-6 lg:flex-row">
-        <nav className="flex shrink-0 flex-row gap-2 overflow-x-auto lg:w-40 lg:flex-col lg:overflow-visible">
-          <p className="hidden px-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--app-color-text-tertiary)] lg:block">
-            报表目录
-          </p>
+        <nav className="flex shrink-0 flex-col lg:w-40 max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+          <h3 className="shrink-0 px-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--app-color-text-tertiary)] mb-2">
+            <BarChart3 className="mr-1 inline h-3.5 w-3.5 text-[var(--app-color-accent)]" />
+            统计与审计
+          </h3>
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-row gap-2 lg:flex-col lg:overflow-visible">
           {isLoading ? (
             <p className="text-sm text-[var(--app-color-text-tertiary)]">加载中…</p>
           ) : (
@@ -119,9 +114,10 @@ export default function AdminAnalyticsPage() {
           {reports.length === 0 && !isLoading ? (
             <p className="text-sm text-[var(--app-color-text-tertiary)]">暂无可用报表</p>
           ) : null}
+          </div>
         </nav>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
           {active ? (
             <header className="mb-4 rounded-2xl border border-[var(--app-color-border-default)] bg-[color-mix(in_srgb,var(--app-color-accent-soft)_55%,var(--app-color-surface-container))] px-5 py-4 shadow-sm">
               <div className="flex items-center gap-4">

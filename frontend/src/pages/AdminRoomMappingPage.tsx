@@ -209,21 +209,19 @@ export default function AdminRoomMappingPage() {
   const floorsForRegion = appliedRegion ? facets?.floorsByRegion?.[appliedRegion] ?? [] : [];
 
   return (
-    <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <MapPin className="h-6 w-6 text-[var(--twin-link-deep)]" />
-          ARO 房间
-        </span>
-      }
-      description={
-        <p className="max-w-3xl">
-          仅展示 CSV 主数据（区域、楼层、房间等）。「官方权限等级」在 ARO 部分房间无返回时可在下表<strong>手动填写并保存</strong>；有同步值时可用「自动填入」恢复为当前库内等级。
-          数字越小权限越高，用于扫码日轨迹与按钮锁定。通道与业务规则请在「通道编码」「门禁规则配置」中维护。数据来源为{" "}
-          <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">src/main/resources/room_mapping.csv</code>，可通过「从 CSV 刷新」重新导入（不会覆盖你已手填的等级）。
-        </p>
-      }
-    >
+    <AdminPageShell>
+      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
+        <div className="mb-4">
+          <span className="inline-flex items-center gap-2">
+            <MapPin className="h-6 w-6 text-[var(--twin-link-deep)]" />
+            ARO 房间
+          </span>
+          <p className="max-w-3xl mt-2">
+            仅展示 CSV 主数据（区域、楼层、房间等）。「官方权限等级」在 ARO 部分房间无返回时可在下表<strong>手动填写并保存</strong>；有同步值时可用「自动填入」恢复为当前库内等级。
+            数字越小权限越高，用于扫码日轨迹与按钮锁定。通道与业务规则请在「通道编码」「门禁规则配置」中维护。数据来源为{" "}
+            <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">src/main/resources/room_mapping.csv</code>，可通过「从 CSV 刷新」重新导入（不会覆盖你已手填的等级）。
+          </p>
+        </div>
       <div className="flex flex-col gap-3 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1">
         <div className="text-xs font-medium text-[var(--twin-mute)]">区域</div>
         <div className="flex flex-wrap gap-2">
@@ -383,6 +381,7 @@ export default function AdminRoomMappingPage() {
         >
           下一页
         </button>
+      </div>
       </div>
     </AdminPageShell>
   );

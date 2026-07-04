@@ -362,11 +362,17 @@ html[data-modal-scroll-lock] body {
   --page-pad-x: 1rem;
   --page-pad-y: 1.5rem;
   padding: var(--page-pad-y) var(--page-pad-x);
+
+  /* 双滚动容器从视口顶到内容区起点的偏移量。
+     = sticky header(64px) + 上下 page padding
+     页面内额外 toolbar 通过二次 calc 再减。 */
+  --admin-chrome-offset: calc(64px + var(--page-pad-y) * 2);
 }
 @media (min-width: 640px) {
   .admin-page-content {
     --page-pad-x: 1.25rem;
     --page-pad-y: 2rem;
+    /* --admin-chrome-offset 自动跟随 --page-pad-y 变化 */
   }
 }
 

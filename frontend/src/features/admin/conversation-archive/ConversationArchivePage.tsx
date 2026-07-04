@@ -257,15 +257,12 @@ export default function ConversationArchivePage() {
 
   /* ---- JSX ---- */
   return (
-    <AdminPageShell
-      title={
+    <AdminPageShell>
+      <div className="flex items-center justify-between mb-1">
         <span className="inline-flex items-center gap-2">
           <MessageSquare className="h-6 w-6 shrink-0 text-[var(--app-color-accent)]" aria-hidden />
-          用户对话存档
+          <h2 className="text-lg font-semibold text-[var(--app-color-text-primary)]">用户对话存档</h2>
         </span>
-      }
-      description="查看 per_user 对话存档。内容由刷卡 streamSpeak 实时写入，支持管理端手动触发生成。"
-      actions={
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-[var(--app-color-text-secondary)]">
             <input
@@ -281,12 +278,12 @@ export default function ConversationArchivePage() {
             手动运行
           </AdminButton>
         </div>
-      }
-    >
-      <div className="flex min-h-0 flex-col gap-3 p-3 lg:flex-row" style={{ height: "calc(100dvh - 12.5rem)" }}>
+      </div>
+      <p className="text-sm text-[var(--app-color-text-secondary)] mb-4">查看 per_user 对话存档。内容由刷卡 streamSpeak 实时写入，支持管理端手动触发生成。</p>
+      <div className="flex min-h-0 flex-col gap-3 lg:flex-row">
         {/* ── Left: User List ── */}
         <aside
-          className="flex shrink-0 flex-col overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm max-lg:h-[min(35vh,18rem)] lg:h-full lg:w-[320px]"
+          className="flex shrink-0 flex-col rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm max-lg:h-[min(35vh,18rem)] lg:w-[320px] max-h-[calc(100dvh-var(--admin-chrome-offset)-48px)] min-h-[200px] overflow-y-auto"
         >
           {/* search + select-all */}
           <div className="shrink-0 space-y-2 border-b border-[var(--app-color-border-default)] p-3">
@@ -363,7 +360,7 @@ export default function ConversationArchivePage() {
         </aside>
 
         {/* ── Right: Conversation View ── */}
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
+        <main className="flex min-h-0 flex-1 flex-col rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm max-h-[calc(100dvh-var(--admin-chrome-offset)-48px)] min-h-[200px] overflow-y-auto">
           {!selectedUserId ? (
             /* empty state */
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">

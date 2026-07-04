@@ -47,19 +47,21 @@ export default function AdminCageEventLogPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <button type="button" className="hover:bg-[var(--twin-canvas-soft)] rounded-twin-md p-1 -ml-1 transition" onClick={() => navigate(toAdminRoutePath("/admin/cage-shelves"))} title="返回笼架信息">
-            <ArrowLeft className="h-5 w-5 text-[var(--twin-link-deep)]" />
-          </button>
-          <Clock className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" />
+    <AdminPageShell>
+      {/* Toolbar: back + title */}
+      <div className="flex items-center gap-2 mb-4">
+        <button type="button" className="hover:bg-[var(--twin-canvas-soft)] rounded-twin-md p-1 -ml-1 transition" onClick={() => navigate(toAdminRoutePath("/admin/cage-shelves"))} title="返回笼架信息">
+          <ArrowLeft className="h-5 w-5 text-[var(--twin-link-deep)]" />
+        </button>
+        <h3 className="text-lg font-semibold text-[var(--app-color-text-primary)] inline-flex items-center gap-2">
+          <Clock className="h-5 w-5 shrink-0 text-[var(--twin-link-deep)]" />
           笼位事件日志
-        </span>
-      }
-      description="追踪笼盒移动、类型变更、特殊状态变化、归属变更等全生命周期事件。执行「全量笼位数据同步」后自动生成。"
-    >
-      <div className="space-y-4">
+        </h3>
+      </div>
+
+      {/* Scroll container */}
+      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset)-48px)] min-h-[200px] overflow-y-auto">
+        <div className="space-y-4">
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-4 py-2.5">
           <span className="text-xs font-medium text-[var(--twin-mute)] flex items-center gap-1">
@@ -187,6 +189,7 @@ export default function AdminCageEventLogPage() {
             </div>
           </>
         )}
+        </div>
       </div>
     </AdminPageShell>
   );

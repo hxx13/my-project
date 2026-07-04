@@ -86,4 +86,7 @@ public interface CageShelfMapper {
             @Param("legacyFloorNames") List<String> legacyFloorNames,
             @Param("legacyRoomName") String legacyRoomName,
             @Param("limit") Integer limit);
+
+    /** 全量树：所有未被删除的笼架索引，含完整校区→区域→楼层→房间→笼架层级 */
+    List<Map<String, Object>> listFullTree();
 }

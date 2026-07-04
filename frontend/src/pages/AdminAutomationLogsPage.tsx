@@ -140,16 +140,14 @@ export default function AdminAutomationLogsPage() {
   };
 
   return (
-    <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <FileText className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
-          自动化日志
-        </span>
-      }
-      description="查看门禁联动、定时任务、人脸验证等自动化执行流水；可按类型、触发方式与时间筛选。"
-    >
-      <div className="flex flex-col gap-3">
+    <AdminPageShell>
+      <h3 className="text-lg font-semibold text-[var(--app-color-text-primary)] inline-flex items-center gap-2 mb-3">
+        <FileText className="h-5 w-5 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
+        自动化日志
+      </h3>
+
+      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
+        <div className="flex flex-col gap-3">
         <AdminFormCard title="筛选" className="p-3 [&>div:first-child]:mb-2 [&>div:first-child]:pb-1.5">
           <div className="flex flex-nowrap items-end gap-2 overflow-x-auto">
             <label className="flex w-[7.5rem] shrink-0 flex-col gap-0.5">
@@ -313,6 +311,7 @@ export default function AdminAutomationLogsPage() {
             下一页
           </AdminButton>
           </div>
+        </div>
         </div>
       </div>
     </AdminPageShell>

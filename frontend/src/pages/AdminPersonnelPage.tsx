@@ -355,11 +355,11 @@ export default function AdminPersonnelPage() {
   const toolBtnPrimary = `${toolBtnBase} border-[var(--twin-ink)] bg-[var(--twin-ink)] text-[var(--twin-on-primary)] hover:bg-[var(--twin-body)]`;
 
   return (
-    <AdminPageShell
-      title="人员授权"
-      description="维护学生与系统员工的登录账号、角色与启用状态；学生分页将角色设为「管理员」及以上时，HTML5 手机直达在笼架详情与公告交互上免课题组/自助机限制（房间页权限仍按标准规则）。"
-    >
-    <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-2 md:p-5">
+    <AdminPageShell>
+      <h3 className="text-lg font-semibold text-[var(--app-color-text-primary)] mb-3">人员授权</h3>
+
+      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
+        <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-2 md:p-5">
       <div className="mb-3 flex min-h-9 min-w-0 flex-nowrap items-center gap-2 border-b border-[var(--twin-hairline)] pb-3">
         <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--twin-canvas-soft-2)] p-0.5">
           <button
@@ -869,7 +869,8 @@ export default function AdminPersonnelPage() {
           </button>
         </div>
       </div>
-    </div>
+        </div>
+      </div>
     </AdminPageShell>
   );
 }

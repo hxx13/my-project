@@ -194,16 +194,16 @@ export default function AdminSettingsPage() {
   const activeTitle = moduleLabel(modules, activeModule);
 
   return (
-    <AdminPageShell
-      title={
+    <AdminPageShell>
+      <div className="flex items-center justify-between mb-1">
         <span className="inline-flex items-center gap-2">
           <Settings className="h-6 w-6 shrink-0 text-[#0070f3]" aria-hidden />
-          系统设置
+          <h2 className="text-lg font-semibold text-neutral-900">系统设置</h2>
         </span>
-      }
-      description="左侧选择模块分类，右侧编辑具体配置。枚举与模板请用下拉，无需手输英文代码。"
-      actions={canBroadcastClientReload ? <ClientReloadOpsPanel /> : undefined}
-    >
+        {canBroadcastClientReload && <ClientReloadOpsPanel />}
+      </div>
+      <p className="text-sm text-neutral-600 mb-4">左侧选择模块分类，右侧编辑具体配置。枚举与模板请用下拉，无需手输英文代码。</p>
+
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
         <SettingsModuleNav modules={modules} activeModule={activeModule} onChange={setActiveModule} />
 

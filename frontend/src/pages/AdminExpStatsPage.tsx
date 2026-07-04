@@ -277,16 +277,13 @@ export default function AdminExpStatsPage() {
   ];
 
   return (
-    <AdminPageShell
-      title={
+    <AdminPageShell>
+      <div className="flex items-center gap-3 shrink-0">
         <span className="inline-flex items-center gap-2">
           <TrendingUp className="h-6 w-6 shrink-0 text-[var(--app-color-accent)]" aria-hidden />
           经验值统计
         </span>
-      }
-      description="记录所有扫码经验值流水，支持排行、趋势与来源分布"
-      actions={
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
           <AdminButton
             type="button"
             tone="primary"
@@ -306,9 +303,8 @@ export default function AdminExpStatsPage() {
             {recalculating ? "全量重算中…" : "全量重算"}
           </AdminButton>
         </div>
-      }
-    >
-      <div className="flex flex-col gap-6">
+      </div>
+      <div className="flex flex-col gap-6 max-h-[calc(100dvh-var(--admin-chrome-offset)-48px)] min-h-[200px] overflow-y-auto">
         {/* Stat Cards Row */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {statCards.map((card) => (

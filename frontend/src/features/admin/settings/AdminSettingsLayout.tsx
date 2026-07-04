@@ -63,30 +63,27 @@ export default function AdminSettingsLayout() {
   };
 
   return (
-    <AdminPageShell
-      title="系统设置"
-      description="统一管理平台全局配置、外观、通知、门禁、集成与权限等模块。"
-      actions={
-        <div className="relative w-64">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-color-text-tertiary)]" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="搜索设置项…"
-            className="h-9 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] pl-9 pr-3 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] outline-none transition-colors focus:border-[var(--app-color-accent-secondary)] focus:ring-1 focus:ring-[var(--app-color-accent-secondary)]/20"
-          />
-        </div>
-      }
-    >
+    <AdminPageShell>
       <div className="flex gap-6 items-start">
-        {/* ── Left secondary sidebar (sticky, w-56) ── */}
+        {/* ── Left secondary sidebar — scrollable ── */}
         <nav
-          className="sticky top-4 z-[var(--z-sticky)] w-56 shrink-0"
+          className="w-56 shrink-0 flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]"
           aria-label="设置子页面导航"
         >
-          <div className="rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
+          {/* Search — shrink-0 */}
+          <div className="shrink-0 relative mb-3">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--app-color-text-tertiary)]" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="搜索设置项…"
+              className="h-9 w-full rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] pl-9 pr-3 text-sm text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] outline-none transition-colors focus:border-[var(--app-color-accent-secondary)] focus:ring-1 focus:ring-[var(--app-color-accent-secondary)]/20"
+            />
+          </div>
+          {/* Nav items — scrollable */}
+          <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm">
             <div className="border-b border-[var(--app-color-border-default)] px-3 py-2.5">
               <p className="text-xs font-semibold text-[var(--app-color-text-primary)]">
                 设置分类
@@ -143,8 +140,8 @@ export default function AdminSettingsLayout() {
           </div>
         </nav>
 
-        {/* ── Right content area ── */}
-        <div className="min-w-0 flex-1">
+        {/* ── Right content area — scrollable ── */}
+        <div className="min-w-0 flex-1 max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
           {/* Breadcrumb header */}
           <div className="mb-4 flex items-center gap-2 border-b border-[var(--app-color-border-default)] pb-3">
             <button

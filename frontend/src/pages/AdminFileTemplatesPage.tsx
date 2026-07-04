@@ -88,26 +88,20 @@ export default function AdminFileTemplatesPage() {
   };
 
   return (
-    <div className="p-6">
-      <AdminPageShell
-        title="文件模板库"
-        description={
-          <>
-            教职工可上传、下载常用模板；<strong>删除</strong>仅管理员及以上。目标库须已执行{" "}
-            <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1 text-xs">scripts/admin_file_templates.ddl.sql</code>（见{" "}
-            <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1 text-xs">scripts/DEPLOY_DDL.md</code>）。
-          </>
-        }
-        actions={
-          canUpload ? (
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">
-              <Upload className="h-4 w-4" />
-              上传模板
-              <input type="file" className="hidden" accept=".pdf,.xlsx,.xls,.docx,.doc,.zip,.csv,.txt,.png,.jpg,.jpeg" onChange={(ev) => void onUpload(ev)} />
-            </label>
-          ) : null
-        }
-      >
+    <AdminPageShell>
+      {/* Page toolbar */}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-semibold text-[var(--app-color-text-primary)]">文件模板库</h3>
+        {canUpload ? (
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">
+            <Upload className="h-4 w-4" />
+            上传模板
+            <input type="file" className="hidden" accept=".pdf,.xlsx,.xls,.docx,.doc,.zip,.csv,.txt,.png,.jpg,.jpeg" onChange={(ev) => void onUpload(ev)} />
+          </label>
+        ) : null}
+      </div>
+
+      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
         <AdminDataTableWrap scrollable>
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[var(--twin-canvas-soft)] text-xs text-[var(--twin-body)]">
@@ -157,7 +151,7 @@ export default function AdminFileTemplatesPage() {
           {isLoading ? <DataSkeleton variant="table" rows={4} /> : null}
           {!isLoading && !rows.length ? <EmptyState title="暂无模板" /> : null}
         </AdminDataTableWrap>
-      </AdminPageShell>
-    </div>
+      </div>
+    </AdminPageShell>
   );
 }

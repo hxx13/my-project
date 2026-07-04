@@ -965,24 +965,10 @@ export default function AdminStudentViolationsPage() {
   }, []);
 
   return (
-    <AdminPageShell
-      title="警告与弹窗公告"
-      description="按标签切换各配置板块；违规惩戒支持单人或课题组批量锁定。"
-      actions={
-        activeTab === "records" ? (
-          <AdminButton
-            type="button"
-            tone="secondary"
-            className="inline-flex items-center gap-2"
-            loading={isLoading}
-            onClick={() => qc.invalidateQueries({ queryKey: violationsQueryKey })}
-          >
-            <RefreshCw className="h-4 w-4" aria-hidden />
-            刷新列表
-          </AdminButton>
-        ) : null
-      }
-    >
+    <AdminPageShell>
+      <h2 className="text-lg font-semibold text-[var(--twin-ink)] mb-1">警告与弹窗公告</h2>
+      <p className="text-sm text-[var(--twin-body)] mb-4">按标签切换各配置板块；违规惩戒支持单人或课题组批量锁定。</p>
+
       <AdminPageTabs
         tabs={PAGE_TABS}
         value={activeTab}
@@ -990,7 +976,7 @@ export default function AdminStudentViolationsPage() {
         panelIdPrefix="violation-page-panel"
       />
 
-      <div className="mt-4">
+      <div className="mt-4 max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
         <AdminTabPanel
           id="violation-page-panel-unbound"
           tabId="unbound"
@@ -1786,6 +1772,18 @@ export default function AdminStudentViolationsPage() {
           activeTab={activeTab}
           className="admin-violations-tab-panel"
         >
+          <div className="flex justify-end mb-2">
+            <AdminButton
+              type="button"
+              tone="secondary"
+              className="inline-flex items-center gap-2"
+              loading={isLoading}
+              onClick={() => qc.invalidateQueries({ queryKey: violationsQueryKey })}
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden />
+              刷新列表
+            </AdminButton>
+          </div>
           <p className="admin-form-field-hint">
             {picked
               ? `当前筛选：「${picked.name}」的最近 400 条（在「新建违规」页锁定人员后生效）`

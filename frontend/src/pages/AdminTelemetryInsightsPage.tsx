@@ -281,16 +281,13 @@ export default function AdminTelemetryInsightsPage() {
   const floorOptions = useMemo(() => catalog.floors, [catalog.floors]);
 
   return (
-    <AdminPageShell
-      title={
+    <AdminPageShell>
+      <div className="flex items-center gap-3 shrink-0">
         <span className="inline-flex items-center gap-2">
           <BarChart3 className="h-5 w-5 text-[var(--app-color-accent-primary)]" />
           遥测历史分析
         </span>
-      }
-      description="Fleet 热力矩阵 · 分区 sparkline · 已配置对比组曲线 · 监测/展示双模式"
-      actions={
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 ml-auto">
           <Link
             to="/admin/telemetry-insights-config"
             className="inline-flex items-center rounded-[length:var(--admin-radius-md,0.375rem)] border-2 border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-sm font-medium text-[var(--app-color-text-primary)] shadow-sm hover:bg-[var(--app-color-surface-hover)]"
@@ -307,8 +304,8 @@ export default function AdminTelemetryInsightsPage() {
             捕获快照
           </AdminButton>
         </div>
-      }
-    >
+      </div>
+      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset)-48px)] min-h-[200px] overflow-y-auto">
       <AdminDataTableWrap className="space-y-3 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-xs">
@@ -504,6 +501,7 @@ export default function AdminTelemetryInsightsPage() {
         toIso={toIso}
         onClose={() => setDrillTarget(null)}
       />
+      </div>
     </AdminPageShell>
   );
 }

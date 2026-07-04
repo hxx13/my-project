@@ -242,11 +242,13 @@ export default function AdminContentHubPage() {
   return (
     <AdminFullWidthPage>
       <div className="p-4">
-        <AdminPageShell
-        title="小程序内容中心"
-        description="公告（管理员及以上）与版本更新（仅平台所有者可写）；正文保存前经 DOMPurify 与后端 Jsoup 消毒。"
-      >
-        <div className="mb-4 flex flex-wrap gap-2">{tabs}</div>
+        <AdminPageShell>
+          <h2 className="text-lg font-semibold text-[var(--twin-ink)] mb-1">小程序内容中心</h2>
+          <p className="text-sm text-[var(--twin-body)] mb-4">公告（管理员及以上）与版本更新（仅平台所有者可写）；正文保存前经 DOMPurify 与后端 Jsoup 消毒。</p>
+
+          <div className="mb-4 flex flex-wrap gap-2">{tabs}</div>
+
+          <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
 
         {tab === "announcements" && (
           <div className="space-y-3">
@@ -348,9 +350,10 @@ export default function AdminContentHubPage() {
             )}
           </div>
         )}
-      </AdminPageShell>
+          </div>
+        </AdminPageShell>
 
-      <Dialog open={annOpen} onOpenChange={setAnnOpen}>
+        <Dialog open={annOpen} onOpenChange={setAnnOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{annEditId ? "编辑公告" : "新建公告"}</DialogTitle>
