@@ -457,7 +457,6 @@ export default function AdminScheduleManagerPage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[var(--twin-ink)]">定时管理</h2>
       <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-sm text-[var(--twin-body)]">
         <div>说明：除以下任务外，其余手动触发任务统一在本页配置。</div>
         <ul className="list-disc pl-6 mt-2">

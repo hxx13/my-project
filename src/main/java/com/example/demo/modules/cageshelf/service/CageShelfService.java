@@ -9,6 +9,7 @@ import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
 import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
 import com.example.demo.modules.student.mapper.CageCellAnnotationMapper;
+import com.example.demo.modules.cageshelf.mapper.CageShelfCellSnapshotMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,17 +32,20 @@ public class CageShelfService {
     private final CageSpecialStatusSnapshotMapper specialStatusSnapshotMapper;
     private final CageShelfGridCacheMapper gridCacheMapper;
     private final CageCellAnnotationMapper annotationMapper;
+    private final CageShelfCellSnapshotMapper cellSnapshotMapper;
     private final AroService aroService;
 
     public CageShelfService(CageShelfMapper cageShelfMapper,
                             CageSpecialStatusSnapshotMapper specialStatusSnapshotMapper,
                             CageShelfGridCacheMapper gridCacheMapper,
                             CageCellAnnotationMapper annotationMapper,
+                            CageShelfCellSnapshotMapper cellSnapshotMapper,
                             AroService aroService) {
         this.cageShelfMapper = cageShelfMapper;
         this.specialStatusSnapshotMapper = specialStatusSnapshotMapper;
         this.gridCacheMapper = gridCacheMapper;
         this.annotationMapper = annotationMapper;
+        this.cellSnapshotMapper = cellSnapshotMapper;
         this.aroService = aroService;
     }
 
@@ -904,5 +908,54 @@ public class CageShelfService {
         }
         out.add(sb.toString().trim());
         return out;
+    }
+
+    /** 一次性从 grid_cache 的 grid_json 解析 animalCageType 回填 cell_snapshot */
+    public Map<String, Object> seedCellSnapshotFromGridCache() {
+        cellSnapshotMapper.ensureTable();
+        List<Map<String, Object>> cached = gridCacheMapper.selectAllWithFilledCells();
+        int totalShelves = 0, totalCells = 0;
+        String batchId = "seed-" + System.currentTimeMillis();
+        List<Map<String, Object>> batch = new ArrayList<>();
+        for (Map<String, Object> row : cached) {
+            String shelveId = String.valueOf(row.get("shelveId"));
+            String gridJson = (String) row.get("gridJson");
+            if (gridJson == null || gridJson.isBlank()) continue;
+            try {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> grid = JSON.parseObject(gridJson, List.class);
+                if (grid == null) continue;
+                for (Map<String, Object> cell : grid) {
+                    Object emptyObj = cell.get("empty");
+                    boolean isEmpty = emptyObj instanceof Boolean b ? b : false;
+                    Object typeObj = cell.get("animalCageType");
+                    Integer animalCageType = null;
+                    if (typeObj instanceof Number n) animalCageType = n.intValue();
+                    Map<String, Object> snap = new LinkedHashMap<>();
+                    snap.put("scanBatchId", batchId);
+                    snap.put("shelveId", shelveId);
+                    snap.put("positionX", cell.getOrDefault("x", 0));
+                    snap.put("positionY", cell.getOrDefault("y", 0));
+                    snap.put("positionLabel", cell.getOrDefault("position", ""));
+                    snap.put("animalCageType", animalCageType);
+                    snap.put("isEmpty", isEmpty);
+                    batch.add(snap);
+                    totalCells++;
+                }
+                totalShelves++;
+            } catch (Exception e) {
+                // skip unparseable
+            }
+            if (batch.size() >= 500) {
+                cellSnapshotMapper.batchInsert(batch);
+                batch.clear();
+            }
+        }
+        if (!batch.isEmpty()) cellSnapshotMapper.batchInsert(batch);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("shelves", totalShelves);
+        result.put("cells", totalCells);
+        result.put("batchId", batchId);
+        return result;
     }
 }

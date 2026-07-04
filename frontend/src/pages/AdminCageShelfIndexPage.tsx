@@ -49,18 +49,7 @@ export default function AdminCageShelfIndexPage() {
   const indexTotal = Number(indexData?.total || 0);
 
   return (
-    <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <button type="button" className="hover:bg-[var(--twin-canvas-soft)] rounded-twin-md p-1 -ml-1 transition" onClick={() => navigate(toAdminRoutePath("/admin/cage-shelves"))} title="返回笼架信息">
-            <ArrowLeft className="h-5 w-5 text-[var(--twin-link-deep)]" />
-          </button>
-          <TableProperties className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
-          笼架落库索引
-        </span>
-      }
-      description="查看已导入的笼架索引列表，支持按校区—区域—楼层—房间筛选。"
-    >
+    <AdminPageShell>
       <div className="space-y-4">
         <AdminFormCard title="位置筛选">
           <div className="flex flex-wrap items-center gap-2 text-sm">

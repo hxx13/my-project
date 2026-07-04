@@ -10,7 +10,7 @@ import {
   type RoomMappingRoomRow,
   type RoomMappingFacets,
 } from "@/api/twinApi";
-import { AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
 
 type OfficialLevelSavedPatch = Pick<RoomMappingRoomRow, "officialPermissionLevel"> & {
   updatedAt?: string | number | null;
@@ -210,21 +210,11 @@ export default function AdminRoomMappingPage() {
 
   return (
     <AdminPageShell>
-      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
-        <div className="mb-4">
-          <span className="inline-flex items-center gap-2">
-            <MapPin className="h-6 w-6 text-[var(--twin-link-deep)]" />
-            ARO 房间
-          </span>
-          <p className="max-w-3xl mt-2">
-            仅展示 CSV 主数据（区域、楼层、房间等）。「官方权限等级」在 ARO 部分房间无返回时可在下表<strong>手动填写并保存</strong>；有同步值时可用「自动填入」恢复为当前库内等级。
-            数字越小权限越高，用于扫码日轨迹与按钮锁定。通道与业务规则请在「通道编码」「门禁规则配置」中维护。数据来源为{" "}
-            <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">src/main/resources/room_mapping.csv</code>，可通过「从 CSV 刷新」重新导入（不会覆盖你已手填的等级）。
-          </p>
-        </div>
-      <div className="flex flex-col gap-3 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1">
-        <div className="text-xs font-medium text-[var(--twin-mute)]">区域</div>
-        <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+      <AdminFormCard title="筛选" className="shrink-0">
+        <div className="flex flex-col gap-3">
+          <div className="text-xs font-medium text-[var(--twin-mute)]">区域</div>
+          <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => selectRegion("")}
@@ -251,7 +241,7 @@ export default function AdminRoomMappingPage() {
               {r}
             </button>
           ))}
-        </div>
+          </div>
 
         {appliedRegion && (
           <>
@@ -285,43 +275,44 @@ export default function AdminRoomMappingPage() {
             </div>
           </>
         )}
-      </div>
+          <div className="flex flex-wrap items-end gap-2 pt-3 border-t border-[var(--twin-hairline)]">
+            <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+              关键词（房间 id / 名称 / 区域 / 楼层）
+              <input
+                className="min-w-[12rem] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 text-sm"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="回车或点查询"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") applyFilters();
+                }}
+              />
+            </label>
+            <button type="button" className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" onClick={applyFilters}>
+              查询
+            </button>
+            <button
+              type="button"
+              className="rounded-twin-sm border border-amber-400/80 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900"
+              onClick={() => void handleRefreshCsv()}
+            >
+              从 CSV 刷新
+            </button>
+          </div>
+        </div>
+      </AdminFormCard>
 
-      <div className="flex flex-wrap items-end gap-2 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1">
-        <label className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
-          关键词（房间 id / 名称 / 区域 / 楼层）
-          <input
-            className="min-w-[12rem] rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 text-sm"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="回车或点查询"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") applyFilters();
-            }}
-          />
-        </label>
-        <button type="button" className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" onClick={applyFilters}>
-          查询
-        </button>
-        <button
-          type="button"
-          className="rounded-twin-sm border border-amber-400/80 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900"
-          onClick={() => void handleRefreshCsv()}
-        >
-          从 CSV 刷新
-        </button>
-      </div>
-
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto">
       <AdminTableShell
         loading={isLoading}
         empty={!isLoading && rows.length === 0}
         emptyMessage="暂无数据。请先「从 CSV 刷新」导入，或调整筛选条件。"
         onRetry={() => qc.invalidateQueries({ queryKey: roomsQueryKey })}
-        scrollable
       >
         <table>
           <thead>
-            <tr>
+            <tr className="sticky top-0 z-[2] bg-[var(--twin-canvas)]">
               <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium">房间 id</th>
               <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium">房间名称</th>
               <th className="border-b border-[var(--twin-hairline)] px-3 py-2 text-left font-medium">区域</th>
@@ -360,8 +351,8 @@ export default function AdminRoomMappingPage() {
           </tbody>
         </table>
       </AdminTableShell>
-
-      <div className="flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
+        </div>
+        <div className="shrink-0 pt-2 flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
         <button
           type="button"
           className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40"
@@ -381,6 +372,7 @@ export default function AdminRoomMappingPage() {
         >
           下一页
         </button>
+      </div>
       </div>
       </div>
     </AdminPageShell>

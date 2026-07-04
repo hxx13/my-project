@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
 import {
   executeDoorControl,
   fetchDoorControlChannels,
@@ -8,7 +9,9 @@ import {
   type DahuaDeviceChannelRow,
   type DahuaDeviceChannelRemarkCategory,
 } from "@/api/twinApi";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
+import { AdminButton } from "@/components/admin/AdminButton";
+import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import { Portal } from "@/components/Portal";
 
 const MODES = [
@@ -170,167 +173,184 @@ export default function AdminDoorControlPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.list]);
 
+  const location = useLocation();
+  const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
+
   return (
-    <div className="min-h-full bg-transparent p-6">
-      <div className="mb-4">
-        <h1 className="text-2xl font-black text-slate-800">门禁控制</h1>
-        <p className="text-sm text-slate-500">仅超级管理员可见，按通道名称控制门禁模式</p>
-      </div>
-      {inlineNotice && (
-        <div
-          className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
-            inlineNotice.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-rose-200 bg-rose-50 text-rose-700"
-          }`}
-        >
-          {inlineNotice.text}
-        </div>
-      )}
-
-      <div className="mb-4 flex flex-wrap items-end gap-2">
-        <input
-          className="border border-slate-200 rounded-xl px-3 py-2 text-sm min-w-[260px]"
-          placeholder="检索通道名称/编码"
-          value={keyword}
-          onChange={(e) => {
-            setKeyword(e.target.value);
-            setPage(1);
-          }}
-        />
-        <select
-          className="border border-slate-200 rounded-xl px-3 py-2 text-sm"
-          value={channelType}
-          onChange={(e) => {
-            setChannelType(e.target.value);
-            setPage(1);
-          }}
-        >
-          <option value="">全部分类</option>
-          {channelTypeOptions.map((t) => (
-            <option key={t} value={t}>{t}</option>
-          ))}
-        </select>
-        <select
-          className="border border-slate-200 rounded-xl px-3 py-2 text-sm"
-          value={remarkCategoryId}
-          onChange={(e) => {
-            const v = e.target.value;
-            setRemarkCategoryId(v === "" ? "" : Number(v));
-            setPage(1);
-          }}
-        >
-          <option value="">全部备注分类</option>
-          {(remarkCategories as DahuaDeviceChannelRemarkCategory[]).map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white hover:bg-slate-50"
-          onClick={() => void refreshBatchStatus(list)}
-        >
-          刷新状态
-        </button>
-      </div>
-
-      <AdminDataTableWrap scrollable>
-        {isLoading ? (
-          <div className="p-8 text-center text-slate-500">加载中...</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-slate-100 text-slate-700">
-              <tr>
-                <th className="text-left p-3">通道名称</th>
-                <th className="text-left p-3">在线状态</th>
-                <th className="text-left p-3">编码</th>
-                <th className="text-left p-3">分类</th>
-                <th className="text-right p-3">控制</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((row) => (
-                <tr key={`${row.id}-${row.channelCode}`} className="border-t border-slate-100">
-                  <td className="p-3 font-semibold text-slate-800">{row.channelName || "-"}</td>
-                  <td className="p-3">
-                    {statusByCode[(row.channelCode || "").trim()]?.onlineStatus === "OFF" ? (
-                      <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
-                        设备离线
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                        在线
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-3 font-mono text-slate-600">{row.channelCode || "-"}</td>
-                  <td className="p-3 text-slate-500">{row.channelType || "-"}</td>
-                  <td className="p-3">
-                    <div className="flex justify-end gap-2">
-                      {MODES.map((m) => {
-                        const state = statusByCode[(row.channelCode || "").trim()];
-                        const active = resolveActiveMode(state?.status, state?.workMode) === m.key;
-                        return (
-                        <button
-                          key={m.key}
-                          type="button"
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border ${
-                            active
-                              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                              : "border-slate-200 bg-white hover:bg-slate-50"
-                          }`}
-                          disabled={actionMutation.isPending}
-                          onClick={() => runAction(m.key, row)}
-                        >
-                          {m.label}
-                        </button>
-                        );
-                      })}
-                    </div>
-                  </td>
-                </tr>
+    <AdminPageShell>
+      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+        <AdminFormCard className="shrink-0 mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+            <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <input
+              className="border border-[var(--app-color-border-default)] rounded-lg px-3 py-2 text-sm min-w-[260px] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)]"
+              placeholder="检索通道名称/编码"
+              value={keyword}
+              onChange={(e) => {
+                setKeyword(e.target.value);
+                setPage(1);
+              }}
+            />
+            <select
+              className="border border-[var(--app-color-border-default)] rounded-lg px-3 py-2 text-sm bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)]"
+              value={channelType}
+              onChange={(e) => {
+                setChannelType(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">全部分类</option>
+              {channelTypeOptions.map((t) => (
+                <option key={t} value={t}>{t}</option>
               ))}
-              {list.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-500">暂无通道</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+            </select>
+            <select
+              className="border border-[var(--app-color-border-default)] rounded-lg px-3 py-2 text-sm bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)]"
+              value={remarkCategoryId}
+              onChange={(e) => {
+                const v = e.target.value;
+                setRemarkCategoryId(v === "" ? "" : Number(v));
+                setPage(1);
+              }}
+            >
+              <option value="">全部备注分类</option>
+              {(remarkCategories as DahuaDeviceChannelRemarkCategory[]).map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <AdminButton
+              tone="secondary"
+              size="sm"
+              onClick={() => void refreshBatchStatus(list)}
+            >
+              刷新状态
+            </AdminButton>
+          </div>
+        </AdminFormCard>
+
+        {inlineNotice && (
+          <div
+            className={`mb-3 rounded-lg border px-3 py-2 text-sm ${
+              inlineNotice.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-rose-200 bg-rose-50 text-rose-700"
+            }`}
+          >
+            {inlineNotice.text}
+          </div>
         )}
-      </AdminDataTableWrap>
 
-      <div className="mt-4 flex justify-end items-center gap-3 text-sm">
-        <button className="px-2 py-1 border rounded disabled:opacity-40" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</button>
-        <span>{page} / {totalPages}</span>
-        <button className="px-2 py-1 border rounded disabled:opacity-40" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>下一页</button>
-      </div>
+        <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-auto">
+            {isLoading ? (
+              <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">加载中...</div>
+            ) : list.length === 0 ? (
+              <div className="flex min-h-[160px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">暂无通道</div>
+            ) : (
+              <div>
+                <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
+                  <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+                    <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
+                      <th className="p-3">通道名称</th>
+                      <th className="p-3">在线状态</th>
+                      <th className="p-3">编码</th>
+                      <th className="p-3">分类</th>
+                      <th className="text-right p-3">控制</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.map((row) => (
+                      <tr key={`${row.id}-${row.channelCode}`} className="border-t border-[var(--app-color-border-default)]">
+                        <td className="p-3 font-semibold text-[var(--app-color-text-primary)]">{row.channelName || "-"}</td>
+                        <td className="p-3">
+                          {statusByCode[(row.channelCode || "").trim()]?.onlineStatus === "OFF" ? (
+                            <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                              设备离线
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                              在线
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 font-mono text-[var(--app-color-text-secondary)]">{row.channelCode || "-"}</td>
+                        <td className="p-3 text-[var(--app-color-text-tertiary)]">{row.channelType || "-"}</td>
+                        <td className="p-3">
+                          <div className="flex justify-end gap-2">
+                            {MODES.map((m) => {
+                              const state = statusByCode[(row.channelCode || "").trim()];
+                              const active = resolveActiveMode(state?.status, state?.workMode) === m.key;
+                              return (
+                                <button
+                                  key={m.key}
+                                  type="button"
+                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border ${
+                                    active
+                                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                      : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] hover:bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-primary)]"
+                                  }`}
+                                  disabled={actionMutation.isPending}
+                                  onClick={() => runAction(m.key, row)}
+                                >
+                                  {m.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
-      {confirmModal.open && <Portal><div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
-            <h3 className="text-base font-bold text-slate-800">确认执行操作</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              将执行「{confirmModal.modeLabel}」
-            </p>
-            <p className="mt-1 text-sm text-slate-500">通道：{confirmModal.channelName}</p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white hover:bg-slate-50"
-                onClick={() => setConfirmModal({ open: false, mode: "", modeLabel: "", channelCode: "", channelName: "" })}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="px-3 py-2 rounded-lg border border-emerald-600 bg-emerald-600 text-white text-sm hover:bg-emerald-700"
-                onClick={confirmExecute}
-              >
-                确认执行
-              </button>
+          <div className="shrink-0 flex items-center justify-between gap-3 px-3 py-2 border-t border-[var(--app-color-border-default)] text-sm">
+            <span className="text-[var(--app-color-text-tertiary)]">第 {page} / {totalPages} 页，共 {total} 条</span>
+            <div className="flex gap-2">
+              <AdminButton tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                上一页
+              </AdminButton>
+              <AdminButton tone="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                下一页
+              </AdminButton>
             </div>
           </div>
-        </div></Portal>}
-    </div>
+        </div>
+      </div>
+
+      {confirmModal.open && (
+        <Portal>
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-4 shadow-xl">
+              <h3 className="text-base font-bold text-[var(--app-color-text-primary)]">确认执行操作</h3>
+              <p className="mt-2 text-sm text-[var(--app-color-text-secondary)]">
+                将执行「{confirmModal.modeLabel}」
+              </p>
+              <p className="mt-1 text-sm text-[var(--app-color-text-tertiary)]">通道：{confirmModal.channelName}</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-lg border border-[var(--app-color-border-default)] text-sm bg-[var(--app-color-surface-container)] hover:bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-primary)]"
+                  onClick={() => setConfirmModal({ open: false, mode: "", modeLabel: "", channelCode: "", channelName: "" })}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-2 rounded-lg border border-emerald-600 bg-emerald-600 text-white text-sm hover:bg-emerald-700"
+                  onClick={confirmExecute}
+                >
+                  确认执行
+                </button>
+              </div>
+            </div>
+          </div>
+        </Portal>
+      )}
+    </AdminPageShell>
   );
 }

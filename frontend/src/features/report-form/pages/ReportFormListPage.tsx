@@ -171,8 +171,6 @@ export default function ReportFormListPage() {
 
   return (
     <AdminPageShell>
-      <h2 className="text-lg font-semibold text-[var(--app-color-text-primary)] mb-1">填报报表管理</h2>
-      <p className="text-sm text-[var(--app-color-text-secondary)] mb-4">创建、设计、发布填报报表</p>
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <input
           placeholder="搜索报表..."

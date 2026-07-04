@@ -50,15 +50,7 @@ export default function AdminExternalCommConfigPage() {
   }, [overview, keyword]);
 
   return (
-    <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <Radio className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
-          外部通信配置
-        </span>
-      }
-      description="只读巡检页：汇总硬编码、配置文件与环境变量中的通信相关项，便于核对密钥与端点是否配置正确。"
-    >
+    <AdminPageShell>
       <div className="rounded-twin-lg border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-900">
         本页不支持在线修改。敏感字段默认脱敏，点击「查看」后仅在当前浏览器会话中显示明文。
       </div>

@@ -112,14 +112,14 @@ export default function ReportFillHubPage() {
 
   if (isLoading) {
     return (
-      <AdminPageShell title="填报中心" description="浏览并填写已发布的报表">
+      <AdminPageShell>
         <p className="text-sm text-[var(--app-color-text-tertiary)] p-4">加载中...</p>
       </AdminPageShell>
     );
   }
 
   return (
-    <AdminPageShell title="填报中心" description="浏览并填写已发布的报表">
+    <AdminPageShell>
       <div className="space-y-4">
         {forms.length === 0 ? (
           <div className="p-8 text-center">

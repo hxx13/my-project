@@ -210,28 +210,7 @@ export default function AdminSpecialStatusOverviewPage() {
   };
 
   return (
-    <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <button
-            type="button"
-            className="hover:bg-[var(--twin-canvas-soft)] rounded-twin-md p-1 -ml-1 transition"
-            onClick={() => navigate(toAdminRoutePath("/admin/cage-shelves"))}
-            title="返回笼架信息"
-          >
-            <ArrowLeft className="h-5 w-5 text-[var(--twin-link-deep)]" />
-          </button>
-          <Eye className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
-          特殊状态总览
-        </span>
-      }
-      description="所有带特殊状态标记的笼位，同一笼位含多个标记时合并显示。数据来自最近一次「全量笼位数据同步」。点击行查看详情。"
-      actions={
-        <AdminButton type="button" tone="secondary" size="sm" onClick={() => refetch()}>
-          刷新数据
-        </AdminButton>
-      }
-    >
+    <AdminPageShell>
       <div className="space-y-4">
         {/* Meta bar */}
         {data && (

@@ -14,7 +14,7 @@ import {
   type DahuaDeviceChannelRemarkCategory,
   type DahuaDeviceChannelRow,
 } from "@/api/twinApi";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminDataTableWrap, AdminPageShell } from "@/components/admin/AdminPageShell";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 
 type RemarkFilterValue = "all" | "unset" | number;
@@ -129,8 +129,9 @@ export default function AdminDeviceChannelPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[var(--twin-ink)]">通道编码</h2>
+    <AdminPageShell>
+      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
+        <div className="space-y-4">
 
       <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 space-y-3 shadow-twin-level-1">
         <div className="flex flex-wrap items-end gap-2">
@@ -371,6 +372,8 @@ export default function AdminDeviceChannelPage() {
           </div>
         </Portal>
       )}
-    </div>
+        </div>
+      </div>
+    </AdminPageShell>
   );
 }

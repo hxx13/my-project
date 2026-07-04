@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { FileText } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAutomationLogs, type AutomationLogRow } from "@/api/twinApi";
 import { AdminButton } from "@/components/admin/AdminButton";
@@ -141,14 +140,8 @@ export default function AdminAutomationLogsPage() {
 
   return (
     <AdminPageShell>
-      <h3 className="text-lg font-semibold text-[var(--app-color-text-primary)] inline-flex items-center gap-2 mb-3">
-        <FileText className="h-5 w-5 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
-        自动化日志
-      </h3>
-
-      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
-        <div className="flex flex-col gap-3">
-        <AdminFormCard title="筛选" className="p-3 [&>div:first-child]:mb-2 [&>div:first-child]:pb-1.5">
+      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+        <AdminFormCard title="筛选" className="shrink-0">
           <div className="flex flex-nowrap items-end gap-2 overflow-x-auto">
             <label className="flex w-[7.5rem] shrink-0 flex-col gap-0.5">
               <span className="text-[10px] font-medium text-neutral-500">类型</span>
@@ -227,6 +220,8 @@ export default function AdminAutomationLogsPage() {
           </div>
         </AdminFormCard>
 
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto">
         <AdminTableShell
           loading={isLoading}
           empty={!isLoading && rows.length === 0}
@@ -295,7 +290,8 @@ export default function AdminAutomationLogsPage() {
             </tbody>
           </table>
         </AdminTableShell>
-
+          </div>
+          <div className="shrink-0 pt-2">
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
           <span className="text-[var(--twin-mute)]">
             共 {total} 条 · 每页 {PAGE_SIZE} 条 · 按时间倒序
@@ -312,6 +308,7 @@ export default function AdminAutomationLogsPage() {
           </AdminButton>
           </div>
         </div>
+          </div>
         </div>
       </div>
     </AdminPageShell>

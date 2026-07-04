@@ -499,56 +499,10 @@ export default function AdminSuppliesMallPage() {
   };
 
   return (
-    <div className="flex h-[calc(100dvh-8rem)] max-h-[calc(100dvh-8rem)] min-h-0 flex-col gap-2">
-      {/* 标题栏：左侧标题+副标题，右侧操作入口（与小程序布局一致） */}
-      <div className="shrink-0 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-[var(--twin-ink)]">领用物资</h2>
-          <p className="text-xs text-[var(--twin-mute)] mt-0.5">
-            选择分类与数量，提交后待管理员确认出库（下单不占库存）。购物车已保存到服务端，与小程序领用物资页同一账号互通，换设备可继续选购。
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
-          {showProcessEntry ? (
-            <Link
-              to={toAdminRoutePath("/admin/supplies/process")}
-              state={{ returnTo: returnToForChild }}
-              className="relative rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:opacity-90 whitespace-nowrap"
-            >
-              物资处理
-              {processBadgeText ? (
-                <span className="absolute -right-1 -top-1 min-h-[16px] min-w-[16px] max-w-[28px] truncate rounded-full bg-amber-600 px-1 text-center text-[10px] font-bold leading-4 text-white ring-2 ring-white">
-                  {processBadgeText}
-                </span>
-              ) : null}
-            </Link>
-          ) : null}
-          {showAdminEntry ? (
-            <Link
-              to={toAdminRoutePath("/admin/supplies/manage")}
-              state={{ returnTo: returnToForChild }}
-              className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-800 hover:opacity-90 whitespace-nowrap"
-            >
-              管理
-            </Link>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => setRecordsPanelOpen(true)}
-            className="relative rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-1.5 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft-2)] whitespace-nowrap"
-          >
-            我的记录
-            {mineBadgeText ? (
-              <span className="absolute -right-1 -top-1 min-h-[16px] min-w-[16px] rounded-full bg-sky-500 px-1 text-center text-[10px] font-bold leading-4 text-white ring-2 ring-white">
-                {mineBadgeText}
-              </span>
-            ) : null}
-          </button>
-        </div>
-      </div>
+    <div className="flex h-[calc(100dvh-var(--admin-chrome-offset))] max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-0 flex-col gap-2">
 
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] shadow-twin-level-2">
-      {/* 搜索栏 + 近期更新标签（内联合并，消除独立横幅行） */}
+      {/* 搜索栏 + 操作入口（同一行） */}
       <div className="flex shrink-0 items-center gap-2 bg-[var(--twin-canvas)] px-3 py-2">
         <div className="min-w-0 flex-1">
           <input
@@ -559,6 +513,41 @@ export default function AdminSuppliesMallPage() {
             className="h-8 w-full max-w-md rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 text-xs outline-none ring-sky-500 focus:ring-2"
           />
         </div>
+        {showProcessEntry ? (
+          <Link
+            to={toAdminRoutePath("/admin/supplies/process")}
+            state={{ returnTo: returnToForChild }}
+            className="relative rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:opacity-90 whitespace-nowrap"
+          >
+            物资处理
+            {processBadgeText ? (
+              <span className="absolute -right-1 -top-1 min-h-[16px] min-w-[16px] max-w-[28px] truncate rounded-full bg-amber-600 px-1 text-center text-[10px] font-bold leading-4 text-white ring-2 ring-white">
+                {processBadgeText}
+              </span>
+            ) : null}
+          </Link>
+        ) : null}
+        {showAdminEntry ? (
+          <Link
+            to={toAdminRoutePath("/admin/supplies/manage")}
+            state={{ returnTo: returnToForChild }}
+            className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-800 hover:opacity-90 whitespace-nowrap"
+          >
+            管理
+          </Link>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setRecordsPanelOpen(true)}
+          className="relative rounded-full border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-3 py-1.5 text-xs font-medium text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft-2)] whitespace-nowrap"
+        >
+          我的记录
+          {mineBadgeText ? (
+            <span className="absolute -right-1 -top-1 min-h-[16px] min-w-[16px] rounded-full bg-sky-500 px-1 text-center text-[10px] font-bold leading-4 text-white ring-2 ring-white">
+              {mineBadgeText}
+            </span>
+          ) : null}
+        </button>
         {noveltyCounts.total > 0 ? (
           <div className="flex shrink-0 items-center gap-1.5">
             {noveltyCounts.newItem > 0 ? (

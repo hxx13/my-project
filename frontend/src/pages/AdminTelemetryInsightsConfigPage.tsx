@@ -110,30 +110,7 @@ export default function AdminTelemetryInsightsConfigPage() {
   const canSave = draft.name.trim().length > 0 && draft.variableNames.length > 0;
 
   return (
-    <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <LineChart className="h-5 w-5 text-[var(--app-color-accent-primary)]" />
-          遥测对比组配置
-        </span>
-      }
-      description="从 WinCC 变量导入目录选择变量，按楼层、分区前缀与指标类型组织对比组。图表页仅展示此处配置的组。"
-      actions={
-        <>
-          <Link
-            to="/admin/telemetry-insights"
-            className="inline-flex items-center rounded-[length:var(--admin-radius-md,0.375rem)] border-2 border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-sm font-medium text-[var(--app-color-text-primary)] shadow-sm hover:bg-[var(--app-color-surface-hover)]"
-          >
-            <BarChart3 className="mr-1 h-4 w-4" />
-            返回分析页
-          </Link>
-          <AdminButton onClick={openCreate} disabled={catalogLoading || catalogError}>
-            <Plus className="mr-1 h-4 w-4" />
-            新建对比组
-          </AdminButton>
-        </>
-      }
-    >
+    <AdminPageShell>
       {catalogError ? (
         <AdminDataTableWrap className="p-4 text-sm text-[var(--app-color-status-danger)]">
           无法加载变量目录，请确认「WinCC 变量导入」可访问。

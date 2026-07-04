@@ -131,14 +131,25 @@
     </select>
 
     <select id="listFullTree" resultType="map">
-        SELECT CAST(campus_id AS CHAR) AS campusId, campus_name AS campusName,
-               CAST(area_id AS CHAR) AS areaId, area_name AS areaName,
-               CAST(floor_id AS CHAR) AS floorId, floor_name AS floorName,
-               CAST(room_id AS CHAR) AS roomId, room_name AS roomName,
-               CAST(shelve_id AS CHAR) AS shelveId, shelve_name AS shelveName
-        FROM cage_shelf_index
-        WHERE deleted = 0
-        ORDER BY campus_name ASC, area_name ASC, floor_name ASC, room_name ASC, shelve_id ASC
+        SELECT CAST(c.campus_id AS CHAR) AS campusId, c.campus_name AS campusName,
+               CAST(c.area_id AS CHAR) AS areaId, c.area_name AS areaName,
+               CAST(c.floor_id AS CHAR) AS floorId, c.floor_name AS floorName,
+               CAST(c.room_id AS CHAR) AS roomId, c.room_name AS roomName,
+               CAST(c.shelve_id AS CHAR) AS shelveId, c.shelve_name AS shelveName,
+               COALESCE(s.type1, 0) AS type1, COALESCE(s.type2, 0) AS type2,
+               COALESCE(s.type3, 0) AS type3, COALESCE(s.type4, 0) AS type4
+        FROM cage_shelf_index c
+        LEFT JOIN (
+            SELECT shelve_id,
+                SUM(CASE WHEN animal_cage_type = 1 THEN 1 ELSE 0 END) AS type1,
+                SUM(CASE WHEN animal_cage_type = 2 THEN 1 ELSE 0 END) AS type2,
+                SUM(CASE WHEN animal_cage_type = 3 THEN 1 ELSE 0 END) AS type3,
+                SUM(CASE WHEN animal_cage_type = 4 THEN 1 ELSE 0 END) AS type4
+            FROM cage_shelf_cell_snapshot
+            GROUP BY shelve_id
+        ) s ON c.shelve_id = s.shelve_id
+        WHERE c.deleted = 0
+        ORDER BY c.campus_name ASC, c.area_name ASC, c.floor_name ASC, c.room_name ASC, c.shelve_id ASC
     </select>
 
     <select id="findByShelveId" resultMap="CageShelfIndexMap">

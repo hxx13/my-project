@@ -966,9 +966,6 @@ export default function AdminStudentViolationsPage() {
 
   return (
     <AdminPageShell>
-      <h2 className="text-lg font-semibold text-[var(--twin-ink)] mb-1">警告与弹窗公告</h2>
-      <p className="text-sm text-[var(--twin-body)] mb-4">按标签切换各配置板块；违规惩戒支持单人或课题组批量锁定。</p>
-
       <AdminPageTabs
         tabs={PAGE_TABS}
         value={activeTab}

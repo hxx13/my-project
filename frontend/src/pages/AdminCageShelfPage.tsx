@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, memo } from "react";
+import { useEffect, useMemo, useRef, useState, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import toast from "react-hot-toast";
@@ -184,8 +184,9 @@ function buildTree(rows:CageShelfTreeNode[]):TreeNode[]{
 /*  Static CampusTree                                                   */
 /* ================================================================== */
 
-function CampusTree({tree,exp,search,onToggle,onOpenRoom}:{
+function CampusTree({tree,exp,search,onToggle,onOpenRoom,viewMode,onOpenShelf}:{
   tree:TreeNode[];exp:Set<string>;search:string;onToggle:(k:string)=>void;onOpenRoom:(roomId:string,roomName:string)=>void;
+  viewMode:"room"|"shelf";onOpenShelf:(shelveId:string)=>void;
 }){
   const q=search.trim().toLowerCase();
   const tg=(k:string)=>{const n=new Set(exp);n.has(k)?n.delete(k):n.add(k);onToggle(k);};
@@ -196,18 +197,31 @@ function CampusTree({tree,exp,search,onToggle,onOpenRoom}:{
           {open?<ChevronDown className="h-3.5 w-3.5 text-white/80"/>:<ChevronRight className="h-3.5 w-3.5 text-white/80"/>}
           <span className="flex-1 truncate text-xs font-bold" style={{color:sty.text}}>{c.label}校区</span>
         </button>
-        {open&&<div className="mt-1 ml-1 space-y-0.5">{c.children.map(n=>renderNode(n,exp,q,tg,onOpenRoom))}</div>}
+        {open&&<div className="mt-1 ml-1 space-y-0.5">{c.children.map(n=>renderNode(n,exp,q,tg,onOpenRoom,viewMode,onOpenShelf))}</div>}
       </div>;
     })}
     {tree.length===0&&<div className="text-[var(--twin-mute)] py-6 text-center">暂无数据，请先导入 CSV</div>}
   </div>;
 }
-function renderNode(n:TreeNode,exp:Set<string>,q:string,tg:(k:string)=>void,onOpenRoom:(rid:string,rname:string)=>void):React.ReactNode{
+function renderNode(n:TreeNode,exp:Set<string>,q:string,tg:(k:string)=>void,onOpenRoom:(rid:string,rname:string)=>void,viewMode?:"room"|"shelf",onOpenShelf?:(sid:string)=>void):React.ReactNode{
   const open=exp.has(n.key);
   if(n.type==="shelf"){
-    return <button key={n.key} onClick={()=>onOpenRoom(n.raw.roomId,n.raw.roomName)}
+    const r=n.raw;const counts=[r.type3||0,r.type1||0,r.type4||0,r.type2||0];
+    const colors=["#10b981","#f59e0b","#3b82f6","#f43f5e"];
+    const total=counts.reduce((a:number,b:number)=>a+b,0)||80;
+    const bars=counts.map((c:number,i:number)=>({pct:Math.round(c/total*100),color:colors[i]})).filter((b:any)=>b.pct>0);
+    const hasData=counts.some((c:number)=>c>0);
+    const handleClick=()=>{
+      if(viewMode==="shelf"&&onOpenShelf){onOpenShelf(String(r.shelveId));return;}
+      onOpenRoom(r.roomId,r.roomName);
+      setTimeout(()=>document.getElementById(`shelf-${r.shelveId}`)?.scrollIntoView({behavior:'smooth',block:'start'}),300);
+    };
+    return <button key={n.key} onClick={handleClick}
       className="w-full text-left rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2 py-1 hover:border-[var(--twin-hairline-strong)] transition ml-2">
-      <div className="flex items-center gap-1"><LayoutGrid className="h-2.5 w-2.5 shrink-0 text-[var(--twin-mute)]"/><span className="truncate text-[10px] text-[var(--twin-ink)]">{n.label}</span></div>
+      <div className="flex items-center gap-1"><LayoutGrid className="h-2.5 w-2.5 shrink-0 text-[var(--twin-mute)]"/><span className="truncate text-[10px] font-medium text-[var(--twin-ink)]">{n.label}</span></div>
+      <div className="flex h-1 rounded-full overflow-hidden bg-[var(--twin-canvas-soft)] mt-1">
+        {hasData?bars.map((b:any,i:number)=><div key={i} className="h-full min-w-[2px]" style={{width:`${b.pct}%`,background:b.color}}/>):<div className="h-full w-full bg-[var(--twin-canvas-soft)]"/>}
+      </div>
     </button>;
   }
   // room has special treatment: expand shows shelf children
@@ -220,7 +234,7 @@ function renderNode(n:TreeNode,exp:Set<string>,q:string,tg:(k:string)=>void,onOp
         <span className="flex-1 truncate text-xs font-medium text-[var(--twin-ink)]">{n.label}</span>
         <span className="text-[10px] text-[var(--twin-mute)]">{n.children.length}架</span>
       </button>
-      {open&&n.children.length>0&&<div className="grid grid-cols-2 gap-1 mt-1 ml-2">{n.children.map(s=>renderNode(s,exp,q,tg,onOpenRoom))}</div>}
+      {open&&n.children.length>0&&<div className="flex flex-col gap-0.5 mt-1 ml-2">{n.children.map(s=>renderNode(s,exp,q,tg,onOpenRoom,viewMode,onOpenShelf))}</div>}
     </div>;
   }
   // area / floor
@@ -229,7 +243,7 @@ function renderNode(n:TreeNode,exp:Set<string>,q:string,tg:(k:string)=>void,onOp
       {open?<ChevronDown className="h-3 w-3 text-[var(--twin-mute)]"/>:<ChevronRight className="h-3 w-3 text-[var(--twin-mute)]"/>}
       <span className="truncate">{n.label}</span>
     </button>
-    {open&&<div className="ml-2 space-y-0.5">{n.children.map(c=>renderNode(c,exp,q,tg,onOpenRoom))}</div>}
+    {open&&<div className="ml-2 space-y-0.5">{n.children.map(c=>renderNode(c,exp,q,tg,onOpenRoom,viewMode,onOpenShelf))}</div>}
   </div>;
 }
 
@@ -249,17 +263,24 @@ function Inner(){
   const[cell,setCell]=useState<CageShelfCell|null>(null);
   const[shelfId,setShelfId]=useState<string|null>(null);
   const[exp,setExp]=useState<Set<string>>(new Set());
-  const[search,setSearch]=useState("");
-  const[legend,setLegend]=useState(false);
-  const[collapsed,setCollapsed]=useState(false);
 
   // Static tree — fetched once, never refetched
   const{data:fullTree=[]}=useQuery({
     queryKey:["cageShelfFullTree"],
     queryFn:fetchFullTree,
-    staleTime:Infinity,
+    staleTime:10*60*1000,
   });
   const tree=useMemo(()=>buildTree(fullTree),[fullTree]);
+
+  // 首屏默认展开前两级（校区 + 区域/楼层）
+  const expInited=useRef(false);
+  useEffect(()=>{
+    if(expInited.current||tree.length===0)return;
+    const keys=new Set<string>();
+    for(const c of tree){keys.add(c.key);for(const n of c.children){keys.add(n.key);}}
+    setExp(keys);
+    expInited.current=true;
+  },[tree]);
 
   // Room-id → shelveIds map from tree data (for loading shelf details)
   const roomShelveMap=useMemo(()=>{
@@ -271,6 +292,12 @@ function Inner(){
     }
     return m;
   },[fullTree]);
+  const[search,setSearch]=useState("");
+  const[legend,setLegend]=useState(false);
+  const[collapsed,setCollapsed]=useState(false);
+  const[viewMode,setViewMode]=useState<"room"|"shelf">("room");
+  const[shelfDetail,setShelfDetail]=useState<CageShelfDetail|null>(null);
+  const[shelfLoading,setShelfLoading]=useState(false);
 
   // Load shelf details when aRid changes
   useEffect(()=>{
@@ -301,31 +328,27 @@ function Inner(){
   const loadBm=async()=>{setBmLoading(true);try{const list=await fetchBookmarks();setBmList(list);setPinned(new Set(list.map(b=>`${b.roomId}:${b.shelveId}`)));}catch{}finally{setBmLoading(false);}};
   useEffect(()=>{if(tab==="bookmarks")loadBm();},[tab]);
 
-  useEffect(()=>{if(!cell||!shelfId||cell.empty)return;let cancelled=false;void(async()=>{try{const fresh=await refreshCellDetail(shelfId,cell.x,cell.y);if(!cancelled)setCell(fresh);}catch{}finally{if(!cancelled)setCell(p=>p?.position===cell.position?fresh:p);}})();return()=>{cancelled=true;};},[cell?.position,shelfId]);
+  useEffect(()=>{if(!cell||!shelfId||cell.empty)return;let cancelled=false;void(async()=>{try{const fresh=await refreshCellDetail(shelfId,cell.x,cell.y);if(!cancelled)setCell(fresh);}catch{}})();return()=>{cancelled=true;};},[cell?.position,shelfId]);
 
   const onOpenRoom=(roomId:string,roomName:string)=>{
-    setARid(roomId);setARname(roomName);
+    setARid(roomId);setARname(roomName);setShelfDetail(null);
+  };
+  const onOpenShelf=async(shelveId:string)=>{
+    setShelfLoading(true);setShelfDetail(null);
+    try{const d=await fetchCageShelfDetail(shelveId);setShelfDetail(d);}catch{setShelfDetail(null);}
+    finally{setShelfLoading(false);}
   };
 
-  return<AdminPageShell title="">
+  return<AdminPageShell>
     <div className="flex gap-2">
       {/* ======== LEFT PANEL ======== */}
-      <div className={`shrink-0 flex flex-col gap-1.5 max-h-[calc(100vh-130px)] transition-all ${collapsed?'w-10':'w-48 xl:w-52'}`}>
-        <div className="shrink-0 flex items-center gap-1 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1">
-          <button type="button" onClick={()=>setTab("bookmarks")} className={`flex-1 flex items-center justify-center gap-1 rounded-twin-md py-1 text-[11px] font-semibold transition ${tab==="bookmarks"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}><Star className="h-3 w-3"/>收藏</button>
-          <button type="button" onClick={()=>setTab("filter")} className={`flex-1 flex items-center justify-center gap-1 rounded-twin-md py-1 text-[11px] font-semibold transition ${tab==="filter"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}><LayoutGrid className="h-3 w-3"/>筛选</button>
-        </div>
-        <div className="shrink-0 flex items-center justify-between gap-1">
-          <a href={toAdminRoutePath("/admin/cage-shelves/special-status")} onClick={e=>{e.preventDefault();nav(toAdminRoutePath("/admin/cage-shelves/special-status"));}} className="text-[10px] text-[var(--twin-mute)] hover:text-[var(--twin-link-deep)] no-underline">特殊状态总览 →</a>
-          <button type="button" onClick={()=>setLegend(v=>!v)} className={`flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition ${legend?'bg-[var(--twin-link-deep)] text-white':'text-[var(--twin-mute)] hover:text-[var(--twin-ink)]'}`}><Info className="h-3 w-3"/>图例{legend?' ▲':' ▼'}</button>
-        </div>
-        {legend&&<div className="shrink-0"><CageShelfLegend/></div>}
+      <div className={`shrink-0 flex flex-col gap-1.5 transition-all ${collapsed?'w-10':'w-48 xl:w-52'}`} style={{maxHeight:"calc(100vh - 130px)",minHeight:"calc(100vh - 130px)"}}>
         <div className="shrink-0 flex items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-1">
           <button type="button" onClick={()=>setCollapsed(v=>!v)} className="shrink-0 rounded p-0.5 text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title={collapsed?"展开":"收起"}>{collapsed?<PanelLeft className="h-3.5 w-3.5"/>:<PanelLeftClose className="h-3.5 w-3.5"/>}</button>
           {!collapsed&&<><Search className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]"/><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索…" className="flex-1 min-w-0 bg-transparent text-[11px] outline-none text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"/></>}
         </div>
         {!collapsed&&<div className="flex-1 min-h-0 overflow-y-auto rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5">
-          {tab==="filter"&&<CampusTree tree={tree} exp={exp} search={search} onToggle={k=>setExp(p=>{const n=new Set(p);n.has(k)?n.delete(k):n.add(k);return n;})} onOpenRoom={onOpenRoom}/>}
+          {tab==="filter"&&<CampusTree tree={tree} exp={exp} search={search} onToggle={k=>setExp(p=>{const n=new Set(p);n.has(k)?n.delete(k):n.add(k);return n;})} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf}/>}
           {tab==="bookmarks"&&<>
             {bmLoading&&<div className="text-[var(--twin-mute)] py-4 text-center text-[11px]">加载中…</div>}
             {!bmLoading&&bmList.length===0&&<div className="text-[var(--twin-mute)] py-4 text-center text-[11px]">暂无收藏</div>}
@@ -339,24 +362,70 @@ function Inner(){
       </div>
 
       {/* ======== RIGHT PANEL ======== */}
-      <div className="flex-1 min-w-0 max-h-[calc(100vh-130px)] overflow-y-auto space-y-2 pr-1">
+      <div className="flex-1 min-w-0 space-y-2 pr-1" style={{maxHeight:"calc(100vh - 130px)",minHeight:"calc(100vh - 130px)",overflowY:"auto"}}>
         {scan&&scan.status!=="idle"&&<CageScanProgressBanner progress={scan}/>}
+        {/* Top toolbar: tabs + view mode + actions */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1">
+              <button type="button" onClick={()=>setTab("bookmarks")} className={`flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${tab==="bookmarks"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}><Star className="h-3 w-3"/>收藏</button>
+              <button type="button" onClick={()=>setTab("filter")} className={`flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${tab==="filter"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}><LayoutGrid className="h-3 w-3"/>筛选</button>
+            </div>
+            {tab==="filter"&&<div className="flex items-center gap-1 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1">
+              <button type="button" onClick={()=>setViewMode("room")} className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${viewMode==="room"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>全房间</button>
+              <button type="button" onClick={()=>setViewMode("shelf")} className={`rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${viewMode==="shelf"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}>单笼架</button>
+            </div>}
+          </div>
+          <div className="flex items-center gap-1">
+            <a href={toAdminRoutePath("/admin/cage-shelves/special-status")} onClick={e=>{e.preventDefault();nav(toAdminRoutePath("/admin/cage-shelves/special-status"));}} className="rounded-twin-md px-2.5 py-1 text-[11px] font-semibold no-underline bg-[var(--twin-link-deep)] text-white hover:opacity-90 transition">特殊状态总览</a>
+            <button type="button" onClick={()=>setLegend(v=>!v)} className={`flex items-center gap-1 rounded-twin-md px-2 py-1 text-[10px] transition ${legend?'bg-[var(--twin-link-deep)] text-white':'text-[var(--twin-mute)] hover:text-[var(--twin-ink)]'}`}><Info className="h-3 w-3"/>图例{legend?' ▲':' ▼'}</button>
+          </div>
+        </div>
+        {legend&&<CageShelfLegend/>}
         {tab==="filter"&&<>
-          {!aRid&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] py-16 text-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mx-auto mb-3 opacity-20"/>展开左侧目录，点击房间下的笼架<br/><span className="text-[11px]">点击笼架后加载该房间所有笼架详情</span></div>}
-          {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
-          {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
-          {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
-            return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={c=>{setCell(c);setShelfId(sid);}}/></div>;
-          })}</div>}
+          {/* ROOM MODE: all shelf grids */}
+          {viewMode==="room"&&<>
+            {!aRid&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mx-auto mb-3 opacity-20"/>展开左侧目录，点击房间下的笼架<br/><span className="text-[11px]">点击笼架后加载该房间所有笼架详情</span></div>}
+            {loading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 text-center text-sm text-[var(--twin-mute)]">正在加载房间笼架（{details.length}）…</div>}
+            {!loading&&aRid&&details.length===0&&<div className="rounded-twin-xl border border-amber-200/90 bg-amber-50/80 p-4 text-sm text-amber-900">当前房间暂无笼架数据</div>}
+            {details.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{details.map((d,idx)=>{const sid=String(d.shelfMeta?.shelveId??""),isBm=sid!==""&&pinned.has(`${aRid}:${sid}`);
+              return<div key={sid||idx} id={`shelf-${sid}`}><ShelfGrid title={d.shelfMeta?.shelveName??`笼架 ${idx+1}`} detail={d} loading={false} emptyHint="暂无笼架数据" isBookmarked={isBm} onToggleBookmark={sid!==""?()=>toggleBm(sid):undefined} onCellClick={c=>{setCell(c);setShelfId(sid);}}/></div>;
+            })}</div>}
+          </>}
+
+          {/* SHELF MODE: left grid + right detail (like student page) */}
+          {viewMode==="shelf"&&<div className="flex gap-3 min-h-0" style={{height:"calc(100vh - 190px)"}}>
+            {/* Left: 8×10 grid */}
+            <div className="w-1/2 flex flex-col min-w-0">
+              {shelfLoading&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] grid place-items-center text-sm text-[var(--twin-mute)]">加载笼架…</div>}
+              {!shelfLoading&&!shelfDetail&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><LayoutGrid className="h-10 w-10 mb-3 opacity-20"/>点击左侧笼架<br/><span className="text-[11px]">选中后显示该笼架 8×10 笼位</span></div>}
+              {!shelfLoading&&shelfDetail&&<ShelfGrid title={shelfDetail.shelfMeta?.shelveName||"笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={c=>{setCell(c);setShelfId(String(shelfDetail.shelfMeta?.shelveId??""));}}/>}
+            </div>
+            {/* Right: cell detail "预备画面" */}
+            <div className="w-1/2 flex flex-col min-w-0">
+              {!cell&&<div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]">
+                <div className="text-4xl mb-3 opacity-20">📋</div>笼盒详情预备画面<br/><span className="text-[11px]">点击左侧笼位格子显示笼盒信息</span>
+              </div>}
+              {cell&&<div className="flex-1 overflow-y-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3">
+                <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {cell.position}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>setCell(null)}>清除</button></div>
+                <div className="grid grid-cols-2 gap-2 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";
+                  return<div key={k} className={`rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1.5 ${k==="CageBoxQrCode"?"col-span-2":""}`}><div className="text-[var(--twin-mute)]">{CAGE_BOX_INFO_LABEL[k]??k}</div><div className="mt-0.5 flex flex-wrap items-start gap-3"><div className="min-w-0 flex-1 break-all text-[var(--twin-ink)]">{display}</div>{k==="CageBoxQrCode"&&qr!==""&&<div className="shrink-0 rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1"><QRCodeSVG value={qr} size={80} level="M" includeMargin={false}/></div>}</div></div>;
+                })}</div>
+                {cell.annotation&&(cell.annotation.richText||cell.annotation.images)&&<div className="mt-2 pt-2 border-t border-[var(--twin-hairline)]"><div className="text-xs font-semibold text-[var(--twin-ink)] mb-1">学生标注</div>
+                  {cell.annotation.richText&&<div className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 mb-1 text-xs"><div className="text-[var(--twin-mute)]">备注</div><div className="text-[var(--twin-ink)] whitespace-pre-wrap">{cell.annotation.richText}</div></div>}
+                </div>}
+              </div>}
+            </div>
+          </div>}
         </>}
         {tab==="bookmarks"&&<>
-          {pinned.size===0&&!bmLoading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] py-16 text-center text-sm text-[var(--twin-mute)]"><Star className="h-10 w-10 mx-auto mb-3 opacity-20"/>选择左侧收藏的笼架<br/><span className="text-[11px]">点击左侧列表中的笼架查看详情</span></div>}
+          {pinned.size===0&&!bmLoading&&<div className="rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] h-full flex flex-col items-center justify-center text-center text-sm text-[var(--twin-mute)]"><Star className="h-10 w-10 mx-auto mb-3 opacity-20"/>选择左侧收藏的笼架<br/><span className="text-[11px]">点击左侧列表中的笼架查看详情</span></div>}
           {!bmLoading&&bmList.length>0&&<div className="grid grid-cols-1 xl:grid-cols-2 gap-3">{bmList.map(b=><BookmarkShelfGrid key={`${b.roomId}-${b.shelveId}`} roomId={String(b.roomId)} shelveId={String(b.shelveId)} title={b.shelveName&&String(b.shelveName)!==String(b.shelveId)?b.shelveName:(shelfNameMap.get(String(b.shelveId))||`笼架 ${b.shelveId}`)} campusName={b.campusName} roomName={b.roomName} isBookmarked={true} onToggleBookmark={()=>toggleBookmarkApi(String(b.roomId),String(b.shelveId)).then(r=>{if(!r.bookmarked){setPinned(p=>{const n=new Set(p);n.delete(`${b.roomId}:${b.shelveId}`);return n;});setBmList(l=>l.filter(x=>`${x.roomId}:${x.shelveId}`!==`${b.roomId}:${b.shelveId}`));}})} onCellClick={c=>{setCell(c);setShelfId(String(b.shelveId));}}/>)}</div>}
         </>}
       </div>
     </div>
 
-    {cell&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
+    {cell&&viewMode!=="shelf"&&<Portal><div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={()=>{setCell(null);setShelfId(null);}}>
       <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-3" onClick={e=>e.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {cell.position}</div><button type="button" className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={()=>{setCell(null);setShelfId(null);}}>关闭</button></div>
         <div className="grid grid-cols-2 gap-2 text-xs">{CAGE_BOX_INFO_FIELD_ORDER.map(k=>{const source=cell.cageBoxInfo??cell.detail??{};const v=source[k];const display=formatCageDetailValue(v);const qr=k==="CageBoxQrCode"&&v!=null&&String(v).trim()!==""?String(v).trim():"";

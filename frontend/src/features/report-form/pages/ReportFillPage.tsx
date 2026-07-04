@@ -36,7 +36,7 @@ export default function ReportFillPage() {
 
   if (formLoading || !form) {
     return (
-      <AdminPageShell title="加载中...">
+      <AdminPageShell>
         <p className="text-sm text-[var(--app-color-text-tertiary)] p-4">加载报表...</p>
       </AdminPageShell>
     );
@@ -52,10 +52,7 @@ export default function ReportFillPage() {
     : (mode === 'individual' && fillPolicy.allowMultipleInstances ? '默认子文件' : '');
 
   return (
-    <AdminPageShell
-      title={instanceTitle ? `${form.name} · ${instanceTitle}` : form.name}
-      description={`${mode === 'shared' ? '协同填报' : '个人填报'} · ${submitLabel}`}
-    >
+    <AdminPageShell>
       {/* Toolbar */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <button

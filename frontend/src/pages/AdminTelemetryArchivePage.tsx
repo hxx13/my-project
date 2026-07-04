@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
+import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import { adminHttp } from "@/api/core/adminHttp";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import {
@@ -56,6 +57,9 @@ export default function AdminTelemetryArchivePage() {
   const [page, setPage] = useState(1);
 
   const [purgeForm, setPurgeForm] = useState<TelemetryArchivePurgeConfig>(defaultPurgeConfig);
+
+  const location = useLocation();
+  const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
 
   const statsQ = useQuery({
     queryKey: ["admin", "telemetry-archive", "stats"],
@@ -148,20 +152,19 @@ export default function AdminTelemetryArchivePage() {
   const showPurgeProgress = purgeProgress != null && purgeProgress.status !== "IDLE";
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <Archive className="h-6 w-6 text-sky-600" />
-        <h1 className="text-xl font-semibold text-slate-900">温湿度数据归档</h1>
-      </div>
-      <p className="max-w-3xl text-sm text-slate-600">
-        WinCC 刷新写入 <code className="rounded bg-slate-100 px-1">telemetry_value_archive</code>。
+    <AdminPageShell>
+      {/* Description */}
+      <p className="max-w-3xl text-sm text-[var(--app-color-text-secondary)]">
+        WinCC 刷新写入{" "}
+        <code className="rounded bg-[var(--app-color-surface-elevated)] px-1">telemetry_value_archive</code>。
         表过大可能拖慢 MySQL；可配置保留天数并自动清理。执行时刻在{" "}
-        <Link to={toAdminRoutePath("/admin/schedule")} className="text-sky-700 underline">
+        <Link to={toAdminRoutePath("/admin/schedule")} className="text-[var(--twin-link-deep)] underline">
           定时任务管理
         </Link>{" "}
         中调整任务「温湿度·WinCC归档自动清理」。
       </p>
 
+      {/* Stats + Purge config cards */}
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
@@ -330,113 +333,109 @@ export default function AdminTelemetryArchivePage() {
         </div>
       </div>
 
-      <p className="text-xs text-slate-500">
-        说明：扫码变慢若日志显示 <code>[ARO·耗时] noLeaveRoom</code> 超时，主因是 ARO 官方接口，清理本表无法直接修复；
-        但若 <code>telemetry_value_archive</code> 已达数百万行，清理可减轻 MySQL 整体压力。
-      </p>
+      {/* Filter + Table scroll pattern */}
+      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+        <AdminFormCard className="shrink-0 mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+            <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <AdminButton tone="secondary" size="sm" onClick={() => void listQ.refetch()}>
+                刷新列表
+              </AdminButton>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs text-slate-600">
+              变量名包含
+              <input
+                value={variableName}
+                onChange={(e) => {
+                  setVariableName(e.target.value);
+                  setPage(1);
+                }}
+                className="mt-1 block w-56 rounded border border-slate-200 px-2 py-1.5 text-sm"
+                placeholder="可选"
+              />
+            </label>
+            <label className="text-xs text-slate-600">
+              起始时间 (ISO)
+              <input
+                value={from}
+                onChange={(e) => {
+                  setFrom(e.target.value);
+                  setPage(1);
+                }}
+                className="mt-1 block w-56 rounded border border-slate-200 px-2 py-1.5 font-mono text-xs"
+                placeholder="可选"
+              />
+            </label>
+            <label className="text-xs text-slate-600">
+              结束时间 (ISO)
+              <input
+                value={to}
+                onChange={(e) => {
+                  setTo(e.target.value);
+                  setPage(1);
+                }}
+                className="mt-1 block w-56 rounded border border-slate-200 px-2 py-1.5 font-mono text-xs"
+                placeholder="可选"
+              />
+            </label>
+          </div>
+        </AdminFormCard>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <label className="text-xs text-slate-600">
-          变量名包含
-          <input
-            value={variableName}
-            onChange={(e) => {
-              setVariableName(e.target.value);
-              setPage(1);
-            }}
-            className="mt-1 block w-56 rounded border border-slate-200 px-2 py-1.5 text-sm"
-            placeholder="可选"
-          />
-        </label>
-        <label className="text-xs text-slate-600">
-          起始时间 (ISO)
-          <input
-            value={from}
-            onChange={(e) => {
-              setFrom(e.target.value);
-              setPage(1);
-            }}
-            className="mt-1 block w-56 rounded border border-slate-200 px-2 py-1.5 font-mono text-xs"
-            placeholder="可选"
-          />
-        </label>
-        <label className="text-xs text-slate-600">
-          结束时间 (ISO)
-          <input
-            value={to}
-            onChange={(e) => {
-              setTo(e.target.value);
-              setPage(1);
-            }}
-            className="mt-1 block w-56 rounded border border-slate-200 px-2 py-1.5 font-mono text-xs"
-            placeholder="可选"
-          />
-        </label>
-        <AdminButton tone="secondary" size="sm" onClick={() => void listQ.refetch()}>
-          刷新列表
-        </AdminButton>
-      </div>
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div>
+              <table className="min-w-full border-collapse text-left text-sm">
+                <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+                  <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
+                    <th className="p-3">时间</th>
+                    <th className="p-3">变量名</th>
+                    <th className="p-3">数值</th>
+                    <th className="p-3">原始值</th>
+                    <th className="p-3">房间</th>
+                    <th className="p-3">分区</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(listQ.data?.items ?? []).map((r) => (
+                    <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50/80">
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-700">{r.sampleAt}</td>
+                      <td className="max-w-xs truncate px-3 py-2 font-mono text-xs text-slate-800">{r.variableName}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{r.numericValue ?? "—"}</td>
+                      <td className="max-w-xs truncate px-3 py-2 font-mono text-xs text-slate-600">{r.rawValue ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs text-slate-700">{r.roomCanonical ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs text-slate-700">{r.bundleCode ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-      <AdminDataTableWrap scrollable>
-        <table className="min-w-full border-collapse text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="border-b border-slate-200 px-3 py-2">时间</th>
-              <th className="border-b border-slate-200 px-3 py-2">变量名</th>
-              <th className="border-b border-slate-200 px-3 py-2">数值</th>
-              <th className="border-b border-slate-200 px-3 py-2">原始值</th>
-              <th className="border-b border-slate-200 px-3 py-2">房间</th>
-              <th className="border-b border-slate-200 px-3 py-2">分区</th>
-            </tr>
-          </thead>
-          <tbody>
-            {listQ.isPending ? (
-              <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
-                  加载中…
-                </td>
-              </tr>
-            ) : listQ.isError ? (
-              <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-rose-600">
-                  {(listQ.error as Error)?.message || "加载失败"}
-                </td>
-              </tr>
-            ) : (
-              (listQ.data?.items ?? []).map((r) => (
-                <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50/80">
-                  <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-700">{r.sampleAt}</td>
-                  <td className="max-w-xs truncate px-3 py-2 font-mono text-xs text-slate-800">{r.variableName}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{r.numericValue ?? "—"}</td>
-                  <td className="max-w-xs truncate px-3 py-2 font-mono text-xs text-slate-600">{r.rawValue ?? "—"}</td>
-                  <td className="px-3 py-2 text-xs text-slate-700">{r.roomCanonical ?? "—"}</td>
-                  <td className="px-3 py-2 text-xs text-slate-700">{r.bundleCode ?? "—"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </AdminDataTableWrap>
-
-      <div className="flex items-center justify-between text-sm text-slate-600">
-        <span>
-          共 {listQ.data?.total ?? 0} 条 · 第 {listQ.data?.page ?? page} /{" "}
-          {Math.max(1, Math.ceil((listQ.data?.total ?? 0) / (listQ.data?.size ?? 50)))} 页
-        </span>
-        <div className="flex gap-2">
-          <AdminButton tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            上一页
-          </AdminButton>
-          <AdminButton
-            tone="secondary"
-            size="sm"
-            disabled={listQ.data != null && page * listQ.data.size >= listQ.data.total}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            下一页
-          </AdminButton>
+          {/* Pagination */}
+          <div className="shrink-0 pt-2 flex items-center justify-between text-sm">
+            <span className="text-[var(--app-color-text-tertiary)]">
+              第 {listQ.data?.page ?? page} /{" "}
+              {Math.max(1, Math.ceil((listQ.data?.total ?? 0) / (listQ.data?.size ?? 50)))} 页
+            </span>
+            <div className="flex gap-2">
+              <AdminButton tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                上一页
+              </AdminButton>
+              <AdminButton
+                tone="secondary"
+                size="sm"
+                disabled={listQ.data != null && page * (listQ.data.size ?? 50) >= (listQ.data.total ?? 0)}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                下一页
+              </AdminButton>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </AdminPageShell>
   );
 }

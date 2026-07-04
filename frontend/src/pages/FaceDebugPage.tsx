@@ -210,10 +210,7 @@ export default function FaceDebugPage() {
   }, [compareA, compareB]);
 
   return (
-    <AdminPageShell
-      title="人脸识别调试"
-      description="生产验证：选择有底库的人员，走与扫码门禁相同的服务端路线 B（/api/face/verify）"
-    >
+    <AdminPageShell>
       <FaceDynamicIsland
         status={islandStatus}
         retryAttempt={retryCount}

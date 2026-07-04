@@ -91,7 +91,6 @@ export default function AdminFileTemplatesPage() {
     <AdminPageShell>
       {/* Page toolbar */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold text-[var(--app-color-text-primary)]">文件模板库</h3>
         {canUpload ? (
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]">
             <Upload className="h-4 w-4" />

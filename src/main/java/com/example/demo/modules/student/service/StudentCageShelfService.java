@@ -124,7 +124,7 @@ public class StudentCageShelfService {
                 .toList();
         Map<String, Map<String, Long>> typeCountsMap = new java.util.LinkedHashMap<>();
         if (!allShelveIds.isEmpty()) {
-            List<Map<String, Object>> counts = studentCageShelfSnapshotMapper.selectCageTypeCountsByShelveIds(allShelveIds);
+            List<Map<String, Object>> counts = snapshotMapper.selectCageTypeCountsByShelveIds(allShelveIds);
             if (counts != null) {
                 for (Map<String, Object> row : counts) {
                     String sid = objToStr(row.get("shelveId"));

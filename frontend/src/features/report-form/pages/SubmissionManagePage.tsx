@@ -39,7 +39,7 @@ export default function SubmissionManagePage() {
 
   if (formLoading || !form) {
     return (
-      <AdminPageShell title="提交管理">
+      <AdminPageShell>
         <p className="text-sm text-[var(--app-color-text-tertiary)] p-4">加载中...</p>
       </AdminPageShell>
     );
@@ -67,7 +67,7 @@ export default function SubmissionManagePage() {
   );
 
   return (
-    <AdminPageShell title={`${form.name} · 提交管理`} description={`共 ${submissions.length} 条记录`}>
+    <AdminPageShell>
       {/* Mode toggle + Export */}
       <div className="flex items-center gap-3 mb-4">
         <button onClick={() => setViewMode('table')}

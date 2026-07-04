@@ -300,8 +300,6 @@ export default function AdminDahuaSwingTasksPage() {
   return (
     <div className="p-6 space-y-4">
       <div>
-        <h1 className="text-xl font-bold text-[var(--twin-ink)]">门禁数据工作台</h1>
-        <p className="text-sm text-[var(--twin-mute)] mt-1">实时拉取、审计批量拉取、记录库与统计清洗总库同一入口管理。</p>
         <div className="mt-3 flex flex-wrap gap-2 border-b border-[var(--twin-hairline)] pb-2">
           {(
             [

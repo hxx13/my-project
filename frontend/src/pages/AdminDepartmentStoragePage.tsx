@@ -6,7 +6,7 @@ import {
   refreshDahuaDepartments,
   type DahuaDepartmentRow,
 } from "@/api/twinApi";
-import { AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminDataTableWrap, AdminPageShell } from "@/components/admin/AdminPageShell";
 import DataSkeleton from "@/components/ui/DataSkeleton";
 
 type TreeRow = DahuaDepartmentRow & { depth: number };
@@ -48,8 +48,9 @@ export default function AdminDepartmentStoragePage() {
   }, [rows]);
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-[var(--twin-ink)]">部门落库信息（结构树）</h2>
+    <AdminPageShell>
+      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
+        <div className="space-y-4">
       <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 space-y-3 shadow-twin-level-1">
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -121,6 +122,8 @@ export default function AdminDepartmentStoragePage() {
           </AdminDataTableWrap>
         )}
       </div>
-    </div>
+        </div>
+      </div>
+    </AdminPageShell>
   );
 }

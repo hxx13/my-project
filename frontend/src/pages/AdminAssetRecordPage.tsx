@@ -533,107 +533,100 @@ export default function AdminAssetRecordPage() {
   };
 
   return (
-    <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <Archive className="h-6 w-6 shrink-0 text-[var(--twin-link-deep)]" aria-hidden />
-          资产记录
-        </span>
-      }
-      description="支持 CSV/Excel 导入、Excel 导出、动态表头、搜索修改，以及申请转移流程。"
-      actions={
-        <div className="flex min-w-0 flex-wrap justify-end gap-2">
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            className="sr-only"
-            aria-hidden
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              void onImport(f);
-              e.currentTarget.value = "";
-            }}
-          />
-          <AdminButton
-            type="button"
-            tone="secondary"
-            className="inline-flex min-h-9 items-center gap-2"
-            onClick={() => {
-              setSelectedAsset(null);
-              setModalOpen(true);
-            }}
-          >
-            申请转移
-          </AdminButton>
-          <AdminButton type="button" tone="secondary" className="inline-flex min-h-9 items-center gap-2" onClick={openAddModal}>
-            <Plus className="h-4 w-4 shrink-0" aria-hidden />
-            新增资产
-          </AdminButton>
-          <AdminButton
-            type="button"
-            tone={tableEditMode ? "secondary" : "primary"}
-            className="inline-flex min-h-9 items-center gap-2"
-            onClick={() => {
-              if (tableEditMode) {
-                void finishEditing();
-              } else {
-                setTableEditMode(true);
-              }
-            }}
-          >
-            <Pencil className="h-4 w-4 shrink-0" aria-hidden />
-            {tableEditMode ? "完成编辑" : "编辑表格"}
-          </AdminButton>
-          <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 text-sm font-medium text-[var(--twin-ink)] outline-none transition-colors hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)] disabled:pointer-events-none disabled:opacity-50">
-              <MoreHorizontal className="h-4 w-4 shrink-0" />
-              更多操作
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[12rem]">
-              <DropdownMenuLabel className="text-xs font-normal text-[var(--twin-mute)]">数据与维护</DropdownMenuLabel>
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault();
-                  window.setTimeout(() => importInputRef.current?.click(), 0);
+    <AdminPageShell>
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".csv,.xlsx,.xls"
+        className="sr-only"
+        aria-hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          void onImport(f);
+          e.currentTarget.value = "";
+        }}
+      />
+    <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+        <AdminFormCard title="筛选" className="shrink-0 mb-3"
+          actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <AdminButton
+                type="button"
+                tone="secondary"
+                className="inline-flex min-h-9 items-center gap-2"
+                onClick={() => {
+                  setSelectedAsset(null);
+                  setModalOpen(true);
                 }}
               >
-                <Upload className="mr-2 inline h-4 w-4" />
-                导入文件
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void onExport()}>
-                <Download className="mr-2 inline h-4 w-4" />
-                导出 Excel
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void onAddColumn()}>
-                <Plus className="mr-2 inline h-4 w-4" />
-                新增表头
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => refreshColumnWidths()}>刷新列宽</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => void onClearTable()} className="text-rose-700 focus:text-rose-800">
-                <Trash2 className="mr-2 inline h-4 w-4" />
-                清空当前表格
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => {
-                  setDeleteKeyword("");
-                  setDeleteCandidates([]);
-                  setSelectedDeleteId("");
-                  setDeleteOpen(true);
+                申请转移
+              </AdminButton>
+              <AdminButton type="button" tone="secondary" className="inline-flex min-h-9 items-center gap-2" onClick={openAddModal}>
+                <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                新增资产
+              </AdminButton>
+              <AdminButton
+                type="button"
+                tone={tableEditMode ? "secondary" : "primary"}
+                className="inline-flex min-h-9 items-center gap-2"
+                onClick={() => {
+                  if (tableEditMode) {
+                    void finishEditing();
+                  } else {
+                    setTableEditMode(true);
+                  }
                 }}
               >
-                <Trash2 className="mr-2 inline h-4 w-4" />
-                删除资产
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => openRecycleModal()}>回收站</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      }
-    >
-    <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-auto pb-2">
-        <AdminFormCard title="筛选" description={`共 ${total} 条；列宽可随内容在「更多操作」中刷新。`}>
+                <Pencil className="h-4 w-4 shrink-0" aria-hidden />
+                {tableEditMode ? "完成编辑" : "编辑表格"}
+              </AdminButton>
+              <DropdownMenu>
+                <DropdownMenuTrigger className="inline-flex min-h-9 shrink-0 items-center justify-center gap-2 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 text-sm font-medium text-[var(--twin-ink)] outline-none transition-colors hover:bg-[var(--twin-canvas-soft)] focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)] disabled:pointer-events-none disabled:opacity-50">
+                  <MoreHorizontal className="h-4 w-4 shrink-0" />
+                  更多操作
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[12rem]">
+                  <DropdownMenuLabel className="text-xs font-normal text-[var(--twin-mute)]">数据与维护</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      window.setTimeout(() => importInputRef.current?.click(), 0);
+                    }}
+                  >
+                    <Upload className="mr-2 inline h-4 w-4" />
+                    导入文件
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void onExport()}>
+                    <Download className="mr-2 inline h-4 w-4" />
+                    导出 Excel
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => void onAddColumn()}>
+                    <Plus className="mr-2 inline h-4 w-4" />
+                    新增表头
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => refreshColumnWidths()}>刷新列宽</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => void onClearTable()} className="text-rose-700 focus:text-rose-800">
+                    <Trash2 className="mr-2 inline h-4 w-4" />
+                    清空当前表格
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setDeleteKeyword("");
+                      setDeleteCandidates([]);
+                      setSelectedDeleteId("");
+                      setDeleteOpen(true);
+                    }}
+                  >
+                    <Trash2 className="mr-2 inline h-4 w-4" />
+                    删除资产
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => openRecycleModal()}>回收站</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          }
+        >
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex w-40 shrink-0 flex-col gap-1">
               <span className={adminLabelClass}>全局搜索</span>
@@ -692,13 +685,14 @@ export default function AdminAssetRecordPage() {
           </div>
         </AdminFormCard>
 
-        <AdminTableShell
-          loading={isLoading}
-          empty={!isLoading && rows.length === 0}
-          emptyMessage="暂无资产数据，请先导入 CSV/Excel。"
-          scrollable
-          className="w-full min-w-0 overscroll-x-contain"
-        >
+      <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-auto">
+        {isLoading ? (
+          <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-sm text-[var(--app-color-text-tertiary)]">加载中…</div>
+        ) : !isLoading && rows.length === 0 ? (
+          <div className="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-sm text-[var(--app-color-text-tertiary)]">暂无资产数据，请先导入 CSV/Excel。</div>
+        ) : (
+          <div>
           <table className="w-max min-w-full border-collapse text-sm">
             <colgroup>
               <col style={{ width: widths.assetCode }} />
@@ -708,8 +702,8 @@ export default function AdminAssetRecordPage() {
               ))}
               <col style={{ width: widths.actions }} />
             </colgroup>
-            <thead className="sticky top-0 z-10 bg-[var(--twin-canvas)]">
-              <tr>
+            <thead>
+              <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-container)] shadow-sm">
                 <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ position: "relative" }}>
                   资产编码
                   <span
@@ -799,9 +793,10 @@ export default function AdminAssetRecordPage() {
               ))}
             </tbody>
           </table>
-        </AdminTableShell>
-
-        <div className="flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
+          </div>
+        )}
+        </div>
+        <div className="shrink-0 pt-2 flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
           <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
             上一页
           </AdminButton>
@@ -812,6 +807,7 @@ export default function AdminAssetRecordPage() {
             下一页
           </AdminButton>
         </div>
+      </div>
 
         <AssetTransferApplyModal
           open={modalOpen}

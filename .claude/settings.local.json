@@ -125,7 +125,10 @@
       "Read(//d/weichatstudio/微信web开发者工具/code/**)",
       "Bash(dir \"D:\\\\weichatstudio\")",
       "Bash(dir \"D:\\\\weichatstudio\\\\*miniprogram*\")",
-      "Bash(git commit -m 'feat: 全局双滚动架构 — AdminPageShell 条件 header + 16 页迁移 *)"
+      "Bash(git commit -m 'feat: 全局双滚动架构 — AdminPageShell 条件 header + 16 页迁移 *)",
+      "Bash(echo \"EXIT_CODE=$?\")",
+      "Bash(npx oxlint *)",
+      "Bash(echo \"EXIT=$?\")"
     ],
     "additionalDirectories": [
       "d:\\codex\\verson.1.2\\20260416\\.claude",

@@ -294,4 +294,11 @@ public class CageShelfController {
         eventLogMapper.ensureTable();
         return Result.success(eventLogMapper.timelineByBox(cageBoxQrCode, limit));
     }
+
+    /** 一次性：从 cage_shelf_grid_cache 的 grid_json 解析 animalCageType 回填 cage_shelf_cell_snapshot */
+    @PostMapping("/seed-cell-snapshot")
+    @Operation(summary = "从 grid_cache 回填 cell_snapshot（一次性）")
+    public Result<?> seedCellSnapshot() {
+        return Result.success(cageShelfService.seedCellSnapshotFromGridCache());
+    }
 }

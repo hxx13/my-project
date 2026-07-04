@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Portal } from "@/components/Portal";
@@ -16,9 +17,8 @@ import {
 } from "@/api/twinApi";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
-import { AdminFormCard, AdminPageShell, AdminFillScrollRegion } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminToolbarSearchField } from "@/components/admin/AdminToolbarSearchField";
-import { AdminToolbar, AdminToolbarActions } from "@/components/admin/AdminToolbar";
 import { adminHintClass, adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -63,6 +63,7 @@ import {
 } from "@/constants/exemptDurationPresets";
 import { ExemptUntilTimePicker } from "@/components/admin/ExemptUntilTimePicker";
 import { ScanDelayConfigPanel } from "@/components/scanner/ScanDelayConfigPanel";
+import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 
 /** 自动冻结解释与保存均固定为中国时区 */
 const FREEZE_TIMEZONE_CN = "Asia/Shanghai";
@@ -79,6 +80,9 @@ const FREEZE_TIME_OPTIONS: string[] = (() => {
 })();
 
 export default function DebugCardMappingPage() {
+    const location = useLocation();
+    const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
+
     const [page, setPage] = useState(1);
     const pageSize = 100;
 
@@ -776,131 +780,143 @@ export default function DebugCardMappingPage() {
     const showCardPageMenu = canCardIssue || canReaper || canFreezeCfg;
 
     return (
-        <AdminPageShell
-            title="大华发卡"
-            description="大华卡号与 ARO 用户绑定、豁免与自动冻结策略。发卡流程按步骤下发人员、权限与落库映射。"
-            fillHeight
-        >
-                    <AdminToolbar className="mb-4 flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto pb-1">
-                        <AdminToolbarActions className="ml-auto flex min-w-0 shrink-0 flex-nowrap items-center gap-2">
-                            {showCardPageMenu ? (
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                        <button
-                                            type="button"
-                                            className="inline-flex h-[var(--admin-control-height,2.25rem)] shrink-0 items-center gap-1 rounded-lg border border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-container)] px-3 text-xs font-bold text-[var(--app-color-text-secondary)] shadow-[var(--app-elevation-card)] hover:bg-[var(--app-color-surface-page)]"
+        <AdminPageShell>
+
+            <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+
+                <AdminFormCard className="shrink-0 mb-3">
+                    {/* 第一行：页面标题 + 操作按钮 */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+                        <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
+                        <div className="flex flex-wrap items-center gap-2">
+                        {canCardIssue ? (
+                            <AdminButton type="button" tone="primary" onClick={() => setIsAddModalOpen(true)}>
+                                <Plus className="h-4 w-4" aria-hidden /> 大华发卡
+                            </AdminButton>
+                        ) : null}
+                        {showCardPageMenu ? (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <AdminButton type="button" tone="secondary">
+                                        <MoreHorizontal className="h-4 w-4" aria-hidden /> 本页操作
+                                    </AdminButton>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="min-w-[12rem]">
+                                    <DropdownMenuLabel className="text-xs text-[var(--app-color-text-tertiary)]">大华与风控</DropdownMenuLabel>
+                                    {canCardIssue ? (
+                                        <DropdownMenuItem onSelect={() => setIsAddModalOpen(true)}>大华发卡</DropdownMenuItem>
+                                    ) : null}
+                                    {canReaper ? (
+                                        <DropdownMenuItem
+                                            className="text-cyan-700 focus:bg-cyan-50 focus:text-cyan-800"
+                                            disabled={runReaperMutation.isPending}
+                                            onSelect={() => {
+                                                if (window.confirm("❄️ 警告：即将模拟系统自动风控逻辑！\n\n系统将自动冻结所有『在馆滞留』且『未获豁免』的人员卡片，并同步锁死大华门禁硬件。确认执行？")) {
+                                                    runReaperMutation.mutate();
+                                                }
+                                            }}
                                         >
-                                            <MoreHorizontal className="h-4 w-4" aria-hidden />
-                                            本页操作
-                                        </button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="min-w-[12rem]">
-                                        <DropdownMenuLabel className="text-xs text-[var(--app-color-text-tertiary)]">大华与风控</DropdownMenuLabel>
-                                        {canCardIssue ? (
-                                            <DropdownMenuItem onSelect={() => setIsAddModalOpen(true)}>大华发卡</DropdownMenuItem>
-                                        ) : null}
-                                        {canReaper ? (
+                                            {runReaperMutation.isPending ? "跑批中…" : "触发自动冻结跑批"}
+                                        </DropdownMenuItem>
+                                    ) : null}
+                                    {canGrantExempt ? (
+                                        <DropdownMenuItem
+                                            onSelect={() => setScanDelayModalOpen(true)}
+                                        >
+                                            扫码延迟免冻结
+                                        </DropdownMenuItem>
+                                    ) : null}
+                                    {canFreezeCfg ? (
+                                        <>
+                                            <DropdownMenuSeparator />
+                                            <DropdownMenuLabel className="text-xs text-[var(--app-color-text-tertiary)]">冻结定时</DropdownMenuLabel>
+                                            <DropdownMenuItem disabled={freezeLoading} onSelect={() => setFreezeSlotModal(1)}>
+                                                定时一
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem disabled={freezeLoading} onSelect={() => setFreezeSlotModal(2)}>
+                                                定时二
+                                            </DropdownMenuItem>
+                                            <DropdownMenuSeparator />
                                             <DropdownMenuItem
-                                                className="text-cyan-700 focus:bg-cyan-50 focus:text-cyan-800"
-                                                disabled={runReaperMutation.isPending}
+                                                disabled={freezeLoading}
                                                 onSelect={() => {
-                                                    if (window.confirm("❄️ 警告：即将模拟系统自动风控逻辑！\n\n系统将自动冻结所有『在馆滞留』且『未获豁免』的人员卡片，并同步锁死大华门禁硬件。确认执行？")) {
-                                                        runReaperMutation.mutate();
-                                                    }
+                                                    void openLinkageModal();
                                                 }}
                                             >
-                                                {runReaperMutation.isPending ? "跑批中…" : "触发自动冻结跑批"}
+                                                扫码门禁联动
                                             </DropdownMenuItem>
-                                        ) : null}
-                                        {canGrantExempt ? (
-                                            <DropdownMenuItem
-                                                onSelect={() => setScanDelayModalOpen(true)}
-                                            >
-                                                扫码延迟免冻结
-                                            </DropdownMenuItem>
-                                        ) : null}
-                                        {canFreezeCfg ? (
-                                            <>
-                                                <DropdownMenuSeparator />
-                                                <DropdownMenuLabel className="text-xs text-[var(--app-color-text-tertiary)]">冻结定时</DropdownMenuLabel>
-                                                <DropdownMenuItem disabled={freezeLoading} onSelect={() => setFreezeSlotModal(1)}>
-                                                    定时一
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem disabled={freezeLoading} onSelect={() => setFreezeSlotModal(2)}>
-                                                    定时二
-                                                </DropdownMenuItem>
-                                                <DropdownMenuSeparator />
-                                                <DropdownMenuItem
-                                                    disabled={freezeLoading}
-                                                    onSelect={() => {
-                                                        void openLinkageModal();
-                                                    }}
-                                                >
-                                                    扫码门禁联动
-                                                </DropdownMenuItem>
-                                            </>
-                                        ) : null}
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                            ) : null}
-                            {/* 豁免筛选 */}
-                            <div className="flex shrink-0 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-0.5 shadow-[var(--app-elevation-card)]">
-                                {([
-                                    { key: "all", label: "全部" },
-                                    { key: "exempt", label: "已豁免" },
-                                    { key: "controlled", label: "未豁免" },
-                                ] as const).map((opt) => (
-                                    <button
-                                        key={opt.key}
-                                        type="button"
-                                        className={`px-3 py-1.5 text-xs font-bold rounded-[10px] transition-colors ${
-                                            exemptFilter === opt.key
-                                                ? "bg-[var(--app-color-accent)] text-[var(--app-color-text-inverse)] shadow-sm"
-                                                : "text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-text-primary)]"
-                                        }`}
-                                        onClick={() => setExemptFilter(opt.key)}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                ))}
-                            </div>
-                            {freezeLoading ? <span className="hidden shrink-0 text-xs text-[var(--app-color-text-tertiary)] sm:inline">配置加载中…</span> : null}
-                            <AdminToolbarSearchField
-                                className="w-[min(42vw,14rem)] shrink-0 sm:w-56"
-                                placeholder="搜姓名、物理卡号或大华序号..."
-                                value={searchDraft}
-                                onChange={(val) => {
-                                    setSearchDraft(val);
-                                    if (!val.trim()) setIsSearching(false);
-                                }}
-                                onSubmit={submitMappingSearch}
-                            />
-                            <div className="flex shrink-0 flex-nowrap items-center gap-2 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-3 py-1.5 shadow-[var(--app-elevation-card)] sm:gap-3 sm:px-4">
-                                <button type="button" disabled={page === 1 || isSearching} onClick={() => setPage(p => p - 1)} className="font-black text-indigo-600 disabled:text-[var(--app-color-text-tertiary)]">◀</button>
-                                <span className="whitespace-nowrap text-xs font-bold text-[var(--app-color-text-secondary)] sm:text-sm">第 {isSearching ? '-' : page} / {isSearching ? '-' : totalPages || 1} 页</span>
-                                <button type="button" disabled={page === totalPages || totalPages === 0 || isSearching} onClick={() => setPage(p => p + 1)} className="font-black text-indigo-600 disabled:text-[var(--app-color-text-tertiary)]">▶</button>
-                            </div>
-                        </AdminToolbarActions>
-                    </AdminToolbar>
-
-                    {isLoading && !isSearching ? (
-                        <div className="flex min-h-[200px] flex-1 items-center justify-center gap-3 text-xl font-bold text-[var(--app-color-text-tertiary)]">
-                            <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" /> 正在加载映射矩阵...
+                                        </>
+                                    ) : null}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        ) : null}
                         </div>
-                    ) : (
-                        <AdminFillScrollRegion className="relative rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] pb-24 shadow-[var(--app-elevation-card)]">
+                    </div>
+
+                    {/* 第二行：表格筛选控件 */}
+                    <div className="flex flex-wrap items-end gap-3">
+                        {/* 豁免筛选 */}
+                        <div className="flex shrink-0 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-0.5 shadow-[var(--app-elevation-card)]">
+                            {([
+                                { key: "all", label: "全部" },
+                                { key: "exempt", label: "已豁免" },
+                                { key: "controlled", label: "未豁免" },
+                            ] as const).map((opt) => (
+                                <button
+                                    key={opt.key}
+                                    type="button"
+                                    className={`px-3 py-1.5 text-xs font-bold rounded-[10px] transition-colors ${
+                                        exemptFilter === opt.key
+                                            ? "bg-[var(--app-color-accent)] text-[var(--app-color-text-inverse)] shadow-sm"
+                                            : "text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-text-primary)]"
+                                    }`}
+                                    onClick={() => setExemptFilter(opt.key)}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                        {freezeLoading ? <span className="hidden shrink-0 text-xs text-[var(--app-color-text-tertiary)] sm:inline">配置加载中…</span> : null}
+                        <AdminToolbarSearchField
+                            className="w-[min(42vw,14rem)] shrink-0 sm:w-56"
+                            placeholder="搜姓名、物理卡号或大华序号..."
+                            value={searchDraft}
+                            onChange={(val) => {
+                                setSearchDraft(val);
+                                if (!val.trim()) setIsSearching(false);
+                            }}
+                            onSubmit={submitMappingSearch}
+                        />
+                    </div>
+                </AdminFormCard>
+
+                {/* ═══ 第二层：表格 + 翻页（flex-1，填满剩余空间） ═══ */}
+                <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
+
+                    {/* 表格滚动区 */}
+                    <div className="flex-1 min-h-0 overflow-auto">
+                        {isLoading && !isSearching ? (
+                            <div className="flex min-h-[200px] items-center justify-center gap-3 text-xl font-bold text-[var(--app-color-text-tertiary)]">
+                                <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" /> 正在加载映射矩阵...
+                            </div>
+                        ) : displayData.length === 0 ? (
+                            <div className="flex min-h-[160px] items-center justify-center text-sm font-bold text-[var(--app-color-text-tertiary)]">
+                                {isSearching ? '未在映射矩阵中找到关联记录...' : '暂无映射记录'}
+                            </div>
+                        ) : (
+                            <div>
                     <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
-                        <thead className="bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold border-b-2 border-[var(--app-color-border-strong)] sticky top-0 z-20 shadow-[var(--app-elevation-card)]">
-                        <tr>
-                            <th className="p-4 w-16 text-center">状态</th>
-                            <th className="p-4 w-16 text-center">照片</th>
-                            <th className="p-4">绑定人员 (ARO)</th>
-                            <th className="p-4">课题组</th>
-                            <th className="p-4">物理卡号 (扫描头输入)</th>
-                            <th className="p-4">大华通道序号 (下发指令用)</th>
-                            <th className="p-4 text-center">系统特权 (豁免自动冻结)</th>
-                            <th className="p-4 text-right">上次修改时间</th>
-                            <th className="p-4 text-center w-20">操作</th>
+                        <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+                        <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
+                            <th className="p-3 w-16 text-center">状态</th>
+                            <th className="p-3 w-16 text-center">照片</th>
+                            <th className="p-3">绑定人员 (ARO)</th>
+                            <th className="p-3">课题组</th>
+                            <th className="p-3">物理卡号 (扫描头输入)</th>
+                            <th className="p-3">大华通道序号 (下发指令用)</th>
+                            <th className="p-3 text-center">系统特权 (豁免自动冻结)</th>
+                            <th className="p-3 text-right">上次修改时间</th>
+                            <th className="p-3 text-center w-20">操作</th>
                         </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--app-color-border-default)]">
@@ -1026,9 +1042,27 @@ export default function DebugCardMappingPage() {
                         })}
                         </tbody>
                     </table>
-                    {isSearching && displayData.length === 0 && <div className="p-10 text-center font-bold text-[var(--app-color-text-tertiary)]">未在映射矩阵中找到关联记录...</div>}
-                        </AdminFillScrollRegion>
-                    )}
+                            </div>
+                        )}
+                    </div>{/* 表格滚动区结束 */}
+
+                    {/* 翻页（shrink-0，始终可见） */}
+                    <div className="shrink-0 flex items-center justify-between gap-3 px-3 py-2 border-t border-[var(--app-color-border-default)] text-sm">
+                        <span className="text-xs text-[var(--app-color-text-tertiary)]">
+                            第 {isSearching ? '-' : page} / {isSearching ? '-' : totalPages || 1} 页，共 {isSearching ? '-' : data?.total ?? 0} 条
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <AdminButton type="button" tone="secondary" size="sm" disabled={page === 1 || isSearching} onClick={() => setPage(p => p - 1)}>
+                                上一页
+                            </AdminButton>
+                            <AdminButton type="button" tone="secondary" size="sm" disabled={page === totalPages || totalPages === 0 || isSearching} onClick={() => setPage(p => p + 1)}>
+                                下一页
+                            </AdminButton>
+                        </div>
+                    </div>
+
+                </div>{/* 表格阴影容器结束 */}
+            </div>{/* 外层 max-h 容器结束 */}
 
             {freezeSlotModal !== null && <Portal><div
                     className="fixed inset-0 z-[250] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"

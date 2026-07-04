@@ -93,16 +93,6 @@ export default function AdminLoginBrandingPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-6">
-      <h1 className="text-xl font-semibold text-[var(--twin-ink)]">登录页轮播图</h1>
-      <p className="text-sm text-[var(--twin-body)]">
-        公开接口 <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">GET /api/public/login-branding</code>{" "}
-        供登录页与小程序首页读取。上传须走统一{" "}
-        <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">POST /api/upload</code>，保存{" "}
-        <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">/api/upload/files/日期/文件名</code>
-        （与物资/报修附图完全相同）。旧链{" "}
-        <code className="rounded-twin-sm bg-[var(--twin-canvas-soft)] px-1">/api/public/login-branding/files/…</code>{" "}
-        小程序不会展示，请重新上传并保存。
-      </p>
       <div className="flex flex-col gap-2 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm font-medium text-[var(--twin-ink)]">背景轮播</p>

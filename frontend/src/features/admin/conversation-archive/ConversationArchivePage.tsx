@@ -259,10 +259,6 @@ export default function ConversationArchivePage() {
   return (
     <AdminPageShell>
       <div className="flex items-center justify-between mb-1">
-        <span className="inline-flex items-center gap-2">
-          <MessageSquare className="h-6 w-6 shrink-0 text-[var(--app-color-accent)]" aria-hidden />
-          <h2 className="text-lg font-semibold text-[var(--app-color-text-primary)]">用户对话存档</h2>
-        </span>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-[var(--app-color-text-secondary)]">
             <input
@@ -279,7 +275,6 @@ export default function ConversationArchivePage() {
           </AdminButton>
         </div>
       </div>
-      <p className="text-sm text-[var(--app-color-text-secondary)] mb-4">查看 per_user 对话存档。内容由刷卡 streamSpeak 实时写入，支持管理端手动触发生成。</p>
       <div className="flex min-h-0 flex-col gap-3 lg:flex-row">
         {/* ── Left: User List ── */}
         <aside

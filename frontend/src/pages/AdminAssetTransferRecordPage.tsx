@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
+import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import { AutoImage } from "@/components/ui/AutoImage";
 import { copyTextToClipboard } from "@/lib/copyToClipboard";
 import { queryKeys } from "@/api/hooks/queryKeys";
@@ -22,7 +24,7 @@ import {
   type AssetTransferRecord,
   type TransferPdfLinkItem,
 } from "@/api/domains/asset.api";
-import { AdminFormCard, AdminPageShell, AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminButton } from "@/components/admin/AdminButton";
 import { adminInputClass, adminLabelClass } from "@/features/admin/adminFormUi";
 import { authStorage } from "@/features/auth/authStorage";
@@ -185,6 +187,9 @@ export default function AdminAssetTransferRecordPage() {
   const qc = useQueryClient();
   const role = authStorage.getRole() || "MEMBER";
   const canDeleteTransfer = hasMinRole(role, "ADMIN");
+
+  const location = useLocation();
+  const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
 
   // Debounced auto-search: 输入即搜
   useEffect(() => {
@@ -528,23 +533,28 @@ export default function AdminAssetTransferRecordPage() {
     summaryHydrating && !summaryByAssetId[assetId] ? "加载中…" : (summaryByAssetId[assetId]?.[field] ?? "—");
 
   return (
-    <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <ClipboardList className="h-6 w-6 shrink-0 text-indigo-600" aria-hidden />
-          转移记录
-        </span>
-      }
-      description="查看与办理资产转移申请，支持导出、补充转移后照片与 PDF 链接。"
-      actions={
-        <AdminButton type="button" tone="secondary" className="inline-flex items-center gap-2" onClick={() => void onExport()}>
-          <Download className="h-4 w-4" aria-hidden />
-          导出 Excel
-        </AdminButton>
-      }
-    >
-    <div className="flex flex-col gap-4">
-      <AdminFormCard title="筛选" description={`第 ${page} / ${pages} 页，共 ${total} 条。`}>
+    <AdminPageShell>
+    <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+      <AdminFormCard className="shrink-0 mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+          <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <AdminButton
+              type="button"
+              tone="primary"
+              onClick={() => {
+                setAppliedKeyword(keyword.trim());
+                setPage(1);
+              }}
+            >
+              查询
+            </AdminButton>
+            <AdminButton type="button" tone="secondary" className="inline-flex items-center gap-2" onClick={() => void onExport()}>
+              <Download className="h-4 w-4" aria-hidden />
+              导出 Excel
+            </AdminButton>
+          </div>
+        </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex min-w-[18rem] flex-1 flex-col gap-1">
             <span className={adminLabelClass}>搜索</span>
@@ -561,35 +571,27 @@ export default function AdminAssetTransferRecordPage() {
               placeholder="资产编码/名称/地点/申请人"
             />
           </label>
-          <AdminButton
-            type="button"
-            tone="primary"
-            onClick={() => {
-              setAppliedKeyword(keyword.trim());
-              setPage(1);
-            }}
-          >
-            查询
-          </AdminButton>
         </div>
       </AdminFormCard>
 
-      <AdminDataTableWrap scrollable>
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto">
+      <div>
         <table className="min-w-full border-collapse text-sm">
-          <thead className="bg-[var(--twin-canvas-soft)]">
-            <tr>
-              <th className="border-b px-2 py-2 text-left text-xs">资产编码</th>
-              <th className="border-b px-2 py-2 text-left text-xs">资产名称</th>
-              <th className="border-b px-2 py-2 text-left text-xs">申请人</th>
-              <th className="border-b px-2 py-2 text-left text-xs">转移时间</th>
-              <th className="border-b px-2 py-2 text-left text-xs">转移地点</th>
-              <th className="border-b px-2 py-2 text-left text-xs">备注</th>
-              <th className="border-b px-2 py-2 text-left text-xs">创建时间</th>
-              <th className="border-b px-2 py-2 text-left text-xs">当前存放</th>
-              <th className="border-b px-2 py-2 text-left text-xs">使用人</th>
-              <th className="border-b px-2 py-2 text-left text-xs">型号</th>
-              <th className="border-b px-2 py-2 text-left text-xs">状态</th>
-              <th className="border-b px-2 py-2 text-left text-xs">操作</th>
+          <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+            <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
+              <th className="border-b p-3 text-left text-xs">资产编码</th>
+              <th className="border-b p-3 text-left text-xs">资产名称</th>
+              <th className="border-b p-3 text-left text-xs">申请人</th>
+              <th className="border-b p-3 text-left text-xs">转移时间</th>
+              <th className="border-b p-3 text-left text-xs">转移地点</th>
+              <th className="border-b p-3 text-left text-xs">备注</th>
+              <th className="border-b p-3 text-left text-xs">创建时间</th>
+              <th className="border-b p-3 text-left text-xs">当前存放</th>
+              <th className="border-b p-3 text-left text-xs">使用人</th>
+              <th className="border-b p-3 text-left text-xs">型号</th>
+              <th className="border-b p-3 text-left text-xs">状态</th>
+              <th className="border-b p-3 text-left text-xs">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -694,9 +696,9 @@ export default function AdminAssetTransferRecordPage() {
             )}
           </tbody>
         </table>
-      </AdminDataTableWrap>
-
-      <div className="flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
+      </div>
+        </div>
+        <div className="shrink-0 pt-2 flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
         <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
           上一页
         </AdminButton>
@@ -706,6 +708,7 @@ export default function AdminAssetTransferRecordPage() {
         <AdminButton type="button" tone="secondary" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
           下一页
         </AdminButton>
+      </div>
       </div>
 
       {continueRow && (
@@ -985,8 +988,8 @@ export default function AdminAssetTransferRecordPage() {
             </div>
             <div className="max-h-[55vh] overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
               <table className="min-w-full border-collapse text-xs">
-                <thead className="bg-[var(--twin-canvas-soft)]">
-                  <tr>
+                <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+                  <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                     <th className="border-b px-2 py-2 text-left">文件名</th>
                     <th className="border-b px-2 py-2 text-left">状态</th>
                     <th className="border-b px-2 py-2 text-left">过期时间</th>

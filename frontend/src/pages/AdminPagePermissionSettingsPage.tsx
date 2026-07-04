@@ -297,41 +297,7 @@ export default function AdminPagePermissionSettingsPage() {
   };
 
   return (
-    <AdminPageShell
-      title="页面权限设置"
-      description={
-        <div className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-3 text-xs text-[var(--twin-body)]">
-          <p>
-            说明：每行展示「中文标题 + 节点注解」。<strong>入口展示名</strong>列对应库内{" "}
-            <code className="rounded-twin-sm bg-[var(--twin-canvas)] px-1">display_name</code>（扫描时从注册表/页面标题推断）。
-          </p>
-          <p>同一路径可能有多个入口节点（例如侧栏、首页快捷、我的页），请分别按业务需要控制。</p>
-          <p>超级管理员可在侧栏入口上<strong>右键</strong>打开快捷面板改权；保存失败会提示具体原因（常见为：子入口角色低于父页面角色）。</p>
-          <p className="text-[var(--twin-mute)]">
-            网页端节点来自注册表 manifest（<code className="rounded-twin-sm bg-[var(--twin-canvas)] px-1">adminNavRegistry.ts</code> + router）与侧栏 DB 配置合并；规则见{" "}
-            <code className="rounded-twin-sm bg-[var(--twin-canvas)] px-1">docs/页面权限发现.md</code>。
-          </p>
-        </div>
-      }
-      actions={
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]"
-            onClick={() => void handleReScan()}
-          >
-            重新扫描
-          </button>
-          <button
-            type="button"
-            className="rounded-twin-sm border border-amber-300 px-3 py-1 text-sm font-medium text-amber-700"
-            onClick={() => void handleResetDefaults()}
-          >
-            重置默认
-          </button>
-        </div>
-      }
-    >
+    <AdminPageShell>
       <div className="mb-3 flex gap-2">
         <button
           type="button"

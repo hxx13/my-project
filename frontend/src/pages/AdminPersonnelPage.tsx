@@ -356,8 +356,6 @@ export default function AdminPersonnelPage() {
 
   return (
     <AdminPageShell>
-      <h3 className="text-lg font-semibold text-[var(--app-color-text-primary)] mb-3">人员授权</h3>
-
       <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
         <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-2 md:p-5">
       <div className="mb-3 flex min-h-9 min-w-0 flex-nowrap items-center gap-2 border-b border-[var(--twin-hairline)] pb-3">

@@ -105,10 +105,10 @@ export default function ReportFormDesignPage() {
   });
 
   if (isLoading || !form) {
-    return <AdminPageShell title="加载中..."><div className="p-4 text-sm text-[var(--app-color-text-tertiary)]">加载报表...</div></AdminPageShell>;
+    return <AdminPageShell><div className="p-4 text-sm text-[var(--app-color-text-tertiary)]">加载报表...</div></AdminPageShell>;
   }
   if (isError) {
-    return <AdminPageShell title="加载失败"><div className="p-4 text-sm text-[var(--app-color-feedback-danger)]">报表加载失败，请返回重试</div></AdminPageShell>;
+    return <AdminPageShell><div className="p-4 text-sm text-[var(--app-color-feedback-danger)]">报表加载失败，请返回重试</div></AdminPageShell>;
   }
 
   const layout = parseLayout(form.layoutJson as unknown);

@@ -448,6 +448,7 @@ export interface CageShelfTreeNode {
   floorId: string; floorName: string;
   roomId: string; roomName: string;
   shelveId: string; shelveName: string;
+  type1?: number; type2?: number; type3?: number; type4?: number;
 }
 
 /** GET /api/cage-shelves/full-tree — 全量树，前端缓存无需级联 */

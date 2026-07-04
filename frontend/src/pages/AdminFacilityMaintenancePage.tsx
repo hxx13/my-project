@@ -492,35 +492,7 @@ export default function AdminFacilityMaintenancePage() {
   };
 
   return (
-    <AdminPageShell
-      title={
-        <span className="inline-flex items-center gap-2">
-          <Activity className="h-6 w-6 shrink-0 text-emerald-600" aria-hidden />
-          检查维护
-        </span>
-      }
-      description="巡查表、耗材与更换台账；站点与模板在「设置」中维护。"
-      actions={
-        <>
-          <AdminButton
-            type="button"
-            tone="secondary"
-            className="inline-flex items-center gap-2"
-            title="机房 / 模板 / 耗材名目 / 更换类型等"
-            onClick={() => {
-              setSettingsTab("sites");
-              setSettingsOpen(true);
-            }}
-          >
-            <Settings className="h-4 w-4" aria-hidden /> 设置
-          </AdminButton>
-          <AdminButton type="button" tone="secondary" className="inline-flex items-center gap-2" onClick={handleRefresh}>
-            <RefreshCw className={`h-4 w-4 ${sitesFetching ? "animate-spin" : ""}`} aria-hidden />
-            刷新
-          </AdminButton>
-        </>
-      }
-    >
+    <AdminPageShell>
     <div className="mx-auto max-w-[1400px] space-y-4">
         <AdminFormCard title="台账类型" description="在巡查表、耗材登记与更换记录之间切换。">
         <div className="flex flex-wrap gap-2">

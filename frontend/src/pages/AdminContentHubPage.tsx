@@ -243,9 +243,6 @@ export default function AdminContentHubPage() {
     <AdminFullWidthPage>
       <div className="p-4">
         <AdminPageShell>
-          <h2 className="text-lg font-semibold text-[var(--twin-ink)] mb-1">小程序内容中心</h2>
-          <p className="text-sm text-[var(--twin-body)] mb-4">公告（管理员及以上）与版本更新（仅平台所有者可写）；正文保存前经 DOMPurify 与后端 Jsoup 消毒。</p>
-
           <div className="mb-4 flex flex-wrap gap-2">{tabs}</div>
 
           <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">

@@ -6,6 +6,8 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
+import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import {
   fetchAuditExportRequests,
   fetchAdminMaterialCategories, fetchAdminMaterialItems,
@@ -17,7 +19,7 @@ import {
 } from "@/api/domains/material.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
-import { AdminSubPageHeader } from "@/components/admin/AdminSubPageHeader";
+import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { formatDateTimeAsiaShanghai } from "@/lib/formatDateTimeAsiaShanghai";
 import { sanitizeExportFilenamePart } from "@/features/report-form/utils/reportFormExportFilename";
 import { recomputeMovementStockAfter } from "@/utils/materialStockAfterHelpers";
@@ -71,15 +73,6 @@ function auditDateParams(from: string, to: string): { from?: string; to?: string
   const t = to.trim();
   if (!f && !t) return {};
   return { ...(f ? { from: f } : {}), ...(t ? { to: t } : {}) };
-}
-
-function dateRangeLabel(from: string, to: string): string {
-  const f = from.trim();
-  const t = to.trim();
-  if (!f && !t) return "全部时间";
-  if (f && t) return `${f} ～ ${t}`;
-  if (f) return `${f} 起`;
-  return `至 ${t}`;
 }
 
 function buildAuditExportFilename(label: string, from: string, to: string) {
@@ -202,6 +195,9 @@ export default function MaterialAuditExportPage() {
   const role = authStorage.getRole() || "MEMBER";
   const isStaff = hasMinRole(role, "STAFF");
   const selfUserId = authStorage.getUserInfo()?.id?.trim() ?? "";
+
+  const location = useLocation();
+  const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
 
   const [tab, setTab] = useState<TabKey>("personal");
   const [from, setFrom] = useState("");
@@ -349,10 +345,6 @@ export default function MaterialAuditExportPage() {
     return hit?.applicantName || userId || "未知";
   };
 
-  const currentLabel = tab === "personal"
-    ? (isStaff ? (selectedUserId ? applicantLabel(selectedUserId) : "全部申领人") : "本人")
-    : (isStaff ? (selectedGroup || "全部课题组") : (selectedGroup || "未分配"));
-
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -396,176 +388,202 @@ export default function MaterialAuditExportPage() {
   );
 
   return (
-    <div className="space-y-4 p-6">
-      <AdminSubPageHeader title="申领审计导出" fallbackTo="/admin/material/review" description="按人员、课题组或物品维度查看与导出申领明细。" />
+    <AdminPageShell>
+      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+        {/* Tabs */}
+        <div className="shrink-0 flex gap-2 pb-3">
+          {tabBtn("personal", "个人审计")}
+          {tabBtn("group", "课题组审计")}
+          {isStaff && tabBtn("item", "按物品审计")}
+          {isStaff && tabBtn("item-group", "物品+课题组")}
+        </div>
 
-      <div className="flex gap-2">{tabBtn("personal", "个人审计")}{tabBtn("group", "课题组审计")}{isStaff && tabBtn("item", "按物品审计")}{isStaff && tabBtn("item-group", "物品+课题组")}</div>
-
-      {tab !== "item" && tab !== "item-group" && (
-        <section className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1 space-y-3">
-          <div className="flex flex-wrap items-end gap-3">
-            {tab === "personal" && isStaff && (
-              <div>
-                <label className="mb-1 block text-xs text-[var(--twin-body)]">申领人</label>
-                <select
-                  className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[180px]"
-                  value={selectedUserId}
-                  onChange={(e) => setSelectedUserId(e.target.value)}
-                >
-                  <option value="">全部申领人</option>
-                  {applicantList.map((a) => (
-                    <option key={a.userId} value={a.userId}>{a.applicantName || a.userId}</option>
-                  ))}
-                </select>
+        {/* Personal / Group tab section */}
+        {tab !== "item" && tab !== "item-group" && (
+          <>
+            <AdminFormCard className="shrink-0 mb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+                <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={handleExport} disabled={exporting} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{exporting ? "导出中…" : "导出表格"}</button>
+                </div>
               </div>
-            )}
-            {tab === "group" && isStaff && (
-              <div>
-                <label className="mb-1 block text-xs text-[var(--twin-body)]">课题组</label>
-                <select
-                  className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[180px]"
-                  value={selectedGroup}
-                  onChange={(e) => setSelectedGroup(e.target.value)}
-                >
-                  <option value="">全部课题组</option>
-                  {groupList.map((g) => <option key={g} value={g}>{g}</option>)}
-                </select>
+              <div className="flex flex-wrap items-end gap-3">
+                {tab === "personal" && isStaff && (
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--twin-body)]">申领人</label>
+                    <select
+                      className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[180px]"
+                      value={selectedUserId}
+                      onChange={(e) => setSelectedUserId(e.target.value)}
+                    >
+                      <option value="">全部申领人</option>
+                      {applicantList.map((a) => (
+                        <option key={a.userId} value={a.userId}>{a.applicantName || a.userId}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {tab === "group" && isStaff && (
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--twin-body)]">课题组</label>
+                    <select
+                      className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[180px]"
+                      value={selectedGroup}
+                      onChange={(e) => setSelectedGroup(e.target.value)}
+                    >
+                      <option value="">全部课题组</option>
+                      {groupList.map((g) => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                )}
+                {tab === "personal" && !isStaff && <span className="text-sm text-[var(--twin-body)] pb-2">申领人：本人</span>}
+                {tab === "group" && !isStaff && <span className="text-sm text-[var(--twin-body)] pb-2">课题组：{selectedGroup || "未分配"}</span>}
+                <div><label className="mb-1 block text-xs text-[var(--twin-body)]">开始日期</label><input type="date" className={inputCls} value={from} onChange={(e) => setFrom(e.target.value)} placeholder="全部时间" /></div>
+                <span className="pb-2 text-sm text-[var(--twin-mute)]">～</span>
+                <div><label className="mb-1 block text-xs text-[var(--twin-body)]">结束日期</label><input type="date" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} placeholder="全部时间" /></div>
               </div>
-            )}
-            {tab === "personal" && !isStaff && <span className="text-sm text-[var(--twin-body)] pb-2">申领人：本人</span>}
-            {tab === "group" && !isStaff && <span className="text-sm text-[var(--twin-body)] pb-2">课题组：{selectedGroup || "未分配"}</span>}
-            <div><label className="mb-1 block text-xs text-[var(--twin-body)]">开始日期</label><input type="date" className={inputCls} value={from} onChange={(e) => setFrom(e.target.value)} placeholder="全部时间" /></div>
-            <span className="pb-2 text-sm text-[var(--twin-mute)]">～</span>
-            <div><label className="mb-1 block text-xs text-[var(--twin-body)]">结束日期</label><input type="date" className={inputCls} value={to} onChange={(e) => setTo(e.target.value)} placeholder="全部时间" /></div>
-            <button onClick={handleExport} disabled={exporting} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{exporting ? "导出中…" : "导出表格"}</button>
-          </div>
-          <p className="text-xs text-[var(--twin-mute)]">
-            {currentLabel} · 共 {currentRows.length} 行 · {dateRangeLabel(from, to)}
-            {requestsLoading ? " · 加载中…" : ""}
-          </p>
+            </AdminFormCard>
 
-          {currentRows.length > 0 ? (
-            <div className="overflow-x-auto rounded-twin-lg border border-[var(--twin-hairline)]">
-              <table className="min-w-full text-xs">
-                <thead className="bg-[var(--twin-canvas-soft)]"><tr>
-                  <th className="px-2 py-2 text-left">单号</th><th className="px-2 py-2 text-left">物品</th><th className="px-2 py-2">数量</th><th className="px-2 py-2">规格</th><th className="px-2 py-2">状态</th><th className="px-2 py-2 text-left">申领人</th><th className="px-2 py-2 text-left">课题组</th><th className="px-2 py-2 text-left">时间</th>
-                </tr></thead>
-                <tbody>{currentRows.map((r, i) => (
-                  <tr key={i} className="hover:bg-[var(--twin-canvas-soft)]">
-                    <td className="px-2 py-2 font-mono text-[10px]">{cellZh(r.requestId)}</td>
-                    <td className="px-2 py-2">{cellZh(r.snapshotName)}</td>
-                    <td className="px-2 py-2 text-center">{r.qty ?? "无"}</td>
-                    <td className="px-2 py-2 text-center text-[10px]">{formatSpecLabel((r as { specSnapshot?: string }).specSnapshot) || "无"}</td>
-                    <td className="px-2 py-2 text-center">{statusZh(r.status)}</td>
-                    <td className="px-2 py-2">{cellZh(r.applicantName)}</td>
-                    <td className="px-2 py-2">{cellZh(r.applicantGroup)}</td>
-                    <td className="px-2 py-2 whitespace-nowrap">{toTime(r.createdAt)}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-xs text-[var(--twin-mute)] text-center py-8">
-              {requestsLoading ? "加载中…" : "该区间暂无数据"}
-            </p>
-          )}
-        </section>
-      )}
-
-      {isItemTab && (
-        <section className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-1 space-y-3">
-          <div className="flex flex-wrap items-end gap-3">
-            {tab === "item-group" && (
-              <div>
-                <label className="mb-1 block text-xs text-[var(--twin-body)]">课题组</label>
-                <select
-                  className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[160px]"
-                  value={selectedItemGroup}
-                  onChange={(e) => { setSelectedItemGroup(e.target.value); setFlowPage(1); }}
-                >
-                  <option value="">全部课题组</option>
-                  {groupList.map((g) => <option key={g} value={g}>{g}</option>)}
-                </select>
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <div>
+                  <table className="min-w-full text-xs">
+                    <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+                      <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
+                        <th className="p-3 text-left">单号</th>
+                        <th className="p-3 text-left">物品</th>
+                        <th className="p-3">数量</th>
+                        <th className="p-3">规格</th>
+                        <th className="p-3">状态</th>
+                        <th className="p-3 text-left">申领人</th>
+                        <th className="p-3 text-left">课题组</th>
+                        <th className="p-3 text-left">时间</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentRows.map((r, i) => (
+                        <tr key={i} className="hover:bg-[var(--twin-canvas-soft)]">
+                          <td className="px-2 py-2 font-mono text-[10px]">{cellZh(r.requestId)}</td>
+                          <td className="px-2 py-2">{cellZh(r.snapshotName)}</td>
+                          <td className="px-2 py-2 text-center">{r.qty ?? "无"}</td>
+                          <td className="px-2 py-2 text-center text-[10px]">{formatSpecLabel((r as { specSnapshot?: string }).specSnapshot) || "无"}</td>
+                          <td className="px-2 py-2 text-center">{statusZh(r.status)}</td>
+                          <td className="px-2 py-2">{cellZh(r.applicantName)}</td>
+                          <td className="px-2 py-2">{cellZh(r.applicantGroup)}</td>
+                          <td className="px-2 py-2 whitespace-nowrap">{toTime(r.createdAt)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            )}
-            <div>
-              <label className="mb-1 block text-xs text-[var(--twin-body)]">物资分类</label>
-              <select className={`${inputCls} min-w-[140px]`} value={categoryId === "" ? "" : String(categoryId)} onChange={(e) => { setCategoryId(e.target.value === "" ? "" : Number(e.target.value)); setSelectedItemId(""); setFlowPage(1); }}>
-                <option value="">全部分类</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
             </div>
-            <div>
-              <label className="mb-1 block text-xs text-[var(--twin-body)]">搜索物品</label>
-              <input className={`${inputCls} min-w-[140px]`} placeholder="按名称筛选" value={itemKeyword} onChange={(e) => setItemKeyword(e.target.value)} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-[var(--twin-body)]">选择物品</label>
-              <select className={`${inputCls} min-w-[180px]`} value={selectedItemId === "" ? "" : String(selectedItemId)} onChange={(e) => { setSelectedItemId(e.target.value === "" ? "" : Number(e.target.value)); setFlowPage(1); }}>
-                <option value="">全部物品</option>{filteredItems.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-[var(--twin-body)]">开始日期</label>
-              <input type="date" className={inputCls} value={from} onChange={(e) => { setFrom(e.target.value); setFlowPage(1); }} />
-            </div>
-            <span className="pb-2 text-sm text-[var(--twin-mute)]">～</span>
-            <div>
-              <label className="mb-1 block text-xs text-[var(--twin-body)]">结束日期</label>
-              <input type="date" className={inputCls} value={to} onChange={(e) => { setTo(e.target.value); setFlowPage(1); }} />
-            </div>
-            <button onClick={handleExportAudit} disabled={exporting} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{exporting ? "导出中…" : "导出表格"}</button>
-          </div>
+          </>
+        )}
 
-          <p className="text-xs text-[var(--twin-mute)]">
-            {tab === "item-group" ? `物品+课题组来去流水 · ${selectedItemGroup || "全部课题组"} · ` : "物品来去流水 · "}
-            {selectedItemLabel} · 共 {itemFlowRows.length} 条 · {dateRangeLabel(from, to)}
-            {itemFlowLoading ? " · 加载中…" : ""}
-          </p>
-          <div className="overflow-x-auto rounded-twin-lg border border-[var(--twin-hairline)]">
-            <table className="min-w-full text-xs">
-              <thead className="bg-[var(--twin-canvas-soft)]"><tr>
-                <th className="px-2 py-2 text-left">时间</th>
-                <th className="px-2 py-2 text-left">类型</th>
-                <th className="px-2 py-2 text-left">物品</th>
-                <th className="px-2 py-2">规格</th>
-                <th className="px-2 py-2">变动数量</th>
-                <th className="px-2 py-2">库存</th>
-                <th className="px-2 py-2 text-left">申领人</th>
-                <th className="px-2 py-2 text-left">课题组</th>
-                <th className="px-2 py-2 text-left">关联单号</th>
-                <th className="px-2 py-2 text-left">备注</th>
-              </tr></thead>
-              <tbody>
-                {itemFlowPageRows.map((row) => (
-                  <tr key={row.key} className="hover:bg-[var(--twin-canvas-soft)]">
-                    <td className="px-2 py-2 whitespace-nowrap">{toTime(row.time)}</td>
-                    <td className="px-2 py-2">{row.eventType}</td>
-                    <td className="px-2 py-2">{row.itemName}</td>
-                    <td className="px-2 py-2 text-center text-[10px]">{row.specLabel}</td>
-                    <td className="px-2 py-2 text-center font-medium">{row.qty}</td>
-                    <td className="px-2 py-2 text-center">{row.stockAfter}</td>
-                    <td className="px-2 py-2">{row.applicantName}</td>
-                    <td className="px-2 py-2">{row.applicantGroup}</td>
-                    <td className="px-2 py-2 font-mono text-[10px]">{row.requestId}</td>
-                    <td className="px-2 py-2">{row.remark}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {itemFlowLoading && <p className="p-4 text-center text-xs text-[var(--twin-mute)]">加载中…</p>}
-            {!itemFlowLoading && itemFlowRows.length === 0 && (
-              <p className="p-4 text-center text-xs text-[var(--twin-mute)]">该区间暂无流水记录</p>
-            )}
-          </div>
-          {itemFlowRows.length > FLOW_PAGE_SIZE && (
-            <div className="flex items-center gap-2 text-xs">
-              <button className="rounded-twin-sm border px-2 py-1 disabled:opacity-40" disabled={flowPage <= 1} onClick={() => setFlowPage((p) => p - 1)}>上一页</button>
-              <span>第 {flowPage} 页 / 共 {itemFlowTotalPages} 页</span>
-              <button className="rounded-twin-sm border px-2 py-1 disabled:opacity-40" disabled={flowPage >= itemFlowTotalPages} onClick={() => setFlowPage((p) => p + 1)}>下一页</button>
+        {/* Item / Item+Group tab section */}
+        {isItemTab && (
+          <>
+            <AdminFormCard className="shrink-0 mb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+                <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={handleExportAudit} disabled={exporting} className="rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white disabled:opacity-50">{exporting ? "导出中…" : "导出表格"}</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-end gap-3">
+                {tab === "item-group" && (
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--twin-body)]">课题组</label>
+                    <select
+                      className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm min-w-[160px]"
+                      value={selectedItemGroup}
+                      onChange={(e) => { setSelectedItemGroup(e.target.value); setFlowPage(1); }}
+                    >
+                      <option value="">全部课题组</option>
+                      {groupList.map((g) => <option key={g} value={g}>{g}</option>)}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--twin-body)]">物资分类</label>
+                  <select className={`${inputCls} min-w-[140px]`} value={categoryId === "" ? "" : String(categoryId)} onChange={(e) => { setCategoryId(e.target.value === "" ? "" : Number(e.target.value)); setSelectedItemId(""); setFlowPage(1); }}>
+                    <option value="">全部分类</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--twin-body)]">搜索物品</label>
+                  <input className={`${inputCls} min-w-[140px]`} placeholder="按名称筛选" value={itemKeyword} onChange={(e) => setItemKeyword(e.target.value)} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--twin-body)]">选择物品</label>
+                  <select className={`${inputCls} min-w-[180px]`} value={selectedItemId === "" ? "" : String(selectedItemId)} onChange={(e) => { setSelectedItemId(e.target.value === "" ? "" : Number(e.target.value)); setFlowPage(1); }}>
+                    <option value="">全部物品</option>{filteredItems.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--twin-body)]">开始日期</label>
+                  <input type="date" className={inputCls} value={from} onChange={(e) => { setFrom(e.target.value); setFlowPage(1); }} />
+                </div>
+                <span className="pb-2 text-sm text-[var(--twin-mute)]">～</span>
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--twin-body)]">结束日期</label>
+                  <input type="date" className={inputCls} value={to} onChange={(e) => { setTo(e.target.value); setFlowPage(1); }} />
+                </div>
+              </div>
+            </AdminFormCard>
+
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <div>
+                  <table className="min-w-full text-xs">
+                    <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+                      <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
+                        <th className="p-3 text-left">时间</th>
+                        <th className="p-3 text-left">类型</th>
+                        <th className="p-3 text-left">物品</th>
+                        <th className="p-3">规格</th>
+                        <th className="p-3">变动数量</th>
+                        <th className="p-3">库存</th>
+                        <th className="p-3 text-left">申领人</th>
+                        <th className="p-3 text-left">课题组</th>
+                        <th className="p-3 text-left">关联单号</th>
+                        <th className="p-3 text-left">备注</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itemFlowPageRows.map((row) => (
+                        <tr key={row.key} className="hover:bg-[var(--twin-canvas-soft)]">
+                          <td className="px-2 py-2 whitespace-nowrap">{toTime(row.time)}</td>
+                          <td className="px-2 py-2">{row.eventType}</td>
+                          <td className="px-2 py-2">{row.itemName}</td>
+                          <td className="px-2 py-2 text-center text-[10px]">{row.specLabel}</td>
+                          <td className="px-2 py-2 text-center font-medium">{row.qty}</td>
+                          <td className="px-2 py-2 text-center">{row.stockAfter}</td>
+                          <td className="px-2 py-2">{row.applicantName}</td>
+                          <td className="px-2 py-2">{row.applicantGroup}</td>
+                          <td className="px-2 py-2 font-mono text-[10px]">{row.requestId}</td>
+                          <td className="px-2 py-2">{row.remark}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Item tab pagination */}
+              {itemFlowRows.length > FLOW_PAGE_SIZE && (
+                <div className="shrink-0 pt-2 flex items-center gap-2 text-xs">
+                  <button className="rounded-twin-sm border px-2 py-1 disabled:opacity-40" disabled={flowPage <= 1} onClick={() => setFlowPage((p) => p - 1)}>上一页</button>
+                  <span className="text-[var(--twin-mute)]">第 {flowPage} 页 / 共 {itemFlowTotalPages} 页</span>
+                  <button className="rounded-twin-sm border px-2 py-1 disabled:opacity-40" disabled={flowPage >= itemFlowTotalPages} onClick={() => setFlowPage((p) => p + 1)}>下一页</button>
+                </div>
+              )}
             </div>
-          )}
-        </section>
-      )}
-    </div>
+          </>
+        )}
+      </div>
+    </AdminPageShell>
   );
 }

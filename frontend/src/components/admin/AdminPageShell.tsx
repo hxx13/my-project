@@ -160,25 +160,28 @@ export function AdminDataTableWrap({ children, className, scrollable }: AdminDat
 }
 
 type AdminFormCardProps = {
-  title: string;
+  title?: string;
   description?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
 };
 
-/** 长表单分区卡片 */
+/** 长表单分区卡片。当 title / description / actions 均未传入时，不渲染 header 区域。 */
 export function AdminFormCard({ title, description, actions, children, className }: AdminFormCardProps) {
+  const hasHeader = !!(title || description || actions);
   return (
     <section className={cn("rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-sm", className)}>
-      <div className="mb-3 flex items-start justify-between border-b border-[var(--app-color-border-default)] pb-2">
-        <div>
-          <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)]">{title}</h3>
-          {description ? <div className="mt-1 text-xs text-[var(--app-color-text-tertiary)]">{description}</div> : null}
+      {hasHeader ? (
+        <div className="mb-3 flex items-start justify-between border-b border-[var(--app-color-border-default)] pb-2">
+          <div>
+            {title ? <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)]">{title}</h3> : null}
+            {description ? <div className="mt-1 text-xs text-[var(--app-color-text-tertiary)]">{description}</div> : null}
+          </div>
+          {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
         </div>
-        {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
-      </div>
-      <div className="space-y-3">{children}</div>
+      ) : null}
+      <div className={hasHeader ? "space-y-3" : undefined}>{children}</div>
     </section>
   );
 }
