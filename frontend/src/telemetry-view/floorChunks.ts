@@ -123,14 +123,14 @@ export function prepareSuiteDisplay(
         if (metricSlotIsGongShuiTitleRowMetric(m, rules)) promote.push(m);
         else keep.push(m);
       }
-      // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片
-      if (promote.length === 1) {
+      // 仅当房间内还有其他非温压指标时才提升；全部为温压指标时保留房间卡片
+      if (promote.length > 0 && keep.length > 0) {
         leadingSupplyTitleSlots.push(...promote);
-        if (keep.length === 0) continue;
         work = { ...room, metrics: keep };
       }
     }
 
+    // 仅当房间内还有其他非温压指标时才提升；全部为温压指标时保留房间卡片
     if (powerStationSuite) {
       const wm = work.metrics ?? [];
       const promotePs: TelemetryStructuredMetricSlot[] = [];
@@ -139,14 +139,13 @@ export function prepareSuiteDisplay(
         if (metricSlotIsSuiteTitleTempPressureMetric(m, rules)) promotePs.push(m);
         else keepPs.push(m);
       }
-      // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片
-      if (promotePs.length === 1) {
+      if (promotePs.length > 0 && keepPs.length > 0) {
         leadingPowerStationTitleSlots.push(...promotePs);
-        if (keepPs.length === 0) continue;
         work = { ...work, metrics: keepPs };
       }
     }
 
+    // 仅当房间内还有其他非温压指标时才提升；全部为温压指标时保留房间卡片
     if (boilerRoomSuite) {
       const wm = work.metrics ?? [];
       const promoteBr: TelemetryStructuredMetricSlot[] = [];
@@ -155,18 +154,13 @@ export function prepareSuiteDisplay(
         if (metricSlotIsSuiteTitleTempPressureMetric(m, rules)) promoteBr.push(m);
         else keepBr.push(m);
       }
-      // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片
-      if (promoteBr.length === 1) {
+      if (promoteBr.length > 0 && keepBr.length > 0) {
         leadingBoilerRoomTitleSlots.push(...promoteBr);
-        if (keepBr.length === 0) continue;
         work = { ...work, metrics: keepBr };
       }
     }
 
-    // 动力站/锅炉房/供水段套间内均为设施房间，不做基间提升
-    if (!powerStationSuite && !boilerRoomSuite
-        && isBaseRoomCanonical(work.roomCanonical, suite.tabKey)
-        && work.metrics.length === 1) {
+    if (isBaseRoomCanonical(work.roomCanonical, suite.tabKey) && work.metrics.length === 1) {
       const only = work.metrics[0]!;
       if (metricSlotPreferTitleRowOverCard(only)) titleSlots.push(only);
       else visibleRooms.push(work);

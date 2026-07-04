@@ -758,12 +758,8 @@ public class AnimalRoomHubAssembler {
                         keep.add(m);
                     }
                 }
-                // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片
-                if (promote.size() == 1) {
+                if (!promote.isEmpty() && !keep.isEmpty()) {
                     leadingSupplyTitleSlots.addAll(promote);
-                    if (keep.isEmpty()) {
-                        continue;
-                    }
                     work = MpRoomCardDto.builder()
                             .tabKey(room.getTabKey())
                             .floorCode(room.getFloorCode())
@@ -788,12 +784,9 @@ public class AnimalRoomHubAssembler {
                         keepPs.add(m);
                     }
                 }
-                // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片（如冷机压差-低压/高压）
-                if (!promotePs.isEmpty() && promotePs.size() == 1) {
+                // 仅当房间内还有其他非温压指标时才提升；全部为温压指标时保留房间卡片
+                if (!promotePs.isEmpty() && !keepPs.isEmpty()) {
                     leadingPowerStationTitleSlots.addAll(promotePs);
-                    if (keepPs.isEmpty()) {
-                        continue;
-                    }
                     work = MpRoomCardDto.builder()
                             .tabKey(work.getTabKey())
                             .floorCode(work.getFloorCode())
@@ -818,12 +811,9 @@ public class AnimalRoomHubAssembler {
                         keepBr.add(m);
                     }
                 }
-                // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片
-                if (promoteBr.size() == 1) {
+                // 仅当房间内还有其他非温压指标时才提升；全部为温压指标时保留房间卡片
+                if (!promoteBr.isEmpty() && !keepBr.isEmpty()) {
                     leadingBoilerRoomTitleSlots.addAll(promoteBr);
-                    if (keepBr.isEmpty()) {
-                        continue;
-                    }
                     work = MpRoomCardDto.builder()
                             .tabKey(work.getTabKey())
                             .floorCode(work.getFloorCode())
@@ -837,10 +827,7 @@ public class AnimalRoomHubAssembler {
                 }
             }
 
-            // 动力站/锅炉房/供水段套间内均为设施房间，不做基间提升
-            if (!powerStationSuite && !boilerRoomSuite
-                    && isBaseRoomCanonical(work.getRoomCanonical(), suite.getTabKey())
-                    && work.getMetrics().size() == 1) {
+            if (isBaseRoomCanonical(work.getRoomCanonical(), suite.getTabKey()) && work.getMetrics().size() == 1) {
                 MpMetricSlotDto only = work.getMetrics().get(0);
                 if (metricSlotPreferTitleRowOverCard(only)) {
                     titleSlots.add(only);

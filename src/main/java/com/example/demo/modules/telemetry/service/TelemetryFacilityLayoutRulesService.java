@@ -112,7 +112,9 @@ public class TelemetryFacilityLayoutRulesService {
         FacilityLayoutRulesV1 v = new FacilityLayoutRulesV1();
         v.setVersion(1);
         v.setFacilitySmallRoomKeywords(List.of(
-                "蒸汽供水", "蒸汽报警", "蒸汽", "冷却塔", "冷冻水泵", "冷却水泵", "冷冻水", "冷却水", "冷机"));
+                "蒸汽供水", "蒸汽报警", "蒸汽",
+                "冷机进水", "冷机出水", "冷机低压", "冷机高压",
+                "冷却塔", "冷冻水泵", "冷却水泵", "冷冻水", "冷却水", "冷机"));
 
         FacilityLayoutRulesV1.GongShuiConfig g = new FacilityLayoutRulesV1.GongShuiConfig();
         g.setSegmentEquals(List.of("供水"));
