@@ -837,7 +837,10 @@ public class AnimalRoomHubAssembler {
                 }
             }
 
-            if (isBaseRoomCanonical(work.getRoomCanonical(), suite.getTabKey()) && work.getMetrics().size() == 1) {
+            // 动力站/锅炉房/供水段套间内均为设施房间，不做基间提升
+            if (!powerStationSuite && !boilerRoomSuite
+                    && isBaseRoomCanonical(work.getRoomCanonical(), suite.getTabKey())
+                    && work.getMetrics().size() == 1) {
                 MpMetricSlotDto only = work.getMetrics().get(0);
                 if (metricSlotPreferTitleRowOverCard(only)) {
                     titleSlots.add(only);
