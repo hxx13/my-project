@@ -758,7 +758,8 @@ public class AnimalRoomHubAssembler {
                         keep.add(m);
                     }
                 }
-                if (!promote.isEmpty()) {
+                // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片
+                if (promote.size() == 1) {
                     leadingSupplyTitleSlots.addAll(promote);
                     if (keep.isEmpty()) {
                         continue;
@@ -787,7 +788,8 @@ public class AnimalRoomHubAssembler {
                         keepPs.add(m);
                     }
                 }
-                if (!promotePs.isEmpty()) {
+                // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片（如冷机压差-低压/高压）
+                if (!promotePs.isEmpty() && promotePs.size() == 1) {
                     leadingPowerStationTitleSlots.addAll(promotePs);
                     if (keepPs.isEmpty()) {
                         continue;
@@ -816,7 +818,8 @@ public class AnimalRoomHubAssembler {
                         keepBr.add(m);
                     }
                 }
-                if (!promoteBr.isEmpty()) {
+                // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片
+                if (promoteBr.size() == 1) {
                     leadingBoilerRoomTitleSlots.addAll(promoteBr);
                     if (keepBr.isEmpty()) {
                         continue;

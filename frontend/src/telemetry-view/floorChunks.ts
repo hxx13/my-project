@@ -123,7 +123,8 @@ export function prepareSuiteDisplay(
         if (metricSlotIsGongShuiTitleRowMetric(m, rules)) promote.push(m);
         else keep.push(m);
       }
-      if (promote.length > 0) {
+      // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片
+      if (promote.length === 1) {
         leadingSupplyTitleSlots.push(...promote);
         if (keep.length === 0) continue;
         work = { ...room, metrics: keep };
@@ -138,7 +139,8 @@ export function prepareSuiteDisplay(
         if (metricSlotIsSuiteTitleTempPressureMetric(m, rules)) promotePs.push(m);
         else keepPs.push(m);
       }
-      if (promotePs.length > 0) {
+      // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片
+      if (promotePs.length === 1) {
         leadingPowerStationTitleSlots.push(...promotePs);
         if (keepPs.length === 0) continue;
         work = { ...work, metrics: keepPs };
@@ -153,7 +155,8 @@ export function prepareSuiteDisplay(
         if (metricSlotIsSuiteTitleTempPressureMetric(m, rules)) promoteBr.push(m);
         else keepBr.push(m);
       }
-      if (promoteBr.length > 0) {
+      // 仅单个温压测点提升到标题栏；≥2 个同类测点保留为独立房间卡片
+      if (promoteBr.length === 1) {
         leadingBoilerRoomTitleSlots.push(...promoteBr);
         if (keepBr.length === 0) continue;
         work = { ...work, metrics: keepBr };
