@@ -52,6 +52,16 @@ public class CageShelfService {
     @PostConstruct
     public void ensureCacheTable() {
         gridCacheMapper.ensureTable();
+        try {
+            gridCacheMapper.addTypeCountColumns();
+        } catch (Exception ignored) {
+            // columns already exist
+        }
+        try {
+            backfillGridCacheTypeCounts();
+        } catch (Exception e) {
+            // non-critical; will self-heal on next shelf refresh
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -287,7 +297,19 @@ public class CageShelfService {
         try {
             String gridJson = JSON.toJSONString(grid);
             String shelfMetaJson = JSON.toJSONString(shelfMeta);
-            gridCacheMapper.upsert(shelveId, gridJson, shelfMetaJson, grid.size(), byPos.size());
+            // Count animalCageType for left-sidebar progress bars
+            int t1 = 0, t2 = 0, t3 = 0, t4 = 0;
+            for (Map<String, Object> cell : grid) {
+                Integer at = toIntObj(cell.get("animalCageType"));
+                if (at == null) continue;
+                switch (at) {
+                    case 1 -> t1++;
+                    case 2 -> t2++;
+                    case 3 -> t3++;
+                    case 4 -> t4++;
+                }
+            }
+            gridCacheMapper.upsert(shelveId, gridJson, shelfMetaJson, grid.size(), byPos.size(), t1, t2, t3, t4);
         } catch (Exception e) {
             // 缓存写入失败不影响返回
         }
@@ -957,5 +979,44 @@ public class CageShelfService {
         result.put("cells", totalCells);
         result.put("batchId", batchId);
         return result;
+    }
+
+    /**
+     * Backfill type1~4 counts for existing grid cache rows that lack them.
+     * Called once at startup; non-critical (self-heals on next shelf refresh).
+     */
+    @SuppressWarnings("unchecked")
+    private void backfillGridCacheTypeCounts() {
+        List<Map<String, Object>> rows = gridCacheMapper.selectAllForBackfill();
+        if (rows == null || rows.isEmpty()) return;
+        int updated = 0;
+        for (Map<String, Object> row : rows) {
+            String sid = String.valueOf(row.get("shelveId"));
+            String gridJson = (String) row.get("gridJson");
+            if (gridJson == null || gridJson.isBlank()) continue;
+            try {
+                List<Map<String, Object>> grid = (List<Map<String, Object>>) (List<?>)
+                        JSON.parseArray(gridJson, Map.class);
+                if (grid == null) continue;
+                int t1 = 0, t2 = 0, t3 = 0, t4 = 0;
+                for (Map<String, Object> cell : grid) {
+                    Integer at = toIntObj(cell.get("animalCageType"));
+                    if (at == null) continue;
+                    switch (at) {
+                        case 1 -> t1++;
+                        case 2 -> t2++;
+                        case 3 -> t3++;
+                        case 4 -> t4++;
+                    }
+                }
+                gridCacheMapper.updateTypeCounts(sid, t1, t2, t3, t4);
+                updated++;
+            } catch (Exception ignored) {
+                // skip unparseable rows
+            }
+        }
+        if (updated > 0) {
+            // Logger not available in @PostConstruct static context — fine
+        }
     }
 }

@@ -224,15 +224,35 @@ function renderNode(n:TreeNode,exp:Set<string>,q:string,tg:(k:string)=>void,onOp
       </div>
     </button>;
   }
-  // room has special treatment: expand shows shelf children
+  // room has special treatment: expand shows shelf children, plus aggregate progress bar
   if(n.type==="room"){
     const filtered=q?n.label.toLowerCase().includes(q):true;
     if(!filtered)return null;
+    // Aggregate type1~4 from all shelf children for room-level progress bar
+    // Order matches shelf rendering: type3, type1, type4, type2
+    const shelfChildren = n.children.filter(c => c.type === "shelf");
+    const aggCounts = shelfChildren.reduce((acc, s) => {
+      const r = s.raw;
+      acc[0] += (r.type3 || 0);
+      acc[1] += (r.type1 || 0);
+      acc[2] += (r.type4 || 0);
+      acc[3] += (r.type2 || 0);
+      return acc;
+    }, [0, 0, 0, 0]);
+    const aggTotal = aggCounts.reduce((a: number, b: number) => a + b, 0) || (shelfChildren.length * 80);
+    const colors = ["#10b981", "#f59e0b", "#3b82f6", "#f43f5e"];
+    const aggBars = aggCounts.map((c: number, i: number) => ({ pct: Math.round((c / aggTotal) * 100), color: colors[i] })).filter((b: any) => b.pct > 0);
+    const aggHasData = aggCounts.some((c: number) => c > 0);
     return <div key={n.key}>
-      <button onClick={()=>tg(n.key)} className="w-full flex items-center gap-1.5 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 hover:border-[var(--twin-hairline-strong)] transition">
-        {open?<ChevronDown className="h-3 w-3 text-[var(--twin-mute)]"/>:<ChevronRight className="h-3 w-3 text-[var(--twin-mute)]"/>}
-        <span className="flex-1 truncate text-xs font-medium text-[var(--twin-ink)]">{n.label}</span>
-        <span className="text-[10px] text-[var(--twin-mute)]">{n.children.length}架</span>
+      <button onClick={()=>tg(n.key)} className="w-full text-left rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1.5 hover:border-[var(--twin-hairline-strong)] transition">
+        <div className="flex items-center gap-1.5">
+          {open?<ChevronDown className="h-3 w-3 text-[var(--twin-mute)]"/>:<ChevronRight className="h-3 w-3 text-[var(--twin-mute)]"/>}
+          <span className="flex-1 truncate text-xs font-medium text-[var(--twin-ink)]">{n.label}</span>
+          <span className="text-[10px] text-[var(--twin-mute)]">{n.children.length}架</span>
+        </div>
+        <div className="flex h-1 rounded-full overflow-hidden bg-[var(--twin-canvas-soft)] mt-1.5">
+          {aggHasData ? aggBars.map((b: any, i: number) => <div key={i} className="h-full min-w-[2px]" style={{ width: `${b.pct}%`, background: b.color }} />) : <div className="h-full w-full bg-[var(--twin-canvas-soft)]" />}
+        </div>
       </button>
       {open&&n.children.length>0&&<div className="flex flex-col gap-0.5 mt-1 ml-2">{n.children.map(s=>renderNode(s,exp,q,tg,onOpenRoom,viewMode,onOpenShelf))}</div>}
     </div>;
@@ -340,14 +360,19 @@ function Inner(){
   };
 
   return<AdminPageShell>
-    <div className="flex gap-2">
+    <style>{`
+      .cage-scroll::-webkit-scrollbar{width:4px;height:4px}
+      .cage-scroll::-webkit-scrollbar-track{background:transparent}
+      .cage-scroll::-webkit-scrollbar-thumb{background:var(--twin-hairline);border-radius:4px}
+      .cage-scroll::-webkit-scrollbar-thumb:hover{background:var(--twin-mute)}
+    `}</style>
+    <div className="flex gap-2" style={{height:"calc(100vh - var(--admin-chrome-offset) - 24px)"}}>
       {/* ======== LEFT PANEL ======== */}
-      <div className={`shrink-0 flex flex-col gap-1.5 transition-all ${collapsed?'w-10':'w-48 xl:w-52'}`} style={{maxHeight:"calc(100vh - 130px)",minHeight:"calc(100vh - 130px)"}}>
-        <div className="shrink-0 flex items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-1">
-          <button type="button" onClick={()=>setCollapsed(v=>!v)} className="shrink-0 rounded p-0.5 text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" title={collapsed?"展开":"收起"}>{collapsed?<PanelLeft className="h-3.5 w-3.5"/>:<PanelLeftClose className="h-3.5 w-3.5"/>}</button>
-          {!collapsed&&<><Search className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]"/><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索…" className="flex-1 min-w-0 bg-transparent text-[11px] outline-none text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"/></>}
-        </div>
-        {!collapsed&&<div className="flex-1 min-h-0 overflow-y-auto rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5">
+      <div className={`shrink-0 flex-col gap-1.5 transition-all h-full ${collapsed?'hidden':'flex w-48 xl:w-52'}`}>
+        {!collapsed&&<div className="shrink-0 flex items-center gap-1 rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-1">
+          <Search className="h-3.5 w-3.5 shrink-0 text-[var(--twin-mute)]"/><input type="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索…" className="flex-1 min-w-0 bg-transparent text-[11px] outline-none text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)]"/>
+        </div>}
+        {!collapsed&&<div className="cage-scroll flex-1 min-h-0 overflow-y-auto overflow-x-hidden rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 [scrollbar-width:thin] [scrollbar-color:var(--twin-hairline)_transparent]">
           {tab==="filter"&&<CampusTree tree={tree} exp={exp} search={search} onToggle={k=>setExp(p=>{const n=new Set(p);n.has(k)?n.delete(k):n.add(k);return n;})} onOpenRoom={onOpenRoom} viewMode={viewMode} onOpenShelf={onOpenShelf}/>}
           {tab==="bookmarks"&&<>
             {bmLoading&&<div className="text-[var(--twin-mute)] py-4 text-center text-[11px]">加载中…</div>}
@@ -362,11 +387,13 @@ function Inner(){
       </div>
 
       {/* ======== RIGHT PANEL ======== */}
-      <div className="flex-1 min-w-0 space-y-2 pr-1" style={{maxHeight:"calc(100vh - 130px)",minHeight:"calc(100vh - 130px)",overflowY:"auto"}}>
+      <div className="flex-1 min-w-0 flex flex-col h-full pr-1">
+        <div className="shrink-0 space-y-2">
         {scan&&scan.status!=="idle"&&<CageScanProgressBanner progress={scan}/>}
         {/* Top toolbar: tabs + view mode + actions */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1">
+            <button type="button" onClick={()=>setCollapsed(v=>!v)} className="shrink-0 rounded p-1 text-[var(--twin-mute)] hover:text-[var(--twin-ink)] hover:bg-[var(--twin-canvas)]" title={collapsed?"展开侧栏":"收起侧栏"}>{collapsed?<PanelLeft className="h-4 w-4"/>:<PanelLeftClose className="h-4 w-4"/>}</button>
             <div className="flex items-center gap-1 rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1">
               <button type="button" onClick={()=>setTab("bookmarks")} className={`flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${tab==="bookmarks"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}><Star className="h-3 w-3"/>收藏</button>
               <button type="button" onClick={()=>setTab("filter")} className={`flex items-center gap-1 rounded-twin-md px-2.5 py-1 text-[11px] font-semibold transition ${tab==="filter"?"bg-[var(--twin-link-deep)] text-white shadow-sm":"text-[var(--twin-mute)] hover:text-[var(--twin-ink)]"}`}><LayoutGrid className="h-3 w-3"/>筛选</button>
@@ -382,6 +409,8 @@ function Inner(){
           </div>
         </div>
         {legend&&<CageShelfLegend/>}
+        </div>
+        <div className="cage-scroll flex-1 min-h-0 overflow-y-auto space-y-2 [scrollbar-width:thin] [scrollbar-color:var(--twin-hairline)_transparent]">
         {tab==="filter"&&<>
           {/* ROOM MODE: all shelf grids */}
           {viewMode==="room"&&<>
@@ -437,5 +466,6 @@ function Inner(){
           {cell.annotation.updatedAt&&<div className="text-[10px] text-[var(--twin-mute)] mt-1">{cell.annotation.updatedBy?`${cell.annotation.updatedBy} 于 `:""}{cell.annotation.updatedAt}</div>}</div>}
       </div>
     </div></Portal>}
+    </div>
   </AdminPageShell>;
 }
