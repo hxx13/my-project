@@ -133,6 +133,71 @@ public interface TwinDashboardMapper {
             @Param("endTime") String endTime,
             @Param("region") String region);
 
+    // ── Order Analytics ──
+
+    Map<String, Object> getOrderAnalyticsSummary(
+            @Param("piName") String piName,
+            @Param("departmentName") String departmentName,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("consumeType") String consumeType,
+            @Param("room") String room,
+            @Param("areaName") String areaName,
+            @Param("orderStates") java.util.List<String> orderStates);
+
+    List<Map<String, Object>> getOrderAnalyticsSupplierStrainSpec(
+            @Param("piName") String piName,
+            @Param("departmentName") String departmentName,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("consumeType") String consumeType,
+            @Param("room") String room,
+            @Param("areaName") String areaName,
+            @Param("orderStates") java.util.List<String> orderStates);
+
+    List<Map<String, Object>> getOrderAnalyticsByPiCollectors(
+            @Param("piName") String piName,
+            @Param("departmentName") String departmentName,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("consumeType") String consumeType,
+            @Param("room") String room,
+            @Param("areaName") String areaName,
+            @Param("orderStates") java.util.List<String> orderStates);
+
+    List<String> getOrderAnalyticsDistinctPis();
+
+    List<String> getOrderAnalyticsDistinctConsumeTypes();
+
+    List<String> getOrderAnalyticsDistinctRooms();
+
+    List<String> getOrderAnalyticsDistinctAreas();
+
+    List<String> getOrderAnalyticsDistinctOrderStates();
+
+    List<String> getOrderAnalyticsDistinctDepartments();
+
+    List<Map<String, Object>> getOrderAnalyticsDepartmentStrain(
+            @Param("piName") String piName,
+            @Param("departmentName") String departmentName,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("consumeType") String consumeType,
+            @Param("room") String room,
+            @Param("areaName") String areaName,
+            @Param("orderStates") java.util.List<String> orderStates);
+
+    /** 课题组 × 品系 热力图（不含 PI/院系筛选） */
+    List<Map<String, Object>> getOrderAnalyticsProjectStrain(
+            @Param("piName") String piName,
+            @Param("departmentName") String departmentName,
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate,
+            @Param("consumeType") String consumeType,
+            @Param("room") String room,
+            @Param("areaName") String areaName,
+            @Param("orderStates") java.util.List<String> orderStates);
+
     List<Map<String, Object>> getRoomPieStats(@Param("todayStart") String todayStart, @Param("area") String area);
 
     Integer getDailyTotalCountByArea(@Param("todayStart") String todayStart, @Param("area") String area);

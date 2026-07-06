@@ -687,3 +687,94 @@ export async function recalculateStudentActivitySnapshots(daysBack?: number): Pr
     )
   );
 }
+
+// ── Order Analytics ──
+
+export interface OrderAnalyticsSummary {
+  totalOrders: number;
+  totalQty: number;
+  totalMale: number;
+  totalFemale: number;
+  uniqueSuppliers: number;
+  uniqueStrains: number;
+  uniquePis: number;
+  uniqueCollectors: number;
+  uniqueProjects: number;
+}
+
+export interface SupplierStrainSpecRow {
+  supplierName: string;
+  strainName: string;
+  specName: string;
+  maleQty: number;
+  femaleQty: number;
+  totalQty: number;
+  orderCount: number;
+}
+
+export interface DeptStrainRow {
+  departmentName: string;
+  strainName: string;
+  totalQty: number;
+  maleQty: number;
+  femaleQty: number;
+  orderCount: number;
+}
+
+export interface PiCollectorRow {
+  piName: string;
+  collectorName: string;
+  totalQty: number;
+  maleQty: number;
+  femaleQty: number;
+  orderCount: number;
+}
+
+export interface ProjectStrainRow {
+  projectName: string;
+  strainName: string;
+  totalQty: number;
+  maleQty: number;
+  femaleQty: number;
+  orderCount: number;
+}
+
+export interface OrderAnalyticsReport {
+  summary: OrderAnalyticsSummary;
+  supplierStrainSpec: SupplierStrainSpecRow[];
+  byPiCollectors: PiCollectorRow[];
+  departmentStrain: DeptStrainRow[];
+  projectStrain: ProjectStrainRow[];
+}
+
+export type HeatmapGroupBy = "department" | "project";
+
+export interface OrderAnalyticsFilters {
+  piNames: string[];
+  departments: string[];
+  consumeTypes: string[];
+  rooms: string[];
+  areaNames: string[];
+  orderStates: string[];
+}
+
+export async function fetchOrderAnalyticsReport(params: {
+  piName?: string;
+  departmentName?: string;
+  startDate?: string;
+  endDate?: string;
+  consumeType?: string;
+  room?: string;
+  areaName?: string;
+  orderStates?: string[];
+}): Promise<OrderAnalyticsReport> {
+  return unwrap(
+    authHttp.get<Result<OrderAnalyticsReport>>("/v1/analytics/order-analytics/report", { params })
+  );
+}
+
+export async function fetchOrderAnalyticsFilterOptions(): Promise<OrderAnalyticsFilters> {
+  return unwrap(
+    authHttp.get<Result<OrderAnalyticsFilters>>("/v1/analytics/order-analytics/filters")
+  );
+}

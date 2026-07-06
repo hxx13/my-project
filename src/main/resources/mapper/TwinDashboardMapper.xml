@@ -1035,4 +1035,184 @@
         </if>
     </select>
 
+    <!-- ═══════════════════════════════════════════════════════════
+         Order Analytics — 订单统计看板
+         ═══════════════════════════════════════════════════════════ -->
+
+    <sql id="OrderAnalyticsFilterWhere">
+        <if test="orderStates != null and orderStates.size() > 0">
+            AND order_state_name IN
+            <foreach item="s" collection="orderStates" open="(" separator="," close=")">
+                #{s}
+            </foreach>
+        </if>
+        <if test="piName != null and piName != ''">
+            AND pi_name = #{piName}
+        </if>
+        <if test="departmentName != null and departmentName != ''">
+            AND pi_name IN (
+                SELECT name FROM aro_personnel WHERE department_name = #{departmentName}
+            )
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND arrival_date &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND arrival_date &lt;= #{endDate}
+        </if>
+        <if test="consumeType != null and consumeType != ''">
+            AND SUBSTRING_INDEX(consume_location, '-', 1) = #{consumeType}
+        </if>
+        <if test="room != null and room != ''">
+            AND SUBSTRING_INDEX(consume_location, '-', -1) = #{room}
+        </if>
+        <if test="areaName != null and areaName != ''">
+            AND area_name = #{areaName}
+        </if>
+    </sql>
+
+    <!-- 热力图专用：不含 PI/院系筛选，保持热力图数据完整性 -->
+    <sql id="OrderAnalyticsHeatmapFilter">
+        <if test="orderStates != null and orderStates.size() > 0">
+            AND order_state_name IN
+            <foreach item="s" collection="orderStates" open="(" separator="," close=")">
+                #{s}
+            </foreach>
+        </if>
+        <if test="departmentName != null and departmentName != ''">
+            AND o.pi_name IN (
+                SELECT name FROM aro_personnel WHERE department_name = #{departmentName}
+            )
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND arrival_date &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND arrival_date &lt;= #{endDate}
+        </if>
+        <if test="consumeType != null and consumeType != ''">
+            AND SUBSTRING_INDEX(consume_location, '-', 1) = #{consumeType}
+        </if>
+        <if test="room != null and room != ''">
+            AND SUBSTRING_INDEX(consume_location, '-', -1) = #{room}
+        </if>
+        <if test="areaName != null and areaName != ''">
+            AND area_name = #{areaName}
+        </if>
+    </sql>
+
+    <select id="getOrderAnalyticsSummary" resultType="map">
+        SELECT COUNT(DISTINCT sn) AS totalOrders,
+               SUM(male_qty + female_qty) AS totalQty,
+               SUM(male_qty) AS totalMale,
+               SUM(female_qty) AS totalFemale,
+               COUNT(DISTINCT supplier_name) AS uniqueSuppliers,
+               COUNT(DISTINCT strain_name) AS uniqueStrains,
+               COUNT(DISTINCT pi_name) AS uniquePis,
+               COUNT(DISTINCT collector_name) AS uniqueCollectors,
+               COUNT(DISTINCT project_name) AS uniqueProjects
+        FROM aro_animal_order
+        WHERE 1=1
+        <include refid="OrderAnalyticsFilterWhere"/>
+    </select>
+
+    <select id="getOrderAnalyticsSupplierStrainSpec" resultType="map">
+        SELECT supplier_name AS supplierName,
+               strain_name AS strainName,
+               spec_name AS specName,
+               SUM(male_qty) AS maleQty,
+               SUM(female_qty) AS femaleQty,
+               SUM(male_qty + female_qty) AS totalQty,
+               COUNT(DISTINCT sn) AS orderCount
+        FROM aro_animal_order
+        WHERE 1=1
+        <include refid="OrderAnalyticsFilterWhere"/>
+        GROUP BY supplier_name, strain_name, spec_name
+        ORDER BY totalQty DESC
+    </select>
+
+    <select id="getOrderAnalyticsByPiCollectors" resultType="map">
+        SELECT pi_name AS piName,
+               collector_name AS collectorName,
+               SUM(male_qty + female_qty) AS totalQty,
+               SUM(male_qty) AS maleQty,
+               SUM(female_qty) AS femaleQty,
+               COUNT(DISTINCT sn) AS orderCount
+        FROM aro_animal_order
+        WHERE 1=1
+        <include refid="OrderAnalyticsFilterWhere"/>
+        GROUP BY pi_name, collector_name
+        ORDER BY pi_name, totalQty DESC
+    </select>
+
+    <select id="getOrderAnalyticsDistinctPis" resultType="string">
+        SELECT DISTINCT pi_name FROM aro_animal_order
+        WHERE pi_name IS NOT NULL AND pi_name != ''
+        ORDER BY pi_name
+    </select>
+
+    <select id="getOrderAnalyticsDistinctConsumeTypes" resultType="string">
+        SELECT DISTINCT SUBSTRING_INDEX(consume_location, '-', 1) AS consumeType
+        FROM aro_animal_order
+        WHERE consume_location IS NOT NULL AND consume_location != ''
+        ORDER BY consumeType
+    </select>
+
+    <select id="getOrderAnalyticsDistinctRooms" resultType="string">
+        SELECT DISTINCT SUBSTRING_INDEX(consume_location, '-', -1) AS room
+        FROM aro_animal_order
+        WHERE consume_location IS NOT NULL AND consume_location != ''
+        ORDER BY room
+    </select>
+
+    <select id="getOrderAnalyticsDistinctAreas" resultType="string">
+        SELECT DISTINCT area_name FROM aro_animal_order
+        WHERE area_name IS NOT NULL AND area_name != ''
+        ORDER BY area_name
+    </select>
+
+    <select id="getOrderAnalyticsDistinctOrderStates" resultType="string">
+        SELECT DISTINCT order_state_name FROM aro_animal_order
+        WHERE order_state_name IS NOT NULL AND order_state_name != ''
+        ORDER BY order_state_name
+    </select>
+
+    <select id="getOrderAnalyticsDistinctDepartments" resultType="string">
+        SELECT DISTINCT p.department_name
+        FROM aro_animal_order o
+        INNER JOIN aro_personnel p ON o.pi_name = p.name
+        WHERE p.department_name IS NOT NULL AND p.department_name != ''
+        ORDER BY p.department_name
+    </select>
+
+    <select id="getOrderAnalyticsDepartmentStrain" resultType="map">
+        SELECT COALESCE(p.department_name, '未知院系') AS departmentName,
+               o.strain_name AS strainName,
+               SUM(o.male_qty + o.female_qty) AS totalQty,
+               SUM(o.male_qty) AS maleQty,
+               SUM(o.female_qty) AS femaleQty,
+               COUNT(DISTINCT o.sn) AS orderCount
+        FROM aro_animal_order o
+        LEFT JOIN aro_personnel p ON o.pi_name = p.name
+        WHERE 1=1
+        <include refid="OrderAnalyticsHeatmapFilter"/>
+        GROUP BY p.department_name, o.strain_name
+        ORDER BY totalQty DESC
+    </select>
+
+    <select id="getOrderAnalyticsProjectStrain" resultType="map">
+        SELECT COALESCE(NULLIF(o.project_name, ''), COALESCE(p.department_name, '未知')) AS projectName,
+               o.strain_name AS strainName,
+               SUM(o.male_qty + o.female_qty) AS totalQty,
+               SUM(o.male_qty) AS maleQty,
+               SUM(o.female_qty) AS femaleQty,
+               COUNT(DISTINCT o.sn) AS orderCount
+        FROM aro_animal_order o
+        LEFT JOIN aro_personnel p ON o.pi_name = p.name
+        WHERE 1=1
+        <include refid="OrderAnalyticsHeatmapFilter"/>
+        GROUP BY COALESCE(NULLIF(o.project_name, ''), COALESCE(p.department_name, '未知')), o.strain_name
+        ORDER BY totalQty DESC
+    </select>
+
 </mapper>

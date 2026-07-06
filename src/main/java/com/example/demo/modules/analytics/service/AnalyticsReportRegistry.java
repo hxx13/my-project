@@ -16,6 +16,7 @@ public class AnalyticsReportRegistry {
     public static final String REPORT_STUDENT_ACTIVITY = "student_activity";
     public static final String REPORT_CAGE_SPECIAL_STATUS = "cage_special_status";
     public static final String REPORT_MATERIAL_STATS = "material_stats";
+    public static final String REPORT_ORDER_ANALYTICS = "order_analytics";
 
     public List<AnalyticsReportDescriptorDto> listReports() {
         return List.of(
@@ -42,7 +43,7 @@ public class AnalyticsReportRegistry {
                 ),
                 new AnalyticsReportDescriptorDto(
                         REPORT_CAGE_SPECIAL_STATUS,
-                        "笼位特殊状态统计",
+                        "笼位状态统计",
                         "汇总合笼/繁殖、特殊饲养、请分笼、健康异常、动物转移等特殊状态笼位，支持按校区/房间/课题组筛选。",
                         "笼架与预约",
                         true
@@ -52,6 +53,13 @@ public class AnalyticsReportRegistry {
                         "物资申领统计",
                         "基于申领审计导出同源记录：个人/课题组/物品流水聚合为趋势图、热力图与排名图，无需快照。",
                         "物资",
+                        true
+                ),
+                new AnalyticsReportDescriptorDto(
+                        REPORT_ORDER_ANALYTICS,
+                        "订单统计",
+                        "按供应商→品系→规格三级下钻，支持 PI、时间、校区、院系、领用方式、房间、订单状态筛选。",
+                        "订单与采购",
                         true
                 )
         );
