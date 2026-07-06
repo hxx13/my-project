@@ -137,9 +137,7 @@ export function DahuaSwingStatsAuditPanel() {
           定时管理
         </a>{" "}
         配置「审计门禁·每日到点」后，每天自动拉取<strong>上一自然日</strong>在任务内配置的刷卡时刻段。
-        <strong>回溯</strong>：仅手动执行，配置从某日到某日的长线范围（如 1 月 1 日至今），不参与定时。
-        每任务可开关<strong>拉取后自动清洗入库</strong>。定时管理页按<strong>昨日 / 上周 / 水位</strong>三个独立 Job 到点执行（互不合并）；<strong>回溯仅本页手动</strong>，不参与任何定时。保存任务时会同步通道漏斗。
-      </p>
+        </p>
 
       <div className="flex flex-wrap items-center gap-2">
         {(

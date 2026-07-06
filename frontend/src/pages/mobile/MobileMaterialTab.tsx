@@ -1,6 +1,7 @@
 /** 手机版 — 申领 Tab（布局对齐小程序 studentMaterial，数据走学生中心 token API） */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, WifiOff, ChevronLeft, X } from "lucide-react";
+import { Loader2, WifiOff, ChevronLeft, X, Copy, ExternalLink, Check } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 import {
@@ -36,6 +37,10 @@ import { MobileMaterialCartBar } from "./components/MobileMaterialCartBar";
 
 /* ---- localStorage 购物车（学生中心 token / JWT） ---- */
 const JWT_CART_KEY = "mobile_material_cart_jwt";
+
+function buildGeneralModeUrl() {
+  return `${window.location.origin}/#/m/login`;
+}
 
 function cartStorageKey(token: string, jwtMode?: boolean) {
   if (jwtMode) return JWT_CART_KEY;
@@ -95,7 +100,10 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
 
   const [showRequests, setShowRequests] = useState(false);
   const [requestStatusFilter, setRequestStatusFilter] = useState("");
+  const [showModeDialog, setShowModeDialog] = useState(true);
+  const [modeLinkCopied, setModeLinkCopied] = useState(false);
 
+  const generalModeUrl = buildGeneralModeUrl();
   const load = useCallback(() => {
     if (!jwtMode && !token) return;
     setLoading(true);
@@ -311,32 +319,139 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  const handleCopyGeneralModeUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(generalModeUrl);
+      setModeLinkCopied(true);
+      setTimeout(() => setModeLinkCopied(false), 2000);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = generalModeUrl;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setModeLinkCopied(true);
+      setTimeout(() => setModeLinkCopied(false), 2000);
+    }
+  };
+
+  const handleJumpToGeneralMode = () => {
+    window.location.href = generalModeUrl;
+  };
+
+  // 直链模式阻断弹窗（第一时间展示，不受 loading/error 影响）
+  const modeDialogEl = !jwtMode && showModeDialog && (
+    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/45 p-4">
+      <div
+        className="flex w-full max-w-sm flex-col overflow-hidden rounded-[var(--student-radius-lg)] bg-[var(--student-surface-raised)]"
+        style={{ maxHeight: "82vh" }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mode-dialog-title"
+      >
+        {/* Header */}
+        <div className="border-b border-[var(--student-hairline)] px-4 py-3">
+          <p id="mode-dialog-title" className="text-[15px] font-semibold text-[var(--student-ink)]">
+            提示
+          </p>
+        </div>
+
+        {/* Body */}
+        <div className="flex flex-col items-center gap-3 px-4 py-4 overflow-y-auto">
+          <p className="text-[13px] text-[var(--student-body)] text-center leading-relaxed">
+            申领物品请识别一下二维码进行注册，当前模式不可用
+          </p>
+
+          {/* QR Code */}
+          <div className="shrink-0 rounded-xl p-2 bg-white shadow-md" style={{ width: 140, height: 140 }}>
+            <QRCodeSVG
+              value={generalModeUrl}
+              size={124}
+              level="M"
+              fgColor="#1e293b"
+              bgColor="#ffffff"
+            />
+          </div>
+
+          {/* Link + actions */}
+          <div className="flex items-center gap-1.5 w-full max-w-[240px] rounded-full bg-[var(--student-canvas-soft)] border border-[var(--student-hairline)] px-3 py-1.5">
+            <span className="text-[11px] font-mono text-[var(--student-body)] truncate flex-1 select-all">
+              通用模式入口
+            </span>
+            <button
+              type="button"
+              onClick={handleCopyGeneralModeUrl}
+              className="shrink-0 p-1 rounded hover:bg-[var(--student-surface)] transition-colors"
+              title="复制链接"
+            >
+              {modeLinkCopied ? (
+                <Check className="size-3.5 text-green-500" strokeWidth={2.5} />
+              ) : (
+                <Copy className="size-3.5 text-[var(--student-mute)]" strokeWidth={1.8} />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleJumpToGeneralMode}
+              className="shrink-0 p-1 rounded hover:bg-[var(--student-surface)] transition-colors"
+              title="跳转到通用模式"
+            >
+              <ExternalLink className="size-3.5 text-[var(--student-mute)]" strokeWidth={1.8} />
+            </button>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end border-t border-[var(--student-hairline)] px-4 py-3">
+          <button
+            type="button"
+            onClick={() => setShowModeDialog(false)}
+            className="h-8 min-w-[72px] rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-4 text-center text-xs font-medium text-[var(--student-primary-foreground)] hover:bg-[var(--student-primary-hover)]"
+          >
+            我知道了
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center bg-[var(--student-canvas)]">
-        <Loader2 className="size-6 animate-spin text-[var(--student-mute)] motion-reduce:animate-none" />
-      </div>
+      <>
+        {modeDialogEl}
+        <div className="flex h-full items-center justify-center bg-[var(--student-canvas)]">
+          <Loader2 className="size-6 animate-spin text-[var(--student-mute)] motion-reduce:animate-none" />
+        </div>
+      </>
     );
   }
 
   if (error) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 bg-[var(--student-canvas)]">
-        <WifiOff className="size-8 text-[var(--student-mute)]" />
-        <p className="text-xs text-[var(--student-mute)]">{error}</p>
-        <button
-          type="button"
-          onClick={load}
-          className="rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-4 py-2 text-xs font-medium text-[var(--student-primary-foreground)] hover:bg-[var(--student-primary-hover)] active:bg-[var(--student-primary-pressed)]"
-        >
-          重试
-        </button>
-      </div>
+      <>
+        {modeDialogEl}
+        <div className="flex h-full flex-col items-center justify-center gap-3 bg-[var(--student-canvas)]">
+          <WifiOff className="size-8 text-[var(--student-mute)]" />
+          <p className="text-xs text-[var(--student-mute)]">{error}</p>
+          <button
+            type="button"
+            onClick={load}
+            className="rounded-[var(--student-radius-sm)] bg-[var(--student-primary)] px-4 py-2 text-xs font-medium text-[var(--student-primary-foreground)] hover:bg-[var(--student-primary-hover)] active:bg-[var(--student-primary-pressed)]"
+          >
+            重试
+          </button>
+        </div>
+      </>
     );
   }
 
   return (
     <>
+      {modeDialogEl}
+
       <div className="flex h-full min-h-0 flex-col bg-[var(--student-canvas)]">
         {/* 顶栏：搜索 + 我的记录 */}
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--student-hairline)] bg-[var(--student-surface)] px-3 py-1.5">

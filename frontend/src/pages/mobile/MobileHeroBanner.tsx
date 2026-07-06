@@ -62,8 +62,8 @@ export default function HeroBanner({
   }, [loginUrl]);
 
   const handleJump = useCallback(() => {
-    window.location.href = loginUrl;
-  }, [loginUrl]);
+    window.location.hash = "#/m/login";
+  }, []);
 
   const modeLabel = jwtMode ? "通用模式" : "直链模式";
   const modeBg = jwtMode
@@ -219,12 +219,15 @@ export default function HeroBanner({
 
             {/* 链接 + 复制/跳转 */}
             <div className="flex flex-col gap-1.5 min-w-0">
+              <span className="text-[9px] font-medium text-white/60 leading-none">
+                通用模式入口
+              </span>
               <div
                 className="flex items-center gap-1 rounded-full px-2.5 py-1"
                 style={pillStyle}
               >
-                <span className="text-[10px] font-mono text-white/85 truncate max-w-[90px] select-all">
-                  /m/login
+                <span className="text-[10px] font-mono text-white/85 truncate max-w-[120px] select-all">
+                  {loginUrl}
                 </span>
                 <button
                   type="button"

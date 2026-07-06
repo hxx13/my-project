@@ -331,7 +331,10 @@ export default function AdminExpStatsPage() {
           ))}
         </div>
 
-        {/* Top Earners Table */}
+        {/* Two-column layout: Leaderboard (40%) | XP Records (60%) */}
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          {/* Left: 今日经验排行 */}
+          <div className="w-full lg:w-[40%] lg:shrink-0">
         <AdminFormCard title="今日经验排行 (Top 50)">
           {!summary?.topEarners || summary.topEarners.length === 0 ? (
             <div className="flex min-h-[120px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">
@@ -386,8 +389,10 @@ export default function AdminExpStatsPage() {
             </table>
           )}
         </AdminFormCard>
+          </div>
 
-        {/* XP Records Filter + Table */}
+          {/* Right: 经验值流水 */}
+          <div className="w-full lg:w-[60%] lg:flex-1 lg:min-w-0 flex flex-col gap-6">
         <AdminFormCard title="经验值流水" className="p-3 [&>div:first-child]:mb-2 [&>div:first-child]:pb-1.5">
           {/* Row 1: basic filters */}
           <div className="flex flex-nowrap items-end gap-2 overflow-x-auto">
@@ -586,6 +591,8 @@ export default function AdminExpStatsPage() {
             <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || recordsLoading} onClick={() => setPage((p) => p + 1)}>
               下一页
             </AdminButton>
+          </div>
+        </div>
           </div>
         </div>
       </div>

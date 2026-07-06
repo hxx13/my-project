@@ -282,6 +282,32 @@
   border-radius: var(--admin-radius-lg);
 }
 
+/* ── Recharts 图表焦点抑制 ──
+   Recharts 的 SVG 根元素有 tabIndex=0（accessibility layer），
+   点击 bar 时 SVG 获得焦点 → 浏览器默认 outline（黑色/深色）。
+   同时 :focus 和 :focus-visible 都需要抑制，
+   因为不同浏览器在不同场景触发不同的伪类。 */
+.recharts-surface:focus,
+.recharts-surface:focus-visible,
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible {
+  outline: none;
+}
+/* bar 矩形及其内部所有元素的焦点轮廓 */
+.recharts-bar-rectangle:focus,
+.recharts-bar-rectangle:focus-visible,
+.recharts-bar-rectangle *:focus,
+.recharts-bar-rectangle *:focus-visible,
+.recharts-bar-stack-layer:focus,
+.recharts-bar-stack-layer:focus-visible {
+  outline: none;
+}
+/* SVG path 元素在某些浏览器中被识别为可交互元素时会产生焦点 */
+.recharts-rectangle:focus,
+.recharts-rectangle:focus-visible {
+  outline: none;
+}
+
 /* 登录落地页：入场动画（仅登录路由使用） */
 @keyframes login-landing-fade-up {
   from {
