@@ -235,7 +235,7 @@ export function CageLinkageRecordPanel({ parentId, onClose }: Props) {
                 onChange={(e) => setMemberSearch(e.target.value)}
               />
             </div>
-            <label className="flex items-center gap-1.5 text-xs text-[var(--app-color-text-secondary)] cursor-pointer">
+            <div className="flex items-center gap-1.5 text-xs text-[var(--app-color-text-secondary)] cursor-pointer">
               <AdminSwitchScaled
                 size="sm"
                 checked={onlyActive}
@@ -390,7 +390,7 @@ function AddMemberModal({
           disabled={loading}
         />
         {results.length > 0 && (
-          <div className="mt-2 max-h-[240px] overflow-y-auto rounded-md border border-[var(--app-color-border-default)]">
+          <div className="mt-2 max-h-[240px] overflow-y-auto app-themed-scrollbar rounded-md border border-[var(--app-color-border-default)]">
             {results.map((rawPerson) => {
               const rp = rawPerson as Record<string, unknown>;
               const safeId = String(rp.user_id ?? rp.userid ?? rp.userId ?? rp.id ?? "").trim();

@@ -11,7 +11,7 @@ export const Z_INDEX = {
   repeatedSwipeWarning: 820, // 重复刷卡全屏红色脉冲警告，置于所有扫描弹窗最顶层（高于 --z-modal:800）
   bizOverlay: 400,          // BizOverlayShell
   keypad: 500,              // NumericKeypad（永远最顶层）
-  globalToast: 600,         // 全局 Toast/Notification
+  globalToast: 1000,         // 全局 Toast/Notification（须高于 --z-modal:800）
   faceScan: 10000,           // 人脸验证 Dynamic Island + 摄像头窗口（在 dahua-issue 画廊之上）
   facePhotoGallery: 10000,   // 底库照片管理（dahua-issue 等）
   faceEnrollment: 10001,     // 现场人脸录入（高于画廊 / 失败提示 Toast）

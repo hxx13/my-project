@@ -156,7 +156,7 @@ export function CageLinkageRuleForm({ editing, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-6"
+        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto app-themed-scrollbar rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-bold text-[var(--app-color-text-primary)] mb-5">
@@ -262,7 +262,7 @@ export function CageLinkageRuleForm({ editing, onClose }: Props) {
           <div className="space-y-3">
             {/* 手动触发（仅 AUTO_SYNC_LINKED） */}
             {isAutoSync && (
-              <label className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-sm">
                 <AdminSwitchScaled
                   size="sm"
                   checked={form.cageManualTrigger === 1}
@@ -273,7 +273,7 @@ export function CageLinkageRuleForm({ editing, onClose }: Props) {
                 <span className="text-[var(--app-color-text-primary)]">
                   手动执行定时任务也触发判定
                 </span>
-              </label>
+              </div>
             )}
 
             {/* 课题组白名单 */}
@@ -440,7 +440,7 @@ export function CageLinkageRuleForm({ editing, onClose }: Props) {
                 />
               </label>
               <div className="flex items-end pb-2">
-                <label className="flex items-center gap-2 text-sm">
+                <div className="flex items-center gap-2 text-sm">
                   <AdminSwitchScaled
                     size="sm"
                     checked={form.interactiveUnlockOnVerify === 1}
@@ -449,7 +449,7 @@ export function CageLinkageRuleForm({ editing, onClose }: Props) {
                     }
                   />
                   <span className="text-[var(--app-color-text-primary)]">验证后自动解除禁入</span>
-                </label>
+                </div>
               </div>
             </div>
           </div>
@@ -577,14 +577,14 @@ export function CageLinkageRuleForm({ editing, onClose }: Props) {
         </fieldset>
 
         {/* 启用 */}
-        <label className="flex items-center gap-2 text-sm mb-5">
+        <div className="flex items-center gap-2 text-sm mb-5">
           <AdminSwitchScaled
             size="sm"
             checked={form.enabled === 1}
             onChange={(checked) => setForm({ ...form, enabled: checked ? 1 : 0 })}
           />
           <span className="text-[var(--app-color-text-primary)]">启用此规则</span>
-        </label>
+        </div>
 
         {/* 操作按钮 */}
         <div className="flex justify-end gap-3 pt-4 border-t border-[var(--app-color-border-default)]">

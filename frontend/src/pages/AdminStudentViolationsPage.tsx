@@ -972,10 +972,10 @@ export default function AdminStudentViolationsPage() {
 
   return (
     <AdminPageShell>
-      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-hidden">
+      <div className="flex flex-col">
 
-        {/* ═══ 第一层：标题 + 标签卡片（shrink-0） ═══ */}
-        <AdminFormCard className="shrink-0 mb-3">
+        {/* ═══ 第一层：标题 + 标签卡片（sticky 固定顶部） ═══ */}
+        <AdminFormCard className="sticky top-0 z-[--z-sticky] shrink-0 mb-3">
           {/* 第一行：入口名称（左），下方有分隔线 */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
             <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
@@ -1004,8 +1004,8 @@ export default function AdminStudentViolationsPage() {
           </div>
         </AdminFormCard>
 
-      {/* ═══ 第二层：内容区（flex-1，填满剩余高度） ═══ */}
-      <div className="flex-1 min-h-0 overflow-auto">
+      {/* ═══ 第二层：内容区 ═══ */}
+      <div>
         <AdminTabPanel
           id="violation-page-panel-unbound"
           tabId="unbound"
@@ -1018,7 +1018,7 @@ export default function AdminStudentViolationsPage() {
       >
         <div className="admin-violation-form-body">
           <div className="admin-form-toggle-row">
-            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
+            <div className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <AdminSwitchScaled
                 size="sm"
                 checked={unboundEnabled}
@@ -1026,8 +1026,8 @@ export default function AdminStudentViolationsPage() {
                 onChange={(checked) => setUnboundEnabled(checked)}
               />
               启用未绑卡提示
-            </label>
-            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
+            </div>
+            <div className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <AdminSwitchScaled
                 size="sm"
                 checked={unboundShowEvery}
@@ -1035,8 +1035,8 @@ export default function AdminStudentViolationsPage() {
                 onChange={(checked) => setUnboundShowEvery(checked)}
               />
               每次扫码都自动展开提示
-            </label>
-            <label className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
+            </div>
+            <div className="flex items-center gap-2 text-sm text-[var(--twin-ink)]">
               <AdminSwitchScaled
                 size="sm"
                 checked={unboundForbidEnter}
@@ -1044,7 +1044,7 @@ export default function AdminStudentViolationsPage() {
                 onChange={(checked) => setUnboundForbidEnter(checked)}
               />
               禁止扫码进入（未绑卡时，离开不受影响）
-            </label>
+            </div>
           </div>
           <div className="admin-form-field">
             <label className="admin-form-field-label">{SCAN_OPERATOR_ROLE_LABEL}</label>
@@ -1053,7 +1053,7 @@ export default function AdminStudentViolationsPage() {
               {UNBOUND_APPLY_ROLE_OPTIONS.map((opt) => {
                 const checked = unboundApplyRoles.includes(opt.code);
                 return (
-                  <label
+                  <div
                     key={opt.code}
                     className={cn(
                       "flex cursor-pointer items-center gap-2 rounded-twin-lg border px-3 py-2 text-sm",
@@ -1076,7 +1076,7 @@ export default function AdminStudentViolationsPage() {
                       }}
                     />
                     {opt.label}
-                  </label>
+                  </div>
                 );
               })}
             </div>
@@ -1954,7 +1954,6 @@ export default function AdminStudentViolationsPage() {
         >
           <HomepageContentTab />
         </AdminTabPanel>
-      </div>{/* lower scroll end */}
       </div>{/* outer flex col end */}
 
       {editOpen && editId != null ? (

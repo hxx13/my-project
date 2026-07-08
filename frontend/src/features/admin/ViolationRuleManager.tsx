@@ -213,7 +213,7 @@ function RuleFormModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-[480px] max-h-[88vh] overflow-y-auto rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-6">
+      <div className="w-full max-w-[480px] max-h-[88vh] overflow-y-auto app-themed-scrollbar rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-6">
         <h3 className="text-lg font-bold text-[var(--app-color-text-primary)] mb-5">
           {isNew ? "新建触发规则" : "编辑触发规则"}
         </h3>
@@ -420,7 +420,7 @@ function RuleFormModal({
         </fieldset>
 
         {/* 启用 */}
-        <label className="flex items-center gap-2 text-sm mb-5">
+        <div className="flex items-center gap-2 text-sm mb-5">
           <AdminSwitchScaled
             size="sm"
             checked={form.enabled === 1}
