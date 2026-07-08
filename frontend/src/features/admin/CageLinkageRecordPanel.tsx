@@ -242,7 +242,7 @@ export function CageLinkageRecordPanel({ parentId, onClose }: Props) {
                 onChange={setOnlyActive}
               />
               仅看生效中
-            </label>
+            </div>
             <AdminButton size="sm" onClick={() => setShowAddMember(true)}>
               <UserPlus className="w-3.5 h-3.5 mr-1" />
               添加成员

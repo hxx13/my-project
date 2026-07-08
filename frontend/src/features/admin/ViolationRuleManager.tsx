@@ -441,7 +441,7 @@ function RuleFormModal({
             onChange={(checked) => setForm({ ...form, enabled: checked ? 1 : 0 })}
           />
           <span className="text-[var(--app-color-text-primary)]">启用此规则</span>
-        </label>
+        </div>
 
         </div>{/* End scrollable body */}
 

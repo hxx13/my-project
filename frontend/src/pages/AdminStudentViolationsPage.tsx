@@ -976,22 +976,20 @@ export default function AdminStudentViolationsPage() {
 
         {/* ═══ 第一层：标题 + 标签卡片（sticky 固定顶部） ═══ */}
         <AdminFormCard className="sticky top-0 z-[--z-sticky] shrink-0 mb-3">
-          {/* 第一行：入口名称（左），下方有分隔线 */}
+          {/* 第一行：入口名称（左），下方有分隔线。用 invisible 占位保持高度不变 */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
             <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
-            {activeTab === "records" && (
-              <AdminButton
-                type="button"
-                tone="secondary"
-                size="sm"
-                className="inline-flex shrink-0 items-center gap-1.5"
-                loading={isLoading}
-                onClick={() => qc.invalidateQueries({ queryKey: violationsQueryKey })}
-              >
-                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                刷新列表
-              </AdminButton>
-            )}
+            <AdminButton
+              type="button"
+              tone="secondary"
+              size="sm"
+              className={activeTab === "records" ? "inline-flex shrink-0 items-center gap-1.5" : "invisible inline-flex shrink-0 items-center gap-1.5"}
+              loading={isLoading}
+              onClick={() => qc.invalidateQueries({ queryKey: violationsQueryKey })}
+            >
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              刷新列表
+            </AdminButton>
           </div>
           {/* 第二行：标签栏 */}
           <div className="flex items-center gap-2">
@@ -1954,6 +1952,7 @@ export default function AdminStudentViolationsPage() {
         >
           <HomepageContentTab />
         </AdminTabPanel>
+      </div>{/* content area end */}
       </div>{/* outer flex col end */}
 
       {editOpen && editId != null ? (
