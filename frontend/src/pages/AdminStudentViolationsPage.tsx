@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -58,11 +58,13 @@ import { isRichTextEmpty, richTextPlainPreview } from "@/utils/announcementHtml"
 import { Portal } from "@/components/Portal";
 import { cn } from "@/lib/utils";
 import { ScanPopupAnnouncementSection } from "@/features/admin/ScanPopupAnnouncementSection";
+import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import type { SwipeAlertRuleRow } from "@/api/domains/swipeAlert.api";
 import { SwipeAlertRuleList } from "@/features/swipe-alert/SwipeAlertRuleList";
 import { SwipeAlertRuleForm } from "@/features/swipe-alert/SwipeAlertRuleForm";
 import { DepartmentMultiSelect } from "@/features/swipe-alert/DepartmentMultiSelect";
 import { ViolationRuleManager } from "@/features/admin/ViolationRuleManager";
+import { CageLinkageTab } from "@/features/admin/CageLinkageTab";
 import {
   SCAN_OPERATOR_ROLE_HINT_UNBOUND,
   SCAN_OPERATOR_ROLE_LABEL,
@@ -74,7 +76,7 @@ import { fetchSystemConfigs, fetchConfigDefinitions, type SystemConfigRecord, ty
 
 type PickUser = { userId: string; name: string };
 type LockMode = "single" | "batch";
-type PageTabId = "unbound" | "announcement" | "create" | "records" | "swipe-alert" | "rules" | "homepage-content";
+type PageTabId = "unbound" | "announcement" | "create" | "records" | "swipe-alert" | "rules" | "cage-linkage" | "homepage-content";
 
 const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
   { id: "unbound", label: "未绑卡提示", icon: <CreditCard className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
@@ -83,6 +85,7 @@ const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
   { id: "records", label: "违规记录", icon: <ShieldAlert className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "swipe-alert", label: "刷卡失败告警", icon: <AlertTriangle className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "rules", label: "触发规则", icon: <Settings className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
+  { id: "cage-linkage", label: "笼架联动", icon: <AlertTriangle className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "homepage-content", label: "主页文案", icon: <FileText className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
 ];
 
@@ -239,7 +242,7 @@ function ViolationTemplateQuickSelect({
 }
 
 function parsePageTab(raw: string | null): PageTabId {
-  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert" || raw === "rules" || raw === "homepage-content") return raw;
+  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert" || raw === "rules" || raw === "cage-linkage" || raw === "homepage-content") return raw;
   return "unbound";
 }
 
@@ -964,16 +967,46 @@ export default function AdminStudentViolationsPage() {
     loadStrandedSignoutConfig();
   }, []);
 
+  const location = useLocation();
+  const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
+
   return (
     <AdminPageShell>
-      <AdminPageTabs
-        tabs={PAGE_TABS}
-        value={activeTab}
-        onChange={(id) => setActiveTab(id as PageTabId)}
-        panelIdPrefix="violation-page-panel"
-      />
+      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
 
-      <div className="mt-4 max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
+        {/* ═══ 第一层：标题 + 标签卡片（shrink-0） ═══ */}
+        <AdminFormCard className="shrink-0 mb-3">
+          {/* 第一行：入口名称（左），下方有分隔线 */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+            <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
+            {activeTab === "records" && (
+              <AdminButton
+                type="button"
+                tone="secondary"
+                size="sm"
+                className="inline-flex shrink-0 items-center gap-1.5"
+                loading={isLoading}
+                onClick={() => qc.invalidateQueries({ queryKey: violationsQueryKey })}
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                刷新列表
+              </AdminButton>
+            )}
+          </div>
+          {/* 第二行：标签栏 */}
+          <div className="flex items-center gap-2">
+            <AdminPageTabs
+              tabs={PAGE_TABS}
+              value={activeTab}
+              onChange={(id) => setActiveTab(id as PageTabId)}
+              panelIdPrefix="violation-page-panel"
+            />
+          </div>
+        </AdminFormCard>
+
+      {/* ═══ 第二层：内容区（flex-1，填满剩余高度） ═══ */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-auto">
         <AdminTabPanel
           id="violation-page-panel-unbound"
           tabId="unbound"
@@ -1769,33 +1802,15 @@ export default function AdminStudentViolationsPage() {
           activeTab={activeTab}
           className="admin-violations-tab-panel"
         >
-          <div className="flex justify-end mb-2">
-            <AdminButton
-              type="button"
-              tone="secondary"
-              className="inline-flex items-center gap-2"
-              loading={isLoading}
-              onClick={() => qc.invalidateQueries({ queryKey: violationsQueryKey })}
-            >
-              <RefreshCw className="h-4 w-4" aria-hidden />
-              刷新列表
-            </AdminButton>
-          </div>
-          <p className="admin-form-field-hint">
-            {picked
-              ? `当前筛选：「${picked.name}」的最近 400 条（在「新建违规」页锁定人员后生效）`
-              : "显示全员最近 400 条；扫码与大屏仅取每人最新「生效中」记录。「已被覆盖」为同一人再次新建时系统自动归档的旧记录。"}
-          </p>
-          <AdminTableShell
-            loading={isLoading}
-            empty={!isLoading && rows.length === 0}
-            emptyMessage="暂无违规记录"
-            onRetry={() => qc.invalidateQueries({ queryKey: violationsQueryKey })}
-            scrollable
-          >
-            <table className="min-w-full text-left text-sm">
-              <thead>
-                <tr>
+          {isLoading ? (
+            <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">加载中…</div>
+          ) : rows.length === 0 ? (
+            <div className="flex min-h-[160px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">暂无违规记录</div>
+          ) : (
+            <div>
+            <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
+              <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+                <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                   <th className="whitespace-nowrap px-3 py-2">ID</th>
                   <th className="px-3 py-2">人员</th>
                   <th className="whitespace-nowrap px-3 py-2">规则</th>
@@ -1890,7 +1905,8 @@ export default function AdminStudentViolationsPage() {
                 })}
               </tbody>
             </table>
-          </AdminTableShell>
+            </div>
+          )}
         </AdminTabPanel>
 
         <AdminTabPanel
@@ -1923,6 +1939,15 @@ export default function AdminStudentViolationsPage() {
         </AdminTabPanel>
 
         <AdminTabPanel
+          id="violation-page-panel-cage-linkage"
+          tabId="cage-linkage"
+          activeTab={activeTab}
+          className="admin-violations-tab-panel"
+        >
+          <CageLinkageTab />
+        </AdminTabPanel>
+
+        <AdminTabPanel
           id="violation-page-panel-homepage-content"
           tabId="homepage-content"
           activeTab={activeTab}
@@ -1930,7 +1955,9 @@ export default function AdminStudentViolationsPage() {
         >
           <HomepageContentTab />
         </AdminTabPanel>
-      </div>
+      </div>{/* inner scroll end */}
+      </div>{/* outer clip end */}
+      </div>{/* outer flex col end */}
 
       {editOpen && editId != null ? (
         <Portal>
