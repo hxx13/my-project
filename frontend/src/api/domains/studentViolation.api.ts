@@ -242,6 +242,15 @@ export interface ViolationRule {
   autoSignoutEnabled: number;
   whitelistDepts?: string;
   cronExpression?: string;
+  // 笼架联动字段
+  cageStatusCodes?: string[];
+  cageDelayDays?: number;
+  cageJudgeMode?: 'AUTO_SYNC_LINKED' | 'PURE_DAYS' | 'PURE_MANUAL';
+  cageManualTrigger?: number;
+  cageAreaFilter?: { campuses?: string[]; rooms?: string[] };
+  cageGroupWhitelist?: string[];
+  cageTriggerAction?: 'VIOLATION_ONLY' | 'NOTICE_ONLY' | 'BOTH';
+  cageImageUrls?: string[];
 }
 
 export async function listViolationRules(): Promise<ViolationRule[]> {
