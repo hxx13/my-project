@@ -57,6 +57,24 @@ export async function removeCageViolationMember(id: number, userId: string): Pro
   await adminHttp.delete(`/twin/cage-status-violations/${id}/members/${userId}`);
 }
 
+export interface CreateCageStatusViolationPayload {
+  ruleId?: number | null;
+  statusCode: string;
+  positionLabel?: string;
+  projectGroupName?: string;
+  projectPiName?: string;
+  campusName?: string;
+  roomName?: string;
+  cageShelveId?: number | null;
+  positionX?: number | null;
+  positionY?: number | null;
+}
+
+export async function createCageStatusViolation(body: CreateCageStatusViolationPayload): Promise<CageStatusViolationRow> {
+  const res = await adminHttp.post<ApiResponse<CageStatusViolationRow>>("/twin/cage-status-violations", body);
+  return res.data?.data!;
+}
+
 export async function manualTriggerRule(ruleId: number): Promise<void> {
   await adminHttp.post(`/twin/cage-status-violations/trigger/${ruleId}`);
 }

@@ -60,6 +60,8 @@ export interface CreateStudentViolationPayload {
   interactiveUnlockOnVerify?: boolean;
   /** 关联触发规则ID（不传则自动使用 MANUAL 规则） */
   ruleId?: number | null;
+  /** 关联笼架违规父记录ID */
+  cageViolationId?: number | null;
 }
 
 export type BatchCreateStudentViolationPayload = Omit<CreateStudentViolationPayload, "targetUserId"> & {

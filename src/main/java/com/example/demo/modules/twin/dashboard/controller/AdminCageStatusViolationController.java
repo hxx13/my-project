@@ -12,6 +12,7 @@ import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationServi
 import com.example.demo.modules.twin.dashboard.service.TwinViolationRuleService;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -37,6 +38,30 @@ public class AdminCageStatusViolationController {
         this.violationService = violationService;
         this.checkService = checkService;
         this.ruleService = ruleService;
+    }
+
+    /** 手动创建父记录（用于手动提交违规时关联笼位状态） */
+    @PostMapping
+    public Result<CageStatusViolationDTO> create(@RequestBody Map<String, Object> body) {
+        TwinCageStatusViolation row = new TwinCageStatusViolation();
+        Object ruleIdObj = body.get("ruleId");
+        if (ruleIdObj instanceof Number) row.setRuleId(((Number) ruleIdObj).longValue());
+        row.setStatusCode(objToStr(body.get("statusCode")));
+        row.setPositionLabel(objToStr(body.get("positionLabel")));
+        row.setProjectGroupName(objToStr(body.get("projectGroupName")));
+        row.setProjectPiName(objToStr(body.get("projectPiName")));
+        row.setCampusName(objToStr(body.get("campusName")));
+        row.setRoomName(objToStr(body.get("roomName")));
+        Object sId = body.get("cageShelveId");
+        if (sId instanceof Number) row.setCageShelveId(((Number) sId).longValue());
+        Object px = body.get("positionX");
+        if (px instanceof Number) row.setPositionX(((Number) px).intValue());
+        Object py = body.get("positionY");
+        if (py instanceof Number) row.setPositionY(((Number) py).intValue());
+        row.setTriggeredAt(LocalDateTime.now());
+        row.setStatus("ACTIVE");
+        mapper.insert(row);
+        return Result.success(toDTO(row));
     }
 
     /** 父记录列表 */
@@ -181,5 +206,9 @@ public class AdminCageStatusViolationController {
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    private static String objToStr(Object v) {
+        return v == null ? "" : String.valueOf(v).trim();
     }
 }

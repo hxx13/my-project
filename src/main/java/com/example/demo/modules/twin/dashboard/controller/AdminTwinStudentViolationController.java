@@ -8,6 +8,7 @@ import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.twin.dashboard.dto.UnboundCardNoticeSettingsDTO;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
+import com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper;
 import com.example.demo.modules.twin.common.service.TwinPersonnelArchiveQueryService;
 import com.example.demo.modules.twin.dashboard.entity.ViolationTextTemplate;
 import com.example.demo.modules.twin.dashboard.service.StrandedViolationService;
@@ -42,6 +43,7 @@ public class AdminTwinStudentViolationController {
     private final StrandedViolationService strandedViolationService;
     private final ViolationTextTemplateService templateService;
     private final TwinViolationRuleService ruleService;
+    private final TwinStudentViolationMapper violationMapper;
 
     public AdminTwinStudentViolationController(
             TwinStudentViolationService violationService,
@@ -51,7 +53,8 @@ public class AdminTwinStudentViolationController {
             UserDisplayNameService userDisplayNameService,
             StrandedViolationService strandedViolationService,
             ViolationTextTemplateService templateService,
-            TwinViolationRuleService ruleService
+            TwinViolationRuleService ruleService,
+            TwinStudentViolationMapper violationMapper
     ) {
         this.violationService = violationService;
         this.unboundNoticeConfigService = unboundNoticeConfigService;
@@ -61,6 +64,7 @@ public class AdminTwinStudentViolationController {
         this.strandedViolationService = strandedViolationService;
         this.templateService = templateService;
         this.ruleService = ruleService;
+        this.violationMapper = violationMapper;
     }
 
     @GetMapping("/unbound-notice-settings")
@@ -287,6 +291,9 @@ public class AdminTwinStudentViolationController {
                     body.getInteractiveUnlockOnVerify(),
                     effectiveRuleId
             );
+            if (body.getCageViolationId() != null) {
+                violationMapper.setCageViolationId(row.getId(), body.getCageViolationId());
+            }
             return Result.success(toRow(row, null));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
@@ -434,6 +441,8 @@ public class AdminTwinStudentViolationController {
         private Boolean interactiveUnlockOnVerify;
         /** 关联触发规则ID（不传则自动使用 MANUAL 规则） */
         private Long ruleId;
+        /** 关联笼架违规父记录ID */
+        private Long cageViolationId;
     }
 
     @Data
@@ -449,6 +458,8 @@ public class AdminTwinStudentViolationController {
         private String interactiveChallenge;
         private Boolean interactiveUnlockOnVerify;
         private Long ruleId;
+        /** 关联笼架违规父记录ID */
+        private Long cageViolationId;
     }
 
     @Data

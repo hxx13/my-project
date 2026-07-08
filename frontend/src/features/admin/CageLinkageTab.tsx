@@ -1,7 +1,8 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { Plus, ChevronRight, ChevronDown, Pencil, Trash2, Check, User, Users, Search } from "lucide-react";
+import { Plus, ChevronRight, Pencil, Trash2, Check, User, Users, Search } from "lucide-react";
 import {
   listViolationRules,
   createViolationRule,
@@ -9,11 +10,14 @@ import {
   deleteViolationRule,
   searchViolationProjectGroups,
   listViolationPersonnelByProjectGroup,
+  createStudentViolation,
+  batchCreateStudentViolations,
   type ViolationRule,
 } from "@/api/domains/studentViolation.api";
 import {
   listCageStatusViolations,
   manualTriggerRule,
+  createCageStatusViolation,
   type CageStatusViolationRow,
 } from "@/api/domains/cageStatusViolation.api";
 import { fetchSpecialStatusOverview, type SpecialStatusOverview } from "@/api/domains/cageShelf.api";
@@ -98,107 +102,13 @@ const emptyRule = (): ViolationRule => ({
 
 type PickUser = { userId: string; name: string };
 
-/* ================================================================== */
-/*  StatusGroupAccordion                                                */
-/* ================================================================== */
-
 const STATUS_BG: Record<string, string> = {
-  COHABITATION: "bg-emerald-50 border-emerald-200",
-  SPECIAL_FEEDING: "bg-red-50 border-red-200",
-  NEED_DIVIDE: "bg-yellow-50 border-yellow-200",
-  HEALTH_ABNORMAL: "bg-purple-50 border-purple-200",
-  ANIMAL_TRANSFER: "bg-cyan-50 border-cyan-200",
+  COHABITATION: "border-l-emerald-400",
+  SPECIAL_FEEDING: "border-l-red-400",
+  NEED_DIVIDE: "border-l-yellow-400",
+  HEALTH_ABNORMAL: "border-l-purple-400",
+  ANIMAL_TRANSFER: "border-l-cyan-400",
 };
-
-function StatusGroupAccordion({
-  code, label, groups, totalCages, onPickGroup,
-}: {
-  code: string; label: string;
-  groups: Map<string, Array<{ position: string; roomName: string; campusName: string; shelveName: string }>>;
-  totalCages: number;
-  onPickGroup: (groupName: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-
-  const toggleGroupDetail = (pi: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(pi)) next.delete(pi); else next.add(pi);
-      return next;
-    });
-  };
-
-  const borderCls = STATUS_BG[code] ?? "bg-neutral-50 border-neutral-200";
-
-  return (
-    <div className={`rounded-md border ${borderCls} overflow-hidden`}>
-      {/* Status header */}
-      <button
-        type="button"
-        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-black/5 transition-colors"
-        onClick={() => setOpen(!open)}
-      >
-        <span className="text-xs font-bold text-[var(--app-color-text-primary)]">
-          {label}
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
-            {groups.size} 个课题组 · {totalCages} 个笼位
-          </span>
-          <ChevronDown className={`w-3.5 h-3.5 text-[var(--app-color-text-tertiary)] transition-transform ${open ? "rotate-180" : ""}`} />
-        </span>
-      </button>
-
-      {/* Group list */}
-      {open && (
-        <div className="border-t border-black/10 px-2 py-1.5 space-y-1 max-h-[200px] overflow-y-auto">
-          {Array.from(groups.entries()).map(([pi, cages]) => {
-            const isExpanded = expandedGroups.has(pi);
-            return (
-              <div key={pi} className="rounded border border-black/10 bg-white/70">
-                {/* PI row */}
-                <div className="flex items-center justify-between px-2.5 py-1.5">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 text-xs font-medium text-[var(--app-color-text-primary)] hover:text-[var(--app-color-accent)] transition-colors text-left min-w-0 flex-1"
-                    onClick={() => toggleGroupDetail(pi)}
-                  >
-                    <ChevronRight className={`w-3 h-3 shrink-0 text-[var(--app-color-text-tertiary)] transition-transform ${isExpanded ? "rotate-90" : ""}`} />
-                    <span className="truncate">{pi}</span>
-                    <span className="shrink-0 text-[10px] text-[var(--app-color-text-tertiary)]">({cages.length} 笼位)</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors font-medium"
-                    onClick={() => onPickGroup(pi)}
-                  >
-                    选择
-                  </button>
-                </div>
-
-                {/* Expanded cage positions */}
-                {isExpanded && (
-                  <div className="border-t border-black/5 px-2.5 py-1.5 max-h-[150px] overflow-y-auto">
-                    <div className="grid grid-cols-1 gap-0.5">
-                      {cages.map((c, i) => (
-                        <div key={i} className="text-[10px] text-[var(--app-color-text-secondary)] flex items-center gap-1.5">
-                          <span className="font-mono font-semibold text-[var(--app-color-text-primary)]">{c.position}</span>
-                          <span className="text-[var(--app-color-text-tertiary)]">·</span>
-                          <span className="truncate">{[c.campusName, c.roomName, c.shelveName].filter(Boolean).join(" / ") || "-"}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* ================================================================== */
 /*  Component                                                           */
@@ -213,6 +123,8 @@ export function CageLinkageTab() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [manualStatusCode, setManualStatusCode] = useState<string>("HEALTH_ABNORMAL");
 
   // ── lock mode state ──
   const [lockMode, setLockMode] = useState<LockMode>("batch");
@@ -231,6 +143,10 @@ export function CageLinkageTab() {
   const [groupMembersLoading, setGroupMembersLoading] = useState(false);
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<string>>(new Set());
   const groupSearchTimer = useRef<number | null>(null);
+
+  // ── Special-status group picker modal ──
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [tempSelectedPairs, setTempSelectedPairs] = useState<Map<string, Set<string>>>(new Map());
 
   // ── queries ──
   const { data: rules = [], isLoading: rulesLoading } = useQuery({
@@ -337,6 +253,148 @@ export function CageLinkageTab() {
       if (add) next.add(userId); else next.delete(userId);
       return next;
     });
+  };
+
+  // ── Lock body scroll when picker is open ──
+  useEffect(() => {
+    if (pickerOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [pickerOpen]);
+
+  // ═══ Multi-group selection handler ═══
+
+  const confirmMultiGroupPick = async () => {
+    if (tempSelectedPairs.size === 0) return;
+    setPickerOpen(false);
+
+    // Collect all unique group names and status codes
+    const allGroupNames = new Set<string>();
+    const allStatusCodes = new Set(form.cageStatusCodes ?? []);
+    for (const [code, groups] of tempSelectedPairs) {
+      allStatusCodes.add(code);
+      for (const g of groups) allGroupNames.add(g);
+    }
+
+    // Update form with merged status codes and group whitelist
+    setForm({ ...form, cageStatusCodes: Array.from(allStatusCodes), cageGroupWhitelist: Array.from(allGroupNames) });
+
+    // Load all members from all groups
+    const groupArr = Array.from(allGroupNames);
+    if (groupArr.length === 0) return;
+
+    const label = groupArr.join("、");
+    setSelectedGroup(label);
+    setGroupMembersLoading(true);
+    try {
+      const allMembers: PersonnelRecordView[] = [];
+      const seen = new Set<string>();
+      for (const g of groupArr) {
+        const rows = await listViolationPersonnelByProjectGroup(g, 500);
+        const members = (Array.isArray(rows) ? rows : [])
+          .map((r) => normalizePersonnelRecord(r as unknown as Record<string, unknown>))
+          .filter((p): p is PersonnelRecordView => p != null && Boolean(p.userId) && !seen.has(p.userId));
+        for (const m of members) seen.add(m.userId);
+        allMembers.push(...members);
+      }
+      setGroupMembers(allMembers);
+      setBatchSelectedIds(new Set(allMembers.map((m) => m.userId)));
+    } catch {
+      toast.error("加载课题组成员失败");
+    } finally {
+      setGroupMembersLoading(false);
+    }
+  };
+
+  // ═══ Manual violation submission ═══
+
+  const handleSubmitViolation = async () => {
+    if (lockMode === "single" && !picked) { toast.error("请先选择人员"); return; }
+    if (lockMode === "batch") {
+      if (!selectedGroup) { toast.error("请先选择课题组"); return; }
+      if (batchSelectedIds.size === 0) { toast.error("请至少勾选一名课题组成员"); return; }
+    }
+
+    setSubmitting(true);
+    try {
+      let urls: string[] = form.cageImageUrls ?? [];
+      if (imageFiles.length > 0) {
+        const uploaded: string[] = [];
+        for (const f of imageFiles) {
+          try { const r = await uploadSingleImage(f); if (r?.publicUrl) uploaded.push(r.publicUrl); } catch {}
+        }
+        urls = [...urls, ...uploaded];
+      }
+
+      // Create parent cage status violation record first
+      const parent = await createCageStatusViolation({
+        ruleId: editingId ?? null,
+        statusCode: manualStatusCode,
+        projectGroupName: lockMode === "batch" ? selectedGroup ?? undefined : undefined,
+      });
+
+      const basePayload = {
+        violationText: form.violationTextTpl ?? "",
+        imageUrls: urls,
+        forbidEnter: form.forbidEnter === 1,
+        maxEnterSuccess: null as number | null,
+        showNoticeEveryScan: form.showNoticeEveryScan === 1,
+        expireAfterDays: form.expireAfterDays ?? null,
+        interactiveChallenge: form.interactiveChallenge || undefined,
+        interactiveUnlockOnVerify: form.interactiveUnlockOnVerify === 1,
+        ruleId: editingId ?? undefined,
+        cageViolationId: parent.id,
+      };
+
+      if (lockMode === "single" && picked) {
+        await createStudentViolation({ ...basePayload, targetUserId: picked.userId });
+        toast.success(`已为 ${picked.name} 提交违规记录（${manualStatusCode}）`);
+      } else if (lockMode === "batch") {
+        // Create individually to attach cageViolationId
+        let created = 0; let failed = 0;
+        for (const uid of batchSelectedIds) {
+          try {
+            await createStudentViolation({ ...basePayload, targetUserId: uid });
+            created++;
+          } catch { failed++; }
+        }
+        if (failed > 0) {
+          toast.error(`已创建 ${created} 条，${failed} 人失败`);
+        } else {
+          toast.success(`已为 ${created} 人提交违规记录（${manualStatusCode}）`);
+        }
+      }
+
+      // Also save the rule
+      await handleSaveSilent();
+
+      qc.invalidateQueries({ queryKey: ["studentViolations"] });
+      qc.invalidateQueries({ queryKey: ["cage-status-violations"] });
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e.message || "提交失败");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveSilent = async () => {
+    let urls: string[] = form.cageImageUrls ?? [];
+    if (imageFiles.length > 0) {
+      const uploaded: string[] = [];
+      for (const f of imageFiles) {
+        try { const r = await uploadSingleImage(f); if (r?.publicUrl) uploaded.push(r.publicUrl); } catch {}
+      }
+      urls = [...urls, ...uploaded];
+    }
+    const cageGroupWhitelist = lockMode === "batch" && selectedGroup ? [selectedGroup] : [];
+    const payload: ViolationRule = { ...form, cageImageUrls: urls, cageGroupWhitelist };
+    if (editingId) {
+      await updateViolationRule(editingId, payload);
+    } else {
+      await createViolationRule(payload);
+    }
   };
 
   // ═══ Save handler ═══
@@ -449,28 +507,15 @@ export function CageLinkageTab() {
 
   return (
     <div className="space-y-6">
-      {/* ═══ 规则配置表单（内联） ═══ */}
+      {/* ═══ Card 1: 规则配置（仅监控逻辑，不涉及人） ═══ */}
       <AdminFormCard
-        title={isEditing ? `✋ 编辑规则 · ${form.ruleName || "未命名"}` : "✋ 新建笼架联动规则"}
-        description="单人锁定或按课题组批量配置触发规则；提交后扫码侧按每人最新 ACTIVE 展示。"
+        title={isEditing ? `⚙️ 编辑规则 · ${form.ruleName || "未命名"}` : "⚙️ 笼架联动规则配置"}
+        description="配置触发条件与违规模板；不选择具体人员。人员锁定请在下方「手动提交违规」区域操作。"
       >
         <div className="admin-violation-form-body">
 
-          {/* ═══ 锁定方式 ═══ */}
-          <div className="admin-form-field">
-            <label className="admin-form-field-label">锁定方式</label>
-            <div className="mt-1.5">
-              <AdminSegmentedControl
-                options={LOCK_MODE_OPTIONS}
-                value={lockMode}
-                onChange={switchLockMode}
-                aria-label="违规对象锁定方式"
-              />
-            </div>
-          </div>
-
-          {/* ═══ 单人锁定 ═══ */}
-          {lockMode === "single" && (
+          {/* lock-picker moved to Card 2 */}
+          {false && lockMode === "single" && (
             <div className="relative space-y-3">
               <div>
                 <label className="text-xs font-medium text-[var(--twin-body)]">检索人员</label>
@@ -536,8 +581,8 @@ export function CageLinkageTab() {
             </div>
           )}
 
-          {/* ═══ 课题组批量 ═══ */}
-          {lockMode === "batch" && (
+          {/* batch-lock moved to Card 2 */}
+          {false && lockMode === "batch" && (
             <div className="relative space-y-3">
               <div>
                 <label className="text-xs font-medium text-[var(--twin-body)]">检索课题组</label>
@@ -563,34 +608,45 @@ export function CageLinkageTab() {
                 />
               </div>
 
-              {/* ═══ 特殊状态快捷选择（按状态分类，与监控状态联动） ═══ */}
+              {/* ═══ 特殊状态快捷选择按钮 ═══ */}
               {!selectedGroup && specialStatus && (specialStatus.groups ?? []).length > 0 && (
-                <div className="rounded-twin-lg border border-amber-200/80 bg-amber-50/60 p-3">
-                  <p className="text-[11px] font-semibold text-amber-800 mb-2">
-                    特殊状态笼位 · 课题组快捷选择（勾选上方监控状态后可联动筛选）
-                  </p>
-                  <div className="max-h-[280px] overflow-y-auto space-y-2">
-                    {Array.from(specialStatusByCode.entries())
-                      .filter(([code]) => selectedStatusCodes.length === 0 || selectedStatusCodes.includes(code))
-                      .map(([code, info]) => {
-                        const totalCages = Array.from(info.groups.values()).reduce((sum, cages) => sum + cages.length, 0);
-                        return (
-                          <StatusGroupAccordion
-                            key={code}
-                            code={code}
-                            label={info.label}
-                            groups={info.groups}
-                            totalCages={totalCages}
-                            onPickGroup={pickGroup}
-                          />
-                        );
-                      })}
-                  </div>
+                <div>
+                  <AdminButton
+                    type="button"
+                    tone="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setTempSelectedPairs(new Map());
+                      setPickerOpen(true);
+                    }}
+                  >
+                    从特殊状态选择课题组（可多选）
+                  </AdminButton>
                   {selectedStatusCodes.length > 0 && (
-                    <p className="text-[10px] text-amber-600 mt-2">
-                      已按上方勾选的 {selectedStatusCodes.length} 种状态类型筛选
-                    </p>
+                    <span className="ml-2 text-[10px] text-[var(--app-color-text-tertiary)]">
+                      已按 {selectedStatusCodes.length} 种状态筛选
+                    </span>
                   )}
+                </div>
+              )}
+
+              {/* ═══ 已选中的特殊状态→课题组对 ═══ */}
+              {selectedGroup && (form.cageGroupWhitelist ?? []).length > 0 && (form.cageStatusCodes ?? []).length > 0 && (
+                <div className="rounded-twin-lg border border-amber-200/80 bg-amber-50/60 p-3">
+                  <p className="text-[11px] font-semibold text-amber-800 mb-2">已锁定的特殊状态与课题组</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(form.cageStatusCodes ?? []).map((sc) => {
+                      const info = specialStatusByCode.get(sc);
+                      const label = info?.label ?? sc;
+                      return (form.cageGroupWhitelist ?? []).map((g) => (
+                        <span key={`${sc}-${g}`} className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-amber-300 bg-white text-amber-900">
+                          <span className="font-semibold">{label}</span>
+                          <span className="text-amber-400">→</span>
+                          <span>{g}</span>
+                        </span>
+                      ));
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -818,6 +874,184 @@ export function CageLinkageTab() {
         </div>
       </AdminFormCard>
 
+      {/* ═══ Card 2: 手动提交违规 ═══ */}
+      <AdminFormCard
+        title="✋ 手动提交违规"
+        description="独立配置违规记录并立即提交；选择人员或课题组后，违规即时生效。与上方规则配置独立运作。"
+      >
+        <div className="admin-violation-form-body">
+
+          {/* ── 锁定方式 ── */}
+          <div className="admin-form-field">
+            <label className="admin-form-field-label">锁定方式</label>
+            <div className="mt-1.5">
+              <AdminSegmentedControl options={LOCK_MODE_OPTIONS} value={lockMode} onChange={switchLockMode} aria-label="违规对象锁定方式" />
+            </div>
+          </div>
+
+          {/* ── 笼位状态类型 ── */}
+          <div className="admin-form-field">
+            <label className={labelClass}>笼位状态类型</label>
+            <select className={inputClass} value={manualStatusCode} onChange={(e) => setManualStatusCode(e.target.value)}>
+              {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </div>
+
+          {/* ── 单人锁定 ── */}
+          {lockMode === "single" && (
+            <div className="relative space-y-3">
+              <div>
+                <label className="text-xs font-medium text-[var(--twin-body)]">检索人员</label>
+                <input type="text" disabled={Boolean(picked)} className={cn(inputBase, "mt-1.5 disabled:bg-[var(--twin-canvas-soft)] disabled:text-[var(--twin-mute)]")}
+                       placeholder="输入姓名或工号…" value={personKeyword}
+                       onKeyDown={(e) => { if (e.key === "Enter") handleSearchPersonnel(personKeyword); }}
+                       onChange={(e) => { const v = e.target.value; setPersonKeyword(v); if (personSearchTimer.current) window.clearTimeout(personSearchTimer.current); personSearchTimer.current = window.setTimeout(() => { handleSearchPersonnel(v); }, 250); }} />
+              </div>
+              {searchUserResult.length > 0 && !picked && (
+                <div className="absolute left-0 right-0 top-[5.5rem] z-20 max-h-[220px] overflow-y-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 shadow-twin-level-3" role="listbox">
+                  {searchUserResult.map((rp) => {
+                    const r = rp as Record<string,unknown>; const id = String(r.user_id ?? r.userId ?? "").trim(); const nm = String(r.name ?? "").trim() || id;
+                    return <button key={id} type="button" className={adminPickableRowClass} onClick={() => pickPerson(rp)}><User className="h-4 w-4 text-[var(--twin-mute)]" /><span className="text-sm font-semibold">{nm}</span><span className="font-mono text-[10px] text-[var(--twin-mute)]">{id}</span></button>;
+                  })}
+                </div>
+              )}
+              {picked && (
+                <div className="flex items-center gap-3 rounded-twin-xl border border-indigo-200/80 bg-indigo-50/80 p-3">
+                  <Check className="h-4 w-4 text-indigo-600" />
+                  <div className="flex-1"><div className="text-xs text-indigo-700">已锁定</div><div className="text-sm font-semibold">{picked.name} <span className="font-mono text-xs font-normal text-indigo-600">({picked.userId})</span></div></div>
+                  <AdminButton size="sm" onClick={() => { setPicked(null); setPersonKeyword(""); }}>更换</AdminButton>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── 课题组批量 ── */}
+          {lockMode === "batch" && (
+            <div className="relative space-y-3">
+              <div>
+                <label className="text-xs font-medium text-[var(--twin-body)]">检索课题组</label>
+                <input type="text" disabled={Boolean(selectedGroup)} className={cn(inputBase, "mt-1.5 disabled:bg-[var(--twin-canvas-soft)]")}
+                       placeholder="输入课题组名称…" value={groupKeyword}
+                       onKeyDown={(e) => { if (e.key === "Enter") handleSearchGroups(groupKeyword); }}
+                       onChange={(e) => { const v = e.target.value; setGroupKeyword(v); if (selectedGroup && v !== selectedGroup) { setSelectedGroup(null); setGroupMembers([]); setBatchSelectedIds(new Set()); } if (groupSearchTimer.current) window.clearTimeout(groupSearchTimer.current); groupSearchTimer.current = window.setTimeout(() => { handleSearchGroups(v); }, 250); }} />
+              </div>
+
+              {/* 特殊状态快捷选择按钮 */}
+              {!selectedGroup && specialStatus && (specialStatus.groups ?? []).length > 0 && (
+                <div>
+                  <AdminButton type="button" tone="secondary" size="sm" onClick={() => { setTempSelectedPairs(new Map()); setPickerOpen(true); }}>
+                    从特殊状态选择课题组（可多选）
+                  </AdminButton>
+                </div>
+              )}
+
+              {/* 已选中的特殊状态→课题组对 */}
+              {selectedGroup && (form.cageGroupWhitelist ?? []).length > 0 && (form.cageStatusCodes ?? []).length > 0 && (
+                <div className="rounded-lg border border-amber-200/80 bg-amber-50/60 p-2">
+                  <div className="flex flex-wrap gap-1">
+                    {(form.cageStatusCodes ?? []).map((sc) => {
+                      const info = specialStatusByCode.get(sc);
+                      return (form.cageGroupWhitelist ?? []).map((g) => (
+                        <span key={`${sc}-${g}`} className="text-[11px] px-1.5 py-0.5 rounded border border-amber-300 bg-white text-amber-900">
+                          {info?.label ?? sc} → {g}
+                        </span>
+                      ));
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {groupSuggestions.length > 0 && !selectedGroup && (
+                <div className="absolute left-0 right-0 top-[5.5rem] z-20 max-h-[200px] overflow-y-auto rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-1.5 shadow-twin-level-3" role="listbox">
+                  {groupSuggestions.map((g) => <button key={g} type="button" className={cn(adminPickableRowClass, "px-3 py-2 text-sm font-medium")} onClick={() => pickGroup(g)}>{g}</button>)}
+                </div>
+              )}
+              {selectedGroup && (
+                <div className="flex items-center gap-3 rounded-twin-xl border border-indigo-200/80 bg-indigo-50/80 p-3">
+                  <div className="flex-1"><div className="text-xs text-indigo-700">已选课题组</div><div className="text-sm font-semibold">{selectedGroup}</div><div className="text-xs text-indigo-600">{groupMembersLoading ? "加载中…" : `共 ${groupMembers.length} 人，已勾选 ${batchSelectedIds.size} 人`}</div></div>
+                  <AdminButton size="sm" onClick={() => { setSelectedGroup(null); setGroupMembers([]); setBatchSelectedIds(new Set()); }}>更换</AdminButton>
+                </div>
+              )}
+              {selectedGroup && !groupMembersLoading && groupMembers.length > 0 && (
+                <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] p-2">
+                  <div className="flex justify-between mb-2 px-1">
+                    <span className="text-xs font-medium">课题组成员</span>
+                    <div className="flex gap-2">
+                      <AdminButton size="sm" onClick={() => setBatchSelectedIds(new Set(groupMembers.map(m => m.userId)))}>全选</AdminButton>
+                      <AdminButton size="sm" onClick={() => setBatchSelectedIds(new Set())}>取消全选</AdminButton>
+                    </div>
+                  </div>
+                  <div className="max-h-[220px] space-y-1 overflow-y-auto">
+                    {groupMembers.map(m => {
+                      const checked = batchSelectedIds.has(m.userId);
+                      return <label key={m.userId} className={cn("flex cursor-pointer items-center gap-2 rounded-lg border px-2 py-1.5", checked ? "border-indigo-200 bg-white" : "border-transparent hover:bg-white")}><AdminSwitchScaled size="sm" checked={checked} onChange={(v) => toggleBatchMember(m.userId, v)} /><span className="text-sm">{m.name}</span><span className="font-mono text-[10px] text-[var(--twin-mute)]">{m.userId}</span></label>;
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── 关联规则（可选） ── */}
+          <div className="admin-form-field">
+            <label className={labelClass}>关联规则（可选，选择后自动填充违规模板）</label>
+            <select className={inputClass} value={editingId ?? ""} onChange={(e) => { const id = Number(e.target.value); if (id) { const r = cageRules.find(x => x.id === id); if (r) { setEditingId(r.id ?? null); setForm({ ...form, violationTextTpl: r.violationTextTpl ?? form.violationTextTpl, cageImageUrls: r.cageImageUrls ?? form.cageImageUrls, forbidEnter: r.forbidEnter ?? form.forbidEnter, showNoticeEveryScan: r.showNoticeEveryScan ?? form.showNoticeEveryScan, interactiveChallenge: r.interactiveChallenge ?? form.interactiveChallenge, interactiveUnlockOnVerify: r.interactiveUnlockOnVerify ?? form.interactiveUnlockOnVerify }); } } else { setEditingId(null); } }}>
+              <option value="">不关联规则</option>
+              {cageRules.map(r => <option key={r.id} value={r.id}>{r.ruleName}</option>)}
+            </select>
+          </div>
+
+          {/* ── 违规文案 ── */}
+          <div className="admin-form-field">
+            <span className={labelClass}>违规文案</span>
+            <div className="mt-1.5"><RichTextEditor value={form.violationTextTpl ?? ""} onChange={(v) => setForm({ ...form, violationTextTpl: v })} /></div>
+          </div>
+
+          {/* ── 图片 ── */}
+          <div className="admin-form-field">
+            <span className={labelClass}>违规图片</span>
+            <div className="mt-1.5 flex items-center gap-2">
+              <AdminFilePickButton multiple disabled={uploading} onFiles={(files) => { if (files?.length) setImageFiles(Array.from(files)); }} />
+            </div>
+          </div>
+
+          {/* ── 快捷开关 ── */}
+          <div className="flex flex-wrap gap-4">
+            <div className="flex items-center gap-2 text-sm"><AdminSwitchScaled size="sm" checked={form.forbidEnter === 1} onChange={(v) => setForm({ ...form, forbidEnter: v ? 1 : 0 })} /><span>立即禁止扫码进入</span></div>
+            <div className="flex items-center gap-2 text-sm"><AdminSwitchScaled size="sm" checked={form.showNoticeEveryScan === 1} onChange={(v) => setForm({ ...form, showNoticeEveryScan: v ? 1 : 0 })} /><span>每次扫码提示</span></div>
+          </div>
+
+          {/* ── 交互式确认 ── */}
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="admin-form-field flex-1 min-w-[200px]">
+              <span className={labelClass}>交互式确认短语（留空=关闭）</span>
+              <input className={inputClass} value={form.interactiveChallenge ?? ""} onChange={(e) => setForm({ ...form, interactiveChallenge: e.target.value || undefined })} placeholder="如：一人一卡,严禁尾随" />
+            </div>
+            <div className="flex items-center gap-2 text-sm pb-2"><AdminSwitchScaled size="sm" checked={form.interactiveUnlockOnVerify === 1} onChange={(v) => setForm({ ...form, interactiveUnlockOnVerify: v ? 1 : 0 })} /><span>验证后自动解除禁入</span></div>
+          </div>
+
+          {/* ── 其他 ── */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="admin-form-field">
+              <span className={labelClass}>进入次数上限（空=不限）</span>
+              <input className={inputClass} type="number" min={0} value={form.maxEnterSuccess ?? ""} onChange={(e) => setForm({ ...form, maxEnterSuccess: e.target.value ? Math.max(0, Number(e.target.value)) : null })} placeholder="不限制" />
+            </div>
+            <div className="admin-form-field">
+              <span className={labelClass}>封禁天数（空=不限制）</span>
+              <input className={inputClass} type="number" min={1} value={form.expireAfterDays ?? ""} onChange={(e) => setForm({ ...form, expireAfterDays: e.target.value ? Number(e.target.value) : null })} placeholder="永久" />
+            </div>
+          </div>
+
+          {/* ── 提交按钮 ── */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-[var(--app-color-border-default)]">
+            <AdminButton tone="destructive" onClick={handleSubmitViolation} disabled={submitting || uploading} loading={submitting}>
+              {submitting ? "提交中..." : "立即提交违规"}
+            </AdminButton>
+          </div>
+
+        </div>
+      </AdminFormCard>
+
       {/* ═══ 已有规则列表 ═══ */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -915,6 +1149,85 @@ export function CageLinkageTab() {
           <CageLinkageRecordPanel key={`detail-${rec.id}`} parentId={rec.id} onClose={() => setExpandedId(null)} />
         ))}
       </div>
+
+      {/* ═══ 特殊状态课题组多选弹窗（Portal 到 body，视窗居中） ═══ */}
+      {pickerOpen && createPortal(
+        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center" onWheel={(e) => e.preventDefault()} onClick={() => setPickerOpen(false)}>
+          <div className="w-full max-w-lg max-h-[85vh] flex flex-col rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] pointer-events-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()} onWheel={(e: React.WheelEvent) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between shrink-0 px-5 pt-5 pb-3 border-b border-[var(--app-color-border-default)]">
+              <h3 className="text-base font-bold text-[var(--app-color-text-primary)]">
+                从特殊状态选择课题组
+              </h3>
+              <button type="button" onClick={() => setPickerOpen(false)}
+                      className="rounded-full p-1.5 text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)]" aria-label="关闭">✕</button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-5 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden space-y-3">
+              <p className="text-[11px] text-[var(--app-color-text-tertiary)]">
+                勾选课题组后点击确认，选中的状态类型将自动加入监控状态。
+              </p>
+              {Array.from(specialStatusByCode.entries())
+                .filter(([code]) => selectedStatusCodes.length === 0 || selectedStatusCodes.includes(code))
+                .map(([code, info]) => {
+                  const totalCages = Array.from(info.groups.values()).reduce((sum, cages) => sum + cages.length, 0);
+                  const borderCls = STATUS_BG[code] ?? "border-l-neutral-400";
+                  const pairsForCode = tempSelectedPairs.get(code) ?? new Set<string>();
+                  const selectedCount = pairsForCode.size;
+                  return (
+                    <div key={code} className={`rounded-md border-l-4 ${borderCls} border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] overflow-hidden`}>
+                      <div className="flex items-center justify-between px-3 py-2 bg-black/[0.02]">
+                        <span className="text-xs font-bold text-[var(--app-color-text-primary)]">{info.label}</span>
+                        <span className="text-[10px] text-[var(--app-color-text-tertiary)]">
+                          {info.groups.size} 个课题组 · {totalCages} 笼位{selectedCount > 0 ? ` · 已选 ${selectedCount}` : ""}
+                        </span>
+                      </div>
+                      <div className="px-2 py-1.5 space-y-1">
+                        {Array.from(info.groups.entries()).map(([pi, cages]) => {
+                          const isSelected = pairsForCode.has(pi);
+                          return (
+                            <label key={pi} className={`flex items-center gap-2 px-2.5 py-1.5 rounded cursor-pointer transition-colors ${isSelected ? "bg-amber-50" : "hover:bg-[var(--app-color-surface-hover)]"}`}>
+                              <input type="checkbox" checked={isSelected}
+                                     onChange={() => {
+                                       setTempSelectedPairs((prev) => {
+                                         const next = new Map(prev);
+                                         const set = new Set(next.get(code) ?? []);
+                                         if (set.has(pi)) set.delete(pi); else set.add(pi);
+                                         if (set.size === 0) next.delete(code); else next.set(code, set);
+                                         return next;
+                                       });
+                                     }}
+                                     className="shrink-0 rounded accent-amber-500" />
+                              <span className="flex-1 text-xs font-medium text-[var(--app-color-text-primary)] truncate">{pi}</span>
+                              <span className="shrink-0 text-[10px] text-[var(--app-color-text-tertiary)]">{cages.length} 笼位</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              {Array.from(specialStatusByCode.entries()).filter(([code]) => selectedStatusCodes.length === 0 || selectedStatusCodes.includes(code)).length === 0 && (
+                <p className="text-sm text-[var(--app-color-text-tertiary)] text-center py-8">请先在上方勾选监控状态类型</p>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between shrink-0 px-5 py-3 border-t border-[var(--app-color-border-default)]">
+              <span className="text-xs text-[var(--app-color-text-secondary)]">
+                已选 <strong className="text-[var(--app-color-accent)]">{Array.from(tempSelectedPairs.values()).reduce((sum, s) => sum + s.size, 0)}</strong> 个课题组
+              </span>
+              <div className="flex gap-2">
+                <AdminButton tone="secondary" size="sm" onClick={() => setPickerOpen(false)}>取消</AdminButton>
+                <AdminButton tone="primary" size="sm" disabled={tempSelectedPairs.size === 0}
+                             onClick={confirmMultiGroupPick}>确认选择</AdminButton>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
