@@ -143,11 +143,25 @@ function GlobalSocketListener() {
             }
         });
 
+        // ── 每次重连前预刷新 token ──
+        // 断线超过 token 有效期后，重连时携带过期 token 会被服务端拒绝。
+        // 此处预刷新确保每次重连都携带有效 token。
+        socket.on("reconnect_attempt", (attempt) => {
+            console.log(`[数字孪生基站] 第 ${attempt} 次重连尝试…`);
+            const currentToken = authStorage.getToken();
+            if (currentToken) {
+                (socket as any).io.opts.query = {
+                    token: currentToken,
+                    v: APP_BUILD_ID,
+                };
+            }
+        });
+
         socket.on("connect_error", (err) => {
             const msg = (err?.message ?? '').toLowerCase();
             // 🔑 区分两类错误：
             //   ① 网络/服务器不可达 → 不干预，交给 Socket.IO 内置无限重连
-            //   ② 认证失败（token 过期被服务端拒绝）→ 刷新 token 后重建
+            //   ② 认证失败（token 过期被服务端拒绝）→ 静默刷新 token，不中断重连循环
             const isAuthError =
                 msg.includes('not authorized') ||
                 msg.includes('unauthorized') ||
@@ -158,38 +172,41 @@ function GlobalSocketListener() {
                 return; // ← 不 disconnect、不刷新 token，让 Socket.IO 自己重试
             }
 
-            // 认证错误：服务端明确拒绝了 token
-            console.warn("[数字孪生基站] 认证失败:", err.message);
+            // 认证错误：token 可能已过期，尝试静默刷新
+            console.warn("[数字孪生基站] 认证失败（token 可能过期）:", err.message);
             if (recoveryInProgressRef.current) return;
-            if (recoveryAttemptRef.current >= MAX_RECOVERY_ATTEMPTS) {
+            recoveryInProgressRef.current = true;
+            recoveryAttemptRef.current += 1;
+
+            // 安全阀：连续多次刷新均失败 → 强制登出
+            if (recoveryAttemptRef.current > MAX_RECOVERY_ATTEMPTS) {
                 console.error("[数字孪生基站] Token 恢复已达上限，触发强制登出");
                 socket.disconnect();
                 window.dispatchEvent(new Event("AUTH_FORCE_LOGOUT"));
+                recoveryInProgressRef.current = false;
                 return;
             }
-            recoveryInProgressRef.current = true;
-            recoveryAttemptRef.current += 1;
-            socket.disconnect();
-            // 尝试刷新 token，成功后触发 effect 重建 socket
+
+            // ⚠️ 不调用 socket.disconnect() —— 之前这里杀死重连循环，
+            // 导致「断线超过几分钟就无法再连上」。
             doRefresh().then((newToken) => {
                 if (!socketRef.current) return; // 组件已卸载
                 if (newToken) {
-                    console.log("[数字孪生基站] Token 已刷新，用新 token 重建连接");
-                    setSocketEpoch((e) => e + 1);
+                    console.log("[数字孪生基站] Token 已刷新，更新重连参数");
+                    recoveryAttemptRef.current = 0;
+                    (socket as any).io.opts.query = {
+                        token: newToken,
+                        v: APP_BUILD_ID,
+                    };
+                    socket.connect();
                 } else {
-                    console.warn("[数字孪生基站] Token 刷新失败，触发强制登出");
-                    window.dispatchEvent(new Event("AUTH_FORCE_LOGOUT"));
+                    console.warn("[数字孪生基站] Token 刷新返回空，等待下次重连");
                 }
             }).catch(() => {
-                console.warn("[数字孪生基站] Token 刷新异常，触发强制登出");
-                window.dispatchEvent(new Event("AUTH_FORCE_LOGOUT"));
+                console.warn("[数字孪生基站] Token 刷新网络异常，等待 Socket.IO 下次重连");
             }).finally(() => {
                 recoveryInProgressRef.current = false;
             });
-        });
-
-        socket.on("reconnect_attempt", (attempt) => {
-            console.log(`[数字孪生基站] 第 ${attempt} 次重连尝试…`);
         });
 
         // 📡 监听 1：实时进出人员流水

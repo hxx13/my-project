@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import { ScanAssistantDock } from "@/components/scanner/scan-assistant/ScanAssistantDock";
@@ -51,6 +51,50 @@ export function ScanAssistantCarrier({ orbSize = 0.76 }: ScanAssistantCarrierPro
   });
   const bubbleText = reducedMotion || isStreaming ? fullText : displayed;
   const speaking = isStreaming || isTyping;
+
+  /* 自动播放服务端语音：消息展示完毕后播放；消息消失时停止 */
+  const speechMessageId = bubbleMessage?.speechMessageId;
+  const speechPlayedRef = useRef<number | null>(null);
+  const speechAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [scanAutoPlay, setScanAutoPlay] = useState(true);
+
+  // 读取中枢开关
+  useEffect(() => {
+    fetch("/api/v1/twin/speech/scan-auto-play")
+      .then((r) => r.json())
+      .then((d) => setScanAutoPlay(d.scanAutoPlay !== false))
+      .catch(() => setScanAutoPlay(true));
+  }, []);
+
+  // 停止语音
+  const stopSpeechAudio = useCallback(() => {
+    if (speechAudioRef.current) {
+      speechAudioRef.current.pause();
+      speechAudioRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!scanAutoPlay) return;
+    // 文本加载完毕（流式结束）即开始播放，不等打字机动画
+    if (!isStreaming && speechMessageId && speechMessageId !== speechPlayedRef.current && !reducedMotion) {
+      speechPlayedRef.current = speechMessageId;
+      stopSpeechAudio();
+      const audio = new Audio(`/api/v1/twin/speech/file/${speechMessageId}`);
+      audio.playbackRate = 1.25;
+      speechAudioRef.current = audio;
+      audio.play().catch(() => {});
+    }
+    return () => { stopSpeechAudio(); };
+  }, [isStreaming, speechMessageId, reducedMotion, scanAutoPlay, stopSpeechAudio]);
+
+  // 气泡收起/消失时停语音
+  useEffect(() => {
+    if (bubbleCollapsed || !activeMessage) {
+      stopSpeechAudio();
+      speechPlayedRef.current = null;
+    }
+  }, [bubbleCollapsed, activeMessage, stopSpeechAudio]);
 
   const handleOrbClick = useCallback(() => {
     const personKey =

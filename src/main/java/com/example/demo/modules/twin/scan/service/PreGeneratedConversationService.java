@@ -316,24 +316,28 @@ public class PreGeneratedConversationService {
         Map<String, Object> preGen = getUserConversation(userId);
         String preGenText = extractLatestAssistantText(preGen);
         if (StringUtils.hasText(preGenText)) {
+            Long msgId = extractLatestAssistantId(preGen);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("hasWelcome", true);
             out.put("text", preGenText);
             out.put("source", "per_user");
             out.put("sessionId", preGen.get("sessionId"));
             out.put("updateTime", preGen.get("updateTime"));
+            if (msgId != null) out.put("lastAssistantMessageId", msgId);
             return out;
         }
 
         Map<String, Object> live = getLatestLiveConversation(userId);
         String liveText = extractLatestAssistantText(live);
         if (StringUtils.hasText(liveText)) {
+            Long msgId = extractLatestAssistantId(live);
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("hasWelcome", true);
             out.put("text", liveText);
             out.put("source", "scan_live");
             out.put("sessionId", live.get("sessionId"));
             out.put("updateTime", live.get("updateTime"));
+            if (msgId != null) out.put("lastAssistantMessageId", msgId);
             return out;
         }
 
@@ -392,6 +396,28 @@ public class PreGeneratedConversationService {
     }
 
     @SuppressWarnings("unchecked")
+    private Long extractLatestAssistantId(Map<String, Object> conv) {
+        if (conv == null) return null;
+        Object raw = conv.get("messages");
+        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
+        for (int i = list.size() - 1; i >= 0; i--) {
+            Object item = list.get(i);
+            if (item instanceof LlmConversationMessage msg
+                    && "assistant".equals(msg.getRole())
+                    && StringUtils.hasText(msg.getContent())) {
+                return msg.getId();
+            }
+            if (item instanceof Map<?, ?> map) {
+                Object role = map.get("role");
+                Object id = map.get("id");
+                if ("assistant".equals(role) && id instanceof Number) {
+                    return ((Number) id).longValue();
+                }
+            }
+        }
+        return null;
+    }
+
     private String extractLatestAssistantText(Map<String, Object> conv) {
         if (conv == null) return null;
         Object raw = conv.get("messages");

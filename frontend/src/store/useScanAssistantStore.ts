@@ -8,10 +8,10 @@ export type ScanAssistantMessage = {
   text: string;
   kind: ScanAssistantMessageKind;
   shownAt: number;
-  /** 识别到的人员标识；换人时触发气泡关闭再打开 */
   personKey?: string;
-  /** LLM 流式输出中：Carrier 直接展示全文，不做打字机重置 */
   isStreaming?: boolean;
+  /** 服务端音频文件对应的消息 ID（用于 /api/v1/twin/speech/file/{id}） */
+  speechMessageId?: number;
 };
 
 type ScanAssistantState = {
@@ -29,7 +29,7 @@ type ScanAssistantState = {
   /** 播报一条文案（如原红色 toast 内容） */
   speak: (text: string, kind?: ScanAssistantMessageKind, personKey?: string) => void;
   /** 开始 LLM 流式播报 */
-  beginStreamMessage: (kind: ScanAssistantMessageKind, personKey?: string) => void;
+  beginStreamMessage: (kind: ScanAssistantMessageKind, personKey?: string, speechMessageId?: number) => void;
   /** 追加流式增量 */
   appendStreamDelta: (delta: string) => void;
   /** 替换流式全文（存档预填后收到 LLM 首包时） */
@@ -63,6 +63,7 @@ function pushMessage(
   text: string,
   kind: ScanAssistantMessageKind,
   personKey?: string,
+  speechMessageId?: number,
 ) {
   const trimmed = text.trim();
   if (!trimmed) return;
@@ -74,6 +75,7 @@ function pushMessage(
     shownAt: Date.now(),
     personKey: personKey?.trim() || undefined,
     isStreaming: false,
+    speechMessageId,
   };
 
   set({ activeMessage: msg, dockVisible: true, bubbleCollapsed: false });
@@ -93,7 +95,7 @@ export const useScanAssistantStore = create<ScanAssistantState>((set, get) => ({
     pushMessage(set, text, kind, personKey);
   },
 
-  beginStreamMessage: (kind, personKey) => {
+  beginStreamMessage: (kind, personKey, speechMessageId) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     streamMessageId = id;
     set({
@@ -106,6 +108,7 @@ export const useScanAssistantStore = create<ScanAssistantState>((set, get) => ({
         shownAt: Date.now(),
         personKey: personKey?.trim() || undefined,
         isStreaming: true,
+        speechMessageId,
       },
     });
   },

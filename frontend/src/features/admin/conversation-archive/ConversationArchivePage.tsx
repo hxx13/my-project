@@ -17,6 +17,7 @@ import {
   Play,
   Sparkles,
   X,
+  Volume2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +38,8 @@ import {
 import { AdminButton } from "@/components/admin/AdminButton";
 import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { cn } from "@/lib/utils";
+import { useTtsAudio } from "@/hooks/useTtsAudio";
+import { useSpeechPregen } from "@/hooks/useSpeechPregen";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
 import {
   Dialog,
@@ -145,6 +148,55 @@ export default function ConversationArchivePage() {
     placeholderData: (prev) => prev ?? undefined,
   });
 
+  /* ---- 语音文件（服务端存盘）---- */
+  const speechPregen = useSpeechPregen();
+  const [pregenBusy, setPregenBusy] = useState(false);
+
+  // 页面挂载时从服务端同步已生成列表（后端重启/浏览器重启后仍可恢复）
+  useEffect(() => {
+    speechPregen.syncFromServer();
+  }, [speechPregen.syncFromServer]);
+
+  // 会话加载后自动检查所有助手消息的音频状态
+  // sessionStorage 持久化 readyIds，刷新页面不丢失
+  // 顺序检查避免大量并发请求触发 ERR_INSUFFICIENT_RESOURCES
+  // 已存在于 readyIds 的跳过（从 sessionStorage 恢复的）
+  useEffect(() => {
+    const msgs = conversation?.messages;
+    if (!msgs?.length) return;
+    const assistantIds = msgs
+      .filter((m) => m.role === "assistant" && m.content)
+      .map((m) => m.id);
+    if (!assistantIds.length) return;
+    // 跳过 sessionStorage 中已知的 ID，只检查新消息
+    const unknownIds = assistantIds.filter((id) => !speechPregen.isReady(id));
+    if (!unknownIds.length) return;
+    let cancelled = false;
+    (async () => {
+      for (const id of unknownIds) {
+        if (cancelled) break;
+        await speechPregen.checkStatus(id);
+      }
+    })();
+    return () => { cancelled = true; };
+    // checkStatus 是 useCallback 稳定引用；isReady 随 readyIds 变化是预期行为
+  }, [conversation?.messages, speechPregen.checkStatus]);
+
+  const handlePregenOne = useCallback(async () => {
+    if (!conversation?.messages) return;
+    const lastMsg = conversation.messages
+      .filter((m) => m.role === "assistant" && m.content)
+      .at(-1);
+    if (!lastMsg) {
+      toast.error("没有可生成的助手消息");
+      return;
+    }
+    setPregenBusy(true);
+    const ok = await speechPregen.generate(lastMsg.id, lastMsg.content);
+    setPregenBusy(false);
+    toast[ok ? "success" : "error"](ok ? "语音生成完成！" : "生成失败，请重试");
+  }, [conversation?.messages, speechPregen]);
+
   /* ---- auto-scroll to bottom on conversation load / message change ---- */
   useEffect(() => {
     messageListEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
@@ -211,18 +263,52 @@ export default function ConversationArchivePage() {
     finally { setAddSearching(false); }
   }, []);
 
-  /* ---- per-conversation generate ---- */
+  /* ---- per-conversation generate + auto speech ---- */
   const handleGenerate = useCallback(async (userId: string) => {
     setGeneratingId(userId);
     try {
       const view = await generateUserConversation(userId);
       qc.setQueryData([CONVERSATION_QUERY_KEY_PREFIX, userId], view);
       qc.invalidateQueries({ queryKey: USERS_QUERY_KEY });
-      toast.success("对话已生成");
+      toast.success("对话已生成，正在生成语音…");
+
+      // 自动为最新一条助手消息生成语音
+      const lastMsg = view?.messages
+        ?.filter((m: any) => m.role === "assistant" && m.content)
+        .at(-1) as any;
+      if (lastMsg) {
+        const ok = await speechPregen.generate(lastMsg.id, lastMsg.content);
+        if (ok) toast.success("语音生成完成！");
+      }
     } catch (e: any) {
       toast.error(e?.message || "生成失败");
     } finally { setGeneratingId(null); }
-  }, [qc]);
+  }, [qc, speechPregen]);
+
+  /* ---- 批量生成语音（最新未使用用户的对话）---- */
+  const [batchSpeechBusy, setBatchSpeechBusy] = useState(false);
+  const handleBatchSpeech = useCallback(async () => {
+    setBatchSpeechBusy(true);
+    const list = Array.isArray(users) ? users : [];
+    const targets = list.filter((u) => u.hasConversation && !u.consumed);
+    if (!targets.length) { toast("没有待生成语音的用户"); setBatchSpeechBusy(false); return; }
+
+    let ok = 0;
+    for (const u of targets) {
+      try {
+        const view = await fetchUserConversation(u.userId);
+        const lastMsg = view?.messages
+          ?.filter((m: any) => m.role === "assistant" && m.content)
+          .at(-1) as any;
+        if (lastMsg) {
+          const success = await speechPregen.generate(lastMsg.id, lastMsg.content);
+          if (success) ok++;
+        }
+      } catch { /* next */ }
+    }
+    toast.success(`语音生成完成: ${ok}/${targets.length}`);
+    setBatchSpeechBusy(false);
+  }, [users, speechPregen]);
 
   /* ---- batch generate (后台静默 SSE) ---- */
   const handleBatchGenerate = useCallback(async () => {
@@ -247,7 +333,33 @@ export default function ConversationArchivePage() {
       qc.invalidateQueries({ queryKey: USERS_QUERY_KEY });
       if (selectedUserId) qc.invalidateQueries({ queryKey: [CONVERSATION_QUERY_KEY_PREFIX, selectedUserId] });
     }
-  }, [ignoreUnused, qc, selectedUserId]);
+
+    // 批量生成对话后自动为所有用户生成语音
+    const updatedUsers = (qc.getQueryData(USERS_QUERY_KEY) as ArchiveUser[]) ?? users;
+    const speechTargets = (Array.isArray(updatedUsers) ? updatedUsers : []).filter(
+      (u) => u.hasConversation,
+    );
+    if (speechTargets.length) {
+      toast.loading(`正在生成语音… 0/${speechTargets.length}`);
+      let speechOk = 0;
+      for (const u of speechTargets) {
+        try {
+          const view = await fetchUserConversation(u.userId);
+          const lastMsg = view?.messages
+            ?.filter((m: any) => m.role === "assistant" && m.content)
+            .at(-1) as any;
+          if (lastMsg) {
+            const ok = await speechPregen.generate(lastMsg.id, lastMsg.content);
+            if (ok) speechOk++;
+          }
+        } catch { /* next */ }
+      }
+      toast.dismiss();
+      toast.success(`语音生成: ${speechOk}/${speechTargets.length}`);
+      // 刷新当前选中用户的对话以显示高音质图标
+      if (selectedUserId) qc.invalidateQueries({ queryKey: [CONVERSATION_QUERY_KEY_PREFIX, selectedUserId] });
+    }
+  }, [ignoreUnused, qc, selectedUserId, users, speechPregen]);
 
   /* ---- derived: selected user info ---- */
   const selectedUser = useMemo(
@@ -272,6 +384,10 @@ export default function ConversationArchivePage() {
           <AdminButton type="button" tone="primary" size="sm" loading={batchRunning} onClick={handleBatchGenerate}>
             <Play className="h-3.5 w-3.5" />
             手动运行
+          </AdminButton>
+          <AdminButton type="button" tone="secondary" size="sm" loading={batchSpeechBusy} onClick={handleBatchSpeech}>
+            <Volume2 className="h-3.5 w-3.5" />
+            生成全部语音
           </AdminButton>
         </div>
       </div>
@@ -474,7 +590,7 @@ export default function ConversationArchivePage() {
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-4">
                 <div className="mx-auto max-w-3xl space-y-4">
                   {conversation.messages.map((msg) => (
-                    <ChatBubble key={msg.id} message={msg} />
+                    <ChatBubble key={msg.id} message={msg} speechPregen={speechPregen} />
                   ))}
                   <div ref={messageListEndRef} />
                 </div>
@@ -496,6 +612,17 @@ export default function ConversationArchivePage() {
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   生成对话
+                </AdminButton>
+                <AdminButton
+                  type="button"
+                  tone="secondary"
+                  size="sm"
+                  loading={pregenBusy}
+                  disabled={!conversation?.messages?.length}
+                  onClick={handlePregenOne}
+                >
+                  <Volume2 className="h-3.5 w-3.5" />
+                  生成语音 ({speechPregen.cacheSize || 0})
                 </AdminButton>
                 <div className="flex-1" />
                 <AdminButton
@@ -736,12 +863,43 @@ function UserRow({
 
 function ChatBubble({
   message,
+  speechPregen,
 }: {
   message: { id: number; role: string; content: string; tokenCount: number; createTime: string };
+  speechPregen: ReturnType<typeof useSpeechPregen>;
 }) {
   const isSystem = message.role === "system";
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
+
+  const msgId = String(message.id);
+  const pregenReady = speechPregen.isReady(msgId);
+  const isPlaying = speechPregen.playingId === msgId;
+  const [browserSpeaking, setBrowserSpeaking] = useState(false);
+
+  const handleSpeak = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      // 正在播放 → 停止
+      if (isPlaying) { speechPregen.stop(); return; }
+      if (browserSpeaking) { speechSynthesis.cancel(); setBrowserSpeaking(false); return; }
+      // 预生成命中 → CosyVoice
+      if (pregenReady) { speechPregen.play(msgId); return; }
+      // 回退浏览器 TTS
+      if ("speechSynthesis" in window) {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(message.content);
+        u.lang = "zh-CN"; u.rate = 1.1;
+        u.onend = () => setBrowserSpeaking(false);
+        u.onerror = () => setBrowserSpeaking(false);
+        setBrowserSpeaking(true);
+        speechSynthesis.speak(u);
+      }
+    },
+    [pregenReady, isPlaying, browserSpeaking, msgId, message.content, speechPregen],
+  );
+
+  const isSpeaking = isPlaying || browserSpeaking;
 
   return (
     <div
@@ -782,9 +940,28 @@ function ChatBubble({
         >
           {roleLabel(message.role)}
           {isAssistant && message.content && (
-            <span className="ml-1.5 font-normal text-[var(--app-color-text-tertiary)]">
-              (deepseek-v4)
-            </span>
+            <>
+              <span className="ml-1.5 font-normal text-[var(--app-color-text-tertiary)]">
+                (deepseek-v4)
+              </span>
+              {/* 语音播报按钮 */}
+              <button
+                type="button"
+                className={cn(
+                  "ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors",
+                  isSpeaking
+                    ? "bg-[var(--app-color-accent)]/15 text-[var(--app-color-accent)]"
+                    : pregenReady
+                      ? "bg-[var(--app-color-feedback-success)]/12 text-[var(--app-color-feedback-success)] hover:bg-[var(--app-color-feedback-success)]/20"
+                      : "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-accent)]/10 hover:text-[var(--app-color-accent)]"
+                )}
+                onClick={handleSpeak}
+                title={pregenReady ? "CosyVoice 3 预生成语音" : "浏览器语音朗读"}
+              >
+                <Volume2 className={cn("h-3 w-3", isSpeaking && "animate-pulse")} />
+                <span>{isSpeaking ? "暂停" : pregenReady ? "高音质" : "朗读"}</span>
+              </button>
+            </>
           )}
         </div>
 

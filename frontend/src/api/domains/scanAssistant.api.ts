@@ -76,6 +76,8 @@ export type ScanAssistantArchiveWelcome = {
   text?: string;
   source?: "per_user" | "scan_live" | string;
   sessionId?: number;
+  /** 最新一条助手消息的 ID（用于服务端语音文件定位） */
+  lastAssistantMessageId?: number;
   updateTime?: string;
   /** 本次请求现场刚同步生成 */
   justGenerated?: boolean;

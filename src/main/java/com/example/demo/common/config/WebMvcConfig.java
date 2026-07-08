@@ -44,6 +44,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/upload/records/*/wechat-file-id",
                         "/api/upload/cloud-mappings",
                         "/api/upload/repair/**",
-                        "/api/v1/twin/dashboard/proxy/**");
+                        "/api/v1/twin/dashboard/proxy/**",
+                        "/api/v1/twin/speech/file/**",
+                        "/api/v1/twin/speech/scan-auto-play");
     }
 }

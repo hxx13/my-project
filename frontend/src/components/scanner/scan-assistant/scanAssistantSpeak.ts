@@ -210,6 +210,7 @@ export async function speakScanAssistantFromAnalyze(
   activeAbort = new AbortController();
   const signal = activeAbort.signal;
 
+  const speechMsgId = kind === "welcome" ? undefined : undefined; // 稍后从 archive 中获取
   store.beginStreamMessage(kind, personKey);
   let streamedText = "";
 
@@ -222,7 +223,17 @@ export async function speakScanAssistantFromAnalyze(
       if (archiveUsable) {
         streamedText = archivedText;
         store.setStreamText(archivedText);
-        store.finishStreamMessage(archivedText);
+        // 携带 messageId 以便自动播放服务端语音
+        const current = useScanAssistantStore.getState().activeMessage;
+        if (current && archive.lastAssistantMessageId) {
+          useScanAssistantStore.getState().finishStreamMessage(archivedText);
+          // finishStreamMessage 不保留 speechMessageId，需要重新设置
+          useScanAssistantStore.setState((s) => ({
+            activeMessage: s.activeMessage ? { ...s.activeMessage, speechMessageId: archive.lastAssistantMessageId } : null,
+          }));
+        } else {
+          store.finishStreamMessage(archivedText);
+        }
         void markScanAssistantConversationUsed(ctx, "auto");
         if (activeAbort?.signal === signal) {
           activeAbort = null;

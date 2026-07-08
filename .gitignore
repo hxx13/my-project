@@ -87,6 +87,15 @@ HELP.md
 # ===== MkDocs =====
 site/
 
+# ===== Speech / TTS audio & deployment =====
+data/speech/
+deploy/cosyvoice/
+*.mp3
+*.wav
+
+# ===== Local IDE settings =====
+.claude/settings.local.json
+
 # ===== Misc =====
 *.pdf
 *.zip

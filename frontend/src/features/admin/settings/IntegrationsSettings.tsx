@@ -11,10 +11,10 @@ import { CredentialsTestPanel } from "@/features/admin/settings/CredentialsTestP
 
 /**
  * IntegrationsSettings sub-page for AdminSettingsLayout.
- * Merges three config modules into one view:
- * 1. AI / LLM (DeepSeek 模型预设与连接)
+ * 1. AI / LLM
  * 2. External system credentials (Dahua + ARO)
- * 3. WinCC integration
+ * 3. CosyVoice 语音播报
+ * 4. WinCC integration
  */
 export default function IntegrationsSettings() {
   const [llmConfigs, setLlmConfigs] = useState<SystemConfigRecord[]>([]);
@@ -71,8 +71,8 @@ export default function IntegrationsSettings() {
       </AdminFormCard>
 
       <AdminFormCard
-        title="WinCC 集成"
-        description="WinCC 连接参数、调试开关等外部集成与运维配置。"
+        title="集成与语音播报"
+        description="WinCC 连接参数、扫码语音播报中枢开关等外部集成与运维配置。"
       >
         <CredentialsTestPanel
           moduleKey="integration"
