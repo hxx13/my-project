@@ -195,6 +195,44 @@ public class ScanDelayController {
         }
     }
 
+    @DeleteMapping("/request/{id}")
+    @Operation(summary = "教职工：删除延迟申请（软删除，标记 DELETED，后续判定自动排除）")
+    public Result<Void> deleteRequest(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable Long id) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        if (user == null || user.getRole() == RoleEnum.MEMBER) {
+            return Result.error("需要教职工权限");
+        }
+        try {
+            requestService.deleteRequest(id);
+            return Result.success(null);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @GetMapping("/request/my-active")
+    @Operation(summary = "扫码弹窗：查询我在某房间的活跃延迟申请状态")
+    public Result<Map<String, Object>> myActiveRequest(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam("roomId") String roomId,
+            @RequestParam(value = "subjectUserId", required = false) String subjectUserId) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        if (user == null) return Result.error("未登录");
+        // subjectUserId 优先（刷卡人可能不等于登录人），回退到登录用户 ID
+        String queryUserId = (subjectUserId != null && !subjectUserId.isBlank())
+                ? subjectUserId.trim() : user.getId();
+        List<Map<String, Object>> active = requestService.listActiveByUserAndRoom(
+                queryUserId, roomId);
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("requests", active);
+        out.put("hasPending", active.stream().anyMatch(r -> "PENDING".equals(r.get("status"))));
+        out.put("hasApproved", active.stream().anyMatch(r -> "APPROVED".equals(r.get("status"))));
+        out.put("rejectedOptionIds", requestService.listTodayRejectedOptionIds(user.getId(), roomId));
+        return Result.success(out);
+    }
+
     @GetMapping("/request/pending")
     @Operation(summary = "教职工：我的待审核延迟申请")
     public Result<List<Map<String, Object>>> listPending(
@@ -203,6 +241,7 @@ public class ScanDelayController {
         if (user == null || user.getRole() == RoleEnum.MEMBER) {
             return Result.error("需要教职工权限");
         }
+        requestService.expireOldPendingRequests();
         return Result.success(requestService.listPendingEnriched(user.getId()));
     }
 

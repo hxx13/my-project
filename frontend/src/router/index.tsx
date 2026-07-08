@@ -29,6 +29,7 @@ import PurchaseProcessPage from "@/pages/PurchaseProcessPage";
 import AdminNotificationPage from "@/pages/AdminNotificationPage";
 import AdminApiDocsPage from "@/pages/AdminApiDocsPage";
 import AdminLoggingConsolePage from "@/pages/AdminLoggingConsolePage";
+import { MonitorDashboardPage } from "@/features/admin/monitor/MonitorDashboardPage";
 import AdminDoorGroupStoragePage from "@/pages/AdminDoorGroupStoragePage";
 import AdminDepartmentStoragePage from "@/pages/AdminDepartmentStoragePage";
 import AdminDeviceChannelPage from "@/pages/AdminDeviceChannelPage";
@@ -264,6 +265,7 @@ export const router = createHashRouter([
               {
                 element: <AdminGuard />,
                 children: [
+                  { path: "monitor", element: <MonitorDashboardPage /> },
                   { path: "door-group-storage", element: <AdminDoorGroupStoragePage /> },
                   { path: "device-channels", element: <AdminDeviceChannelPage /> },
                   { path: "aro-rooms", element: <AdminRoomMappingPage /> },

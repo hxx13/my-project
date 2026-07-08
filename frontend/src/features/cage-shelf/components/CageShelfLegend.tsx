@@ -13,7 +13,7 @@ const STATUS_ITEMS: { code: string; label: string }[] = [
 const CAGE_ITEMS = [
   { type: 1, label: "等待分配" },
   { type: 2, label: "已预约(空笼盒)" },
-  { type: 3, label: "已预约(饲养中) 无指示灯" },
+  { type: 3, label: "已预约(饲养中)" },
   { type: 4, label: "异常" },
 ];
 
@@ -61,14 +61,8 @@ export default function CageShelfLegend({ collapsed }: Props) {
           <div className="mb-1.5 text-[var(--twin-mute)] font-medium">笼位状态 → 右上角指示灯</div>
           <div className="flex flex-wrap gap-x-3 gap-y-1.5">
             {CAGE_ITEMS.map((item) => {
-              if (item.type === 3) return (
-                <div key={item.type} className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 rounded-full border border-dashed border-emerald-400 bg-emerald-100/50" />
-                  <span className="text-[var(--twin-mute)]">{item.label}</span>
-                </div>
-              );
               const dot = CAGE_TYPE_DOT[item.type] ?? "bg-gray-400 ring-gray-200";
-              const abbr = item.type === 1 ? "待" : item.type === 2 ? "空" : "异";
+              const abbr = item.type === 1 ? "待" : item.type === 2 ? "空" : item.type === 3 ? "饲" : "异";
               return (
                 <div key={item.type} className="flex items-center gap-1.5">
                   <div className={`w-4 h-4 rounded-full ${dot} ring-1 flex items-center justify-center shadow-sm`}>

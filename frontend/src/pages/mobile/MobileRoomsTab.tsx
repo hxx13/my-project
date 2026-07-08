@@ -186,12 +186,17 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
   }, [detailRoom, bundle?.scanAnalyze, bundle?.overviewIndex]);
 
   // 延迟申请提交：JWT 用 authHttp，token 用 publicHttp
+  // 房间 ID 需转为官方扫描 ID（与 Web 端行为一致，否则后台校验 isOptionBoundToRoom 失败）
   const handleDelaySubmit = useCallback(
     async (payload: { subjectUserId: string; roomId: string; optionId: number }) => {
-      if (jwtMode) return submitScanDelayRequest(payload);
-      return submitMobileScanDelayRequest(token, payload);
+      const scanId = detailRoom
+        ? resolveScanOfficialRoomId(detailRoom.roomId, bundle?.overviewIndex ?? [], bundle?.scanAnalyze ?? null)
+        : payload.roomId;
+      const fixed = { ...payload, roomId: scanId || payload.roomId };
+      if (jwtMode) return submitScanDelayRequest(fixed);
+      return submitMobileScanDelayRequest(token, fixed);
     },
-    [jwtMode, token],
+    [detailRoom, bundle?.overviewIndex, bundle?.scanAnalyze, jwtMode, token],
   );
 
   // 延迟申请成功后刷新房间数据

@@ -37,4 +37,10 @@ public interface CageEventLogMapper {
 
     List<Map<String, Object>> timelineByBox(@Param("cageBoxQrCode") String cageBoxQrCode,
                                              @Param("limit") int limit);
+
+    /** 按状态码和延迟天数查询最近的 STATUS_ADDED 事件，用于笼架违规判定 */
+    List<CageEventLog> selectRecentStatusAdded(
+            @Param("statusCodes") List<String> statusCodes,
+            @Param("delayDays") int delayDays,
+            @Param("scanBatchId") String scanBatchId);
 }

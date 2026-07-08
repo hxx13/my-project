@@ -39,4 +39,8 @@ public interface AroPersonnelMapper {
                           @Param("now") String now);
 
     int clearPersonalPin(@Param("userId") String userId);
+
+    /** 按课题组名称模糊匹配，返回该组成员的 userId 列表 */
+    @Select("SELECT user_id FROM aro_personnel WHERE project_group_name LIKE CONCAT('%', #{projectGroupName}, '%')")
+    List<String> selectUserIdsByProjectGroup(@Param("projectGroupName") String projectGroupName);
 }

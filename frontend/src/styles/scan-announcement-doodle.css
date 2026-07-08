@@ -429,18 +429,18 @@
   .scan-notice-strip-close-all {
     position: absolute;
     z-index: 12;
-    top: clamp(0.65rem, 2.5vh, 1.25rem);
-    right: clamp(0.65rem, 2.5vw, 1.25rem);
+    top: clamp(1.5rem, 5vh, 2.5rem);
+    right: clamp(2.5rem, 8vw, 4rem);
     pointer-events: auto;
     display: inline-flex;
     align-items: center;
-    gap: 0.35em;
-    padding: 0.45em 0.85em;
+    gap: 0.4em;
+    padding: 0.55em 1em;
     border: 0.14em solid var(--app-color-border-default);
     border-radius: var(--app-radius-pill);
     background: color-mix(in srgb, var(--app-color-surface-container) 92%, var(--app-color-text-primary) 8%);
     color: var(--app-color-text-primary);
-    font-size: 0.75rem;
+    font-size: 0.875rem;
     font-weight: 800;
     letter-spacing: 0.04em;
     box-shadow: var(--app-elevation-card);

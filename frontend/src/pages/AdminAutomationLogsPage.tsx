@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAutomationLogs, type AutomationLogRow } from "@/api/twinApi";
 import { AdminButton } from "@/components/admin/AdminButton";
-import { AdminFormCard, AdminPageShell, AdminTableShell } from "@/components/admin/AdminPageShell";
+import { AdminFormCard, AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminSelect } from "@/components/admin/AdminSelect";
 import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { adminHintClass } from "@/features/admin/adminFormUi";
+import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import { detailTextToLines } from "@/utils/detailTextToLines";
 import { formatDateTimeAsiaShanghaiShort } from "@/lib/formatDateTimeAsiaShanghai";
 
@@ -138,10 +140,21 @@ export default function AdminAutomationLogsPage() {
     setPage(1);
   };
 
+  const location = useLocation();
+  const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
+
   return (
     <AdminPageShell>
       <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
-        <AdminFormCard title="筛选" className="shrink-0">
+
+        {/* ═══ 第一层：操作+筛选卡片（shrink-0） ═══ */}
+        <AdminFormCard className="shrink-0 mb-3">
+          {/* 第一行：入口名称 */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+            <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
+          </div>
+
+          {/* 第二行：筛选控件 */}
           <div className="flex flex-nowrap items-end gap-2 overflow-x-auto">
             <label className="flex w-[7.5rem] shrink-0 flex-col gap-0.5">
               <span className="text-[10px] font-medium text-neutral-500">类型</span>
@@ -220,18 +233,18 @@ export default function AdminAutomationLogsPage() {
           </div>
         </AdminFormCard>
 
-        <div className="flex-1 min-h-0 flex flex-col">
-          <div className="flex-1 min-h-0 overflow-y-auto">
-        <AdminTableShell
-          loading={isLoading}
-          empty={!isLoading && rows.length === 0}
-          emptyMessage="暂无日志"
-          scrollable
-          className="[&_.admin-table-shell-inner]:max-h-[min(82vh,920px)]"
-        >
-          <table className="min-w-full text-xs">
-            <thead>
-              <tr className="border-b bg-[var(--twin-canvas-soft)] text-left text-[var(--twin-body)]">
+        {/* ═══ 第二层：表格 + 翻页 ═══ */}
+        <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-auto">
+            {isLoading ? (
+              <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">加载中…</div>
+            ) : rows.length === 0 ? (
+              <div className="flex min-h-[160px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">暂无日志</div>
+            ) : (
+              <div>
+          <table className="w-full min-w-max text-left text-xs whitespace-nowrap border-collapse">
+            <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+              <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                 <th className="px-2 py-1.5">时间</th>
                 <th className="px-2 py-1.5">类型</th>
                 <th className="px-2 py-1.5">触发方式</th>
@@ -289,27 +302,28 @@ export default function AdminAutomationLogsPage() {
               ))}
             </tbody>
           </table>
-        </AdminTableShell>
+              </div>
+            )}
+          </div>{/* 表格滚动区结束 */}
+
+          {/* 翻页（shrink-0，始终可见） */}
+          <div className="shrink-0 flex items-center justify-between gap-3 px-3 py-2 border-t border-[var(--app-color-border-default)] text-sm">
+            <span className="text-xs text-[var(--app-color-text-tertiary)]">
+              共 {total} 条 · 每页 {PAGE_SIZE} 条 · 按时间倒序
+            </span>
+            <div className="flex items-center gap-2">
+              <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || isLoading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                上一页
+              </AdminButton>
+              <span className="text-xs text-[var(--app-color-text-secondary)]">
+                {page} / {totalPages}
+              </span>
+              <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || isLoading} onClick={() => setPage((p) => p + 1)}>
+                下一页
+              </AdminButton>
+            </div>
           </div>
-          <div className="shrink-0 pt-2">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="text-[var(--twin-mute)]">
-            共 {total} 条 · 每页 {PAGE_SIZE} 条 · 按时间倒序
-          </span>
-          <div className="flex items-center gap-2">
-          <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || isLoading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-            上一页
-          </AdminButton>
-          <span className="text-[var(--twin-body)]">
-            {page} / {totalPages}
-          </span>
-          <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || isLoading} onClick={() => setPage((p) => p + 1)}>
-            下一页
-          </AdminButton>
-          </div>
-        </div>
-          </div>
-        </div>
+        </div>{/* 表格阴影容器结束 */}
       </div>
     </AdminPageShell>
   );

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.demo.modules.twin.dashboard.mapper.TwinCageStatusViolationMapper">
+
+    <resultMap id="BaseResultMap" type="com.example.demo.modules.twin.dashboard.entity.TwinCageStatusViolation">
+        <id column="id" property="id"/>
+        <result column="rule_id" property="ruleId"/>
+        <result column="scan_batch_id" property="scanBatchId"/>
+        <result column="status_code" property="statusCode"/>
+        <result column="cage_shelve_id" property="cageShelveId"/>
+        <result column="position_x" property="positionX"/>
+        <result column="position_y" property="positionY"/>
+        <result column="position_label" property="positionLabel"/>
+        <result column="cage_box_qr_code" property="cageBoxQrCode"/>
+        <result column="project_pi_name" property="projectPiName"/>
+        <result column="project_group_name" property="projectGroupName"/>
+        <result column="department_name" property="departmentName"/>
+        <result column="room_name" property="roomName"/>
+        <result column="campus_name" property="campusName"/>
+        <result column="triggered_at" property="triggeredAt"/>
+        <result column="status" property="status"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO twin_cage_status_violation (
+            rule_id, scan_batch_id, status_code, cage_shelve_id, position_x, position_y,
+            position_label, cage_box_qr_code, project_pi_name, project_group_name,
+            department_name, room_name, campus_name, triggered_at, status
+        ) VALUES (
+            #{ruleId}, #{scanBatchId}, #{statusCode}, #{cageShelveId}, #{positionX}, #{positionY},
+            #{positionLabel}, #{cageBoxQrCode}, #{projectPiName}, #{projectGroupName},
+            #{departmentName}, #{roomName}, #{campusName}, #{triggeredAt}, #{status}
+        )
+    </insert>
+
+    <select id="selectAll" resultMap="BaseResultMap">
+        SELECT * FROM twin_cage_status_violation ORDER BY triggered_at DESC
+    </select>
+
+    <select id="selectById" resultMap="BaseResultMap">
+        SELECT * FROM twin_cage_status_violation WHERE id = #{id}
+    </select>
+
+    <select id="selectActiveByRuleAndCage" resultMap="BaseResultMap">
+        SELECT * FROM twin_cage_status_violation
+        WHERE rule_id = #{ruleId} AND status_code = #{statusCode}
+          AND cage_shelve_id = #{cageShelveId} AND position_x = #{positionX} AND position_y = #{positionY}
+          AND status = 'ACTIVE'
+        LIMIT 1
+    </select>
+
+    <update id="updateStatus">
+        UPDATE twin_cage_status_violation SET status = #{status}, updated_at = NOW() WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM twin_cage_status_violation WHERE id = #{id}
+    </delete>
+</mapper>

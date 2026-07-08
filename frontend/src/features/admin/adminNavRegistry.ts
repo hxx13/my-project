@@ -210,6 +210,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         sidebarVisible: (ctx) => ctx.flags.canViewSettings && hasMinRole(ctx.role, "SUPER_ADMIN") && show(ctx, "/admin/logging-console", "SUPER_ADMIN"),
       },
       {
+        id: "monitor",
+        path: "/admin/monitor",
+        label: "系统监控",
+        icon: Monitor,
+        homeTone: "from-teal-400 to-cyan-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canViewSettings && hasMinRole(ctx.role, "ADMIN") && show(ctx, "/admin/monitor", "ADMIN"),
+      },
+      {
         id: "api-docs",
         path: "/admin/api-docs",
         label: "接口中心",

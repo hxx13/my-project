@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { TrendingUp, Zap, Users, UserCheck, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
+import { TrendingUp, Zap, Users, UserCheck, AlertTriangle, CheckCircle, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchExpSummary, fetchExpRecords,
@@ -105,6 +105,7 @@ export default function AdminExpStatsPage() {
   const [reviewing, setReviewing] = useState(false);
   const [catchingUp, setCatchingUp] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ["expSummary"] as const,
@@ -278,72 +279,72 @@ export default function AdminExpStatsPage() {
 
   return (
     <AdminPageShell>
-      <div className="flex items-center gap-3 shrink-0">
-        <span className="inline-flex items-center gap-2">
-          <TrendingUp className="h-6 w-6 shrink-0 text-[var(--app-color-accent)]" aria-hidden />
-          经验值统计
-        </span>
-        <div className="flex flex-wrap items-center gap-2 ml-auto">
-          <AdminButton
-            type="button"
-            tone="primary"
-            size="sm"
-            disabled={catchingUp || recalculating}
-            onClick={handleCatchUp}
-          >
-            {catchingUp ? "补漏中…" : "增量补漏"}
-          </AdminButton>
-          <AdminButton
-            type="button"
-            tone="secondary"
-            size="sm"
-            disabled={catchingUp || recalculating}
-            onClick={handleFullRecalc}
-          >
-            {recalculating ? "全量重算中…" : "全量重算"}
-          </AdminButton>
-        </div>
-      </div>
-      <div className="flex flex-col gap-6 max-h-[calc(100dvh-var(--admin-chrome-offset)-48px)] min-h-[200px] overflow-y-auto">
-        {/* Stat Cards Row */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {statCards.map((card) => (
-            <div
-              key={card.label}
-              className="rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-[var(--app-space-container-padding)] shadow-sm"
-            >
-              <div className="flex items-center gap-2">
-                <div className={"flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br " + card.tone}>
-                  <card.icon className="h-4 w-4 text-white" />
-                </div>
-                <span className="text-xs font-medium text-[var(--app-color-text-secondary)]">{card.label}</span>
-              </div>
-              <div className="mt-3">
-                {summaryLoading ? (
-                  <div className="h-8 w-24 animate-pulse rounded bg-[var(--app-color-surface-hover)]" />
-                ) : (
-                  <span className="text-2xl font-bold tabular-nums text-[var(--app-color-text-primary)]">
-                    {card.format(card.value)}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
 
-        {/* Two-column layout: Leaderboard (40%) | XP Records (60%) */}
-        <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* ═══ 第一层：标题 + 统计卡片（shrink-0） ═══ */}
+        <AdminFormCard className="shrink-0 mb-3">
+          {/* 第一行：标题 + 操作按钮 */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+            <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">
+              <TrendingUp className="inline h-5 w-5 mr-1.5 -mt-0.5 text-[var(--app-color-accent)]" aria-hidden />
+              经验值统计
+            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <AdminButton type="button" tone="primary" size="sm" disabled={catchingUp || recalculating} onClick={handleCatchUp}>
+                {catchingUp ? "补漏中…" : "增量补漏"}
+              </AdminButton>
+              <AdminButton type="button" tone="secondary" size="sm" disabled={catchingUp || recalculating} onClick={handleFullRecalc}>
+                {recalculating ? "全量重算中…" : "全量重算"}
+              </AdminButton>
+            </div>
+          </div>
+
+          {/* 第二行：统计卡片 */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {statCards.map((card) => (
+              <div
+                key={card.label}
+                className="rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-[var(--app-space-container-padding)] shadow-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <div className={"flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br " + card.tone}>
+                    <card.icon className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="text-xs font-medium text-[var(--app-color-text-secondary)]">{card.label}</span>
+                </div>
+                <div className="mt-3">
+                  {summaryLoading ? (
+                    <div className="h-8 w-24 animate-pulse rounded bg-[var(--app-color-surface-hover)]" />
+                  ) : (
+                    <span className="text-2xl font-bold tabular-nums text-[var(--app-color-text-primary)]">
+                      {card.format(card.value)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </AdminFormCard>
+
+        {/* ═══ 第二层：双列布局（flex-1，各自独立滚动） ═══ */}
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-6">
           {/* Left: 今日经验排行 */}
-          <div className="w-full lg:w-[40%] lg:shrink-0">
-        <AdminFormCard title="今日经验排行 (Top 50)">
+          <div className="w-full lg:w-[40%] lg:shrink-0 flex flex-col min-h-0 overflow-hidden">
+            <section className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
+              {/* sticky 标题栏 */}
+              <div className="shrink-0 flex items-center justify-between border-b-2 border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-hover)] px-4 py-2.5 shadow-[var(--app-elevation-card)]">
+                <h3 className="text-sm font-bold text-[var(--app-color-text-primary)]">今日经验排行 (Top 50)</h3>
+              </div>
+              {/* 滚动表格区 */}
+              <div className="flex-1 min-h-0 overflow-auto">
           {!summary?.topEarners || summary.topEarners.length === 0 ? (
             <div className="flex min-h-[120px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">
               暂无排行数据
             </div>
           ) : (
-            <table className="min-w-full text-xs">
+            <table className="w-full min-w-max text-left text-xs whitespace-nowrap border-collapse">
               <thead>
-                <tr className="border-b bg-[var(--app-color-surface-hover)] text-left text-[var(--app-color-text-secondary)]">
+                <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                   <th className="px-3 py-2 w-12">#</th>
                   <th className="px-3 py-2">用户</th>
                   <th className="px-3 py-2 text-right">等级 / 总经验</th>
@@ -388,12 +389,30 @@ export default function AdminExpStatsPage() {
               </tbody>
             </table>
           )}
-        </AdminFormCard>
+              </div>
+            </section>
           </div>
 
           {/* Right: 经验值流水 */}
-          <div className="w-full lg:w-[60%] lg:flex-1 lg:min-w-0 flex flex-col gap-6">
-        <AdminFormCard title="经验值流水" className="p-3 [&>div:first-child]:mb-2 [&>div:first-child]:pb-1.5">
+          <div className="w-full lg:w-[60%] lg:flex-1 lg:min-w-0 min-h-0 flex flex-col gap-3">
+
+            {/* 可折叠筛选栏 */}
+            <div className="shrink-0 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
+              {/* 标题栏 — 始终可见 */}
+              <div className="flex items-center justify-between px-4 py-2.5">
+                <h3 className="text-sm font-semibold text-[var(--app-color-text-primary)]">经验值流水</h3>
+                <button
+                  type="button"
+                  onClick={() => setFiltersExpanded(!filtersExpanded)}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] transition-colors"
+                >
+                  筛选
+                  {filtersExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+              {/* 筛选区 — 默认收起 */}
+              {filtersExpanded && (
+                <div className="border-t border-[var(--app-color-border-default)] px-4 py-3 space-y-2">
           {/* Row 1: basic filters */}
           <div className="flex flex-nowrap items-end gap-2 overflow-x-auto">
             <label className="flex w-[8rem] shrink-0 flex-col gap-0.5">
@@ -439,7 +458,7 @@ export default function AdminExpStatsPage() {
             </label>
           </div>
           {/* Row 2: anomaly + review + channel filters + batch actions */}
-          <div className="mt-2 flex flex-nowrap items-end gap-2 overflow-x-auto">
+          <div className="flex flex-nowrap items-end gap-2 overflow-x-auto">
             <label className="flex w-[6rem] shrink-0 flex-col gap-0.5">
               <span className="text-[10px] font-medium text-neutral-500">异常</span>
               <AdminSelect value={anomalyFlag} className={compactSelectClass} onChange={(e) => setAnomalyFlag(e.target.value)}>
@@ -477,18 +496,21 @@ export default function AdminExpStatsPage() {
               )}
             </div>
           </div>
-        </AdminFormCard>
+                </div>
+              )}
+            </div>
 
-        <AdminTableShell
-          loading={recordsLoading}
-          empty={!recordsLoading && rows.length === 0}
-          emptyMessage="暂无经验值流水"
-          scrollable
-          className="[&_.admin-table-shell-inner]:max-h-[min(82vh,920px)]"
-        >
-          <table className="min-w-full text-xs">
-            <thead>
-              <tr className="border-b bg-[var(--app-color-surface-hover)] text-left text-[var(--app-color-text-secondary)]">
+        <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-auto">
+            {recordsLoading ? (
+              <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">加载中…</div>
+            ) : rows.length === 0 ? (
+              <div className="flex min-h-[160px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">暂无经验值流水</div>
+            ) : (
+              <div>
+          <table className="w-full min-w-max text-left text-xs whitespace-nowrap border-collapse">
+            <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+              <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
                 <th className="px-1 py-1.5 w-8">
                   <AdminSwitchScaled
                     size="3.5"
@@ -574,28 +596,32 @@ export default function AdminExpStatsPage() {
               )})}
             </tbody>
           </table>
-        </AdminTableShell>
+              </div>
+            )}
+          </div>{/* 表格滚动区结束 */}
 
-        {/* Pagination */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="text-[var(--app-color-text-tertiary)]">
-            共 {total} 条 · 每页 {PAGE_SIZE} 条 · 按时间倒序
-          </span>
-          <div className="flex items-center gap-2">
-            <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || recordsLoading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              上一页
-            </AdminButton>
-            <span className="text-[var(--app-color-text-primary)]">
-              {page} / {totalPages}
+          {/* 翻页（shrink-0，始终可见） */}
+          <div className="shrink-0 flex items-center justify-between gap-3 px-3 py-2 border-t border-[var(--app-color-border-default)] text-sm">
+            <span className="text-xs text-[var(--app-color-text-tertiary)]">
+              共 {total} 条 · 每页 {PAGE_SIZE} 条
             </span>
-            <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || recordsLoading} onClick={() => setPage((p) => p + 1)}>
-              下一页
-            </AdminButton>
+            <div className="flex items-center gap-2">
+              <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1 || recordsLoading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                上一页
+              </AdminButton>
+              <span className="text-xs text-[var(--app-color-text-secondary)]">
+                {page} / {totalPages}
+              </span>
+              <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages || recordsLoading} onClick={() => setPage((p) => p + 1)}>
+                下一页
+              </AdminButton>
+            </div>
           </div>
-        </div>
-          </div>
-        </div>
-      </div>
+
+        </div>{/* 表格阴影容器结束 */}
+          </div>{/* right column end */}
+        </div>{/* two-column row end */}
+      </div>{/* outer max-h container end */}
     </AdminPageShell>
   );
 }

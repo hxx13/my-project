@@ -80,7 +80,8 @@ const DOT_VISIBLE_TYPES = new Set([1, 2, 4]);
 
 const CAGE_TYPE_DOT: Record<number, string> = {
   1: "bg-amber-500 ring-amber-300",
-  2: "bg-rose-500 ring-rose-300",
+  2: "bg-emerald-500 ring-emerald-300",
+  3: "bg-red-500 ring-red-300",
   4: "bg-blue-500 ring-blue-300",
 };
 
@@ -88,7 +89,7 @@ export const CAGE_TYPE_LABEL: Record<number, string> = {
   1: "等待分配", 2: "已预约(空笼盒)", 3: "已预约(饲养中)", 4: "异常",
 };
 
-const CAGE_TYPE_ABBR: Record<number, string> = { 1: "待", 2: "空", 4: "异" };
+const CAGE_TYPE_ABBR: Record<number, string> = { 1: "待", 2: "空", 3: "饲", 4: "异" };
 
 export const STATUS_COLOR_DOT: Record<string, string> = {
   COHABITATION:   "bg-emerald-500 ring-emerald-300",

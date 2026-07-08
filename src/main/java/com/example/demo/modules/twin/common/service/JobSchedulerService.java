@@ -7,6 +7,7 @@ import com.example.demo.modules.twin.common.mapper.TwinJobScheduleConfigMapper;
 import com.example.demo.modules.twin.common.support.TwinTimingDiagnostics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -27,6 +28,9 @@ public class JobSchedulerService {
     private final JdbcTemplate jdbcTemplate;
     private final TwinAutomationLogService automationLogService;
     private volatile boolean tableReady = false;
+
+    @Autowired(required = false)
+    private com.corundumstudio.socketio.SocketIOServer socketIOServer;
 
     public JobSchedulerService(TwinJobScheduleConfigMapper mapper,
                                JobExecutionRegistry registry,
@@ -289,6 +293,12 @@ public class JobSchedulerService {
                 "定时任务已启动，来源=" + updatedBy + "，开始时间=" + startedAt,
                 updatedBy
         );
+        // Socket.IO 广播：任务开始
+        broadcastJobEvent("MONITOR_JOB_START", Map.of(
+                "jobKey", jobKey,
+                "startedAt", startedAt.toString(),
+                "triggerType", triggerType
+        ));
         long jobStartMs = System.currentTimeMillis();
         try {
             JobRunOutcome outcome = registry.execute(jobKey, !automated);
@@ -307,11 +317,19 @@ public class JobSchedulerService {
                     "定时任务执行成功：" + outcome.getSummary() + "，完成时间=" + finishedAt,
                     updatedBy
             );
+            // Socket.IO 广播：任务成功
+            broadcastJobEvent("MONITOR_JOB_END", Map.of(
+                    "jobKey", jobKey,
+                    "success", true,
+                    "summary", outcome.getSummary(),
+                    "finishedAt", finishedAt.toString()
+            ));
             return outcome;
         } catch (Exception e) {
             TwinTimingDiagnostics.logJob(jobKey, triggerType, System.currentTimeMillis() - jobStartMs, false,
                     trimError(e.getMessage()));
             mapper.markFailed(jobKey, LocalDateTime.now(), trimError(e.getMessage()), updatedBy);
+            String errMsg = trimError(e.getMessage());
             automationLogService.write(
                     TwinAutomationLogService.TYPE_SCHEDULER,
                     jobKey,
@@ -320,9 +338,16 @@ public class JobSchedulerService {
                     null,
                     jobKey,
                     false,
-                    "定时任务执行失败：" + trimError(e.getMessage()),
+                    "定时任务执行失败：" + errMsg,
                     updatedBy
             );
+            // Socket.IO 广播：任务失败
+            broadcastJobEvent("MONITOR_JOB_END", Map.of(
+                    "jobKey", jobKey,
+                    "success", false,
+                    "error", errMsg != null ? errMsg : "",
+                    "finishedAt", LocalDateTime.now().toString()
+            ));
             throw e;
         } finally {
             if (reaperJob) {
@@ -688,6 +713,16 @@ public class JobSchedulerService {
         }
         String s = error.trim();
         return s.length() > 480 ? s.substring(0, 480) : s;
+    }
+
+    /** Socket.IO 广播任务生命周期事件（静默失败，不阻断主流程）。 */
+    private void broadcastJobEvent(String event, Map<String, Object> payload) {
+        if (socketIOServer == null) return;
+        try {
+            socketIOServer.getBroadcastOperations().sendEvent(event, payload);
+        } catch (Exception ignored) {
+            // 广播失败不影响任务执行
+        }
     }
 
 }

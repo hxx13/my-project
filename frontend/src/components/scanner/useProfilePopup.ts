@@ -16,8 +16,22 @@ import type { PopupActions, PopupProps, PopupState } from "@/components/scanner/
 import { sortScanRoomsPudongFirst } from "@/components/scanner/roomCampusSort";
 import { hasActiveAutoSignoutCountdown } from "@/utils/formatCountdown";
 import { useScanAssistantStore } from "@/store/useScanAssistantStore";
+import { fetchMyActiveDelayRequests } from "@/api/domains/scanDelay.api";
+import type { DelayButtonStatus } from "@/components/scanner/ScanDelayButtonMenu";
 
 const POPUP_RUNTIME_STAMP = "popup-runtime-2026-04-16-r3";
+
+/** 将 ISO datetime 字符串（如 "2026-07-08T18:30:00"）格式化为 "18:30" */
+function formatExpireClock(isoStr: string): string {
+    if (!isoStr) return "";
+    try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return "";
+        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    } catch {
+        return "";
+    }
+}
 
 const normalizeRoomInfoArray = (raw: unknown): RoomInfo[] => {
     if (!Array.isArray(raw)) return [];
@@ -624,7 +638,16 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         if (action === "ENTER" && violationEnterLocked) return `[违规处理] 禁止进入 ${room.displayName}`;
         if (action === "ENTER" && room.enterBlocked) return `[不在此校区] ${room.displayName}`;
         if (action === "ENTER" && room.isDisabled) return `[禁入] ${room.displayName}`;
-        return action === "ENTER" ? `进入 ${room.displayName}` : `离开 ${room.displayName}`;
+        if (action === "ENTER") {
+            // 豁免已通过时，在房间按钮上显示到期时间
+            const ds = delayStatusMap[roomId];
+            if (ds?.status === "approved" && ds.expireAt) {
+                const time = formatExpireClock(ds.expireAt);
+                if (time) return `进入 ${room.displayName} (截至 ${time})`;
+            }
+            return `进入 ${room.displayName}`;
+        }
+        return `离开 ${room.displayName}`;
     };
 
     const getDelayOptionsForRoom = useCallback(
@@ -641,9 +664,77 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
         [result?.scanDelayEnabled, result?.scanDelayOptionsByRoom]
     );
 
-    const handleDelayGrantSuccess = useCallback(() => {
-        onRefresh?.();
+    // 延迟按钮状态 map（用 useState 立即触发重渲染，不被 onRefresh 重置）
+    const [delayStatusMap, setDelayStatusMap] = useState<Record<string, DelayButtonStatus>>({});
+    const [rejectedOptionIdsMap, setRejectedOptionIdsMap] = useState<Record<string, number[]>>({});
+    const getDelayStatusForRoom = useCallback((roomId: string): DelayButtonStatus | undefined => {
+        return delayStatusMap[roomId];
+    }, [delayStatusMap]);
+    const getRejectedOptionIdsForRoom = useCallback((roomId: string): number[] => {
+        return rejectedOptionIdsMap[roomId] ?? [];
+    }, [rejectedOptionIdsMap]);
+
+    const handleDelayGrantSuccess = useCallback((roomId: string, status: string, optionLabel?: string) => {
+        const nextStatus = status === "PENDING" ? "pending" : "approved";
+        setDelayStatusMap((prev) => ({
+            ...prev,
+            [roomId]: { status: nextStatus, optionLabel },
+        }));
+        // PENDING 时卡映射没有变化，不触发 re-analyze（否则 effect 重跑、API 异步覆盖刚设的状态）
+        if (nextStatus !== "pending") {
+            onRefresh?.();
+        }
     }, [onRefresh]);
+
+    // 弹窗打开 / analyze 刷新时，从后端拉取活跃延迟申请状态初始化按钮显示
+    useEffect(() => {
+        if (!result?.scanDelayEnabled || !user?.userId) {
+            setDelayStatusMap({});
+            setRejectedOptionIdsMap({});
+            return;
+        }
+        const roomIds = targetRooms
+            .map((r) => r.officialRoomId || r.id)
+            .filter((id): id is string => Boolean(id));
+        if (roomIds.length === 0) return;
+
+        let cancelled = false;
+        const load = async () => {
+            const next: Record<string, DelayButtonStatus> = {};
+            const nextRejected: Record<string, number[]> = {};
+            await Promise.all(
+                roomIds.map(async (roomId) => {
+                    try {
+                        const data = await fetchMyActiveDelayRequests(roomId, user?.userId);
+                        if (cancelled) return;
+                        if (data.hasPending) {
+                            next[roomId] = { status: "pending" };
+                        } else if (data.hasApproved) {
+                            const approved = data.requests.find((r) => r.status === "APPROVED");
+                            next[roomId] = {
+                                status: "approved",
+                                optionLabel: approved?.optionLabel,
+                                expireAt: approved?.expireAt || undefined,
+                            };
+                        }
+                        if (data.rejectedOptionIds.length > 0) {
+                            nextRejected[roomId] = data.rejectedOptionIds;
+                        }
+                    } catch {
+                        // 查询失败不影响主流程，按钮保持默认态
+                    }
+                })
+            );
+            if (!cancelled) {
+                setDelayStatusMap(next);
+                setRejectedOptionIdsMap(nextRejected);
+            }
+        };
+        load();
+        return () => {
+            cancelled = true;
+        };
+    }, [user?.userId, result?.scanDelayEnabled, targetRooms.map((r) => r.officialRoomId || r.id).join(",")]);
 
     // ─── 离开确认状态机 ───
     /** 打开离开确认弹窗（做守卫检查但不执行） */
@@ -738,6 +829,8 @@ export const useProfilePopup = (props: PopupProps): { state: PopupState; actions
             markEnterCornerReady,
             markEnterNoticeReady,
             getDelayOptionsForRoom,
+            getDelayStatusForRoom,
+            getRejectedOptionIdsForRoom,
             handleDelayGrantSuccess,
             requestExit,
             confirmExit,

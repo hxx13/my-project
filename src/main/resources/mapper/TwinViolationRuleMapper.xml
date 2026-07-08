@@ -26,6 +26,14 @@
         <result column="cron_expression" property="cronExpression"/>
         <result column="last_execution_at" property="lastExecutionAt"/>
         <result column="last_execution_result" property="lastExecutionResult"/>
+        <result column="cage_status_codes" property="cageStatusCodes"/>
+        <result column="cage_delay_days" property="cageDelayDays"/>
+        <result column="cage_judge_mode" property="cageJudgeMode"/>
+        <result column="cage_manual_trigger" property="cageManualTrigger"/>
+        <result column="cage_area_filter" property="cageAreaFilter"/>
+        <result column="cage_group_whitelist" property="cageGroupWhitelist"/>
+        <result column="cage_trigger_action" property="cageTriggerAction"/>
+        <result column="cage_image_urls" property="cageImageUrls"/>
         <result column="created_at" property="createdAt"/>
         <result column="updated_at" property="updatedAt"/>
     </resultMap>
@@ -49,14 +57,18 @@
             interactive_challenge, interactive_unlock_on_verify,
             unblock_method, unblock_max_count, unblock_window_type, unblock_window_value,
             unblock_window_start, unblock_window_end, critical_notice_text,
-            auto_signout_enabled, whitelist_depts, cron_expression
+            auto_signout_enabled, whitelist_depts, cron_expression,
+            cage_status_codes, cage_delay_days, cage_judge_mode, cage_manual_trigger,
+            cage_area_filter, cage_group_whitelist, cage_trigger_action, cage_image_urls
         ) VALUES (
             #{ruleCode}, #{ruleName}, #{enabled}, #{sourceTag},
             #{violationTextTpl}, #{forbidEnter}, #{expireAfterDays}, #{showNoticeEveryScan},
             #{interactiveChallenge}, #{interactiveUnlockOnVerify},
             #{unblockMethod}, #{unblockMaxCount}, #{unblockWindowType}, #{unblockWindowValue},
             #{unblockWindowStart}, #{unblockWindowEnd}, #{criticalNoticeText},
-            #{autoSignoutEnabled}, #{whitelistDepts}, #{cronExpression}
+            #{autoSignoutEnabled}, #{whitelistDepts}, #{cronExpression},
+            #{cageStatusCodes}, #{cageDelayDays}, #{cageJudgeMode}, #{cageManualTrigger},
+            #{cageAreaFilter}, #{cageGroupWhitelist}, #{cageTriggerAction}, #{cageImageUrls}
         )
     </insert>
 
@@ -82,6 +94,14 @@
             auto_signout_enabled = #{autoSignoutEnabled},
             whitelist_depts = #{whitelistDepts},
             cron_expression = #{cronExpression},
+            cage_status_codes = #{cageStatusCodes},
+            cage_delay_days = #{cageDelayDays},
+            cage_judge_mode = #{cageJudgeMode},
+            cage_manual_trigger = #{cageManualTrigger},
+            cage_area_filter = #{cageAreaFilter},
+            cage_group_whitelist = #{cageGroupWhitelist},
+            cage_trigger_action = #{cageTriggerAction},
+            cage_image_urls = #{cageImageUrls},
             updated_at = NOW()
         WHERE id = #{id}
     </update>

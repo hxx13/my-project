@@ -8,6 +8,7 @@ import {
   fetchPendingScanDelayRequests,
   fetchScanDelayHistory,
   reviewScanDelayRequest,
+  deleteScanDelayRequest,
   type ScanDelayPendingRequest,
   type ScanDelayHistoryRequest,
 } from "@/api/domains/scanDelay.api";
@@ -265,10 +266,14 @@ export default function MaterialReviewPage() {
     (a, b) => (parseToDate(b.createdAt)?.getTime() ?? 0) - (parseToDate(a.createdAt)?.getTime() ?? 0),
   ), [filteredScanDelayPending, filteredScanDelayHistory]);
 
-  const scanDelayToday = useMemo(() => allScanDelay.filter(r => isToday(r.createdAt)), [allScanDelay]);
-  const scanDelayHistoryFiltered = useMemo(() => allScanDelay.filter(r => !isToday(r.createdAt)), [allScanDelay]);
-  const scanDelayGroupedToday = useMemo(() => groupScanDelayByOption(scanDelayToday), [scanDelayToday]);
-  const scanDelayGroupedHistory = useMemo(() => groupScanDelayByOption(scanDelayHistoryFiltered), [scanDelayHistoryFiltered]);
+  // 按选项分组（与小程序 studentReviewHub 对齐：每组内 pending 在前，history 在后）
+  const scanDelayGrouped = useMemo(() => groupScanDelayByOption(allScanDelay), [allScanDelay]);
+
+  // 自动折叠：无待审项的选项组自动收起
+  const [scanDelayCollapse, setScanDelayCollapse] = useState<Record<string, boolean>>({});
+  const toggleScanDelayGroup = (groupKey: string) => {
+    setScanDelayCollapse(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
+  };
 
   // Loading state
   const loading = tab === "material"
@@ -293,6 +298,22 @@ export default function MaterialReviewPage() {
       toast.success(approveFlag ? "已通过并授予免冻结" : "已拒绝");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
+    }
+  };
+
+  const handleScanDelayDelete = async (req: { id: number; status: string }) => {
+    if (!window.confirm(`确定删除该申请（#${req.id}）？删除后不再参与防重复判定。`)) return;
+    try {
+      await deleteScanDelayRequest(req.id);
+      if (req.status === "PENDING") {
+        qc.setQueryData<ScanDelayPendingRequest[]>(["scan-delay", "pending"], (prev) =>
+          (prev ?? []).filter((r) => r.id !== req.id)
+        );
+      }
+      void qc.invalidateQueries({ queryKey: ["scan-delay", "history"] });
+      toast.success("已删除");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "删除失败");
     }
   };
 
@@ -333,27 +354,59 @@ export default function MaterialReviewPage() {
           {allScanDelay.length === 0 && !scanDelayLoading && !scanDelayHistoryLoading ? (
             <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无延迟免冻结记录</p>
           ) : (
-            <div className="space-y-6">
-              {scanDelayToday.length > 0 && (
-                <TimeGroup label="今天" count={scanDelayToday.length}>
-                  <ScanDelayOptionGroupedList
-                    groups={scanDelayGroupedToday}
-                    highlightRequestId={highlightRequestId}
-                    reviewerNameMap={reviewerNameMap}
-                    onReview={handleScanDelayReview}
-                  />
-                </TimeGroup>
-              )}
-              {scanDelayHistoryFiltered.length > 0 && (
-                <TimeGroup label="历史" count={scanDelayHistoryFiltered.length} defaultOpen={false}>
-                  <ScanDelayOptionGroupedList
-                    groups={scanDelayGroupedHistory}
-                    highlightRequestId={highlightRequestId}
-                    reviewerNameMap={reviewerNameMap}
-                    onReview={handleScanDelayReview}
-                  />
-                </TimeGroup>
-              )}
+            <div className="space-y-4">
+              {scanDelayGrouped.map((group) => {
+                const pendingItems = group.items.filter(i => i._kind === "pending");
+                const historyItems = group.items.filter(i => i._kind === "history");
+                const hasPending = pendingItems.length > 0;
+                const isCollapsed = scanDelayCollapse[group.groupKey] ?? (!hasPending);
+                return (
+                  <div key={group.groupKey} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleScanDelayGroup(group.groupKey)}
+                      className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--twin-canvas-soft)] transition-colors text-left"
+                    >
+                      <span className="text-xs transition-transform duration-200" style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▼</span>
+                      <span className="text-sm font-semibold text-[var(--twin-body)]">{group.optionLabel}</span>
+                      {hasPending && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">{pendingItems.length} 待审</span>
+                      )}
+                      <span className="text-[11px] text-[var(--twin-mute)] ml-auto">{group.count} 条</span>
+                    </button>
+                    {!isCollapsed && (
+                      <div className="px-4 pb-4 space-y-3 border-t border-[var(--twin-hairline)] pt-3">
+                        {hasPending && (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-amber-700">待审核</span>
+                              <span className="text-[11px] text-[var(--twin-mute)]">{pendingItems.length} 条</span>
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                              {pendingItems.map((item) => (
+                                <ScanDelayPendingCard
+                                  key={`p-${item.id}`}
+                                  req={item}
+                                  highlightRequestId={highlightRequestId}
+                                  onReview={handleScanDelayReview}
+                                  onDelete={handleScanDelayDelete}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {historyItems.length > 0 && (
+                          <ScanDelayHistorySection
+                            items={historyItems}
+                            reviewerNameMap={reviewerNameMap}
+                            onDelete={handleScanDelayDelete}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -596,52 +649,49 @@ function ScanDelayOptionAccentText({ label, color }: { label: string; color: str
   );
 }
 
-function ScanDelayOptionGroupedList({
-  groups,
-  highlightRequestId,
+/** 已审核历史区：可折叠，默认收起 */
+function ScanDelayHistorySection({
+  items,
   reviewerNameMap,
-  onReview,
+  onDelete,
 }: {
-  groups: ScanDelayOptionGroup<ScanDelayListItem>[];
-  highlightRequestId: string | null;
+  items: ScanDelayListItem[];
   reviewerNameMap: Map<string, string>;
-  onReview: (req: ScanDelayPendingRequest, approve: boolean) => Promise<void>;
+  onDelete: (req: { id: number; status: string }) => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="space-y-4">
-      {groups.map((group) => (
-        <div key={group.groupKey} className="space-y-2">
-          <div className="flex items-center gap-2 pl-1">
-            <span className="text-xs font-medium text-[var(--twin-body)]">{group.optionLabel}</span>
-            <span className="text-[11px] text-[var(--twin-mute)]">{group.count} 条</span>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {group.items.map((item) =>
-              item._kind === "pending" ? (
-                <ScanDelayPendingCard
-                  key={`p-${item.id}`}
-                  req={item}
-                  highlightRequestId={highlightRequestId}
-                  onReview={onReview}
-                />
-              ) : (
-                <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} />
-              ),
-            )}
-          </div>
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-xs text-[var(--twin-mute)] hover:text-[var(--twin-body)] transition-colors"
+      >
+        <span className="transition-transform duration-200" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▼</span>
+        <span>已审核</span>
+        <span className="text-[11px]">{items.length} 条</span>
+      </button>
+      {open && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {items.map((item) => (
+            <ScanDelayHistoryCard key={`h-${item.id}`} req={item} reviewerNameMap={reviewerNameMap} onDelete={onDelete} />
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
 
-function ScanDelayPendingCard({ req, highlightRequestId, onReview }: { req: ScanDelayPendingRequest; highlightRequestId: string | null; onReview: (req: ScanDelayPendingRequest, approve: boolean) => Promise<void> }) {
+function ScanDelayPendingCard({ req, highlightRequestId, onReview, onDelete }: { req: ScanDelayPendingRequest; highlightRequestId: string | null; onReview: (req: ScanDelayPendingRequest, approve: boolean) => Promise<void>; onDelete: (req: { id: number; status: string }) => void }) {
   const optionLabel = scanDelayOptionDisplayLabel(req);
   return (
     <div className={`rounded-twin-lg border bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2 ${highlightRequestId && String(req.id) === highlightRequestId ? "border-[var(--twin-primary)] ring-2 ring-[var(--twin-primary)]/30" : "border-[var(--twin-hairline)]"}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-mono text-[var(--twin-mute)]">#{req.id}</span>
-        <span className="text-[10px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200 shrink-0">待审核</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200 shrink-0">待审核</span>
+          <button type="button" onClick={() => onDelete({ id: req.id, status: req.status })} className="text-[10px] px-1.5 py-0.5 rounded text-[var(--twin-mute)] hover:text-red-600 hover:bg-red-50 transition-colors" title="删除">删除</button>
+        </div>
       </div>
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0 space-y-1.5">
@@ -667,14 +717,17 @@ function ScanDelayPendingCard({ req, highlightRequestId, onReview }: { req: Scan
   );
 }
 
-function ScanDelayHistoryCard({ req, reviewerNameMap }: { req: ScanDelayHistoryRequest; reviewerNameMap: Map<string, string> }) {
+function ScanDelayHistoryCard({ req, reviewerNameMap, onDelete }: { req: ScanDelayHistoryRequest; reviewerNameMap: Map<string, string>; onDelete: (req: { id: number; status: string }) => void }) {
   const reviewerDisplay = req.reviewedBy ? (reviewerNameMap.get(req.reviewedBy) || req.reviewedBy) : null;
   const optionLabel = scanDelayOptionDisplayLabel(req);
   return (
     <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-mono text-[var(--twin-mute)]">#{req.id}</span>
-        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${req.status === "APPROVED" ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-700 border-red-200"}`}>{req.status === "APPROVED" ? "已通过" : "已拒绝"}</span>
+        <div className="flex items-center gap-1.5">
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${req.status === "APPROVED" ? "bg-green-50 text-green-700 border-green-200" : req.status === "EXPIRED" ? "bg-gray-50 text-gray-500 border-gray-200" : "bg-red-50 text-red-700 border-red-200"}`}>{req.status === "APPROVED" ? "已通过" : req.status === "EXPIRED" ? "已过期" : "已拒绝"}</span>
+          <button type="button" onClick={() => onDelete({ id: req.id, status: req.status })} className="text-[10px] px-1.5 py-0.5 rounded text-[var(--twin-mute)] hover:text-red-600 hover:bg-red-50 transition-colors" title="删除">删除</button>
+        </div>
       </div>
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0 space-y-1.5">

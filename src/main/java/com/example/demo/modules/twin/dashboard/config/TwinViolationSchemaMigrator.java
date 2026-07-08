@@ -29,7 +29,7 @@ public class TwinViolationSchemaMigrator implements StartupRunner {
 
     @Override
     public StartupResult run(StartupContext ctx) {
-        int ok = 0, total = 7;
+        int ok = 0, total = 12;
 
         ctx.subtask("interactive_challenge", () -> {
             ensureColumnExists("twin_student_violation", "interactive_challenge",
@@ -62,6 +62,58 @@ public class TwinViolationSchemaMigrator implements StartupRunner {
         }); ok++;
 
         ctx.subtask("text_tpl_widen", this::widenStrandedViolationTextTpl); ok++;
+
+        // ── 笼架特殊状态违规联动 ──
+        ctx.subtask("cage_status_codes", () -> {
+            ensureColumnExists("twin_violation_rule", "cage_status_codes",
+                    "ALTER TABLE twin_violation_rule ADD COLUMN cage_status_codes JSON COMMENT '监控的特殊状态类型'");
+        }); ok++;
+
+        ctx.subtask("cage_delay_days", () -> {
+            ensureColumnExists("twin_violation_rule", "cage_delay_days",
+                    "ALTER TABLE twin_violation_rule ADD COLUMN cage_delay_days INT COMMENT '延迟天数'");
+        }); ok++;
+
+        ctx.subtask("cage_judge_mode", () -> {
+            ensureColumnExists("twin_violation_rule", "cage_judge_mode",
+                    "ALTER TABLE twin_violation_rule ADD COLUMN cage_judge_mode VARCHAR(20) DEFAULT 'AUTO_SYNC_LINKED' COMMENT '判定模式'");
+        }); ok++;
+
+        ctx.subtask("cage_manual_trigger", () -> {
+            ensureColumnExists("twin_violation_rule", "cage_manual_trigger",
+                    "ALTER TABLE twin_violation_rule ADD COLUMN cage_manual_trigger TINYINT(1) DEFAULT 0 COMMENT '手动执行也触发判定'");
+        }); ok++;
+
+        ctx.subtask("cage_area_filter", () -> {
+            ensureColumnExists("twin_violation_rule", "cage_area_filter",
+                    "ALTER TABLE twin_violation_rule ADD COLUMN cage_area_filter JSON COMMENT '区域筛选'");
+        }); ok++;
+
+        ctx.subtask("cage_group_whitelist", () -> {
+            ensureColumnExists("twin_violation_rule", "cage_group_whitelist",
+                    "ALTER TABLE twin_violation_rule ADD COLUMN cage_group_whitelist JSON COMMENT '课题组白名单'");
+        }); ok++;
+
+        ctx.subtask("cage_trigger_action", () -> {
+            ensureColumnExists("twin_violation_rule", "cage_trigger_action",
+                    "ALTER TABLE twin_violation_rule ADD COLUMN cage_trigger_action VARCHAR(20) DEFAULT 'BOTH' COMMENT '触发动作'");
+        }); ok++;
+
+        ctx.subtask("cage_image_urls", () -> {
+            ensureColumnExists("twin_violation_rule", "cage_image_urls",
+                    "ALTER TABLE twin_violation_rule ADD COLUMN cage_image_urls JSON COMMENT '违规图片URL列表'");
+        }); ok++;
+
+        ctx.subtask("cage_status_violation_table", () -> {
+            ensureCageStatusViolationTable();
+        }); ok++;
+
+        ctx.subtask("cage_violation_id_fk", () -> {
+            ensureColumnExists("twin_student_violation", "cage_violation_id",
+                    "ALTER TABLE twin_student_violation ADD COLUMN cage_violation_id BIGINT COMMENT '关联 twin_cage_status_violation.id'");
+            // also ensure index
+            safeExecute("CREATE INDEX IF NOT EXISTS idx_cage_vid ON twin_student_violation (cage_violation_id)");
+        }); ok++;
 
         ensureStrandedSignoutConfigRow(ctx);
 
@@ -101,6 +153,35 @@ public class TwinViolationSchemaMigrator implements StartupRunner {
         } catch (Exception ignored) {
             // 幂等：重复执行非致命
         }
+    }
+
+    private void ensureCageStatusViolationTable() {
+        safeExecute("""
+                CREATE TABLE IF NOT EXISTS twin_cage_status_violation (
+                  id                  BIGINT AUTO_INCREMENT PRIMARY KEY,
+                  rule_id             BIGINT        NOT NULL COMMENT '关联 twin_violation_rule.id',
+                  scan_batch_id       VARCHAR(64)   COMMENT '触发时的同步批次ID',
+                  status_code         VARCHAR(32)   COMMENT '触发的特殊状态类型',
+                  cage_shelve_id      BIGINT        COMMENT '笼架ID',
+                  position_x          INT           COMMENT '笼位X坐标',
+                  position_y          INT           COMMENT '笼位Y坐标',
+                  position_label      VARCHAR(16)   COMMENT '笼位标签如 A-3',
+                  cage_box_qr_code    VARCHAR(512)  COMMENT '笼盒卡号',
+                  project_pi_name     VARCHAR(128)  COMMENT '课题组PI',
+                  project_group_name  VARCHAR(256)  COMMENT '课题组名称',
+                  department_name     VARCHAR(256)  COMMENT '部门',
+                  room_name           VARCHAR(128)  COMMENT '房间名称',
+                  campus_name         VARCHAR(64)   COMMENT '园区名称',
+                  triggered_at        DATETIME      COMMENT '触发时间',
+                  status              VARCHAR(20)   DEFAULT 'ACTIVE' COMMENT 'ACTIVE / CLEARED / EXPIRED',
+                  created_at          DATETIME      DEFAULT CURRENT_TIMESTAMP,
+                  updated_at          DATETIME      DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX idx_rule (rule_id),
+                  INDEX idx_batch (scan_batch_id),
+                  INDEX idx_status (status),
+                  INDEX idx_group (project_group_name(64))
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笼架特殊状态违规父记录'
+                """);
     }
 
     private void widenStrandedViolationTextTpl() {

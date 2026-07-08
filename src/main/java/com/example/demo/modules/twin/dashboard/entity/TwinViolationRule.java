@@ -38,6 +38,22 @@ public class TwinViolationRule {
     private String cronExpression;
     private LocalDateTime lastExecutionAt;
     private String lastExecutionResult;
+    /** 监控的特殊状态类型 JSON */
+    private String cageStatusCodes;
+    /** 延迟天数 */
+    private Integer cageDelayDays;
+    /** 判定模式: AUTO_SYNC_LINKED / PURE_DAYS / PURE_MANUAL */
+    private String cageJudgeMode;
+    /** 手动执行也触发判定: 0=否 1=是 */
+    private Integer cageManualTrigger;
+    /** 区域筛选 JSON */
+    private String cageAreaFilter;
+    /** 课题组白名单 JSON */
+    private String cageGroupWhitelist;
+    /** 触发动作: VIOLATION_ONLY / NOTICE_ONLY / BOTH */
+    private String cageTriggerAction;
+    /** 违规图片 URL JSON 数组 */
+    private String cageImageUrls;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

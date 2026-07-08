@@ -19,7 +19,7 @@ type Props = {
   roomId: string;
   buttonLabel: string;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (status: "PENDING" | "GRANTED", optionLabel?: string) => void;
   /** 定位模式：anchor=相对按钮定位（扫码弹窗），center=居中卡片（H5） */
   positioning?: "anchor" | "center";
   /** H5 移动端适配：增大触控区域与字号 */
@@ -30,6 +30,8 @@ type Props = {
     roomId: string;
     optionId: number;
   }) => Promise<ScanDelayRequestResult>;
+  /** 今日已被拒绝的选项 ID（菜单中标记"已被拒绝"并禁用） */
+  rejectedOptionIds?: number[];
 };
 
 function formatDelayHint(option: ScanDelayOptionSummary): string {
@@ -42,33 +44,65 @@ function formatDelayHint(option: ScanDelayOptionSummary): string {
   return parts.length ? parts.join(" · ") : "";
 }
 
+/** 延迟按钮的实时状态（由父组件通过 API 查询注入） */
+export type DelayButtonStatus = {
+  status: "none" | "pending" | "approved";
+  /** 已通过时显示的选项标签 */
+  optionLabel?: string;
+  /** 豁免到期时间（ISO 字符串），供房间按钮展示 */
+  expireAt?: string;
+};
+
 export function ScanDelayButton({
   label,
   disabled,
   active,
   onClick,
+  delayStatus,
 }: {
   label: string;
   disabled?: boolean;
   active?: boolean;
   onClick: (e: React.MouseEvent) => void;
+  delayStatus?: DelayButtonStatus;
 }) {
+  const ds = delayStatus;
+  const isDisabled = disabled || ds?.status === "approved" || ds?.status === "pending";
+  const hasStatus = ds?.status === "pending" || ds?.status === "approved";
+
+  let displayLabel = label;
+  let extraClass = "";
+  if (ds?.status === "pending") {
+    displayLabel = "审核中";
+    extraClass = "border-amber-300 bg-amber-50 text-amber-700";
+  } else if (ds?.status === "approved") {
+    displayLabel = ds.optionLabel || "已通过";
+    extraClass = "border-emerald-300 bg-emerald-50 text-emerald-700";
+  }
+
   return (
     <button
       type="button"
-      disabled={disabled}
+      disabled={isDisabled}
       onClick={(e) => {
         e.stopPropagation();
+        if (ds?.status === "approved" || ds?.status === "pending") return;
         onClick(e);
       }}
-      className={`shrink-0 flex items-center justify-center gap-1 rounded-[var(--app-radius-element)] border px-3 h-full min-w-[72px] text-[11px] font-bold transition-colors ${
-        active
-          ? "border-[var(--app-color-accent)] bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent-ink)]"
-          : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)] hover:border-[var(--app-color-accent)] hover:text-[var(--app-color-text-primary)]"
-      } disabled:opacity-40 disabled:pointer-events-none`}
+      className={`shrink-0 flex items-center justify-center gap-1 rounded-[var(--app-radius-element)] border px-2.5 h-full min-w-[78px] text-[11px] font-bold transition-colors ${
+        extraClass
+          ? extraClass
+          : active
+            ? "border-[var(--app-color-accent)] bg-[var(--app-color-accent-soft)] text-[var(--app-color-accent-ink)]"
+            : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)] hover:border-[var(--app-color-accent)] hover:text-[var(--app-color-text-primary)]"
+      } ${hasStatus ? "" : "disabled:opacity-40"} disabled:pointer-events-none`}
     >
-      <Clock className="h-3.5 w-3.5" strokeWidth={2.5} />
-      {label}
+      {ds?.status === "approved" ? (
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>
+      ) : (
+        <Clock className="h-3.5 w-3.5" strokeWidth={2.5} />
+      )}
+      {displayLabel}
     </button>
   );
 }
@@ -84,6 +118,7 @@ export function ScanDelayMenuPortal({
   positioning = "anchor",
   mobile = false,
   onSubmitRequest,
+  rejectedOptionIds,
 }: Props) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const [step, setStep] = useState<MenuStep>("options");
@@ -166,12 +201,13 @@ export function ScanDelayMenuPortal({
         roomId,
         optionId: option.id,
       });
-      if (res.status === "PENDING") {
+      const status = res.status === "PENDING" ? "PENDING" as const : "GRANTED" as const;
+      if (status === "PENDING") {
         toast.success(res.message || "已提交申请，等待确认");
       } else {
         toast.success(res.message || "已授权");
       }
-      onSuccess();
+      onSuccess(status, pendingOption?.optionLabel);
       onClose();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
@@ -270,23 +306,30 @@ export function ScanDelayMenuPortal({
           <p className={`px-2 py-3 ${textXs} text-[var(--app-color-text-tertiary)]`}>该房间暂无可用延迟选项</p>
         ) : (
           <ul className={spacing}>
-            {options.map((opt) => (
-              <li key={opt.id}>
-                <button
-                  type="button"
-                  disabled={submitting}
-                  className={`w-full rounded-[var(--app-radius-element)] px-3 ${optionPy} text-left ${textSm} font-bold text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-50`}
-                  onClick={() => handlePickOption(opt)}
-                >
-                  {opt.optionLabel}
-                  {opt.requireApproval ? (
-                    <span className={`ml-1 ${textTiny} font-normal text-[var(--app-color-feedback-warning)]`}>
-                      点击申请
-                    </span>
-                  ) : null}
-                </button>
-              </li>
-            ))}
+            {options.map((opt) => {
+              const isRejected = rejectedOptionIds?.includes(opt.id);
+              return (
+                <li key={opt.id}>
+                  <button
+                    type="button"
+                    disabled={submitting || isRejected}
+                    className={`w-full rounded-[var(--app-radius-element)] px-3 ${optionPy} text-left ${textSm} font-bold text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-surface-hover)] disabled:opacity-50`}
+                    onClick={() => handlePickOption(opt)}
+                  >
+                    {opt.optionLabel}
+                    {isRejected ? (
+                      <span className={`ml-1 ${textTiny} font-normal text-[var(--app-color-text-tertiary)]`}>
+                        (已被拒绝)
+                      </span>
+                    ) : opt.requireApproval ? (
+                      <span className={`ml-1 ${textTiny} font-normal text-[var(--app-color-feedback-warning)]`}>
+                        点击申请
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
         {submitting ? (

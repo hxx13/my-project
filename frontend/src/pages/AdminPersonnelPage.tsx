@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { Eye, EyeOff } from "lucide-react";
 import { updateProfileDisplayNickname } from "@/api/domains/auth.api";
@@ -16,10 +17,12 @@ import {
 import type { PersonnelAuthRecord, SystemUserRecord } from "@/api/domains/admin.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole, hasMobileHtml5Privilege, MOBILE_HTML5_PRIVILEGE_MIN_ROLE } from "@/features/auth/roleAccess";
-import { AdminPageShell, AdminDataTableWrap } from "@/components/admin/AdminPageShell";
+import { AdminPageShell, AdminFormCard } from "@/components/admin/AdminPageShell";
+import { AdminButton } from "@/components/admin/AdminButton";
 import { Portal } from "@/components/Portal";
 import { resetStudentPin } from "@/api/domains/specialChannel.api";
 import { PersonnelMobileTokenCell } from "@/components/admin/PersonnelMobileTokenCell";
+import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 
 const ROLE_OPTIONS = ["MEMBER", "STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN", "PLATFORM_OWNER"];
 const STAFF_CREATE_ROLE_OPTIONS = ["STAFF", "SENIOR", "ADMIN", "SUPER_ADMIN"];
@@ -290,6 +293,9 @@ export default function AdminPersonnelPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / size));
 
+  const location = useLocation();
+  const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
+
   const inkBtn =
     "inline-flex shrink-0 items-center rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--twin-body)] shadow-sm hover:bg-[var(--twin-canvas-soft)] disabled:cursor-not-allowed disabled:opacity-40";
 
@@ -356,135 +362,78 @@ export default function AdminPersonnelPage() {
 
   return (
     <AdminPageShell>
-      <div className="max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-y-auto">
-        <div className="rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-2 md:p-5">
-      <div className="mb-3 flex min-h-9 min-w-0 flex-nowrap items-center gap-2 border-b border-[var(--twin-hairline)] pb-3">
-        <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--twin-canvas-soft-2)] p-0.5">
-          <button
-            type="button"
-            onClick={() => setActiveTab("personnel")}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium ${
-              activeTab === "personnel" ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
-            }`}
-          >
-            学生
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("system")}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium ${
-              activeTab === "system" ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
-            }`}
-          >
-            员工
-          </button>
-        </div>
-        <input
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          placeholder="ID / 姓名 / 账号"
-          className="min-w-0 flex-1 rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] px-2.5 py-1.5 text-xs text-[var(--twin-ink)] placeholder:text-[var(--twin-mute)] focus:border-[var(--twin-hairline-strong)] focus:bg-[var(--twin-canvas)] focus:outline-none"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              setPage(1);
-              activeTab === "personnel" ? refetchPersonnel() : refetchSystem();
-            }
-          }}
-        />
-        <button
-          type="button"
-          className={toolBtnPrimary}
-          onClick={() => { setPage(1); activeTab === "personnel" ? refetchPersonnel() : refetchSystem(); }}
-        >
-          查询
-        </button>
-        <button
-          type="button"
-          className={toolBtnGhost}
-          onClick={() => { activeTab === "personnel" ? refetchPersonnel() : refetchSystem(); }}
-        >
-          刷新
-        </button>
-        {activeTab === "system" && isSuperAdmin ? (
-          <button type="button" className={toolBtnGhost} onClick={() => setCreateOpen(true)}>
-            新建
-          </button>
-        ) : null}
-      </div>
+      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
 
-      {createOpen && activeTab === "system" ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
-          <div className="w-full max-w-md rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-twin-level-4">
-            <h3 className="mb-3 text-base font-semibold text-[var(--twin-ink)]">新建员工账号</h3>
-            <p className="mb-3 text-xs text-[var(--twin-mute)]">登录密码由你设置；新建账号首次登录需改密。不可创建平台所有者。</p>
-            <div className="space-y-2 text-sm">
-              <label className="block">
-                <span className="text-[var(--twin-body)]">登录名</span>
-                <input
-                  value={createUsername}
-                  onChange={(e) => setCreateUsername(e.target.value)}
-                  className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
-                  autoComplete="off"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[var(--twin-body)]">密码</span>
-                <input
-                  type="password"
-                  value={createPassword}
-                  onChange={(e) => setCreatePassword(e.target.value)}
-                  className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
-                  autoComplete="new-password"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[var(--twin-body)]">展示昵称（可选）</span>
-                <input
-                  value={createNickname}
-                  onChange={(e) => setCreateNickname(e.target.value)}
-                  maxLength={32}
-                  className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
-                />
-              </label>
-              <label className="block">
-                <span className="text-[var(--twin-body)]">角色</span>
-                <select
-                  value={createRole}
-                  onChange={(e) => setCreateRole(e.target.value)}
-                  className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
-                >
-                  {STAFF_CREATE_ROLE_OPTIONS.map((r) => (
-                    <option key={r} value={r}>
-                      {ROLE_LABEL_MAP[r]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-[var(--twin-hairline)] px-3 py-2 text-sm text-[var(--twin-body)]"
-                onClick={() => setCreateOpen(false)}
-                disabled={createStaffMut.isPending}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white disabled:opacity-50"
-                onClick={() => handleCreateStaff()}
-                disabled={createStaffMut.isPending}
-              >
-                {createStaffMut.isPending ? "提交中…" : "创建"}
-              </button>
+        {/* ═══ 第一层：操作+筛选卡片（shrink-0，始终可见） ═══ */}
+        <AdminFormCard className="shrink-0 mb-3">
+
+          {/* 第一行：入口名称（左） + 操作按钮（右），下方有分隔线 */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+            <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              {activeTab === "system" && isSuperAdmin ? (
+                <AdminButton type="button" tone="primary" size="sm" onClick={() => setCreateOpen(true)}>
+                  新建
+                </AdminButton>
+              ) : null}
+              <AdminButton type="button" tone="secondary" size="sm" onClick={() => { activeTab === "personnel" ? refetchPersonnel() : refetchSystem(); }}>
+                刷新
+              </AdminButton>
             </div>
           </div>
-        </div></Portal> : null}
 
-      <AdminDataTableWrap scrollable>
-        <table className="min-w-full text-xs">
-          <thead className="bg-[var(--twin-canvas-soft)] text-[11px] text-[var(--twin-body)]">
-            <tr>
+          {/* 第二行：表格筛选控件 */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--twin-canvas-soft-2)] p-0.5">
+              <button
+                type="button"
+                onClick={() => setActiveTab("personnel")}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                  activeTab === "personnel" ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
+                }`}
+              >
+                学生
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("system")}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                  activeTab === "system" ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm" : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
+                }`}
+              >
+                员工
+              </button>
+            </div>
+            <input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="ID / 姓名 / 账号"
+              className="min-w-0 flex-1 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] px-2.5 py-1.5 text-xs text-[var(--app-color-text-primary)] placeholder:text-[var(--app-color-text-tertiary)] focus:outline-none"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setPage(1);
+                  activeTab === "personnel" ? refetchPersonnel() : refetchSystem();
+                }
+              }}
+            />
+            <AdminButton type="button" tone="primary" size="sm" onClick={() => { setPage(1); activeTab === "personnel" ? refetchPersonnel() : refetchSystem(); }}>
+              查询
+            </AdminButton>
+          </div>
+        </AdminFormCard>
+
+        {/* ═══ 第二层：表格 + 翻页（flex-1，填满剩余空间） ═══ */}
+        <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
+
+          {/* 表格滚动区 */}
+          <div className="flex-1 min-h-0 overflow-auto">
+            {isLoading ? (
+              <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">加载中…</div>
+            ) : (
+              <div>
+        <table className="w-full min-w-max text-left text-xs whitespace-nowrap border-collapse">
+          <thead className="border-b-2 border-[var(--app-color-border-strong)]">
+            <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-secondary)] font-bold shadow-[var(--app-elevation-card)]">
               <th className="px-2 py-2 text-left font-medium">ID</th>
               <th className="px-2 py-2 text-left font-medium">
                 {activeTab === "personnel" ? "姓名与操作" : "账号与操作"}
@@ -777,27 +726,74 @@ export default function AdminPersonnelPage() {
             )}
           </tbody>
         </table>
-      </AdminDataTableWrap>
+              </div>
+            )}
+          </div>{/* 表格滚动区结束 */}
+
+          {/* 翻页（shrink-0，始终可见） */}
+          <div className="shrink-0 flex items-center justify-between gap-3 px-3 py-2 border-t border-[var(--app-color-border-default)] text-sm">
+            <span className="text-xs text-[var(--app-color-text-tertiary)]">共 {total} 条</span>
+            <div className="flex items-center gap-2">
+              <select
+                value={size}
+                onChange={(e) => { setSize(Number(e.target.value)); setPage(1); }}
+                className="rounded border border-[var(--app-color-border-default)] px-2 py-1 text-xs text-[var(--app-color-text-primary)] bg-[var(--app-color-surface-container)]"
+              >
+                {[10, 20, 30, 50].map((s) => (<option key={s} value={s}>{s}/页</option>))}
+              </select>
+              <AdminButton type="button" tone="secondary" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                上一页
+              </AdminButton>
+              <span className="text-xs text-[var(--app-color-text-secondary)]">{page} / {totalPages}</span>
+              <AdminButton type="button" tone="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                下一页
+              </AdminButton>
+            </div>
+          </div>
+
+        </div>{/* 表格阴影容器结束 */}
+      </div>{/* 外层 max-h 容器结束 */}
+
+      {/* Portal 弹窗放在最外层，不参与 flex 布局 */}
+      {createOpen && activeTab === "system" ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+          <div className="w-full max-w-md rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-5 shadow-twin-level-4">
+            <h3 className="mb-3 text-base font-semibold text-[var(--twin-ink)]">新建员工账号</h3>
+            <p className="mb-3 text-xs text-[var(--twin-mute)]">登录密码由你设置；新建账号首次登录需改密。不可创建平台所有者。</p>
+            <div className="space-y-2 text-sm">
+              <label className="block">
+                <span className="text-[var(--twin-body)]">登录名</span>
+                <input value={createUsername} onChange={(e) => setCreateUsername(e.target.value)} className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-[var(--twin-ink)] bg-[var(--twin-canvas)]" autoComplete="off" />
+              </label>
+              <label className="block">
+                <span className="text-[var(--twin-body)]">密码</span>
+                <input type="password" value={createPassword} onChange={(e) => setCreatePassword(e.target.value)} className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-[var(--twin-ink)] bg-[var(--twin-canvas)]" autoComplete="new-password" />
+              </label>
+              <label className="block">
+                <span className="text-[var(--twin-body)]">展示昵称（可选）</span>
+                <input value={createNickname} onChange={(e) => setCreateNickname(e.target.value)} maxLength={32} className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-[var(--twin-ink)] bg-[var(--twin-canvas)]" />
+              </label>
+              <label className="block">
+                <span className="text-[var(--twin-body)]">角色</span>
+                <select value={createRole} onChange={(e) => setCreateRole(e.target.value)} className="mt-1 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-[var(--twin-ink)] bg-[var(--twin-canvas)]">
+                  {STAFF_CREATE_ROLE_OPTIONS.map((r) => (<option key={r} value={r}>{ROLE_LABEL_MAP[r]}</option>))}
+                </select>
+              </label>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="rounded-lg border border-[var(--twin-hairline)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setCreateOpen(false)} disabled={createStaffMut.isPending}>取消</button>
+              <button type="button" className="rounded-lg bg-indigo-600 px-3 py-2 text-sm text-white disabled:opacity-50" onClick={() => handleCreateStaff()} disabled={createStaffMut.isPending}>{createStaffMut.isPending ? "提交中…" : "创建"}</button>
+            </div>
+          </div>
+        </div></Portal> : null}
 
       {detailOpen ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
           <div className="max-h-[80vh] w-full max-w-md overflow-hidden rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-4">
             <div className="border-b border-[var(--twin-hairline)] px-4 py-3 text-sm font-semibold text-[var(--twin-ink)]">{detailTitle}</div>
             <div className="max-h-[60vh] space-y-3 overflow-y-auto p-4 text-xs">
-              {detailLines.map((line) => (
-                <div key={line.k}>
-                  <div className="text-[11px] text-[var(--twin-mute)]">{line.k}</div>
-                  <div className="mt-0.5 break-all text-[var(--twin-ink)]">{line.v}</div>
-                </div>
-              ))}
+              {detailLines.map((line) => (<div key={line.k}><div className="text-[11px] text-[var(--twin-mute)]">{line.k}</div><div className="mt-0.5 break-all text-[var(--twin-ink)]">{line.v}</div></div>))}
             </div>
             <div className="flex justify-end border-t border-[var(--twin-hairline)] px-4 py-2">
-              <button
-                type="button"
-                className="rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
-                onClick={() => setDetailOpen(false)}
-              >
-                关闭
-              </button>
+              <button type="button" className="rounded-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => setDetailOpen(false)}>关闭</button>
             </div>
           </div>
         </div></Portal> : null}
@@ -805,70 +801,14 @@ export default function AdminPersonnelPage() {
       {nickOpen ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
           <div className="w-full max-w-sm rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-4">
             <div className="text-sm font-semibold text-[var(--twin-ink)]">修改展示昵称</div>
-            <input
-              value={nickDraft}
-              onChange={(e) => setNickDraft(e.target.value)}
-              maxLength={32}
-              className="mt-3 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
-              placeholder="最多 32 字"
-            />
+            <input value={nickDraft} onChange={(e) => setNickDraft(e.target.value)} maxLength={32} className="mt-3 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]" placeholder="最多 32 字" />
             <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-md border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
-                onClick={() => {
-                  setNickOpen(false);
-                  setNickRowId("");
-                  setNickDraft("");
-                }}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-700"
-                onClick={() => confirmNickDialog()}
-              >
-                确认
-              </button>
+              <button type="button" className="rounded-md border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => { setNickOpen(false); setNickRowId(""); setNickDraft(""); }}>取消</button>
+              <button type="button" className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-700" onClick={() => confirmNickDialog()}>确认</button>
             </div>
           </div>
         </div></Portal> : null}
 
-      <div className="mt-3 flex items-center justify-between text-sm text-[var(--twin-body)]">
-        <div>共 {total} 条</div>
-        <div className="flex items-center gap-2">
-          <select
-            value={size}
-            onChange={(e) => {
-              setSize(Number(e.target.value));
-              setPage(1);
-            }}
-            className="rounded-twin-sm border border-[var(--twin-hairline)] px-2 py-1 text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
-          >
-            {[10, 20, 30, 50].map((s) => (
-              <option key={s} value={s}>{s}/页</option>
-            ))}
-          </select>
-          <button
-            className="rounded border border-[var(--twin-hairline)] px-2 py-1 disabled:opacity-50"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            上一页
-          </button>
-          <span>{page} / {totalPages}</span>
-          <button
-            className="rounded border border-[var(--twin-hairline)] px-2 py-1 disabled:opacity-50"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-          >
-            下一页
-          </button>
-        </div>
-      </div>
-        </div>
-      </div>
     </AdminPageShell>
   );
 }

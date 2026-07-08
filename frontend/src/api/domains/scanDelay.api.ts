@@ -44,6 +44,7 @@ export type ScanDelayRequestResult = {
   status: string;
   requestId?: number;
   message?: string;
+  optionLabel?: string;
   freezeExemptFlag?: number;
   freezeExemptExpireAt?: string | null;
 };
@@ -130,6 +131,48 @@ export async function fetchScanDelayHistory(limit = 100): Promise<ScanDelayHisto
   }));
 }
 
+export type MyActiveRequest = {
+  id: number;
+  status: string;
+  optionId: number;
+  optionLabel?: string;
+  requireApproval?: boolean;
+  createdAt?: string;
+  expireAt?: string;
+};
+
+export async function fetchMyActiveDelayRequests(roomId: string, subjectUserId?: string): Promise<{
+  requests: MyActiveRequest[];
+  hasPending: boolean;
+  hasApproved: boolean;
+  rejectedOptionIds: number[];
+}> {
+  const params: Record<string, string> = { roomId };
+  if (subjectUserId) params.subjectUserId = subjectUserId;
+  const res = await authHttp.get<ApiResult<{
+    requests: Record<string, unknown>[];
+    hasPending: boolean;
+    hasApproved: boolean;
+    rejectedOptionIds: number[];
+  }>>("/v1/twin/scan-delay/request/my-active", { params });
+  if (!res.data?.success) throw new Error(res.data?.message || "查询状态失败");
+  const data = res.data.data;
+  return {
+    requests: (data?.requests ?? []).map((r: Record<string, unknown>) => ({
+      id: Number(r.id),
+      status: String(r.status ?? ""),
+      optionId: Number(r.optionId ?? 0),
+      optionLabel: String(r.optionLabel ?? ""),
+      requireApproval: Boolean(r.requireApproval),
+      createdAt: String(r.createdAt ?? ""),
+      expireAt: String(r.expireAt ?? ""),
+    })),
+    hasPending: Boolean(data?.hasPending),
+    hasApproved: Boolean(data?.hasApproved),
+    rejectedOptionIds: Array.isArray(data?.rejectedOptionIds) ? data.rejectedOptionIds.map(Number) : [],
+  };
+}
+
 export async function fetchScanDelayCarriers(): Promise<ScanDelayCarrier[]> {
   const res = await authHttp.get<ApiResult<ScanDelayCarrier[]>>("/v1/twin/scan-delay/carriers");
   if (!res.data?.success) throw new Error(res.data?.message || "加载载体按钮失败");
@@ -201,4 +244,9 @@ export async function reviewScanDelayRequest(
   );
   if (!res.data?.success || !res.data.data) throw new Error(res.data?.message || "审核失败");
   return res.data.data;
+}
+
+export async function deleteScanDelayRequest(requestId: number): Promise<void> {
+  const res = await authHttp.delete<ApiResult<null>>(`/v1/twin/scan-delay/request/${requestId}`);
+  if (!res.data?.success) throw new Error(res.data?.message || "删除失败");
 }

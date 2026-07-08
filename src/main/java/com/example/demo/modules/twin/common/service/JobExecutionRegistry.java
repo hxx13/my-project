@@ -87,6 +87,8 @@ public class JobExecutionRegistry {
     public static final String JOB_MATERIAL_AUTO_APPROVE = "MATERIAL_AUTO_APPROVE";
     /** 经验值·每日流水对账（扫描昨日 aro_access_log 配对进出记录并写入 twin_exp_record） */
     public static final String JOB_EXP_RECONCILE = "EXP_RECONCILE";
+    /** 笼架特殊状态违规检测（纯天数模式定时判定） */
+    public static final String JOB_CAGE_STATUS_VIOLATION_CHECK = "CAGE_STATUS_VIOLATION_CHECK";
 
     private static final Set<String> DEPRECATED_JOB_KEYS =
             Set.of(
@@ -134,6 +136,8 @@ public class JobExecutionRegistry {
     private com.example.demo.modules.material.service.MaterialAutoApproveService materialAutoApproveService;
     @Autowired(required = false)
     private com.example.demo.modules.twin.rpg.service.TwinExpReconcileService twinExpReconcileService;
+    @Autowired(required = false)
+    private com.example.demo.modules.twin.dashboard.service.CageStatusViolationCheckService cageStatusViolationCheckService;
     private final Set<String> running = ConcurrentHashMap.newKeySet();
 
     public JobExecutionRegistry(
@@ -222,11 +226,17 @@ public class JobExecutionRegistry {
         jobs.put(JOB_DASHBOARD_RANKING_ACTIVITY, "大屏·进出活跃排行榜刷新");
         jobs.put(JOB_DASHBOARD_RANKING_ANIMAL, "大屏·动物消耗排行榜刷新");
         jobs.put(JOB_EXP_RECONCILE, "经验值·每日流水对账重算");
+        jobs.put(JOB_CAGE_STATUS_VIOLATION_CHECK, "笼架特殊状态违规检测");
         return jobs;
     }
 
     public boolean isRunning(String jobKey) {
         return running.contains(jobKey);
+    }
+
+    /** 返回当前所有正在运行的任务 key 集合（不可变快照），供监控端点使用。 */
+    public Set<String> getRunningJobKeys() {
+        return Set.copyOf(running);
     }
 
     public JobRunOutcome execute(String jobKey) {
@@ -422,6 +432,15 @@ public class JobExecutionRegistry {
                                 Map.of("jobKey", jobKey, "at", java.time.LocalDateTime.now().toString()));
                     }
                     yield JobRunOutcome.ok(jobKey, "动物消耗排行榜刷新信号已广播");
+                }
+                case JOB_CAGE_STATUS_VIOLATION_CHECK -> {
+                    if (cageStatusViolationCheckService == null) {
+                        throw new IllegalStateException("CageStatusViolationCheckService 未就绪");
+                    }
+                    String triggeredBy = preferSync ? "ui-manual" : "system-scheduler";
+                    Map<String, Object> result = cageStatusViolationCheckService.executePureDaysCheck(triggeredBy);
+                    yield JobRunOutcome.ok(jobKey, "笼架违规检测完成 rulesChecked="
+                            + result.get("rulesChecked") + " triggered=" + result.get("totalTriggered"), result);
                 }
                 default -> throw new IllegalArgumentException("不支持的任务: " + jobKey);
             };

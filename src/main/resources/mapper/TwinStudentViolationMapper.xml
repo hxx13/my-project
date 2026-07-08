@@ -23,6 +23,7 @@
         <result column="interactive_challenge_verified_at" property="interactiveChallengeVerifiedAt"/>
         <result column="interactive_unlock_on_verify" property="interactiveUnlockOnVerify"/>
         <result column="rule_id" property="ruleId"/>
+        <result column="cage_violation_id" property="cageViolationId"/>
     </resultMap>
 
     <!-- 交互验证未完成时，超期仍保持 ACTIVE，直至用户完成拼图 -->
@@ -79,12 +80,12 @@
             target_user_id, violation_text, image_urls,
             forbid_enter, max_enter_success, enter_success_count, show_notice_every_scan,
             expire_at, status, created_by_user_id, source, interactive_challenge, interactive_unlock_on_verify,
-            rule_id
+            rule_id, cage_violation_id
         ) VALUES (
             #{targetUserId}, #{violationText}, #{imageUrls},
             #{forbidEnter}, #{maxEnterSuccess}, #{enterSuccessCount}, #{showNoticeEveryScan},
             #{expireAt}, #{status}, #{createdByUserId}, #{source}, #{interactiveChallenge}, #{interactiveUnlockOnVerify},
-            #{ruleId}
+            #{ruleId}, #{cageViolationId}
         )
     </insert>
 
@@ -173,6 +174,14 @@
           AND interactive_challenge IS NOT NULL
           AND TRIM(interactive_challenge) &lt;&gt; ''
           AND interactive_challenge_verified_at IS NULL
+    </update>
+
+    <select id="selectByCageViolationId" resultMap="TwinStudentViolationMap">
+        SELECT * FROM twin_student_violation WHERE cage_violation_id = #{cageViolationId} ORDER BY created_at DESC
+    </select>
+
+    <update id="setCageViolationId">
+        UPDATE twin_student_violation SET cage_violation_id = #{cageViolationId}, updated_at = NOW() WHERE id = #{id}
     </update>
 
     <delete id="deleteById">

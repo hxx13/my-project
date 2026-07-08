@@ -972,7 +972,7 @@ export default function AdminStudentViolationsPage() {
 
   return (
     <AdminPageShell>
-      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
+      <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px] overflow-hidden">
 
         {/* ═══ 第一层：标题 + 标签卡片（shrink-0） ═══ */}
         <AdminFormCard className="shrink-0 mb-3">
@@ -1005,8 +1005,7 @@ export default function AdminStudentViolationsPage() {
         </AdminFormCard>
 
       {/* ═══ 第二层：内容区（flex-1，填满剩余高度） ═══ */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        <div className="flex-1 min-h-0 overflow-auto">
+      <div className="flex-1 min-h-0 overflow-auto">
         <AdminTabPanel
           id="violation-page-panel-unbound"
           tabId="unbound"
@@ -1955,8 +1954,7 @@ export default function AdminStudentViolationsPage() {
         >
           <HomepageContentTab />
         </AdminTabPanel>
-      </div>{/* inner scroll end */}
-      </div>{/* outer clip end */}
+      </div>{/* lower scroll end */}
       </div>{/* outer flex col end */}
 
       {editOpen && editId != null ? (

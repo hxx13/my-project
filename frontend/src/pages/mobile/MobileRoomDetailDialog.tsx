@@ -1,7 +1,7 @@
 /** 小程序房间详情弹窗（数据来自 wechat-overview occupants） */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, Clock, Loader2, X } from "lucide-react";
-import { submitScanDelayRequest } from "@/api/domains/scanDelay.api";
+import { submitScanDelayRequest, fetchMyActiveDelayRequests } from "@/api/domains/scanDelay.api";
 import type { ScanDelayOptionSummary } from "@/api/types/scanner";
 import type { ScanDelayRequestResult } from "@/api/domains/scanDelay.api";
 import { formatExemptTimeRule } from "@/constants/exemptDurationPresets";
@@ -25,8 +25,8 @@ interface MobileRoomDetailDialogProps {
     roomId: string;
     optionId: number;
   }) => Promise<ScanDelayRequestResult>;
-  /** 延迟申请成功后回调（触发刷新） */
-  onDelaySuccess?: () => void;
+  /** 延迟申请成功后回调（status + optionLabel） */
+  onDelaySuccess?: (status: string, optionLabel?: string) => void;
 }
 
 function formatDelayHint(option: ScanDelayOptionSummary): string {
@@ -50,9 +50,28 @@ export default function MobileRoomDetailDialog({
   const [delayOpen, setDelayOpen] = useState(false);
   const [activeOptionId, setActiveOptionId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [delayStatus, setDelayStatus] = useState<"none" | "pending" | "approved">("none");
+  const [approvedLabel, setApprovedLabel] = useState("");
 
   const showDelay =
     scanDelayEnabled && delayOptions.length > 0 && Boolean(subjectUserId);
+
+  // 查询活跃申请状态
+  useEffect(() => {
+    if (!subjectUserId) return;
+    const rid = detail.roomId != null ? String(detail.roomId) : "";
+    if (!rid) return;
+    fetchMyActiveDelayRequests(rid, subjectUserId).then((data) => {
+      if (data.hasApproved) {
+        setDelayStatus("approved");
+        setApprovedLabel(data.requests.find((r) => r.status === "APPROVED")?.optionLabel || "");
+      } else if (data.hasPending) {
+        setDelayStatus("pending");
+      } else {
+        setDelayStatus("none");
+      }
+    }).catch(() => {});
+  }, [subjectUserId, detail.roomId]);
 
   const activeOption = delayOptions.find((o) => o.id === activeOptionId);
 
@@ -74,9 +93,15 @@ export default function MobileRoomDetailDialog({
         optionId: opt.id,
       });
       toast.success(res.status === "PENDING" ? (res.message || "已提交申请，等待确认") : (res.message || "已授权"));
+      if (res.status === "PENDING") {
+        setDelayStatus("pending");
+      } else if (res.status === "GRANTED" || res.status === "APPROVED") {
+        setDelayStatus("approved");
+        setApprovedLabel(res.optionLabel || opt.optionLabel);
+      }
       setActiveOptionId(null);
       setDelayOpen(false);
-      onDelaySuccess?.();
+      onDelaySuccess?.(res.status, res.optionLabel);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "操作失败");
     } finally {
@@ -194,18 +219,33 @@ export default function MobileRoomDetailDialog({
               {/* 一级按钮 */}
               <button
                 type="button"
-                onClick={() => { setDelayOpen((p) => !p); setActiveOptionId(null); }}
-                className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-[14px] font-bold active:scale-[0.98] transition-transform"
-                style={{
+                disabled={delayStatus === "approved"}
+                onClick={() => { if (delayStatus !== "approved") { setDelayOpen((p) => !p); setActiveOptionId(null); } }}
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-[14px] font-bold active:scale-[0.98] transition-transform disabled:opacity-60"
+                style={delayStatus === "approved" ? {
+                  background: "linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)",
+                  color: "#065F46",
+                  border: "1px solid rgba(6,95,70,0.25)",
+                  boxShadow: "0 2px 8px rgba(6,95,70,0.08)",
+                } : delayStatus === "pending" ? {
+                  background: "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)",
+                  color: "#92400E",
+                  border: "1px solid rgba(146,64,14,0.25)",
+                  boxShadow: "0 2px 8px rgba(146,64,14,0.08)",
+                } : {
                   background: "linear-gradient(135deg, #FFF7E8 0%, #FFF1D6 100%)",
                   color: "#B86E00",
                   border: "1px solid rgba(184,110,0,0.25)",
                   boxShadow: "0 2px 8px rgba(184,110,0,0.08)",
                 }}
               >
-                <Clock className="size-[18px]" strokeWidth={2.5} />
-                {scanDelayButtonLabel}
-                {delayOpen ? <ChevronUp className="size-4 ml-1" /> : <ChevronDown className="size-4 ml-1" />}
+                {delayStatus === "approved" ? (
+                  <svg className="size-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path d="M20 6L9 17l-5-5" /></svg>
+                ) : (
+                  <Clock className="size-[18px]" strokeWidth={2.5} />
+                )}
+                {delayStatus === "approved" ? (approvedLabel || scanDelayButtonLabel) : delayStatus === "pending" ? "审核中" : scanDelayButtonLabel}
+                {delayOpen && delayStatus !== "approved" ? <ChevronUp className="size-4 ml-1" /> : delayStatus !== "approved" ? <ChevronDown className="size-4 ml-1" /> : null}
               </button>
 
               {/* 内联展开 — 选项左边界不动，右边界压缩露出右侧按钮 */}

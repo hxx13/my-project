@@ -1,0 +1,185 @@
+package com.example.demo.modules.twin.dashboard.controller;
+
+import com.example.demo.common.dto.Result;
+import com.example.demo.modules.twin.dashboard.dto.CageStatusViolationDTO;
+import com.example.demo.modules.twin.dashboard.entity.TwinCageStatusViolation;
+import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
+import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
+import com.example.demo.modules.twin.dashboard.mapper.TwinCageStatusViolationMapper;
+import com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper;
+import com.example.demo.modules.twin.dashboard.service.CageStatusViolationCheckService;
+import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
+import com.example.demo.modules.twin.dashboard.service.TwinViolationRuleService;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@RestController
+@RequestMapping("/api/admin/twin/cage-status-violations")
+public class AdminCageStatusViolationController {
+
+    private final TwinCageStatusViolationMapper mapper;
+    private final TwinStudentViolationMapper violationMapper;
+    private final TwinStudentViolationService violationService;
+    private final CageStatusViolationCheckService checkService;
+    private final TwinViolationRuleService ruleService;
+
+    public AdminCageStatusViolationController(
+            TwinCageStatusViolationMapper mapper,
+            TwinStudentViolationMapper violationMapper,
+            TwinStudentViolationService violationService,
+            CageStatusViolationCheckService checkService,
+            TwinViolationRuleService ruleService) {
+        this.mapper = mapper;
+        this.violationMapper = violationMapper;
+        this.violationService = violationService;
+        this.checkService = checkService;
+        this.ruleService = ruleService;
+    }
+
+    /** 父记录列表 */
+    @GetMapping
+    public Result<List<CageStatusViolationDTO>> list() {
+        List<TwinCageStatusViolation> rows = mapper.selectAll();
+        List<CageStatusViolationDTO> dtos = rows.stream().map(this::toDTO).collect(Collectors.toList());
+        return Result.success(dtos);
+    }
+
+    /** 父记录详情（含子记录成员） */
+    @GetMapping("/{id}")
+    public Result<CageStatusViolationDTO> detail(@PathVariable long id) {
+        TwinCageStatusViolation row = mapper.selectById(id);
+        if (row == null) return Result.error("记录不存在");
+        CageStatusViolationDTO dto = toDTO(row);
+        dto.setMembers(loadMembers(id));
+        return Result.success(dto);
+    }
+
+    /** 解除父记录及其所有子记录 */
+    @PostMapping("/{id}/clear")
+    public Result<?> clear(@PathVariable long id) {
+        mapper.updateStatus(id, "CLEARED");
+        List<TwinStudentViolation> children = violationMapper.selectByCageViolationId(id);
+        for (TwinStudentViolation v : children) {
+            if ("ACTIVE".equals(v.getStatus())) {
+                violationService.clear(v.getId(), "system");
+            }
+        }
+        return Result.success(null);
+    }
+
+    /** 删除父记录及其所有子记录 */
+    @DeleteMapping("/{id}")
+    public Result<?> delete(@PathVariable long id) {
+        List<TwinStudentViolation> children = violationMapper.selectByCageViolationId(id);
+        for (TwinStudentViolation v : children) {
+            violationMapper.deleteById(v.getId());
+        }
+        mapper.deleteById(id);
+        return Result.success(null);
+    }
+
+    /** 添加成员到父记录 */
+    @PostMapping("/{id}/members")
+    public Result<?> addMember(@PathVariable long id, @RequestBody Map<String, String> body) {
+        String userId = body.get("userId");
+        if (userId == null || userId.isBlank()) return Result.error("userId 不能为空");
+
+        TwinCageStatusViolation parent = mapper.selectById(id);
+        if (parent == null) return Result.error("父记录不存在");
+
+        TwinViolationRule rule = ruleService.getById(parent.getRuleId());
+        if (rule == null) return Result.error("关联规则不存在");
+
+        try {
+            TwinStudentViolation violation = violationService.create(
+                    userId.trim(),
+                    rule.getViolationTextTpl() != null ? rule.getViolationTextTpl() : "",
+                    parseJsonArray(rule.getCageImageUrls()),
+                    rule.getForbidEnter() != null && rule.getForbidEnter() == 1,
+                    null,
+                    rule.getShowNoticeEveryScan() != null && rule.getShowNoticeEveryScan() == 1,
+                    rule.getExpireAfterDays(),
+                    "admin",
+                    "CAGE_STATUS",
+                    rule.getInteractiveChallenge(),
+                    rule.getInteractiveUnlockOnVerify() != null && rule.getInteractiveUnlockOnVerify() == 1,
+                    rule.getId()
+            );
+            if (violation != null && violation.getId() != null) {
+                violationMapper.setCageViolationId(violation.getId(), id);
+            }
+        } catch (Exception e) {
+            return Result.error("创建失败: " + e.getMessage());
+        }
+        return Result.success(null);
+    }
+
+    /** 移除单个成员 */
+    @DeleteMapping("/{id}/members/{userId}")
+    public Result<?> removeMember(@PathVariable long id, @PathVariable String userId) {
+        List<TwinStudentViolation> children = violationMapper.selectByCageViolationId(id);
+        for (TwinStudentViolation v : children) {
+            if (userId.equals(v.getTargetUserId())) {
+                violationMapper.deleteById(v.getId());
+            }
+        }
+        return Result.success(null);
+    }
+
+    /** 手动触发指定规则 */
+    @PostMapping("/trigger/{ruleId}")
+    public Result<?> manualTrigger(@PathVariable long ruleId) {
+        TwinViolationRule rule = ruleService.getById(ruleId);
+        if (rule == null) return Result.error("规则不存在");
+        int triggered = checkService.processRule(rule, null);
+        return Result.success(Map.of("triggered", triggered));
+    }
+
+    // ── helpers ──
+
+    private CageStatusViolationDTO toDTO(TwinCageStatusViolation row) {
+        CageStatusViolationDTO dto = new CageStatusViolationDTO();
+        dto.setId(row.getId());
+        dto.setRuleId(row.getRuleId());
+        dto.setScanBatchId(row.getScanBatchId());
+        dto.setStatusCode(row.getStatusCode());
+        dto.setCageShelveId(row.getCageShelveId());
+        dto.setPositionX(row.getPositionX());
+        dto.setPositionY(row.getPositionY());
+        dto.setPositionLabel(row.getPositionLabel());
+        dto.setCageBoxQrCode(row.getCageBoxQrCode());
+        dto.setProjectPiName(row.getProjectPiName());
+        dto.setProjectGroupName(row.getProjectGroupName());
+        dto.setDepartmentName(row.getDepartmentName());
+        dto.setRoomName(row.getRoomName());
+        dto.setCampusName(row.getCampusName());
+        dto.setTriggeredAt(row.getTriggeredAt());
+        dto.setStatus(row.getStatus());
+        return dto;
+    }
+
+    private List<CageStatusViolationDTO.MemberViolationDTO> loadMembers(long parentId) {
+        List<TwinStudentViolation> children = violationMapper.selectByCageViolationId(parentId);
+        return children.stream().map(v -> {
+            CageStatusViolationDTO.MemberViolationDTO m = new CageStatusViolationDTO.MemberViolationDTO();
+            m.setViolationId(v.getId());
+            m.setUserId(v.getTargetUserId());
+            m.setStatus(v.getStatus());
+            m.setCreatedAt(v.getCreatedAt());
+            return m;
+        }).collect(Collectors.toList());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> parseJsonArray(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return com.alibaba.fastjson2.JSON.parseArray(json, String.class);
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+}

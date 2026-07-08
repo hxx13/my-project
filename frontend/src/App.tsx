@@ -323,7 +323,7 @@ function App() {
                     <RouterProvider router={router} />
                 </DiagnosticErrorBoundary>
                 {!window.location.hash.includes('/dashboard-preview') && (
-                  <Toaster position="top-right" containerStyle={{ zIndex: Z_INDEX.globalToast }} />
+                  <Toaster position="top-center" containerStyle={{ zIndex: Z_INDEX.globalToast }} />
                 )}
                 {!window.location.hash.includes('/dashboard-preview') && (
                   <AdminGlobalDynamicIslandLayer />

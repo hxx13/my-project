@@ -78,6 +78,9 @@ public class ScanDelayRequestService {
     @Autowired
     private MobilePresenceNotifyService mobilePresenceNotifyService;
 
+    @Autowired
+    private com.example.demo.modules.twin.common.service.TwinAutomationLogService automationLogService;
+
     @Transactional
     public Map<String, Object> submitRequest(
             String subjectUserId,
@@ -101,6 +104,17 @@ public class ScanDelayRequestService {
             throw new IllegalArgumentException("未找到该人员的物理卡映射，无法授予免冻结");
         }
         String cardNo = mapping.getCardNo().trim();
+
+        // 防重复申请：当天同人同房同选项只允许一次（不限状态）
+        int todayCount = requestMapper.countTodayByUserRoomOption(
+                subjectUserId.trim(), roomId.trim(), optionId);
+        if (todayCount > 0) {
+            String msg = "今日已提交过该选项的延迟申请，请选择其他选项或明天再试";
+            log.warn("[scan-delay] duplicate submit blocked (today) userId={} roomId={} optionId={}",
+                    subjectUserId, roomId, optionId);
+            throw new IllegalArgumentException(msg);
+        }
+
         boolean needApproval = opt.getRequireApproval() != null && opt.getRequireApproval() == 1;
         if (needApproval) {
             List<String> configuredReviewers = resolveConfiguredCanonicalReviewerIds(opt);
@@ -131,10 +145,12 @@ public class ScanDelayRequestService {
             Map<String, Object> out = new HashMap<>();
             out.put("status", "PENDING");
             out.put("requestId", req.getId());
+            out.put("optionLabel", opt.getOptionLabel());
             out.put("message", "已提交审核，等待教职工确认");
             return out;
         }
         Map<String, Object> granted = grantExempt(cardNo, opt, roomId.trim(), "DIRECT");
+        granted.put("optionLabel", opt.getOptionLabel());
         if (mobilePresenceNotifyService != null) {
             mobilePresenceNotifyService.notifyPresenceChanged(subjectUserId.trim(), "scan_delay_granted");
         }
@@ -171,6 +187,7 @@ public class ScanDelayRequestService {
             throw new IllegalArgumentException("该房间未配置此延迟选项");
         }
         Map<String, Object> granted = grantExempt(req.getCardNo(), opt, req.getRoomId(), "APPROVED");
+        granted.put("optionLabel", opt.getOptionLabel());
         requestMapper.updateStatus(requestId, "APPROVED", reviewerUserId.trim(), null, reviewedAt);
         notifySubjectOnReview(req, opt, true, null, reviewerUserId.trim());
         if (mobilePresenceNotifyService != null && StringUtils.hasText(req.getSubjectUserId())) {
@@ -179,6 +196,84 @@ public class ScanDelayRequestService {
         granted.put("requestId", requestId);
         granted.put("status", "APPROVED");
         return granted;
+    }
+
+    /**
+     * 扫码弹窗：查询用户在某房间的活跃申请状态。
+     * PENDING 来自 request 表（审核中，真实的实时状态）；
+     * APPROVED 来自卡映射 freeze_exempt_flag + expire_at（不以 request 历史记录作判定）。
+     */
+    public List<Map<String, Object>> listActiveByUserAndRoom(String subjectUserId, String roomId) {
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        // 1) PENDING = 审核中，来自 request 表（唯一真实的"进行中"状态）
+        List<TwinScanDelayRequest> pendingRows = requestMapper.listPendingByUserAndRoom(
+                subjectUserId.trim(), roomId.trim());
+        for (TwinScanDelayRequest r : pendingRows) {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", r.getId());
+            m.put("status", "PENDING");
+            m.put("optionId", r.getOptionId());
+            m.put("createdAt", r.getCreatedAt() != null ? r.getCreatedAt().toString() : null);
+            TwinScanDelayOption opt = configService.requireOptionQuiet(r.getOptionId());
+            if (opt != null) {
+                m.put("optionLabel", opt.getOptionLabel());
+                m.put("requireApproval", opt.getRequireApproval() != null && opt.getRequireApproval() == 1);
+            }
+            result.add(m);
+        }
+
+        // 2) 卡映射真实豁免状态 → APPROVED（不以 request 历史记录作判定）
+        TwinCardMapping mapping = cardMappingService.getByAroUserId(subjectUserId.trim());
+        if (mapping != null && cardMappingService.isFreezeExempt(mapping)) {
+            Map<String, Object> m = new HashMap<>();
+            m.put("status", "APPROVED");
+            // 豁免到期时间（供前端房间按钮展示 "截至 HH:mm"）
+            if (mapping.getFreezeExemptExpireAt() != null && !mapping.getFreezeExemptExpireAt().isBlank()) {
+                m.put("expireAt", mapping.getFreezeExemptExpireAt().trim());
+            }
+            // 尝试从最近 APPROVED 记录取 optionLabel 做按钮展示（仅展示用，不影响判定）
+            List<TwinScanDelayRequest> all = requestMapper.listActiveByUserAndRoom(
+                    subjectUserId.trim(), roomId.trim());
+            for (TwinScanDelayRequest r : all) {
+                if ("APPROVED".equals(r.getStatus())) {
+                    m.put("id", r.getId());
+                    m.put("optionId", r.getOptionId());
+                    TwinScanDelayOption opt = configService.requireOptionQuiet(r.getOptionId());
+                    if (opt != null) {
+                        m.put("optionLabel", opt.getOptionLabel());
+                        m.put("requireApproval", opt.getRequireApproval() != null && opt.getRequireApproval() == 1);
+                    }
+                    break;
+                }
+            }
+            result.add(m);
+        }
+
+        return result;
+    }
+
+    /** 今日被拒选项 ID 列表（供前端菜单标记"已被拒绝"并禁用） */
+    public List<Long> listTodayRejectedOptionIds(String subjectUserId, String roomId) {
+        return requestMapper.listTodayRejectedOptionIds(subjectUserId.trim(), roomId.trim());
+    }
+
+    /** 软删除申请：标记 DELETED，后续所有判定（防重复、活跃状态）自动排除 */
+    @Transactional
+    public void deleteRequest(Long id) {
+        if (id == null) throw new IllegalArgumentException("ID 不能为空");
+        int affected = requestMapper.softDeleteById(id);
+        if (affected == 0) throw new IllegalArgumentException("申请不存在或已处理");
+        log.info("[scan-delay] request id={} soft-deleted", id);
+    }
+
+    /** 隔夜自动过期：PENDING 且创建日期非今天 → EXPIRED */
+    @Transactional
+    public void expireOldPendingRequests() {
+        int count = requestMapper.expireOldPending();
+        if (count > 0) {
+            log.info("[scan-delay] expired {} old pending requests", count);
+        }
     }
 
     public List<TwinScanDelayRequest> listMyPendingReviews(String reviewerUserId) {
@@ -398,10 +493,41 @@ public class ScanDelayRequestService {
         );
         log.info("[scan-delay] grant exempt cardNo={} roomId={} optionId={} source={}",
                 cardNo, roomId, opt.getId(), source);
+        // 写入自动化日志：记录豁免状态
+        try {
+            String exemptInfo = buildExemptSnapshot(cardNo, opt, roomId, source);
+            automationLogService.write(
+                    com.example.demo.modules.twin.common.service.TwinAutomationLogService.TYPE_EXEMPTION,
+                    "SCAN_DELAY_GRANTED",
+                    "USER",
+                    source,
+                    null,
+                    roomId,
+                    true,
+                    exemptInfo,
+                    "scan-delay-grant"
+            );
+        } catch (Exception e) {
+            log.warn("[scan-delay] automation log write failed: {}", e.getMessage());
+        }
         Map<String, Object> out = new HashMap<>(updated);
         out.put("status", "GRANTED");
         out.put("message", "已授予系统特权免冻结");
         return out;
+    }
+
+    /** 构建豁免状态快照字符串，写入自动化日志 */
+    private String buildExemptSnapshot(String cardNo, TwinScanDelayOption opt, String roomId, String source) {
+        TwinCardMapping m = cardMappingService.getByCardNo(cardNo);
+        String exemptFlag = m != null && m.getFreezeExemptFlag() != null && m.getFreezeExemptFlag() == 1 ? "是" : "否";
+        String mode = StringUtils.hasText(opt.getExemptMode()) ? opt.getExemptMode() : "TIME";
+        String expireInfo = "";
+        if (m != null && m.getFreezeExemptExpireAt() != null) {
+            expireInfo = "，到期=" + m.getFreezeExemptExpireAt().toString();
+        }
+        return "来源=" + source + "，房间=" + roomId + "，模式=" + mode
+                + "，时长=" + (opt.getDurationMinutes() != null ? opt.getDurationMinutes() + "分钟" : "未设")
+                + "，申请前已豁免=" + exemptFlag + expireInfo;
     }
 
     /**

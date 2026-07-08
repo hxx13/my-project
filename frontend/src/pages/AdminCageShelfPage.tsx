@@ -207,7 +207,7 @@ function renderNode(n:TreeNode,exp:Set<string>,q:string,tg:(k:string)=>void,onOp
   const open=exp.has(n.key);
   if(n.type==="shelf"){
     const r=n.raw;const counts=[r.type3||0,r.type1||0,r.type4||0,r.type2||0];
-    const colors=["#10b981","#f59e0b","#3b82f6","#f43f5e"];
+    const colors=["#f43f5e","#f59e0b","#3b82f6","#10b981"];
     const total=counts.reduce((a:number,b:number)=>a+b,0)||80;
     const bars=counts.map((c:number,i:number)=>({pct:Math.round(c/total*100),color:colors[i]})).filter((b:any)=>b.pct>0);
     const hasData=counts.some((c:number)=>c>0);
@@ -240,7 +240,7 @@ function renderNode(n:TreeNode,exp:Set<string>,q:string,tg:(k:string)=>void,onOp
       return acc;
     }, [0, 0, 0, 0]);
     const aggTotal = aggCounts.reduce((a: number, b: number) => a + b, 0) || (shelfChildren.length * 80);
-    const colors = ["#10b981", "#f59e0b", "#3b82f6", "#f43f5e"];
+    const colors = ["#f43f5e", "#f59e0b", "#3b82f6", "#10b981"];
     const aggBars = aggCounts.map((c: number, i: number) => ({ pct: Math.round((c / aggTotal) * 100), color: colors[i] })).filter((b: any) => b.pct > 0);
     const aggHasData = aggCounts.some((c: number) => c > 0);
     return <div key={n.key}>

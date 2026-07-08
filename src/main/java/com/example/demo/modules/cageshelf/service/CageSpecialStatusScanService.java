@@ -8,9 +8,11 @@ import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
 import com.example.demo.modules.cageshelf.support.SpecialStatusComputer;
 import com.example.demo.modules.cageshelf.support.SpecialStatusComputer.SpecialStatusEntry;
+import com.example.demo.modules.twin.common.event.CageScanCompletedEvent;
 import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -47,6 +49,7 @@ public class CageSpecialStatusScanService {
     private final CageEventDiffService diffService;
     private final CageShelfService cageShelfService;
     private final CageShelfCellSnapshotMapper cellSnapshotMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CageSpecialStatusScanService(AroService aroService,
                                          CageShelfMapper cageShelfMapper,
@@ -55,7 +58,8 @@ public class CageSpecialStatusScanService {
                                          TwinAutomationLogService automationLogService,
                                          CageEventDiffService diffService,
                                          CageShelfService cageShelfService,
-                                         CageShelfCellSnapshotMapper cellSnapshotMapper) {
+                                         CageShelfCellSnapshotMapper cellSnapshotMapper,
+                                         ApplicationEventPublisher eventPublisher) {
         this.aroService = aroService;
         this.cageShelfMapper = cageShelfMapper;
         this.snapshotMapper = snapshotMapper;
@@ -64,6 +68,7 @@ public class CageSpecialStatusScanService {
         this.diffService = diffService;
         this.cageShelfService = cageShelfService;
         this.cellSnapshotMapper = cellSnapshotMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -267,6 +272,13 @@ public class CageSpecialStatusScanService {
                 "CAGE_SPECIAL_STATUS_SCAN", "TIMER", "SCHEDULE_TICK",
                 null, "CAGE_SPECIAL_STATUS_SCAN", true,
                 summary, triggeredBy);
+
+        // 发布扫描完成事件，供笼架违规判定引擎消费
+        try {
+            eventPublisher.publishEvent(new CageScanCompletedEvent(this, scanBatchId, triggeredBy));
+        } catch (Exception e) {
+            log.warn("[cage-sync] 发布 CageScanCompletedEvent 失败: {}", e.getMessage());
+        }
 
         return Map.of(
                 "scanBatchId", scanBatchId,

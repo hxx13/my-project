@@ -312,7 +312,7 @@ public class TwinScanController {
                 } catch (Exception e) {
                     log.error("[扫码·登记] 预解冻失败 id={} cardNo={} err={}", userId, physicalCardNo, e.getMessage(), e);
                     result.setSuccess(false);
-                    result.setMessage("官方系统登记成功，但大华预解冻失败，无法下发门禁权限，请联系管理员！");
+                    result.setMessage("登记成功，门禁权限下发已跳过（预解冻未完成）。如有疑问请联系管理员。");
                     flowLog.fail("预解冻失败");
                     return Result.success(result);
                 }
@@ -341,33 +341,16 @@ public class TwinScanController {
                     dispatchResult = webScanExitDahuaLinkageService.revokeAndFreezeAfterExit(
                             userId, effectiveRoomId, physicalCardNo, isKeepCard, deferSec);
                 }
-                applyDispatchHint(result, dispatchResult, effectiveRoomId, userId, accessType);
-                if (accessType == 1
-                        && physicalCardNo != null
-                        && !twinAccessRuleScanConfigService.isEnterUnfreezeEnabled()
-                        && twinAccessRuleScanConfigService.isEnterDispatchEnabled()) {
-                    String unfreezeHint = "全局已关闭进入解冻：物理卡仍为冻结态，大华权限下发可能失败。";
-                    String merged = result.getDahuaHint();
-                    result.setDahuaHint(merged != null && !merged.isBlank() ? merged + " " + unfreezeHint : unfreezeHint);
-                }
+                // 门禁联动结果仅写入自动化日志，不在弹窗展示
                 if (accessType == 2 && deferSec > 0) {
                     result.setDeferredDahuaSeconds(deferSec);
-                    String deferHint = webScanExitDahuaLinkageService.buildDeferredExitHint(deferSec, isKeepCard);
-                    if (deferHint != null && !deferHint.isBlank()) {
-                        String merged = result.getDahuaHint();
-                        if (merged != null && !merged.isBlank()) {
-                            result.setDahuaHint(merged + " " + deferHint);
-                        } else {
-                            result.setDahuaHint(deferHint);
-                        }
-                    }
                 }
             } catch (Exception linkageEx) {
                 if (accessType == 2) {
                     log.error("[扫码·登记] 离开联动失败 id={} err={}", userId, linkageEx.getMessage(), linkageEx);
                     result.setSuccess(false);
                     String detail = linkageEx.getMessage() != null ? linkageEx.getMessage() : linkageEx.getClass().getSimpleName();
-                    result.setMessage("官方系统离开登记成功，但大华联动（权限回收/冻结）失败，请联系管理员。详情：" + detail);
+                    result.setMessage("离开登记成功，门禁联动（权限回收/冻结）未能完成。如有需要请联系管理员处理。详情：" + detail);
                     flowLog.fail("离开联动失败");
                     return Result.success(result);
                 }
@@ -426,7 +409,7 @@ public class TwinScanController {
                 } catch (Exception e) {
                     log.error("[扫码·登记] 门禁收尾失败 id={} cardNo={} err={}", userId, physicalCardNo, e.getMessage(), e);
                     result.setSuccess(false);
-                    result.setMessage("官方系统登记成功，但大华物理门禁响应失败，请联系管理员手动开门！");
+                    result.setMessage("登记成功，物理闸机响应超时。请稍后重试或联系管理员手动处理。");
                     flowLog.fail("门禁收尾失败");
                     return Result.success(result);
                 }
@@ -435,15 +418,11 @@ public class TwinScanController {
                 if (healedNoLeaveConflict) {
                     result.setMessage("ARO 显示当前已无待离开房间，系统已完成状态自愈同步。");
                 } else {
-                    String exitExtra = "";
-                    if (accessType == 2 && deferSec <= 0 && dispatchResult == AccessRuleDispatchResult.SCAN_LINKAGE_EXIT_DISABLED) {
-                        exitExtra = "（已跳过门禁权限回收：全局开关关闭）";
-                    }
                     String base = accessType == 1
                             ? "纯数字打卡成功！(未绑定大华物理卡)"
                             : (accessType == 2 && deferSec > 0
                             ? "离开登记成功！大华门禁回收与物理卡冻结将在 " + deferSec + " 秒后执行。"
-                            : "离开登记成功！(未绑定大华物理卡)" + exitExtra);
+                            : "离开登记成功！(未绑定大华物理卡)");
                     result.setMessage(base + " 本次经验 +" + expAdded);
                 }
             }
@@ -473,7 +452,7 @@ public class TwinScanController {
                             userId,
                             rid,
                             true,
-                            "Web/终端扫码登记成功：动作=" + actLabel + "，房间=" + roomLabel + "，人员=" + userName,
+                            "自助登记/远程预约：动作=" + actLabel + "，房间=" + roomLabel + "，人员=" + userName,
                             "twin-scan-execute"
                     );
                 }

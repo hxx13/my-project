@@ -308,7 +308,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                 style={{ zIndex: Z_INDEX.scannerPopup }}
             >
                 <ScanPopupBackdropDecor />
-                <button className="absolute top-6 right-6 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-[var(--app-elevation-card)] transition-colors hover:border-[var(--app-color-feedback-danger)] hover:bg-[var(--app-color-feedback-danger-soft)] hover:text-[var(--app-color-feedback-danger)]" onClick={onClose} title="关闭 Esc">
+                <button className="absolute top-16 right-16 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] shadow-[var(--app-elevation-card)] transition-colors hover:border-[var(--app-color-feedback-danger)] hover:bg-[var(--app-color-feedback-danger-soft)] hover:text-[var(--app-color-feedback-danger)]" onClick={onClose} title="关闭 Esc">
                     <X className="w-5 h-5" />
                 </button>
                 {showUnboundBindHint ? (
@@ -439,6 +439,8 @@ export function UiverseProfilePopup(props: PopupProps) {
                                         getDelayOptions={actions.getDelayOptionsForRoom}
                                         subjectUserId={state.user?.userId}
                                         onDelaySuccess={actions.handleDelayGrantSuccess}
+                                        getDelayStatusForRoom={actions.getDelayStatusForRoom}
+                                        getRejectedOptionIdsForRoom={actions.getRejectedOptionIdsForRoom}
                                         userName={state.user?.name}
                                         onRequestExit={actions.requestExit}
                                         onConfirmExit={actions.confirmExit}

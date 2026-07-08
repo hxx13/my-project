@@ -41,23 +41,34 @@
         WHERE id = #{id} AND status = 'PENDING'
     </update>
 
+    <update id="softDeleteById">
+        UPDATE twin_scan_delay_request SET status = 'DELETED'
+        WHERE id = #{id}
+    </update>
+
+    <update id="expireOldPending">
+        UPDATE twin_scan_delay_request SET status = 'EXPIRED'
+        WHERE status = 'PENDING' AND DATE(created_at) &lt; CURDATE()
+    </update>
+
     <select id="listPendingByReviewer" resultMap="BaseMap">
         SELECT * FROM twin_scan_delay_request
-        WHERE status = 'PENDING' AND reviewer_user_id = #{reviewerUserId}
+        WHERE status = 'PENDING' AND DATE(created_at) = CURDATE()
+          AND reviewer_user_id = #{reviewerUserId}
         ORDER BY created_at DESC
         LIMIT #{limit}
     </select>
 
     <select id="listAllPending" resultMap="BaseMap">
         SELECT * FROM twin_scan_delay_request
-        WHERE status = 'PENDING'
+        WHERE status = 'PENDING' AND DATE(created_at) = CURDATE()
         ORDER BY created_at DESC
         LIMIT #{limit}
     </select>
 
     <select id="listReviewedHistory" resultMap="BaseMap">
         SELECT * FROM twin_scan_delay_request
-        WHERE status IN ('APPROVED', 'REJECTED')
+        WHERE status IN ('APPROVED', 'REJECTED', 'EXPIRED')
         ORDER BY COALESCE(reviewed_at, created_at) DESC
         LIMIT #{limit}
     </select>
@@ -82,5 +93,41 @@
           AND status IN ('PENDING', 'APPROVED', 'REJECTED')
         ORDER BY COALESCE(reviewed_at, created_at) DESC
         LIMIT #{limit}
+    </select>
+
+    <select id="listActiveByUserAndRoom" resultMap="BaseMap">
+        SELECT * FROM twin_scan_delay_request
+        WHERE subject_user_id = #{subjectUserId}
+          AND room_id = #{roomId}
+          AND status IN ('PENDING', 'APPROVED')
+        ORDER BY created_at DESC
+        LIMIT 5
+    </select>
+
+    <select id="listPendingByUserAndRoom" resultMap="BaseMap">
+        SELECT * FROM twin_scan_delay_request
+        WHERE subject_user_id = #{subjectUserId}
+          AND room_id = #{roomId}
+          AND status = 'PENDING'
+          AND DATE(created_at) = CURDATE()
+        ORDER BY created_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="countTodayByUserRoomOption" resultType="int">
+        SELECT COUNT(1) FROM twin_scan_delay_request
+        WHERE subject_user_id = #{subjectUserId}
+          AND room_id = #{roomId}
+          AND option_id = #{optionId}
+          AND DATE(created_at) = CURDATE()
+          AND status != 'DELETED'
+    </select>
+
+    <select id="listTodayRejectedOptionIds" resultType="long">
+        SELECT DISTINCT option_id FROM twin_scan_delay_request
+        WHERE subject_user_id = #{subjectUserId}
+          AND room_id = #{roomId}
+          AND status = 'REJECTED'
+          AND DATE(created_at) = CURDATE()
     </select>
 </mapper>

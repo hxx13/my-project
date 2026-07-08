@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.example.demo.common.event.CredentialsChangedEvent;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.dto.AroRecord;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import javax.annotation.PostConstruct;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,6 +48,9 @@ public class AroService {
 
     private String account;
     private String password;
+
+    @Autowired
+    private AroPersonnelMapper aroPersonnelMapper;
 
     private final NotificationSettingsService settingsService;
 
@@ -808,6 +813,22 @@ public class AroService {
             log.warn("[aro] 笼位状态回填网络异常 roomId={} shelveId={} err={}", roomId, shelveId, e.getMessage());
         }
         return Map.of();
+    }
+
+    /**
+     * 按课题组名称模糊匹配 aro_personnel 表，返回该组成员 userId 列表。
+     * 用于笼架违规判定引擎展开课题组成员。
+     */
+    public List<String> findUserIdsByProjectGroup(String projectGroupName) {
+        if (projectGroupName == null || projectGroupName.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            return aroPersonnelMapper.selectUserIdsByProjectGroup(projectGroupName.trim());
+        } catch (Exception e) {
+            log.warn("[aro] 查询课题组成员失败 group={} err={}", projectGroupName, e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
 }

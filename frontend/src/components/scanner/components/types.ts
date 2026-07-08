@@ -3,6 +3,7 @@ import type { AnalyzeResponse, AnalyzeUserInfo, DisciplinaryRecord, ExecutePaylo
 import type { ExecuteResult } from "@/api/domains/scanner.api";
 import type { RoomPrediction } from "@/components/scanner/AIPredictionCard";
 import type { AccessMotionVariant } from "@/components/scanner/accessMotionVariants";
+import type { DelayButtonStatus } from "@/components/scanner/ScanDelayButtonMenu";
 
 import type { BlinkPhase } from '@/components/face-verify/useFaceVerification';
 import type { FaceChallengeAction } from '@/components/face-verify/faceChallenge';
@@ -129,7 +130,9 @@ export interface PopupActions {
     markEnterCornerReady: () => void;
     markEnterNoticeReady: () => void;
     getDelayOptionsForRoom: (roomId: string) => ScanDelayOptionSummary[];
-    handleDelayGrantSuccess: () => void;
+    getDelayStatusForRoom: (roomId: string) => DelayButtonStatus | undefined;
+    getRejectedOptionIdsForRoom: (roomId: string) => number[];
+    handleDelayGrantSuccess: (roomId: string, status: string, optionLabel?: string) => void;
     /** 打开离开确认弹窗（不执行离开） */
     requestExit: (room: RoomInfo, index: number) => void;
     /** 确认离开：执行待确认的房间操作 */

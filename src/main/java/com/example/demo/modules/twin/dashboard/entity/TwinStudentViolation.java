@@ -33,4 +33,6 @@ public class TwinStudentViolation {
     private Integer interactiveUnlockOnVerify;
     /** 关联触发规则ID */
     private Long ruleId;
+    /** 关联笼架违规父记录ID，NULL=非笼架触发 */
+    private Long cageViolationId;
 }
