@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { Plus, ChevronRight, Pencil, Trash2, Check, User, Users, Search } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, Pencil, Trash2, Check, User, Users, Search } from "lucide-react";
 import {
   listViolationRules,
   createViolationRule,
@@ -99,6 +99,108 @@ const emptyRule = (): ViolationRule => ({
 type PickUser = { userId: string; name: string };
 
 /* ================================================================== */
+/*  StatusGroupAccordion                                                */
+/* ================================================================== */
+
+const STATUS_BG: Record<string, string> = {
+  COHABITATION: "bg-emerald-50 border-emerald-200",
+  SPECIAL_FEEDING: "bg-red-50 border-red-200",
+  NEED_DIVIDE: "bg-yellow-50 border-yellow-200",
+  HEALTH_ABNORMAL: "bg-purple-50 border-purple-200",
+  ANIMAL_TRANSFER: "bg-cyan-50 border-cyan-200",
+};
+
+function StatusGroupAccordion({
+  code, label, groups, totalCages, onPickGroup,
+}: {
+  code: string; label: string;
+  groups: Map<string, Array<{ position: string; roomName: string; campusName: string; shelveName: string }>>;
+  totalCages: number;
+  onPickGroup: (groupName: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroupDetail = (pi: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(pi)) next.delete(pi); else next.add(pi);
+      return next;
+    });
+  };
+
+  const borderCls = STATUS_BG[code] ?? "bg-neutral-50 border-neutral-200";
+
+  return (
+    <div className={`rounded-md border ${borderCls} overflow-hidden`}>
+      {/* Status header */}
+      <button
+        type="button"
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-black/5 transition-colors"
+        onClick={() => setOpen(!open)}
+      >
+        <span className="text-xs font-bold text-[var(--app-color-text-primary)]">
+          {label}
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="text-[11px] text-[var(--app-color-text-tertiary)]">
+            {groups.size} 个课题组 · {totalCages} 个笼位
+          </span>
+          <ChevronDown className={`w-3.5 h-3.5 text-[var(--app-color-text-tertiary)] transition-transform ${open ? "rotate-180" : ""}`} />
+        </span>
+      </button>
+
+      {/* Group list */}
+      {open && (
+        <div className="border-t border-black/10 px-2 py-1.5 space-y-1 max-h-[200px] overflow-y-auto">
+          {Array.from(groups.entries()).map(([pi, cages]) => {
+            const isExpanded = expandedGroups.has(pi);
+            return (
+              <div key={pi} className="rounded border border-black/10 bg-white/70">
+                {/* PI row */}
+                <div className="flex items-center justify-between px-2.5 py-1.5">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 text-xs font-medium text-[var(--app-color-text-primary)] hover:text-[var(--app-color-accent)] transition-colors text-left min-w-0 flex-1"
+                    onClick={() => toggleGroupDetail(pi)}
+                  >
+                    <ChevronRight className={`w-3 h-3 shrink-0 text-[var(--app-color-text-tertiary)] transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                    <span className="truncate">{pi}</span>
+                    <span className="shrink-0 text-[10px] text-[var(--app-color-text-tertiary)]">({cages.length} 笼位)</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors font-medium"
+                    onClick={() => onPickGroup(pi)}
+                  >
+                    选择
+                  </button>
+                </div>
+
+                {/* Expanded cage positions */}
+                {isExpanded && (
+                  <div className="border-t border-black/5 px-2.5 py-1.5 max-h-[150px] overflow-y-auto">
+                    <div className="grid grid-cols-1 gap-0.5">
+                      {cages.map((c, i) => (
+                        <div key={i} className="text-[10px] text-[var(--app-color-text-secondary)] flex items-center gap-1.5">
+                          <span className="font-mono font-semibold text-[var(--app-color-text-primary)]">{c.position}</span>
+                          <span className="text-[var(--app-color-text-tertiary)]">·</span>
+                          <span className="truncate">{[c.campusName, c.roomName, c.shelveName].filter(Boolean).join(" / ") || "-"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================================================================== */
 /*  Component                                                           */
 /* ================================================================== */
 
@@ -143,17 +245,30 @@ export function CageLinkageTab() {
     staleTime: 60_000,
   });
 
-  // Extract unique groups with special statuses
-  const specialStatusGroups = useMemo(() => {
-    if (!specialStatus) return [] as string[];
-    const groups = new Set<string>();
+  // Build nested map: statusCode → projectPiName → cages[]
+  const specialStatusByCode = useMemo(() => {
+    if (!specialStatus) return new Map<string, { label: string; groups: Map<string, Array<{ position: string; roomName: string; campusName: string; shelveName: string }>> }>();
+    const map = new Map<string, { label: string; groups: Map<string, any[]> }>();
     for (const grp of specialStatus.groups ?? []) {
+      if (grp.statusCode === "NORMAL") continue;
+      const byPi = new Map<string, any[]>();
       for (const cage of grp.cages ?? []) {
-        if (cage.projectPiName) groups.add(cage.projectPiName);
+        const pi = cage.projectPiName?.trim() || "未知课题组";
+        if (!byPi.has(pi)) byPi.set(pi, []);
+        byPi.get(pi)!.push({
+          position: cage.position,
+          roomName: cage.roomName ?? "",
+          campusName: cage.campusName ?? "",
+          shelveName: cage.shelveName ?? "",
+        });
       }
+      map.set(grp.statusCode, { label: grp.statusLabel || grp.statusCode, groups: byPi });
     }
-    return Array.from(groups).sort();
+    return map;
   }, [specialStatus]);
+
+  // Selected status codes for filtering
+  const selectedStatusCodes = form.cageStatusCodes ?? [];
 
   const { data: records = [], isLoading: recsLoading } = useQuery({
     queryKey: ["cage-status-violations"],
@@ -448,24 +563,34 @@ export function CageLinkageTab() {
                 />
               </div>
 
-              {/* ═══ 特殊状态快捷选择 ═══ */}
-              {!selectedGroup && specialStatusGroups.length > 0 && (
+              {/* ═══ 特殊状态快捷选择（按状态分类，与监控状态联动） ═══ */}
+              {!selectedGroup && specialStatus && (specialStatus.groups ?? []).length > 0 && (
                 <div className="rounded-twin-lg border border-amber-200/80 bg-amber-50/60 p-3">
                   <p className="text-[11px] font-semibold text-amber-800 mb-2">
-                    当前存在特殊状态的课题组（点击快速选择）
+                    特殊状态笼位 · 课题组快捷选择（勾选上方监控状态后可联动筛选）
                   </p>
-                  <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
-                    {specialStatusGroups.map((g) => (
-                      <button
-                        key={g}
-                        type="button"
-                        className="text-xs px-2.5 py-1 rounded-full border border-amber-300 bg-white text-amber-900 hover:bg-amber-100 hover:border-amber-400 transition-colors"
-                        onClick={() => pickGroup(g)}
-                      >
-                        {g}
-                      </button>
-                    ))}
+                  <div className="max-h-[280px] overflow-y-auto space-y-2">
+                    {Array.from(specialStatusByCode.entries())
+                      .filter(([code]) => selectedStatusCodes.length === 0 || selectedStatusCodes.includes(code))
+                      .map(([code, info]) => {
+                        const totalCages = Array.from(info.groups.values()).reduce((sum, cages) => sum + cages.length, 0);
+                        return (
+                          <StatusGroupAccordion
+                            key={code}
+                            code={code}
+                            label={info.label}
+                            groups={info.groups}
+                            totalCages={totalCages}
+                            onPickGroup={pickGroup}
+                          />
+                        );
+                      })}
                   </div>
+                  {selectedStatusCodes.length > 0 && (
+                    <p className="text-[10px] text-amber-600 mt-2">
+                      已按上方勾选的 {selectedStatusCodes.length} 种状态类型筛选
+                    </p>
+                  )}
                 </div>
               )}
 
