@@ -253,30 +253,52 @@ export interface ViolationRule {
   cageImageUrls?: string[];
 }
 
+/** 解析后端返回的笼架 JSON 字符串字段为 JS 数组/对象 */
+function deserializeCageFields(rule: ViolationRule): ViolationRule {
+  if (!rule) return rule;
+  const out = { ...rule };
+  try { if (typeof out.cageStatusCodes === "string") out.cageStatusCodes = JSON.parse(out.cageStatusCodes); } catch {}
+  try { if (typeof out.cageAreaFilter === "string") out.cageAreaFilter = JSON.parse(out.cageAreaFilter); } catch {}
+  try { if (typeof out.cageGroupWhitelist === "string") out.cageGroupWhitelist = JSON.parse(out.cageGroupWhitelist); } catch {}
+  try { if (typeof out.cageImageUrls === "string") out.cageImageUrls = JSON.parse(out.cageImageUrls); } catch {}
+  return out;
+}
+
 export async function listViolationRules(): Promise<ViolationRule[]> {
   const res = await adminHttp.get<ApiResponse<ViolationRule[]>>(
     "/twin/student-violations/rules"
   );
-  return res.data?.data || [];
+  return (res.data?.data || []).map(deserializeCageFields);
 }
 
 export async function getViolationRule(id: number): Promise<ViolationRule | null> {
   const res = await adminHttp.get<ApiResponse<ViolationRule>>(
     `/twin/student-violations/rules/${id}`
   );
-  return res.data?.data ?? null;
+  const data = res.data?.data ?? null;
+  return data ? deserializeCageFields(data) : null;
+}
+
+/** 将笼架联动规则的 JS 数组/对象字段序列化为 JSON 字符串，后端 Entity 为 String 类型 */
+function serializeCageFields(body: ViolationRule): ViolationRule {
+  const out = { ...body };
+  if (out.cageStatusCodes != null) out.cageStatusCodes = JSON.stringify(out.cageStatusCodes) as any;
+  if (out.cageAreaFilter != null) out.cageAreaFilter = JSON.stringify(out.cageAreaFilter) as any;
+  if (out.cageGroupWhitelist != null) out.cageGroupWhitelist = JSON.stringify(out.cageGroupWhitelist) as any;
+  if (out.cageImageUrls != null) out.cageImageUrls = JSON.stringify(out.cageImageUrls) as any;
+  return out;
 }
 
 export async function createViolationRule(body: ViolationRule): Promise<ViolationRule> {
   const res = await adminHttp.post<ApiResponse<ViolationRule>>(
-    "/twin/student-violations/rules", body
+    "/twin/student-violations/rules", serializeCageFields(body)
   );
   return res.data?.data!;
 }
 
 export async function updateViolationRule(id: number, body: ViolationRule): Promise<ViolationRule> {
   const res = await adminHttp.put<ApiResponse<ViolationRule>>(
-    `/twin/student-violations/rules/${id}`, body
+    `/twin/student-violations/rules/${id}`, serializeCageFields(body)
   );
   return res.data?.data!;
 }
