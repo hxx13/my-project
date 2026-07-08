@@ -213,10 +213,24 @@ function RuleFormModal({
 
   return createPortal(
     <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="w-full max-w-[480px] max-h-[88vh] overflow-y-auto app-themed-scrollbar rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-6">
-        <h3 className="text-lg font-bold text-[var(--app-color-text-primary)] mb-5">
-          {isNew ? "新建触发规则" : "编辑触发规则"}
-        </h3>
+      <div className="w-full max-w-[480px] max-h-[88vh] flex flex-col rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)]">
+        {/* Sticky header */}
+        <div className="flex items-center justify-between shrink-0 px-6 pt-6 pb-3 border-b border-[var(--app-color-border-default)]">
+          <h3 className="text-lg font-bold text-[var(--app-color-text-primary)]">
+            {isNew ? "新建触发规则" : "编辑触发规则"}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1.5 text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] transition-colors"
+            aria-label="关闭"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 
         <p className="text-[11px] text-[var(--app-color-text-tertiary)] mb-5 leading-snug rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-3">
           此表单仅配置<strong className="text-[var(--app-color-text-primary)]">解禁次数管控</strong>。
@@ -429,8 +443,10 @@ function RuleFormModal({
           <span className="text-[var(--app-color-text-primary)]">启用此规则</span>
         </label>
 
-        {/* 操作按钮 */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-[var(--app-color-border-default)]">
+        </div>{/* End scrollable body */}
+
+        {/* Sticky footer */}
+        <div className="flex justify-end gap-3 shrink-0 px-6 py-4 border-t border-[var(--app-color-border-default)]">
           <button
             onClick={onClose}
             className="rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-hover)] px-4 py-2 text-sm font-semibold text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-active)]"

@@ -156,12 +156,26 @@ export function CageLinkageRuleForm({ editing, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto app-themed-scrollbar rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-6"
+        className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-[var(--app-radius-container)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-bold text-[var(--app-color-text-primary)] mb-5">
-          {isNew ? "新建笼架联动规则" : "编辑笼架联动规则"}
-        </h3>
+        {/* Sticky header */}
+        <div className="flex items-center justify-between shrink-0 px-6 pt-6 pb-3 border-b border-[var(--app-color-border-default)]">
+          <h3 className="text-lg font-bold text-[var(--app-color-text-primary)]">
+            {isNew ? "新建笼架联动规则" : "编辑笼架联动规则"}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1.5 text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] transition-colors"
+            aria-label="关闭"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 
         {/* ═══ 基本信息 ═══ */}
         <fieldset className="mb-5">
@@ -585,9 +599,10 @@ export function CageLinkageRuleForm({ editing, onClose }: Props) {
           />
           <span className="text-[var(--app-color-text-primary)]">启用此规则</span>
         </div>
+        </div>{/* End scrollable body */}
 
-        {/* 操作按钮 */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-[var(--app-color-border-default)]">
+        {/* Sticky footer */}
+        <div className="flex justify-end gap-3 shrink-0 px-6 py-4 border-t border-[var(--app-color-border-default)]">
           <AdminButton tone="secondary" onClick={onClose}>
             取消
           </AdminButton>
