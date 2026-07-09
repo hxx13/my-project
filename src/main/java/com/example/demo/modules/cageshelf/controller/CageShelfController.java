@@ -7,6 +7,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.cageshelf.entity.CageEventLog;
 import com.example.demo.modules.cageshelf.mapper.CageEventLogMapper;
 import com.example.demo.modules.cageshelf.mapper.UserCageColorConfigMapper;
+import com.example.demo.modules.cageshelf.service.CageAlertService;
 import com.example.demo.modules.cageshelf.service.CageScanProgressService;
 import com.example.demo.modules.cageshelf.service.CageShelfService;
 import com.example.demo.modules.student.service.StudentCageShelfService;
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,19 +39,22 @@ public class CageShelfController {
     private final CageScanProgressService cageScanProgressService;
     private final UserCageColorConfigMapper colorConfigMapper;
     private final CageEventLogMapper eventLogMapper;
+    private final CageAlertService cageAlertService;
 
     public CageShelfController(AuthContextService authContextService,
                                CageShelfService cageShelfService,
                                StudentCageShelfService studentCageShelfService,
                                CageScanProgressService cageScanProgressService,
                                UserCageColorConfigMapper colorConfigMapper,
-                               CageEventLogMapper eventLogMapper) {
+                               CageEventLogMapper eventLogMapper,
+                               CageAlertService cageAlertService) {
         this.authContextService = authContextService;
         this.cageShelfService = cageShelfService;
         this.studentCageShelfService = studentCageShelfService;
         this.cageScanProgressService = cageScanProgressService;
         this.colorConfigMapper = colorConfigMapper;
         this.eventLogMapper = eventLogMapper;
+        this.cageAlertService = cageAlertService;
     }
 
     @PostMapping("/import")
@@ -93,14 +98,15 @@ public class CageShelfController {
     @GetMapping("/{shelveId}/detail")
     @Operation(summary = "获取笼架详情（优先缓存，缓存未命中时实时拉取 ARO）")
     public Result<?> detail(@RequestHeader(value = "Authorization", required = false) String authorization,
-                            @PathVariable String shelveId) {
+                            @PathVariable String shelveId,
+                            @RequestParam(required = false) String batchId) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) {
             return denied;
         }
         try {
-            return Result.success(cageShelfService.fetchShelfDetail(shelveId));
+            return Result.success(cageShelfService.fetchShelfDetail(shelveId, batchId));
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
@@ -293,6 +299,55 @@ public class CageShelfController {
         if (denied != null) return denied;
         eventLogMapper.ensureTable();
         return Result.success(eventLogMapper.timelineByBox(cageBoxQrCode, limit));
+    }
+
+    // ---- 笼位特殊状态持续告警 ----
+
+    @GetMapping("/persisted-alerts")
+    @Operation(summary = "基于快照对比查询持续告警")
+    public Result<?> persistedAlerts(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(required = false) String baselineBatchId,
+            @RequestParam(defaultValue = "auto") String mode) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        return Result.success(cageAlertService.getPersistedAlerts(baselineBatchId, mode));
+    }
+
+    @GetMapping("/alert-config")
+    @Operation(summary = "获取指定模式的告警配置")
+    public Result<?> getAlertConfig(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(defaultValue = "auto") String mode) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        return Result.success(cageAlertService.getConfig(mode));
+    }
+
+    @PutMapping("/alert-config")
+    @Operation(summary = "保存指定模式的告警配置（全量替换）")
+    public Result<?> saveAlertConfig(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody List<Map<String, Object>> body,
+            @RequestParam(defaultValue = "auto") String mode) {
+        User user = resolveUser(authorization);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        List<com.example.demo.modules.cageshelf.entity.CageAlertConfig> configs = new ArrayList<>();
+        for (Map<String, Object> item : body) {
+            com.example.demo.modules.cageshelf.entity.CageAlertConfig cfg = new com.example.demo.modules.cageshelf.entity.CageAlertConfig();
+            cfg.setStatusCode(String.valueOf(item.getOrDefault("statusCode", "")));
+            cfg.setStatusLabel(String.valueOf(item.getOrDefault("statusLabel", "")));
+            Object td = item.get("thresholdDays");
+            cfg.setThresholdDays(td instanceof Number n ? n.intValue() : 7);
+            Object en = item.get("enabled");
+            cfg.setEnabled(en instanceof Boolean b ? (b ? 1 : 0) : (en instanceof Number n && n.intValue() != 0 ? 1 : 0));
+            configs.add(cfg);
+        }
+        cageAlertService.saveConfig(configs, mode);
+        return Result.success();
     }
 
     /** 一次性：从 cage_shelf_grid_cache 的 grid_json 解析 animalCageType 回填 cage_shelf_cell_snapshot */

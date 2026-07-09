@@ -7,6 +7,7 @@ import com.example.demo.modules.cageshelf.mapper.CageShelfBookmarkMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfCellSnapshotMapper;
 import com.example.demo.modules.cageshelf.mapper.CageShelfMapper;
 import com.example.demo.modules.cageshelf.entity.CageShelfIndex;
+import com.example.demo.modules.cageshelf.mapper.CageSpecialStatusSnapshotMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,15 +26,18 @@ public class CageShelfDataController {
     private final CageShelfCellSnapshotMapper cellMapper;
     private final CageShelfBookmarkMapper bookmarkMapper;
     private final CageShelfMapper shelfMapper;
+    private final CageSpecialStatusSnapshotMapper snapshotMapper;
 
     public CageShelfDataController(AuthContextService auth,
                                     CageShelfCellSnapshotMapper cellMapper,
                                     CageShelfBookmarkMapper bookmarkMapper,
-                                    CageShelfMapper shelfMapper) {
+                                    CageShelfMapper shelfMapper,
+                                    CageSpecialStatusSnapshotMapper snapshotMapper) {
         this.auth = auth;
         this.cellMapper = cellMapper;
         this.bookmarkMapper = bookmarkMapper;
         this.shelfMapper = shelfMapper;
+        this.snapshotMapper = snapshotMapper;
     }
 
     // ── Cell snapshot ──────────────────────────────────────────────
@@ -77,6 +81,14 @@ public class CageShelfDataController {
     @GetMapping("/full-tree")
     public Result<?> getFullTree() {
         List<Map<String, Object>> rows = shelfMapper.listFullTree();
+        return Result.success(rows == null ? List.of() : rows);
+    }
+
+    /** GET /api/cage-shelves/snapshot-batches — 列出所有扫描批次（快照数据源列表） */
+    @GetMapping("/snapshot-batches")
+    public Result<?> getSnapshotBatches() {
+        snapshotMapper.ensureTable();
+        List<Map<String, Object>> rows = snapshotMapper.selectBatchList();
         return Result.success(rows == null ? List.of() : rows);
     }
 

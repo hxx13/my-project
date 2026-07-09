@@ -117,7 +117,7 @@ public class CageStatusViolationCheckService {
 
         // 获取近期 STATUS_ADDED 事件（距今 >= delayDays）
         List<CageEventLog> addedEvents = eventLogMapper.selectRecentStatusAdded(
-                statusCodes, delayDays, scanBatchId);
+                statusCodes, delayDays, scanBatchId, null);
 
         // 解析区域和白名单过滤条件
         List<String> campuses = parseJsonField(rule.getCageAreaFilter(), "campuses");

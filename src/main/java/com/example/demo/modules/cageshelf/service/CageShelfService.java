@@ -172,9 +172,26 @@ public class CageShelfService {
      * 需要最新数据时由前端调用 refresh 接口手动触发。
      */
     public Map<String, Object> fetchShelfDetail(String shelveId) {
+        return fetchShelfDetail(shelveId, null);
+    }
+
+    /**
+     * 获取笼架详情。batchId 非空时从快照重建历史 grid，为空时走缓存。
+     */
+    public Map<String, Object> fetchShelfDetail(String shelveId, String batchId) {
         if (shelveId == null || shelveId.isBlank()) {
             throw new IllegalArgumentException("shelveId 不能为空");
         }
+        // 历史快照模式：若 batchId 等于最新批次 → 直接用缓存（和"最新数据"完全一致）
+        if (batchId != null && !batchId.isBlank()) {
+            Map<String, Object> latestInfo = specialStatusSnapshotMapper.selectLatestBatchInfo();
+            String latestBatchId = latestInfo != null ? String.valueOf(latestInfo.getOrDefault("scanBatchId", "")) : "";
+            if (!batchId.equals(latestBatchId)) {
+                return buildShelfDetailFromSnapshot(shelveId, batchId);
+            }
+            // batchId == 最新批次 → fall through 走缓存
+        }
+        // 缓存模式（最新数据）
         Map<String, Object> cached = gridCacheMapper.selectByShelveId(shelveId);
         if (cached != null && !cached.isEmpty()) {
             try {
@@ -217,6 +234,112 @@ public class CageShelfService {
         empty.put("filledCells", 0);
         empty.put("fromCache", false);
         return empty;
+    }
+
+    /**
+     * 从指定批次快照重建笼架 grid（历史数据源视图）。
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> buildShelfDetailFromSnapshot(String shelveId, String batchId) {
+        specialStatusSnapshotMapper.ensureTable();
+        cellSnapshotMapper.ensureTable();
+        Long sid;
+        try { sid = Long.parseLong(shelveId); }
+        catch (NumberFormatException e) { sid = 0L; }
+
+        List<CageSpecialStatusSnapshot> snaps = specialStatusSnapshotMapper.selectByBatchIdAndShelveId(batchId, sid);
+
+        // 构建 shelfMeta
+        CageShelfIndex idx = cageShelfMapper.findByShelveId(shelveId);
+        Map<String, Object> shelfMeta = new LinkedHashMap<>();
+        if (idx != null) {
+            shelfMeta.put("campusName", idx.getCampusName() != null ? idx.getCampusName() : "");
+            shelfMeta.put("areaName", idx.getAreaName() != null ? idx.getAreaName() : "");
+            shelfMeta.put("floorName", idx.getFloorName() != null ? idx.getFloorName() : "");
+            shelfMeta.put("roomName", idx.getRoomName() != null ? idx.getRoomName() : "");
+            shelfMeta.put("shelveId", String.valueOf(idx.getShelveId()));
+            shelfMeta.put("shelveName", idx.getShelveName() != null ? idx.getShelveName() : shelveId);
+        } else if (!snaps.isEmpty()) {
+            CageSpecialStatusSnapshot s = snaps.get(0);
+            shelfMeta.put("campusName", s.getCampusName() != null ? s.getCampusName() : "");
+            shelfMeta.put("roomName", s.getRoomName() != null ? s.getRoomName() : "");
+            shelfMeta.put("shelveId", shelveId);
+            shelfMeta.put("shelveName", shelveId);
+        } else {
+            shelfMeta.put("shelveId", shelveId);
+            shelfMeta.put("shelveName", shelveId);
+        }
+
+        // 构建完整 8×10 grid（空位填充）
+        Map<String, Map<String, Object>> posMap = new LinkedHashMap<>();
+        for (CageSpecialStatusSnapshot s : snaps) {
+            String pKey = s.getPositionX() + ":" + s.getPositionY();
+            Map<String, Object> cell = new LinkedHashMap<>();
+            cell.put("x", s.getPositionX());
+            cell.put("y", s.getPositionY());
+            cell.put("position", s.getPositionLabel());
+            cell.put("empty", false);
+            cell.put("animalCageType", s.getAnimalCageType() != null ? s.getAnimalCageType() : 0);
+            cell.put("projectPiName", s.getProjectPiName());
+            cell.put("departmentName", s.getDepartmentName());
+            cell.put("piName", s.getPiName());
+
+            // 从 snapshot 自身的 cageBoxJson 解析完整数据
+            Map<String, Object> cbi = new LinkedHashMap<>();
+            String cbj = s.getCageBoxJson();
+            if (cbj != null && !cbj.isBlank()) {
+                try { cbi = JSON.parseObject(cbj, Map.class); }
+                catch (Exception ignored) { /* keep empty */ }
+            }
+            cell.put("cageBoxInfo", cbi);
+            // projectGroup 来自 cageBoxVo.projectName
+            Object pn = cbi.get("projectName");
+            cell.put("projectGroup", pn instanceof String ps && !ps.isBlank() ? ps : "");
+
+            // specialStatuses：用 snapshot 状态码重建（完整状态列表由 SpecialStatusComputer 确保）
+            List<Map<String, String>> statuses = new ArrayList<>();
+            if (s.getStatusCode() != null && !"NORMAL".equals(s.getStatusCode())) {
+                Map<String, String> st = new LinkedHashMap<>();
+                st.put("code", s.getStatusCode());
+                st.put("label", s.getStatusLabel() != null ? s.getStatusLabel() : s.getStatusCode());
+                if (s.getDetailName() != null) st.put("detailName", s.getDetailName());
+                if (s.getDetailDescription() != null) st.put("detailDescription", s.getDetailDescription());
+                statuses.add(st);
+            }
+            cell.put("specialStatuses", statuses);
+
+            posMap.put(pKey, cell);
+        }
+
+        // 填充空位
+        List<Map<String, Object>> grid = new ArrayList<>();
+        for (int y = 1; y <= 10; y++) {
+            for (int x = 1; x <= 8; x++) {
+                String pKey = x + ":" + y;
+                Map<String, Object> cell = posMap.get(pKey);
+                if (cell == null) {
+                    cell = new LinkedHashMap<>();
+                    cell.put("x", x);
+                    cell.put("y", y);
+                    cell.put("position", (char) ('A' + x - 1) + "-" + y);
+                    cell.put("empty", true);
+                    cell.put("animalCageType", 0);
+                    cell.put("specialStatuses", List.of());
+                    cell.put("cageBoxInfo", Map.of());
+                }
+                grid.add(cell);
+            }
+        }
+
+        int filled = (int) grid.stream().filter(c -> !Boolean.TRUE.equals(c.get("empty"))).count();
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("shelfMeta", shelfMeta);
+        out.put("grid", grid);
+        out.put("totalCells", 80);
+        out.put("filledCells", filled);
+        out.put("fromCache", false);
+        out.put("snapshotBatchId", batchId);
+        return out;
     }
 
     /**
@@ -677,6 +800,7 @@ public class CageShelfService {
         // 确保表及 campus_name 列存在（存量 DB 可能缺列）
         specialStatusSnapshotMapper.ensureTable();
         try { specialStatusSnapshotMapper.addCampusColumnIfMissing(); } catch (Exception ignored) {}
+        try { specialStatusSnapshotMapper.addCageBoxJsonColumnIfMissing(); } catch (Exception ignored) {}
 
         Map<String, Object> batchInfo = specialStatusSnapshotMapper.selectLatestBatchInfo();
         if (batchInfo == null || batchInfo.isEmpty()) {

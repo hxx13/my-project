@@ -159,7 +159,12 @@
           <if test="scanBatchId != null and scanBatchId != ''">
             AND scan_batch_id = #{scanBatchId}
           </if>
-          AND changed_at &lt;= DATE_SUB(NOW(), INTERVAL #{delayDays} DAY)
+          <if test="referenceTime != null">
+            AND changed_at &lt;= DATE_SUB(#{referenceTime}, INTERVAL #{delayDays} DAY)
+          </if>
+          <if test="referenceTime == null">
+            AND changed_at &lt;= DATE_SUB(NOW(), INTERVAL #{delayDays} DAY)
+          </if>
         ORDER BY changed_at DESC
     </select>
 

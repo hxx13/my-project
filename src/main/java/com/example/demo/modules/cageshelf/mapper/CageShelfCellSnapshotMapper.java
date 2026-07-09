@@ -31,4 +31,9 @@ public interface CageShelfCellSnapshotMapper {
 
     /** Delete batches older than N days. */
     int deleteOlderThan(@Param("cutoff") String cutoff);
+
+    /** Get all cells for a specific batch and shelf (for historical grid). */
+    List<Map<String, Object>> selectByBatchAndShelve(
+            @Param("scanBatchId") String scanBatchId,
+            @Param("shelveId") Long shelveId);
 }

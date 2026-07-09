@@ -57,6 +57,12 @@
         ORDER BY c.room_id, c.shelve_id, c.position_y, c.position_x
     </select>
 
+    <select id="selectByBatchAndShelve" resultType="map">
+        SELECT * FROM cage_shelf_cell_snapshot
+        WHERE scan_batch_id = #{scanBatchId} AND shelve_id = #{shelveId}
+        ORDER BY position_y, position_x
+    </select>
+
     <delete id="deleteOlderThan">
         DELETE FROM cage_shelf_cell_snapshot WHERE scanned_at &lt; #{cutoff}
     </delete>

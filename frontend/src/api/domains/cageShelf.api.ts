@@ -104,8 +104,10 @@ export async function fetchCageShelfFilterOptions(params: {
   return res.data.data;
 }
 
-export async function fetchCageShelfDetail(shelveId: string) {
-  const res = await authHttp.get<Result<CageShelfDetail>>(`/v1/cage-shelves/${encodeURIComponent(String(shelveId))}/detail`);
+export async function fetchCageShelfDetail(shelveId: string, batchId?: string) {
+  const res = await authHttp.get<Result<CageShelfDetail>>(`/v1/cage-shelves/${encodeURIComponent(String(shelveId))}/detail`, {
+    params: batchId ? { batchId } : {},
+  });
   if (!res.data?.success) {
     throw new Error(res.data?.message || "加载笼架详情失败");
   }
@@ -474,4 +476,73 @@ export async function toggleBookmarkApi(roomId: string, shelveId: string): Promi
   );
   if (!res.data?.success) throw new Error(res.data?.message || "操作失败");
   return res.data.data;
+}
+
+// ---- 快照批次（历史数据源） ----
+
+export interface SnapshotBatch {
+  scanBatchId: string;
+  scannedAt: string;
+  totalRows: number;
+  abnormalRows: number;
+  shelfCount: number;
+}
+
+export async function fetchSnapshotBatches(): Promise<SnapshotBatch[]> {
+  const res = await authHttp.get<Result<SnapshotBatch[]>>("/cage-shelves/snapshot-batches");
+  if (!res.data?.success) throw new Error(res.data?.message || "加载快照批次失败");
+  return res.data.data ?? [];
+}
+
+// ---- 笼位特殊状态持续告警 ----
+
+export interface CageAlertConfig {
+  id?: number;
+  statusCode: string;
+  statusLabel: string;
+  thresholdDays: number;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PersistedAlert {
+  statusCode: string;
+  statusLabel: string;
+  shelveId: string;
+  positionX: number;
+  positionY: number;
+  position: string;
+  campusName: string;
+  roomName: string;
+  cageBoxQrCode: string;
+  projectPiName: string;
+  thresholdDays: number;
+  persistedDays: number;
+  spanDays?: number;
+  persisted?: boolean;
+  firstDetectedAt: string;
+}
+
+export async function fetchPersistedAlerts(baselineBatchId?: string, mode?: string): Promise<{ alerts: PersistedAlert[]; generatedAt: string; spanDays: number; baselineBatchId?: string; currentBatchId?: string }> {
+  const res = await authHttp.get<Result<any>>("/v1/cage-shelves/persisted-alerts", {
+    params: { baselineBatchId: baselineBatchId || "", mode: mode || "auto" },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载告警数据失败");
+  return res.data.data ?? { alerts: [], generatedAt: "", spanDays: 0 };
+}
+
+export async function fetchAlertConfig(mode?: string): Promise<CageAlertConfig[]> {
+  const res = await authHttp.get<Result<CageAlertConfig[]>>("/v1/cage-shelves/alert-config", {
+    params: { mode: mode || "auto" },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "加载告警配置失败");
+  return res.data.data ?? [];
+}
+
+export async function saveAlertConfig(configs: CageAlertConfig[], mode?: string): Promise<void> {
+  const res = await authHttp.put<Result<void>>("/v1/cage-shelves/alert-config", configs, {
+    params: { mode: mode || "auto" },
+  });
+  if (!res.data?.success) throw new Error(res.data?.message || "保存告警配置失败");
 }

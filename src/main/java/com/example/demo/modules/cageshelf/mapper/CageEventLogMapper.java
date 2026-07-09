@@ -38,11 +38,13 @@ public interface CageEventLogMapper {
     List<Map<String, Object>> timelineByBox(@Param("cageBoxQrCode") String cageBoxQrCode,
                                              @Param("limit") int limit);
 
-    /** 按状态码和延迟天数查询最近的 STATUS_ADDED 事件，用于笼架违规判定 */
+    /** 按状态码和延迟天数查询最近的 STATUS_ADDED 事件，用于笼架违规判定。
+     *  @param referenceTime 基准时间（可选，null=使用 NOW()） */
     List<CageEventLog> selectRecentStatusAdded(
             @Param("statusCodes") List<String> statusCodes,
             @Param("delayDays") int delayDays,
-            @Param("scanBatchId") String scanBatchId);
+            @Param("scanBatchId") String scanBatchId,
+            @Param("referenceTime") java.time.LocalDateTime referenceTime);
 
     /** 检查指定笼位+状态在 STATUS_ADDED 之后是否有 STATUS_REMOVED 事件，用于判定状态是否仍存在 */
     int countStatusRemovedAfter(

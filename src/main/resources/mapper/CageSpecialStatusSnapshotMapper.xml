@@ -37,6 +37,11 @@
             ADD COLUMN campus_name VARCHAR(64) AFTER shelve_id
     </update>
 
+    <update id="addCageBoxJsonColumnIfMissing">
+        ALTER TABLE cage_special_status_snapshot
+            ADD COLUMN cage_box_json TEXT AFTER cage_box_qr_code
+    </update>
+
     <insert id="batchInsert">
         INSERT INTO cage_special_status_snapshot (
             scan_batch_id, shelve_id, campus_name, room_id, room_name,
@@ -44,7 +49,7 @@
             status_code, status_label,
             pi_name, department_name, project_pi_name,
             detail_name, detail_description,
-            cage_box_qr_code, animal_cage_type,
+            cage_box_qr_code, cage_box_json, animal_cage_type,
             scanned_at
         ) VALUES
         <foreach collection="list" item="row" separator=",">
@@ -54,7 +59,7 @@
                 #{row.statusCode}, #{row.statusLabel},
                 #{row.piName}, #{row.departmentName}, #{row.projectPiName},
                 #{row.detailName}, #{row.detailDescription},
-                #{row.cageBoxQrCode}, #{row.animalCageType},
+                #{row.cageBoxQrCode}, #{row.cageBoxJson}, #{row.animalCageType},
                 #{row.scannedAt}
             )
         </foreach>
@@ -97,6 +102,7 @@
                project_pi_name AS projectPiName,
                detail_name AS detailName, detail_description AS detailDescription,
                cage_box_qr_code AS cageBoxQrCode,
+               cage_box_json AS cageBoxJson,
                animal_cage_type AS animalCageType,
                scanned_at AS scannedAt
         FROM cage_special_status_snapshot
@@ -121,11 +127,44 @@
                project_pi_name AS projectPiName,
                detail_name AS detailName, detail_description AS detailDescription,
                cage_box_qr_code AS cageBoxQrCode,
+               cage_box_json AS cageBoxJson,
                animal_cage_type AS animalCageType,
                scanned_at AS scannedAt
         FROM cage_special_status_snapshot
         WHERE scan_batch_id = #{scanBatchId}
         ORDER BY shelve_id, position_y, position_x
+    </select>
+
+    <select id="selectBatchList" resultType="map">
+        SELECT scan_batch_id AS scanBatchId,
+               MAX(scanned_at) AS scannedAt,
+               COUNT(*) AS totalRows,
+               SUM(CASE WHEN status_code != 'NORMAL' THEN 1 ELSE 0 END) AS abnormalRows,
+               COUNT(DISTINCT shelve_id) AS shelfCount
+        FROM cage_special_status_snapshot
+        GROUP BY scan_batch_id
+        ORDER BY MAX(scanned_at) DESC
+        LIMIT 30
+    </select>
+
+    <select id="selectByBatchIdAndShelveId" resultType="com.example.demo.modules.cageshelf.entity.CageSpecialStatusSnapshot">
+        SELECT id, scan_batch_id AS scanBatchId,
+               shelve_id AS shelveId, campus_name AS campusName,
+               room_id AS roomId, room_name AS roomName,
+               position_x AS positionX, position_y AS positionY,
+               position_label AS positionLabel,
+               status_code AS statusCode, status_label AS statusLabel,
+               pi_name AS piName, department_name AS departmentName,
+               project_pi_name AS projectPiName,
+               detail_name AS detailName, detail_description AS detailDescription,
+               cage_box_qr_code AS cageBoxQrCode,
+               cage_box_json AS cageBoxJson,
+               animal_cage_type AS animalCageType,
+               scanned_at AS scannedAt
+        FROM cage_special_status_snapshot
+        WHERE scan_batch_id = #{scanBatchId}
+          AND shelve_id = #{shelveId}
+        ORDER BY position_y, position_x
     </select>
 
 </mapper>

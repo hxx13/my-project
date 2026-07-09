@@ -191,6 +191,7 @@ public class CageSpecialStatusScanService {
                         row.setDetailDescription(se.getDetailDescription());
                         row.setCageBoxQrCode(cageBoxVo != null ? objToStr(
                                 firstNonNull(cageBoxVo.get("cageBoxQrCode"), cageBoxVo.get("cageBoxCode"))) : "");
+                        row.setCageBoxJson(cageBoxVo != null ? JSON.toJSONString(cageBoxVo) : null);
                         row.setAnimalCageType(toInt(cage.get("animalCageType")));
                         row.setScannedAt(now);
 

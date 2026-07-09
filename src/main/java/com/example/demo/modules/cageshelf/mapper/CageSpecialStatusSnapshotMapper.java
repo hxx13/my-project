@@ -16,6 +16,9 @@ public interface CageSpecialStatusSnapshotMapper {
     /** Add campus_name column to existing table (no-op if already exists). */
     void addCampusColumnIfMissing();
 
+    /** Add cage_box_json column for full cage data storage. */
+    void addCageBoxJsonColumnIfMissing();
+
     /** Batch insert/upsert snapshot rows. */
     int batchInsert(@Param("list") List<CageSpecialStatusSnapshot> rows);
 
@@ -37,4 +40,12 @@ public interface CageSpecialStatusSnapshotMapper {
 
     /** Get ALL rows for a batch (used by diff engine). */
     List<CageSpecialStatusSnapshot> selectAllByBatchId(@Param("scanBatchId") String scanBatchId);
+
+    /** List all distinct scan batches with metadata (id, time, count). */
+    List<Map<String, Object>> selectBatchList();
+
+    /** Get all snapshots for a specific shelf within a batch (for historical grid). */
+    List<CageSpecialStatusSnapshot> selectByBatchIdAndShelveId(
+            @Param("scanBatchId") String scanBatchId,
+            @Param("shelveId") Long shelveId);
 }
