@@ -311,7 +311,7 @@ export default function StudentCageShelfPage() {
                   {!shelfLoading && shelfDetail && <ShelfGrid title={shelfDetail.shelfMeta?.shelveName || "笼架"} detail={shelfDetail} loading={false} emptyHint="暂无数据" onCellClick={(c: any) => { setCell(c); setShelfId(String(shelfDetail.shelfMeta?.shelveId ?? "")); }} />}
                 </div>
                 <div className="w-1/2 flex flex-col min-w-0">
-                  {cell ? <CellDetailPanel cell={cell} gridMeta={shelfDetail?.shelfMeta ?? null} onClose={() => setCell(null)} /> :
+                  {cell ? <CellDetailPanel cell={cell} gridMeta={shelfDetail?.shelfMeta ?? null} shelveId={shelfId ?? ""} onClose={() => setCell(null)} /> :
                     <div className="flex-1 rounded-twin-xl border border-dashed border-[var(--twin-hairline)] bg-[var(--twin-canvas)] flex flex-col items-center justify-center text-sm text-[var(--twin-mute)]"><div className="text-4xl mb-3 opacity-20">📋</div>笼盒详情预备画面<br /><span className="text-[11px]">点击左侧笼位格子显示笼盒信息</span></div>}
                 </div>
               </div>}
@@ -328,7 +328,7 @@ export default function StudentCageShelfPage() {
       {cell && viewMode !== "shelf" && createPortal(<div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4" onClick={() => { setCell(null); setShelfId(null); }}>
         <div className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-twin-xl bg-[var(--twin-canvas)] p-4 shadow-twin-level-3" onClick={e => e.stopPropagation()}>
           <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold text-[var(--twin-ink)]">笼盒详情 · 格位 {cell.position}</div><button className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-ink)]" onClick={() => { setCell(null); setShelfId(null); }}>关闭</button></div>
-          <CellDetailPanel cell={cell} gridMeta={null} onClose={() => { setCell(null); setShelfId(null); }} />
+          <CellDetailPanel cell={cell} gridMeta={null} shelveId={shelfId ?? ""} onClose={() => { setCell(null); setShelfId(null); }} />
         </div>
       </div>, document.body)}
     </CageColorProvider>

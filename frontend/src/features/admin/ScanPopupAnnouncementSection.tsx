@@ -62,7 +62,7 @@ export const TIME_STATUS_META: Record<TimeStatus, { label: string; color: string
 
 export type AnnounceSectionHandle = {
   settings: ScanPopupAnnouncementSettings;
-  setSettings: (s: ScanPopupAnnouncementSettings) => void;
+  setSettings: (s: ScanPopupAnnouncementSettings | ((prev: ScanPopupAnnouncementSettings) => ScanPopupAnnouncementSettings)) => void;
   settingsLoading: boolean;
   saveSettings: () => Promise<void>;
   rows: ScanPopupAnnouncementRow[];

@@ -190,7 +190,7 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
   const handleDelaySubmit = useCallback(
     async (payload: { subjectUserId: string; roomId: string; optionId: number }) => {
       const scanId = detailRoom
-        ? resolveScanOfficialRoomId(detailRoom.roomId, bundle?.overviewIndex ?? [], bundle?.scanAnalyze ?? null)
+        ? resolveScanOfficialRoomId(detailRoom.roomId, bundle?.overviewIndex ?? { byRoomId: new Map(), byRoomName: new Map() }, bundle?.scanAnalyze ?? null)
         : payload.roomId;
       const fixed = { ...payload, roomId: scanId || payload.roomId };
       if (jwtMode) return submitScanDelayRequest(fixed);
