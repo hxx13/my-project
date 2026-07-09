@@ -36,7 +36,7 @@ type BaseProps = {
 };
 
 type ViolationPanelProps = BaseProps & {
-  kind: "violation" | "unbound";
+  kind: "violation" | "unbound" | "cage-notice";
   notice: StudentViolationNotice;
   targetUserId?: string;
   onInteractiveVerified?: (patch: InteractiveVerifiedPatch) => void;
@@ -135,7 +135,9 @@ export function ScanNoticePanelCard(props: ScanNoticePanelCardProps) {
   }, [kind, item?.contentHtml, notice?.critical, notice?.criticalNoticeText, notice?.violationText]);
 
   const title =
-    kind === "announcement" ? item?.title || "扫码公告" : meta.dialogCategory;
+    kind === "announcement" ? item?.title || "扫码公告"
+    : kind === "cage-notice" ? notice?.ruleName?.replace("[CAGE]", "") || "笼位处理提示"
+    : meta.dialogCategory;
 
   const PanelIcon: LucideIcon =
     kind === "announcement" ? Megaphone : kind === "violation" ? AlertTriangle : CreditCard;

@@ -123,7 +123,7 @@ export default function MobileNoticeDetailBody({
           className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none"
           style={{ background: colors.bg, color: colors.color }}
         >
-          {alertKindLabel(item.kind)}
+          {alertKindLabel(item.kind, item.source)}
         </span>
         {metaTime ? (
           <>

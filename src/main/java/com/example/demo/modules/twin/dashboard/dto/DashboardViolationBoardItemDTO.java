@@ -12,6 +12,8 @@ import java.time.LocalDateTime;
 public class DashboardViolationBoardItemDTO {
     private Long id;
     private String displayName;
+    /** 课题组名（仅笼架联动批量违规时有值，前端以此区分单人/课题组渲染） */
+    private String groupName;
     private String summary;
     private String coverImageUrl;
     private LocalDateTime createdAt;

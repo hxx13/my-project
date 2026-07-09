@@ -182,7 +182,7 @@
 }
 
 .student-layout-root--night-sky main {
-    background: transparent !important;
+    background: var(--app-color-scan-backdrop-from) !important;
 }
 
 .student-layout-root--night-sky aside {

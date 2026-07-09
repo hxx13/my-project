@@ -126,6 +126,26 @@
         WHERE id = #{id}
     </update>
 
+    <update id="updatePasswordWithPlainById">
+        UPDATE sys_user
+        SET password = #{password},
+            password_plain = #{passwordPlain},
+            password_reset_required = #{passwordResetRequired},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateUsernameById">
+        UPDATE sys_user
+        SET username = #{username},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <select id="getPasswordPlainById" resultType="string">
+        SELECT password_plain FROM sys_user WHERE id = #{id}
+    </select>
+
     <update id="updateUser" parameterType="com.example.demo.modules.auth.entity.User">
         UPDATE sys_user
         SET username = #{username},

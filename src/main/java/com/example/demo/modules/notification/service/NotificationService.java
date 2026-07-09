@@ -152,6 +152,7 @@ public class NotificationService {
                 sn.setId("SNF_" + UUID.randomUUID().toString().replace("-", ""));
                 sn.setTitle(title);
                 sn.setSummary(content != null && content.length() > 200 ? content.substring(0, 200) + "..." : content);
+                sn.setContent(content);
                 sn.setType("WORK_ORDER");
                 sn.setBizType(event.getBizType().trim().toUpperCase());
                 sn.setBizId(event.getBizId());

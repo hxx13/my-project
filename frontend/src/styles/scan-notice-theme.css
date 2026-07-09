@@ -45,6 +45,20 @@
   --scan-notice-surface:           var(--app-color-notice-unbound-icon-bg);
 }
 
+.scan-notice-theme-cage-notice {
+  --scan-notice-accent:            var(--app-color-notice-cage-notice-accent);
+  --scan-notice-accent-soft:       var(--app-color-notice-cage-notice-pill);
+  --scan-notice-accent-ink:        var(--app-color-notice-cage-notice-text);
+  --scan-notice-border:            var(--app-color-notice-cage-notice-border);
+  --scan-notice-surface-top:       var(--app-color-notice-cage-notice-bg);
+  --scan-notice-surface-bottom:    var(--app-color-notice-cage-notice-bg-end);
+  --scan-notice-glow:              var(--app-color-notice-cage-notice-pill);
+  --scan-notice-soft:              var(--app-color-notice-cage-notice-bg);
+  --scan-notice-ink:               var(--app-color-notice-cage-notice-text);
+  --scan-notice-island-body:       var(--app-color-notice-cage-notice-text-soft);
+  --scan-notice-surface:           var(--app-color-notice-cage-notice-icon-bg);
+}
+
 /* ── Island 灵动岛：无描边，外阴影立体 ── */
 .scan-notice-island {
   display: flex;

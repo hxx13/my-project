@@ -4,7 +4,11 @@ import com.example.demo.common.config.JwtTokenService;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
+import com.example.demo.modules.aro.dto.AroPersonnel;
+import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.dto.ChangePasswordRequest;
+import com.example.demo.modules.auth.dto.ForgotPasswordResetRequest;
+import com.example.demo.modules.auth.dto.ForgotPasswordVerifyRequest;
 import com.example.demo.modules.auth.dto.RegisterStaffRequest;
 import com.example.demo.modules.auth.dto.UpdateDisplayNicknameRequest;
 import com.example.demo.modules.auth.AuthProfileConstants;
@@ -18,22 +22,34 @@ import com.example.demo.modules.auth.service.AuthService;
 import com.example.demo.modules.auth.service.PasswordCredentialService;
 import com.example.demo.modules.auth.service.StaffRegistrationService;
 import com.example.demo.modules.invite.RegistrationInviteService;
+import com.google.zxing.BinaryBitmap;
+import com.google.zxing.MultiFormatReader;
+import com.google.zxing.NotFoundException;
+import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
+import com.google.zxing.common.HybridBinarizer;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -48,6 +64,7 @@ public class AuthController {
     private final RegistrationInviteService registrationInviteService;
     private final StaffRegistrationService staffRegistrationService;
     private final JwtTokenService jwtTokenService;
+    private final AroPersonnelMapper aroPersonnelMapper;
 
     public AuthController(UserMapper userMapper,
                           AuthService authService,
@@ -55,7 +72,8 @@ public class AuthController {
                           PasswordCredentialService passwordCredentialService,
                           RegistrationInviteService registrationInviteService,
                           StaffRegistrationService staffRegistrationService,
-                          JwtTokenService jwtTokenService) {
+                          JwtTokenService jwtTokenService,
+                          AroPersonnelMapper aroPersonnelMapper) {
         this.userMapper = userMapper;
         this.authService = authService;
         this.authContextService = authContextService;
@@ -63,6 +81,7 @@ public class AuthController {
         this.registrationInviteService = registrationInviteService;
         this.staffRegistrationService = staffRegistrationService;
         this.jwtTokenService = jwtTokenService;
+        this.aroPersonnelMapper = aroPersonnelMapper;
     }
 
     @PostMapping("/login/web")
@@ -277,6 +296,139 @@ public class AuthController {
         }
         userMapper.updatePasswordAndResetRequiredById(currentUser.getId(), passwordCredentialService.encodeForStorage(newPassword), 0);
         return Result.success();
+    }
+
+    @PostMapping("/forgot-password/decode-qr")
+    @Operation(summary = "忘记密码：上传QR码图片解码用户ID（无需登录）")
+    public Result<?> forgotPasswordDecodeQr(@RequestParam("file") MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return Result.error("请上传二维码图片");
+        }
+        try {
+            BufferedImage image = ImageIO.read(file.getInputStream());
+            if (image == null) {
+                return Result.error("无法解析图片，请上传有效的二维码图片");
+            }
+            BufferedImageLuminanceSource source = new BufferedImageLuminanceSource(image);
+            HybridBinarizer binarizer = new HybridBinarizer(source);
+            BinaryBitmap bitmap = new BinaryBitmap(binarizer);
+            com.google.zxing.Result zxingResult = new MultiFormatReader().decode(bitmap);
+            String text = zxingResult.getText();
+            if (text == null || text.isBlank()) {
+                return Result.error("二维码内容为空");
+            }
+            // Try to extract a user ID: first check if it directly matches a personnel record
+            String userId = text.trim();
+            AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
+            if (personnel == null) {
+                // Try extracting 19-digit ID as fallback
+                Pattern p19 = Pattern.compile("\\d{19}");
+                Matcher m = p19.matcher(userId);
+                if (m.find()) {
+                    userId = m.group();
+                    personnel = aroPersonnelMapper.findByUserId(userId);
+                }
+            }
+            if (personnel == null) {
+                return Result.error("二维码中的ID未在人员库中找到匹配，ID: " + userId);
+            }
+            Map<String, Object> data = new HashMap<>();
+            data.put("userId", userId);
+            data.put("name", personnel.getName() != null ? personnel.getName() : "");
+            return Result.success(data);
+        } catch (NotFoundException e) {
+            return Result.error("二维码解析失败，请确认图片包含有效二维码");
+        } catch (Exception e) {
+            return Result.error("图片处理失败，请重试");
+        }
+    }
+
+    @PostMapping("/forgot-password/verify")
+    @Operation(summary = "忘记密码：验证用户ID和手机号（无需登录）")
+    public Result<?> forgotPasswordVerify(@RequestBody ForgotPasswordVerifyRequest request) {
+        if (request == null || !StringUtils.hasText(request.getUserId()) || !StringUtils.hasText(request.getPhoneNumber())) {
+            return Result.error("用户ID和手机号不能为空");
+        }
+        String userId = request.getUserId().trim();
+        AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
+        if (personnel == null) {
+            return Result.error("用户ID不存在于人员库");
+        }
+        String dbPhone = personnel.getMobilePhone();
+        if (dbPhone == null || dbPhone.isBlank()) {
+            return Result.error("该人员在人员库中未登记手机号，请联系管理员");
+        }
+        if (!dbPhone.trim().equals(request.getPhoneNumber().trim())) {
+            return Result.error("手机号不匹配");
+        }
+        User user = userMapper.findById(userId);
+        String existingUsername = user != null && StringUtils.hasText(user.getUsername())
+                ? user.getUsername() : userId;
+        Map<String, Object> data = new HashMap<>();
+        data.put("verified", true);
+        data.put("username", existingUsername);
+        data.put("name", personnel.getName() != null ? personnel.getName() : "");
+        data.put("message", "验证通过");
+        return Result.success(data);
+    }
+
+    @PostMapping("/forgot-password/reset")
+    @Operation(summary = "忘记密码：重置密码（无需登录，需先通过 verify 验证）")
+    public Result<?> forgotPasswordReset(@RequestBody ForgotPasswordResetRequest request) {
+        if (request == null || !StringUtils.hasText(request.getUserId()) || !StringUtils.hasText(request.getNewPassword())) {
+            return Result.error("参数不合法");
+        }
+        String userId = request.getUserId().trim();
+        String newPassword = request.getNewPassword().trim();
+        if (newPassword.length() < 6 || newPassword.length() > 64) {
+            return Result.error("新密码长度需在6-64位之间");
+        }
+        AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
+        if (personnel == null) {
+            return Result.error("用户不存在于人员库");
+        }
+        String hash = passwordCredentialService.encodeForStorage(newPassword);
+        String encryptedPlain = passwordCredentialService.encryptPlaintext(newPassword);
+        User user = userMapper.findById(userId);
+        if (user == null) {
+            // Auto-create sys_user for personnel
+            String username = StringUtils.hasText(request.getNewUsername())
+                    ? request.getNewUsername().trim() : userId;
+            if (username.length() < 2 || username.length() > 64) {
+                return Result.error("账号长度须在 2～64 字符");
+            }
+            User existingByUsername = userMapper.findByUsername(username);
+            if (existingByUsername != null) {
+                return Result.error("该登录账号已被占用");
+            }
+            User newUser = new User();
+            newUser.setId(userId);
+            newUser.setUsername(username);
+            newUser.setPassword(hash);
+            newUser.setRole(RoleEnum.MEMBER);
+            newUser.setStatus(1);
+            newUser.setPasswordResetRequired(0);
+            newUser.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
+            newUser.setAccountSource("STUDENT");
+            userMapper.insertUser(newUser);
+            userMapper.updatePasswordWithPlainById(userId, hash, encryptedPlain, 0);
+        } else {
+            if (StringUtils.hasText(request.getNewUsername())) {
+                String newUsername = request.getNewUsername().trim();
+                if (newUsername.length() < 2 || newUsername.length() > 64) {
+                    return Result.error("账号长度须在 2～64 字符");
+                }
+                User existingByUsername = userMapper.findByUsername(newUsername);
+                if (existingByUsername != null && !existingByUsername.getId().equals(userId)) {
+                    return Result.error("该登录账号已被占用");
+                }
+                userMapper.updateUsernameById(userId, newUsername);
+            }
+            userMapper.updatePasswordWithPlainById(userId, hash, encryptedPlain, 0);
+        }
+        Map<String, Object> data = new HashMap<>();
+        data.put("message", "密码重置成功，请返回登录");
+        return Result.success(data);
     }
 
     private Result<?> bindStudent(WechatBindRequest request, HttpServletRequest httpRequest) {

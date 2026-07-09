@@ -7,11 +7,12 @@ import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 
 import toast, { Toaster } from "react-hot-toast";
 import { Z_INDEX } from "@/constants/zIndex";
 import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS, APP_BUILD_ID } from "@/config/socketUrl";
-import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS } from "@/config/socketEvents";
+import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS, SOCKET_CAGE_NOTICE_ALERT } from "@/config/socketEvents";
 import { AdminGlobalDynamicIslandLayer } from "@/components/admin/AdminGlobalDynamicIslandLayer";
 import { useCardReaderEnterGuard } from "@/components/scanner/useCardReaderEnterGuard";
 import { ScanDelayPendingAlertSync } from "@/features/scan-delay-alert/ScanDelayPendingAlertSync";
 import { useSwipeAlertStore } from "@/store/useSwipeAlertStore";
+import { useCageNoticeAlertStore } from "@/store/useCageNoticeAlertStore";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { doRefresh } from "@/api/core/tokenRefresh";
 import { ThemeProvider } from "@/features/theme/ThemeProvider";
@@ -257,6 +258,12 @@ function GlobalSocketListener() {
             }
         });
 
+        // 📡 监听：笼位处理提示灵动岛
+        socket.on(SOCKET_CAGE_NOTICE_ALERT, (alert) => {
+            console.log("🐭 收到笼位处理提示:", alert?.violationId);
+            useCageNoticeAlertStore.getState().showAlert(alert);
+        });
+
         // 📡 监听：定时管理触发排行榜数据刷新
         socket.on("DASHBOARD_RANKING_REFRESH", (payload: { jobKey?: string; at?: string }) => {
             console.log("🔄 排行榜刷新信号:", payload?.jobKey);
@@ -293,6 +300,7 @@ function GlobalSocketListener() {
             socket.off(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
             socket.off(SOCKET_SWIPE_FAILURE_ALERT);
             socket.off(SOCKET_SWIPE_FAILURE_ALERT_DISMISS);
+            socket.off(SOCKET_CAGE_NOTICE_ALERT);
             socket.off("DASHBOARD_RANKING_REFRESH");
             socket.off("DASHBOARD_CODEX_REFRESH", onCodexRefresh);
             delete (window as any).__swipeAlertSocket;

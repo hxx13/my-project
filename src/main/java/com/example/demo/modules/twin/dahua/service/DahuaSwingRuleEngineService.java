@@ -108,8 +108,9 @@ public class DahuaSwingRuleEngineService {
         }
         int activationExpire = intv(rules.get("activationExpireSeconds"), 120);
         LocalDateTime now = LocalDateTime.now();
-        // 新一次权限下发 = 新激活窗口：清空旧联动行，避免多通道残留状态导致重复签退或逻辑分叉
-        dahuaSwingMapper.deleteActivationStatesByUserId(uid);
+        // 新一次权限下发 = 新激活窗口：仅清空待激活/已过期计时器，不删除已完成的 ACTIVATED 状态
+        // （否则已激活的人会被清空记录 → 再次刷门时误判为"首次激活" → 重复写日志 + 重复授权）
+        dahuaSwingMapper.deleteExpiredOrPendingStatesByUserId(uid);
         DahuaActivationState pending = new DahuaActivationState();
         pending.setTaskId(GLOBAL_RULE_TASK_ID);
         pending.setUserId(uid);
@@ -325,6 +326,23 @@ public class DahuaSwingRuleEngineService {
             log.debug("[swing-rule] skip-activation-without-pending-timer userId={} channel={}",
                     userId, channelCode);
             return;
+        }
+
+        // 时间方向校验：刷卡时间必须晚于待激活计时器创建时间（last_swipe_at），
+        // 防止 deleteActivationStatesByUserId 清空 last_record_id 去重证据后，
+        // 旧会话的门禁记录被新计时器重复匹配（幽灵激活）。
+        if (!alreadyActivated && userActivatedElsewhere == false) {
+            DahuaActivationState pendingRow = dahuaSwingMapper.findActivationState(
+                    GLOBAL_RULE_TASK_ID, userId, PENDING_ACTIVATION_CHANNEL);
+            if (pendingRow != null) {
+                LocalDateTime pendingSince = parse(pendingRow.getLastSwipeAt());
+                LocalDateTime recordTime = parse(record.getSwingTime());
+                if (pendingSince != null && recordTime != null && recordTime.isBefore(pendingSince)) {
+                    log.info("[swing-rule] skip-stale-record-for-pending-activation userId={} channel={} recordTime={} pendingSince={}",
+                            userId, channelCode, record.getSwingTime(), pendingRow.getLastSwipeAt());
+                    return;
+                }
+            }
         }
 
         // 仅命中激活卡片规则：取消「待激活」倒计时；后续激活逻辑作用在当前通道行上

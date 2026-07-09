@@ -6,8 +6,10 @@ import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.twin.dashboard.dto.UnboundCardNoticeSettingsDTO;
+import com.example.demo.modules.twin.dashboard.entity.TwinCageStatusViolation;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
+import com.example.demo.modules.twin.dashboard.mapper.TwinCageStatusViolationMapper;
 import com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper;
 import com.example.demo.modules.twin.common.service.TwinPersonnelArchiveQueryService;
 import com.example.demo.modules.twin.dashboard.entity.ViolationTextTemplate;
@@ -44,6 +46,7 @@ public class AdminTwinStudentViolationController {
     private final ViolationTextTemplateService templateService;
     private final TwinViolationRuleService ruleService;
     private final TwinStudentViolationMapper violationMapper;
+    private final TwinCageStatusViolationMapper cageStatusViolationMapper;
 
     public AdminTwinStudentViolationController(
             TwinStudentViolationService violationService,
@@ -54,7 +57,8 @@ public class AdminTwinStudentViolationController {
             StrandedViolationService strandedViolationService,
             ViolationTextTemplateService templateService,
             TwinViolationRuleService ruleService,
-            TwinStudentViolationMapper violationMapper
+            TwinStudentViolationMapper violationMapper,
+            TwinCageStatusViolationMapper cageStatusViolationMapper
     ) {
         this.violationService = violationService;
         this.unboundNoticeConfigService = unboundNoticeConfigService;
@@ -65,6 +69,7 @@ public class AdminTwinStudentViolationController {
         this.templateService = templateService;
         this.ruleService = ruleService;
         this.violationMapper = violationMapper;
+        this.cageStatusViolationMapper = cageStatusViolationMapper;
     }
 
     @GetMapping("/unbound-notice-settings")
@@ -277,6 +282,8 @@ public class AdminTwinStudentViolationController {
                 TwinViolationRule manualRule = ruleService.getByCode("MANUAL");
                 if (manualRule != null) effectiveRuleId = manualRule.getId();
             }
+            // 笼架联动（含 cageViolationId）→ "CAGE_STATUS"；普通手动 → "MANUAL"
+            String source = body.getCageViolationId() != null ? "CAGE_STATUS" : "MANUAL";
             TwinStudentViolation row = violationService.create(
                     body.getTargetUserId().trim(),
                     body.getViolationText() != null ? body.getViolationText() : "",
@@ -286,14 +293,12 @@ public class AdminTwinStudentViolationController {
                     body.getShowNoticeEveryScan() == null || Boolean.TRUE.equals(body.getShowNoticeEveryScan()),
                     body.getExpireAfterDays(),
                     admin.getId(),
-                    "MANUAL",
+                    source,
                     body.getInteractiveChallenge(),
                     body.getInteractiveUnlockOnVerify(),
-                    effectiveRuleId
+                    effectiveRuleId,
+                    body.getCageViolationId()
             );
-            if (body.getCageViolationId() != null) {
-                violationMapper.setCageViolationId(row.getId(), body.getCageViolationId());
-            }
             return Result.success(toRow(row, null));
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
@@ -374,6 +379,18 @@ public class AdminTwinStudentViolationController {
             m.put("ruleName", rule != null ? rule.getRuleName() : null);
         } else {
             m.put("ruleName", null);
+        }
+        // 笼架联动父记录信息
+        m.put("cageViolationId", v.getCageViolationId());
+        if (v.getCageViolationId() != null && cageStatusViolationMapper != null) {
+            TwinCageStatusViolation parent = cageStatusViolationMapper.selectById(v.getCageViolationId());
+            m.put("cageParentStatus", parent != null ? parent.getStatusCode() : null);
+            m.put("cageParentPosition", parent != null ? parent.getPositionLabel() : null);
+            m.put("cageParentGroup", parent != null ? parent.getProjectGroupName() : null);
+        } else {
+            m.put("cageParentStatus", null);
+            m.put("cageParentPosition", null);
+            m.put("cageParentGroup", null);
         }
         return m;
     }

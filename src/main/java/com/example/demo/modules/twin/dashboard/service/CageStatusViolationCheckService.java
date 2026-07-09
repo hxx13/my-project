@@ -153,12 +153,24 @@ public class CageStatusViolationCheckService {
         return triggered;
     }
 
-    /** 检查当前快照中该笼位的状态是否仍存在 */
+    /** 检查当前快照中该笼位的状态是否仍存在：该笼位+状态码的最后一条 STATUS_ADDED 之后没有 STATUS_REMOVED */
     private boolean isStatusStillPresent(CageEventLog evt) {
-        // 基于 event log 逻辑：该笼位+状态码的最后一条 STATUS_ADDED 事件未被 STATUS_REMOVED 覆盖
-        // 当前简化实现：STATUS_ADDED 的存在即视为状态仍有效
-        // 严谨实现可查询 CageSpecialStatusSnapshotMapper 最新批次
-        return true;
+        if (evt.getChangedAt() == null) return true;
+        String statusCode = extractStatusCode(evt);
+        long shelveId = parseLongSafe(evt.getCurrShelveId());
+        int[] posXY = parsePosition(evt.getCurrPosition());
+        try {
+            int count = eventLogMapper.countStatusRemovedAfter(
+                    statusCode,
+                    evt.getCurrShelveId(),
+                    evt.getCurrPosition(),
+                    evt.getChangedAt());
+            return count == 0;
+        } catch (Exception e) {
+            log.warn("[cage-v-check] isStatusStillPresent 查询失败 code={} shelve={} pos={}: {}",
+                    statusCode, shelveId, evt.getCurrPosition(), e.getMessage());
+            return true; // 查询失败时保守处理，避免漏判
+        }
     }
 
     /** 创建父记录 + 展开课题组 + 批量创建个人违规 */
@@ -185,9 +197,18 @@ public class CageStatusViolationCheckService {
         // 展开课题组成员
         String triggerAction = rule.getCageTriggerAction() != null ? rule.getCageTriggerAction() : "BOTH";
         boolean doViolation = "VIOLATION_ONLY".equals(triggerAction) || "BOTH".equals(triggerAction);
-        // boolean doNotice = "NOTICE_ONLY".equals(triggerAction) || "BOTH".equals(triggerAction);
+        boolean doNotice = "NOTICE_ONLY".equals(triggerAction) || "BOTH".equals(triggerAction);
 
-        if (doViolation && evt.getProjectPiName() != null) {
+        if ((doViolation || doNotice) && evt.getProjectPiName() != null) {
+            // NOTICE_ONLY：仅通知不违规 → forbidEnter=0、无交互式确认、showNoticeEveryScan=1
+            boolean effectiveForbidEnter = doViolation && (rule.getForbidEnter() != null && rule.getForbidEnter() == 1);
+            String effectiveInteractiveChallenge = doViolation ? rule.getInteractiveChallenge() : null;
+            Boolean effectiveInteractiveUnlock = doViolation
+                    ? (rule.getInteractiveUnlockOnVerify() != null && rule.getInteractiveUnlockOnVerify() == 1)
+                    : null;
+            int effectiveShowEveryScan = doNotice ? 1
+                    : (rule.getShowNoticeEveryScan() != null && rule.getShowNoticeEveryScan() == 1 ? 1 : 0);
+
             List<String> memberIds = resolveGroupMemberIds(evt.getProjectPiName());
             for (String userId : memberIds) {
                 try {
@@ -195,24 +216,34 @@ public class CageStatusViolationCheckService {
                             userId,
                             renderTemplate(rule.getViolationTextTpl(), evt, userId),
                             parseStringList(rule.getCageImageUrls()),
-                            rule.getForbidEnter() != null && rule.getForbidEnter() == 1,
+                            effectiveForbidEnter,
                             null,
-                            rule.getShowNoticeEveryScan() != null && rule.getShowNoticeEveryScan() == 1,
+                            effectiveShowEveryScan == 1,
                             rule.getExpireAfterDays(),
                             "system",
                             SOURCE_CAGE_STATUS,
-                            rule.getInteractiveChallenge(),
-                            rule.getInteractiveUnlockOnVerify() != null && rule.getInteractiveUnlockOnVerify() == 1,
-                            rule.getId()
+                            effectiveInteractiveChallenge,
+                            effectiveInteractiveUnlock,
+                            rule.getId(),
+                            parent.getId()
                     );
-                    // 关联父记录
-                    if (violation != null && violation.getId() != null && parent.getId() != null) {
-                        studentViolationMapper.setCageViolationId(violation.getId(), parent.getId());
-                    }
                 } catch (Exception e) {
                     log.warn("[cage-v-check] 创建个人违规失败 userId={} err={}", userId, e.getMessage());
                 }
             }
+            // 记录执行日志
+            String parentIdStr = parent.getId() != null ? String.valueOf(parent.getId()) : "?";
+            automationLogService.write("CAGE_STATUS_VIOLATION",
+                    parentIdStr,
+                    "auto-detect",
+                    triggerAction,
+                    null,
+                    parentIdStr,
+                    true,
+                    String.format("规则=%s 笼位=%s 课题组=%s 成员数=%d",
+                            rule.getRuleName(), evt.getCurrPosition(),
+                            evt.getProjectPiName(), memberIds.size()),
+                    "system");
         }
     }
 
@@ -260,8 +291,16 @@ public class CageStatusViolationCheckService {
         }
     }
 
+    /** 从 detail_summary 中提取状态码："新增 «CODE» @ ..." 或 "解除 «CODE» @ ..." → "CODE" */
     private String extractStatusCode(CageEventLog evt) {
-        return evt.getDetailSummary() != null ? evt.getDetailSummary() : "UNKNOWN";
+        String summary = evt.getDetailSummary();
+        if (summary == null || summary.isBlank()) return "UNKNOWN";
+        int start = summary.indexOf('«'); // «
+        int end = summary.indexOf('»');   // »
+        if (start >= 0 && end > start) {
+            return summary.substring(start + 1, end);
+        }
+        return summary; // fallback
     }
 
     private List<String> parseStringList(String json) {

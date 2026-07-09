@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { Plus, ChevronRight, Pencil, Trash2, Check, User, Users, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, User, Users, Search } from "lucide-react";
 import {
   listViolationRules,
   createViolationRule,
@@ -15,10 +15,8 @@ import {
   type ViolationRule,
 } from "@/api/domains/studentViolation.api";
 import {
-  listCageStatusViolations,
   manualTriggerRule,
   createCageStatusViolation,
-  type CageStatusViolationRow,
 } from "@/api/domains/cageStatusViolation.api";
 import { fetchSpecialStatusOverview, type SpecialStatusOverview } from "@/api/domains/cageShelf.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
@@ -30,7 +28,6 @@ import { AdminSegmentedControl } from "@/components/admin/AdminSegmentedControl"
 import { AdminFormCard, AdminTableShell } from "@/components/admin/AdminPageShell";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { isRichTextEmpty } from "@/utils/announcementHtml";
-import { CageLinkageRecordPanel } from "./CageLinkageRecordPanel";
 import { cn } from "@/lib/utils";
 import { normalizePersonnelRecord, type PersonnelRecordView } from "@/utils/personnelRecord";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
@@ -114,7 +111,7 @@ const STATUS_BG: Record<string, string> = {
 /*  Component                                                           */
 /* ================================================================== */
 
-export function CageLinkageTab() {
+export function CageLinkageTab({ subPanel = "rules" }: { subPanel?: "rules" | "submit" }) {
   const qc = useQueryClient();
 
   // ── rule form state ──
@@ -148,6 +145,18 @@ export function CageLinkageTab() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [tempSelectedPairs, setTempSelectedPairs] = useState<Map<string, Set<string>>>(new Map());
 
+  // Cage detail carried from the special-status picker (first selected cage)
+  type PickedCageDetail = {
+    positionLabel: string;
+    campusName: string;
+    roomName: string;
+    shelveId: string;
+    positionX: number;
+    positionY: number;
+    projectPiName: string;
+  };
+  const [pickedCageDetail, setPickedCageDetail] = useState<PickedCageDetail | null>(null);
+
   // ── queries ──
   const { data: rules = [], isLoading: rulesLoading } = useQuery({
     queryKey: ["violation-rules"],
@@ -161,21 +170,30 @@ export function CageLinkageTab() {
     staleTime: 60_000,
   });
 
-  // Build nested map: statusCode → projectPiName → cages[]
+  // Build nested map: statusCode → "piName|||campusName" → cages[]
+  // Compound key ensures same PI in different campuses (浦东 vs 浦西) appears as separate entries.
+  const CAMPUS_SEP = "|||";
   const specialStatusByCode = useMemo(() => {
-    if (!specialStatus) return new Map<string, { label: string; groups: Map<string, Array<{ position: string; roomName: string; campusName: string; shelveName: string }>> }>();
+    if (!specialStatus) return new Map<string, { label: string; groups: Map<string, Array<{ position: string; roomName: string; campusName: string; shelveName: string; piName: string }>> }>();
     const map = new Map<string, { label: string; groups: Map<string, any[]> }>();
-    for (const grp of specialStatus.groups ?? []) {
+    for (const grp of specialStatus?.groups ?? []) {
       if (grp.statusCode === "NORMAL") continue;
       const byPi = new Map<string, any[]>();
       for (const cage of grp.cages ?? []) {
         const pi = cage.projectPiName?.trim() || "未知课题组";
-        if (!byPi.has(pi)) byPi.set(pi, []);
-        byPi.get(pi)!.push({
+        const campus = cage.campusName?.trim() || "未知园区";
+        const key = `${pi}${CAMPUS_SEP}${campus}`;
+        if (!byPi.has(key)) byPi.set(key, []);
+        byPi.get(key)!.push({
           position: cage.position,
           roomName: cage.roomName ?? "",
           campusName: cage.campusName ?? "",
           shelveName: cage.shelveName ?? "",
+          shelveId: cage.shelveId ?? "",
+          positionX: cage.positionX ?? 0,
+          positionY: cage.positionY ?? 0,
+          piName: pi,
+          projectPiName: cage.projectPiName ?? pi,
         });
       }
       map.set(grp.statusCode, { label: grp.statusLabel || grp.statusCode, groups: byPi });
@@ -183,15 +201,18 @@ export function CageLinkageTab() {
     return map;
   }, [specialStatus]);
 
+  /** Extract PI name from compound group key (piName|||campusName → piName) */
+  const piFromKey = (key: string) => key.includes(CAMPUS_SEP) ? key.split(CAMPUS_SEP)[0] : key;
+  /** Extract human-readable label from compound group key */
+  const labelFromKey = (key: string) => {
+    if (!key.includes(CAMPUS_SEP)) return key;
+    const [pi, campus] = key.split(CAMPUS_SEP);
+    return campus && campus !== "未知园区" ? `${pi} · ${campus}` : pi;
+  };
+
   // Selected status codes for filtering
   const selectedStatusCodes = form.cageStatusCodes ?? [];
 
-  const { data: records = [], isLoading: recsLoading } = useQuery({
-    queryKey: ["cage-status-violations"],
-    queryFn: () => listCageStatusViolations(),
-    refetchInterval: 30_000,
-  });
-  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   // ═══ Lock mode handlers ═══
 
@@ -204,12 +225,14 @@ export function CageLinkageTab() {
     setGroupKeyword("");
     setGroupMembers([]);
     setBatchSelectedIds(new Set());
+    setPickedCageDetail(null);
   };
 
   const handleSearchPersonnel = useCallback(async (keyword: string) => {
     if (!keyword.trim()) { setSearchUserResult([]); return; }
     try {
-      const list = await searchPersonnel(keyword);
+      const result = await searchPersonnel(keyword);
+      const list = result?.data ?? result;
       setSearchUserResult(Array.isArray(list) ? list : []);
     } catch { setSearchUserResult([]); }
   }, []);
@@ -270,29 +293,60 @@ export function CageLinkageTab() {
     if (tempSelectedPairs.size === 0) return;
     setPickerOpen(false);
 
-    // Collect all unique group names and status codes
-    const allGroupNames = new Set<string>();
-    const allStatusCodes = new Set(form.cageStatusCodes ?? []);
-    for (const [code, groups] of tempSelectedPairs) {
-      allStatusCodes.add(code);
-      for (const g of groups) allGroupNames.add(g);
+    // Auto-set manualStatusCode when all selected groups share a single status code
+    const uniqueStatusCodes = Array.from(tempSelectedPairs.keys());
+    if (uniqueStatusCodes.length === 1) {
+      setManualStatusCode(uniqueStatusCodes[0]);
     }
 
-    // Update form with merged status codes and group whitelist
-    setForm({ ...form, cageStatusCodes: Array.from(allStatusCodes), cageGroupWhitelist: Array.from(allGroupNames) });
+    // Extract cage detail from the first selected group (for parent record)
+    const firstStatusCode = uniqueStatusCodes[0];
+    const firstGroupKeys = tempSelectedPairs.get(firstStatusCode);
+    const firstGroupKey = firstGroupKeys ? Array.from(firstGroupKeys)[0] : null;
+    if (firstGroupKey && specialStatusByCode) {
+      const info = specialStatusByCode.get(firstStatusCode);
+      const cages = info?.groups.get(firstGroupKey);
+      if (cages && cages.length > 0) {
+        const c = cages[0];
+        setPickedCageDetail({
+          positionLabel: c.position ?? "",
+          campusName: c.campusName ?? "",
+          roomName: c.roomName ?? "",
+          shelveId: c.shelveId ?? "",
+          positionX: c.positionX ?? 0,
+          positionY: c.positionY ?? 0,
+          projectPiName: c.projectPiName ?? piFromKey(firstGroupKey),
+        });
+      }
+    }
 
-    // Load all members from all groups
-    const groupArr = Array.from(allGroupNames);
-    if (groupArr.length === 0) return;
+    // Collect all unique PI names and status codes from compound keys
+    const allPiNames = new Set<string>();
+    const allStatusCodes = new Set(form.cageStatusCodes ?? []);
+    for (const [code, keys] of tempSelectedPairs) {
+      allStatusCodes.add(code);
+      for (const k of keys) allPiNames.add(piFromKey(k));
+    }
 
-    const label = groupArr.join("、");
+    // Update form with merged status codes and PI-name whitelist
+    const piArr = Array.from(allPiNames);
+    setForm({ ...form, cageStatusCodes: Array.from(allStatusCodes), cageGroupWhitelist: piArr });
+
+    // Load all members from all groups (by PI name, not compound key)
+    if (piArr.length === 0) return;
+
+    // Build display label from selected compound keys
+    const displayLabels = Array.from(tempSelectedPairs.values())
+      .flatMap(s => Array.from(s))
+      .map(labelFromKey);
+    const label = displayLabels.join("、");
     setSelectedGroup(label);
     setGroupMembersLoading(true);
     try {
       const allMembers: PersonnelRecordView[] = [];
       const seen = new Set<string>();
-      for (const g of groupArr) {
-        const rows = await listViolationPersonnelByProjectGroup(g, 500);
+      for (const pi of piArr) {
+        const rows = await listViolationPersonnelByProjectGroup(pi, 500);
         const members = (Array.isArray(rows) ? rows : [])
           .map((r) => normalizePersonnelRecord(r as unknown as Record<string, unknown>))
           .filter((p): p is PersonnelRecordView => p != null && Boolean(p.userId) && !seen.has(p.userId));
@@ -333,17 +387,28 @@ export function CageLinkageTab() {
         ruleId: editingId ?? null,
         statusCode: manualStatusCode,
         projectGroupName: lockMode === "batch" ? selectedGroup ?? undefined : undefined,
+        positionLabel: pickedCageDetail?.positionLabel,
+        campusName: pickedCageDetail?.campusName,
+        roomName: pickedCageDetail?.roomName,
+        cageShelveId: pickedCageDetail?.shelveId ? Number(pickedCageDetail.shelveId) || null : null,
+        positionX: pickedCageDetail?.positionX ?? null,
+        positionY: pickedCageDetail?.positionY ?? null,
+        projectPiName: pickedCageDetail?.projectPiName,
       });
+
+      // 检查关联规则的 cageTriggerAction，NOTICE_ONLY 时只发通知不违规
+      const linkedRule = editingId ? cageRules.find(r => r.id === editingId) : null;
+      const isNoticeOnly = linkedRule?.cageTriggerAction === "NOTICE_ONLY";
 
       const basePayload = {
         violationText: form.violationTextTpl ?? "",
         imageUrls: urls,
-        forbidEnter: form.forbidEnter === 1,
+        forbidEnter: isNoticeOnly ? false : (form.forbidEnter === 1),
         maxEnterSuccess: null as number | null,
         showNoticeEveryScan: form.showNoticeEveryScan === 1,
         expireAfterDays: form.expireAfterDays ?? null,
-        interactiveChallenge: form.interactiveChallenge || undefined,
-        interactiveUnlockOnVerify: form.interactiveUnlockOnVerify === 1,
+        interactiveChallenge: isNoticeOnly ? undefined : (form.interactiveChallenge || undefined),
+        interactiveUnlockOnVerify: isNoticeOnly ? undefined : (form.interactiveUnlockOnVerify === 1),
         ruleId: editingId ?? undefined,
         cageViolationId: parent.id,
       };
@@ -367,8 +432,10 @@ export function CageLinkageTab() {
         }
       }
 
-      // Also save the rule
-      await handleSaveSilent();
+      // 仅在管理员通过「关联规则」下拉选了已有规则时才同步更新该规则
+      if (editingId != null) {
+        await handleSaveSilent();
+      }
 
       qc.invalidateQueries({ queryKey: ["studentViolations"] });
       qc.invalidateQueries({ queryKey: ["cage-status-violations"] });
@@ -388,8 +455,8 @@ export function CageLinkageTab() {
       }
       urls = [...urls, ...uploaded];
     }
-    const cageGroupWhitelist = lockMode === "batch" && selectedGroup ? [selectedGroup] : [];
-    const payload: ViolationRule = { ...form, cageImageUrls: urls, cageGroupWhitelist };
+    // 规则的白名单由规则表单自身的多选弹窗管理，不沾染手动提交区域的 lockMode/selectedGroup
+    const payload: ViolationRule = { ...form, cageImageUrls: urls };
     if (editingId) {
       await updateViolationRule(editingId, payload);
     } else {
@@ -402,9 +469,6 @@ export function CageLinkageTab() {
   const handleSave = async () => {
     if (!form.ruleName.trim()) { toast.error("请输入规则名称"); return; }
     if ((form.cageStatusCodes ?? []).length === 0) { toast.error("请至少选择一种监控状态类型"); return; }
-
-    if (lockMode === "single" && !picked) { toast.error("请先选择人员"); return; }
-    if (lockMode === "batch" && !selectedGroup) { toast.error("请先选择课题组"); return; }
 
     setSaving(true);
     try {
@@ -421,15 +485,9 @@ export function CageLinkageTab() {
         urls = [...urls, ...uploaded];
       }
 
-      // Set group whitelist based on lock mode
-      const cageGroupWhitelist = lockMode === "batch" && selectedGroup
-        ? [selectedGroup]
-        : [];
-
       const payload: ViolationRule = {
         ...form,
         cageImageUrls: urls,
-        cageGroupWhitelist,
       };
 
       if (editingId) {
@@ -460,6 +518,7 @@ export function CageLinkageTab() {
     setGroupKeyword("");
     setGroupMembers([]);
     setBatchSelectedIds(new Set());
+    setPickedCageDetail(null);
   };
 
   const loadRuleForEdit = (r: ViolationRule) => {
@@ -508,6 +567,7 @@ export function CageLinkageTab() {
   return (
     <div className="space-y-6">
       {/* ═══ Card 1: 规则配置（仅监控逻辑，不涉及人） ═══ */}
+      {subPanel === "rules" && (
       <AdminFormCard
         title={isEditing ? `⚙️ 编辑规则 · ${form.ruleName || "未命名"}` : "⚙️ 笼架联动规则配置"}
         description="配置触发条件与违规模板；不选择具体人员。人员锁定请在下方「手动提交违规」区域操作。"
@@ -570,7 +630,7 @@ export function CageLinkageTab() {
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold text-indigo-700">已锁定违规对象</div>
                     <div className="text-sm font-semibold text-indigo-950">
-                      {picked.name} <span className="ml-1 font-mono text-xs font-normal text-indigo-600">({picked.userId})</span>
+                      {picked?.name} <span className="ml-1 font-mono text-xs font-normal text-indigo-600">({picked?.userId})</span>
                     </div>
                   </div>
                   <AdminButton type="button" tone="secondary" size="sm" className="shrink-0" onClick={() => { setPicked(null); setPersonKeyword(""); }}>
@@ -609,7 +669,7 @@ export function CageLinkageTab() {
               </div>
 
               {/* ═══ 特殊状态快捷选择按钮 ═══ */}
-              {!selectedGroup && specialStatus && (specialStatus.groups ?? []).length > 0 && (
+              {!selectedGroup && specialStatus && (specialStatus?.groups ?? []).length > 0 && (
                 <div>
                   <AdminButton
                     type="button"
@@ -789,6 +849,45 @@ export function CageLinkageTab() {
             </div>
           </div>
 
+          {/* ═══ 区域筛选 ═══ */}
+          <div className="admin-form-field">
+            <span className={labelClass}>区域筛选（空=所有区域）</span>
+            <div className="mt-1.5 flex flex-wrap gap-3">
+              {(() => {
+                // 从 specialStatus 数据提取所有园区名
+                const allCampuses = new Set<string>();
+                (specialStatus?.groups ?? []).forEach(grp => {
+                  (grp.cages ?? []).forEach(c => { if (c.campusName) allCampuses.add(c.campusName); });
+                });
+                const selectedCampuses = form.cageAreaFilter?.campuses ?? [];
+                const selectedRooms = form.cageAreaFilter?.rooms ?? [];
+                const toggleCampus = (c: string) => {
+                  const next = selectedCampuses.includes(c)
+                    ? selectedCampuses.filter(x => x !== c)
+                    : [...selectedCampuses, c];
+                  setForm({ ...form, cageAreaFilter: { ...form.cageAreaFilter, campuses: next, rooms: selectedRooms } });
+                };
+                return (
+                  <div className="flex flex-col gap-2 w-full">
+                    {allCampuses.size > 0 && (
+                      <div>
+                        <span className="text-[11px] font-medium text-[var(--app-color-text-tertiary)]">园区</span>
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {Array.from(allCampuses).sort().map(c => (
+                            <label key={c} className={`flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${selectedCampuses.includes(c) ? "border-[var(--app-color-accent)] bg-[var(--app-color-accent)]/10 text-[var(--app-color-accent)]" : "border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]"}`}>
+                              <input type="checkbox" className="sr-only" checked={selectedCampuses.includes(c)} onChange={() => toggleCampus(c)} />
+                              {c}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
           {/* ═══ 违规内容 ═══ */}
           <div className="admin-form-field">
             <span className={labelClass}>违规文案模板（变量：{"${name} ${dept} ${status} ${cage} ${date}"}）</span>
@@ -805,6 +904,18 @@ export function CageLinkageTab() {
                                    onFiles={(files) => { if (files?.length) setImageFiles(Array.from(files)); }} />
               {uploading && <span className="text-xs text-[var(--app-color-text-tertiary)]">上传中…</span>}
             </div>
+            {imageFiles.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {imageFiles.map((f, i) => (
+                  <div key={`new-${f.name}-${i}`} className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-[var(--app-color-border-default)] group">
+                    <img src={URL.createObjectURL(f)} alt={f.name} className="h-full w-full object-cover" />
+                    <button type="button" className="absolute right-0 top-0 rounded-bl bg-red-500 px-1.5 py-0.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => setImageFiles((prev) => prev.filter((_, j) => j !== i))}
+                            aria-label="移除图片">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
             {(form.cageImageUrls ?? []).length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {(form.cageImageUrls ?? []).map((url, i) => (
@@ -854,6 +965,16 @@ export function CageLinkageTab() {
             </div>
           </div>
 
+          {/* ═══ 达到上限替换文案 ═══ */}
+          <div className="admin-form-field">
+            <span className={labelClass}>达到上限替换文案（留空=沿用违规文案）</span>
+            <span className="text-[11px] text-[var(--app-color-text-tertiary)]">解禁次数达到上限后替换违规公告内容；变量：{'${name}'} {'${dept}'} {'${date}'}</span>
+            <div className="admin-rich-text-field">
+              <RichTextEditor value={form.criticalNoticeText ?? ""}
+                              onChange={(v) => setForm({ ...form, criticalNoticeText: v || undefined })} />
+            </div>
+          </div>
+
           {/* ═══ 启用 ═══ */}
           <div className="flex items-center gap-2 text-sm">
             <AdminSwitchScaled size="sm" checked={form.enabled === 1}
@@ -873,8 +994,10 @@ export function CageLinkageTab() {
 
         </div>
       </AdminFormCard>
+      )}
 
       {/* ═══ Card 2: 手动提交违规 ═══ */}
+      {subPanel === "submit" && (
       <AdminFormCard
         title="✋ 手动提交违规"
         description="独立配置违规记录并立即提交；选择人员或课题组后，违规即时生效。与上方规则配置独立运作。"
@@ -937,7 +1060,7 @@ export function CageLinkageTab() {
               </div>
 
               {/* 特殊状态快捷选择按钮 */}
-              {!selectedGroup && specialStatus && (specialStatus.groups ?? []).length > 0 && (
+              {!selectedGroup && specialStatus && (specialStatus?.groups ?? []).length > 0 && (
                 <div>
                   <AdminButton type="button" tone="secondary" size="sm" onClick={() => { setTempSelectedPairs(new Map()); setPickerOpen(true); }}>
                     从特殊状态选择课题组（可多选）
@@ -1010,9 +1133,22 @@ export function CageLinkageTab() {
           {/* ── 图片 ── */}
           <div className="admin-form-field">
             <span className={labelClass}>违规图片</span>
-            <div className="mt-1.5 flex items-center gap-2">
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <AdminFilePickButton multiple disabled={uploading} onFiles={(files) => { if (files?.length) setImageFiles(Array.from(files)); }} />
+              {uploading && <span className="text-xs text-[var(--app-color-text-tertiary)]">上传中…</span>}
             </div>
+            {imageFiles.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {imageFiles.map((f, i) => (
+                  <div key={`${f.name}-${i}`} className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-[var(--app-color-border-default)] group">
+                    <img src={URL.createObjectURL(f)} alt={f.name} className="h-full w-full object-cover" />
+                    <button type="button" className="absolute right-0 top-0 rounded-bl bg-red-500 px-1.5 py-0.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => setImageFiles((prev) => prev.filter((_, j) => j !== i))}
+                            aria-label="移除图片">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ── 快捷开关 ── */}
@@ -1051,6 +1187,7 @@ export function CageLinkageTab() {
 
         </div>
       </AdminFormCard>
+      )}
 
       {/* ═══ 已有规则列表 ═══ */}
       <div>
@@ -1082,7 +1219,11 @@ export function CageLinkageTab() {
                   <td className="py-2 px-3 text-xs">{JUDGE_MODE_LABEL[r.cageJudgeMode ?? ""] ?? "-"}</td>
                   <td className="py-2 px-3 text-xs">{r.cageDelayDays ?? "-"} 天</td>
                   <td className="py-2 px-3 text-xs">{TRIGGER_ACTION_LABEL[r.cageTriggerAction ?? ""] ?? "-"}</td>
-                  <td className="py-2 px-3 text-xs">{(r.cageGroupWhitelist ?? []).length > 0 ? (r.cageGroupWhitelist ?? []).join(", ") : "单人/不限"}</td>
+                  <td className="py-2 px-3 text-xs max-w-[180px]">
+                    <span className="truncate block" title={(r.cageGroupWhitelist ?? []).join(", ")}>
+                      {(r.cageGroupWhitelist ?? []).length > 0 ? (r.cageGroupWhitelist ?? []).join(", ") : "单人/不限"}
+                    </span>
+                  </td>
                   <td className="py-2 px-3"><span className={r.enabled === 1 ? "text-emerald-600" : "text-[var(--app-color-text-tertiary)]"}>{r.enabled === 1 ? "启用" : "停用"}</span></td>
                   <td className="py-2 px-3 text-right space-x-1">
                     <AdminButton size="sm" onClick={() => loadRuleForEdit(r)}>
@@ -1100,54 +1241,6 @@ export function CageLinkageTab() {
             </tbody>
           </table>
         </AdminTableShell>
-      </div>
-
-      {/* ═══ 笼架违规记录 ═══ */}
-      <div>
-        <h3 className="text-sm font-bold text-[var(--app-color-text-primary)] mb-3">笼架违规记录</h3>
-        <AdminTableShell loading={recsLoading} empty={!recsLoading && records.length === 0} emptyMessage="暂无笼架违规记录">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-[var(--app-color-border-default)] text-xs text-[var(--app-color-text-tertiary)]">
-                <th className="py-2 px-3">触发时间</th>
-                <th className="py-2 px-3">笼位</th>
-                <th className="py-2 px-3">状态类型</th>
-                <th className="py-2 px-3">课题组</th>
-                <th className="py-2 px-3">园区/房间</th>
-                <th className="py-2 px-3">状态</th>
-                <th className="py-2 px-3 w-8"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((rec) => {
-                const isExpanded = expandedId === rec.id;
-                return (
-                  <tr key={rec.id}
-                      className={`border-b border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)] cursor-pointer ${isExpanded ? "bg-[var(--app-color-surface-hover)]" : ""}`}
-                      onClick={() => setExpandedId(isExpanded ? null : rec.id)}>
-                    <td className="py-2 px-3 text-xs text-[var(--app-color-text-secondary)]">{rec.triggeredAt?.slice(0, 16) ?? "-"}</td>
-                    <td className="py-2 px-3 font-medium text-[var(--app-color-text-primary)]">{rec.positionLabel}</td>
-                    <td className="py-2 px-3 text-xs">{rec.statusCode}</td>
-                    <td className="py-2 px-3 text-xs text-[var(--app-color-text-secondary)]">{rec.projectGroupName ?? "-"}</td>
-                    <td className="py-2 px-3 text-xs text-[var(--app-color-text-secondary)]">{[rec.campusName, rec.roomName].filter(Boolean).join(" / ") || "-"}</td>
-                    <td className="py-2 px-3">
-                      <span className={rec.status === "ACTIVE" ? "text-rose-600 font-medium" : "text-emerald-600"}>
-                        {rec.status === "ACTIVE" ? "生效中" : rec.status === "CLEARED" ? "已解除" : "已过期"}
-                      </span>
-                    </td>
-                    <td className="py-2 px-3">
-                      <ChevronRight className={`w-4 h-4 text-[var(--app-color-text-tertiary)] transition-transform ${isExpanded ? "rotate-90" : ""}`} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </AdminTableShell>
-
-        {records.filter((rec) => expandedId === rec.id).map((rec) => (
-          <CageLinkageRecordPanel key={`detail-${rec.id}`} parentId={rec.id} onClose={() => setExpandedId(null)} />
-        ))}
       </div>
 
       {/* ═══ 特殊状态课题组多选弹窗（Portal 到 body，视窗居中） ═══ */}
@@ -1169,7 +1262,11 @@ export function CageLinkageTab() {
                 勾选课题组后点击确认，选中的状态类型将自动加入监控状态。
               </p>
               {Array.from(specialStatusByCode.entries())
-                .filter(([code]) => selectedStatusCodes.length === 0 || selectedStatusCodes.includes(code))
+                .filter(([code]) => {
+                  // In submit mode, always show all statuses so re-selection isn't locked
+                  if (subPanel === "submit") return true;
+                  return selectedStatusCodes.length === 0 || selectedStatusCodes.includes(code);
+                })
                 .map(([code, info]) => {
                   const totalCages = Array.from(info.groups.values()).reduce((sum, cages) => sum + cages.length, 0);
                   const borderCls = STATUS_BG[code] ?? "border-l-neutral-400";
@@ -1184,22 +1281,23 @@ export function CageLinkageTab() {
                         </span>
                       </div>
                       <div className="px-2 py-1.5 space-y-1">
-                        {Array.from(info.groups.entries()).map(([pi, cages]) => {
-                          const isSelected = pairsForCode.has(pi);
+                        {Array.from(info.groups.entries()).map(([key, cages]) => {
+                          const isSelected = pairsForCode.has(key);
+                          const displayLabel = labelFromKey(key);
                           return (
-                            <label key={pi} className={`flex items-center gap-2 px-2.5 py-1.5 rounded cursor-pointer transition-colors ${isSelected ? "bg-amber-50" : "hover:bg-[var(--app-color-surface-hover)]"}`}>
+                            <label key={key} className={`flex items-center gap-2 px-2.5 py-1.5 rounded cursor-pointer transition-colors ${isSelected ? "bg-amber-50" : "hover:bg-[var(--app-color-surface-hover)]"}`}>
                               <input type="checkbox" checked={isSelected}
                                      onChange={() => {
                                        setTempSelectedPairs((prev) => {
                                          const next = new Map(prev);
                                          const set = new Set(next.get(code) ?? []);
-                                         if (set.has(pi)) set.delete(pi); else set.add(pi);
+                                         if (set.has(key)) set.delete(key); else set.add(key);
                                          if (set.size === 0) next.delete(code); else next.set(code, set);
                                          return next;
                                        });
                                      }}
                                      className="shrink-0 rounded accent-amber-500" />
-                              <span className="flex-1 text-xs font-medium text-[var(--app-color-text-primary)] truncate">{pi}</span>
+                              <span className="flex-1 text-xs font-medium text-[var(--app-color-text-primary)] truncate">{displayLabel}</span>
                               <span className="shrink-0 text-[10px] text-[var(--app-color-text-tertiary)]">{cages.length} 笼位</span>
                             </label>
                           );
@@ -1208,7 +1306,10 @@ export function CageLinkageTab() {
                     </div>
                   );
                 })}
-              {Array.from(specialStatusByCode.entries()).filter(([code]) => selectedStatusCodes.length === 0 || selectedStatusCodes.includes(code)).length === 0 && (
+              {Array.from(specialStatusByCode.entries()).filter(([code]) => {
+                if (subPanel === "submit") return true;
+                return selectedStatusCodes.length === 0 || selectedStatusCodes.includes(code);
+              }).length === 0 && (
                 <p className="text-sm text-[var(--app-color-text-tertiary)] text-center py-8">请先在上方勾选监控状态类型</p>
               )}
             </div>

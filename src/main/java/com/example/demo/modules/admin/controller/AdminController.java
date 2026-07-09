@@ -9,11 +9,14 @@ import com.example.demo.modules.admin.dto.UpdateStatusRequest;
 import com.example.demo.modules.admin.service.AdminService;
 import com.example.demo.modules.auth.dto.UpdateDisplayNicknameRequest;
 import com.example.demo.modules.auth.entity.User;
+import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.SpecialChannelService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -22,10 +25,14 @@ public class AdminController {
 
     private final AdminService adminService;
     private final SpecialChannelService specialChannelService;
+    private final UserMapper userMapper;
 
-    public AdminController(AdminService adminService, SpecialChannelService specialChannelService) {
+    public AdminController(AdminService adminService,
+                          SpecialChannelService specialChannelService,
+                          UserMapper userMapper) {
         this.adminService = adminService;
         this.specialChannelService = specialChannelService;
+        this.userMapper = userMapper;
     }
 
     @GetMapping("/personnel")
@@ -159,6 +166,49 @@ public class AdminController {
             return Result.success();
         } catch (com.example.demo.common.exception.TwinBusinessException e) {
             return Result.fail(e.getCode(), e.getMessage());
+        }
+    }
+
+    @GetMapping("/users/{id}/view-password")
+    @Operation(summary = "查看用户明文密码（AES解密，需 SUPER_ADMIN）")
+    public Result<?> viewPassword(@PathVariable String id, HttpServletRequest httpRequest) {
+        Result<?> denied = requireSuperAdmin(httpRequest);
+        if (denied != null) return denied;
+        try {
+            Map<String, Object> data = adminService.viewPassword(id);
+            return Result.success(data);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/personnel/{personnelUserId}/reset-account")
+    @Operation(summary = "重置学生登录账号（用户名），需 SUPER_ADMIN")
+    public Result<?> resetPersonnelAccount(@PathVariable String personnelUserId,
+                                           @RequestBody Map<String, String> body,
+                                           HttpServletRequest httpRequest) {
+        Result<?> denied = requireSuperAdmin(httpRequest);
+        if (denied != null) return denied;
+        String newUsername = body != null ? body.get("newUsername") : null;
+        try {
+            adminService.resetPersonnelAccount(personnelUserId, newUsername);
+            return Result.success(Map.of("newUsername", newUsername));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/personnel/{personnelUserId}/reset-password")
+    @Operation(summary = "重置学生登录密码，需 SUPER_ADMIN")
+    public Result<?> resetPersonnelPassword(@PathVariable String personnelUserId,
+                                            HttpServletRequest httpRequest) {
+        Result<?> denied = requireSuperAdmin(httpRequest);
+        if (denied != null) return denied;
+        try {
+            Map<String, Object> data = adminService.resetPersonnelPassword(personnelUserId);
+            return Result.success(data);
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
         }
     }
 

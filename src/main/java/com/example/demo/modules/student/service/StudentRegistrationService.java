@@ -152,10 +152,14 @@ public class StudentRegistrationService {
             }
         }
 
+        String rawPwd = req.getPassword();
+        String hash = passwordCredentialService.encodeForStorage(rawPwd);
+        String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
+
         User user = new User();
         user.setId(aroUserId);
         user.setUsername(username);
-        user.setPassword(passwordCredentialService.encodeForStorage(req.getPassword()));
+        user.setPassword(hash);
         user.setRole(RoleEnum.MEMBER);
         user.setStatus(1);
         user.setPasswordResetRequired(0);
@@ -163,6 +167,7 @@ public class StudentRegistrationService {
         user.setAccountSource("STUDENT");
 
         userMapper.insertUser(user);
+        userMapper.updatePasswordWithPlainById(aroUserId, hash, encryptedPlain, 0);
         user = userMapper.findById(user.getId());
         if (user == null) {
             return Result.error("注册失败，请稍后重试");
@@ -223,10 +228,14 @@ public class StudentRegistrationService {
         }
 
         // 4. UPDATE: 设 username + password + authProfile（保留 openId/miniBindType）
+        String rawPwd = req.getPassword();
+        String hash = passwordCredentialService.encodeForStorage(rawPwd);
+        String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
         existing.setUsername(username);
-        existing.setPassword(passwordCredentialService.encodeForStorage(req.getPassword()));
+        existing.setPassword(hash);
         existing.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
         userMapper.updateUser(existing);
+        userMapper.updatePasswordWithPlainById(userId, hash, encryptedPlain, 0);
 
         // 5. 重新查询并生成 JWT
         User updated = userMapper.findById(userId);

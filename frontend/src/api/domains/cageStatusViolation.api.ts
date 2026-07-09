@@ -78,3 +78,13 @@ export async function createCageStatusViolation(body: CreateCageStatusViolationP
 export async function manualTriggerRule(ruleId: number): Promise<void> {
   await adminHttp.post(`/twin/cage-status-violations/trigger/${ruleId}`);
 }
+
+export async function batchClearCageViolationMembers(parentId: number, violationIds: number[]): Promise<{ cleared: number }> {
+  const res = await adminHttp.post<ApiResponse<{ cleared: number }>>(`/twin/cage-status-violations/${parentId}/members/batch-clear`, { violationIds });
+  return res.data?.data!;
+}
+
+export async function batchDeleteCageViolationMembers(parentId: number, violationIds: number[]): Promise<{ deleted: number }> {
+  const res = await adminHttp.post<ApiResponse<{ deleted: number }>>(`/twin/cage-status-violations/${parentId}/members/batch-delete`, { violationIds });
+  return res.data?.data!;
+}

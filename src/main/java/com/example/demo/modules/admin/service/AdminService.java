@@ -92,6 +92,7 @@ public class AdminService {
             nick = username;
         }
         String id = "USR_" + UUID.randomUUID().toString().replace("-", "");
+        String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
         User u = new User();
         u.setId(id);
         u.setUsername(username);
@@ -106,6 +107,7 @@ public class AdminService {
         u.setAuthProfile("WEB_PASSWORD");
         u.setAccountSource("STAFF");
         userMapper.insertUser(u);
+        userMapper.updatePasswordWithPlainById(id, u.getPassword(), encryptedPlain, 1);
         Map<String, Object> out = new HashMap<>();
         out.put("id", id);
         out.put("username", username);
@@ -181,7 +183,9 @@ public class AdminService {
             throw new IllegalArgumentException("内置超级管理员不可重置密码");
         }
         String defaultPassword = UUID.randomUUID().toString().substring(0, 8);
-        userMapper.updatePasswordAndResetRequiredById(id, passwordCredentialService.encodeForStorage(defaultPassword), 1);
+        String hash = passwordCredentialService.encodeForStorage(defaultPassword);
+        String encryptedPlain = passwordCredentialService.encryptPlaintext(defaultPassword);
+        userMapper.updatePasswordWithPlainById(id, hash, encryptedPlain, 1);
         Map<String, Object> data = new HashMap<>();
         data.put("defaultPassword", defaultPassword);
         return data;
@@ -207,6 +211,79 @@ public class AdminService {
             throw new IllegalArgumentException("昵称长度不能超过32个字符");
         }
         userMapper.updateDisplayNicknameById(id, normalized);
+    }
+
+    public Map<String, Object> viewPassword(String id) {
+        User target = userMapper.findById(id);
+        if (target == null) {
+            throw new IllegalArgumentException("用户不存在");
+        }
+        if (BUILTIN_SUPER_ADMIN_ID.equals(target.getId())) {
+            throw new IllegalArgumentException("内置超级管理员密码不可查看");
+        }
+        // Read password_plain from DB directly since User entity doesn't have this field
+        String plainEncrypted = userMapper.getPasswordPlainById(id);
+        if (plainEncrypted == null || plainEncrypted.isEmpty()) {
+            Map<String, Object> data = new HashMap<>();
+            data.put("password", null);
+            data.put("message", "该密码为历史遗留数据，暂不可查看。请先重置密码后再查看。");
+            return data;
+        }
+        String plaintext = passwordCredentialService.decryptPlaintext(plainEncrypted);
+        Map<String, Object> data = new HashMap<>();
+        data.put("password", plaintext);
+        return data;
+    }
+
+    public void resetPersonnelAccount(String userId, String newUsername) {
+        if (!StringUtils.hasText(userId)) {
+            throw new IllegalArgumentException("用户ID不能为空");
+        }
+        if (!StringUtils.hasText(newUsername)) {
+            throw new IllegalArgumentException("新账号不能为空");
+        }
+        String username = newUsername.trim();
+        if (username.length() < 2 || username.length() > 64) {
+            throw new IllegalArgumentException("账号长度须在 2～64 字符");
+        }
+        User existing = userMapper.findByUsername(username);
+        if (existing != null && !existing.getId().equals(userId)) {
+            throw new IllegalArgumentException("该登录账号已被占用");
+        }
+        User target = userMapper.findById(userId);
+        if (target == null) {
+            throw new IllegalArgumentException("用户不存在");
+        }
+        userMapper.updateUsernameById(userId, username);
+    }
+
+    public Map<String, Object> resetPersonnelPassword(String personnelUserId) {
+        if (!StringUtils.hasText(personnelUserId)) {
+            throw new IllegalArgumentException("用户ID不能为空");
+        }
+        String defaultPassword = UUID.randomUUID().toString().substring(0, 8);
+        String hash = passwordCredentialService.encodeForStorage(defaultPassword);
+        String encryptedPlain = passwordCredentialService.encryptPlaintext(defaultPassword);
+        User target = userMapper.findById(personnelUserId);
+        if (target == null) {
+            // Auto-create sys_user for personnel who doesn't have one yet
+            User u = new User();
+            u.setId(personnelUserId);
+            u.setUsername(personnelUserId);
+            u.setPassword(hash);
+            u.setRole(RoleEnum.MEMBER);
+            u.setStatus(1);
+            u.setPasswordResetRequired(1);
+            u.setAuthProfile("WEB_PASSWORD");
+            u.setAccountSource("STUDENT");
+            userMapper.insertUser(u);
+            userMapper.updatePasswordWithPlainById(personnelUserId, hash, encryptedPlain, 1);
+        } else {
+            userMapper.updatePasswordWithPlainById(personnelUserId, hash, encryptedPlain, 1);
+        }
+        Map<String, Object> data = new HashMap<>();
+        data.put("defaultPassword", defaultPassword);
+        return data;
     }
 
     public void resetOpenId(String id) {

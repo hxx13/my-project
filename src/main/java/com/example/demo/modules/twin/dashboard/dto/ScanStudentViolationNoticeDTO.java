@@ -39,4 +39,6 @@ public class ScanStudentViolationNoticeDTO {
     private String criticalNoticeText;
     /** 被扫码人员已选择「下次不再自动弹出」此条 */
     private Boolean autoOpenSuppressed;
+    /** CAGE_STATUS / MANUAL 等来源标识 */
+    private String source;
 }

@@ -8,19 +8,22 @@ const ROOM_COLORS = [
 
 type Props = { data: RoomUsageItem[]; loading?: boolean };
 
+const placeholderCls = "flex items-center justify-center text-sm text-neutral-400";
+const placeholderStyle: React.CSSProperties = { width: "100%", aspectRatio: "3 / 1", minHeight: 200 };
+
 export function ActivityRoomChart({ data, loading }: Props) {
   if (loading) return (
-    <div className="flex h-[240px] items-center justify-center text-sm text-neutral-400">加载中…</div>
+    <div className={placeholderCls} style={placeholderStyle}>加载中…</div>
   );
   if (data.length === 0) return (
-    <div className="flex h-[240px] items-center justify-center text-sm text-neutral-400">暂无房间数据</div>
+    <div className={placeholderCls} style={placeholderStyle}>暂无房间数据</div>
   );
 
   const chartData = data.slice(0, 20);
 
   return (
-    <div style={{ width: "100%", height: 240 }}>
-      <ResponsiveContainer>
+    <div style={{ width: "100%", aspectRatio: "3 / 1", minHeight: 200 }}>
+      <ResponsiveContainer width="100%" height="100%">
         <BarChart data={chartData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
           <XAxis dataKey="roomName" tick={{ fontSize: 10 }} interval={0} angle={-30} textAnchor="end" height={60} />

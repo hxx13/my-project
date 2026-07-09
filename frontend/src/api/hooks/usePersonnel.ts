@@ -10,6 +10,9 @@ import {
   updateUserDisplayNickname,
   createSystemStaffUser,
   deleteSystemUser,
+  viewUserPassword,
+  resetPersonnelAccount,
+  resetPersonnelPassword,
 } from "@/api/domains/admin.api";
 import { toast } from "react-hot-toast";
 
@@ -103,5 +106,28 @@ export function useDeleteSystemUser() {
       toast.success("账号已删除");
     },
     onError: (e: Error) => toast.error(e.message || "删除失败"),
+  });
+}
+
+export function useResetPersonnelAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, newUsername }: { userId: string; newUsername: string }) =>
+      resetPersonnelAccount(userId, newUsername),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.personnel.all });
+      toast.success(`账号已重置为 ${data.newUsername}`);
+    },
+    onError: (e: Error) => toast.error(e.message || "重置失败"),
+  });
+}
+
+export function useResetPersonnelPassword() {
+  return useMutation({
+    mutationFn: (userId: string) => resetPersonnelPassword(userId),
+    onSuccess: (data) => {
+      toast.success(`密码已重置为: ${data.defaultPassword}`, { duration: 15000 });
+    },
+    onError: (e: Error) => toast.error(e.message || "重置失败"),
   });
 }

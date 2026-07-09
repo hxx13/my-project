@@ -6,6 +6,8 @@
 export type DashboardViolationBoardItem = {
   id: number;
   displayName: string;
+  /** 课题组名（笼架联动批量违规时有值，前端以此区分单人/课题组渲染） */
+  groupName?: string | null;
   summary: string;
   coverImageUrl?: string | null;
   createdAt?: string | null;

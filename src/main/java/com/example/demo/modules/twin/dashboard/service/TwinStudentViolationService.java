@@ -1,11 +1,17 @@
 package com.example.demo.modules.twin.dashboard.service;
 
 import com.example.demo.modules.auth.service.UserDisplayNameService;
+import com.example.demo.modules.notification.entity.StudentNotification;
+import com.example.demo.modules.notification.mapper.StudentNotificationMapper;
+import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.modules.student.service.MobileUserSocketPushService;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.dashboard.dto.DashboardViolationBoardItemDTO;
 import com.example.demo.modules.twin.dashboard.dto.ScanStudentViolationNoticeDTO;
+import com.example.demo.modules.twin.dashboard.entity.TwinCageStatusViolation;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
 import com.example.demo.modules.twin.dashboard.entity.TwinViolationRule;
+import com.example.demo.modules.twin.dashboard.mapper.TwinCageStatusViolationMapper;
 import com.example.demo.modules.twin.dashboard.mapper.TwinStudentViolationMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -36,11 +43,38 @@ public class TwinStudentViolationService {
     /** MySQL GET_LOCK 锁名最长 64 字符 */
     private static final int AUTO_STRANDED_LOCK_TIMEOUT_SEC = 10;
 
+    private static final java.util.Map<String, String> CAGE_STATUS_LABEL = java.util.Map.of(
+        "COHABITATION", "合笼/繁殖",
+        "SPECIAL_FEEDING", "特殊饲养",
+        "NEED_DIVIDE", "请分笼/密度超标",
+        "HEALTH_ABNORMAL", "动物健康异常",
+        "ANIMAL_TRANSFER", "动物转移"
+    );
+
+    /** 解析笼位处理提示的标题：优先用父记录 statusCode 中文标签 */
+    private String resolveCageNoticeTitle(TwinStudentViolation row) {
+        if (row.getCageViolationId() != null && cageStatusViolationMapper != null) {
+            try {
+                TwinCageStatusViolation parent = cageStatusViolationMapper.selectById(row.getCageViolationId());
+                if (parent != null && parent.getStatusCode() != null) {
+                    String label = CAGE_STATUS_LABEL.get(parent.getStatusCode());
+                    if (label != null) return label;
+                    return parent.getStatusCode();
+                }
+            } catch (Exception ignored) { }
+        }
+        return "笼位处理提示";
+    }
+
     private final TwinStudentViolationMapper violationMapper;
     private final ObjectMapper objectMapper;
     private final UserDisplayNameService userDisplayNameService;
     private final TwinDashboardMapper dashboardMapper;
     private final TwinViolationRuleService ruleService;
+    private final MobileUserSocketPushService mobileUserSocketPushService;
+    private final StudentNotificationMapper studentNotificationMapper;
+    private final TwinCageStatusViolationMapper cageStatusViolationMapper;
+    private final SocketIOServer socketServer;
 
     /** 检测到表不存在后短路，避免每次扫码/列表都打库抛错（执行 DDL 后需重启应用或等后续扩展热恢复） */
     private final AtomicBoolean violationTableAbsent = new AtomicBoolean(false);
@@ -49,12 +83,20 @@ public class TwinStudentViolationService {
                                        ObjectMapper objectMapper,
                                        UserDisplayNameService userDisplayNameService,
                                        TwinDashboardMapper dashboardMapper,
-                                       TwinViolationRuleService ruleService) {
+                                       TwinViolationRuleService ruleService,
+                                       MobileUserSocketPushService mobileUserSocketPushService,
+                                       StudentNotificationMapper studentNotificationMapper,
+                                       TwinCageStatusViolationMapper cageStatusViolationMapper,
+                                       @org.springframework.beans.factory.annotation.Autowired(required = false) SocketIOServer socketServer) {
         this.violationMapper = violationMapper;
         this.objectMapper = objectMapper;
         this.userDisplayNameService = userDisplayNameService;
         this.dashboardMapper = dashboardMapper;
         this.ruleService = ruleService;
+        this.mobileUserSocketPushService = mobileUserSocketPushService;
+        this.studentNotificationMapper = studentNotificationMapper;
+        this.cageStatusViolationMapper = cageStatusViolationMapper;
+        this.socketServer = socketServer;
     }
 
     private static boolean isTwinStudentViolationTableMissing(Throwable e) {
@@ -139,17 +181,24 @@ public class TwinStudentViolationService {
         dto.setInteractiveChallengeVerified(row.getInteractiveChallengeVerifiedAt() != null);
         dto.setExpireAt(row.getExpireAt());
         dto.setPastExpireAwaitingInteractive(isPastExpireAwaitingInteractive(row));
+        // 笼位联动标记：前端据此渲染独立灵动岛
+        boolean isCage = "CAGE_STATUS".equals(row.getSource());
+        if (isCage) {
+            String cageTitle = resolveCageNoticeTitle(row);
+            dto.setRuleName("[CAGE]" + cageTitle);
+        }
         // 规则解禁状态
         if (row.getRuleId() != null && ruleService != null) {
             TwinViolationRule rule = ruleService.getById(row.getRuleId());
             if (rule != null) {
-                dto.setRuleName(rule.getRuleName());
+                if (!isCage) {
+                    dto.setRuleName(rule.getRuleName());
+                }
                 dto.setUnblockMethod(rule.getUnblockMethod());
                 TwinViolationRuleService.UnblockDecision decision =
                         ruleService.evaluateForExisting(targetUserId, row.getRuleId());
                 dto.setCritical(decision.isCritical());
                 dto.setCanSelfUnblock(ruleService.canSelfUnblock(row.getId(), targetUserId, row.getRuleId()));
-                // 达到上限且配置了替换文案 → 覆盖公告内容
                 if (decision.isCritical() && rule.getCriticalNoticeText() != null && !rule.getCriticalNoticeText().isBlank()) {
                     dto.setCriticalNoticeText(applyTemplateVariables(rule.getCriticalNoticeText(), targetUserId));
                 }
@@ -264,9 +313,6 @@ public class TwinStudentViolationService {
         if (row == null || row.getId() == null) {
             return;
         }
-        if (row.getMaxEnterSuccess() == null) {
-            return;
-        }
         try {
             violationMapper.incrementEnterSuccess(row.getId());
         } catch (Exception e) {
@@ -280,7 +326,7 @@ public class TwinStudentViolationService {
 
     /**
      * 主页大屏「违规惩戒公示」：ACTIVE + 未过期，每人最新一条；
-     * summary 折叠换行并按字符数截断，coverImageUrl 取附图第一张（无则 null）。
+     * 笼架联动违规按课题组聚合为一条，其余按个人展示。
      */
     public List<DashboardViolationBoardItemDTO> listDashboardBoard(int limit, int summaryMaxLen) {
         if (violationTableAbsent.get()) {
@@ -306,8 +352,77 @@ public class TwinStudentViolationService {
         if (rows == null || rows.isEmpty()) {
             return Collections.emptyList();
         }
-        List<DashboardViolationBoardItemDTO> out = new ArrayList<>(rows.size());
+
+        // 分离笼架联动违规和个人违规
+        List<TwinStudentViolation> cageRows = new ArrayList<>();
+        List<TwinStudentViolation> personalRows = new ArrayList<>();
         for (TwinStudentViolation row : rows) {
+            if (row.getCageViolationId() != null) {
+                cageRows.add(row);
+            } else {
+                personalRows.add(row);
+            }
+        }
+
+        List<DashboardViolationBoardItemDTO> out = new ArrayList<>();
+
+        // 笼架联动：按课题组聚合，每组一条
+        if (!cageRows.isEmpty() && cageStatusViolationMapper != null) {
+            Map<String, List<TwinStudentViolation>> byGroup = new LinkedHashMap<>();
+            Map<String, String> groupStatusCode = new LinkedHashMap<>();
+            LocalDateTime latestCageTime = null;
+            for (TwinStudentViolation row : cageRows) {
+                try {
+                    TwinCageStatusViolation parent = cageStatusViolationMapper.selectById(row.getCageViolationId());
+                    String groupName = (parent != null && parent.getProjectGroupName() != null)
+                            ? parent.getProjectGroupName().trim() : "未命名课题组";
+                    byGroup.computeIfAbsent(groupName, k -> new ArrayList<>()).add(row);
+                    if (parent != null && parent.getStatusCode() != null) {
+                        groupStatusCode.putIfAbsent(groupName, parent.getStatusCode());
+                    }
+                    if (parent != null && parent.getTriggeredAt() != null) {
+                        if (latestCageTime == null || parent.getTriggeredAt().isAfter(latestCageTime)) {
+                            latestCageTime = parent.getTriggeredAt();
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("[student-violation] 查父记录失败 cageViolationId={}", row.getCageViolationId());
+                }
+            }
+            for (Map.Entry<String, List<TwinStudentViolation>> entry : byGroup.entrySet()) {
+                List<TwinStudentViolation> members = entry.getValue();
+                // 单人锁定：按个人违规样式展示（姓名 + 实际违规文案）
+                if (members.size() == 1) {
+                    TwinStudentViolation single = members.get(0);
+                    DashboardViolationBoardItemDTO dto = new DashboardViolationBoardItemDTO();
+                    dto.setId(single.getId());
+                    String name = userDisplayNameService.resolveDisplayName(single.getTargetUserId());
+                    dto.setDisplayName(StringUtils.hasText(name) ? name : single.getTargetUserId());
+                    // 单人笼架违规：文案前拼上 [状态标签]
+                    String sc = groupStatusCode.getOrDefault(entry.getKey(), "");
+                    String prefix = StringUtils.hasText(sc) ? "[" + statusLabel(sc) + "] " : "";
+                    dto.setSummary(prefix + buildSummary(applyTemplateVariables(single.getViolationText(), single.getTargetUserId()), maxLen));
+                    List<String> imgs = parseImageUrls(single.getImageUrls());
+                    dto.setCoverImageUrl(imgs.isEmpty() ? null : imgs.get(0));
+                    dto.setCreatedAt(single.getCreatedAt());
+                    out.add(dto);
+                } else {
+                    DashboardViolationBoardItemDTO dto = new DashboardViolationBoardItemDTO();
+                    dto.setId(members.get(0).getId());
+                    dto.setGroupName(entry.getKey());
+                    dto.setDisplayName(entry.getKey());
+                    String sc = groupStatusCode.getOrDefault(entry.getKey(), "");
+                    String prefix = StringUtils.hasText(sc) ? "[" + statusLabel(sc) + "] " : "";
+                    dto.setSummary(prefix + "共涉及 " + members.size() + " 名成员");
+                    dto.setCoverImageUrl(null);
+                    dto.setCreatedAt(latestCageTime);
+                    out.add(dto);
+                }
+            }
+        }
+
+        // 个人违规：每人一条
+        for (TwinStudentViolation row : personalRows) {
             DashboardViolationBoardItemDTO dto = new DashboardViolationBoardItemDTO();
             dto.setId(row.getId());
             String name = userDisplayNameService.resolveDisplayName(row.getTargetUserId());
@@ -341,6 +456,19 @@ public class TwinStudentViolationService {
                 .replace("${date}", date);
     }
 
+    /** 笼位状态码 → 中文标签 */
+    private static String statusLabel(String statusCode) {
+        if (statusCode == null) return "";
+        return switch (statusCode) {
+            case "COHABITATION" -> "合笼/繁殖";
+            case "SPECIAL_FEEDING" -> "特殊饲养";
+            case "NEED_DIVIDE" -> "请分笼/密度超标";
+            case "HEALTH_ABNORMAL" -> "动物健康异常";
+            case "ANIMAL_TRANSFER" -> "动物转移";
+            default -> statusCode;
+        };
+    }
+
     private String resolveDepartmentName(String userId) {
         if (!StringUtils.hasText(userId)) {
             return "";
@@ -363,7 +491,7 @@ public class TwinStudentViolationService {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", String.valueOf(row.getId()));
         item.put("time", row.getCreatedAt() != null ? row.getCreatedAt().toString() : "");
-        item.put("type", "违规通告");
+        item.put("type", "CAGE_STATUS".equals(row.getSource()) ? "笼位处理提示" : "违规通告");
         item.put("contentHtml", resolveDisplayBodyForMobile(row));
         item.put("roomName", "");
         item.put("doorName", "");
@@ -492,7 +620,8 @@ public class TwinStudentViolationService {
                     SOURCE_AUTO_STRANDED,
                     interactiveChallenge,
                     interactiveUnlockOnVerify,
-                    ruleId);
+                    ruleId,
+                    null);
         } finally {
             try {
                 violationMapper.releaseLock(lockName);
@@ -543,7 +672,7 @@ public class TwinStudentViolationService {
             String createdByUserId
     ) {
         return create(targetUserId, violationText, imageUrls, forbidEnter, maxEnterSuccess,
-                showNoticeEveryScan, expireAfterDays, createdByUserId, "MANUAL", null);
+                showNoticeEveryScan, expireAfterDays, createdByUserId, "MANUAL", null, null, null, null);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -570,7 +699,7 @@ public class TwinStudentViolationService {
                 createdByUserId,
                 source,
                 interactiveChallenge,
-                null);
+                null, null, null);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -587,55 +716,9 @@ public class TwinStudentViolationService {
             String interactiveChallenge,
             Boolean interactiveUnlockOnVerify
     ) {
-        if (!StringUtils.hasText(targetUserId)) {
-            throw new IllegalArgumentException("缺少 targetUserId");
-        }
-        if (violationTableAbsent.get()) {
-            throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
-        }
-        String tid = targetUserId.trim();
-        touchExpireStale();
-        if (violationTableAbsent.get()) {
-            throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
-        }
-        try {
-            violationMapper.supersedeActiveByTargetUserId(tid);
-        } catch (Exception e) {
-            if (isTwinStudentViolationTableMissing(e)) {
-                markTableAbsentOnce();
-                throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
-            }
-            throw e;
-        }
-
-        TwinStudentViolation row = new TwinStudentViolation();
-        row.setTargetUserId(tid);
-        row.setViolationText(violationText);
-        row.setImageUrls(serializeImageUrls(imageUrls));
-        row.setInteractiveChallenge(normalizeInteractiveChallenge(interactiveChallenge));
-        row.setInteractiveUnlockOnVerify(resolveInteractiveUnlockOnVerify(row.getInteractiveChallenge(), interactiveUnlockOnVerify));
-        row.setForbidEnter(resolveManualForbidEnter(forbidEnter, interactiveChallenge) ? 1 : 0);
-        row.setMaxEnterSuccess(maxEnterSuccess);
-        row.setEnterSuccessCount(0);
-        row.setShowNoticeEveryScan(showNoticeEveryScan ? 1 : 0);
-        if (expireAfterDays != null && expireAfterDays > 0) {
-            row.setExpireAt(LocalDateTime.now().plusDays(expireAfterDays));
-        } else {
-            row.setExpireAt(null);
-        }
-        row.setStatus(STATUS_ACTIVE);
-        row.setCreatedByUserId(createdByUserId);
-        row.setSource(source != null && !source.isBlank() ? source.trim() : "MANUAL");
-        try {
-            violationMapper.insert(row);
-        } catch (Exception e) {
-            if (isTwinStudentViolationTableMissing(e)) {
-                markTableAbsentOnce();
-                throw new IllegalStateException("库表 twin_student_violation 未创建：请开启 app.schema.auto-ensure-embedded-core-ddl（默认 true）并赋予数据源建表权限，或手工执行 scripts/student_violation.ddl.sql 后重启。");
-            }
-            throw e;
-        }
-        return row;
+        return create(targetUserId, violationText, imageUrls, forbidEnter, maxEnterSuccess,
+                showNoticeEveryScan, expireAfterDays, createdByUserId, source,
+                interactiveChallenge, interactiveUnlockOnVerify, null, null);
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -651,7 +734,8 @@ public class TwinStudentViolationService {
             String source,
             String interactiveChallenge,
             Boolean interactiveUnlockOnVerify,
-            Long ruleId
+            Long ruleId,
+            Long cageViolationId
     ) {
         if (!StringUtils.hasText(targetUserId)) {
             throw new IllegalArgumentException("缺少 targetUserId");
@@ -701,6 +785,7 @@ public class TwinStudentViolationService {
         row.setCreatedByUserId(createdByUserId);
         row.setSource(source != null && !source.isBlank() ? source.trim() : "MANUAL");
         row.setRuleId(ruleId);
+        row.setCageViolationId(cageViolationId);
         try {
             violationMapper.insert(row);
         } catch (Exception e) {
@@ -710,7 +795,113 @@ public class TwinStudentViolationService {
             }
             throw e;
         }
+        // 实时推送通知到 H5 手机端
+        pushViolationCreatedNotification(row);
+        // 笼位联动 → 广播到管理端灵动岛
+        if ("CAGE_STATUS".equals(row.getSource())) {
+            broadcastCageNoticeAlert(row);
+        }
+        // 同步写入 sys_student_notification，确保 /student/notifications 消息中心可见
+        persistStudentNotification(row);
         return row;
+    }
+
+    /** 违规创建后实时推送 WebSocket 通知到目标用户的 H5 手机端消息栏目 */
+    private void pushViolationCreatedNotification(TwinStudentViolation row) {
+        if (mobileUserSocketPushService == null || row == null || !StringUtils.hasText(row.getTargetUserId())) {
+            return;
+        }
+        try {
+            Map<String, Object> alertItem = new LinkedHashMap<>();
+            alertItem.put("kind", "violation");
+            alertItem.put("id", row.getId());
+            alertItem.put("title", "CAGE_STATUS".equals(row.getSource()) ? resolveCageNoticeTitle(row) : "违规提醒");
+            alertItem.put("source", row.getSource());
+
+            // 完整内容：模板变量替换 + 达到上限时的 critical 替换文案
+            String body = applyTemplateVariables(row.getViolationText(), row.getTargetUserId());
+            if (row.getRuleId() != null && ruleService != null) {
+                TwinViolationRule rule = ruleService.getById(row.getRuleId());
+                if (rule != null) {
+                    TwinViolationRuleService.UnblockDecision decision =
+                            ruleService.evaluateForExisting(row.getTargetUserId(), row.getRuleId());
+                    if (decision.isCritical() && StringUtils.hasText(rule.getCriticalNoticeText())) {
+                        body = applyTemplateVariables(rule.getCriticalNoticeText(), row.getTargetUserId());
+                    }
+                }
+            }
+            alertItem.put("contentHtml", body != null ? body : "");
+
+            alertItem.put("enterLocked", computeEnterLocked(row));
+            alertItem.put("interactiveRequired",
+                    StringUtils.hasText(row.getInteractiveChallenge())
+                            && row.getInteractiveChallengeVerifiedAt() == null);
+            if (StringUtils.hasText(row.getInteractiveChallenge())) {
+                alertItem.put("interactiveChallenge", row.getInteractiveChallenge());
+                alertItem.put("interactiveChallengeVerified", row.getInteractiveChallengeVerifiedAt() != null);
+            }
+            if (row.getRuleId() != null && ruleService != null) {
+                TwinViolationRule rule = ruleService.getById(row.getRuleId());
+                if (rule != null) {
+                    alertItem.put("unblockMethod",
+                            StringUtils.hasText(rule.getUnblockMethod()) ? rule.getUnblockMethod().trim() : "");
+                    alertItem.put("canSelfUnblock",
+                            ruleService.canSelfUnblock(row.getId(), row.getTargetUserId().trim(), row.getRuleId()));
+                }
+            }
+            alertItem.put("createdAt", row.getCreatedAt() != null ? row.getCreatedAt().toString() : null);
+            mobileUserSocketPushService.pushAlertItem(row.getTargetUserId().trim(), alertItem);
+        } catch (Exception e) {
+            log.warn("[student-violation] 推送 H5 通知失败 userId={} id={}: {}",
+                    row.getTargetUserId(), row.getId(), e.getMessage());
+        }
+    }
+
+    /** 笼位联动违规创建后广播到管理端灵动岛 */
+    private void broadcastCageNoticeAlert(TwinStudentViolation row) {
+        if (socketServer == null) return;
+        try {
+            Map<String, Object> alert = new LinkedHashMap<>();
+            alert.put("alertId", "cage_" + row.getId());
+            alert.put("violationId", row.getId());
+            alert.put("targetUserId", row.getTargetUserId());
+            alert.put("title", resolveCageNoticeTitle(row));
+            String plainBody = row.getViolationText() != null
+                    ? row.getViolationText().replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim()
+                    : "";
+            alert.put("body", plainBody.length() > 80 ? plainBody.substring(0, 80) + "…" : plainBody);
+            alert.put("createdAt", row.getCreatedAt() != null ? row.getCreatedAt().toString() : "");
+            socketServer.getBroadcastOperations().sendEvent("CAGE_NOTICE_ALERT", alert);
+        } catch (Exception e) {
+            log.warn("[cage-notice] 广播灵动岛失败 violationId={}: {}", row.getId(), e.getMessage());
+        }
+    }
+
+    /** 同步写入 sys_student_notification 表，确保 /student/notifications 消息中心可查询 */
+    private void persistStudentNotification(TwinStudentViolation row) {
+        if (studentNotificationMapper == null || row == null || !StringUtils.hasText(row.getTargetUserId())) {
+            return;
+        }
+        try {
+            StudentNotification sn = new StudentNotification();
+            sn.setId("SNF_" + UUID.randomUUID().toString().replace("-", ""));
+            sn.setTitle("CAGE_STATUS".equals(row.getSource()) ? resolveCageNoticeTitle(row) : "违规提醒");
+            String body = applyTemplateVariables(row.getViolationText(), row.getTargetUserId());
+            String plainText = body != null ? body.replaceAll("<[^>]+>", " ") : "";
+            String trimmed = plainText.replaceAll("\\s+", " ").trim();
+            sn.setSummary(trimmed.length() > 200 ? trimmed.substring(0, 200) + "..." : trimmed);
+            sn.setContent(body);
+            sn.setType("PLATFORM");
+            sn.setBizType("STUDENT_VIOLATION");
+            sn.setBizId(String.valueOf(row.getId()));
+            sn.setRecipientUserId(row.getTargetUserId().trim());
+            sn.setIsRead(0);
+            sn.setCreateTime(row.getCreatedAt() != null ? row.getCreatedAt() : LocalDateTime.now());
+            studentNotificationMapper.insert(sn);
+        } catch (Exception e) {
+            log.warn("[student-violation] 写入通知中心失败 userId={} id={}: {}",
+                    row.getTargetUserId(), row.getId(), e.getMessage());
+        }
     }
 
     /**
@@ -841,7 +1032,8 @@ public class TwinStudentViolationService {
                         "MANUAL",
                         interactiveChallenge,
                         interactiveUnlockOnVerify,
-                        ruleId
+                        ruleId,
+                        null
                 );
                 created++;
             } catch (Exception e) {

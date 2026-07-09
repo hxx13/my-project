@@ -95,6 +95,8 @@ public class MobileCenterAlertService {
         appendStudentWorkOrderAlerts(userId, feedbacks);
         appendMaterialRequestAlerts(userId, feedbacks);
         appendScanDelayStatusAlerts(userId, feedbacks);
+        // 笼位处理提示同时出现在消息中心
+        appendViolationAlert(userId, html5PrivilegeBypass, feedbacks, suppressKeys);
         dedupeFeedbackItems(feedbacks);
 
         Map<String, Object> resp = new LinkedHashMap<>();
@@ -329,7 +331,10 @@ public class MobileCenterAlertService {
                     && StringUtils.hasText(notice.getCriticalNoticeText())
                     ? notice.getCriticalNoticeText()
                     : notice.getViolationText();
-            Map<String, Object> item = baseItem("violation", notice.getId(), "违规提醒", false);
+            String title = activeViolation != null && "CAGE_STATUS".equals(activeViolation.getSource())
+                    ? "笼位处理提示" : "违规提醒";
+            String violationSource = activeViolation != null ? activeViolation.getSource() : null;
+            Map<String, Object> item = baseItem("violation", notice.getId(), title, false, violationSource);
             item.put("contentHtml", body != null ? body : "");
             item.put("createdAt", activeViolation != null && activeViolation.getCreatedAt() != null
                     ? activeViolation.getCreatedAt().toString() : null);
@@ -356,12 +361,19 @@ public class MobileCenterAlertService {
     }
 
     private Map<String, Object> baseItem(String kind, Object id, String title, boolean interactiveRequired) {
+        return baseItem(kind, id, title, interactiveRequired, null);
+    }
+
+    private Map<String, Object> baseItem(String kind, Object id, String title, boolean interactiveRequired, String source) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("kind", kind);
         item.put("id", id);
         item.put("title", title != null ? title : "");
         item.put("contentHtml", "");
         item.put("interactiveRequired", interactiveRequired);
+        if (source != null) {
+            item.put("source", source);
+        }
         return item;
     }
 

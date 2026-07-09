@@ -5,20 +5,20 @@
 <mapper namespace="com.example.demo.modules.notification.mapper.StudentNotificationMapper">
 
     <insert id="insert" parameterType="com.example.demo.modules.notification.entity.StudentNotification">
-        INSERT INTO sys_student_notification(id, title, summary, type, biz_type, biz_id, recipient_user_id, source_url, is_read, read_time, create_time)
-        VALUES (#{id}, #{title}, #{summary}, #{type}, #{bizType}, #{bizId}, #{recipientUserId}, #{sourceUrl}, #{isRead}, #{readTime}, #{createTime})
+        INSERT INTO sys_student_notification(id, title, summary, content, type, biz_type, biz_id, recipient_user_id, source_url, is_read, read_time, create_time)
+        VALUES (#{id}, #{title}, #{summary}, #{content}, #{type}, #{bizType}, #{bizId}, #{recipientUserId}, #{sourceUrl}, #{isRead}, #{readTime}, #{createTime})
     </insert>
 
     <insert id="insertBatch">
-        INSERT IGNORE INTO sys_student_notification(id, title, summary, type, biz_type, biz_id, recipient_user_id, source_url, is_read, read_time, create_time)
+        INSERT IGNORE INTO sys_student_notification(id, title, summary, content, type, biz_type, biz_id, recipient_user_id, source_url, is_read, read_time, create_time)
         VALUES
         <foreach collection="list" item="item" separator=",">
-            (#{item.id}, #{item.title}, #{item.summary}, #{item.type}, #{item.bizType}, #{item.bizId}, #{item.recipientUserId}, #{item.sourceUrl}, #{item.isRead}, #{item.readTime}, #{item.createTime})
+            (#{item.id}, #{item.title}, #{item.summary}, #{item.content}, #{item.type}, #{item.bizType}, #{item.bizId}, #{item.recipientUserId}, #{item.sourceUrl}, #{item.isRead}, #{item.readTime}, #{item.createTime})
         </foreach>
     </insert>
 
     <select id="listForUser" resultType="com.example.demo.modules.notification.entity.StudentNotification">
-        SELECT id, title, summary, type, biz_type AS bizType, biz_id AS bizId,
+        SELECT id, title, summary, content, type, biz_type AS bizType, biz_id AS bizId,
                recipient_user_id AS recipientUserId, source_url AS sourceUrl,
                is_read AS isRead, read_time AS readTime, create_time AS createTime
         FROM sys_student_notification

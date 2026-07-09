@@ -9,7 +9,7 @@ export type AdminDynamicIslandAction = {
   disabled?: boolean;
 };
 
-export type AdminDynamicIslandTone = "announcement" | "violation" | "unbound";
+export type AdminDynamicIslandTone = "announcement" | "violation" | "unbound" | "cage_notice";
 
 type AdminDynamicIslandCardProps = {
   title: string;
@@ -28,6 +28,7 @@ const TONE_CLASS: Record<AdminDynamicIslandTone, string> = {
   announcement: "scan-notice-theme-announcement",
   violation: "scan-notice-theme-violation",
   unbound: "scan-notice-theme-unbound",
+  cage_notice: "scan-notice-theme-cage-notice",
 };
 
 export function AdminDynamicIslandCard({

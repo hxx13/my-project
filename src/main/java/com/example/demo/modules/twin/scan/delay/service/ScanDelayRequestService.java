@@ -224,8 +224,10 @@ public class ScanDelayRequestService {
         }
 
         // 2) 卡映射真实豁免状态 → APPROVED（不以 request 历史记录作判定）
+        //    必须检查豁免是否包含当前房间，否则房间 A 批准会导致房间 B 也显示已通过
         TwinCardMapping mapping = cardMappingService.getByAroUserId(subjectUserId.trim());
-        if (mapping != null && cardMappingService.isFreezeExempt(mapping)) {
+        if (mapping != null && cardMappingService.isFreezeExempt(mapping)
+                && cardMappingService.isRoomExemptForScanEntry(subjectUserId.trim(), roomId.trim())) {
             Map<String, Object> m = new HashMap<>();
             m.put("status", "APPROVED");
             // 豁免到期时间（供前端房间按钮展示 "截至 HH:mm"）

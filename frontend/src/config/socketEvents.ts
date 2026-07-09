@@ -8,3 +8,9 @@ export const SOCKET_SWIPE_FAILURE_ALERT = "SWIPE_FAILURE_ALERT";
 export const SOCKET_SWIPE_FAILURE_ALERT_ACK = "SWIPE_FAILURE_ALERT_ACK";
 /** 服务端 → 所有客户端：联动消失 */
 export const SOCKET_SWIPE_FAILURE_ALERT_DISMISS = "SWIPE_FAILURE_ALERT_DISMISS";
+
+// === 笼位处理提示灵动岛 ===
+/** 服务端 → 客户端：笼位联动违规创建时推送 */
+export const SOCKET_CAGE_NOTICE_ALERT = "CAGE_NOTICE_ALERT";
+/** 服务端 → 所有客户端：联动消失 */
+export const SOCKET_CAGE_NOTICE_ALERT_DISMISS = "CAGE_NOTICE_ALERT_DISMISS";

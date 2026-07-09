@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-07T03:33:41.378Z",
+  "generatedAt": "2026-07-09T07:59:12.998Z",
   "pages": [
     {
       "path": "/admin",
@@ -211,6 +211,13 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "学生审核",
       "registryId": "material-review-pending"
+    },
+    {
+      "path": "/admin/monitor",
+      "label": "系统监控",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "系统与安全",
+      "registryId": "monitor"
     },
     {
       "path": "/admin/nav-manager",
@@ -605,6 +612,14 @@
       "fallbackMinRole": "STAFF",
       "groupTitle": "学生审核",
       "registryId": "material-review-pending",
+      "entrySource": "sidebar"
+    },
+    {
+      "path": "/admin/monitor",
+      "label": "系统监控",
+      "fallbackMinRole": "ADMIN",
+      "groupTitle": "系统与安全",
+      "registryId": "monitor",
       "entrySource": "sidebar"
     },
     {

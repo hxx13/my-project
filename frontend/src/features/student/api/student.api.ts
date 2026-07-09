@@ -220,6 +220,8 @@ export interface NotificationData {
   id: string;
   title: string;
   summary: string;
+  /** 完整通知正文（HTML，含图片） */
+  content?: string;
   type: 'ARO' | 'PLATFORM' | 'WORK_ORDER';
   bizType?: string;
   bizId?: string;

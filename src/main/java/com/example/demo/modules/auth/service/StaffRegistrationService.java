@@ -52,16 +52,21 @@ public class StaffRegistrationService {
             return Result.error(e.getMessage());
         }
 
+        String rawPwd = request.getPassword();
+        String hash = passwordCredentialService.encodeForStorage(rawPwd);
+        String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
+        String id = "STAFF_" + UUID.randomUUID().toString().replace("-", "");
         User user = new User();
-        user.setId("STAFF_" + UUID.randomUUID().toString().replace("-", ""));
+        user.setId(id);
         user.setUsername(username);
-        user.setPassword(passwordCredentialService.encodeForStorage(request.getPassword()));
+        user.setPassword(hash);
         user.setRole(RoleEnum.STAFF);
         user.setStatus(1);
         user.setPasswordResetRequired(0);
         user.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
         user.setAccountSource("STAFF");
         userMapper.insertUser(user);
+        userMapper.updatePasswordWithPlainById(id, hash, encryptedPlain, 0);
         user = userMapper.findById(user.getId());
         user.setRole(authService.normalizeRole(user.getRole()));
         return authService.generateAuthResult(user);

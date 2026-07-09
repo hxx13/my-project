@@ -3,6 +3,7 @@ import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useMemo,
 import { AlertTriangle, ChevronLeft, ChevronDown, ChevronRight, LayoutGrid, Loader2, RefreshCw, Search, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CageShelfCell, CageShelfDetail } from "@/features/student/api/student.api";
+import { fetchFullTree } from "@/api/domains/cageShelf.api";
 import {
   fetchMobileCageShelfDetail,
   fetchMobileCageShelvesAll,
@@ -16,6 +17,7 @@ import {
 } from "@/api/domains/studentMobile.api";
 import CageCellOverlays, {
   CAGE_TYPE_LABEL,
+  CageTypeProgressBar,
   getCellStatusDisplayLabel,
   getDominantStatusCode,
   useStatusStyle,
@@ -233,6 +235,7 @@ function CageShelfListView({
   loading,
   error,
   shelves,
+  shelfTypeCounts,
   onRetry,
   onOpenShelf,
   onOpenSpecialStatus,
@@ -241,6 +244,7 @@ function CageShelfListView({
   loading: boolean;
   error: string | null;
   shelves: MobileCageShelfSummary[];
+  shelfTypeCounts: Record<string, { type1: number; type2: number; type3: number; type4: number }>;
   onRetry: () => void;
   onOpenShelf: (shelf: MobileCageShelfSummary) => void;
   onOpenSpecialStatus: () => void;
@@ -487,6 +491,12 @@ function CageShelfListView({
                               {group.shelves.length} 架
                             </span>
                           </button>
+                          {(() => {
+                            const roomCt = shelfTypeCounts[`room:${group.key}`];
+                            if (!roomCt) return null;
+                            const counts: Record<number, number> = { 1: roomCt.type1, 2: roomCt.type2, 3: roomCt.type3, 4: roomCt.type4 };
+                            return <div className="px-2 pb-1 w-[70%]"><CageTypeProgressBar counts={counts} /></div>;
+                          })()}
 
                           {expanded && (
                             <div className="grid grid-cols-2 gap-2 pl-1 pb-1">
@@ -507,14 +517,22 @@ function CageShelfListView({
                                     style={{ color: BRAND }}
                                     strokeWidth={1.5}
                                   />
-                                  <span
-                                    className="text-[11px] font-semibold truncate"
-                                    style={{ color: s.highlight ? BRAND : "#1e293b" }}
-                                  >
-                                    {s.shelveName || s.shelveId}
-                                    {s.highlight && (
-                                      <span className="ml-1 text-[9px] font-medium opacity-75">本组</span>
-                                    )}
+                                  <span className="flex-1 min-w-0">
+                                    <span
+                                      className="text-[11px] font-semibold truncate block"
+                                      style={{ color: s.highlight ? BRAND : "#1e293b" }}
+                                    >
+                                      {s.shelveName || s.shelveId}
+                                      {s.highlight && (
+                                        <span className="ml-1 text-[9px] font-medium opacity-75">本组</span>
+                                      )}
+                                    </span>
+                                    {(() => {
+                                      const ct = shelfTypeCounts[s.shelveId];
+                                      if (!ct) return null;
+                                      const counts: Record<number, number> = { 1: ct.type1, 2: ct.type2, 3: ct.type3, 4: ct.type4 };
+                                      return <CageTypeProgressBar counts={counts} />;
+                                    })()}
                                   </span>
                                 </button>
                               ))}
@@ -652,6 +670,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
   const [shelves, setShelves] = useState<MobileCageShelfSummary[]>([]);
   const [listReloadKey, setListReloadKey] = useState(0);
 
+  const [shelfTypeCounts, setShelfTypeCounts] = useState<Record<string, { type1: number; type2: number; type3: number; type4: number }>>({});
   const [selectedShelf, setSelectedShelf] = useState<MobileCageShelfSummary | null>(null);
   const [detail, setDetail] = useState<CageShelfDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -682,6 +701,22 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
       .then((d) => setShelves(d.shelves ?? []))
       .catch((e) => setListError(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setListLoading(false));
+    // 并行拉取笼位类型计数（与 admin 侧边栏同源）
+    fetchFullTree().then((tree) => {
+      // API 返回扁平 shelf 数组，每项直接含 type1~4、shelveId、roomId、campusName、roomName
+      const map: Record<string, { type1: number; type2: number; type3: number; type4: number }> = {};
+      const roomAgg: Record<string, { type1: number; type2: number; type3: number; type4: number }> = {};
+      for (const n of (tree ?? [])) {
+        map[String(n.shelveId)] = { type1: n.type1 ?? 0, type2: n.type2 ?? 0, type3: n.type3 ?? 0, type4: n.type4 ?? 0 };
+        // 用 campusName::roomName 做 key，与 buildRoomGroups 对齐
+        const rk = `${n.campusName || "其他"}::${n.roomName || "其他"}`;
+        const a = roomAgg[rk] ?? { type1: 0, type2: 0, type3: 0, type4: 0 };
+        a.type1 += n.type1 ?? 0; a.type2 += n.type2 ?? 0; a.type3 += n.type3 ?? 0; a.type4 += n.type4 ?? 0;
+        roomAgg[rk] = a;
+      }
+      for (const [rk, c] of Object.entries(roomAgg)) { map[`room:${rk}`] = c; }
+      setShelfTypeCounts(map);
+    }).catch(() => {});
   }, [token, jwtMode, listReloadKey]);
 
   useEffect(() => {
@@ -755,6 +790,7 @@ export default forwardRef<MobileCageShelfTabHandle, MobileCageShelfTabProps>(
             loading={listLoading}
             error={listError}
             shelves={shelves}
+            shelfTypeCounts={shelfTypeCounts}
             onRetry={() => setListReloadKey((k) => k + 1)}
             onOpenShelf={openShelf}
             onOpenSpecialStatus={() => setSpecialStatusOpen(true)}

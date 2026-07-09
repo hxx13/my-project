@@ -57,6 +57,7 @@ public class StudentNotificationService {
             m.put("id", sn.getId());
             m.put("title", sn.getTitle() != null ? sn.getTitle() : "");
             m.put("summary", sn.getSummary() != null ? sn.getSummary() : "");
+            m.put("content", sn.getContent() != null ? sn.getContent() : "");
             m.put("type", sn.getType());
             m.put("bizType", sn.getBizType());
             m.put("bizId", sn.getBizId());

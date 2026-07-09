@@ -43,4 +43,11 @@ public interface CageEventLogMapper {
             @Param("statusCodes") List<String> statusCodes,
             @Param("delayDays") int delayDays,
             @Param("scanBatchId") String scanBatchId);
+
+    /** 检查指定笼位+状态在 STATUS_ADDED 之后是否有 STATUS_REMOVED 事件，用于判定状态是否仍存在 */
+    int countStatusRemovedAfter(
+            @Param("statusCode") String statusCode,
+            @Param("currShelveId") String currShelveId,
+            @Param("currPosition") String currPosition,
+            @Param("sinceTime") java.time.LocalDateTime sinceTime);
 }

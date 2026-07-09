@@ -104,3 +104,39 @@ export async function deleteSystemUser(id: string): Promise<void> {
     throw new Error((res.data as Result<null> | undefined)?.message || "删除失败");
   }
 }
+
+export async function viewUserPassword(id: string): Promise<{ password?: string | null; message?: string }> {
+  const res = await adminHttp.get<Result<{ password?: string | null; message?: string }>>(
+    `/users/${encodeURIComponent(id)}/view-password`
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "查看密码失败");
+  }
+  return res.data.data;
+}
+
+export async function resetPersonnelAccount(
+  personnelUserId: string,
+  newUsername: string
+): Promise<{ newUsername: string }> {
+  const res = await adminHttp.post<Result<{ newUsername: string }>>(
+    `/personnel/${encodeURIComponent(personnelUserId)}/reset-account`,
+    { newUsername }
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "重置账号失败");
+  }
+  return res.data.data;
+}
+
+export async function resetPersonnelPassword(
+  personnelUserId: string
+): Promise<{ defaultPassword: string }> {
+  const res = await adminHttp.post<Result<{ defaultPassword: string }>>(
+    `/personnel/${encodeURIComponent(personnelUserId)}/reset-password`
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "重置密码失败");
+  }
+  return res.data.data;
+}

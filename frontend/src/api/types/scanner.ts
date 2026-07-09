@@ -60,6 +60,8 @@ export interface AnalyzeResponse {
     scanPopupExemptRoomIds?: string[];
     /** 管理员下发的违规通告（扫码弹窗覆盖展示） */
     studentViolationNotice?: StudentViolationNotice;
+    /** 违规来源：CAGE_STATUS=笼位处理提示 / MANUAL=违规提醒 */
+    studentViolationSource?: string;
     /** 未绑卡人员扫码提示（全局配置） */
     unboundCardNotice?: StudentViolationNotice;
     /** 扫码弹窗公告（多条翻页） */
@@ -140,6 +142,8 @@ export interface StudentViolationNotice {
     criticalNoticeText?: string;
     /** 被扫码人员已选择「下次不再自动弹出」 */
     autoOpenSuppressed?: boolean;
+    /** CAGE_STATUS / MANUAL 等来源标识 */
+    source?: string;
 }
 
 export interface ExecutePayload {

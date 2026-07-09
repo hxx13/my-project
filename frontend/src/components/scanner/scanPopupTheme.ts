@@ -105,7 +105,7 @@ export const CHART_CARD = "scan-weekly-chart-card";
 
 // ═══ 公告灵动岛 — 按类型着色（组件令牌见 scan-notice-theme.css） ═══
 
-export type NoticeKind = "announcement" | "violation" | "unbound";
+export type NoticeKind = "announcement" | "violation" | "unbound" | "cage-notice";
 
 export function noticeThemeClass(kind: NoticeKind): string {
   return `scan-notice-theme-${kind}`;
@@ -136,6 +136,15 @@ export function resolveScanPopupNoticeMeta(kind: NoticeKind): ScanPopupNoticeMet
       titleId: "unbound-notice-title",
       emptyBodyHint: "未填写文字说明，请查看附图或联系管理员。",
       imageAlt: "未绑卡提示附图",
+    };
+  }
+  if (kind === "cage-notice") {
+    return {
+      islandTag: "Cage",
+      dialogCategory: "笼位处理提示",
+      titleId: "cage-notice-title",
+      emptyBodyHint: "未填写文字说明，请查看附图或联系管理员。",
+      imageAlt: "笼位附图",
     };
   }
   return {

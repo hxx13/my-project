@@ -14,7 +14,7 @@ import {
 import { canAutoOpenNoticesOnPopupOpen } from "./scanNoticeAutoOpen";
 import type { NoticeKind } from "./scanPopupTheme";
 
-export type ScanNoticeDialogId = "violation" | "unbound" | "announcement";
+export type ScanNoticeDialogId = "violation" | "unbound" | "announcement" | "cage-notice";
 
 type Props = {
   result: AnalyzeResponse;
@@ -58,6 +58,9 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
   const [manualAnnPage, setManualAnnPage] = useState(0);
 
   const violation = result.studentViolationNotice;
+  const isCageNotice = violation?.ruleName?.startsWith("[CAGE]") ?? false;
+  const cageNotice = isCageNotice ? violation : undefined;
+  const actualViolation = isCageNotice ? undefined : violation;
   const unbound = result.unboundCardNotice;
   const bundle = result.scanPopupAnnouncements;
 
@@ -71,7 +74,8 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
   );
   const announcementCount = announcementItems.length;
   const hasAnnouncement = Boolean(bundle?.enabled && announcementCount > 0);
-  const hasViolation = violation?.id != null;
+  const hasCageNotice = cageNotice?.id != null;
+  const hasViolation = actualViolation?.id != null;
   const hasUnbound = unbound?.id != null;
   const targetUserId = result.userInfo?.userId;
   const showAnnEveryScan = Boolean(bundle?.showNoticeEveryScan);
@@ -93,8 +97,8 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
   const autoOpenQueue = useMemo(
     () =>
       buildAutoOpenQueue({
-        hasViolation,
-        violationShowEveryScan: violation?.showNoticeEveryScan,
+        hasViolation: hasViolation || (hasCageNotice ?? false),
+        violationShowEveryScan: (hasViolation ? actualViolation?.showNoticeEveryScan : undefined) ?? cageNotice?.showNoticeEveryScan,
         hasUnbound,
         unboundShowEveryScan: unbound?.showNoticeEveryScan,
         hasAnnouncement,
@@ -102,7 +106,9 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
       }),
     [
       hasViolation,
-      violation?.showNoticeEveryScan,
+      hasCageNotice,
+      actualViolation?.showNoticeEveryScan,
+      cageNotice?.showNoticeEveryScan,
       hasUnbound,
       unbound?.showNoticeEveryScan,
       hasAnnouncement,
@@ -121,9 +127,16 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
 
     const keys: ScanNoticePanelKey[] = [];
     for (const slot of autoOpenQueue) {
-      if (slot === "violation" && violation?.id != null) {
-        if (!isAutoOpenSuppressed("violation", violation.id, violation.autoOpenSuppressed)) {
-          keys.push("violation");
+      if (slot === "violation") {
+        // 笼位处理提示 → 独立岛
+        if (cageNotice?.id != null) {
+          if (!isAutoOpenSuppressed("violation", cageNotice.id, cageNotice.autoOpenSuppressed)) {
+            keys.push("cage-notice");
+          }
+        } else if (actualViolation?.id != null) {
+          if (!isAutoOpenSuppressed("violation", actualViolation.id, actualViolation.autoOpenSuppressed)) {
+            keys.push("violation");
+          }
         }
       }
       if (slot === "unbound" && unbound?.id != null) {
@@ -180,6 +193,10 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
         setOpenPanels(["violation"]);
         return;
       }
+      if (slot === "cage-notice") {
+        setOpenPanels(["cage-notice"]);
+        return;
+      }
       if (slot === "unbound") {
         setOpenPanels(["unbound"]);
         return;
@@ -199,6 +216,7 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
     (slot: ScanNoticeDialogId) => {
       if (openPanels.length === 0) return false;
       if (slot === "violation") return openPanels.includes("violation");
+      if (slot === "cage-notice") return openPanels.includes("cage-notice");
       if (slot === "unbound") return openPanels.includes("unbound");
       if (slot === "announcement") {
         return openPanels.some(
@@ -240,16 +258,32 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
     }
 
     return openPanels.map((key) => {
-      if (key === "violation" && violation?.id != null) {
+      if (key === "cage-notice" && cageNotice?.id != null) {
+        return (
+          <ScanNoticePanelCard
+            key={key}
+            kind="cage-notice"
+            panelKey={key}
+            scannedUserId={targetUserId}
+            autoOpenSuppressed={Boolean(cageNotice.autoOpenSuppressed)}
+            onAutoOpenSuppressed={() => markAutoOpenSuppressed("violation", cageNotice.id)}
+            notice={cageNotice}
+            targetUserId={targetUserId}
+            onInteractiveVerified={onViolationInteractiveVerified}
+            onClose={() => closePanel(key)}
+          />
+        );
+      }
+      if (key === "violation" && actualViolation?.id != null) {
         return (
           <ScanNoticePanelCard
             key={key}
             kind="violation"
             panelKey={key}
             scannedUserId={targetUserId}
-            autoOpenSuppressed={Boolean(violation.autoOpenSuppressed)}
-            onAutoOpenSuppressed={() => markAutoOpenSuppressed("violation", violation.id)}
-            notice={violation}
+            autoOpenSuppressed={Boolean(actualViolation.autoOpenSuppressed)}
+            onAutoOpenSuppressed={() => markAutoOpenSuppressed("violation", actualViolation.id)}
+            notice={actualViolation}
             targetUserId={targetUserId}
             onInteractiveVerified={onViolationInteractiveVerified}
             onClose={() => closePanel(key)}
@@ -294,15 +328,23 @@ export function ScanPopupNoticeCoordinator({ result, onViolationInteractiveVerif
     });
   };
 
-  if (!hasViolation && !hasUnbound && !hasAnnouncement) return null;
+  if (!hasCageNotice && !hasViolation && !hasUnbound && !hasAnnouncement) return null;
 
   return (
     <>
       <div className="pointer-events-auto z-[10002] flex w-full max-w-[min(67.2vw,784px)] flex-row flex-wrap items-stretch justify-center gap-2 px-1">
+        {hasCageNotice ? (
+          <ScanPopupNoticeBanner
+            kind="cage-notice"
+            notice={cageNotice}
+            panelOpen={isIslandOpen("cage-notice")}
+            onPanelOpenChange={(open) => (open ? openManual("cage-notice") : closePanel("cage-notice"))}
+          />
+        ) : null}
         {hasViolation ? (
           <ScanPopupNoticeBanner
             kind="violation"
-            notice={violation}
+            notice={actualViolation}
             panelOpen={isIslandOpen("violation")}
             onPanelOpenChange={(open) => (open ? openManual("violation") : closePanel("violation"))}
           />

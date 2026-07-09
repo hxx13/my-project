@@ -67,7 +67,7 @@ function StatCard({ label, value }: { label: string; value: number }) {
   }, [value]);
 
   return (
-    <div className="stat-card flex-1 rounded-[var(--student-radius-md)] bg-white p-4 shadow-[var(--student-card-shadow)]">
+    <div className="flex-1 rounded-[var(--student-radius-md)] bg-white p-4 shadow-[var(--student-card-shadow)]">
       <div className="text-2xl font-bold text-[var(--student-ink)]">
         <span ref={numRef}>0</span>
       </div>
@@ -145,7 +145,7 @@ function noticeTypeClass(type: string): string {
 
 function DashboardSkeleton() {
   return (
-    <div className="flex gap-5 p-6 bg-[var(--student-canvas-soft)] min-h-full">
+    <div className="flex gap-5 p-6 min-h-full">
       {/* Left sidebar skeleton */}
       <aside className="w-[260px] shrink-0 flex flex-col gap-3">
         <StudentCard padding="lg">
@@ -258,7 +258,7 @@ export default function StudentHomePage() {
   /* ---- error ---- */
   if (isError) {
     return (
-      <div className="flex items-center justify-center min-h-full bg-[var(--student-canvas-soft)]">
+      <div className="flex items-center justify-center min-h-full">
         <ErrorRetry
           message={
             error instanceof Error ? error.message : "加载仪表盘数据失败"
@@ -276,36 +276,13 @@ export default function StudentHomePage() {
 
   /* ---- normal ---- */
   return (
-    <div ref={pageRef} className="flex gap-5 p-6 bg-[var(--student-canvas-soft)] min-h-full">
-      <style>{`
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(16px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeInLeft {
-          from { opacity: 0; transform: translateX(-16px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        .stat-card { animation: fadeInUp 0.4s ease-out both; }
-        .stat-card:nth-child(2) { animation-delay: 0.08s; }
-        .stat-card:nth-child(3) { animation-delay: 0.16s; }
-        .stat-card:nth-child(4) { animation-delay: 0.24s; }
-        .pinned-room-item { animation: fadeInUp 0.35s ease-out both; }
-        .left-panel { animation: fadeInLeft 0.35s ease-out both; }
-        .left-panel:nth-child(2) { animation-delay: 0.1s; }
-        .right-card { animation: fadeInUp 0.35s ease-out both; }
-        .right-card:nth-child(2) { animation-delay: 0.08s; }
-        .right-card:nth-child(3) { animation-delay: 0.16s; }
-        @media (prefers-reduced-motion: reduce) {
-          .stat-card, .pinned-room-item, .left-panel, .right-card { animation: none !important; opacity: 1 !important; }
-        }
-      `}</style>
+    <div ref={pageRef} className="flex gap-5 p-6 min-h-full">
       {/* ============================================================ */}
       {/* LEFT COLUMN — 260px fixed width                              */}
       {/* ============================================================ */}
       <aside className="w-[260px] shrink-0 flex flex-col gap-3">
         {/* 1. Personal Identity Card — expanded */}
-        <StudentCard padding="lg" className="left-panel">
+        <StudentCard padding="lg">
           <div className="flex flex-col items-center text-center">
             {/* Avatar — real head image with initials fallback */}
             <Avatar
@@ -395,7 +372,7 @@ export default function StudentHomePage() {
         </StudentCard>
 
         {/* 2. Quick Actions */}
-        <StudentCard className="left-panel">
+        <StudentCard>
           <h3 className="text-[13px] font-semibold text-[var(--student-foreground)] mb-2">
             快捷操作
           </h3>
@@ -434,7 +411,7 @@ export default function StudentHomePage() {
       {/* ============================================================ */}
       <main className="flex-1 flex flex-col gap-3 min-w-0">
         {/* 3. Stats Summary Row */}
-        <div className="flex gap-2.5 right-card">
+        <div className="flex gap-2.5">
           <StatCard label="今日进出次数" value={stats.todayAccessCount} />
           <StatCard label="违规记录" value={stats.violationCount} />
           <StatCard label="未读通知" value={stats.unreadNoticeCount} />
@@ -444,11 +421,10 @@ export default function StudentHomePage() {
         {/* 3.5 课题组活跃度模块 */}
         <StudentActivityDashboard
           groupName={profile.projectGroupName || ""}
-          className="right-card"
         />
 
         {/* 4. Rooms Section: 收藏 + 常用 */}
-        <StudentCard className="right-card">
+        <StudentCard>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-[13px] font-semibold text-[var(--student-foreground)]">
               🚪 我的房间
@@ -474,7 +450,7 @@ export default function StudentHomePage() {
                     {pinnedRoomsHome.slice(0, maxShow).map((room: any) => (
                       <RoomCard
                         key={room.roomId}
-                        className="w-[180px] pinned-room-item"
+                        className="w-[180px]"
                         roomName={room.roomName}
                         floor={room.floor}
                         zone={room.zone}
@@ -497,7 +473,7 @@ export default function StudentHomePage() {
                     {frequentRoomsHome.slice(0, maxShow).map((room: any) => (
                       <RoomCard
                         key={room.roomId}
-                        className="w-[180px] pinned-room-item"
+                        className="w-[180px]"
                         roomName={room.roomName}
                         floor={room.floor}
                         zone={room.zone}
@@ -538,7 +514,7 @@ export default function StudentHomePage() {
         <div className="flex gap-2.5">
           {/* Recent Access Records */}
           <div className="flex-1">
-            <StudentCard className="right-card">
+            <StudentCard>
               <h3 className="text-[13px] font-semibold text-[var(--student-foreground)] mb-3">
                 📋 最近出入记录
               </h3>
@@ -580,7 +556,7 @@ export default function StudentHomePage() {
 
           {/* Notifications */}
           <div className="flex-1">
-            <StudentCard className="right-card">
+            <StudentCard>
               <h3 className="text-[13px] font-semibold text-[var(--student-foreground)] mb-3">
                 📢 通知公告
               </h3>

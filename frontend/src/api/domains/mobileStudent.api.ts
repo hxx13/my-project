@@ -260,6 +260,8 @@ export interface MobileAlertItem {
   publishAt?: string | null;
   expireAt?: string | null;
   createdAt?: string | null;
+  /** CAGE_STATUS / MANUAL 等来源标识，用于区分笼位处理提示 vs 违规提醒 */
+  source?: string;
   interactiveRequired: boolean;
   interactiveChallenge?: string;
   /** 是否已完成交互拼图确认 */

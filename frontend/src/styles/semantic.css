@@ -71,6 +71,17 @@
     --app-color-notice-unbound-icon-text: var(--color-amber-600);
     --app-color-notice-unbound-pill:      color-mix(in srgb, var(--color-amber-300) 40%, var(--color-warm-50));
 
+    /* ── 笼位处理提示：翠绿色系，与违规红/公告青/未绑定琥珀区分 ── */
+    --app-color-notice-cage-notice-accent:    var(--color-green-400);
+    --app-color-notice-cage-notice-bg:        color-mix(in srgb, var(--color-green-50) 78%, var(--color-warm-50));
+    --app-color-notice-cage-notice-bg-end:    color-mix(in srgb, var(--color-green-100) 65%, var(--color-peach-100));
+    --app-color-notice-cage-notice-border:    color-mix(in srgb, var(--color-green-400) 36%, var(--color-warm-200));
+    --app-color-notice-cage-notice-text:      var(--color-green-700);
+    --app-color-notice-cage-notice-text-soft: var(--color-slate-700);
+    --app-color-notice-cage-notice-icon-bg:   color-mix(in srgb, var(--color-green-200) 70%, var(--color-warm-50));
+    --app-color-notice-cage-notice-icon-text: var(--color-green-600);
+    --app-color-notice-cage-notice-pill:      color-mix(in srgb, var(--color-green-300) 38%, var(--color-warm-50));
+
     /* ── 扫码弹窗遮罩：钢蓝↔暖桃多段渐变（偏浅柔，与卡片底区分）── */
     --app-color-scan-backdrop-from:       color-mix(in srgb, var(--color-steel-200) 72%, white);
     --app-color-scan-backdrop-mid-1:      color-mix(in srgb, var(--color-steel-200) 58%, white);
@@ -213,6 +224,16 @@
     --app-color-notice-unbound-icon-bg:   color-mix(in srgb, var(--color-amber-400) 24%, var(--app-color-surface-elevated));
     --app-color-notice-unbound-icon-text: color-mix(in srgb, var(--color-amber-300) 85%, var(--color-warm-100));
     --app-color-notice-unbound-pill:      color-mix(in srgb, var(--color-amber-400) 20%, var(--app-color-surface-container));
+
+    --app-color-notice-cage-notice-accent:    var(--color-green-400);
+    --app-color-notice-cage-notice-bg:        color-mix(in srgb, var(--color-green-400) 18%, var(--app-color-surface-container));
+    --app-color-notice-cage-notice-bg-end:    color-mix(in srgb, var(--color-green-400) 26%, var(--app-color-surface-elevated));
+    --app-color-notice-cage-notice-border:    color-mix(in srgb, var(--color-green-400) 40%, var(--app-color-border-default));
+    --app-color-notice-cage-notice-text:      color-mix(in srgb, var(--color-green-300) 88%, var(--color-warm-100));
+    --app-color-notice-cage-notice-text-soft: var(--color-warm-200);
+    --app-color-notice-cage-notice-icon-bg:   color-mix(in srgb, var(--color-green-400) 24%, var(--app-color-surface-elevated));
+    --app-color-notice-cage-notice-icon-text: color-mix(in srgb, var(--color-green-300) 85%, var(--color-warm-100));
+    --app-color-notice-cage-notice-pill:      color-mix(in srgb, var(--color-green-400) 20%, var(--app-color-surface-container));
 
     /* ── 扫码弹窗暗色遮罩：夜空深蓝 ↔ 黑蓝（渐变段序与亮色一致）── */
     --app-color-scan-backdrop-from:       oklch(0.16 0.07 258);

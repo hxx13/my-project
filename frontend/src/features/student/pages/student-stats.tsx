@@ -101,7 +101,7 @@ function StatItem({
 
 function StatsSkeleton() {
   return (
-    <div className="p-6 bg-[var(--student-canvas-soft)] min-h-full">
+    <div className="p-6 min-h-full">
       {/* Period buttons skeleton */}
       <div className="flex items-center gap-2 mb-4">
         {Array.from({ length: 3 }).map((_, i) => (
@@ -155,7 +155,7 @@ export default function StudentStatsPage() {
   /* ---- error ---- */
   if (isError) {
     return (
-      <div className="flex items-center justify-center min-h-full bg-[var(--student-canvas-soft)]">
+      <div className="flex items-center justify-center min-h-full">
         <ErrorRetry
           message={
             error instanceof Error ? error.message : "加载统计数据失败"
@@ -172,7 +172,7 @@ export default function StudentStatsPage() {
   /* ---- empty: data accumulating (< 7 days) ---- */
   if (data.period.days < 7) {
     return (
-      <div className="p-6 bg-[var(--student-canvas-soft)] min-h-full">
+      <div className="p-6 min-h-full">
         {/* Period buttons still available */}
         <div className="flex items-center gap-2 mb-4">
           {PERIODS.map((p) => (
@@ -209,7 +209,7 @@ export default function StudentStatsPage() {
   }));
 
   return (
-    <div className="p-6 bg-[var(--student-canvas-soft)] min-h-full">
+    <div className="p-6 min-h-full">
       {/* ============================================================ */}
       {/* Period selector                                                */}
       {/* ============================================================ */}

@@ -8,10 +8,10 @@ import {
 } from "@/utils/markdownHtml";
 import { sanitizeRichTextHtml } from "@/utils/richTextHtmlSanitize";
 
-export function alertKindLabel(kind: MobileAlertItem["kind"]): string {
+export function alertKindLabel(kind: MobileAlertItem["kind"], source?: string): string {
   switch (kind) {
     case "violation":
-      return "违规提醒";
+      return source === "CAGE_STATUS" ? "笼位处理提示" : "违规提醒";
     case "exempt":
       return "豁免";
     case "material_feedback":
@@ -133,7 +133,7 @@ export function formatNoticeMeta(item: MobileAlertItem): string {
   if (item.kind === "violation") {
     return date;
   }
-  const kind = alertKindLabel(item.kind);
+  const kind = alertKindLabel(item.kind, item.source);
   const timePart = item.publishAt?.slice(0, 16) || item.createdAt?.slice(0, 16) || "";
   return [timePart, kind].filter(Boolean).join(" · ");
 }

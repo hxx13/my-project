@@ -260,7 +260,7 @@ export default function StudentFeedbackPage() {
   };
 
   return (
-    <div className="p-6 bg-[var(--student-canvas-soft)] min-h-full">
+    <div className="p-6 min-h-full">
       {/* Tabs */}
       <Tabs
         variant="pills"

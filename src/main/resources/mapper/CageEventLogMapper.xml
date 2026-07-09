@@ -151,13 +151,25 @@
     <select id="selectRecentStatusAdded" resultType="com.example.demo.modules.cageshelf.entity.CageEventLog">
         SELECT * FROM cage_event_log
         WHERE event_type = 'STATUS_ADDED'
-          AND detail_summary IN
-          <foreach collection="statusCodes" item="code" open="(" separator="," close=")">#{code}</foreach>
+          AND (
+            <foreach collection="statusCodes" item="code" separator=" OR ">
+              detail_summary LIKE CONCAT('新增 «', #{code}, '» %')
+            </foreach>
+          )
           <if test="scanBatchId != null and scanBatchId != ''">
             AND scan_batch_id = #{scanBatchId}
           </if>
           AND changed_at &lt;= DATE_SUB(NOW(), INTERVAL #{delayDays} DAY)
         ORDER BY changed_at DESC
+    </select>
+
+    <select id="countStatusRemovedAfter" resultType="int">
+        SELECT COUNT(1) FROM cage_event_log
+        WHERE event_type = 'STATUS_REMOVED'
+          AND detail_summary LIKE CONCAT('解除 «', #{statusCode}, '» %')
+          AND curr_shelve_id = #{currShelveId}
+          AND curr_position = #{currPosition}
+          AND changed_at &gt; #{sinceTime}
     </select>
 
 </mapper>

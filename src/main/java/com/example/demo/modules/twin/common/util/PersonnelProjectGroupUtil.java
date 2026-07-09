@@ -34,8 +34,31 @@ public final class PersonnelProjectGroupUtil {
         }
         String tg = targetGroup.trim();
         for (String g : splitGroups(projectGroupNameField)) {
+            // 1) Exact match (fast path)
             if (g.equals(tg)) {
                 return true;
+            }
+            // 2) Substring containment — cage shelf stores bare PI name ("张老师")
+            //    while personnel archive stores full group name ("张老师的课题组")
+            if (tg.length() >= 2 && g.length() >= 2) {
+                if (g.contains(tg) || tg.contains(g)) {
+                    return true;
+                }
+            }
+            // 3) Extract PI prefix from group name ("张老师的课题组" → "张老师")
+            //    and compare against target
+            String extracted = extractPiPrefixFromGroupName(g);
+            if (!extracted.isEmpty() && extracted.length() >= 2) {
+                if (extracted.equals(tg) || extracted.contains(tg) || tg.contains(extracted)) {
+                    return true;
+                }
+            }
+            // 4) Also try extracting from target in case target is the full group name
+            String targetExtracted = extractPiPrefixFromGroupName(tg);
+            if (!targetExtracted.isEmpty() && targetExtracted.length() >= 2) {
+                if (targetExtracted.equals(g) || g.contains(targetExtracted) || targetExtracted.contains(g)) {
+                    return true;
+                }
             }
         }
         return false;

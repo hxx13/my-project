@@ -577,9 +577,6 @@ export function RichTextEditor({ value, onChange, disabled, className, maxWidth,
         editor={editor}
         className="min-h-[220px] overflow-x-hidden rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 py-2 text-sm text-[var(--app-color-text-primary)]"
       />
-      <p className="text-[11px] leading-relaxed text-[var(--app-color-text-tertiary)]">
-        {helpText} 点击图片可放大预览。
-      </p>
       {lightbox ? (
         <PageHelpImageLightbox src={lightbox.src} alt={lightbox.alt} onClose={closeLightbox} />
       ) : null}

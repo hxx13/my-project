@@ -10,14 +10,34 @@ public class PasswordCredentialService {
 
     private final PasswordEncoder passwordEncoder;
     private final UserMapper userMapper;
+    private final AesEncryptionService aesEncryptionService;
 
-    public PasswordCredentialService(PasswordEncoder passwordEncoder, UserMapper userMapper) {
+    public PasswordCredentialService(PasswordEncoder passwordEncoder,
+                                     UserMapper userMapper,
+                                     AesEncryptionService aesEncryptionService) {
         this.passwordEncoder = passwordEncoder;
         this.userMapper = userMapper;
+        this.aesEncryptionService = aesEncryptionService;
     }
 
     public String encodeForStorage(String rawPassword) {
         return passwordEncoder.encode(rawPassword);
+    }
+
+    /** Encrypt plaintext password for recoverable admin viewing */
+    public String encryptPlaintext(String rawPassword) {
+        if (rawPassword == null || rawPassword.isEmpty()) {
+            return null;
+        }
+        return aesEncryptionService.encrypt(rawPassword);
+    }
+
+    /** Decrypt stored password_plain back to readable form */
+    public String decryptPlaintext(String encrypted) {
+        if (encrypted == null || encrypted.isEmpty()) {
+            return null;
+        }
+        return aesEncryptionService.decrypt(encrypted);
     }
 
     public boolean verifyAndRehashIfLegacy(User user, String rawPassword) {

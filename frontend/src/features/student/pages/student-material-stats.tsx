@@ -8,7 +8,7 @@ export default function StudentMaterialStatsPage() {
   const { data, isLoading } = useMyMaterialStats();
 
   return (
-    <div className="h-full bg-[var(--student-canvas-soft)] flex flex-col">
+    <div className="h-full flex flex-col">
       <div className="flex items-center gap-3 px-5 py-3 bg-white border-b">
         <button onClick={() => navigate(-1)}><ChevronLeft className="size-4" /></button>
         <h2 className="text-[15px] font-semibold">领用统计</h2>

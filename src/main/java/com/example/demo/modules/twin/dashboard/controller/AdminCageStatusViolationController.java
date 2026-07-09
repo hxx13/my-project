@@ -1,6 +1,7 @@
 package com.example.demo.modules.twin.dashboard.controller;
 
 import com.example.demo.common.dto.Result;
+import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.twin.dashboard.dto.CageStatusViolationDTO;
 import com.example.demo.modules.twin.dashboard.entity.TwinCageStatusViolation;
 import com.example.demo.modules.twin.dashboard.entity.TwinStudentViolation;
@@ -13,8 +14,10 @@ import com.example.demo.modules.twin.dashboard.service.TwinViolationRuleService;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @RestController
@@ -26,18 +29,21 @@ public class AdminCageStatusViolationController {
     private final TwinStudentViolationService violationService;
     private final CageStatusViolationCheckService checkService;
     private final TwinViolationRuleService ruleService;
+    private final UserDisplayNameService userDisplayNameService;
 
     public AdminCageStatusViolationController(
             TwinCageStatusViolationMapper mapper,
             TwinStudentViolationMapper violationMapper,
             TwinStudentViolationService violationService,
             CageStatusViolationCheckService checkService,
-            TwinViolationRuleService ruleService) {
+            TwinViolationRuleService ruleService,
+            UserDisplayNameService userDisplayNameService) {
         this.mapper = mapper;
         this.violationMapper = violationMapper;
         this.violationService = violationService;
         this.checkService = checkService;
         this.ruleService = ruleService;
+        this.userDisplayNameService = userDisplayNameService;
     }
 
     /** 手动创建父记录（用于手动提交违规时关联笼位状态） */
@@ -45,7 +51,19 @@ public class AdminCageStatusViolationController {
     public Result<CageStatusViolationDTO> create(@RequestBody Map<String, Object> body) {
         TwinCageStatusViolation row = new TwinCageStatusViolation();
         Object ruleIdObj = body.get("ruleId");
-        if (ruleIdObj instanceof Number) row.setRuleId(((Number) ruleIdObj).longValue());
+        if (ruleIdObj instanceof Number) {
+            row.setRuleId(((Number) ruleIdObj).longValue());
+        }
+        // ruleId 为空时回退到 MANUAL 默认规则，避免 DB NOT NULL 约束报错
+        if (row.getRuleId() == null && ruleService != null) {
+            TwinViolationRule manualRule = ruleService.getByCode("MANUAL");
+            if (manualRule != null) {
+                row.setRuleId(manualRule.getId());
+            }
+        }
+        if (row.getRuleId() == null) {
+            return Result.error("缺少 ruleId 且无 MANUAL 默认规则可用");
+        }
         row.setStatusCode(objToStr(body.get("statusCode")));
         row.setPositionLabel(objToStr(body.get("positionLabel")));
         row.setProjectGroupName(objToStr(body.get("projectGroupName")));
@@ -131,11 +149,9 @@ public class AdminCageStatusViolationController {
                     "CAGE_STATUS",
                     rule.getInteractiveChallenge(),
                     rule.getInteractiveUnlockOnVerify() != null && rule.getInteractiveUnlockOnVerify() == 1,
-                    rule.getId()
+                    rule.getId(),
+                    id
             );
-            if (violation != null && violation.getId() != null) {
-                violationMapper.setCageViolationId(violation.getId(), id);
-            }
         } catch (Exception e) {
             return Result.error("创建失败: " + e.getMessage());
         }
@@ -152,6 +168,35 @@ public class AdminCageStatusViolationController {
             }
         }
         return Result.success(null);
+    }
+
+    /** 批量解除选中子记录 */
+    @PostMapping("/{id}/members/batch-clear")
+    public Result<?> batchClearMembers(@PathVariable long id, @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Integer> ids = (List<Integer>) body.get("violationIds");
+        if (ids == null || ids.isEmpty()) return Result.error("violationIds 不能为空");
+        int count = 0;
+        for (Integer vid : ids) {
+            if (vid != null && violationService.clear(vid.longValue(), "admin") && count >= 0) count++;
+        }
+        return Result.success(Map.of("cleared", count));
+    }
+
+    /** 批量删除选中子记录 */
+    @PostMapping("/{id}/members/batch-delete")
+    public Result<?> batchDeleteMembers(@PathVariable long id, @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<Integer> ids = (List<Integer>) body.get("violationIds");
+        if (ids == null || ids.isEmpty()) return Result.error("violationIds 不能为空");
+        int count = 0;
+        for (Integer vid : ids) {
+            if (vid != null) {
+                violationMapper.deleteById(vid.longValue());
+                count++;
+            }
+        }
+        return Result.success(Map.of("deleted", count));
     }
 
     /** 手动触发指定规则 */
@@ -188,10 +233,18 @@ public class AdminCageStatusViolationController {
 
     private List<CageStatusViolationDTO.MemberViolationDTO> loadMembers(long parentId) {
         List<TwinStudentViolation> children = violationMapper.selectByCageViolationId(parentId);
+        // 批量解析中文姓名
+        Set<String> userIds = new HashSet<>();
+        for (TwinStudentViolation v : children) {
+            if (v.getTargetUserId() != null) userIds.add(v.getTargetUserId().trim());
+        }
+        Map<String, String> displayNames = userDisplayNameService.resolveDisplayNames(userIds);
         return children.stream().map(v -> {
             CageStatusViolationDTO.MemberViolationDTO m = new CageStatusViolationDTO.MemberViolationDTO();
             m.setViolationId(v.getId());
             m.setUserId(v.getTargetUserId());
+            String tid = v.getTargetUserId() != null ? v.getTargetUserId().trim() : "";
+            m.setDisplayName(displayNames.getOrDefault(tid, tid));
             m.setStatus(v.getStatus());
             m.setCreatedAt(v.getCreatedAt());
             return m;

@@ -33,6 +33,7 @@ import com.example.demo.modules.twin.scan.support.ScanPopupFlowLog;
 import com.example.demo.common.time.BusinessTimeWindow;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.student.service.MobilePresenceNotifyService;
+import com.example.demo.modules.twin.common.service.RoomDictionaryManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -99,6 +100,9 @@ public class TwinScanController {
     private TwinStudentViolationNoticeConfigService unboundNoticeConfigService;
 
     @Autowired
+    private RoomDictionaryManager roomDictionaryManager;
+
+    @Autowired
     private DahuaIssueCardOrchestratorService dahuaIssueCardOrchestratorService;
 
     @Autowired
@@ -134,7 +138,12 @@ public class TwinScanController {
     ) {
         try {
             User operator = authContextService.resolveUserFromBearer(authorization);
-            return Result.success(twinScanAppService.analyzeScan(rawInput, operator, operatorRoleHint));
+            ScanAnalyzeResponseDTO dto = twinScanAppService.analyzeScan(rawInput, operator, operatorRoleHint);
+            // 笼位处理提示 source 透传（绕过 DTO 编译缓存问题）
+            if (dto.getStudentViolationNotice() != null) {
+                dto.setStudentViolationSource(dto.getStudentViolationNotice().getSource());
+            }
+            return Result.success(dto);
         } catch (Exception e) {
             ScanAnalyzeResponseDTO fallback = new ScanAnalyzeResponseDTO();
             fallback.setSuccess(false);
@@ -245,7 +254,15 @@ public class TwinScanController {
             }
             flowLog.hasPhysicalMapping = mapping != null;
 
-            String roomLabel = (roomName != null && !roomName.isBlank()) ? roomName : "（房间名未传）";
+            String roomLabel;
+            if (roomName != null && !roomName.isBlank()) {
+                roomLabel = roomName;
+            } else if (roomId != null && !roomId.isBlank()) {
+                String resolved = resolveRoomName(roomId);
+                roomLabel = resolved != null ? resolved : "（房间名未传）";
+            } else {
+                roomLabel = "（房间名未传）";
+            }
             flowLog.roomLabel = roomLabel;
 
             Map<String, Object> swingCfg = dahuaSwingRuleConfigService.getConfig();
@@ -661,6 +678,18 @@ public class TwinScanController {
             Object idObj = noLeaveRooms.get(0).get("id");
             return idObj != null ? String.valueOf(idObj).trim() : null;
         }
+        return null;
+    }
+
+    private String resolveRoomName(String roomId) {
+        if (roomId == null || roomId.isBlank()) return null;
+        try {
+            String rid = roomId.trim();
+            RoomDictionaryManager.RoomMapping mapped = roomDictionaryManager.translate(rid);
+            if (mapped != null && mapped.displayName != null && !mapped.displayName.isBlank()) {
+                return mapped.displayName.trim();
+            }
+        } catch (Exception ignored) {}
         return null;
     }
 

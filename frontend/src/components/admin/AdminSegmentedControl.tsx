@@ -30,7 +30,7 @@ export function AdminSegmentedControl<T extends string>({
       role="group"
       aria-label={ariaLabel}
       className={cn(
-        "inline-flex max-w-full flex-wrap gap-1 rounded-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] p-1",
+        "inline-flex max-w-full flex-wrap gap-1 rounded-lg bg-[var(--app-color-surface-hover)] p-1",
         disabled && "pointer-events-none opacity-60",
         className
       )}
@@ -44,11 +44,11 @@ export function AdminSegmentedControl<T extends string>({
             aria-pressed={pressed}
             disabled={disabled}
             className={cn(
-              "min-h-[var(--admin-control-height,2.25rem)] rounded-md border-2 px-4 py-2 text-sm font-medium shadow-sm transition-all",
-              "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)]/40 active:translate-y-px",
+              "min-h-[var(--admin-control-height,2.25rem)] rounded-md px-4 py-2 text-sm font-medium transition-all",
+              "focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[color:var(--admin-focus-ring)]/40",
               pressed
-                ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90"
-                : "border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)] hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"
+                ? "bg-[var(--app-color-accent)] text-white shadow-sm"
+                : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-container)] hover:text-[var(--app-color-text-primary)]"
             )}
             onClick={() => onChange(opt.value)}
           >

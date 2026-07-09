@@ -200,8 +200,9 @@ public class DahuaSwingPullService {
                     DahuaSwingRecord record = toRecord(task.getId(), row);
                     enrichMapping(record);
                     departmentSupport.applyToRecord(record, row);
-                    // 同一 record_id 在时间窗内被每轮 poll 反复 upsert：若库中已是 mapping_hit=1，则不再跑联动，避免激活/延时签退被重复排程
-                    DahuaSwingRecord existing = dahuaSwingMapper.findRecordByTaskIdAndRecordId(task.getId(), record.getRecordId());
+                    // 同一 record_id 全局唯一（uk_dahua_record_id）：若库中已是 mapping_hit=1，则不再跑联动，避免激活/延时签退被重复排程。
+                    // 使用 findRecordByRecordId 与表唯一键对齐，防止多任务场景下 ON DUPLICATE KEY UPDATE 覆写 task_id 导致跨任务去重失效。
+                    DahuaSwingRecord existing = dahuaSwingMapper.findRecordByRecordId(record.getRecordId());
                     boolean alreadyLinkageEligible =
                             existing != null && Integer.valueOf(1).equals(existing.getMappingHit());
                     boolean isNewRecord = existing == null;

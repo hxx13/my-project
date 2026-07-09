@@ -38,6 +38,15 @@ public interface UserMapper {
                                            @Param("password") String password,
                                            @Param("passwordResetRequired") Integer passwordResetRequired);
 
+    int updatePasswordWithPlainById(@Param("id") String id,
+                                    @Param("password") String password,
+                                    @Param("passwordPlain") String passwordPlain,
+                                    @Param("passwordResetRequired") Integer passwordResetRequired);
+
+    int updateUsernameById(@Param("id") String id, @Param("username") String username);
+
+    String getPasswordPlainById(@Param("id") String id);
+
     int updateUser(User user);
 
     int insertBindAudit(@Param("openId") String openId,

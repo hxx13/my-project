@@ -8,6 +8,8 @@ import {
   deleteCageStatusViolation,
   addCageViolationMember,
   removeCageViolationMember,
+  batchClearCageViolationMembers,
+  batchDeleteCageViolationMembers,
   type CageStatusViolationRow,
   type MemberViolationRow,
 } from "@/api/domains/cageStatusViolation.api";
@@ -89,6 +91,28 @@ export function CageLinkageRecordPanel({ parentId, onClose }: Props) {
     },
     onError: (e: any) =>
       toast.error(e?.response?.data?.message || e.message || "添加失败"),
+  });
+
+  const batchClearMu = useMutation({
+    mutationFn: (ids: number[]) => batchClearCageViolationMembers(parentId, ids),
+    onSuccess: (data) => {
+      toast.success(`已解除 ${data?.cleared ?? 0} 条`);
+      queryClient.invalidateQueries({ queryKey: ["cage-status-violation", parentId] });
+      queryClient.invalidateQueries({ queryKey: ["cage-status-violations"] });
+      setSelectedMemberIds(new Set());
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e.message || "批量解除失败"),
+  });
+
+  const batchDeleteMu = useMutation({
+    mutationFn: (ids: number[]) => batchDeleteCageViolationMembers(parentId, ids),
+    onSuccess: (data) => {
+      toast.success(`已删除 ${data?.deleted ?? 0} 条`);
+      queryClient.invalidateQueries({ queryKey: ["cage-status-violation", parentId] });
+      queryClient.invalidateQueries({ queryKey: ["cage-status-violations"] });
+      setSelectedMemberIds(new Set());
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e.message || "批量删除失败"),
   });
 
   const members = detail?.members ?? [];
@@ -220,9 +244,21 @@ export function CageLinkageRecordPanel({ parentId, onClose }: Props) {
               成员子记录 ({filteredMembers.length}/{members.length})
             </h5>
             {selectedMemberIds.size > 0 && (
-              <span className="text-[11px] text-[var(--app-color-accent)]">
-                已选 {selectedMemberIds.size}
-              </span>
+              <>
+                <span className="text-[11px] text-[var(--app-color-accent)]">
+                  已选 {selectedMemberIds.size}
+                </span>
+                <AdminButton size="sm" tone="secondary"
+                  onClick={() => { if (confirm(`确定批量解除选中的 ${selectedMemberIds.size} 条子记录？`)) batchClearMu.mutate(Array.from(selectedMemberIds)); }}
+                  disabled={batchClearMu.isPending}>
+                  <Ban className="w-3 h-3 mr-0.5" />批量解除
+                </AdminButton>
+                <AdminButton size="sm" tone="destructive"
+                  onClick={() => { if (confirm(`确定批量删除选中的 ${selectedMemberIds.size} 条子记录？不可恢复。`)) batchDeleteMu.mutate(Array.from(selectedMemberIds)); }}
+                  disabled={batchDeleteMu.isPending}>
+                  <Trash2 className="w-3 h-3 mr-0.5" />批量删除
+                </AdminButton>
+              </>
             )}
           </div>
           <div className="flex items-center gap-2">

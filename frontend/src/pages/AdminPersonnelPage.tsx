@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import { toast } from "react-hot-toast";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { updateProfileDisplayNickname } from "@/api/domains/auth.api";
 import {
   usePersonnelList,
@@ -13,8 +13,11 @@ import {
   useUpdateUserNickname,
   useCreateStaffUser,
   useDeleteSystemUser,
+  useResetPersonnelAccount,
+  useResetPersonnelPassword,
 } from "@/api/hooks/usePersonnel";
 import type { PersonnelAuthRecord, SystemUserRecord } from "@/api/domains/admin.api";
+import { viewUserPassword } from "@/api/domains/admin.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole, hasMobileHtml5Privilege, MOBILE_HTML5_PRIVILEGE_MIN_ROLE } from "@/features/auth/roleAccess";
 import { AdminPageShell, AdminFormCard } from "@/components/admin/AdminPageShell";
@@ -59,6 +62,10 @@ export default function AdminPersonnelPage() {
   const [nickRowId, setNickRowId] = useState("");
   const [nickDraft, setNickDraft] = useState("");
   const [aroBindings, setAroBindings] = useState<Record<string, any>>({});
+  const [passwordPlainCache, setPasswordPlainCache] = useState<Record<string, string | null>>({});
+  const [passwordLoading, setPasswordLoading] = useState<Record<string, boolean>>({});
+  const [resetAccountOpen, setResetAccountOpen] = useState<string | null>(null);
+  const [resetAccountDraft, setResetAccountDraft] = useState("");
 
   const {
     data: personnelData,
@@ -85,6 +92,8 @@ export default function AdminPersonnelPage() {
   const updateNicknameMut = useUpdateUserNickname();
   const createStaffMut = useCreateStaffUser();
   const deleteSystemUserMut = useDeleteSystemUser();
+  const resetPersonnelAccountMut = useResetPersonnelAccount();
+  const resetPersonnelPasswordMut = useResetPersonnelPassword();
 
   useEffect(() => {
     if (activeTab !== "system") return;
@@ -181,8 +190,29 @@ export default function AdminPersonnelPage() {
     }
   };
 
-  const togglePasswordVisible = (id: string) => {
-    setVisiblePasswordIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  const togglePasswordVisible = async (id: string) => {
+    if (visiblePasswordIds[id]) {
+      setVisiblePasswordIds((prev) => ({ ...prev, [id]: false }));
+      return;
+    }
+    if (passwordPlainCache[id] !== undefined) {
+      setVisiblePasswordIds((prev) => ({ ...prev, [id]: true }));
+      return;
+    }
+    setPasswordLoading((prev) => ({ ...prev, [id]: true }));
+    try {
+      const result = await viewUserPassword(id);
+      const plaintext = result.password ?? null;
+      setPasswordPlainCache((prev) => ({ ...prev, [id]: plaintext }));
+      setVisiblePasswordIds((prev) => ({ ...prev, [id]: true }));
+      if (plaintext === null) {
+        toast(result.message || "该密码暂不可查看，请先重置密码", { icon: "ℹ️" });
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "获取密码失败");
+    } finally {
+      setPasswordLoading((prev) => ({ ...prev, [id]: false }));
+    }
   };
 
   const renderPasswordCell = (row: { id: string; password?: string }) => {
@@ -191,17 +221,30 @@ export default function AdminPersonnelPage() {
       return <span className="text-[var(--twin-mute)]">******（受保护）</span>;
     }
     const visible = Boolean(visiblePasswordIds[row.id]);
-    const value = row.password || "-";
+    const loading = Boolean(passwordLoading[row.id]);
+    const plaintext = passwordPlainCache[row.id];
+    let displayValue = "******";
+    if (visible) {
+      if (loading) {
+        displayValue = "加载中…";
+      } else if (plaintext !== undefined) {
+        displayValue = plaintext ?? "（暂不可查看）";
+      } else {
+        displayValue = "******";
+      }
+    }
     return (
       <div className="inline-flex items-center gap-1 text-[11px]">
-        <span className="font-mono text-[var(--twin-body)]">{visible ? value : "******"}</span>
+        <span className={`font-mono text-[var(--twin-body)] ${!visible ? "" : "select-all"}`}>{displayValue}</span>
         <button
           type="button"
-          className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-0.5 text-[var(--twin-mute)] hover:bg-[var(--twin-canvas-soft)]"
+          disabled={loading}
+          className="rounded border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-0.5 text-[var(--twin-mute)] hover:bg-[var(--twin-canvas-soft)] disabled:opacity-50"
           onClick={() => togglePasswordVisible(row.id)}
-          title={visible ? "隐藏密码" : "显示密码"}
+          title={visible ? "隐藏密码" : "查看密码"}
         >
-          {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> :
+           visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
         </button>
       </div>
     );
@@ -507,6 +550,26 @@ export default function AdminPersonnelPage() {
                           >
                             重置绑定
                           </button>
+                          <button
+                            type="button"
+                            className={inkBtn}
+                            onClick={() => {
+                              setResetAccountOpen(row.id);
+                              setResetAccountDraft(row.username || "");
+                            }}
+                          >
+                            重置账号
+                          </button>
+                          <button
+                            type="button"
+                            className={inkBtn}
+                            onClick={() => {
+                              if (!window.confirm("确认重置该学生的登录密码吗？将生成随机密码。")) return;
+                              resetPersonnelPasswordMut.mutate(row.id);
+                            }}
+                          >
+                            改密
+                          </button>
                         </>
                       )}
                     </div>
@@ -805,6 +868,48 @@ export default function AdminPersonnelPage() {
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" className="rounded-md border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => { setNickOpen(false); setNickRowId(""); setNickDraft(""); }}>取消</button>
               <button type="button" className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-700" onClick={() => confirmNickDialog()}>确认</button>
+            </div>
+          </div>
+        </div></Portal> : null}
+
+      {resetAccountOpen ? <Portal><div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+          <div className="w-full max-w-sm rounded-twin-xl border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-4 shadow-twin-level-4">
+            <div className="text-sm font-semibold text-[var(--twin-ink)]">重置学生登录账号</div>
+            <p className="mt-1 text-xs text-[var(--twin-mute)]">修改该人员的登录账号（用户名），人员库学号不变</p>
+            <input
+              value={resetAccountDraft}
+              onChange={(e) => setResetAccountDraft(e.target.value)}
+              maxLength={64}
+              className="mt-3 w-full rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-2 text-sm text-[var(--twin-ink)] bg-[var(--twin-canvas)]"
+              placeholder="新登录账号"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-[var(--twin-hairline)] px-3 py-1.5 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"
+                onClick={() => { setResetAccountOpen(null); setResetAccountDraft(""); }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-700 disabled:opacity-50"
+                disabled={resetPersonnelAccountMut.isPending || !resetAccountOpen || !resetAccountDraft.trim()}
+                onClick={() => {
+                  if (!resetAccountOpen || !resetAccountDraft.trim()) return;
+                  resetPersonnelAccountMut.mutate(
+                    { userId: resetAccountOpen, newUsername: resetAccountDraft.trim() },
+                    {
+                      onSuccess: () => {
+                        setResetAccountOpen(null);
+                        setResetAccountDraft("");
+                      },
+                    }
+                  );
+                }}
+              >
+                {resetPersonnelAccountMut.isPending ? "提交中…" : "确认"}
+              </button>
             </div>
           </div>
         </div></Portal> : null}

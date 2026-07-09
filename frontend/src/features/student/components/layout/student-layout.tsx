@@ -10,21 +10,11 @@ import { useTheme } from "@/features/theme/ThemeProvider";
 import { NightSkyBackdropDecor } from "@/features/night-sky/NightSkyBackdropDecor";
 import { cn } from "@/lib/utils";
 
-const SIDEBAR_COLLAPSED_KEY = "aro-student-sidebar-collapsed";
-
-function readSidebarCollapsed(): boolean {
-  try {
-    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
 export default function StudentLayout() {
   const navigate = useNavigate();
   const { theme } = useTheme();
   const isDark = theme.mode === "dark";
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const { showWarning, remainingSeconds } = useIdleTimeout({
@@ -50,15 +40,7 @@ export default function StudentLayout() {
   });
 
   const handleToggleCollapse = useCallback(() => {
-    setSidebarCollapsed((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
+    setSidebarCollapsed((prev) => !prev);
   }, []);
 
   return (
@@ -106,7 +88,7 @@ export default function StudentLayout() {
         <main
           className={cn(
             "min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6",
-            isDark && "bg-transparent",
+            isDark ? "bg-[var(--app-color-scan-backdrop-from)]" : "bg-[var(--student-canvas-soft)]",
           )}
         >
           <Outlet />

@@ -59,7 +59,7 @@ const STATUS_BAR_COLOR: Record<RoomData["status"], string> = {
 
 function RoomsSkeleton({ viewMode }: { viewMode: "card" | "list" }) {
   return (
-    <div className="p-6 bg-[var(--student-canvas-soft)] min-h-full">
+    <div className="p-6 min-h-full">
       <div className="flex items-center justify-between mb-4">
         <Skeleton variant="rectangular" className="h-9 w-56" />
         <Skeleton variant="rectangular" className="h-8 w-16" />
@@ -303,7 +303,7 @@ export default function StudentRoomsPage() {
   if (isLoading) return <RoomsSkeleton viewMode={viewMode} />;
   if (isError) {
     return (
-      <div className="flex items-center justify-center min-h-full bg-[var(--student-canvas-soft)]">
+      <div className="flex items-center justify-center min-h-full">
         <ErrorRetry message={error instanceof Error ? error.message : "加载房间数据失败"} onRetry={() => refetch()} />
       </div>
     );
@@ -312,7 +312,7 @@ export default function StudentRoomsPage() {
   const hasTopSections = frequentRooms.length > 0 || pinnedRooms.length > 0;
 
   return (
-    <div className="p-6 bg-[var(--student-canvas-soft)] min-h-full">
+    <div className="p-6 min-h-full">
       {/* Top bar */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">

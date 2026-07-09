@@ -62,16 +62,21 @@
     </update>
 
     <select id="selectActiveByTargetUserId" resultMap="TwinStudentViolationMap">
-        SELECT *
-        FROM twin_student_violation
-        WHERE target_user_id = #{targetUserId}
-          AND status = 'ACTIVE'
+        SELECT v.*,
+            (SELECT COUNT(*) FROM twin_student_violation c
+             WHERE c.target_user_id = v.target_user_id
+               AND c.status = 'ACTIVE'
+               AND (c.rule_id = v.rule_id OR (c.rule_id IS NULL AND v.rule_id IS NULL))
+            ) AS enter_success_count
+        FROM twin_student_violation v
+        WHERE v.target_user_id = #{targetUserId}
+          AND v.status = 'ACTIVE'
           AND (
-            expire_at IS NULL
-            OR expire_at &gt; NOW()
+            v.expire_at IS NULL
+            OR v.expire_at &gt; NOW()
             OR (<include refid="pendingInteractivePastExpireClause"/>)
           )
-        ORDER BY id DESC
+        ORDER BY v.id DESC
         LIMIT 1
     </select>
 
@@ -118,35 +123,49 @@
     </update>
 
     <select id="selectRecent" resultMap="TwinStudentViolationMap">
-        SELECT *
-        FROM twin_student_violation
+        SELECT v.*,
+            (SELECT COUNT(*) FROM twin_student_violation c
+             WHERE c.target_user_id = v.target_user_id
+               AND (c.rule_id = v.rule_id OR (c.rule_id IS NULL AND v.rule_id IS NULL))
+            ) AS enter_success_count
+        FROM twin_student_violation v
         <where>
             <if test="targetUserId != null and targetUserId != ''">
-                AND target_user_id = #{targetUserId}
+                AND v.target_user_id = #{targetUserId}
             </if>
         </where>
-        ORDER BY id DESC
+        ORDER BY v.id DESC
         LIMIT #{limit}
     </select>
 
     <select id="selectActiveForDashboardBoard" resultMap="TwinStudentViolationMap">
-        SELECT *
-        FROM twin_student_violation
-        WHERE status = 'ACTIVE'
-          AND (expire_at IS NULL OR expire_at &gt; NOW())
-          AND id IN (
+        SELECT v.*,
+            (SELECT COUNT(*) FROM twin_student_violation c
+             WHERE c.target_user_id = v.target_user_id
+               AND (c.rule_id = v.rule_id OR (c.rule_id IS NULL AND v.rule_id IS NULL))
+            ) AS enter_success_count
+        FROM twin_student_violation v
+        WHERE v.status = 'ACTIVE'
+          AND (v.expire_at IS NULL OR v.expire_at &gt; NOW())
+          AND v.id IN (
               SELECT MAX(id)
               FROM twin_student_violation
               WHERE status = 'ACTIVE'
                 AND (expire_at IS NULL OR expire_at &gt; NOW())
               GROUP BY target_user_id
           )
-        ORDER BY created_at DESC, id DESC
+        ORDER BY v.created_at DESC, v.id DESC
         LIMIT #{limit}
     </select>
 
     <select id="selectById" resultMap="TwinStudentViolationMap">
-        SELECT * FROM twin_student_violation WHERE id = #{id}
+        SELECT v.*,
+            (SELECT COUNT(*) FROM twin_student_violation c
+             WHERE c.target_user_id = v.target_user_id
+               AND (c.rule_id = v.rule_id OR (c.rule_id IS NULL AND v.rule_id IS NULL))
+            ) AS enter_success_count
+        FROM twin_student_violation v
+        WHERE v.id = #{id}
     </select>
 
     <update id="updateEditableById">

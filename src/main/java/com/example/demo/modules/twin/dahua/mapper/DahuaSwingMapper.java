@@ -42,6 +42,12 @@ public interface DahuaSwingMapper {
             @Param("recordId") String recordId
     );
 
+    /**
+     * 按 record_id 唯一查询（与表唯一键 uk_dahua_record_id 对齐），
+     * 用于跨任务去重：同一刷卡记录无论被哪个 task 拉取，只应联动一次。
+     */
+    DahuaSwingRecord findRecordByRecordId(@Param("recordId") String recordId);
+
     /** 是否已有联动行引用该刷卡记录（防重复入队） */
     int countActivationByUserAndLastRecordId(
             @Param("taskId") Long taskId,
@@ -134,6 +140,9 @@ public interface DahuaSwingMapper {
     int deleteActivationState(@Param("id") Long id);
 
     int deleteActivationStatesByUserId(@Param("userId") String userId);
+
+    /** 仅清理到期/待激活（PENDING_ACTIVATION / AUTO_EXIT_SCHEDULED），保留已激活 */
+    int deleteExpiredOrPendingStatesByUserId(@Param("userId") String userId);
 
     int deleteActivationStateByUserTaskAndChannel(
             @Param("taskId") Long taskId,

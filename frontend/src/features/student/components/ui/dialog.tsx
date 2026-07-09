@@ -24,7 +24,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
         <DialogPrimitive.Content
           className={cn(
             "fixed left-1/2 top-1/2 z-[var(--z-modal)] -translate-x-1/2 -translate-y-1/2",
-            "flex w-full max-w-lg flex-col overflow-hidden rounded-lg bg-[var(--student-canvas)] p-5",
+            "flex w-full max-w-lg max-h-[85vh] flex-col overflow-hidden rounded-lg bg-[var(--student-canvas)] p-5",
             "shadow-[var(--student-shadow-modal)]",
             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
             "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"

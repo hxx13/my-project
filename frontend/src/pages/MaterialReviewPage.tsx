@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
@@ -125,9 +125,12 @@ export default function MaterialReviewPage() {
   const [autoApproveOpen, setAutoApproveOpen] = useState(false);
   const [materialAutoApproveOpen, setMaterialAutoApproveOpen] = useState(false);
   const highlightRequestId = searchParams.get("requestId");
+  /** 一键通过：hover 下拉 + 已选集合 */
+  const [batchDropdownOpen, setBatchDropdownOpen] = useState(false);
+  const [batchSelectedIds, setBatchSelectedIds] = useState<Set<string>>(new Set());
 
   const { data: pendingData, isLoading: pendingLoading } = usePendingMaterialRequests();
-  const { data: finishedData, isLoading: finishedLoading } = useFinishedMaterialRequests(MATERIAL_REVIEW_FINISHED_PAGE);
+  const { data: finishedData, isLoading: finishedLoading } = useFinishedMaterialRequests({ page: 1, size: 200 });
   const approve = useApproveMaterialRequest();
   const reject = useRejectMaterialRequest();
   const revoke = useRevokeMaterialRequest();
@@ -250,6 +253,100 @@ export default function MaterialReviewPage() {
   // 历史中的待审项独立分组，避免混入已审结列表被遗漏
   const materialHistoryPending = useMemo(() => materialHistory.filter(r => isMaterialPendingStatus(r.status)), [materialHistory]);
   const materialHistoryDone = useMemo(() => materialHistory.filter(r => !isMaterialPendingStatus(r.status)), [materialHistory]);
+  // 今天也拆分待审/已审：待审展开、已审默认折叠（对齐小程序 studentReviewHub 的 splitMaterialSubGroupsByStatus）
+  const materialTodayPending = useMemo(() => materialToday.filter(r => isMaterialPendingStatus(r.status)), [materialToday]);
+  const materialTodayDone = useMemo(() => materialToday.filter(r => !isMaterialPendingStatus(r.status)), [materialToday]);
+
+  /** 友好课题组：当前审核人历史上审批通过 + 已出库 + 已完成的课题组集合 */
+  const friendlyGroups = useMemo(() => {
+    const groups = new Set<string>();
+    const finished = finishedData?.data ?? [];
+    for (const req of finished) {
+      const g = (req as any).applicantGroup as string | undefined;
+      if (g && (req.status === "APPROVED" || req.status === "FULFILLED" || req.status === "RECEIVED")) {
+        groups.add(g);
+      }
+    }
+    return groups;
+  }, [finishedData]);
+
+  /** 所有待审核项（用于一键通过下拉：友好在前、默认选中，非友好可手动勾选） */
+  const allPendingForBatch = useMemo(() => {
+    const pending = pendingData ?? [];
+    type Augmented = MaterialRequest & { _friendly: boolean };
+    return (pending
+      .filter(r => isMaterialPendingStatus(r.status))
+      .map(r => {
+        const g = (r as any).applicantGroup as string | undefined;
+        return { ...r, _friendly: !!(g && friendlyGroups.has(g)) } as Augmented;
+      }) as Augmented[])
+      .sort((a, b) => {
+        if (a._friendly !== b._friendly) return a._friendly ? -1 : 1;
+        return (parseToDate(b.createdAt)?.getTime() ?? 0) - (parseToDate(a.createdAt)?.getTime() ?? 0);
+      });
+  }, [pendingData, friendlyGroups]);
+
+  // 一键通过默认只选中友好课题组（仅列表实际变化时重置，避免无限循环）
+  const materialBatchKey = allPendingForBatch.map(r => `${r.id}:${(r as any)._friendly}`).join(',');
+  const prevMaterialKey = useRef(materialBatchKey);
+  useEffect(() => {
+    if (prevMaterialKey.current === materialBatchKey) return;
+    prevMaterialKey.current = materialBatchKey;
+    setBatchSelectedIds(new Set(allPendingForBatch.filter(r => r._friendly).map(r => String(r.id))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialBatchKey]);
+
+  /** scanDelay 友好申请人：历史上审批通过过的申请人集合（按 subjectUserId） */
+  const friendlyScanDelayApplicants = useMemo(() => {
+    const applicants = new Set<string>();
+    for (const r of scanDelayHistory) {
+      if (r.subjectUserId && r.status === "APPROVED") {
+        applicants.add(r.subjectUserId);
+      }
+    }
+    return applicants;
+  }, [scanDelayHistory]);
+
+  /** scanDelay 所有待审核项（友好在前、默认选中，非友好可手动勾选） */
+  const allScanDelayPendingForBatch = useMemo(() => {
+    type Augmented = ScanDelayPendingRequest & { _friendly: boolean };
+    return (scanDelayPending
+      .map(r => {
+        const isFriendly = r.subjectUserId ? friendlyScanDelayApplicants.has(r.subjectUserId) : false;
+        return { ...r, _friendly: isFriendly } as Augmented;
+      }) as Augmented[])
+      .sort((a, b) => {
+        if (a._friendly !== b._friendly) return a._friendly ? -1 : 1;
+        return (parseToDate(b.createdAt)?.getTime() ?? 0) - (parseToDate(a.createdAt)?.getTime() ?? 0);
+      });
+  }, [scanDelayPending, friendlyScanDelayApplicants]);
+
+  // scanDelay 一键通过默认只选中友好申请人（仅列表实际变化时重置，避免无限循环）
+  const [scanDelayBatchDropdownOpen, setScanDelayBatchDropdownOpen] = useState(false);
+  const [scanDelayBatchSelectedIds, setScanDelayBatchSelectedIds] = useState<Set<number>>(new Set());
+  const scanDelayBatchKey = allScanDelayPendingForBatch.map(r => `${r.id}:${(r as any)._friendly}`).join(',');
+  const prevScanDelayKey = useRef(scanDelayBatchKey);
+  useEffect(() => {
+    if (prevScanDelayKey.current === scanDelayBatchKey) return;
+    prevScanDelayKey.current = scanDelayBatchKey;
+    setScanDelayBatchSelectedIds(new Set(allScanDelayPendingForBatch.filter(r => r._friendly).map(r => r.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanDelayBatchKey]);
+
+  const handleScanDelayBatchApprove = async () => {
+    const ids = Array.from(scanDelayBatchSelectedIds);
+    if (ids.length === 0) { toast.error("未选中任何申请"); return; }
+    let ok = 0; let fail = 0;
+    for (const id of ids) {
+      try { await reviewScanDelayRequest(id, true); ok++; }
+      catch { fail++; }
+    }
+    if (fail === 0) toast.success(`一键通过 ${ok} 条免冻结申请`);
+    else toast.success(`通过 ${ok} 条，${fail} 条失败`);
+    setScanDelayBatchDropdownOpen(false);
+    void qc.invalidateQueries({ queryKey: ["scan-delay", "pending"] });
+    void qc.invalidateQueries({ queryKey: ["scan-delay", "history"] });
+  };
 
   /** 待审已由后端按审核人过滤；历史接口为全员可见，勿再用 optionReviewerMap 二次过滤 */
   const filteredScanDelayPending = scanDelayPending;
@@ -285,6 +382,21 @@ export default function MaterialReviewPage() {
   const handleExportPersonal = async (reqId: string) => {
     try { const blob = await exportMaterialAuditTrail({}); downloadBlob(blob, `material-request-${reqId}.xlsx`); toast.success("已导出"); }
     catch { toast.error("导出失败"); }
+  };
+
+  const handleBatchApprove = async () => {
+    const ids = Array.from(batchSelectedIds);
+    if (ids.length === 0) { toast.error("未选中任何申领"); return; }
+    let ok = 0; let fail = 0;
+    for (const id of ids) {
+      try { await approve.mutateAsync(id); ok++; }
+      catch { fail++; }
+    }
+    if (fail === 0) toast.success(`一键通过 ${ok} 条申领`);
+    else toast.success(`通过 ${ok} 条，${fail} 条失败`);
+    setBatchDropdownOpen(false);
+    // 刷新待审列表
+    void qc.invalidateQueries({ queryKey: materialQueryKeys.pendingRequests() });
   };
 
   const handleScanDelayReview = async (req: ScanDelayPendingRequest, approveFlag: boolean) => {
@@ -337,31 +449,224 @@ export default function MaterialReviewPage() {
             <button key={k} onClick={() => switchTab(k)} className={`rounded-twin-sm px-4 py-1.5 text-sm font-medium transition-colors ${tab === k ? "bg-[var(--twin-primary)] text-[var(--twin-on-primary)]" : "border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]"}`}>{v}</button>
           ))}
         </div>
+        <div className="flex items-center gap-1.5">
+          {tab === "material" && (
+            <div className="relative"
+              onMouseEnter={() => setBatchDropdownOpen(true)}
+              onMouseLeave={() => setBatchDropdownOpen(false)}
+            >
+              <button type="button"
+                className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] transition-colors flex items-center gap-1.5"
+              >
+                <span className="inline-block size-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
+                一键通过 {batchSelectedIds.size}/{allPendingForBatch.length}
+              </button>
+            {batchDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1 z-[var(--z-dropdown)] w-80 max-h-72 overflow-y-auto rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-2 p-2 space-y-1">
+                {allPendingForBatch.length === 0 ? (
+                  <div className="py-3 text-center">
+                    <p className="text-xs text-[var(--twin-mute)]">暂无待审核申领</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between pb-1.5 border-b border-[var(--twin-hairline)] mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-medium text-[var(--twin-body)]">待审核</span>
+                        <span className="text-[10px] text-[var(--twin-mute)]">{allPendingForBatch.length} 条</span>
+                      </div>
+                      <button type="button"
+                        onClick={() => {
+                          if (batchSelectedIds.size === allPendingForBatch.length) {
+                            setBatchSelectedIds(new Set());
+                          } else {
+                            setBatchSelectedIds(new Set(allPendingForBatch.map(r => String(r.id))));
+                          }
+                        }}
+                        className="text-[10px] text-[var(--twin-mute)] hover:text-[var(--twin-body)] transition-colors"
+                      >
+                        {batchSelectedIds.size === allPendingForBatch.length ? "取消全选" : "全选"}
+                      </button>
+                    </div>
+                    {(() => {
+                      // 按物品名称分组
+                      const groups = new Map<string, typeof allPendingForBatch>();
+                      for (const req of allPendingForBatch) {
+                        const name = ((req as any).lines || [])[0]?.snapshotName || "未命名物品";
+                        if (!groups.has(name)) groups.set(name, []);
+                        groups.get(name)!.push(req);
+                      }
+                      return Array.from(groups.entries()).map(([itemName, reqs]) => (
+                        <div key={itemName} className="space-y-1">
+                          <div className="flex items-center gap-1.5 pt-1 pb-0.5">
+                            <span className="w-1 h-1 rounded-full bg-[var(--twin-mute)]/50 shrink-0" />
+                            <span className="text-[10px] font-medium text-[var(--twin-mute)]">{itemName}</span>
+                            <span className="text-[10px] text-[var(--twin-mute)]/70">{reqs.length} 条</span>
+                          </div>
+                          {reqs.map(req => {
+                            const rid = String(req.id);
+                            const checked = batchSelectedIds.has(rid);
+                            const isFriendly = (req as any)._friendly as boolean;
+                            const lines: any[] = (req as any).lines || [];
+                            const totalQty = lines.reduce((s: number, l: any) => s + (l.qty || 0), 0);
+                            const groupName = (req as any).applicantGroup || "";
+                            const applicant = (req as any).applicantName || (req as any).userId || "";
+                            return (
+                              <label key={rid}
+                                className={`flex items-center gap-2.5 px-2 py-1.5 rounded-twin-sm cursor-pointer hover:bg-[var(--twin-canvas-soft)] transition-colors ${checked ? "bg-emerald-50/40" : ""}`}
+                              >
+                                <input type="checkbox" checked={checked}
+                                  onChange={() => {
+                                    const next = new Set(batchSelectedIds);
+                                    if (checked) next.delete(rid); else next.add(rid);
+                                    setBatchSelectedIds(next);
+                                  }}
+                                  className="shrink-0 accent-emerald-600"
+                                />
+                                <span className={`inline-block size-2 rounded-full shrink-0 ${isFriendly ? "bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.5)]" : "bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.5)]"}`} />
+                                <div className="min-w-0 flex-1 flex items-baseline gap-1.5">
+                                  <span className="text-xs font-medium text-[var(--twin-body)] truncate">{applicant}{groupName ? ` (${groupName})` : ""}</span>
+                                  {totalQty > 0 && <span className="text-[10px] text-[var(--twin-mute)] shrink-0">×{totalQty}</span>}
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ));
+                    })()}
+                    <div className="pt-1.5 border-t border-[var(--twin-hairline)]">
+                      <button type="button"
+                        onClick={handleBatchApprove}
+                        disabled={batchSelectedIds.size === 0}
+                        className="w-full rounded-twin-sm bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40 transition-colors"
+                      >
+                        确认一键通过 ({batchSelectedIds.size} 条)
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {tab === "scanDelay" && (
+          <div className="relative"
+            onMouseEnter={() => setScanDelayBatchDropdownOpen(true)}
+            onMouseLeave={() => setScanDelayBatchDropdownOpen(false)}
+          >
+            <button type="button"
+              className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)] transition-colors flex items-center gap-1.5"
+            >
+              <span className="inline-block size-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
+              一键通过 {scanDelayBatchSelectedIds.size}/{allScanDelayPendingForBatch.length}
+            </button>
+            {scanDelayBatchDropdownOpen && (
+              <div className="absolute right-0 top-full mt-1 z-[var(--z-dropdown)] w-80 max-h-72 overflow-y-auto rounded-twin-md border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] shadow-twin-level-2 p-2 space-y-1">
+                {allScanDelayPendingForBatch.length === 0 ? (
+                  <div className="py-3 text-center">
+                    <p className="text-xs text-[var(--twin-mute)]">暂无待审核免冻结申请</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between pb-1.5 border-b border-[var(--twin-hairline)] mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-medium text-[var(--twin-body)]">待审核</span>
+                        <span className="text-[10px] text-[var(--twin-mute)]">{allScanDelayPendingForBatch.length} 条</span>
+                      </div>
+                      <button type="button"
+                        onClick={() => {
+                          if (scanDelayBatchSelectedIds.size === allScanDelayPendingForBatch.length) {
+                            setScanDelayBatchSelectedIds(new Set());
+                          } else {
+                            setScanDelayBatchSelectedIds(new Set(allScanDelayPendingForBatch.map(r => r.id)));
+                          }
+                        }}
+                        className="text-[10px] text-[var(--twin-mute)] hover:text-[var(--twin-body)] transition-colors"
+                      >
+                        {scanDelayBatchSelectedIds.size === allScanDelayPendingForBatch.length ? "取消全选" : "全选"}
+                      </button>
+                    </div>
+                    {(() => {
+                      // 按延迟选项分组
+                      const groups = new Map<string, typeof allScanDelayPendingForBatch>();
+                      for (const req of allScanDelayPendingForBatch) {
+                        const label = scanDelayOptionDisplayLabel(req);
+                        if (!groups.has(label)) groups.set(label, []);
+                        groups.get(label)!.push(req);
+                      }
+                      return Array.from(groups.entries()).map(([optLabel, reqs]) => (
+                        <div key={optLabel} className="space-y-1">
+                          <div className="flex items-center gap-1.5 pt-1 pb-0.5">
+                            <span className="w-1 h-1 rounded-full bg-[var(--twin-mute)]/50 shrink-0" />
+                            <span className="text-[10px] font-medium text-[var(--twin-mute)]">{optLabel}</span>
+                            <span className="text-[10px] text-[var(--twin-mute)]/70">{reqs.length} 条</span>
+                          </div>
+                          {reqs.map(req => {
+                            const rid = req.id;
+                            const checked = scanDelayBatchSelectedIds.has(rid);
+                            const isFriendly = (req as any)._friendly as boolean;
+                            const name = req.subjectDisplayName || req.subjectUserId || "";
+                            const group = req.subjectGroupName || "";
+                            return (
+                              <label key={rid}
+                                className={`flex items-center gap-2.5 px-2 py-1.5 rounded-twin-sm cursor-pointer hover:bg-[var(--twin-canvas-soft)] transition-colors ${checked ? "bg-emerald-50/40" : ""}`}
+                              >
+                                <input type="checkbox" checked={checked}
+                                  onChange={() => {
+                                    const next = new Set(scanDelayBatchSelectedIds);
+                                    if (checked) next.delete(rid); else next.add(rid);
+                                    setScanDelayBatchSelectedIds(next);
+                                  }}
+                                  className="shrink-0 accent-emerald-600"
+                                />
+                                <span className={`inline-block size-2 rounded-full shrink-0 ${isFriendly ? "bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.5)]" : "bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.5)]"}`} />
+                                <div className="min-w-0 flex-1 flex items-baseline gap-1.5">
+                                  <span className="text-xs font-medium text-[var(--twin-body)] truncate">{name}{group ? ` (${group})` : ""}</span>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ));
+                    })()}
+                    <div className="pt-1.5 border-t border-[var(--twin-hairline)]">
+                      <button type="button"
+                        onClick={handleScanDelayBatchApprove}
+                        disabled={scanDelayBatchSelectedIds.size === 0}
+                        className="w-full rounded-twin-sm bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40 transition-colors"
+                      >
+                        确认一键通过 ({scanDelayBatchSelectedIds.size} 条)
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {(tab === "material" || tab === "scanDelay") && (
           <button type="button" onClick={() => tab === "material" ? setMaterialAutoApproveOpen(true) : setAutoApproveOpen(true)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-2.5 py-1 text-xs text-[var(--twin-body)] hover:bg-[var(--twin-canvas-soft)]">自动审批</button>
         )}
+        </div>
       </div>
 
       {tab === "scanDelay" ? (
         <div className="space-y-3">
-          {!scanDelayLoading && filteredScanDelayPending.length > 0 ? (
-            <div className="rounded-twin-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
-              <p className="font-semibold">您有 {filteredScanDelayPending.length} 条延迟免冻结待审核</p>
-              <p className="mt-1 text-xs text-amber-800/90">请核对姓名、课题组与历史通过次数后审批；新申请到达时页面顶部也会出现强提醒横幅。</p>
-            </div>
-          ) : null}
           {scanDelayLoading || scanDelayHistoryLoading ? <DataSkeleton variant="card" rows={4} /> : null}
           {allScanDelay.length === 0 && !scanDelayLoading && !scanDelayHistoryLoading ? (
             <p className="text-center text-sm text-[var(--twin-mute)] py-12">暂无延迟免冻结记录</p>
           ) : (
             <div className="space-y-4">
-              {scanDelayGrouped.map((group) => {
+              {[...scanDelayGrouped].sort((a, b) => {
+                const aP = a.items.some(i => i._kind === "pending") ? 1 : 0;
+                const bP = b.items.some(i => i._kind === "pending") ? 1 : 0;
+                return bP - aP; // 有 pending 的置顶
+              }).map((group) => {
                 const pendingItems = group.items.filter(i => i._kind === "pending");
                 const historyItems = group.items.filter(i => i._kind === "history");
                 const hasPending = pendingItems.length > 0;
                 const isCollapsed = scanDelayCollapse[group.groupKey] ?? (!hasPending);
                 return (
-                  <div key={group.groupKey} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] overflow-hidden">
+                  <div key={group.groupKey} className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] overflow-hidden">
                     <button
                       type="button"
                       onClick={() => toggleScanDelayGroup(group.groupKey)}
@@ -390,6 +695,7 @@ export default function MaterialReviewPage() {
                                   highlightRequestId={highlightRequestId}
                                   onReview={handleScanDelayReview}
                                   onDelete={handleScanDelayDelete}
+                                  isFriendly={item.subjectUserId ? friendlyScanDelayApplicants.has(item.subjectUserId) : undefined}
                                 />
                               ))}
                             </div>
@@ -450,38 +756,33 @@ export default function MaterialReviewPage() {
               {materialToday.length > 0 && (
                 <TimeGroup label="今天" count={materialToday.length}>
                   <div className="space-y-4">
-                    {Array.from(groupByItem(materialToday)).map(([itemName, reqs]) => {
-                      const specGroups = new Map<string, MaterialRequest[]>();
-                      for (const req of reqs) {
-                        const firstLine = req.lines?.[0];
-                        const key = firstLine?.specSnapshot || '__no_spec__';
-                        if (!specGroups.has(key)) specGroups.set(key, []);
-                        specGroups.get(key)!.push(req);
-                      }
-                      return (
-                        <div key={itemName} className="space-y-2">
-                          <div className="flex items-center gap-2 pl-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--twin-primary)]" />
-                            <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
-                            <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
-                          </div>
-                          {Array.from(specGroups.entries()).map(([specKey, specReqs]) => (
-                            <div key={specKey}>
-                              {specKey !== '__no_spec__' && (
-                                <div className="text-xs font-medium text-[var(--twin-mute)] px-3 py-1">
-                                  {formatSpecLabel(specKey)}
-                                </div>
-                              )}
-                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                                {specReqs.map(req => (
-                                  <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
+                    {/* 待审核（今天）— 始终展开 */}
+                    {materialTodayPending.length > 0 && (
+                      <MaterialRequestGroup
+                        items={materialTodayPending}
+                        dotColor="bg-[var(--twin-primary)]"
+                        canDelete={canDelete}
+                        approve={approve}
+                        reject={reject}
+                        revoke={revoke}
+                        deleteReq={deleteReq}
+                        handleExportPersonal={handleExportPersonal}
+                        friendlyGroups={friendlyGroups}
+                      />
+                    )}
+                    {/* 已审核（今天）— 默认折叠，对齐小程序 studentReviewHub */}
+                    {materialTodayDone.length > 0 && (
+                      <MaterialResolvedSection
+                        items={materialTodayDone}
+                        canDelete={canDelete}
+                        approve={approve}
+                        reject={reject}
+                        revoke={revoke}
+                        deleteReq={deleteReq}
+                        handleExportPersonal={handleExportPersonal}
+                        friendlyGroups={friendlyGroups}
+                      />
+                    )}
                   </div>
                 </TimeGroup>
               )}
@@ -492,40 +793,17 @@ export default function MaterialReviewPage() {
                   count={materialHistoryPending.length}
                   defaultOpen={true}
                 >
-                  <div className="space-y-4">
-                    {Array.from(groupByItem(materialHistoryPending)).map(([itemName, reqs]) => {
-                      const specGroups = new Map<string, MaterialRequest[]>();
-                      for (const req of reqs) {
-                        const firstLine = req.lines?.[0];
-                        const key = firstLine?.specSnapshot || '__no_spec__';
-                        if (!specGroups.has(key)) specGroups.set(key, []);
-                        specGroups.get(key)!.push(req);
-                      }
-                      return (
-                        <div key={itemName} className="space-y-2">
-                          <div className="flex items-center gap-2 pl-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                            <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
-                            <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
-                          </div>
-                          {Array.from(specGroups.entries()).map(([specKey, specReqs]) => (
-                            <div key={specKey}>
-                              {specKey !== '__no_spec__' && (
-                                <div className="text-xs font-medium text-[var(--twin-mute)] px-3 py-1">
-                                  {formatSpecLabel(specKey)}
-                                </div>
-                              )}
-                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                                {specReqs.map(req => (
-                                  <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <MaterialRequestGroup
+                    items={materialHistoryPending}
+                    dotColor="bg-amber-400"
+                    canDelete={canDelete}
+                    approve={approve}
+                    reject={reject}
+                    revoke={revoke}
+                    deleteReq={deleteReq}
+                    handleExportPersonal={handleExportPersonal}
+                    friendlyGroups={friendlyGroups}
+                  />
                 </TimeGroup>
               )}
               {materialHistoryDone.length > 0 && (
@@ -534,40 +812,17 @@ export default function MaterialReviewPage() {
                   count={materialHistoryDone.length}
                   defaultOpen={false}
                 >
-                  <div className="space-y-4">
-                    {Array.from(groupByItem(materialHistoryDone)).map(([itemName, reqs]) => {
-                      const specGroups = new Map<string, MaterialRequest[]>();
-                      for (const req of reqs) {
-                        const firstLine = req.lines?.[0];
-                        const key = firstLine?.specSnapshot || '__no_spec__';
-                        if (!specGroups.has(key)) specGroups.set(key, []);
-                        specGroups.get(key)!.push(req);
-                      }
-                      return (
-                        <div key={itemName} className="space-y-2">
-                          <div className="flex items-center gap-2 pl-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--twin-mute)]" />
-                            <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
-                            <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
-                          </div>
-                          {Array.from(specGroups.entries()).map(([specKey, specReqs]) => (
-                            <div key={specKey}>
-                              {specKey !== '__no_spec__' && (
-                                <div className="text-xs font-medium text-[var(--twin-mute)] px-3 py-1">
-                                  {formatSpecLabel(specKey)}
-                                </div>
-                              )}
-                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                                {specReqs.map(req => (
-                                  <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} />
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <MaterialRequestGroup
+                    items={materialHistoryDone}
+                    dotColor="bg-[var(--twin-mute)]"
+                    canDelete={canDelete}
+                    approve={approve}
+                    reject={reject}
+                    revoke={revoke}
+                    deleteReq={deleteReq}
+                    handleExportPersonal={handleExportPersonal}
+                    friendlyGroups={friendlyGroups}
+                  />
                 </TimeGroup>
               )}
             </div>
@@ -593,14 +848,111 @@ function TimeGroup({ label, count, children, defaultOpen = true, className }: { 
   );
 }
 
-function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal }: { req: MaterialRequest; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void }) {
+/** 按物品分组 + 按规格分子组，渲染请求卡片列表 */
+function MaterialRequestGroup({ items, dotColor, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal, friendlyGroups }: { items: MaterialRequest[]; dotColor: string; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void; friendlyGroups?: Set<string> }) {
+  const hasFriendly = friendlyGroups && friendlyGroups.size > 0;
+  return (
+    <div className="space-y-4">
+      {Array.from(groupByItem(items)).map(([itemName, reqs]) => {
+        const specGroups = new Map<string, MaterialRequest[]>();
+        for (const req of reqs) {
+          const firstLine = req.lines?.[0];
+          const key = firstLine?.specSnapshot || '__no_spec__';
+          if (!specGroups.has(key)) specGroups.set(key, []);
+          specGroups.get(key)!.push(req);
+        }
+        return (
+          <div key={itemName} className="space-y-2">
+            <div className="flex items-center gap-2 pl-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+              <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
+              <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
+            </div>
+            {Array.from(specGroups.entries()).map(([specKey, specReqs]) => (
+              <div key={specKey}>
+                {specKey !== '__no_spec__' && (
+                  <div className="text-xs font-medium text-[var(--twin-mute)] px-3 py-1">
+                    {formatSpecLabel(specKey)}
+                  </div>
+                )}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {specReqs.map(req => {
+                    const g = (req as any).applicantGroup as string | undefined;
+                    const isFriendly = hasFriendly && g ? friendlyGroups.has(g) : undefined;
+                    return (
+                      <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} isFriendly={isFriendly} />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 已审核物资区：可折叠，默认收起（对齐小程序 studentReviewHub 的 _resolvedCollapsed） */
+function MaterialResolvedSection({ items, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal, friendlyGroups }: { items: MaterialRequest[]; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void; friendlyGroups?: Set<string> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-xs text-[var(--twin-mute)] hover:text-[var(--twin-body)] transition-colors"
+      >
+        <span className="transition-transform duration-200" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▼</span>
+        <span>已审核</span>
+        <span className="text-[11px]">{items.length} 条</span>
+      </button>
+      {open && (
+        <MaterialRequestGroup
+          items={items}
+          dotColor="bg-[var(--twin-mute)]"
+          canDelete={canDelete}
+          approve={approve}
+          reject={reject}
+          revoke={revoke}
+          deleteReq={deleteReq}
+          handleExportPersonal={handleExportPersonal}
+          friendlyGroups={friendlyGroups}
+        />
+      )}
+    </div>
+  );
+}
+
+function MaterialRequestCard({ req, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal, isFriendly }: { req: MaterialRequest; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void; isFriendly?: boolean }) {
   const isPending = req.status === "PENDING" || req.status === "FIRST_OK";
   const canRevoke = req.status === "APPROVED" || req.status === "FULFILLED";
+  const groupName = (req as any).applicantGroup as string | undefined;
+  const showGroupTag = isPending && groupName; // 仅在待审核时展示标记
   return (
-    <div className={`rounded-twin-lg border border-[var(--twin-hairline)] p-3 shadow-twin-level-1 flex flex-col gap-2 ${cardStatusTint(req.status)}`}>
-      {/* 顶栏：ID + 状态 + 操作 */}
+    <div className={`rounded-twin-lg border p-3 shadow-twin-level-1 flex flex-col gap-2 relative overflow-hidden ${cardStatusTint(req.status)}`}
+      style={showGroupTag && isFriendly !== undefined ? {
+        borderLeftWidth: '4px',
+        borderLeftColor: isFriendly ? '#10b981' : '#f59e0b',
+        borderTopColor: 'var(--twin-hairline)',
+        borderRightColor: 'var(--twin-hairline)',
+        borderBottomColor: 'var(--twin-hairline)',
+        borderTopWidth: '1px',
+        borderRightWidth: '1px',
+        borderBottomWidth: '1px',
+      } : undefined}
+    >
+      {/* 顶栏：ID + 指示灯 + 状态 + 操作 */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-[var(--twin-mute)] font-mono">{req.id}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-[11px] text-[var(--twin-mute)] font-mono shrink-0">{req.id}</span>
+          {showGroupTag && isFriendly !== undefined && (
+            <span className="shrink-0"
+              title={isFriendly ? "熟识课题组 · 历史有通过记录" : "新课题组 · 首次出现"}>
+              <span className={`inline-block size-2.5 rounded-full ring-1 ring-offset-1 ${isFriendly ? "bg-emerald-400 ring-emerald-300 ring-offset-[var(--twin-canvas)] shadow-[0_0_8px_rgba(16,185,129,0.4)]" : "bg-amber-400 ring-amber-300 ring-offset-[var(--twin-canvas)] shadow-[0_0_8px_rgba(245,158,11,0.4)]"}`} />
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1.5">
           <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${statusBadge(req.status)}`}>{statusLabel(req.status)}</span>
           <button onClick={() => handleExportPersonal(req.id)} className="text-[10px] text-blue-600 hover:underline shrink-0">导出</button>
@@ -682,34 +1034,65 @@ function ScanDelayHistorySection({
   );
 }
 
-function ScanDelayPendingCard({ req, highlightRequestId, onReview, onDelete }: { req: ScanDelayPendingRequest; highlightRequestId: string | null; onReview: (req: ScanDelayPendingRequest, approve: boolean) => Promise<void>; onDelete: (req: { id: number; status: string }) => void }) {
+function ScanDelayPendingCard({ req, highlightRequestId, onReview, onDelete, isFriendly }: { req: ScanDelayPendingRequest; highlightRequestId: string | null; onReview: (req: ScanDelayPendingRequest, approve: boolean) => Promise<void>; onDelete: (req: { id: number; status: string }) => void; isFriendly?: boolean }) {
   const optionLabel = scanDelayOptionDisplayLabel(req);
+  const optionColor = scanDelayOptionWebColor(req);
+  const hasGroupTag = !!(req.subjectGroupName);
+  const highlighted = highlightRequestId && String(req.id) === highlightRequestId;
   return (
-    <div className={`rounded-twin-lg border bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2 ${highlightRequestId && String(req.id) === highlightRequestId ? "border-[var(--twin-primary)] ring-2 ring-[var(--twin-primary)]/30" : "border-[var(--twin-hairline)]"}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-mono text-[var(--twin-mute)]">#{req.id}</span>
-        <div className="flex items-center gap-1.5">
+    <div className={`rounded-twin-lg border shadow-twin-level-1 flex flex-col overflow-hidden ${highlighted ? "border-[var(--twin-primary)] ring-2 ring-[var(--twin-primary)]/30" : "border-[var(--twin-hairline)]"} bg-[var(--twin-card-pending)]`}
+      style={hasGroupTag && isFriendly !== undefined ? {
+        borderLeftWidth: '4px',
+        borderLeftColor: isFriendly ? '#10b981' : '#f59e0b',
+        borderTopColor: highlighted ? 'var(--twin-primary)' : 'var(--twin-hairline)',
+        borderRightColor: highlighted ? 'var(--twin-primary)' : 'var(--twin-hairline)',
+        borderBottomColor: highlighted ? 'var(--twin-primary)' : 'var(--twin-hairline)',
+        borderTopWidth: '1px',
+        borderRightWidth: '1px',
+        borderBottomWidth: '1px',
+      } : undefined}
+    >
+      {/* 选项类型色条 + 顶栏 */}
+      <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2" style={{ backgroundColor: `${optionColor}0D` }}>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[11px] font-mono text-[var(--twin-mute)] shrink-0">#{req.id}</span>
+          {hasGroupTag && isFriendly !== undefined && (
+            <span className="shrink-0"
+              title={isFriendly ? "熟识申请人 · 历史有通过记录" : "新申请人 · 首次出现"}>
+              <span className={`inline-block size-2.5 rounded-full ring-1 ring-offset-1 ${isFriendly ? "bg-emerald-400 ring-emerald-300 ring-offset-white shadow-[0_0_8px_rgba(16,185,129,0.4)]" : "bg-amber-400 ring-amber-300 ring-offset-white shadow-[0_0_8px_rgba(245,158,11,0.4)]"}`} />
+            </span>
+          )}
+          <span className="text-xs font-semibold truncate" style={{ color: optionColor }}>{optionLabel}</span>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
           <span className="text-[10px] px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200 shrink-0">待审核</span>
           <button type="button" onClick={() => onDelete({ id: req.id, status: req.status })} className="text-[10px] px-1.5 py-0.5 rounded text-[var(--twin-mute)] hover:text-red-600 hover:bg-red-50 transition-colors" title="删除">删除</button>
         </div>
       </div>
-      <div className="flex items-start gap-3">
+      {/* 主体内容 */}
+      <div className="flex items-start gap-3 px-3 pb-3 pt-2">
         <div className="flex-1 min-w-0 space-y-1.5">
-          <ScanDelayOptionAccentText label={optionLabel} color={scanDelayOptionWebColor(req)} />
-          <p className="text-xs text-[var(--twin-mute)] truncate">{req.roomName || req.roomId}</p>
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-bold text-sm text-[var(--twin-primary)]">{req.subjectDisplayName || req.subjectUserId}</span>
-            <span className="text-[11px] text-[var(--twin-mute)]">{req.subjectGroupName || "未标注课题组"}</span>
+            {req.subjectGroupName && (
+              <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]">{req.subjectGroupName}</span>
+            )}
           </div>
-          <p className="text-[11px] text-[var(--twin-mute)]">
-            历史通过 {req.approvedCount ?? 0} 次{(req.referenceSeq ?? 0) > 0 ? ` · 第 ${req.referenceSeq} 次` : ""}
-          </p>
+          <div className="flex items-center gap-2 text-[11px] text-[var(--twin-mute)]">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block size-1 rounded-full bg-[var(--twin-mute)]/50" />
+              {req.roomName || req.roomId}
+            </span>
+            <span>·</span>
+            <span>通过 {req.approvedCount ?? 0} 次</span>
+            {(req.referenceSeq ?? 0) > 0 && <span>· 第 {req.referenceSeq} 次</span>}
+          </div>
         </div>
-        <div className="shrink-0 flex flex-col items-end gap-1.5 min-w-[140px]">
+        <div className="shrink-0 flex flex-col items-end gap-2 min-w-[130px]">
           {req.createdAt && <span className="text-[11px] text-[var(--twin-mute)] text-right">{formatBeijingDateTimeFull(req.createdAt)}</span>}
           <div className="flex gap-1.5">
-            <button type="button" onClick={() => void onReview(req, true)} className="rounded-twin-sm bg-green-600 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">通过</button>
-            <button type="button" onClick={() => void onReview(req, false)} className="rounded-twin-sm bg-red-500 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap">拒绝</button>
+            <button type="button" onClick={() => void onReview(req, true)} className="rounded-twin-sm bg-green-600 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap hover:bg-green-700 transition-colors">通过</button>
+            <button type="button" onClick={() => void onReview(req, false)} className="rounded-twin-sm bg-red-500 px-3 py-1 text-[11px] font-medium text-white whitespace-nowrap hover:bg-red-600 transition-colors">拒绝</button>
           </div>
         </div>
       </div>
@@ -720,23 +1103,32 @@ function ScanDelayPendingCard({ req, highlightRequestId, onReview, onDelete }: {
 function ScanDelayHistoryCard({ req, reviewerNameMap, onDelete }: { req: ScanDelayHistoryRequest; reviewerNameMap: Map<string, string>; onDelete: (req: { id: number; status: string }) => void }) {
   const reviewerDisplay = req.reviewedBy ? (reviewerNameMap.get(req.reviewedBy) || req.reviewedBy) : null;
   const optionLabel = scanDelayOptionDisplayLabel(req);
+  const optionColor = scanDelayOptionWebColor(req);
+  const statusApproved = req.status === "APPROVED";
+  const statusExpired = req.status === "EXPIRED";
   return (
-    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] p-3 shadow-twin-level-1 flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-mono text-[var(--twin-mute)]">#{req.id}</span>
-        <div className="flex items-center gap-1.5">
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${req.status === "APPROVED" ? "bg-green-50 text-green-700 border-green-200" : req.status === "EXPIRED" ? "bg-gray-50 text-gray-500 border-gray-200" : "bg-red-50 text-red-700 border-red-200"}`}>{req.status === "APPROVED" ? "已通过" : req.status === "EXPIRED" ? "已过期" : "已拒绝"}</span>
+    <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas-soft)] shadow-twin-level-1 flex flex-col overflow-hidden">
+      {/* 选项类型色条 + 顶栏 */}
+      <div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-2" style={{ backgroundColor: `${optionColor}0D` }}>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[11px] font-mono text-[var(--twin-mute)] shrink-0">#{req.id}</span>
+          <span className="text-xs font-semibold truncate" style={{ color: optionColor }}>{optionLabel}</span>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${statusApproved ? "bg-green-50 text-green-700 border-green-200" : statusExpired ? "bg-gray-50 text-gray-500 border-gray-200" : "bg-red-50 text-red-700 border-red-200"}`}>{statusApproved ? "已通过" : statusExpired ? "已过期" : "已拒绝"}</span>
           <button type="button" onClick={() => onDelete({ id: req.id, status: req.status })} className="text-[10px] px-1.5 py-0.5 rounded text-[var(--twin-mute)] hover:text-red-600 hover:bg-red-50 transition-colors" title="删除">删除</button>
         </div>
       </div>
-      <div className="flex items-start gap-3">
+      {/* 主体 */}
+      <div className="flex items-start gap-3 px-3 pb-3 pt-2">
         <div className="flex-1 min-w-0 space-y-1.5">
-          <ScanDelayOptionAccentText label={optionLabel} color={scanDelayOptionWebColor(req)} />
-          <p className="text-xs text-[var(--twin-mute)] truncate">{req.roomName || req.roomId}</p>
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-bold text-sm text-[var(--twin-primary)]">{req.subjectDisplayName || req.subjectUserId}</span>
-            <span className="text-[11px] text-[var(--twin-mute)]">{req.subjectGroupName || "未标注课题组"}</span>
+            {req.subjectGroupName && (
+              <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--twin-canvas-soft)] text-[var(--twin-mute)]">{req.subjectGroupName}</span>
+            )}
           </div>
+          <p className="text-[11px] text-[var(--twin-mute)]">{req.roomName || req.roomId}</p>
         </div>
         <div className="shrink-0 flex flex-col items-end gap-1 min-w-[140px]">
           {req.createdAt && <span className="text-[11px] text-[var(--twin-mute)] text-right">申请 {formatBeijingDateTimeFull(req.createdAt)}</span>}

@@ -54,25 +54,36 @@ export function ViolationBoardRow({ item, onPreviewOpenChange }: Props) {
   const summaryTone = dashTone(visual, "text-fuchsia-100/85", DASH_NIGHT_CLASS.textMuted, "text-rose-950/85");
   const borderTone = dashTone(visual, "border-fuchsia-500/15", DASH_NIGHT_CLASS.header, "border-rose-200/50");
 
-  // 姓名拆分为单字，固定3字宽容器 + space-between：
-  // 3字名自然填满，2字名左右撑开中间留空，保证右侧文案上下对齐
-  const nameChars = [...(item.displayName || "—")];
+  const isGroup = Boolean(item.groupName);
+
+  // 个人违规：姓名拆分为单字，固定3字宽容器 + space-between
+  // 课题组违规：普通文本 + truncate
+  const nameChars = isGroup ? [] : [...(item.displayName || "—")];
 
   const closeCoverPreview = () => setCoverPreviewOpen(false);
 
   return (
     <>
     <div
-      className={`flex items-start gap-2 border-b py-2.5 md:gap-3 md:py-3 ${borderTone}`}
+      className={`flex items-center gap-2 border-b py-2.5 md:gap-3 md:py-3 ${borderTone}`}
     >
-      <span
-        className={`shrink-0 inline-flex justify-between text-xs font-bold md:text-sm mt-[2px] ${nameTone}`}
-        style={{ width: "2.7em" }}
-      >
-        {nameChars.map((ch, i) => (
-          <span key={i}>{ch}</span>
-        ))}
-      </span>
+      {isGroup ? (
+        <span
+          className={`shrink-0 max-w-[140px] truncate text-xs font-bold md:text-sm ${nameTone}`}
+          title={item.displayName || ""}
+        >
+          {item.displayName || "—"}
+        </span>
+      ) : (
+        <span
+          className={`shrink-0 inline-flex justify-between text-xs font-bold md:text-sm ${nameTone}`}
+          style={{ width: "2.7em" }}
+        >
+          {nameChars.map((ch, i) => (
+            <span key={i}>{ch}</span>
+          ))}
+        </span>
+      )}
       <div ref={containerRef} className="min-w-0 flex-1">
         <p
           className={`text-[11px] leading-snug md:text-xs [&_img]:my-1 [&_img]:max-h-16 [&_img]:cursor-zoom-in [&_img]:rounded-md ${summaryTone}`}

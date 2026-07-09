@@ -9,6 +9,8 @@ public class StudentNotification {
     private String id;
     private String title;
     private String summary;
+    /** 完整通知正文（HTML，含图片） */
+    private String content;
     /** PLATFORM / ARO / WORK_ORDER */
     private String type;
     private String bizType;

@@ -111,3 +111,39 @@ export async function createPersonalRegistrationInvite(): Promise<{ id: string; 
   }
   return response.data.data;
 }
+
+export interface ForgotPasswordVerifyResult {
+  verified: boolean;
+  username: string;
+  name: string;
+  message: string;
+}
+
+export async function forgotPasswordVerify(
+  userId: string,
+  phoneNumber: string
+): Promise<ForgotPasswordVerifyResult> {
+  const response = await axios.post<Result<ForgotPasswordVerifyResult>>(
+    "/api/auth/forgot-password/verify",
+    { userId, phoneNumber }
+  );
+  if (!response.data?.success || !response.data?.data) {
+    throw new Error(response.data?.message || "验证失败");
+  }
+  return response.data.data;
+}
+
+export async function forgotPasswordReset(
+  userId: string,
+  newPassword: string,
+  newUsername?: string
+): Promise<{ message: string }> {
+  const response = await axios.post<Result<{ message: string }>>(
+    "/api/auth/forgot-password/reset",
+    { userId, newPassword, newUsername }
+  );
+  if (!response.data?.success) {
+    throw new Error(response.data?.message || "重置失败");
+  }
+  return response.data.data;
+}

@@ -112,7 +112,7 @@ export default function MobileFeedbackPanel({
                       className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold"
                       style={{ background: colors.bg, color: colors.color }}
                     >
-                      {alertKindLabel(item.kind)}
+                      {alertKindLabel(item.kind, item.source)}
                     </span>
                     {item.status === "PENDING" && (
                       <span
@@ -144,10 +144,10 @@ export default function MobileFeedbackPanel({
           <div className="rounded-2xl py-16 text-center">
             <Bell className="size-10 mx-auto mb-2" style={{ color: "#c8c9cc" }} />
             <p className="text-xs" style={{ color: "#969799" }}>
-              暂无物资或延迟申请反馈
+              暂无通知
             </p>
             <p className="text-[10px] mt-2 px-6" style={{ color: "#c8c9cc" }}>
-              教职工在审核页处理您的申领或延迟申请后，将在此实时显示
+              系统通知、违规提醒与审核反馈将在此显示
             </p>
           </div>
         )}

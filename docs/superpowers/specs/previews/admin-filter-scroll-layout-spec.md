@@ -250,114 +250,115 @@ max-h = 100dvh - var(--admin-chrome-offset)
 - [ ] `npx tsc --noEmit` 通过
 ---
 
-## 八、Tab 切换变体（监控面板 / 多视图页面）
+## 八、AdminPageTabs + Tab 内容变体
 
-当页面需要顶部 **pill 标签切换** 多个视图（而非表格筛选）时，在标准模板基础上做以下调整：
+当页面使用 `AdminPageTabs`（file-folder 风格标签栏），各 tab 内容按需为 form card 或表格。与标准模板**完全相同的高度链**。
 
-### 8.1 结构差异
+参考页面：`AdminStudentViolationsPage.tsx`。
 
-| 位置 | 标准 filter+scroll | Tab 变体 |
-|------|-------------------|----------|
-| 第一行左侧 | `<h2>` 页面入口名称 | 页面入口名称 + 连接状态指示器 |
-| 第一行右侧 | CRUD/跳转按钮 | 手动刷新按钮 |
-| 第二行 | 表格筛选控件 | **Pill 标签栏**（人员页面风格） |
+### 8.1 核心模式
 
-### 8.2 Pill 标签栏规范
-
-对齐 `AdminPersonnelPage` 的 inline pill 风格：
-
-```tsx
-<div className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--twin-canvas-soft-2)] p-0.5 self-start">
-  {TABS.map((tab) => (
-    <button
-      key={tab.id}
-      type="button"
-      onClick={() => setActiveTab(tab.id)}
-      className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-        activeTab === tab.id
-          ? "bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm"
-          : "text-[var(--twin-mute)] hover:text-[var(--twin-body)]"
-      }`}
-    >
-      {tab.label}
-    </button>
-  ))}
-</div>
+```
+div.flex.flex-col.h-[calc(100dvh-var(--admin-chrome-offset))]
+  ├─ AdminFormCard.shrink-0                    ← 顶部卡片
+  │   ├─ Row 1: AdminPageTabs [+ 操作按钮]     ← 标签栏（上）
+  │   └─ Row 2: 子菜单按钮（条件渲染）           ← tab 专属切换（下）
+  └─ div.flex-1.min-h-0.flex.flex-col           ← 下方容器
+       └─ AdminTabPanel.flex-1.min-h-0.flex.flex-col
+            └─ TabContent                        ← 单列或双列
 ```
 
-关键设计令牌：
-- 容器背景：`bg-[var(--twin-canvas-soft-2)]`（浅灰 track）
-- 激活态：`bg-[var(--twin-canvas)] text-[var(--twin-ink)] shadow-sm`（白底黑字）
-- 非激活：`text-[var(--twin-mute)] hover:text-[var(--twin-body)]`
-- 暗色模式自动适配（twin-* 令牌有 `.dark` 映射）
+**关键变化**（对比标准 filter+scroll）：
+- 无 `<h2>` 页面标题——标签栏本身就是导航标识
+- `AdminPageTabs` 放在 Row 1，取代标题
+- Row 2 可放 tab 专属子菜单（仅该 tab active 时显示）
+- 下方容器通过 `AdminTabPanel` 路由到不同内容组件
 
-### 8.3 内容区按标签条件渲染
-
-标签只切换下方内容，不改变整体高度约束：
+### 8.2 顶部卡片模板
 
 ```tsx
-<div className="flex-1 min-h-0 overflow-auto overscroll-y-contain pt-4 pb-8">
-  {activeTab === "overview" && (/* 健康卡片 + 资源指标 */)}
-  {activeTab === "jobs"     && (/* 任务监视表 */)}
-  {activeTab === "timers"   && (/* 活跃计时器 */)}
-  {activeTab === "logs"     && (/* 调度日志 */)}
-</div>
-```
-
-注意：即使内容区没有表格，也使用相同的 `flex-1 min-h-0 overflow-auto` 容器。
-卡片/仪表盘内容用 `flex flex-col gap-[var(--app-space-section-gap)]` 组织。
-
-### 8.4 完整 JSX 模板（Tab 变体）
-
-```tsx
-const TABS = [
-  { id: "overview", label: "总览" },
-  { id: "jobs",     label: "定时任务" },
-  { id: "timers",   label: "活跃计时器" },
-  { id: "logs",     label: "调度日志" },
-];
-
-return (
-  <AdminPageShell>
-    <div className="flex flex-col max-h-[calc(100dvh-var(--admin-chrome-offset))] min-h-[200px]">
-
-      {/* ═══ 第一层：标签+操作卡片（shrink-0） ═══ */}
-      <AdminFormCard className="shrink-0 mb-3">
-
-        {/* 第一行：入口名称 + 状态指示器（左） + 手动刷新（右） */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">系统监控</h2>
-            {/* 连接状态 dot + "最后更新 XX:XX:XX" */}
-            <MonitorStatusBar />
-          </div>
-          <button type="button" onClick={refreshAll} className="...">手动刷新</button>
-        </div>
-
-        {/* 第二行：Pill 标签栏 */}
-        <div className="flex shrink-0 items-center gap-1 rounded-lg bg-[var(--twin-canvas-soft-2)] p-0.5 self-start">
-          {TABS.map(tab => (...))}
-        </div>
-
-      </AdminFormCard>
-
-      {/* ═══ 第二层：内容区（flex-1，内部滚动） ═══ */}
-      <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain pt-4 pb-8">
-        {/* 按 activeTab 条件渲染各面板 */}
-        {activeTab === "overview" && <OverviewPanel />}
-        ...
-      </div>
-
+<AdminFormCard className="sticky top-0 z-[--z-sticky] shrink-0 mb-3">
+  {/* Row 1: 标签栏 */}
+  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
+    <AdminPageTabs
+      tabs={PAGE_TABS}
+      value={activeTab}
+      onChange={(id) => { setActiveTab(id); /* reset sub-panel */ }}
+    />
+    {/* 可选：操作按钮（如刷新，用 invisible 占位保持高度） */}
+  </div>
+  {/* Row 2: 子菜单（条件渲染） */}
+  {activeTab === "some-tab" && (
+    <div className="flex items-center gap-2">
+      {SUB_PANELS.map(p => (
+        <button
+          key={p.id}
+          onClick={() => setSubPanel(p.id)}
+          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            subPanel === p.id
+              ? "bg-[var(--app-color-accent)] text-white"
+              : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"
+          }`}
+        >
+          {p.label}
+        </button>
+      ))}
     </div>
-  </AdminPageShell>
-);
+  )}
+</AdminFormCard>
 ```
 
-### 8.5 Tab 变体踩坑补充
+### 8.3 下方容器：单列
 
-- **坑 T1**：不要把整个 `<MonitorDashboardPage>` 包在 `AdminFillScrollRegion` 里 —— 那会创建第二个滚动容器，与 `max-h` 链条冲突
-- **坑 T2**：Pill 标签不要用 `AdminPageTabs`（那是 file-folder 风格，设计语言不匹配）。直接用 inline pill buttons
-- **坑 T3**：卡片内容区（总览/计时器）如没有表格，仍需 `flex-1 min-h-0 overflow-auto`，否则长内容会撑破视口
+```tsx
+<div className="flex-1 min-h-0 flex flex-col">
+  <AdminTabPanel ... className="flex-1 min-h-0 flex flex-col">
+    <SomeTabContent />   {/* 内部 flex-1 min-h-0 + overflow-y-auto */}
+  </AdminTabPanel>
+</div>
+```
+
+### 8.4 下方容器：双列
+
+tab 内容组件内部用 grid 左右分栏：
+
+```tsx
+// TabContent 组件内
+<div className="flex-1 min-h-0 grid grid-cols-2 gap-4">
+  <AdminFormCard className="overflow-y-auto">{/* 左 */}</AdminFormCard>
+  <AdminFormCard className="overflow-y-auto">{/* 右 */}</AdminFormCard>
+</div>
+```
+
+### 8.5 子面板切换（tab 内多视图）
+
+当单个 tab 内还需切换不同视图（如 announcement tab 的「新建/配置/列表」），状态由父页面管理、通过 props 传入：
+
+```tsx
+// 父页面
+const [subPanel, setSubPanel] = useState<"create" | "settings" | "list">("create");
+
+// 切换 tab 时重置子面板
+onChange={(id) => { setActiveTab(id); setSubPanel("create"); }}
+
+// 传入内容组件
+<SomeTabContent subPanel={subPanel} onSubPanelChange={setSubPanel} />
+
+// 内容组件内 — 条件渲染，每个面板单独 overflow-y-auto
+{subPanel === "create"  && <AdminFormCard className="flex-1 min-h-0 overflow-y-auto">...</AdminFormCard>}
+{subPanel === "settings" && <AdminFormCard className="flex-1 min-h-0 overflow-y-auto">...</AdminFormCard>}
+{subPanel === "list"    && <AdminFormCard className="flex-1 min-h-0 overflow-y-auto">...</AdminFormCard>}
+```
+
+### 8.6 踩坑
+
+- **坑 T1**：不要用 `calc()` 猜偏移量。父级 `h-[calc(100dvh-var(--admin-chrome-offset))]` 定边界，子级全部 `flex-1 min-h-0` 自然填满。
+- **坑 T2**：高度链每层都必须 `flex-1 min-h-0`——外层 div → AdminTabPanel → TabContent → 内部 grid/card。任何一处断裂高度就传不下去。
+- **坑 T3**：`AdminPageTabs`（underline 风格）和 inline pill 标签（`bg-[var(--twin-canvas-soft-2)]` track）是两种不同设计语言，不要在同一行混用。Pill 标签用于 tab 内子视图切换（Row 2 子菜单）。
+- **坑 T4**：双列时每个 card 加 `overflow-y-auto`，高度由 grid 自动分配，**不要设 `max-h`**。
+- **坑 T5**：子面板切换只是同一个 tab 内的视图切换，不要和 URL tab 参数混淆。子面板用 `useState` 管理即可。
+- **坑 T6**：顶部卡片 Row 2 的子菜单按钮使用 `--app-color-accent` 激活态（与 `AdminPageTabs` 的 primary 色一致），不要用 `twin-*` 令牌。
+- **坑 T7**（2026-07-08 实录）：**永远从外往内套模板，不要从内往外修。** `CageLinkageTab` 重构时，AI 在组件内部反复尝试 `h-[calc()]`、`fillHeight`、`flex-1 min-h-0` 各种组合试图让卡片填满视口——连续失败数轮。根因：Section 四的标准模板早已定义了外层 `max-h` → `overflow-hidden` 壳 → `overflow-auto` 的层级，组件只需作为内容放入 `overflow-auto` 区域内即可。组件内部不需要任何视口高度计算。教训：**先读文档、先套外壳、再填内容。** 不要从组件内部反向推算页面级布局。
 
 ---
 

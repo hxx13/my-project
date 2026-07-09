@@ -3,6 +3,7 @@ package com.example.demo.modules.twin.scan.service;
 import com.example.demo.modules.aro.service.AroService;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
+import com.example.demo.modules.twin.dashboard.dto.ScanStudentViolationNoticeDTO;
 import com.example.demo.modules.twin.scan.dto.ScanAnalyzeResponseDTO;
 import com.example.demo.modules.twin.scan.dto.scan.ScanUserInfoDTO;
 import com.example.demo.modules.twin.scan.dto.scan.ScanUserRpgDTO;
@@ -266,7 +267,11 @@ public class TwinScanAppService {
             }
             try {
                 long tViol = System.currentTimeMillis();
-                result.setStudentViolationNotice(twinStudentViolationService.buildNotice(realPhysicalId));
+                ScanStudentViolationNoticeDTO notice = twinStudentViolationService.buildNotice(realPhysicalId);
+                result.setStudentViolationNotice(notice);
+                if (notice != null) {
+                    result.setStudentViolationSource(notice.getSource());
+                }
                 analyzeTimingTrace.step("mysql.twin_student_violation.buildNotice",
                         System.currentTimeMillis() - tViol, "");
             } catch (Exception e) {

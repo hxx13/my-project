@@ -28,6 +28,8 @@ public class ScanAnalyzeResponseDTO {
     private List<String> scanPopupExemptRoomIds;
     /** 学生违规通告（管理员下发）；无则 null */
     private ScanStudentViolationNoticeDTO studentViolationNotice;
+    /** 违规来源：CAGE_STATUS=笼位处理提示, MANUAL=违规提醒 */
+    private String studentViolationSource;
     /** 未绑卡扫码提示（全局配置）；无则 null */
     private ScanStudentViolationNoticeDTO unboundCardNotice;
     /** 扫码弹窗公告（多条翻页）；无则 null */

@@ -89,6 +89,45 @@ export const CAGE_TYPE_LABEL: Record<number, string> = {
   1: "等待分配", 2: "已预约(空笼盒)", 3: "已预约(饲养中)", 4: "异常",
 };
 
+/** cageType → 进度条颜色（与 AdminCageShelfPage sidebar 对齐） */
+export const CAGE_TYPE_BAR_COLOR: Record<number, string> = {
+  3: "#f43f5e", // 饲养中 = 红
+  1: "#f59e0b", // 等待分配 = 琥珀
+  4: "#3b82f6", // 异常 = 蓝
+  2: "#10b981", // 空笼盒 = 绿
+};
+
+const BAR_LABELS: Record<number, string> = { 3: "饲养中", 1: "等待", 2: "空笼", 4: "异常" };
+
+/** 紧凑笼位类型分布进度条 + 颜色说明，供 H5 列表入口展示 */
+export function CageTypeProgressBar({ counts, total }: { counts: Record<number, number>; total?: number }) {
+  const t = total ?? (Object.values(counts).reduce((a, b) => a + b, 0) || 1);
+  const order = [3, 1, 4, 2];
+  const hasData = order.some((k) => (counts[k] ?? 0) > 0);
+  if (!hasData) return null;
+  const visible = order.filter((k) => (counts[k] ?? 0) > 0);
+  return (
+    <div className="mt-0.5 space-y-0.5 min-w-0">
+      <div className="flex h-1.5 rounded-full overflow-hidden bg-[var(--twin-canvas-soft)]">
+        {order.map((k) => {
+          const c = counts[k] ?? 0;
+          if (c === 0) return null;
+          return <div key={k} className="h-full min-w-[2px]" style={{ width: `${Math.round((c / t) * 100)}%`, background: CAGE_TYPE_BAR_COLOR[k] }} />;
+        })}
+      </div>
+      <div className="flex flex-wrap gap-x-2 gap-y-0 text-[9px] text-[var(--twin-mute)]">
+        {visible.map((k) => (
+          <span key={k} className="flex items-center gap-0.5">
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: CAGE_TYPE_BAR_COLOR[k] }} />
+            {BAR_LABELS[k]}
+            <span className="opacity-60">{counts[k]}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const CAGE_TYPE_ABBR: Record<number, string> = { 1: "待", 2: "空", 3: "饲", 4: "异" };
 
 export const STATUS_COLOR_DOT: Record<string, string> = {

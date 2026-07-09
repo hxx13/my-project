@@ -14,19 +14,19 @@ const toneToVariant: Record<AdminButtonTone, VariantProps<typeof buttonVariants>
   destructive: "outline",
 };
 
-/** 管理端按钮统一：2px 描边 + 浅阴影，主/次/危险均一眼可辨为可点击 */
+/** 管理端按钮统一：实色填充，一眼可辨为可点击 */
 const adminButtonShell =
-  "rounded-[length:var(--admin-radius-md,0.375rem)] !border-2 shadow-sm hover:shadow";
+  "rounded-[length:var(--admin-radius-md,0.375rem)] font-medium transition-colors";
 
 const toneClassNames: Record<AdminButtonTone, string> = {
   primary:
-    "!border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:!border-primary",
+    "bg-[var(--app-color-accent)] text-white hover:opacity-90",
   secondary:
-    "!border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-primary)] hover:!border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)]",
+    "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-primary)] hover:bg-[var(--app-color-border-default)]",
   ghost:
-    "!border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] text-[var(--app-color-text-secondary)] hover:!border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)]",
+    "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]",
   destructive:
-    "!border-red-400 bg-red-50 text-red-800 hover:!border-red-500 hover:bg-red-100 dark:!border-red-500/80 dark:bg-red-950/50 dark:text-red-100 dark:hover:bg-red-950/70",
+    "bg-red-500 text-white hover:bg-red-600",
 };
 
 export type AdminButtonProps = Omit<React.ComponentProps<typeof Button>, "variant"> & {
@@ -39,7 +39,7 @@ export type AdminButtonProps = Omit<React.ComponentProps<typeof Button>, "varian
 
 /** 下拉列表中的「可点选行」按钮样式（人员/课题组预检） */
 export const adminPickableRowClass =
-  "flex w-full cursor-pointer items-center gap-3 rounded-lg border-2 border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-2.5 text-left shadow-sm transition-all hover:border-[var(--app-color-border-strong)] hover:bg-[var(--app-color-surface-hover)] active:translate-y-px";
+  "flex w-full cursor-pointer items-center gap-3 rounded-lg bg-[var(--app-color-surface-container)] p-2.5 text-left transition-colors hover:bg-[var(--app-color-surface-hover)]";
 
 export function AdminButton({
   tone = "primary",
@@ -58,7 +58,7 @@ export function AdminButton({
       className={cn(
         adminButtonShell,
         toneClassNames[tone],
-        active && "!border-[color:var(--admin-focus-ring)] ring-2 ring-[color:var(--admin-focus-ring)]/30 ring-offset-1 ring-offset-background",
+        active && "ring-2 ring-[color:var(--admin-focus-ring)]/50 ring-offset-1",
         className
       )}
       {...props}

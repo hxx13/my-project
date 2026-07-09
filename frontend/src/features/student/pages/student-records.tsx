@@ -424,7 +424,7 @@ export default function StudentRecordsPage() {
   const violationsTotal = violationsQuery.data?.total ?? 0;
 
   return (
-    <div className="p-6 bg-[var(--student-canvas-soft)] min-h-full">
+    <div className="p-6 min-h-full">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <Tabs

@@ -44,6 +44,14 @@ export interface StudentViolationRow {
   enterLocked?: boolean;
   ruleId?: number | null;
   ruleName?: string | null;
+  /** 笼架联动：关联的父记录ID */
+  cageViolationId?: number | null;
+  /** 笼架联动：父记录状态码 */
+  cageParentStatus?: string | null;
+  /** 笼架联动：笼位标签 */
+  cageParentPosition?: string | null;
+  /** 笼架联动：课题组 */
+  cageParentGroup?: string | null;
 }
 
 export interface CreateStudentViolationPayload {
@@ -223,7 +231,8 @@ export interface ViolationRule {
   sourceTag?: string;
   violationTextTpl?: string;
   forbidEnter: number;
-  expireAfterDays?: number;
+  maxEnterSuccess?: number | null;
+  expireAfterDays?: number | null;
   showNoticeEveryScan: number;
   interactiveChallenge?: string;
   interactiveUnlockOnVerify: number;

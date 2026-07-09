@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { Bell, ChevronLeft, ChevronRight } from "lucide-react";
+import { Bell, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useStudentNotifications, useMarkNotificationRead } from "../hooks/use-student-notifications";
 import type { FetchNotificationsParams, NotificationData } from "../api/student.api";
@@ -8,6 +8,12 @@ import {
   Skeleton,
   EmptyState,
   ErrorRetry,
+  Dialog,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  Badge,
 } from "../components/ui";
 
 /* ------------------------------------------------------------------ */
@@ -15,6 +21,12 @@ import {
 /* ------------------------------------------------------------------ */
 
 const PAGE_SIZE = 25;
+
+const NOTIFICATION_TYPE_CONFIG = {
+  ARO: { label: "ARO 官方", textClass: "text-[#dc2626]", bgClass: "bg-[#fee2e2]" },
+  PLATFORM: { label: "平台公告", textClass: "text-[#2563eb]", bgClass: "bg-[#dbeafe]" },
+  WORK_ORDER: { label: "工单通知", textClass: "text-[#7c3aed]", bgClass: "bg-[#ede9fe]" },
+} as const;
 
 const TYPE_FILTERS: Array<{ id: string; label: string }> = [
   { id: "ALL", label: "全部" },
@@ -58,7 +70,7 @@ function FilterPill({
 
 function NotificationsSkeleton() {
   return (
-    <div className="p-6 bg-[var(--student-canvas-soft)] min-h-full">
+    <div className="p-6 min-h-full">
       {/* Filter pills skeleton */}
       <div className="flex items-center gap-2 mb-4">
         <Skeleton variant="rectangular" className="h-8 w-16 rounded-full" />
@@ -98,6 +110,7 @@ export default function StudentNotificationsPage() {
   /* ---- Local state ---- */
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [page, setPage] = useState(1);
+  const [selectedNotification, setSelectedNotification] = useState<NotificationData | null>(null);
 
   /* ---- Query params ---- */
   const apiType = typeFilter === "ALL" ? undefined : typeFilter;
@@ -127,6 +140,7 @@ export default function StudentNotificationsPage() {
 
   const handleClick = useCallback(
     (notification: NotificationData) => {
+      setSelectedNotification(notification);
       if (!notification.isRead) {
         markMutation.mutate(notification.id);
       }
@@ -142,7 +156,7 @@ export default function StudentNotificationsPage() {
   /* ---- Error state ---- */
   if (isError) {
     return (
-      <div className="flex items-center justify-center min-h-full bg-[var(--student-canvas-soft)]">
+      <div className="flex items-center justify-center min-h-full">
         <ErrorRetry
           message={
             error instanceof Error ? error.message : "加载通知失败"
@@ -155,7 +169,7 @@ export default function StudentNotificationsPage() {
 
   /* ---- Normal render ---- */
   return (
-    <div className="p-6 bg-[var(--student-canvas-soft)] min-h-full">
+    <div className="p-6 min-h-full">
       {/* Filter pills + summary */}
       <div className="flex items-center gap-2 mb-4">
         {TYPE_FILTERS.map((f) => (
@@ -232,6 +246,53 @@ export default function StudentNotificationsPage() {
           )}
         </>
       )}
+
+      {/* Notification detail dialog */}
+      <Dialog
+        open={selectedNotification !== null}
+        onOpenChange={(open) => { if (!open) setSelectedNotification(null); }}
+      >
+        {selectedNotification && (
+          <>
+            <DialogHeader>
+              <DialogTitle>{selectedNotification.title}</DialogTitle>
+              <DialogDescription>
+                <span className={cn(
+                  "inline-flex items-center rounded-[var(--student-radius-full)] px-2 py-px text-[11px] font-medium",
+                  NOTIFICATION_TYPE_CONFIG[selectedNotification.type as keyof typeof NOTIFICATION_TYPE_CONFIG]?.textClass ?? "text-[var(--student-mute)]",
+                  NOTIFICATION_TYPE_CONFIG[selectedNotification.type as keyof typeof NOTIFICATION_TYPE_CONFIG]?.bgClass ?? "bg-[var(--student-canvas-soft)]",
+                )}>
+                  {NOTIFICATION_TYPE_CONFIG[selectedNotification.type as keyof typeof NOTIFICATION_TYPE_CONFIG]?.label ?? selectedNotification.type}
+                </span>
+                <span className="ml-2 text-xs text-[var(--student-mute)]">{selectedNotification.publishDate}</span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="min-h-[80px] flex-1 overflow-y-auto text-sm leading-relaxed text-[var(--student-body)]">
+              {(selectedNotification.content || selectedNotification.summary) ? (
+                <div
+                  className="rich-text-content"
+                  dangerouslySetInnerHTML={{ __html: selectedNotification.content || selectedNotification.summary }}
+                />
+              ) : (
+                <p className="text-center py-8 text-[var(--student-mute)]">暂无详细内容</p>
+              )}
+            </div>
+            {selectedNotification.sourceUrl && (
+              <DialogFooter>
+                <a
+                  href={selectedNotification.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[var(--student-primary)] hover:underline"
+                >
+                  <ExternalLink className="size-3.5" />
+                  查看原文
+                </a>
+              </DialogFooter>
+            )}
+          </>
+        )}
+      </Dialog>
     </div>
   );
 }

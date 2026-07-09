@@ -6,7 +6,8 @@ import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import { fetchLoginBranding, pickLoginHeroUrls, type LoginBranding } from "@/api/domains/publicSite.api";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
-import { loginWeb } from "@/api/domains/auth.api";
+import { loginWeb, forgotPasswordVerify, forgotPasswordReset } from "@/api/domains/auth.api";
+import axios from "axios";
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { resolvePostLoginTarget } from "@/features/auth/postLoginNavigation";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,21 @@ export default function LoginPage() {
   const passwordRef = useRef<HTMLInputElement>(null);
   const [sessionUser, setSessionUser] = useState(() => authStorage.getUserInfo());
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+
+  // Forgot password state
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotUserId, setForgotUserId] = useState("");
+  const [forgotPhone, setForgotPhone] = useState("");
+  const [forgotVerified, setForgotVerified] = useState(false);
+  const [forgotExistingUsername, setForgotExistingUsername] = useState("");
+  const [forgotNewUsername, setForgotNewUsername] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotPersonnelName, setForgotPersonnelName] = useState("");
+  const [forgotVerifying, setForgotVerifying] = useState(false);
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [qrUploading, setQrUploading] = useState(false);
+  const [qrDecoded, setQrDecoded] = useState(false);
+  const forgotQrRef = useRef<HTMLInputElement>(null);
 
   const syncUserFromStorage = useCallback(() => {
     setSessionUser(authStorage.getUserInfo());
@@ -192,6 +208,87 @@ export default function LoginPage() {
   const openLoginPanel = useCallback(() => {
     setShowLogin(true);
   }, []);
+
+  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQrUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await axios.post("/api/auth/forgot-password/decode-qr", formData);
+      if (res.data?.success && res.data?.data?.userId) {
+        setForgotUserId(res.data.data.userId);
+        setForgotPersonnelName(res.data.data.name || "");
+        setQrDecoded(true);
+        toast.success("二维码识别成功");
+      } else {
+        toast.error(res.data?.message || "二维码识别失败");
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "二维码上传失败";
+      toast.error(msg);
+    } finally {
+      setQrUploading(false);
+    }
+  };
+
+  const handleForgotVerify = async () => {
+    if (!forgotUserId.trim() || !forgotPhone.trim()) {
+      toast.error("请输入用户ID和手机号");
+      return;
+    }
+    setForgotVerifying(true);
+    try {
+      const result = await forgotPasswordVerify(forgotUserId.trim(), forgotPhone.trim());
+      if (result.verified) {
+        setForgotVerified(true);
+        setForgotExistingUsername(result.username);
+        setForgotNewUsername(result.username);
+        setForgotPersonnelName(result.name);
+        toast.success("验证通过");
+      } else {
+        toast.error(result.message || "验证失败");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "验证请求失败");
+    } finally {
+      setForgotVerifying(false);
+    }
+  };
+
+  const handleForgotReset = async () => {
+    if (!forgotNewPassword || forgotNewPassword.length < 6) {
+      toast.error("密码至少6位");
+      return;
+    }
+    setForgotSubmitting(true);
+    try {
+      const newUsername =
+        forgotNewUsername.trim() !== forgotExistingUsername
+          ? forgotNewUsername.trim()
+          : undefined;
+      await forgotPasswordReset(forgotUserId.trim(), forgotNewPassword, newUsername);
+      toast.success("密码重置成功，请返回登录");
+      setForgotMode(false);
+      setForgotVerified(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "重置失败");
+    } finally {
+      setForgotSubmitting(false);
+    }
+  };
+
+  const resetForgotState = () => {
+    setForgotMode(false);
+    setForgotVerified(false);
+    setForgotUserId("");
+    setForgotPhone("");
+    setForgotExistingUsername("");
+    setForgotNewUsername("");
+    setForgotNewPassword("");
+    setForgotPersonnelName("");
+  };
 
   const enterSite = useCallback(async () => {
     if (!authStorage.hasToken()) {
@@ -375,75 +472,209 @@ export default function LoginPage() {
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
-              <p className="mb-6 text-sm leading-relaxed text-[#b8a88c]">
-                请输入账号与密码。浏览器可能自动填入凭据，仍需点击「登录」确认。
-              </p>
-              <form className="space-y-5" onSubmit={(e) => e.preventDefault()} autoComplete="off">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#e8dcc4]" htmlFor="login-username">
-                    账号
-                  </label>
-                  <input
-                    id="login-username"
-                    type="text"
-                    name="aro_login_username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        passwordRef.current?.focus();
-                      }
-                    }}
-                    className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
-                    placeholder="请输入账号"
-                    autoComplete="username"
-                    spellCheck={false}
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#e8dcc4]" htmlFor="login-password">
-                    密码
-                  </label>
-                  <input
-                    ref={passwordRef}
-                    id="login-password"
-                    type="password"
-                    name="aro_login_password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void doLogin();
-                      }
-                    }}
-                    className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
-                    placeholder="请输入密码"
-                    autoComplete="current-password"
-                  />
-                </div>
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={() => void doLogin()}
-                  className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {submitting ? "登录中…" : "登 录"}
-                </button>
-              </form>
-              <p className="mt-8 text-center text-sm text-[#9a8b72]">
-                教职工首次使用？
-                <Link to="/register" className="ml-1 font-medium text-[#e8c547] hover:text-[#f5e6a8]">
-                  去注册
-                </Link>
-              </p>
-              <p className="mt-3 text-center text-sm text-[#9a8b72]">
-                学生首次使用？
-                <Link to="/student/register" className="ml-1 font-medium text-[#e8c547] hover:text-[#f5e6a8]">
-                  去注册
-                </Link>
-              </p>
+              {forgotMode ? (
+                !forgotVerified ? (
+                  <>
+                    <p className="mb-6 text-sm leading-relaxed text-[#b8a88c]">
+                      请上传您的个人二维码，并输入登记的手机号进行验证。
+                    </p>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#e8dcc4]">个人二维码</label>
+                        <input
+                          ref={forgotQrRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleQrUpload}
+                          className="hidden"
+                        />
+                        {qrDecoded && forgotUserId ? (
+                          <div className="flex items-center gap-2 rounded border border-emerald-500/40 bg-emerald-500/10 px-4 py-3">
+                            <span className="text-sm text-emerald-300">
+                              {forgotPersonnelName ? `${forgotPersonnelName} · ` : ""}{forgotUserId}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => { setQrDecoded(false); setForgotUserId(""); setForgotPersonnelName(""); }}
+                              className="ml-auto text-xs text-[#d4c4a8] hover:text-white"
+                            >
+                              重新上传
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={qrUploading}
+                            onClick={() => forgotQrRef.current?.click()}
+                            className="w-full rounded border-2 border-dashed border-[#f5d76a]/30 bg-black/25 px-4 py-8 text-sm text-[#b8a89a] hover:border-[#f5d76a]/60 hover:text-[#e8dcc4] transition-colors disabled:opacity-50"
+                          >
+                            {qrUploading ? "识别中..." : "点击上传二维码图片"}
+                          </button>
+                        )}
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#e8dcc4]">登记手机号</label>
+                        <input
+                          type="text"
+                          value={forgotPhone}
+                          onChange={(e) => setForgotPhone(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleForgotVerify(); }}
+                          className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
+                          placeholder="人员在库中登记的手机号"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={forgotVerifying || !qrDecoded}
+                        onClick={() => void handleForgotVerify()}
+                        className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {forgotVerifying ? "验证中..." : "验证"}
+                      </button>
+                    </div>
+                    <p className="mt-6 text-center text-sm text-[#9a8b72]">
+                      <button type="button" onClick={resetForgotState} className="font-medium text-[#e8c547] hover:text-[#f5e6a8]">
+                        返回登录
+                      </button>
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="mb-2 text-sm leading-relaxed text-[#b8a88c]">
+                      验证通过。请设置新密码。
+                    </p>
+                    {forgotPersonnelName ? (
+                      <p className="mb-4 text-sm text-[#e8dcc4]">姓名：{forgotPersonnelName}</p>
+                    ) : null}
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#e8dcc4]">登录账号（可修改）</label>
+                        <input
+                          type="text"
+                          value={forgotNewUsername}
+                          onChange={(e) => setForgotNewUsername(e.target.value)}
+                          className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
+                          maxLength={64}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-[#e8dcc4]">新密码</label>
+                        <input
+                          type="password"
+                          value={forgotNewPassword}
+                          onChange={(e) => setForgotNewPassword(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleForgotReset(); }}
+                          className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
+                          placeholder="至少6位"
+                          autoComplete="new-password"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={forgotSubmitting}
+                        onClick={() => void handleForgotReset()}
+                        className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {forgotSubmitting ? "重置中..." : "重置密码"}
+                      </button>
+                    </div>
+                    <p className="mt-6 text-center text-sm text-[#9a8b72]">
+                      <button type="button" onClick={resetForgotState} className="font-medium text-[#e8c547] hover:text-[#f5e6a8]">
+                        返回登录
+                      </button>
+                    </p>
+                  </>
+                )
+              ) : (
+                <>
+                  <p className="mb-6 text-sm leading-relaxed text-[#b8a88c]">
+                    请输入账号与密码。浏览器可能自动填入凭据，仍需点击「登录」确认。
+                  </p>
+                  <form className="space-y-5" onSubmit={(e) => e.preventDefault()} autoComplete="off">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#e8dcc4]" htmlFor="login-username">
+                        账号
+                      </label>
+                      <input
+                        id="login-username"
+                        type="text"
+                        name="aro_login_username"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            passwordRef.current?.focus();
+                          }
+                        }}
+                        className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
+                        placeholder="请输入账号"
+                        autoComplete="username"
+                        spellCheck={false}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[#e8dcc4]" htmlFor="login-password">
+                        密码
+                      </label>
+                      <input
+                        ref={passwordRef}
+                        id="login-password"
+                        type="password"
+                        name="aro_login_password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void doLogin();
+                          }
+                        }}
+                        className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
+                        placeholder="请输入密码"
+                        autoComplete="current-password"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => void doLogin()}
+                      className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {submitting ? "登录中…" : "登 录"}
+                    </button>
+                  </form>
+                  <p className="mt-8 text-center text-sm text-[#9a8b72]">
+                    教职工首次使用？
+                    <Link to="/register" className="ml-1 font-medium text-[#e8c547] hover:text-[#f5e6a8]">
+                      去注册
+                    </Link>
+                  </p>
+                  <p className="mt-3 text-center text-sm text-[#9a8b72]">
+                    学生首次使用？
+                    <Link to="/student/register" className="ml-1 font-medium text-[#e8c547] hover:text-[#f5e6a8]">
+                      去注册
+                    </Link>
+                  </p>
+                  <p className="mt-3 text-center text-sm text-[#9a8b72]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotMode(true);
+                        setForgotVerified(false);
+                        setForgotUserId("");
+                        setForgotPhone("");
+                        setQrDecoded(false);
+                        setForgotPersonnelName("");
+                      }}
+                      className="font-medium text-[#e8c547] hover:text-[#f5e6a8]"
+                    >
+                      忘记密码？
+                    </button>
+                  </p>
+                </>
+              )}
             </div>
           </aside>
         </>

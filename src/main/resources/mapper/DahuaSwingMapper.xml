@@ -160,6 +160,37 @@
         LIMIT 1
     </select>
 
+    <select id="findRecordByRecordId" resultType="com.example.demo.modules.twin.dahua.entity.DahuaSwingRecord">
+        SELECT id,
+               task_id AS taskId,
+               pull_task_type AS pullTaskType,
+               record_id AS recordId,
+               card_number AS cardNumber,
+               card_status AS cardStatus,
+               channel_code AS channelCode,
+               channel_name AS channelName,
+               open_type AS openType,
+               person_code AS personCode,
+               person_id AS personId,
+               person_name AS personName,
+               department_id AS departmentId,
+               department_name AS departmentName,
+               audience_type AS audienceType,
+               DATE_FORMAT(swing_time, '%Y-%m-%d %H:%i:%s') AS swingTime,
+               DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') AS createTime,
+               open_result AS openResult,
+               enter_or_exit AS enterOrExit,
+               mapping_user_id AS mappingUserId,
+               mapping_card_no AS mappingCardNo,
+               mapping_hit AS mappingHit,
+               freeze_exempt_flag AS freezeExemptFlag,
+               raw_json AS rawJson,
+               DATE_FORMAT(ingested_at, '%Y-%m-%d %H:%i:%s') AS ingestedAt
+        FROM twin_dahua_swing_record
+        WHERE record_id = #{recordId}
+        LIMIT 1
+    </select>
+
     <select id="countActivationByUserAndLastRecordId" resultType="int">
         SELECT COUNT(1)
         FROM twin_dahua_activation_state
@@ -461,6 +492,12 @@
 
     <delete id="deleteActivationStatesByUserId">
         DELETE FROM twin_dahua_activation_state WHERE user_id = #{userId}
+    </delete>
+
+    <delete id="deleteExpiredOrPendingStatesByUserId">
+        DELETE FROM twin_dahua_activation_state
+        WHERE user_id = #{userId}
+          AND state IN ('PENDING_ACTIVATION', 'AUTO_EXIT_SCHEDULED')
     </delete>
 
     <delete id="deleteActivationStateByUserTaskAndChannel">

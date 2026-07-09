@@ -32,7 +32,7 @@ export default function StudentMaterialRequestsPage() {
   const confirm = useConfirmMaterialReceive();
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--student-canvas-soft)]">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-3 px-5 py-3 bg-white border-b border-[var(--student-hairline)]">
         <button onClick={() => navigate(-1)} className="flex items-center gap-1 text-[13px] text-[var(--student-mute)]"><ChevronLeft className="size-4" /> 返回</button>
         <h2 className="text-[15px] font-semibold">我的申领</h2>

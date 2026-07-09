@@ -2,6 +2,7 @@
 export type ScanNoticePanelKey =
   | "violation"
   | "unbound"
+  | "cage-notice"
   | `announcement-${number}`
   | "announcement-manual";
 

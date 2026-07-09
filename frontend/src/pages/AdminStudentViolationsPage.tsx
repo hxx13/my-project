@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -8,11 +8,13 @@ import {
   Beaker,
   Bell,
   Check,
+  ChevronRight,
   CreditCard,
   FileText,
   Pencil,
   RefreshCw,
   Save,
+  Search,
   Settings,
   ShieldAlert,
   Trash2,
@@ -39,6 +41,13 @@ import {
   type UnboundApplyRoleCode,
   type ViolationRule,
 } from "@/api/domains/studentViolation.api";
+import {
+  listCageStatusViolations,
+  getCageStatusViolation,
+  clearCageStatusViolation,
+  deleteCageStatusViolation,
+  type CageStatusViolationRow,
+} from "@/api/domains/cageStatusViolation.api";
 import { uploadSingleImage } from "@/api/domains/upload.api";
 import {
   resolveManualViolationForbidEnter,
@@ -58,13 +67,14 @@ import { isRichTextEmpty, richTextPlainPreview } from "@/utils/announcementHtml"
 import { Portal } from "@/components/Portal";
 import { cn } from "@/lib/utils";
 import { ScanPopupAnnouncementSection } from "@/features/admin/ScanPopupAnnouncementSection";
-import { adminChromeTitle } from "@/features/admin/adminShellNavigation";
 import type { SwipeAlertRuleRow } from "@/api/domains/swipeAlert.api";
 import { SwipeAlertRuleList } from "@/features/swipe-alert/SwipeAlertRuleList";
 import { SwipeAlertRuleForm } from "@/features/swipe-alert/SwipeAlertRuleForm";
 import { DepartmentMultiSelect } from "@/features/swipe-alert/DepartmentMultiSelect";
 import { ViolationRuleManager } from "@/features/admin/ViolationRuleManager";
 import { CageLinkageTab } from "@/features/admin/CageLinkageTab";
+import { getTimeStatus, TIME_STATUS_META, type AnnounceSectionHandle } from "@/features/admin/ScanPopupAnnouncementSection";
+import type { ScanPopupAnnouncementRow } from "@/api/domains/scanPopupAnnouncement.api";
 import {
   SCAN_OPERATOR_ROLE_HINT_UNBOUND,
   SCAN_OPERATOR_ROLE_LABEL,
@@ -76,7 +86,13 @@ import { fetchSystemConfigs, fetchConfigDefinitions, type SystemConfigRecord, ty
 
 type PickUser = { userId: string; name: string };
 type LockMode = "single" | "batch";
-type PageTabId = "unbound" | "announcement" | "create" | "records" | "swipe-alert" | "rules" | "cage-linkage" | "homepage-content";
+type PageTabId = "unbound" | "announcement" | "create" | "records" | "swipe-alert" | "cage-linkage" | "homepage-content";
+
+const ANNOUNCE_SUB_PANELS = [
+  { id: "create", label: "✏️ 新建公告" },
+  { id: "settings", label: "⚙ 显示设置" },
+  { id: "list", label: "📋 公告列表" },
+] as const;
 
 const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
   { id: "unbound", label: "未绑卡提示", icon: <CreditCard className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
@@ -84,7 +100,6 @@ const PAGE_TABS: { id: PageTabId; label: string; icon: ReactNode }[] = [
   { id: "create", label: "新建违规", icon: <UserPlus className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "records", label: "违规记录", icon: <ShieldAlert className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "swipe-alert", label: "刷卡失败告警", icon: <AlertTriangle className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
-  { id: "rules", label: "触发规则", icon: <Settings className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "cage-linkage", label: "笼架联动", icon: <AlertTriangle className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
   { id: "homepage-content", label: "主页文案", icon: <FileText className="h-4 w-4 text-[var(--twin-mute)]" aria-hidden /> },
 ];
@@ -93,6 +108,14 @@ const LOCK_MODE_OPTIONS: { value: LockMode; label: string }[] = [
   { value: "single", label: "单人锁定" },
   { value: "batch", label: "课题组批量" },
 ];
+
+const STATUS_LABEL_MAP: Record<string, string> = {
+  COHABITATION: "合笼/繁殖",
+  SPECIAL_FEEDING: "特殊饲养",
+  NEED_DIVIDE: "请分笼/密度超标",
+  HEALTH_ABNORMAL: "动物健康异常",
+  ANIMAL_TRANSFER: "动物转移",
+};
 
 const inputBase =
   "w-full rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)] shadow-twin-level-1 outline-none transition placeholder:text-[var(--twin-mute)] focus-visible:border-[var(--twin-hairline-strong)] focus-visible:ring-2 focus-visible:ring-[color:var(--admin-focus-ring)]/40";
@@ -185,42 +208,43 @@ function ViolationTemplateQuickSelect({
     <div className="relative flex items-center gap-1" ref={ref}>
       <button
         type="button"
-        className="text-[11px] font-medium text-blue-600 hover:text-blue-800 transition-colors"
+        className="text-xs font-medium text-[var(--app-color-accent)] hover:underline transition-colors"
         onClick={() => setOpen(!open)}
       >
-        📋 选择模板 {templates.length > 0 ? `(${templates.length})` : ""}
+        📋 选择模板{templates.length > 0 ? ` (${templates.length})` : ""}
       </button>
       {open && (
-        <div className="absolute right-0 top-7 z-50 w-72 rounded-xl border border-neutral-200 bg-white shadow-xl p-2 max-h-[300px] overflow-y-auto">
+        <div className="absolute right-0 top-7 z-50 w-96 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-4 max-h-[420px] flex flex-col">
           {templates.length === 0 ? (
-            <p className="text-[11px] text-neutral-400 p-2">暂无保存的模板</p>
+            <p className="text-sm text-[var(--app-color-text-tertiary)] py-6 text-center">暂无保存的模板</p>
           ) : (
-            templates.map((t) => (
-              <div key={t.id} className="flex items-center gap-1 rounded-lg p-1.5 hover:bg-blue-50 transition-colors group">
-                <button
-                  type="button"
-                  className="flex-1 text-left text-xs truncate font-medium text-neutral-700"
-                  title={richTextPlainPreview(t.violationText, 120)}
-                  onClick={() => { onSelect(t.violationText); setOpen(false); }}
-                >
-                  {t.name}
-                  <span className="block text-[10px] text-neutral-400 truncate">
-                    {richTextPlainPreview(t.violationText) || "（空）"}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="shrink-0 text-[10px] text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={() => handleDelete(t.id)}
-                >
-                  ✕
-                </button>
-              </div>
-            ))
+            <div className="flex-1 overflow-y-auto -mx-2 space-y-0.5">
+              {templates.map((t) => (
+                <div key={t.id} className="flex items-center gap-2 rounded-lg px-3 py-2.5 hover:bg-[var(--app-color-surface-hover)] transition-colors group">
+                  <button
+                    type="button"
+                    className="flex-1 text-left min-w-0"
+                    title={richTextPlainPreview(t.violationText, 200)}
+                    onClick={() => { onSelect(t.violationText); setOpen(false); }}
+                  >
+                    <div className="text-sm font-medium text-[var(--app-color-text-primary)] truncate">{t.name}</div>
+                    <div className="text-xs text-[var(--app-color-text-tertiary)] truncate mt-0.5">{richTextPlainPreview(t.violationText) || "（空）"}</div>
+                  </button>
+                  <button
+                    type="button"
+                    className="shrink-0 rounded p-1 text-[var(--app-color-text-tertiary)] hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+                    onClick={() => handleDelete(t.id)}
+                    title="删除模板"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
-          <div className="mt-2 border-t border-neutral-100 pt-2 flex gap-1">
+          <div className="mt-3 pt-3 border-t border-[var(--app-color-border-default)] flex gap-2">
             <input
-              className="flex-1 text-[11px] px-2 py-1 rounded border border-neutral-200"
+              className="flex-1 h-9 rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] px-3 text-sm text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)] placeholder:text-[var(--app-color-text-tertiary)]"
               placeholder="模板名称（可选）"
               value={saveName}
               onChange={(e) => setSaveName(e.target.value)}
@@ -229,10 +253,10 @@ function ViolationTemplateQuickSelect({
             <button
               type="button"
               disabled={saving || isRichTextEmpty(currentText)}
-              className="shrink-0 text-[11px] font-bold px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+              className="shrink-0 h-9 px-4 rounded-md text-sm font-medium bg-[var(--app-color-accent)] text-white hover:opacity-90 disabled:opacity-40 transition-opacity"
               onClick={handleSave}
             >
-              保存当前
+              {saving ? "保存中…" : "保存当前"}
             </button>
           </div>
         </div>
@@ -242,7 +266,7 @@ function ViolationTemplateQuickSelect({
 }
 
 function parsePageTab(raw: string | null): PageTabId {
-  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert" || raw === "rules" || raw === "cage-linkage" || raw === "homepage-content") return raw;
+  if (raw === "unbound" || raw === "announcement" || raw === "create" || raw === "records" || raw === "swipe-alert" || raw === "cage-linkage" || raw === "homepage-content") return raw;
   return "unbound";
 }
 
@@ -311,6 +335,9 @@ export default function AdminStudentViolationsPage() {
       { replace: true }
     );
   };
+
+  // cage-linkage sub-panel
+  const [cageSubPanel, setCageSubPanel] = useState<"rules" | "submit">("rules");
 
   const [personKeyword, setPersonKeyword] = useState("");
   const [searchUserResult, setSearchUserResult] = useState<Array<Record<string, unknown>>>([]);
@@ -967,8 +994,126 @@ export default function AdminStudentViolationsPage() {
     loadStrandedSignoutConfig();
   }, []);
 
-  const location = useLocation();
-  const pageLabel = useMemo(() => adminChromeTitle(location.pathname), [location.pathname]);
+  // Unbound config dropdown
+  const [unboundConfigOpen, setUnboundConfigOpen] = useState(false);
+  const unboundConfigRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!unboundConfigOpen) return;
+    const onDown = (e: MouseEvent) => { if (unboundConfigRef.current && !unboundConfigRef.current.contains(e.target as Node)) setUnboundConfigOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [unboundConfigOpen]);
+
+  // Announcement dropdowns
+  const [announceSettingsOpen, setAnnounceSettingsOpen] = useState(false);
+  const [announceListOpen, setAnnounceListOpen] = useState(false);
+  const announceSettingsRef = useRef<HTMLDivElement>(null);
+  const announceListRef = useRef<HTMLDivElement>(null);
+  const announceSectionRef = useRef<AnnounceSectionHandle>(null);
+  const [editingSortId, setEditingSortId] = useState<number | null>(null);
+  // Create tab sub-panel
+  const [createSubPanel, setCreateSubPanel] = useState<"manual" | "stranded">("manual");
+  // Records tab sub-panel
+  const [recordsSubPanel, setRecordsSubPanel] = useState<"records" | "rules" | "cage-grouped">("records");
+  const [recordSearch, setRecordSearch] = useState("");
+  const [recordOnlyActive, setRecordOnlyActive] = useState(false);
+
+  // Cage-grouped view state
+  const [cageGroupExpanded, setCageGroupExpanded] = useState<string | null>(null);
+  const [cageGroupMembers, setCageGroupMembers] = useState<{ parentId: number; members: CageStatusViolationRow['members'] }[]>([]);
+  const [cageGroupLoading, setCageGroupLoading] = useState(false);
+  const [busyGroup, setBusyGroup] = useState<string | null>(null); // 正在执行批量解除/删除的课题组
+
+  // Cage-grouped data
+  const { data: cageRecords = [], isLoading: cageRecsLoading } = useQuery({
+    queryKey: ["cage-status-violations"],
+    queryFn: () => listCageStatusViolations(),
+    refetchInterval: 30_000,
+  });
+  // 后台拉取每个父记录的成员数
+  const [cageMemberCounts, setCageMemberCounts] = useState<Record<number, number>>({});
+  const [cageCountsLoaded, setCageCountsLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const counts: Record<number, number> = {};
+      for (const r of cageRecords) {
+        if (cancelled) return;
+        try { const d = await getCageStatusViolation(r.id); counts[r.id] = (d.members ?? []).filter(m => m.status === 'ACTIVE').length; } catch { counts[r.id] = 0; }
+      }
+      if (!cancelled) { setCageMemberCounts(counts); setCageCountsLoaded(true); }
+    };
+    setCageCountsLoaded(false);
+    load();
+    return () => { cancelled = true; };
+  }, [cageRecords]);
+  const cageGroups = useMemo(() => {
+    const map = new Map<string, { groupName: string; parents: CageStatusViolationRow[] }>();
+    for (const rec of cageRecords) {
+      const key = rec.projectGroupName?.trim() || "未命名课题组";
+      if (!map.has(key)) map.set(key, { groupName: key, parents: [] });
+      map.get(key)!.parents.push(rec);
+    }
+    // 成员数加载完成后，隐藏已无活跃成员的课题组
+    if (cageCountsLoaded) {
+      return Array.from(map.values()).filter(grp =>
+        grp.parents.some(p => (cageMemberCounts[p.id] ?? 0) > 0)
+      );
+    }
+    return Array.from(map.values());
+  }, [cageRecords, cageMemberCounts, cageCountsLoaded]);
+
+  const toggleCageGroup = async (groupName: string) => {
+    if (cageGroupExpanded === groupName) { setCageGroupExpanded(null); setCageGroupMembers([]); return; }
+    setCageGroupExpanded(groupName);
+    setCageGroupLoading(true);
+    try {
+      const parents = cageGroups.find(g => g.groupName === groupName)?.parents ?? [];
+      const results = await Promise.all(parents.map(async (p) => {
+        const detail = await getCageStatusViolation(p.id);
+        return { parentId: p.id, members: detail.members ?? [] };
+      }));
+      setCageGroupMembers(results);
+    } catch { toast.error("加载成员详情失败"); }
+    finally { setCageGroupLoading(false); }
+  };
+
+  const filteredRows = useMemo(() => {
+    // 排除笼架联动违规（已在「笼架联动」子面板中单独展示）
+    let filtered = rows.filter(r => r.cageViolationId == null);
+    if (recordSearch.trim()) {
+      const kw = recordSearch.trim().toLowerCase();
+      filtered = filtered.filter(r =>
+        (r.targetUserDisplayName ?? "").toLowerCase().includes(kw) ||
+        r.targetUserId.toLowerCase().includes(kw) ||
+        (r.ruleName ?? "").toLowerCase().includes(kw)
+      );
+    }
+    if (recordOnlyActive) {
+      filtered = filtered.filter(r => r.status === "ACTIVE");
+    }
+    return filtered;
+  }, [rows, recordSearch, recordOnlyActive]);
+  const [testPanelOpen, setTestPanelOpen] = useState(false);
+  const testPanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!testPanelOpen) return;
+    const onDown = (e: MouseEvent) => { if (testPanelRef.current && !testPanelRef.current.contains(e.target as Node)) setTestPanelOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [testPanelOpen]);
+  useEffect(() => {
+    if (!announceSettingsOpen) return;
+    const onDown = (e: MouseEvent) => { if (announceSettingsRef.current && !announceSettingsRef.current.contains(e.target as Node)) setAnnounceSettingsOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [announceSettingsOpen]);
+  useEffect(() => {
+    if (!announceListOpen) return;
+    const onDown = (e: MouseEvent) => { if (announceListRef.current && !announceListRef.current.contains(e.target as Node)) setAnnounceListOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [announceListOpen]);
 
   return (
     <AdminPageShell>
@@ -976,9 +1121,14 @@ export default function AdminStudentViolationsPage() {
 
         {/* ═══ 第一层：标题 + 标签卡片（sticky 固定顶部） ═══ */}
         <AdminFormCard className="sticky top-0 z-[--z-sticky] shrink-0 mb-3">
-          {/* 第一行：入口名称（左），下方有分隔线。用 invisible 占位保持高度不变 */}
+          {/* 第一行：标签栏（左） + 操作按钮（右），下方有分隔线 */}
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-color-border-default)] pb-3 mb-3">
-            <h2 className="text-base font-bold text-[var(--app-color-text-primary)] shrink-0">{pageLabel}</h2>
+            <AdminPageTabs
+              tabs={PAGE_TABS}
+              value={activeTab}
+              onChange={(id) => { setActiveTab(id as PageTabId); if (id === "cage-linkage") setCageSubPanel("rules"); }}
+              panelIdPrefix="violation-page-panel"
+            />
             <AdminButton
               type="button"
               tone="secondary"
@@ -991,14 +1141,162 @@ export default function AdminStudentViolationsPage() {
               刷新列表
             </AdminButton>
           </div>
-          {/* 第二行：标签栏 */}
-          <div className="flex items-center gap-2">
-            <AdminPageTabs
-              tabs={PAGE_TABS}
-              value={activeTab}
-              onChange={(id) => setActiveTab(id as PageTabId)}
-              panelIdPrefix="violation-page-panel"
-            />
+          {/* 第二行：子面板切换（固定高度，所有 tab 一致） */}
+          <div className="flex items-center gap-2 min-h-[2.25rem]">
+            {activeTab === "unbound" && (
+              <div className="relative" ref={unboundConfigRef}>
+                <button type="button" onClick={() => setUnboundConfigOpen(!unboundConfigOpen)} className="rounded-md px-3 py-1.5 text-xs font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] transition-colors">⚙ 未绑卡配置</button>
+                {unboundConfigOpen && (
+                  <div className="absolute left-0 top-full mt-1 z-50 w-72 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-4 space-y-4">
+                    <fieldset>
+                      <legend className="text-xs font-bold uppercase tracking-wider text-[var(--app-color-text-tertiary)] mb-2">启用控制</legend>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2.5 text-sm text-[var(--app-color-text-primary)] cursor-pointer"><input type="checkbox" checked={unboundEnabled} onChange={(e) => setUnboundEnabled(e.target.checked)} className="rounded accent-[var(--app-color-accent)]" />启用未绑卡提示</label>
+                        <label className="flex items-center gap-2.5 text-sm text-[var(--app-color-text-primary)] cursor-pointer"><input type="checkbox" checked={unboundShowEvery} onChange={(e) => setUnboundShowEvery(e.target.checked)} disabled={!unboundEnabled} className="rounded accent-[var(--app-color-accent)]" />每次扫码自动展开</label>
+                        <label className="flex items-center gap-2.5 text-sm text-[var(--app-color-text-primary)] cursor-pointer"><input type="checkbox" checked={unboundForbidEnter} onChange={(e) => setUnboundForbidEnter(e.target.checked)} disabled={!unboundEnabled} className="rounded accent-[var(--app-color-accent)]" />禁止扫码进入</label>
+                      </div>
+                    </fieldset>
+                    <fieldset>
+                      <legend className="text-xs font-bold uppercase tracking-wider text-[var(--app-color-text-tertiary)] mb-2">{SCAN_OPERATOR_ROLE_LABEL}</legend>
+                      <div className="space-y-1.5">
+                        {UNBOUND_APPLY_ROLE_OPTIONS.map((opt) => (
+                          <label key={opt.code} className={cn("flex items-center gap-2.5 text-sm cursor-pointer", (!unboundEnabled) && "opacity-50 pointer-events-none")}><input type="checkbox" checked={unboundApplyRoles.includes(opt.code)} onChange={(e) => { setUnboundApplyRoles((prev) => { if (e.target.checked) return prev.includes(opt.code) ? prev : [...prev, opt.code]; const next = prev.filter((c) => c !== opt.code); return next.length ? next : ["MEMBER"]; }); }} className="rounded accent-[var(--app-color-accent)]" />{opt.label}</label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  </div>
+                )}
+              </div>
+            )}
+            {activeTab === "records" && (
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setRecordsSubPanel("records")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${recordsSubPanel === "records" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"}`}>📋 违规记录</button>
+                <button type="button" onClick={() => setRecordsSubPanel("rules")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${recordsSubPanel === "rules" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"}`}>⚙ 触发规则</button>
+                <button type="button" onClick={() => setRecordsSubPanel("cage-grouped")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${recordsSubPanel === "cage-grouped" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"}`}>🧬 笼架联动</button>
+                {recordsSubPanel === "records" && (
+                  <>
+                    <div className="relative flex-1 max-w-xs ml-3">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--app-color-text-tertiary)]" />
+                      <input className="w-full rounded-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] pl-8 pr-3 py-2 text-sm text-[var(--app-color-text-primary)] outline-none focus:border-[var(--app-color-accent)] placeholder:text-[var(--app-color-text-tertiary)]" placeholder="搜索姓名/工号/规则…" value={recordSearch} onChange={(e) => setRecordSearch(e.target.value)} />
+                    </div>
+                    <label className="flex items-center gap-1.5 text-sm text-[var(--app-color-text-secondary)] cursor-pointer select-none shrink-0"><input type="checkbox" checked={recordOnlyActive} onChange={(e) => setRecordOnlyActive(e.target.checked)} className="rounded accent-[var(--app-color-accent)]" />仅看生效中</label>
+                    <span className="text-xs text-[var(--app-color-text-tertiary)]">{filteredRows.length}/{rows.length}</span>
+                    <AdminButton type="button" tone="secondary" size="sm" loading={isLoading} onClick={() => qc.invalidateQueries({ queryKey: violationsQueryKey })} className="ml-auto"><RefreshCw className="h-3.5 w-3.5" /></AdminButton>
+                  </>
+                )}
+              </div>
+            )}
+            {activeTab === "create" && (
+              <>
+                <button type="button" onClick={() => setCreateSubPanel("manual")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${createSubPanel === "manual" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"}`}>✋ 手动新建</button>
+                <button type="button" onClick={() => setCreateSubPanel("stranded")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${createSubPanel === "stranded" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"}`}>🤖 自动滞留检测</button>
+                <div className="relative" ref={testPanelRef}>
+                  <button type="button" onClick={() => setTestPanelOpen(!testPanelOpen)} className="rounded-md px-3 py-1.5 text-xs font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] transition-colors">🧪 手动测试</button>
+                  {testPanelOpen && (
+                    <div className="absolute left-0 top-full mt-1 z-50 w-80 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-4 space-y-3">
+                      <h4 className="text-xs font-bold text-[var(--app-color-text-primary)]">手动测试滞留检测</h4>
+                      {testPickedUser ? (
+                        <div className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 p-2"><Check className="h-4 w-4 text-indigo-600 shrink-0" /><span className="text-sm font-semibold flex-1 min-w-0 truncate">{testPickedUser.name}</span><AdminButton type="button" tone="secondary" size="sm" onClick={() => setTestPickedUser(null)}>更换</AdminButton></div>
+                      ) : (
+                        <div className="relative">
+                          <input type="text" className={cn(inputBase)} placeholder="搜索姓名或工号…" value={testPersonKeyword} onKeyDown={(e) => { if (e.key === "Enter") void handleTestSearchPersonnel(testPersonKeyword); }} onChange={(e) => { const val = e.target.value; setTestPersonKeyword(val); if (testSearchTimer.current) window.clearTimeout(testSearchTimer.current); testSearchTimer.current = window.setTimeout(() => { void handleTestSearchPersonnel(val); }, 250); }} />
+                          {testSearchResult.length > 0 && !testPickedUser && (
+                            <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-[180px] overflow-y-auto rounded border bg-white shadow-lg">
+                              {testSearchResult.map((rawPerson) => { const rp = rawPerson as Record<string, unknown>; const safeId = String(rp.user_id ?? rp.userId ?? rp.id ?? "").trim(); const safeName = String(rp.name ?? "未知").trim() || safeId; return <button key={safeId} type="button" className="block w-full text-left px-2 py-1.5 text-xs hover:bg-[var(--app-color-surface-hover)]" onClick={() => { setTestPickedUser({ userId: safeId, name: safeName }); setTestPersonKeyword(`${safeName} (${safeId})`); setTestSearchResult([]); }}>{safeName} <span className="text-[10px] text-[var(--app-color-text-tertiary)]">{safeId}</span></button>; })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={testSignout} onChange={(e) => setTestSignout(e.target.checked)} className="rounded accent-[var(--app-color-accent)]" />同时执行签退</label>
+                      <AdminButton type="button" tone="primary" size="sm" loading={testRunning} disabled={!testPickedUser} className="w-full" onClick={() => { void runTestOnUser(); }}>对该人员执行检测</AdminButton>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            {activeTab === "announcement" && (
+              <>
+                <div className="relative" ref={announceSettingsRef}>
+                  <button type="button" onClick={() => setAnnounceSettingsOpen(!announceSettingsOpen)} className="rounded-md px-3 py-1.5 text-xs font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] transition-colors">⚙ 显示设置</button>
+                  {announceSettingsOpen && announceSectionRef.current && (
+                    <div className="absolute left-0 top-full mt-1 z-50 w-72 rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-4 space-y-4">
+                      <fieldset>
+                        <legend className="text-xs font-bold uppercase tracking-wider text-[var(--app-color-text-tertiary)] mb-2">启用控制</legend>
+                        <div className="space-y-2">
+                          <label className="flex items-center gap-2.5 text-sm text-[var(--app-color-text-primary)] cursor-pointer"><input type="checkbox" checked={announceSectionRef.current.settings.enabled} onChange={(e) => announceSectionRef.current?.setSettings({ ...announceSectionRef.current!.settings, enabled: e.target.checked })} className="rounded accent-[var(--app-color-accent)]" />启用扫码公告</label>
+                          <label className="flex items-center gap-2.5 text-sm text-[var(--app-color-text-primary)] cursor-pointer"><input type="checkbox" checked={announceSectionRef.current.settings.showNoticeEveryScan} onChange={(e) => announceSectionRef.current?.setSettings({ ...announceSectionRef.current!.settings, showNoticeEveryScan: e.target.checked })} className="rounded accent-[var(--app-color-accent)]" />每次扫码自动展开</label>
+                        </div>
+                      </fieldset>
+                      <fieldset>
+                        <legend className="text-xs font-bold uppercase tracking-wider text-[var(--app-color-text-tertiary)] mb-2">{SCAN_OPERATOR_ROLE_LABEL}</legend>
+                        <div className="space-y-1.5">
+                          {UNBOUND_APPLY_ROLE_OPTIONS.map((opt) => (
+                            <label key={opt.code} className="flex items-center gap-2.5 text-sm cursor-pointer"><input type="checkbox" checked={announceSectionRef.current!.settings.applyRoleCodes.includes(opt.code)} onChange={(e) => { announceSectionRef.current?.setSettings((s) => { const set = new Set(s.applyRoleCodes); if (e.target.checked) set.add(opt.code); else set.delete(opt.code); const next = Array.from(set) as UnboundApplyRoleCode[]; return { ...s, applyRoleCodes: next.length ? next : ["MEMBER"] }; }); }} className="rounded accent-[var(--app-color-accent)]" />{opt.label}</label>
+                          ))}
+                        </div>
+                      </fieldset>
+                      <div className="flex justify-end pt-2 border-t"><AdminButton type="button" tone="primary" size="sm" loading={announceSectionRef.current.settingsLoading} onClick={() => { void announceSectionRef.current!.saveSettings(); }}>保存配置</AdminButton></div>
+                    </div>
+                  )}
+                </div>
+                <div className="relative" ref={announceListRef}>
+                  <button type="button" onClick={() => { setAnnounceListOpen(!announceListOpen); if (!announceListOpen) announceSectionRef.current?.loadList(); }} className="rounded-md px-3 py-1.5 text-xs font-medium text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)] transition-colors">📋 公告列表</button>
+                  {announceListOpen && announceSectionRef.current && (
+                    <div className="absolute left-0 top-full mt-1 z-50 w-96 max-h-[60vh] overflow-y-auto rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-[var(--app-elevation-modal)] p-3">
+                      <div className="flex items-center justify-between mb-2"><span className="text-xs font-bold text-[var(--app-color-text-primary)]">公告列表</span><AdminButton type="button" tone="primary" size="sm" onClick={() => { announceSectionRef.current?.resetForm(); setAnnounceListOpen(false); }}>✏️ 新建公告</AdminButton></div>
+                      {announceSectionRef.current.listLoading ? (
+                        <p className="text-xs text-[var(--app-color-text-tertiary)] py-4 text-center">加载中…</p>
+                      ) : announceSectionRef.current.rows.length === 0 ? (
+                        <p className="text-xs text-[var(--app-color-text-tertiary)] py-4 text-center">暂无公告</p>
+                      ) : (
+                        (() => {
+                          const enabled = announceSectionRef.current.rows.filter(r => r.enabled !== false);
+                          const disabled = announceSectionRef.current.rows.filter(r => r.enabled === false);
+                          const Row = ({ r, pos }: { r: ScanPopupAnnouncementRow; pos: number }) => {
+                            const ts = getTimeStatus(r);
+                            const sm = TIME_STATUS_META[ts];
+                            const isEditing = editingSortId === r.id;
+                            const commit = (val: string) => {
+                              const n = parseInt(val, 10);
+                              if (!isNaN(n) && n > 0 && n !== pos && n <= enabled.length) {
+                                const list = [...enabled]; const item = list.splice(list.findIndex(x => x.id === r.id), 1)[0];
+                                if (item) { list.splice(n - 1, 0, item); const reordered = list.map((x, i) => ({ ...x, sortOrder: list.length - i })); announceSectionRef.current?.setRows((prev) => prev.map((x) => reordered.find(y => y.id === x.id) || x)); reordered.forEach((x) => { import("@/api/domains/scanPopupAnnouncement.api").then(m => { m.updateScanPopupAnnouncement(x.id, { title: x.title, contentHtml: x.contentHtml ?? "", enabled: x.enabled !== false, sortOrder: x.sortOrder, publishAt: x.publishAt ?? null, expireAt: x.expireAt ?? null, status: x.status ?? "ACTIVE" }).catch(() => {}); }); }); }
+                              }
+                              setEditingSortId(null);
+                            };
+                            return (
+                              <li className={cn("flex items-center gap-2 px-2 py-2 text-xs", announceSectionRef.current?.editId === r.id && "bg-indigo-50/80")}>
+                                {r.enabled !== false && (isEditing ? (<input autoFocus className="w-8 rounded border border-[var(--app-color-accent)] bg-[var(--app-color-surface-page)] px-1 py-0.5 text-[11px] font-bold text-center outline-none" defaultValue={String(pos)} onBlur={e => commit(e.target.value)} onKeyDown={e => { if (e.key === "Enter") commit((e.target as HTMLInputElement).value); if (e.key === "Escape") setEditingSortId(null); }} />) : (<button type="button" className="text-[11px] font-bold text-[var(--app-color-text-primary)] shrink-0 w-6 text-right hover:text-[var(--app-color-accent)] cursor-pointer" onClick={() => setEditingSortId(r.id!)} title="点击修改排序">{pos}</button>))}
+                                <span className="truncate font-medium flex-1 min-w-0 text-sm">{r.title}</span>
+                                <span className={cn("inline-flex justify-center rounded-full border px-1.5 py-px text-[9px] font-medium shrink-0 min-w-[3.5rem]", sm.color)}>{sm.label}</span>
+                                <span className="text-[9px] text-amber-600 shrink-0 w-8 text-right">{(r.autoSuppressCount ?? 0) > 0 ? `${r.autoSuppressCount}人` : "0人"}</span>
+                                <button type="button" className="text-[10px] text-[var(--app-color-accent)] hover:underline shrink-0" onClick={() => { announceSectionRef.current?.pickRow(r); setAnnounceListOpen(false); }}>编辑</button>
+                                <button type="button" className="text-[10px] text-red-500 hover:underline shrink-0" onClick={() => { void announceSectionRef.current?.onDelete(r.id); }}>删除</button>
+                              </li>
+                            );
+                          };
+                          return (
+                            <ul className="divide-y divide-[var(--twin-hairline)]">
+                              {enabled.length > 0 && (<li className="px-2 py-1.5 text-[10px] font-bold text-[var(--app-color-text-tertiary)] uppercase tracking-wider">已启用 · {enabled.length}</li>)}
+                              {enabled.map((r, i) => <Row key={r.id} r={r} pos={i + 1} />)}
+                              {disabled.length > 0 && (<li className="px-2 py-1.5 text-[10px] font-bold text-[var(--app-color-text-tertiary)] uppercase tracking-wider border-t-2 border-[var(--app-color-border-strong)]">未启用 · {disabled.length}</li>)}
+                              {disabled.map(r => <Row key={r.id} r={r} pos={0} />)}
+                            </ul>
+                          );
+                        })()
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            {activeTab === "cage-linkage" && (
+              <>
+                <span className="text-[var(--app-color-border-default)] mx-1">|</span>
+                <button type="button" onClick={() => setCageSubPanel("rules")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${cageSubPanel === "rules" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}>⚙️ 规则配置</button>
+                <button type="button" onClick={() => setCageSubPanel("submit")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${cageSubPanel === "submit" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)]"}`}>✋ 提交违规</button>
+              </>
+            )}
           </div>
         </AdminFormCard>
 
@@ -1145,7 +1443,9 @@ export default function AdminStudentViolationsPage() {
           activeTab={activeTab}
           className="admin-violations-tab-panel"
         >
-      <ScanPopupAnnouncementSection />
+      <div className="rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
+            <ScanPopupAnnouncementSection ref={announceSectionRef} />
+          </div>
         </AdminTabPanel>
 
         <AdminTabPanel
@@ -1154,6 +1454,7 @@ export default function AdminStudentViolationsPage() {
           activeTab={activeTab}
           className="admin-violations-tab-panel"
         >
+        {createSubPanel === "manual" && (
         <AdminFormCard
           title="✋ 手动新建"
           description="单人锁定或按课题组批量勾选成员；提交后扫码侧按每人最新 ACTIVE 展示。"
@@ -1539,8 +1840,11 @@ export default function AdminStudentViolationsPage() {
           </div>
           </div>
         </AdminFormCard>
+        )}
 
         {/* ---- Auto-stranded config ---- */}
+        {createSubPanel === "stranded" && (
+        <>
         <AdminFormCard
           title="🤖 每日自动滞留检测（一道·违规公告）"
           description="每日定时检测未豁免且仍在楼内的滞留人员，自动创建违规记录并通过扫码公告通知。执行时刻请在「定时管理 → 冻结联动任务 → 滞留·未豁免人员自动违规（一道）」配置。"
@@ -1791,6 +2095,8 @@ export default function AdminStudentViolationsPage() {
             </div>
           </div>
         </AdminFormCard>
+        </>
+        )}
         </AdminTabPanel>
 
         <AdminTabPanel
@@ -1799,10 +2105,11 @@ export default function AdminStudentViolationsPage() {
           activeTab={activeTab}
           className="admin-violations-tab-panel"
         >
-          {isLoading ? (
+          {recordsSubPanel === "records" && (
+            isLoading ? (
             <div className="flex min-h-[200px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">加载中…</div>
-          ) : rows.length === 0 ? (
-            <div className="flex min-h-[160px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">暂无违规记录</div>
+          ) : filteredRows.length === 0 ? (
+            <div className="flex min-h-[160px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">{rows.length === 0 ? "暂无违规记录" : "无匹配记录"}</div>
           ) : (
             <div>
             <table className="w-full min-w-max text-left text-sm whitespace-nowrap border-collapse">
@@ -1813,6 +2120,7 @@ export default function AdminStudentViolationsPage() {
                   <th className="whitespace-nowrap px-3 py-2">规则</th>
                   <th className="whitespace-nowrap px-3 py-2">状态</th>
                   <th className="whitespace-nowrap px-3 py-2">来源</th>
+                  <th className="whitespace-nowrap px-3 py-2">笼架</th>
                   <th className="whitespace-nowrap px-3 py-2" title="创建时勾选的「立即禁止扫码进入」开关">
                     立即禁入
                   </th>
@@ -1825,7 +2133,7 @@ export default function AdminStudentViolationsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => {
+                {filteredRows.map((r) => {
                   const imgs = parseRowImageUrls(r);
                   const st = violationStatusLabel(r.status);
                   return (
@@ -1857,11 +2165,23 @@ export default function AdminStudentViolationsPage() {
                           <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
                             🤖 自动·滞留检测
                           </span>
+                        ) : r.source === "CAGE_STATUS" ? (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                            🧬 笼架联动
+                          </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-[11px] font-medium text-neutral-600">
                             ✋ 手动
                           </span>
                         )}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-[var(--twin-body)]">
+                        {r.cageViolationId != null && r.cageParentPosition ? (
+                          <span className="inline-flex items-center gap-1" title={`父记录 #${r.cageViolationId}: ${r.cageParentGroup ?? "-"} @ ${r.cageParentPosition}`}>
+                            <span className="text-[10px]">🧬</span>
+                            {r.cageParentPosition}
+                          </span>
+                        ) : "—"}
                       </td>
                       <td className="px-3 py-2 text-xs">
                         {violationImmediateForbidEnter(r.forbidEnter) ? "是" : "否"}
@@ -1903,6 +2223,167 @@ export default function AdminStudentViolationsPage() {
               </tbody>
             </table>
             </div>
+          ))}
+          {recordsSubPanel === "rules" && <ViolationRuleManager />}
+          {recordsSubPanel === "cage-grouped" && (
+            <div>
+              <AdminTableShell loading={cageRecsLoading} empty={!cageRecsLoading && cageGroups.length === 0} emptyMessage="暂无笼架违规记录">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--app-color-border-default)] text-xs text-[var(--app-color-text-tertiary)]">
+                      <th className="py-2 px-3">课题组</th>
+                      <th className="py-2 px-3">笼位/状态</th>
+                      <th className="py-2 px-3">校区</th>
+                      <th className="py-2 px-3">成员</th>
+                      <th className="py-2 px-3">最近触发</th>
+                      <th className="py-2 px-3 whitespace-nowrap">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cageGroups.flatMap((grp) => {
+                      const isExpanded = cageGroupExpanded === grp.groupName;
+                      const activeParents = grp.parents.filter(p => p.status === "ACTIVE");
+                      const memberCount = grp.parents.reduce((s, p) => s + (p.members?.length ?? 0), 0);
+                      const latestTime = grp.parents.reduce((max, p) => {
+                        const t = p.triggeredAt ?? ""; return t > max ? t : max;
+                      }, "");
+                      const groupRow = (
+                        <tr key={grp.groupName}
+                            className={`border-b border-[var(--app-color-border-default)] ${isExpanded ? "bg-[var(--app-color-surface-hover)]" : "hover:bg-[var(--app-color-surface-hover)]"}`}>
+                          <td className="py-2 px-3">
+                            <span className="font-semibold text-[var(--app-color-text-primary)]">{grp.groupName}</span>
+                            {(() => {
+                              const count = grp.parents.reduce((s, p) => s + (cageMemberCounts[p.id] ?? 0), 0);
+                              return count > 0 ? (
+                                <span className="ml-1.5 inline-flex items-center rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] font-medium text-rose-600">{count} 人</span>
+                              ) : null;
+                            })()}
+                          </td>
+                          <td className="py-2 px-3 text-xs text-[var(--app-color-text-secondary)]">
+                            {(() => {
+                              const labels = [...new Set(grp.parents.map(p => STATUS_LABEL_MAP[p.statusCode] ?? p.statusCode))];
+                              return labels.join("、");
+                            })()}
+                          </td>
+                          <td className="py-2 px-3 text-xs text-[var(--app-color-text-secondary)]">
+                            {(() => { const locs = [...new Set(grp.parents.map(p => [p.campusName, p.roomName].filter(Boolean).join("/")).filter(Boolean))]; return locs.slice(0, 2).join("；") + (locs.length > 2 ? " …" : "") || "-"; })()}
+                          </td>
+                          <td className="py-2 px-3 text-xs text-[var(--app-color-text-secondary)]">
+                            {(() => {
+                              const total = grp.parents.reduce((s, p) => s + (cageMemberCounts[p.id] ?? 0), 0);
+                              return total > 0 ? `${total} 人` : "...";
+                            })()}
+                          </td>
+                          <td className="py-2 px-3 text-xs text-[var(--app-color-text-tertiary)]">{latestTime ? latestTime.slice(0, 16) : "-"}</td>
+                          <td className="py-2 px-3 whitespace-nowrap">
+                            <div className="flex items-center gap-1">
+                              <AdminButton size="sm" tone="secondary" onClick={(e) => { e.stopPropagation(); toggleCageGroup(grp.groupName); }}>
+                                <Pencil className="w-3.5 h-3.5 mr-0.5" />{isExpanded ? "收起" : "编辑"}
+                              </AdminButton>
+                              {activeParents.length > 0 && (
+                                <AdminButton size="sm" tone="secondary" className="text-emerald-700" disabled={busyGroup != null} onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!confirm(`确定解除「${grp.groupName}」下全部 ${activeParents.length} 条生效中的违规记录？`)) return;
+                                  setBusyGroup(grp.groupName);
+                                  try {
+                                    for (const p of activeParents) { try { await clearCageStatusViolation(p.id); } catch {} }
+                                    setCageMemberCounts(prev => { const n = { ...prev }; for (const p of activeParents) n[p.id] = 0; return n; });
+                                    toast.success("已全部解除");
+                                    qc.invalidateQueries({ queryKey: ["cage-status-violations"] });
+                                    qc.invalidateQueries({ queryKey: ["studentViolations"] });
+                                  } finally { setBusyGroup(null); }
+                                }}><Ban className="w-3 h-3 mr-0.5" />解除</AdminButton>
+                              )}
+                              <AdminButton size="sm" tone="destructive" disabled={busyGroup != null} onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!confirm(`确定删除「${grp.groupName}」下全部 ${grp.parents.length} 条记录？不可恢复。`)) return;
+                                setBusyGroup(grp.groupName);
+                                try {
+                                  for (const p of grp.parents) { try { await deleteCageStatusViolation(p.id); } catch {} }
+                                  setCageMemberCounts(prev => { const n = { ...prev }; for (const p of grp.parents) n[p.id] = 0; return n; });
+                                  toast.success("已全部删除");
+                                  qc.invalidateQueries({ queryKey: ["cage-status-violations"] });
+                                  qc.invalidateQueries({ queryKey: ["studentViolations"] });
+                                } finally { setBusyGroup(null); }
+                              }}><Trash2 className="w-3 h-3 mr-0.5" />删除</AdminButton>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                      if (!isExpanded) return [groupRow];
+                      // 展开行：紧跟在课题组行下方
+                      const members = cageGroupMembers;
+                      const isLoading = cageGroupLoading;
+                      const expandRow = (
+                        <tr key={`${grp.groupName}-detail`}>
+                          <td colSpan={6} className="p-0 border-b border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)]">
+                            {isLoading ? (
+                              <div className="px-4 py-4 text-xs text-[var(--app-color-text-tertiary)]">加载成员中…</div>
+                            ) : members.length === 0 ? (
+                              <div className="px-4 py-4 text-xs text-[var(--app-color-text-tertiary)]">暂无成员记录</div>
+                            ) : (
+                              <div className="p-4">
+                                <table className="w-full text-left text-sm">
+                                    <thead>
+                                      <tr className="border-b border-[var(--app-color-border-default)] text-xs text-[var(--app-color-text-tertiary)]">
+                                        <th className="py-1.5 px-2">姓名</th>
+                                        <th className="py-1.5 px-2">笼位</th>
+                                        <th className="py-1.5 px-2">状态类型</th>
+                                        <th className="py-1.5 px-2">违规状态</th>
+                                        <th className="py-1.5 px-2">创建时间</th>
+                                        <th className="py-1.5 px-2">操作</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {members.flatMap(({ parentId, members: mems }) => {
+                                        const parent = cageRecords.find(r => r.id === parentId);
+                                        const statusLabel = STATUS_LABEL_MAP[parent?.statusCode ?? ""] ?? parent?.statusCode ?? "-";
+                                        return (mems ?? []).map(m => (
+                                          <tr key={m.violationId} className="border-b border-[var(--app-color-border-default)] hover:bg-[var(--app-color-surface-hover)]">
+                                            <td className="py-1.5 px-2 font-medium text-[var(--app-color-text-primary)]">{m.displayName ?? m.userId}</td>
+                                            <td className="py-1.5 px-2 text-xs text-[var(--app-color-text-secondary)]">{parent?.positionLabel ?? "-"}</td>
+                                            <td className="py-1.5 px-2 text-xs">{statusLabel}</td>
+                                            <td className="py-1.5 px-2">
+                                              <span className={m.status === "ACTIVE" ? "text-rose-600 font-medium text-xs" : "text-emerald-600 text-xs"}>
+                                                {m.status === "ACTIVE" ? "生效中" : m.status === "CLEARED" ? "已解除" : m.status === "EXPIRED" ? "已过期" : m.status === "SUPERSEDED" ? "已覆盖" : m.status}
+                                              </span>
+                                            </td>
+                                            <td className="py-1.5 px-2 text-xs text-[var(--app-color-text-tertiary)]">{m.createdAt?.slice(0, 16) ?? "-"}</td>
+                                            <td className="py-1.5 px-2">
+                                              <div className="flex items-center gap-1">
+                                                <AdminButton size="sm" tone="secondary" onClick={() => {
+                                                  const match = rows.find(r => r.id === m.violationId);
+                                                  if (match) openEdit(match);
+                                                  else toast.error("未在列表中找到此记录，请刷新后重试");
+                                                }}><Pencil className="w-3 h-3 mr-0.5" />编辑</AdminButton>
+                                                {m.status === "ACTIVE" && (
+                                                  <AdminButton size="sm" tone="secondary" className="text-emerald-700" disabled={busyGroup === cageGroupExpanded}
+                                                    onClick={() => { if (confirm("确定解除此违规？")) { clearStudentViolation(m.violationId).then(() => { toast.success("已解除"); setCageMemberCounts(prev => { const n = { ...prev }; if (n[parentId] > 0) n[parentId]--; return n; }); qc.invalidateQueries({ queryKey: ["cage-status-violations"] }); toggleCageGroup(cageGroupExpanded!); }).catch(e => toast.error(e?.message || "解除失败")); } }}>
+                                                    <Ban className="w-3 h-3 mr-0.5" />解除
+                                                  </AdminButton>
+                                                )}
+                                                <AdminButton size="sm" tone="destructive" disabled={busyGroup === cageGroupExpanded}
+                                                  onClick={() => { if (confirm("确定删除此记录？不可恢复。")) { deleteStudentViolation(m.violationId).then(() => { toast.success("已删除"); setCageMemberCounts(prev => { const n = { ...prev }; if (n[parentId] > 0) n[parentId]--; return n; }); qc.invalidateQueries({ queryKey: ["cage-status-violations"] }); toggleCageGroup(cageGroupExpanded!); }).catch(e => toast.error(e?.message || "删除失败")); } }}>
+                                                  <Trash2 className="w-3 h-3 mr-0.5" />删除
+                                                </AdminButton>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ));
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                      return [groupRow, expandRow];
+                    })}
+                  </tbody>
+                </table>
+              </AdminTableShell>
+            </div>
           )}
         </AdminTabPanel>
 
@@ -1927,21 +2408,12 @@ export default function AdminStudentViolationsPage() {
         </AdminTabPanel>
 
         <AdminTabPanel
-          id="violation-page-panel-rules"
-          tabId="rules"
-          activeTab={activeTab}
-          className="admin-violations-tab-panel"
-        >
-          <ViolationRuleManager />
-        </AdminTabPanel>
-
-        <AdminTabPanel
           id="violation-page-panel-cage-linkage"
           tabId="cage-linkage"
           activeTab={activeTab}
           className="admin-violations-tab-panel"
         >
-          <CageLinkageTab />
+          <CageLinkageTab subPanel={cageSubPanel} />
         </AdminTabPanel>
 
         <AdminTabPanel

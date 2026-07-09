@@ -7,7 +7,7 @@ import {
   type NoticeKind,
 } from "./scanPopupTheme";
 
-export type ViolationNoticeKind = "violation" | "unbound";
+export type ViolationNoticeKind = "violation" | "unbound" | "cage-notice";
 
 type IslandProps = {
   panelOpen?: boolean;
@@ -99,7 +99,8 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
       ? Boolean(props.bundle?.showNoticeEveryScan)
       : Boolean(notice?.showNoticeEveryScan);
 
-  const isViolation = kind === "violation";
+  const isViolation = kind === "violation" || kind === "cage-notice";
+  const isCageNotice = kind === "cage-notice";
   const locked = Boolean(notice?.enterLocked);
   const remaining = isViolation ? notice?.remainingEnterAllowance : undefined;
 
@@ -152,8 +153,8 @@ export function ScanPopupNoticeBanner(props: ScanPopupNoticeBannerProps) {
           ) : null}
         </span>
         <span className="min-w-0 flex-1 text-left">
-          <span className="scan-notice-island-tag mb-0.5 block w-fit">{meta.islandTag}</span>
-          <span className="scan-notice-island-label">{islandLabel}</span>
+          <span className="scan-notice-island-tag mb-0.5 block w-fit">{isCageNotice ? "Cage" : meta.islandTag}</span>
+          <span className="scan-notice-island-label">{isCageNotice ? (panelOpen ? "详情已展开 · 点我收起" : `${(notice?.ruleName?.replace("[CAGE]", "") || "笼位处理提示")} · 点我查看`) : islandLabel}</span>
         </span>
         {remaining != null ? (
           <span className="scan-notice-island-badge hidden shrink-0 px-2 py-0.5 text-[10px] sm:inline">
