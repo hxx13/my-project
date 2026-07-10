@@ -16,9 +16,9 @@ export const SOCKET_IO_CLIENT_OPTIONS: Partial<ManagerOptions> = {
     autoConnect: true,
     reconnection: true,
     reconnectionAttempts: Infinity,
-    reconnectionDelay: 2000,
+    reconnectionDelay: 500,
     reconnectionDelayMax: 15000,
-    timeout: 20000,
+    timeout: 10000,
 };
 
 /**

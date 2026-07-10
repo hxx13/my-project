@@ -5,6 +5,9 @@ let refreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
 let logoutDispatched = false;
 
+/** 用户友好的登录过期提示 */
+const LOGIN_EXPIRED_MSG = "登录已过期，请重新登录";
+
 /** 强制登出：清除存储 → 通知其他模块(WebSocket等) → 跳转登录页 */
 function forceLogout() {
     const portal = authStorage.getLoginPortal();
@@ -59,7 +62,7 @@ export function attachTokenRefreshInterceptor(
 
             if (config.url?.includes("/api/auth/token/refresh")) {
                 forceLogout();
-                return Promise.reject(error);
+                return Promise.reject(new Error(LOGIN_EXPIRED_MSG));
             }
 
             if (!refreshing) {
@@ -75,7 +78,7 @@ export function attachTokenRefreshInterceptor(
                     return instance(config);
                 }
                 forceLogout();
-                return Promise.reject(error);
+                return Promise.reject(new Error(LOGIN_EXPIRED_MSG));
             } finally {
                 refreshing = false;
                 refreshPromise = null;

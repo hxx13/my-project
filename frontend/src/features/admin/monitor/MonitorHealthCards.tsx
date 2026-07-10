@@ -60,6 +60,27 @@ function findItem(items: HealthItem[], label: string): HealthItem | undefined {
   return items.find((i) => i.label === label);
 }
 
+/** channel → 中文展示名 */
+function channelLabel(channel: string): string {
+  switch (channel) {
+    case "mobile":  return "H5 移动端";
+    case "student": return "学生端 H5";
+    default:        return "Web 后台";
+  }
+}
+
+/** channel → 徽章样式 */
+function channelBadgeClass(channel: string): string {
+  switch (channel) {
+    case "mobile":
+      return "bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)]";
+    case "student":
+      return "bg-[var(--app-color-feedback-info-soft)] text-[var(--app-color-feedback-info)]";
+    default:
+      return "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]";
+  }
+}
+
 /** 将后端 Spring Boot detail "0d 12h 5m 端口:8080" 转为 "运行 0d 12h 5m · 端口 8080" */
 function formatSpringDetail(detail: string): string {
   return "运行 " + detail.replace("端口:", "· 端口 ");
@@ -134,7 +155,7 @@ function MysqlCard({ item }: { item: HealthItem }) {
 
 function SocketIoCard({ item }: { item: HealthItem }) {
   const detail = item.totalClients != null
-    ? item.totalClients + " 客户端 (Web: " + (item.webClients ?? 0) + ", Mobile: " + (item.mobileClients ?? 0) + ")"
+    ? item.totalClients + " 客户端 (Web: " + (item.webClients ?? 0) + ", 学生H5: " + (item.studentClients ?? 0) + ", Mobile: " + (item.mobileClients ?? 0) + ")"
     : item.detail;
 
   return (
@@ -197,36 +218,42 @@ function NginxCard({ item }: { item: HealthItem }) {
 // ═══════════════════════════════════════════
 
 export function ActiveSessionsSection({ sessions }: { sessions: SessionSnapshot }) {
-  const top5 = sessions.socketClients.slice(0, 5);
+  const clients = sessions.socketClients;
 
   return (
     <section>
       <h3 className="mb-3 text-sm font-semibold text-[var(--app-color-text-secondary)]">
         活跃连接
       </h3>
-      <div className="rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-sm">
-        {/* 统计摘要 */}
-        <div className="flex items-center gap-6 mb-3">
+      <div className="rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] p-5 shadow-sm flex flex-col max-h-[480px]">
+        {/* 统计摘要 — shrink-0，始终可见 */}
+        <div className="shrink-0 flex items-center gap-6 mb-3">
           <div className="flex flex-col">
             <span className="text-2xl font-bold text-[var(--app-color-text-primary)]">{sessions.totalClients}</span>
             <span className="text-xs text-[var(--app-color-text-tertiary)]">总连接数</span>
           </div>
           <div className="flex flex-col">
             <span className="text-lg font-semibold text-[var(--app-color-text-primary)]">{sessions.webCount}</span>
-            <span className="text-xs text-[var(--app-color-text-tertiary)]">Web</span>
+            <span className="text-xs text-[var(--app-color-text-tertiary)]">Web 后台</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-lg font-semibold text-[var(--app-color-text-primary)]">{sessions.studentCount ?? 0}</span>
+            <span className="text-xs text-[var(--app-color-text-tertiary)]">学生端 H5</span>
           </div>
           <div className="flex flex-col">
             <span className="text-lg font-semibold text-[var(--app-color-text-primary)]">{sessions.mobileCount}</span>
-            <span className="text-xs text-[var(--app-color-text-tertiary)]">Mobile</span>
+            <span className="text-xs text-[var(--app-color-text-tertiary)]">H5 移动端</span>
           </div>
+          <span className="ml-auto text-xs text-[var(--app-color-text-tertiary)]">
+            共 {clients.length} 个客户端
+          </span>
         </div>
 
-        {/* 客户端列表 */}
-        {top5.length > 0 ? (
-          <div>
-            <p className="text-xs font-medium text-[var(--app-color-text-tertiary)] mb-2">最近客户端</p>
+        {/* 客户端列表 — flex-1 overflow-auto，超出时滚动 */}
+        {clients.length > 0 ? (
+          <div className="flex-1 min-h-0 overflow-auto overscroll-y-contain">
             <ul className="space-y-1.5">
-              {top5.map((c, i) => (
+              {clients.map((c, i) => (
                 <li key={i} className="flex items-center gap-2 text-xs text-[var(--app-color-text-secondary)]">
                   <span className="font-mono">{c.ip}</span>
                   {c.userName ? (
@@ -235,12 +262,10 @@ export function ActiveSessionsSection({ sessions }: { sessions: SessionSnapshot 
                     <span className="text-[var(--app-color-text-tertiary)]">{c.userId}</span>
                   ) : null}
                   <span className={cn(
-                    "ml-auto rounded px-1.5 py-0.5 text-[11px]",
-                    c.channel === "mobile"
-                      ? "bg-[var(--app-color-feedback-warning-soft)] text-[var(--app-color-feedback-warning)]"
-                      : "bg-[var(--app-color-surface-hover)] text-[var(--app-color-text-tertiary)]",
+                    "ml-auto shrink-0 rounded px-1.5 py-0.5 text-[11px]",
+                    channelBadgeClass(c.channel),
                   )}>
-                    {c.channel === "mobile" ? "Mobile" : "Web"}
+                    {channelLabel(c.channel)}
                   </span>
                 </li>
               ))}

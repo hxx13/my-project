@@ -171,6 +171,7 @@ public class MonitorController {
             m.put("totalClients", 0);
             m.put("webClients", 0);
             m.put("mobileClients", 0);
+            m.put("studentClients", 0);
             m.put("clients", Collections.emptyList());
         } else {
             try {
@@ -178,6 +179,7 @@ public class MonitorController {
                 int total = allClients.size();
                 int webCount = 0;
                 int mobileCount = 0;
+                int studentCount = 0;
                 List<Map<String, Object>> clientList = new ArrayList<>();
                 int idx = 0;
                 for (SocketIOClient client : allClients) {
@@ -185,6 +187,8 @@ public class MonitorController {
                     String channel = client.getHandshakeData().getSingleUrlParam("channel");
                     if ("mobile".equals(channel)) {
                         mobileCount++;
+                    } else if ("student".equals(channel)) {
+                        studentCount++;
                     } else {
                         webCount++;
                     }
@@ -227,6 +231,7 @@ public class MonitorController {
                 m.put("totalClients", total);
                 m.put("webClients", webCount);
                 m.put("mobileClients", mobileCount);
+                m.put("studentClients", studentCount);
                 m.put("clients", clientList);
             } catch (Exception e) {
                 m.put("status", "DOWN");
@@ -235,6 +240,7 @@ public class MonitorController {
                 m.put("totalClients", 0);
                 m.put("webClients", 0);
                 m.put("mobileClients", 0);
+                m.put("studentClients", 0);
                 m.put("clients", Collections.emptyList());
             }
         }
@@ -314,6 +320,7 @@ public class MonitorController {
         int total = 0;
         int webCount = 0;
         int mobileCount = 0;
+        int studentCount = 0;
 
         if (socketIOServer != null) {
             try {
@@ -327,6 +334,8 @@ public class MonitorController {
                     String channel = client.getHandshakeData().getSingleUrlParam("channel");
                     if ("mobile".equals(channel)) {
                         mobileCount++;
+                    } else if ("student".equals(channel)) {
+                        studentCount++;
                     } else {
                         webCount++;
                     }
@@ -384,6 +393,7 @@ public class MonitorController {
         data.put("totalClients", total);
         data.put("webCount", webCount);
         data.put("mobileCount", mobileCount);
+        data.put("studentCount", studentCount);
         return Result.success(data);
     }
 

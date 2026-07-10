@@ -27,6 +27,7 @@ export interface HealthItem {
   totalClients?: number;
   webClients?: number;
   mobileClients?: number;
+  studentClients?: number;
   clients?: SocketClientInfo[];
 }
 
@@ -123,6 +124,7 @@ export interface SessionSnapshot {
   totalClients: number;
   webCount: number;
   mobileCount: number;
+  studentCount: number;
 }
 
 // ═══════════════════════════════════════════

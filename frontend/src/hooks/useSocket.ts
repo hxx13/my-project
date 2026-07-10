@@ -50,9 +50,17 @@ export const useSocket = () => {
             // 🔑 区分两类错误：
             //   ① 网络/服务器不可达 → 不干预，交给 Socket.IO 内置无限重连
             //   ② 认证失败（token 过期被服务端拒绝）→ 静默刷新 token，但不中断重连循环
+            //
+            // ⚠️ 为什么把 "websocket error" / "transport error" 也当认证错误？
+            // transports: ["websocket"] 模式下，服务端返回 HTTP 401 拒绝 WebSocket 升级时，
+            // 浏览器 WebSocket API 不暴露 HTTP 状态码给 JavaScript，engine.io-client 只能
+            // 收到一个泛化的 "websocket error"。因此无法区分「服务器宕机」和「认证被拒」。
+            // 解决方案：看到这两种错误时也尝试刷新 token（最多 3 次，有并发保护）。
             const isAuthError =
                 msg.includes('not authorized') ||
                 msg.includes('unauthorized') ||
+                msg.includes('websocket error') ||   // WebSocket-only 无法读取 HTTP 401
+                msg.includes('transport error') ||   // 同上
                 (err as any)?.data === 'not authorized';
 
             if (!isAuthError) {
@@ -120,7 +128,19 @@ export const useSocket = () => {
         };
         window.addEventListener("AUTH_FORCE_LOGOUT", handleForceLogout);
 
+        // ── 页面恢复可见时立即重连 ──
+        // 后台标签页 setTimeout 节流会导致重连退避极度缓慢。
+        // 用户切回标签页时立即尝试重连，避免错过广播事件。
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && !socketInstance.connected) {
+                console.log("[WebSocket] 页面恢复可见，立即尝试重连…");
+                socketInstance.connect();
+            }
+        };
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
         return () => {
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
             window.removeEventListener("AUTH_FORCE_LOGOUT", handleForceLogout);
             socketInstance.disconnect();
         };

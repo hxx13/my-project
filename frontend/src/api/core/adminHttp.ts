@@ -40,6 +40,10 @@ adminHttp.interceptors.response.use(
     return response;
   },
   (error: AxiosError<Record<string, unknown>>) => {
+    // 401 统一返回用户友好提示，不泄露后端技术细节
+    if (error.response?.status === 401) {
+      return Promise.reject(new Error("登录已过期，请重新登录"));
+    }
     const data = (error.response?.data ?? {}) as Record<string, unknown>;
     const code = data.code != null ? String(data.code) : "";
     const message =

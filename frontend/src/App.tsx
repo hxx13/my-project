@@ -8,6 +8,12 @@ import toast, { Toaster } from "react-hot-toast";
 import { Z_INDEX } from "@/constants/zIndex";
 import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS, APP_BUILD_ID } from "@/config/socketUrl";
 import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS, SOCKET_CAGE_NOTICE_ALERT } from "@/config/socketEvents";
+
+// 记录页面加载时间戳，用于防重复 reload（pending reload 机制会使重连后再次收到广播）
+const PAGE_LOAD_AT = Date.now();
+if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem('__page_load_at', String(PAGE_LOAD_AT));
+}
 import { AdminGlobalDynamicIslandLayer } from "@/components/admin/AdminGlobalDynamicIslandLayer";
 import { useCardReaderEnterGuard } from "@/components/scanner/useCardReaderEnterGuard";
 import { ScanDelayPendingAlertSync } from "@/features/scan-delay-alert/ScanDelayPendingAlertSync";
@@ -163,9 +169,17 @@ function GlobalSocketListener() {
             // 🔑 区分两类错误：
             //   ① 网络/服务器不可达 → 不干预，交给 Socket.IO 内置无限重连
             //   ② 认证失败（token 过期被服务端拒绝）→ 静默刷新 token，不中断重连循环
+            //
+            // ⚠️ 为什么把 "websocket error" / "transport error" 也当认证错误？
+            // transports: ["websocket"] 模式下，服务端返回 HTTP 401 拒绝 WebSocket 升级时，
+            // 浏览器 WebSocket API 不暴露 HTTP 状态码给 JavaScript，engine.io-client 只能
+            // 收到一个泛化的 "websocket error"。因此无法区分「服务器宕机」和「认证被拒」。
+            // 解决方案：看到这两种错误时也尝试刷新 token（最多 3 次，有并发保护）。
             const isAuthError =
                 msg.includes('not authorized') ||
                 msg.includes('unauthorized') ||
+                msg.includes('websocket error') ||   // WebSocket-only 无法读取 HTTP 401
+                msg.includes('transport error') ||   // 同上
                 (err as any)?.data === 'not authorized';
 
             if (!isAuthError) {
@@ -239,7 +253,33 @@ function GlobalSocketListener() {
         socket.on(SOCKET_TELEMETRY_ANIMAL_ROOM_SNAPSHOT_FULL, onTelemetrySnapshotFull);
 
         const onClientForceReload = (payload: { reason?: string; at?: string }) => {
+            // 🔒 防重复 reload（双重守卫）
+            // 后端 pending reload 机制会在客户端重连后补发 CLIENT_FORCE_RELOAD，
+            // 导致刚 reload 完的页面再次收到广播形成死循环。
+            const COOLDOWN_MS = 8_000;
+
+            // 守卫 1：页面加载时间 — 刚加载不足 N 秒的页面跳过
+            const pageLoadAt = sessionStorage.getItem('__page_load_at');
+            if (pageLoadAt) {
+                const pageAge = Date.now() - parseInt(pageLoadAt, 10);
+                if (pageAge < COOLDOWN_MS) {
+                    console.log("[client-reload] 页面加载仅 %d 秒，跳过重复广播", Math.round(pageAge / 1000));
+                    return;
+                }
+            }
+
+            // 守卫 2：上次 reload 时间 — N 秒内 reload 过的跳过
+            const lastReload = sessionStorage.getItem('__client_reload_at');
+            if (lastReload) {
+                const elapsed = Date.now() - parseInt(lastReload, 10);
+                if (elapsed < COOLDOWN_MS) {
+                    console.log("[client-reload] %d 秒内已 reload 过，跳过重复广播", Math.round(elapsed / 1000));
+                    return;
+                }
+            }
+
             console.log("[client-reload] 收到强制刷新广播", payload);
+            sessionStorage.setItem('__client_reload_at', String(Date.now()));
             window.location.reload();
         };
         socket.on(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
@@ -288,7 +328,19 @@ function GlobalSocketListener() {
         };
         window.addEventListener("AUTH_FORCE_LOGOUT", handleForceLogout);
 
+        // ── 页面恢复可见时立即重连 ──
+        // 浏览器对后台标签页的 setTimeout 节流（最低 60s）会导致 Socket.IO 重连退避极度缓慢。
+        // 此 handler 在用户切回标签页时绕过退避，立即发起重连，确保"同步在线页"广播能及时收到。
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && socketRef.current && !socketRef.current.connected) {
+                console.log("[数字孪生基站] 页面恢复可见，立即尝试重连…");
+                socketRef.current.connect();
+            }
+        };
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
         return () => {
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
             window.removeEventListener("AUTH_FORCE_LOGOUT", handleForceLogout);
             if (disconnectTimerRef.current) {
                 clearTimeout(disconnectTimerRef.current);
