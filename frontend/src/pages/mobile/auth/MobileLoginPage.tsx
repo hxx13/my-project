@@ -1,9 +1,8 @@
 import { useState, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { loginWeb, forgotPasswordVerify, forgotPasswordReset } from "@/api/domains/auth.api";
+import { loginWeb, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr } from "@/api/domains/auth.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { toast } from "react-hot-toast";
-import axios from "axios";
 
 export default function MobileLoginPage() {
   const navigate = useNavigate();
@@ -59,19 +58,13 @@ export default function MobileLoginPage() {
     if (!file) return;
     setQrUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await axios.post("/api/auth/forgot-password/decode-qr", formData);
-      if (res.data?.success && res.data?.data?.userId) {
-        setForgotUserId(res.data.data.userId);
-        setForgotPersonnelName(res.data.data.name || "");
-        setQrDecoded(true);
-        toast.success("二维码识别成功");
-      } else {
-        toast.error(res.data?.message || "二维码识别失败");
-      }
+      const result = await forgotPasswordDecodeQr(file);
+      setForgotUserId(result.userId);
+      setForgotPersonnelName(result.name || "");
+      setQrDecoded(true);
+      toast.success("二维码识别成功");
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || "二维码上传失败";
+      const msg = err?.response?.data?.message || err?.message || "二维码识别失败";
       toast.error(msg);
     } finally {
       setQrUploading(false);

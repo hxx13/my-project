@@ -2,7 +2,10 @@ package com.example.demo.modules.student.service;
 
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
+import com.example.demo.common.util.QrCodeUtils;
 import com.example.demo.modules.aro.dto.AroPersonnel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
 import com.example.demo.modules.auth.AuthProfileConstants;
 import com.example.demo.modules.auth.entity.User;
@@ -12,25 +15,21 @@ import com.example.demo.modules.auth.service.PasswordCredentialService;
 import com.example.demo.modules.student.dto.StudentActivateRequest;
 import com.example.demo.modules.student.dto.StudentQrVerifyResponse;
 import com.example.demo.modules.student.dto.StudentRegisterRequest;
-import com.google.zxing.BinaryBitmap;
-import com.google.zxing.MultiFormatReader;
 import com.google.zxing.NotFoundException;
-import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
-import com.google.zxing.common.HybridBinarizer;
+
+import java.io.IOException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
-import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 @Service
 public class StudentRegistrationService {
 
+    private static final Logger log = LoggerFactory.getLogger(StudentRegistrationService.class);
     private static final Pattern DIGIT_19 = Pattern.compile("\\d{19}");
 
     private final UserMapper userMapper;
@@ -55,16 +54,10 @@ public class StudentRegistrationService {
         if (file == null || file.isEmpty()) {
             return StudentQrVerifyResponse.fail("请上传二维码图片");
         }
+        log.warn("收到图片: {} ({}KB)", file.getOriginalFilename(), file.getSize() / 1024);
         try {
-            BufferedImage image = ImageIO.read(file.getInputStream());
-            if (image == null) {
-                return StudentQrVerifyResponse.fail("无法解析图片，请上传有效的二维码图片");
-            }
-            BufferedImageLuminanceSource source = new BufferedImageLuminanceSource(image);
-            HybridBinarizer binarizer = new HybridBinarizer(source);
-            BinaryBitmap bitmap = new BinaryBitmap(binarizer);
-            com.google.zxing.Result zxingResult = new MultiFormatReader().decode(bitmap);
-            String text = zxingResult.getText();
+            String text = QrCodeUtils.decode(file.getInputStream());
+            log.warn("ZXing 解码成功: {}", text);
             String userId = extract19DigitId(text);
             if (userId == null) {
                 return StudentQrVerifyResponse.fail("二维码中未找到有效的19位用户ID");
@@ -80,35 +73,25 @@ public class StudentRegistrationService {
                     personnel.getResolvedProjectGroupNames()
             );
         } catch (NotFoundException e) {
+            log.warn("ZXing 解码失败 (NotFound)");
             return StudentQrVerifyResponse.fail("二维码解析失败，请确认图片包含有效二维码");
         } catch (IOException e) {
+            log.warn("图片读取失败: {}", e.getMessage());
             return StudentQrVerifyResponse.fail("图片读取失败，请确认上传了有效的图片文件");
         } catch (Exception e) {
+            log.warn("图片处理异常: {}", e.getMessage());
             return StudentQrVerifyResponse.fail("图片处理失败，请重试");
         }
     }
 
-    /**
-     * 从文本中提取 19 位数字 ID：先正则 \d{19}，失败则取纯数字看是否恰好 19 位
-     */
     private String extract19DigitId(String text) {
-        if (!StringUtils.hasText(text)) {
-            return null;
-        }
+        if (!StringUtils.hasText(text)) return null;
         Matcher m = DIGIT_19.matcher(text);
-        if (m.find()) {
-            return m.group();
-        }
+        if (m.find()) return m.group();
         String digits = text.replaceAll("\\D", "");
-        if (digits.length() == 19) {
-            return digits;
-        }
-        return null;
+        return digits.length() == 19 ? digits : null;
     }
 
-    /**
-     * 学生注册（免邀请码，以 user_id 绑定为验证），角色设为学生
-     */
     @Transactional(rollbackFor = Exception.class)
     public Result<?> register(StudentRegisterRequest req) {
         if (req == null || !StringUtils.hasText(req.getUserId())) {
@@ -126,7 +109,6 @@ public class StudentRegistrationService {
         if (req.getPassword().length() < 6) {
             return Result.fail(400, "密码长度不能少于6位");
         }
-
         String username = req.getUsername().trim();
         if (username.length() < 3 || username.length() > 64) {
             return Result.fail(400, "用户名长度需在3-64个字符之间");
@@ -134,15 +116,10 @@ public class StudentRegistrationService {
         if (userMapper.findByUsername(username) != null) {
             return Result.fail(409, "用户名已被占用");
         }
-
-        // 二次验证 user_id 在 aro_personnel 中存在
         if (!isPersonnelExists(req.getUserId())) {
             return Result.fail(404, "ARO人员库中不存在该用户ID: " + req.getUserId());
         }
-
         String aroUserId = req.getUserId();
-
-        // 若 ARO 用户已存在 sys_user 记录，区分有无密码
         User existingUser = userMapper.findById(aroUserId);
         if (existingUser != null) {
             if (StringUtils.hasText(existingUser.getPassword())) {
@@ -151,11 +128,9 @@ public class StudentRegistrationService {
                 return Result.fail(409, "该账号已绑定但未设密码，请前往激活页面设置密码");
             }
         }
-
         String rawPwd = req.getPassword();
         String hash = passwordCredentialService.encodeForStorage(rawPwd);
         String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
-
         User user = new User();
         user.setId(aroUserId);
         user.setUsername(username);
@@ -165,21 +140,14 @@ public class StudentRegistrationService {
         user.setPasswordResetRequired(0);
         user.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
         user.setAccountSource("STUDENT");
-
         userMapper.insertUser(user);
         userMapper.updatePasswordWithPlainById(aroUserId, hash, encryptedPlain, 0);
         user = userMapper.findById(user.getId());
-        if (user == null) {
-            return Result.error("注册失败，请稍后重试");
-        }
+        if (user == null) return Result.error("注册失败，请稍后重试");
         user.setRole(authService.normalizeRole(user.getRole()));
         return authService.generateAuthResult(user);
     }
 
-    /**
-     * 学生激活（设密码）：对已存在但无密码的学生账号 UPDATE 而非 INSERT。
-     * 保留 openId、miniBindType 不动。
-     */
     @Transactional(rollbackFor = Exception.class)
     public Result<?> activate(StudentActivateRequest req) {
         if (req == null || !StringUtils.hasText(req.getUserId())) {
@@ -197,37 +165,25 @@ public class StudentRegistrationService {
         if (req.getPassword().length() < 6) {
             return Result.fail(400, "密码长度不能少于6位");
         }
-
         String username = req.getUsername().trim();
         if (username.length() < 3 || username.length() > 64) {
             return Result.fail(400, "用户名长度需在3-64个字符之间");
         }
-
         String userId = req.getUserId();
-
-        // 0. 必须在 ARO 人员库中存在
         if (!isPersonnelExists(userId)) {
             return Result.fail(404, "ARO人员库中不存在该用户ID: " + userId);
         }
-
-        // 1. 必须存在 sys_user 记录
         User existing = userMapper.findById(userId);
         if (existing == null) {
             return Result.fail(404, "未找到该学生账号，请先通过微信或管理员完成身份绑定");
         }
-
-        // 2. 已有密码 → 不允许重复激活
         if (StringUtils.hasText(existing.getPassword())) {
             return Result.fail(409, "该账号已激活，请直接登录");
         }
-
-        // 3. username 不能被其他人占用
         User byUsername = userMapper.findByUsername(username);
         if (byUsername != null && !byUsername.getId().equals(userId)) {
             return Result.fail(400, "用户名已被使用");
         }
-
-        // 4. UPDATE: 设 username + password + authProfile（保留 openId/miniBindType）
         String rawPwd = req.getPassword();
         String hash = passwordCredentialService.encodeForStorage(rawPwd);
         String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
@@ -236,23 +192,14 @@ public class StudentRegistrationService {
         existing.setAuthProfile(AuthProfileConstants.WEB_PASSWORD);
         userMapper.updateUser(existing);
         userMapper.updatePasswordWithPlainById(userId, hash, encryptedPlain, 0);
-
-        // 5. 重新查询并生成 JWT
         User updated = userMapper.findById(userId);
-        if (updated == null) {
-            return Result.error("激活失败，请稍后重试");
-        }
+        if (updated == null) return Result.error("激活失败，请稍后重试");
         updated.setRole(authService.normalizeRole(updated.getRole()));
         return authService.generateAuthResult(updated);
     }
 
-    /**
-     * 检查 ARO 人员是否存在
-     */
     public boolean isPersonnelExists(String userId) {
-        if (!StringUtils.hasText(userId)) {
-            return false;
-        }
+        if (!StringUtils.hasText(userId)) return false;
         return aroPersonnelMapper.findByUserId(userId) != null;
     }
 }

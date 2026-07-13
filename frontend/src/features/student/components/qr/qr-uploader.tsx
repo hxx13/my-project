@@ -56,7 +56,6 @@ export function QrUploader({ onVerified }: QrUploaderProps) {
 
   return (
     <div className="w-full">
-      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -65,7 +64,6 @@ export function QrUploader({ onVerified }: QrUploaderProps) {
         onChange={handleFileChange}
       />
 
-      {/* Upload area */}
       {!preview ? (
         <button
           type="button"
@@ -89,7 +87,6 @@ export function QrUploader({ onVerified }: QrUploaderProps) {
           </div>
         </button>
       ) : (
-        /* Preview + loading state */
         <div className="overflow-hidden rounded-[var(--student-radius-md)] border border-[var(--student-hairline)]">
           <img
             src={preview}
@@ -105,7 +102,6 @@ export function QrUploader({ onVerified }: QrUploaderProps) {
         </div>
       )}
 
-      {/* Error message */}
       {error && (
         <div className="mt-3 flex items-start gap-2 rounded-[var(--student-radius-sm)] bg-[var(--student-error-soft)] p-3 text-[var(--student-error)]">
           <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -113,7 +109,6 @@ export function QrUploader({ onVerified }: QrUploaderProps) {
         </div>
       )}
 
-      {/* Retry button when error + preview */}
       {error && preview && (
         <button
           type="button"

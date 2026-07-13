@@ -65,7 +65,7 @@ export interface StudentPermission {
 // ======================== 认证相关 API ========================
 
 /**
- * 上传 QR 码图片，解码并匹配 ARO 人员库
+ * 上传 QR 码图片，后端 ZXing 解码并匹配 ARO 人员库
  * POST /api/auth/register/student/verify-qr
  */
 export async function verifyQrCode(file: File): Promise<StudentQrVerifyResponse> {

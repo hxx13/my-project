@@ -112,6 +112,28 @@ export async function createPersonalRegistrationInvite(): Promise<{ id: string; 
   return response.data.data;
 }
 
+export interface ForgotPasswordDecodeQrResult {
+  userId: string;
+  name: string;
+}
+
+/** 上传 QR 码图片给后端 ZXing 解码 */
+export async function forgotPasswordDecodeQr(
+  file: File
+): Promise<ForgotPasswordDecodeQrResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await axios.post<Result<ForgotPasswordDecodeQrResult>>(
+    "/api/auth/forgot-password/decode-qr",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  if (!response.data?.success || !response.data?.data) {
+    throw new Error(response.data?.message || "二维码识别失败");
+  }
+  return response.data.data;
+}
+
 export interface ForgotPasswordVerifyResult {
   verified: boolean;
   username: string;

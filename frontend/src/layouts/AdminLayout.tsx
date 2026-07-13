@@ -86,7 +86,7 @@ import {
 import { canShowWebEntry } from "@/features/auth/pagePermissionAccess";
 import { hasMinRole } from "@/features/auth/roleAccess";
 import { adminInputClass } from "@/features/admin/adminFormUi";
-import jsQR from "jsqr";
+import { decodeQrFromFile } from "@/utils/decodeQrFromFile";
 import { AdminChromeContextMenu, type AdminChromeContextMenuPayload } from "@/features/admin/AdminChromeContextMenu";
 import {
   parseAdminNavLinkFromEventTarget,
@@ -147,31 +147,6 @@ function NavPendingBadge({ text }: { text?: string }) {
       {t}
     </span>
   );
-}
-
-/** 从图片文件中解码二维码，返回文本内容或 null */
-function decodeQrFromFile(file: File): Promise<string | null> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) { resolve(null); return; }
-        ctx.drawImage(img, 0, 0);
-        const imageData = ctx.getImageData(0, 0, img.width, img.height);
-        const code = jsQR(imageData.data, img.width, img.height);
-        resolve(code?.data ?? null);
-      };
-      img.onerror = () => resolve(null);
-      img.src = reader.result as string;
-    };
-    reader.onerror = () => resolve(null);
-    reader.readAsDataURL(file);
-  });
 }
 
 export default function AdminLayout() {
@@ -1319,10 +1294,10 @@ export default function AdminLayout() {
                     const file = inp.files?.[0];
                     if (!file) return;
                     toast.loading("识别二维码中…", { id: "qr-decode" });
-                    const text = await decodeQrFromFile(file);
+                    const qrText = await decodeQrFromFile(file);
                     toast.dismiss("qr-decode");
-                    if (text) {
-                      setAroBindUserId(text);
+                    if (qrText) {
+                      setAroBindUserId(qrText);
                       toast.success("已识别");
                     } else {
                       toast.error("未识别到二维码，请重试");

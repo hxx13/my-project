@@ -22,11 +22,8 @@ import com.example.demo.modules.auth.service.AuthService;
 import com.example.demo.modules.auth.service.PasswordCredentialService;
 import com.example.demo.modules.auth.service.StaffRegistrationService;
 import com.example.demo.modules.invite.RegistrationInviteService;
-import com.google.zxing.BinaryBitmap;
-import com.google.zxing.MultiFormatReader;
+import com.example.demo.common.util.QrCodeUtils;
 import com.google.zxing.NotFoundException;
-import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
-import com.google.zxing.common.HybridBinarizer;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,8 +39,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -305,23 +300,10 @@ public class AuthController {
             return Result.error("请上传二维码图片");
         }
         try {
-            BufferedImage image = ImageIO.read(file.getInputStream());
-            if (image == null) {
-                return Result.error("无法解析图片，请上传有效的二维码图片");
-            }
-            BufferedImageLuminanceSource source = new BufferedImageLuminanceSource(image);
-            HybridBinarizer binarizer = new HybridBinarizer(source);
-            BinaryBitmap bitmap = new BinaryBitmap(binarizer);
-            com.google.zxing.Result zxingResult = new MultiFormatReader().decode(bitmap);
-            String text = zxingResult.getText();
-            if (text == null || text.isBlank()) {
-                return Result.error("二维码内容为空");
-            }
-            // Try to extract a user ID: first check if it directly matches a personnel record
+            String text = QrCodeUtils.decode(file.getInputStream());
             String userId = text.trim();
             AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
             if (personnel == null) {
-                // Try extracting 19-digit ID as fallback
                 Pattern p19 = Pattern.compile("\\d{19}");
                 Matcher m = p19.matcher(userId);
                 if (m.find()) {
