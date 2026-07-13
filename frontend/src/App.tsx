@@ -8,6 +8,8 @@ import toast, { Toaster } from "react-hot-toast";
 import { Z_INDEX } from "@/constants/zIndex";
 import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS, APP_BUILD_ID } from "@/config/socketUrl";
 import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS, SOCKET_CAGE_NOTICE_ALERT } from "@/config/socketEvents";
+import { useClientVersionPoll, type ReloadTrigger } from "@/hooks/useClientVersionPoll";
+import { GracefulReloadBanner } from "@/components/GracefulReloadBanner";
 
 // 记录页面加载时间戳，用于防重复 reload（pending reload 机制会使重连后再次收到广播）
 const PAGE_LOAD_AT = Date.now();
@@ -94,6 +96,20 @@ function GlobalSocketListener() {
     const recoveryAttemptRef = useRef(0);
     const MAX_RECOVERY_ATTEMPTS = 3;
     const disconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // ── 客户端版本轮询 + 优雅刷新横幅 ──
+    const [reloadBanner, setReloadBanner] = useState<ReloadTrigger | null>(null);
+    const handleReloadNeeded = (trigger: ReloadTrigger) => { setReloadBanner(prev => prev ?? trigger); };
+    useClientVersionPoll(handleReloadNeeded);
+
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            setReloadBanner(detail);
+        };
+        window.addEventListener('CLIENT_RELOAD_NEEDED', handler);
+        return () => window.removeEventListener('CLIENT_RELOAD_NEEDED', handler);
+    }, []);
 
     useEffect(() => {
         if (!shouldConnect) return;
@@ -252,35 +268,27 @@ function GlobalSocketListener() {
         socket.on(SOCKET_TELEMETRY_ANIMAL_ROOM_TAG_DELTA, onTelemetryTagDelta);
         socket.on(SOCKET_TELEMETRY_ANIMAL_ROOM_SNAPSHOT_FULL, onTelemetrySnapshotFull);
 
-        const onClientForceReload = (payload: { reason?: string; at?: string }) => {
-            // 🔒 防重复 reload（双重守卫）
-            // 后端 pending reload 机制会在客户端重连后补发 CLIENT_FORCE_RELOAD，
-            // 导致刚 reload 完的页面再次收到广播形成死循环。
-            const COOLDOWN_MS = 8_000;
-
-            // 守卫 1：页面加载时间 — 刚加载不足 N 秒的页面跳过
+        const onClientForceReload = (payload: any) => {
+            // ── 冷却守卫 ──
             const pageLoadAt = sessionStorage.getItem('__page_load_at');
-            if (pageLoadAt) {
-                const pageAge = Date.now() - parseInt(pageLoadAt, 10);
-                if (pageAge < COOLDOWN_MS) {
-                    console.log("[client-reload] 页面加载仅 %d 秒，跳过重复广播", Math.round(pageAge / 1000));
-                    return;
+            if (pageLoadAt && Date.now() - parseInt(pageLoadAt, 10) < 8000) return;
+
+            // 情况 1：版本不匹配（来自 FrontendVersionGuard，连接时单发）
+            if (payload.expectedBuildId && payload.expectedBuildId !== APP_BUILD_ID) {
+                if (payload.reloadId) {
+                    sessionStorage.setItem('__last_reload_id', String(payload.reloadId));
                 }
+                setReloadBanner({ reason: 'version-mismatch', payload });
+                return;
             }
 
-            // 守卫 2：上次 reload 时间 — N 秒内 reload 过的跳过
-            const lastReload = sessionStorage.getItem('__client_reload_at');
-            if (lastReload) {
-                const elapsed = Date.now() - parseInt(lastReload, 10);
-                if (elapsed < COOLDOWN_MS) {
-                    console.log("[client-reload] %d 秒内已 reload 过，跳过重复广播", Math.round(elapsed / 1000));
-                    return;
-                }
+            // 情况 2：管理员指令（来自 ClientReloadBroadcastService 广播/pending reload）
+            const lastReloadId = parseInt(sessionStorage.getItem('__last_reload_id') || '0', 10);
+            if (payload.reloadId && payload.reloadId > lastReloadId) {
+                sessionStorage.setItem('__last_reload_id', String(payload.reloadId));
+                setReloadBanner({ reason: 'admin-command', payload });
+                return;
             }
-
-            console.log("[client-reload] 收到强制刷新广播", payload);
-            sessionStorage.setItem('__client_reload_at', String(Date.now()));
-            window.location.reload();
         };
         socket.on(SOCKET_CLIENT_FORCE_RELOAD, onClientForceReload);
 
@@ -360,7 +368,16 @@ function GlobalSocketListener() {
         };
     }, [shouldConnect, socketEpoch, addEvent, setConnected, setPieStats, queryClient]);
 
-    return null; // 它是个幽灵基站，不需要渲染任何 UI
+    return (
+        <>
+            {reloadBanner && (
+                <GracefulReloadBanner
+                    reason={reloadBanner.reason}
+                    onDismiss={() => setReloadBanner(null)}
+                />
+            )}
+        </>
+    );
 }
 
 /** 🔒 读卡器 Enter 键全局防护：capture 阶段拦截，防止读卡器连续刷卡时意外触发聚焦按钮。

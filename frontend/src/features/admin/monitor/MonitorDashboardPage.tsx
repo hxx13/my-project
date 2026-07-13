@@ -17,6 +17,7 @@ import { MonitorSkeleton } from "@/features/admin/monitor/MonitorSkeleton";
 import { MonitorStatusBar } from "@/features/admin/monitor/MonitorStatusBar";
 import { MonitorHealthCards, ActiveSessionsSection } from "@/features/admin/monitor/MonitorHealthCards";
 import { MonitorResourceGauges } from "@/features/admin/monitor/MonitorResourceGauges";
+import { ClientVersionCard } from "@/features/admin/monitor/ClientVersionCard";
 import { MonitorJobToolbar, MonitorJobTable, useJobFilter } from "@/features/admin/monitor/MonitorJobTable";
 import { MonitorActiveTimers } from "@/features/admin/monitor/MonitorActiveTimers";
 import { MonitorRecentLogFeed } from "@/features/admin/monitor/MonitorRecentLogFeed";
@@ -64,6 +65,7 @@ function OverviewTab() {
     <div className="flex flex-col gap-[var(--app-space-section-gap)]">
       {/* 健康卡片 + 资源指标 */}
       <MonitorHealthCards />
+      <ClientVersionCard />
       <MonitorResourceGauges />
       {/* 活跃连接列表 — 自然高度，由外层统一滚动 */}
       {sessions ? <ActiveSessionsSection sessions={sessions} /> : null}

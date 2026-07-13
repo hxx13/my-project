@@ -26,13 +26,34 @@ function serveModelsPlugin(): Plugin {
     }
 }
 
+// 构建时生成 build-meta.json 到静态资源目录，供后端 /api/client-version 读取
+function writeBuildMetaPlugin(): Plugin {
+    let buildId = 'dev';
+    return {
+        name: 'write-build-meta',
+        configResolved(config) {
+            // 从 define 中提取 buildId
+            const raw = config.define?.['__BUILD_ID__'];
+            if (typeof raw === 'string') {
+                try { buildId = JSON.parse(raw); } catch { buildId = raw; }
+            }
+        },
+        writeBundle(_options) {
+            const outDir = path.resolve(__dirname, '../src/main/resources/static');
+            if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+            const meta = { buildId, buildTime: new Date().toISOString() };
+            fs.writeFileSync(path.resolve(outDir, 'build-meta.json'), JSON.stringify(meta, null, 2), 'utf-8');
+        },
+    };
+}
+
 export default defineConfig(({ mode }) => ({
     define: {
         // 前端构建版本标识：生产构建用时间戳，开发模式固定 'dev'
         // WebSocket 连接时与后端 app.frontend.expected-version 比对，不一致则自动刷新页面
-        __BUILD_ID__: JSON.stringify(mode === 'production' ? `0.0.0-${Date.now()}` : 'dev'),
+        __BUILD_ID__: JSON.stringify(mode === 'production' ? `${Date.now()}` : 'dev'),
     },
-    plugins: [react(), serveModelsPlugin()],
+    plugins: [react(), serveModelsPlugin(), writeBuildMetaPlugin()],
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "./src"),

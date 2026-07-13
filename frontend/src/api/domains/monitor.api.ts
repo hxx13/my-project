@@ -191,3 +191,6 @@ export async function fetchMonitorSessions(): Promise<SessionSnapshot> {
   const res = await authHttp.get<{ data: SessionSnapshot }>("/v1/monitor/sessions");
   return unwrap(res);
 }
+
+// Re-export from clientVersion.api for convenience
+export type { ClientVersionStats, BroadcastReloadResult } from './clientVersion.api';

@@ -3,6 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS, APP_BUILD_ID } from "@/config/socketUrl";
 import { authStorage } from "@/features/auth/authStorage";
 import { doRefresh } from "@/api/core/tokenRefresh";
+import { fetchClientVersion } from '@/api/domains/clientVersion.api';
 
 export const useSocket = () => {
     const [socket, setSocket] = useState<Socket | null>(null);
@@ -116,6 +117,22 @@ export const useSocket = () => {
             console.log('🟢 [WebSocket] 重连成功! ID:', socketInstance.id);
             recoveryInProgressRef.current = false;
             recoveryAttemptRef.current = 0;
+
+            // 重连后静默检查版本：如果此期间管理员触发了 reload，轮询通道会捕获，但这里做一次主动确认
+            const clientId = (() => {
+                try { return localStorage.getItem('__client_id') || ''; } catch { return ''; }
+            })();
+            fetchClientVersion(clientId, APP_BUILD_ID, 'web').then(resp => {
+                const stored = sessionStorage.getItem('__last_reload_id');
+                const lastReloadId = stored ? parseInt(stored, 10) : 0;
+                if (resp.reloadId > lastReloadId) {
+                    console.log('[WebSocket] 重连后发现 reloadId 递增，补触发刷新');
+                    sessionStorage.setItem('__last_reload_id', String(resp.reloadId));
+                    window.dispatchEvent(new CustomEvent('CLIENT_RELOAD_NEEDED', {
+                        detail: { reason: 'admin-command' as const, payload: resp }
+                    }));
+                }
+            }).catch(() => { /* 静默失败 */ });
         });
 
         socketInstance.on('reconnect_error', (err) => {
