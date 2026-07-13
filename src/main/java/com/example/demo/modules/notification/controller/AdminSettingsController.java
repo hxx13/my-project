@@ -15,7 +15,7 @@ import com.example.demo.modules.llm.service.LlmConfigService;
 import com.example.demo.modules.notification.service.MiniProgramNotificationService;
 import com.example.demo.modules.notification.service.NotificationSettingsService;
 import com.example.demo.modules.telemetry.client.WinCcRestTagClient;
-import com.example.demo.modules.twin.common.service.ClientReloadBroadcastService;
+import com.example.demo.modules.twin.common.service.ClientVersionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,7 +29,7 @@ import java.util.Map;
 public class AdminSettingsController {
     private final NotificationSettingsService settingsService;
     private final MiniProgramNotificationService miniProgramNotificationService;
-    private final ClientReloadBroadcastService clientReloadBroadcastService;
+    private final ClientVersionService clientVersionService;
     private final DashScopeChatClient dashScopeChatClient;
     private final LlmConfigService llmConfigService;
     private final DahuaAuthService dahuaAuthService;
@@ -38,7 +38,7 @@ public class AdminSettingsController {
 
     public AdminSettingsController(NotificationSettingsService settingsService,
                                    MiniProgramNotificationService miniProgramNotificationService,
-                                   ClientReloadBroadcastService clientReloadBroadcastService,
+                                   ClientVersionService clientVersionService,
                                    DashScopeChatClient dashScopeChatClient,
                                    LlmConfigService llmConfigService,
                                    DahuaAuthService dahuaAuthService,
@@ -46,7 +46,7 @@ public class AdminSettingsController {
                                    WinCcRestTagClient winCcRestTagClient) {
         this.settingsService = settingsService;
         this.miniProgramNotificationService = miniProgramNotificationService;
-        this.clientReloadBroadcastService = clientReloadBroadcastService;
+        this.clientVersionService = clientVersionService;
         this.dashScopeChatClient = dashScopeChatClient;
         this.llmConfigService = llmConfigService;
         this.dahuaAuthService = dahuaAuthService;
@@ -126,7 +126,7 @@ public class AdminSettingsController {
     }
 
     @PostMapping("/broadcast-client-reload")
-    @Operation(summary = "通知所有已连接的前端页面强制刷新（部署新静态资源后用于同步大屏等）")
+    @Operation(summary = "通知所有已连接的前端页面强制刷新（双通道：WebSocket + HTTP 轮询）")
     public Result<?> broadcastClientReload(HttpServletRequest httpRequest) {
         Result<?> denied = requireSuperAdmin(httpRequest);
         if (denied != null) {
@@ -134,7 +134,7 @@ public class AdminSettingsController {
         }
         User currentUser = (User) httpRequest.getAttribute(AdminAuthInterceptor.CURRENT_ADMIN_USER_ATTR);
         String operatorId = currentUser != null ? currentUser.getId() : "";
-        return Result.success(clientReloadBroadcastService.broadcastForceReload(operatorId));
+        return Result.success(clientVersionService.triggerForceReload(operatorId));
     }
 
     @PostMapping("/llm/test-connection")

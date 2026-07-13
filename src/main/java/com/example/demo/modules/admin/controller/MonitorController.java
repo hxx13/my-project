@@ -10,6 +10,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.twin.common.entity.TwinAutomationLog;
 import com.example.demo.modules.twin.common.entity.TwinJobScheduleConfig;
+import com.example.demo.modules.twin.common.service.ClientVersionService;
 import com.example.demo.modules.twin.common.mapper.TwinAutomationLogMapper;
 import com.example.demo.modules.twin.common.service.JobExecutionRegistry;
 import com.example.demo.modules.twin.common.service.JobSchedulerService;
@@ -58,6 +59,7 @@ public class MonitorController {
     private final JwtTokenService jwtTokenService;
     private final UserDisplayNameService userDisplayNameService;
     private final TwinAutomationLogService twinAutomationLogService;
+    private final ClientVersionService clientVersionService;
 
     @Autowired(required = false)
     private SocketIOServer socketIOServer;
@@ -86,7 +88,8 @@ public class MonitorController {
             RestTemplateBuilder restTemplateBuilder,
             JwtTokenService jwtTokenService,
             UserDisplayNameService userDisplayNameService,
-            TwinAutomationLogService twinAutomationLogService) {
+            TwinAutomationLogService twinAutomationLogService,
+            ClientVersionService clientVersionService) {
         this.jobSchedulerService = jobSchedulerService;
         this.jobExecutionRegistry = jobExecutionRegistry;
         this.jdbcTemplate = jdbcTemplate;
@@ -99,6 +102,7 @@ public class MonitorController {
         this.jwtTokenService = jwtTokenService;
         this.userDisplayNameService = userDisplayNameService;
         this.twinAutomationLogService = twinAutomationLogService;
+        this.clientVersionService = clientVersionService;
     }
 
     // ═══════════════════════════════════════════════════════
@@ -675,6 +679,15 @@ public class MonitorController {
     // ═══════════════════════════════════════════════════════
     // 手动触发
     // ═══════════════════════════════════════════════════════
+
+    @GetMapping("/client-versions")
+    @Operation(summary = "客户端版本分布统计")
+    public Result<?> clientVersions(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return denied;
+        return Result.success(clientVersionService.getVersionStats());
+    }
 
     @PostMapping("/jobs/{jobKey}/run")
     @Operation(summary = "手动触发任务执行")

@@ -3,14 +3,15 @@ package com.example.demo.common.component;
 import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.listener.ConnectListener;
+import com.example.demo.modules.twin.common.service.ClientVersionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -27,18 +28,19 @@ public class FrontendVersionGuard {
     public static final String EVENT_CLIENT_FORCE_RELOAD = "CLIENT_FORCE_RELOAD";
 
     private final SocketIOServer socketIOServer;
+    private final ClientVersionService clientVersionService;
 
-    @Value("${app.frontend.expected-version:}")
-    private String expectedVersion;
-
-    public FrontendVersionGuard(SocketIOServer socketIOServer) {
+    public FrontendVersionGuard(SocketIOServer socketIOServer,
+                                ClientVersionService clientVersionService) {
         this.socketIOServer = socketIOServer;
+        this.clientVersionService = clientVersionService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void register() {
-        if (expectedVersion == null || expectedVersion.isBlank()) {
-            log.info("[FrontendVersionGuard] app.frontend.expected-version 未配置，跳过版本校验");
+        String expected = clientVersionService.getExpectedBuildId();
+        if (expected == null || expected.isBlank() || "unknown".equals(expected)) {
+            log.info("[FrontendVersionGuard] expectedBuildId 不可用，跳过版本校验");
             return;
         }
 
@@ -48,19 +50,19 @@ public class FrontendVersionGuard {
                 // 旧客户端未携带版本号 → 不强制刷新（向后兼容）
                 return;
             }
-            if (!expectedVersion.equals(clientVersion)) {
+            if (!expected.equals(clientVersion)) {
                 log.info("[FrontendVersionGuard] 客户端版本 {} != 期望版本 {}，通知刷新 (sessionId={})",
-                        clientVersion, expectedVersion, client.getSessionId());
-                Map<String, Object> payload = Map.of(
-                        "reason", "version-mismatch",
-                        "clientVersion", clientVersion,
-                        "expectedVersion", expectedVersion,
-                        "at", Instant.now().toString()
-                );
+                        clientVersion, expected, client.getSessionId());
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("reason", "version-mismatch");
+                payload.put("clientVersion", clientVersion);
+                payload.put("expectedBuildId", expected);
+                payload.put("reloadId", clientVersionService.getCurrentReloadId());
+                payload.put("at", Instant.now().toString());
                 client.sendEvent(EVENT_CLIENT_FORCE_RELOAD, payload);
             }
         });
 
-        log.info("[FrontendVersionGuard] 已注册版本校验 (expected={})", expectedVersion);
+        log.info("[FrontendVersionGuard] 已注册版本校验 (expected={})", expected);
     }
 }
