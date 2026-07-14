@@ -135,23 +135,21 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 result = StartupResult.failed(e.getMessage(), e);
             }
 
-            // 擦除进度行
-            System.err.print("\r" + " ".repeat(120) + "\r");
-
             double elapsed = (System.nanoTime() - phaseStart) / 1_000_000_000.0;
             String summary = result.summary() != null ? result.summary() : "";
             if (elapsed >= 0.05) summary += " (" + String.format("%.1f", elapsed) + "s)";
 
-            String statusLine;
-            if (result.success()) {
-                statusLine = CyberColor.GREEN + "✓" + CyberColor.RESET
-                        + " " + entry.name + "  " + CyberColor.GRAY + summary + CyberColor.RESET;
-            } else {
-                statusLine = CyberColor.RED + "✗" + CyberColor.RESET
-                        + " " + entry.name + "  " + CyberColor.RED + summary + CyberColor.RESET;
-            }
-            // 输出完成行（stderr，与进度同一流保证光标同步）
-            System.err.println("  " + statusLine);
+            // 进度条 100% 定格 — \r 覆盖同一行，不擦除
+            int finalDone = done.get();
+            int finalTotal = Math.max(total.get(), finalDone);
+            String bar = ProgressBar.render(finalDone, finalTotal, null);
+            String mark = result.success()
+                    ? CyberColor.GREEN + "✓" + CyberColor.RESET
+                    : CyberColor.RED + "✗" + CyberColor.RESET;
+            String statusLine = mark + " " + entry.name + " " + bar
+                    + "  " + CyberColor.GRAY + summary + CyberColor.RESET;
+            System.err.print("\r" + padRight("  " + statusLine));
+            System.err.println();
             completed.add(statusLine);
         }
 
