@@ -6,6 +6,8 @@ import com.example.demo.common.logging.banner.*;
 import com.example.demo.common.logging.model.StartupContext;
 import com.example.demo.common.logging.model.StartupResult;
 import com.example.demo.common.logging.model.StartupRunner;
+import ch.qos.logback.classic.Level;
+import com.example.demo.common.logging.registry.LogCategory;
 import com.example.demo.common.logging.registry.LogCategoryRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,8 +19,14 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.core.io.support.ResourcePatternResolver;
 
 /**
  * 启动阶段编排器 — 粘性底部状态栏 + 赛博朋克动画。
@@ -177,16 +185,102 @@ public class StartupPhaseRunner implements ApplicationRunner {
             registry.register(ann.key(), ann.loggerName(), ann.description(), level);
         }
         ensureLegacyCategories(registry);
+        registerRemainingPackages(registry);
     }
 
     private void ensureLegacyCategories(LogCategoryRegistry registry) {
-        addIfAbsent(registry, "twin", "com.example.demo.modules.twin", "孪生/门禁模块", ch.qos.logback.classic.Level.INFO);
-        addIfAbsent(registry, "telemetry", "com.example.demo.modules.telemetry", "遥测模块", ch.qos.logback.classic.Level.INFO);
-        addIfAbsent(registry, "dahua", "com.example.demo.modules.dahua", "大华模块", ch.qos.logback.classic.Level.INFO);
-        addIfAbsent(registry, "aro", "com.example.demo.modules.aro", "ARO 同步", ch.qos.logback.classic.Level.INFO);
-        addIfAbsent(registry, "accessfusion", "com.example.demo.modules.accessfusion", "门禁清洗", ch.qos.logback.classic.Level.WARN);
-        addIfAbsent(registry, "sql", "com.example.demo.modules", "SQL 语句", ch.qos.logback.classic.Level.WARN);
-        addIfAbsent(registry, "request", "org.springframework.web", "请求流量", ch.qos.logback.classic.Level.WARN);
+        // ── 现有（保留）──
+        addIfAbsent(registry, "twin", "com.example.demo.modules.twin", "孪生/门禁", Level.INFO);
+        addIfAbsent(registry, "telemetry", "com.example.demo.modules.telemetry", "遥测", Level.INFO);
+        addIfAbsent(registry, "dahua", "com.example.demo.modules.dahua", "大华", Level.INFO);
+        addIfAbsent(registry, "aro", "com.example.demo.modules.aro", "ARO同步", Level.INFO);
+        addIfAbsent(registry, "accessfusion", "com.example.demo.modules.accessfusion", "门禁清洗", Level.WARN);
+        // ⚠️ 修正: 保持 com.example.demo.modules 以覆盖全部模块的 MyBatis mapper SQL
+        addIfAbsent(registry, "sql", "com.example.demo.modules", "SQL语句", Level.WARN);
+        addIfAbsent(registry, "request", "org.springframework.web", "请求流量", Level.WARN);
+
+        // ── LLM ──
+        addIfAbsent(registry, "llm", "com.example.demo.modules.llm", "大模型/AI", Level.INFO);
+
+        // ── 业务模块（补全至 35+ 个）──
+        addIfAbsent(registry, "student", "com.example.demo.modules.student", "学生/手机端", Level.INFO);
+        addIfAbsent(registry, "analytics", "com.example.demo.modules.analytics", "数据分析", Level.INFO);
+        addIfAbsent(registry, "facerecognition", "com.example.demo.modules.facerecognition", "人脸识别", Level.INFO);
+        addIfAbsent(registry, "reportform", "com.example.demo.modules.reportform", "报表", Level.INFO);
+        addIfAbsent(registry, "material", "com.example.demo.modules.material", "物资管理", Level.INFO);
+        addIfAbsent(registry, "knowledge", "com.example.demo.modules.knowledge", "知识库", Level.INFO);
+        addIfAbsent(registry, "notification", "com.example.demo.modules.notification", "通知", Level.INFO);
+        addIfAbsent(registry, "admin", "com.example.demo.modules.admin", "系统管理", Level.INFO);
+        addIfAbsent(registry, "cageshelf", "com.example.demo.modules.cageshelf", "笼位管理", Level.INFO);
+        addIfAbsent(registry, "speech", "com.example.demo.modules.speech", "语音播报", Level.INFO);
+        addIfAbsent(registry, "auth", "com.example.demo.modules.auth", "认证", Level.INFO);
+        addIfAbsent(registry, "upload", "com.example.demo.modules.upload", "文件上传", Level.INFO);
+        addIfAbsent(registry, "mp", "com.example.demo.modules.mp", "小程序", Level.INFO);
+        addIfAbsent(registry, "facilitymaintenance", "com.example.demo.modules.facilitymaintenance", "设施维护", Level.INFO);
+        addIfAbsent(registry, "accessrule", "com.example.demo.modules.accessrule", "门禁规则", Level.INFO);
+        addIfAbsent(registry, "scanner", "com.example.demo.modules.scanner", "扫码设备", Level.INFO);
+        addIfAbsent(registry, "swipealert", "com.example.demo.modules.swipealert", "刷卡告警", Level.INFO);
+        addIfAbsent(registry, "common", "com.example.demo.common", "公共组件", Level.WARN);
+
+        // ── 审查补全: 缺失模块 ──
+        addIfAbsent(registry, "adminfile", "com.example.demo.modules.adminfile", "管理文件", Level.INFO);
+        addIfAbsent(registry, "asset", "com.example.demo.modules.asset", "资产管理", Level.INFO);
+        addIfAbsent(registry, "chat", "com.example.demo.modules.chat", "即时通讯", Level.INFO);
+        addIfAbsent(registry, "docs", "com.example.demo.modules.docs", "文档管理", Level.INFO);
+        addIfAbsent(registry, "invite", "com.example.demo.modules.invite", "邀请管理", Level.INFO);
+        addIfAbsent(registry, "me", "com.example.demo.modules.me", "个人中心", Level.INFO);
+        addIfAbsent(registry, "order", "com.example.demo.modules.order", "订单管理", Level.INFO);
+        addIfAbsent(registry, "pagepermission", "com.example.demo.modules.pagepermission", "页面权限", Level.INFO);
+        addIfAbsent(registry, "policy", "com.example.demo.modules.policy", "策略管理", Level.INFO);
+        addIfAbsent(registry, "repair", "com.example.demo.modules.repair", "报修管理", Level.INFO);
+        addIfAbsent(registry, "roommapping", "com.example.demo.modules.roommapping", "房间映射", Level.INFO);
+        addIfAbsent(registry, "site", "com.example.demo.modules.site", "站点管理", Level.INFO);
+        addIfAbsent(registry, "supplies", "com.example.demo.modules.supplies", "耗材管理", Level.INFO);
+    }
+
+    /**
+     * 使用 classpath 扫描自动发现 com.example.demo.modules 下未被手动/注解注册的子包。
+     * 适用于开发环境（filesystem）和生产环境（JAR），确保自动发现始终生效。
+     * 日志级别默认 INFO，可通过 sys_system_config 动态调整。
+     */
+    private void registerRemainingPackages(LogCategoryRegistry registry) {
+        Set<String> knownKeys = registry.all().stream()
+                .map(LogCategory::key)
+                .collect(Collectors.toSet());
+
+        String basePackage = "com.example.demo.modules";
+        String packagePath = basePackage.replace('.', '/');
+
+        try {
+            ResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+            Resource[] resources = resolver.getResources(
+                    "classpath*:" + packagePath + "/**/*.class");
+
+            Set<String> scannedPackages = new LinkedHashSet<>();
+            for (Resource res : resources) {
+                String url = res.getURL().getPath();
+                int bangIdx = url.lastIndexOf("!/");
+                String classPath = bangIdx >= 0 ? url.substring(bangIdx + 2) : url;
+                int pkgIdx = classPath.indexOf(packagePath);
+                if (pkgIdx < 0) continue;
+                String subPath = classPath.substring(pkgIdx + packagePath.length() + 1);
+                int slashIdx = subPath.indexOf('/');
+                if (slashIdx > 0) subPath = subPath.substring(0, slashIdx);
+                if (subPath.isEmpty() || subPath.contains(".")) continue;
+                scannedPackages.add(subPath);
+            }
+
+            for (String pkgName : scannedPackages) {
+                if (pkgName.startsWith(".")) continue;
+                if (knownKeys.contains(pkgName)) continue;
+
+                String loggerName = basePackage + "." + pkgName;
+                registry.register(pkgName, loggerName, pkgName + "模块", Level.INFO);
+                log.debug("[log-category] auto-registered: key={}, logger={}", pkgName, loggerName);
+            }
+        } catch (IOException e) {
+            log.warn("[log-category] classpath 自动扫描失败，回退到手动注册: {}", e.getMessage());
+        }
     }
 
     private void addIfAbsent(LogCategoryRegistry registry, String key, String loggerName,
