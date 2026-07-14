@@ -23,7 +23,7 @@ public final class LoadingSpinner {
         this.enabled = TerminalCapability.isTty() && out != null;
     }
 
-    public static LoadingSpinner on()       { return new LoadingSpinner(System.err); }
+    public static LoadingSpinner on()       { return new LoadingSpinner(System.out); }
     public static LoadingSpinner on(PrintStream out) { return new LoadingSpinner(out); }
 
     public static void run(String label, Runnable task)                             { on().execute(label, task); }
