@@ -168,54 +168,52 @@ public class StartupPhaseRunner implements ApplicationRunner {
 
         // 结果框
         System.out.println();
-        String line1 = "TWIN SYSTEM " + (anyFailed ? "DEGRADED" : "READY")
-                + "  ·  :" + port + "  ·  startup complete";
-        String line2 = "http://localhost:5173  ·  profile: " + profile;
-        System.out.println(PhaseFrame.resultBox(!anyFailed, line1, line2));
+        String line1 = (anyFailed ? "DEGRADED" : "READY")
+                + "   :" + port + "  ·  " + profile;
+        String line2 = "http://localhost:5173";
+        printResultBox(!anyFailed, line1, line2);
         System.out.println();
     }
 
-    // ── FIGlet 大字标题 + Spinner 配置解析 ──
+    // ── 标题横幅 + 结果框 + Spinner 配置解析 ──
 
     private void renderFigletBanner() {
+        String title = "TWIN SYSTEM  v" + appVersion;
+        // 尝试 FIGlet 大字，未装字体则回退为等宽居中文本
         java.util.List<String> figletLines = FigletRenderer.render("TWIN");
-        int maxWidth = Math.max(FigletRenderer.widthOf("TWIN"), 30);
-        String slogan = "🧬 v" + appVersion + " · Neuro-Synced Infrastructure";
-        String c = CyberColor.CYAN;
+        String subtitle = "🧬 Neuro-Synced Infrastructure";
+        int contentWidth = FigletRenderer.widthOf("TWIN");
+        if (contentWidth < title.length()) contentWidth = title.length();
+        if (contentWidth < subtitle.length()) contentWidth = subtitle.length();
+        int innerW = contentWidth + 4;
 
-        if (CyberColor.hasUnicode()) {
-            System.out.println("  " + c + "╔" + "═".repeat(maxWidth + 4) + "╗" + CyberColor.RESET);
-        } else {
-            System.out.println("  " + c + "+" + "-".repeat(maxWidth + 4) + "+" + CyberColor.RESET);
-        }
-
+        String bar = "═".repeat(innerW);
+        System.out.println("  ╔" + bar + "╗");
         for (String line : figletLines) {
-            int padLeft = (maxWidth - line.length()) / 2;
-            int padRight = maxWidth - line.length() - padLeft;
-            String edge = CyberColor.hasUnicode()
-                    ? c + "║" + CyberColor.RESET : c + "|" + CyberColor.RESET;
-            System.out.println("  " + edge + "  "
-                    + " ".repeat(Math.max(0, padLeft))
-                    + CyberColor.CYAN + line + CyberColor.RESET
-                    + " ".repeat(Math.max(0, padRight))
-                    + "  " + edge);
+            System.out.println("  ║  " + center(line, contentWidth) + "  ║");
         }
+        System.out.println("  ║  " + center(subtitle, contentWidth) + "  ║");
+        System.out.println("  ╚" + bar + "╝");
+    }
 
-        int sloganPad = (maxWidth - slogan.length() + "🧬".length()) / 2;
-        if (sloganPad < 0) sloganPad = 0;
-        String sedge = CyberColor.hasUnicode()
-                ? c + "║" + CyberColor.RESET : c + "|" + CyberColor.RESET;
-        System.out.println("  " + sedge + "  "
-                + " ".repeat(Math.max(0, sloganPad))
-                + CyberColor.GRAY + slogan + CyberColor.RESET
-                + " ".repeat(Math.max(0, maxWidth - slogan.length() - sloganPad + "🧬".length()))
-                + "  " + sedge);
+    private void printResultBox(boolean ok, String line1, String line2) {
+        int w = Math.max(line1.length(), line2.length()) + 4;
+        String bar = "─".repeat(w);
+        System.out.println("  ┌" + bar + "┐");
+        System.out.println("  │  " + padRightTo(line1, w - 4) + "  │");
+        System.out.println("  │  " + padRightTo(line2, w - 4) + "  │");
+        System.out.println("  └" + bar + "┘");
+    }
 
-        if (CyberColor.hasUnicode()) {
-            System.out.println("  " + c + "╚" + "═".repeat(maxWidth + 4) + "╝" + CyberColor.RESET);
-        } else {
-            System.out.println("  " + c + "+" + "-".repeat(maxWidth + 4) + "+" + CyberColor.RESET);
-        }
+    private static String center(String s, int width) {
+        int pad = width - s.length();
+        if (pad <= 0) return s;
+        int left = pad / 2;
+        return " ".repeat(left) + s + " ".repeat(pad - left);
+    }
+
+    private static String padRightTo(String s, int width) {
+        return s.length() >= width ? s : s + " ".repeat(width - s.length());
     }
 
     private Spinner.SpinnerStyle parseSpinnerStyle(String config) {
