@@ -18,7 +18,7 @@ public final class LogRingBuffer {
 
     private static final int DEFAULT_CAPACITY = 5000;
     private static final DateTimeFormatter TS_FMT =
-            DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
+            DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
 
     private static volatile LogRingBuffer INSTANCE;
 
