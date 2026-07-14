@@ -37,7 +37,7 @@ public class BrowserAutoOpener implements StartupRunner {
         while (System.currentTimeMillis() - start < waitMs) {
             int elapsed = (int) (System.currentTimeMillis() - start);
             ctx.progress(elapsed, waitMs, "打开 " + url + " 中…");
-            try { Thread.sleep(100); } catch (InterruptedException e) { break; }
+            try { Thread.sleep(250); } catch (InterruptedException e) { break; }
         }
 
         try {

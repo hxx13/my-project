@@ -77,35 +77,34 @@ public class StartupPhaseRunner implements ApplicationRunner {
         }
         entries.sort(Comparator.comparingInt(PhaseEntry::order));
 
-        // ── 解析 Spinner 方案 ──
-        Spinner.SpinnerStyle spinnerStyle = parseSpinnerStyle(spinnerStyleConfig);
-
-        // ── 安装粘性底部状态栏 ──
-        StickyFooter footer = StickyFooter.install(System.out, spinnerStyle);
+        // ── Spinner 复用（跨阶段，帧自然递增） ──
+        Spinner spinner = new Spinner(parseSpinnerStyle(spinnerStyleConfig));
         List<String> completed = new ArrayList<>();
 
         for (PhaseEntry entry : entries) {
-            // 重置 footer 内容为该阶段
-            footer.update(""); // 清空
             AtomicInteger done = new AtomicInteger(0);
             AtomicInteger total = new AtomicInteger(0);
             long phaseStart = System.nanoTime();
 
-            // 构建上下文 — subtask 回调更新 footer
+            // 构建上下文 — \r 原地刷新进度条到 stderr
             StartupContext phaseCtx = new StartupContext() {
+                private void renderProgress() {
+                    String frame = spinner.tick();
+                    String bar = ProgressBar.render(done.get(), Math.max(total.get(), done.get()), null);
+                    String line = "  " + CyberColor.AMBER + frame + CyberColor.RESET
+                            + " " + entry.name + " " + bar;
+                    System.err.print("\r" + padRight(line));
+                }
+
                 @Override
                 public void subtask(String label, Runnable task) {
                     total.incrementAndGet();
-                    if (label != null) {
-                        footer.progress(entry.name, done.get(), total.get());
-                    }
+                    renderProgress();
                     try {
                         task.run();
                     } finally {
                         done.incrementAndGet();
-                        if (label != null) {
-                            footer.progress(entry.name, done.get(), total.get());
-                        }
+                        renderProgress();
                     }
                 }
 
@@ -113,25 +112,31 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 public void progress(int current, int totalVal, String detail) {
                     done.set(current);
                     total.set(totalVal);
-                    footer.progress(entry.name, current, totalVal);
+                    renderProgress();
                 }
 
                 @Override
                 public void warn(String message) {
-                    // 绕开 StickyFooter 包装器，直接写 System.err 防 GBK 乱码
+                    // 换行输出警告 → 下一行重新渲染进度条
+                    System.err.println();
                     System.err.println(CyberColor.AMBER + "  ! " + entry.name + ": "
                             + message + CyberColor.RESET);
+                    renderProgress();
                 }
             };
 
             // 执行阶段
-            footer.tick(entry.name + " …");
+            System.err.print("\r  " + CyberColor.AMBER + spinner.tick() + CyberColor.RESET
+                    + " " + entry.name + " …");
             StartupResult result;
             try {
                 result = entry.runner.run(phaseCtx);
             } catch (Exception e) {
                 result = StartupResult.failed(e.getMessage(), e);
             }
+
+            // 擦除进度行
+            System.err.print("\r" + " ".repeat(120) + "\r");
 
             double elapsed = (System.nanoTime() - phaseStart) / 1_000_000_000.0;
             String summary = result.summary() != null ? result.summary() : "";
@@ -145,15 +150,10 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 statusLine = CyberColor.RED + "✗" + CyberColor.RESET
                         + " " + entry.name + "  " + CyberColor.RED + summary + CyberColor.RESET;
             }
+            // 输出到 stdout（带颜色）
+            System.out.println("  " + statusLine);
             completed.add(statusLine);
-
-            // 短暂展示结果
-            footer.update("");
-            try { Thread.sleep(300); } catch (InterruptedException ignored) {}
         }
-
-        // ── 关闭 footer，打印横幅 + 摘要 ──
-        footer.shutdown("");
 
         // 打印标题横幅 + 已完成列表
         System.out.println();
@@ -234,6 +234,13 @@ public class StartupPhaseRunner implements ApplicationRunner {
             case "arc"     -> Spinner.SpinnerStyle.ARC;
             default        -> Spinner.SpinnerStyle.SHUTTLE;
         };
+    }
+
+    /** 补齐到 120 字符宽度，防止 \r 残留旧内容 */
+    private static String padRight(String s) {
+        int width = 120;
+        if (s.length() >= width) return s;
+        return s + " ".repeat(width - s.length());
     }
 
     // ── 日志分类扫描 ──
