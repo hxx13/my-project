@@ -29,6 +29,7 @@
 	<properties>
 		<java.version>17</java.version>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -168,6 +169,7 @@
 	</dependencies>
 
 	<build>
+		<finalName>${project.artifactId}-${maven.build.timestamp}</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

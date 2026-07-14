@@ -30,10 +30,14 @@ public class TwinFreezeConfigService {
 
     @PostConstruct
     public void ensureDefaultRow() {
-        ensureSecondFreezeColumn();
-        ensureSecondFreezeAutoSignoutColumn();
-        ensureDailyExemptRevokeAutoSignoutColumn();
-        freezeConfigMapper.insertIgnoreDefault(CONFIG_ID);
+        try {
+            ensureSecondFreezeColumn();
+            ensureSecondFreezeAutoSignoutColumn();
+            ensureDailyExemptRevokeAutoSignoutColumn();
+            freezeConfigMapper.insertIgnoreDefault(CONFIG_ID);
+        } catch (Exception e) {
+            // 数据库表尚未就绪（StartupRunner 建表晚于 @PostConstruct）
+        }
     }
 
     public void ensureRow() {

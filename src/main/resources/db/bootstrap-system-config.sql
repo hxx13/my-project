@@ -1,3 +1,6 @@
+-- 系统配置表（NotificationSettings 模块核心表）
+-- 幂等：CREATE TABLE IF NOT EXISTS
+
 CREATE TABLE IF NOT EXISTS sys_system_config_def (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
     module          VARCHAR(64)  NOT NULL,

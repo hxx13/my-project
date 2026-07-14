@@ -60,13 +60,17 @@ public class AroService {
 
     @PostConstruct
     public void forceInitialLogin() {
-        reloadCredentials();
-        log.info("[系统点火] 正在优先抢占 ARO 官方全局 Token，阻塞其他无关任务...");
-        boolean success = login();
-        if (success) {
-            log.info("[系统点火] ARO Token 抢占成功！主电源已合闸，放行后续自检与雷达订阅！");
-        } else {
-            log.error("[系统点火] ARO Token 获取失败，请检查账号密码或网络！");
+        try {
+            reloadCredentials();
+            log.info("[系统点火] 正在优先抢占 ARO 官方全局 Token，阻塞其他无关任务...");
+            boolean success = login();
+            if (success) {
+                log.info("[系统点火] ARO Token 抢占成功！主电源已合闸，放行后续自检与雷达订阅！");
+            } else {
+                log.error("[系统点火] ARO Token 获取失败，请检查账号密码或网络！");
+            }
+        } catch (Exception e) {
+            // 数据库表尚未就绪（StartupRunner 建表晚于 @PostConstruct）
         }
     }
 

@@ -36,7 +36,13 @@ public class MpCloudProxySecretFilter extends OncePerRequestFilter {
 
     @PostConstruct
     public void init() {
-        this.expectedSecret = settingsService.getEffectiveValue("credentials", "mp.proxy_secret", defaultSecret);
+        try {
+            this.expectedSecret = settingsService.getEffectiveValue("credentials", "mp.proxy_secret", defaultSecret);
+        } catch (Exception e) {
+            // 数据库表尚未就绪（StartupRunner 建表晚于 @PostConstruct），降级为默认值
+            // CredentialsChangedEvent 触发后会重新从 DB 加载
+            this.expectedSecret = defaultSecret;
+        }
     }
 
     @EventListener

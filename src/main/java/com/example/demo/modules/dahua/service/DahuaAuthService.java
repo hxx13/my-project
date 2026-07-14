@@ -62,13 +62,17 @@ public class DahuaAuthService {
 
     @PostConstruct
     public void reloadCredentials() {
-        this.baseUrl = settingsService.getEffectiveValue("credentials", "dahua.base_url", defaultBaseUrl);
-        this.clientId = settingsService.getEffectiveValue("credentials", "dahua.client_id", defaultClientId);
-        this.clientSecret = settingsService.getEffectiveValue("credentials", "dahua.client_secret", defaultClientSecret);
-        this.username = settingsService.getEffectiveValue("credentials", "dahua.username", defaultUsername);
-        this.passwordRaw = settingsService.getEffectiveValue("credentials", "dahua.password", defaultPasswordRaw);
-        String sslStr = settingsService.getEffectiveValue("integration", "dahua.ssl_insecure", String.valueOf(defaultSslInsecure));
-        this.sslInsecure = "true".equalsIgnoreCase(sslStr);
+        try {
+            this.baseUrl = settingsService.getEffectiveValue("credentials", "dahua.base_url", defaultBaseUrl);
+            this.clientId = settingsService.getEffectiveValue("credentials", "dahua.client_id", defaultClientId);
+            this.clientSecret = settingsService.getEffectiveValue("credentials", "dahua.client_secret", defaultClientSecret);
+            this.username = settingsService.getEffectiveValue("credentials", "dahua.username", defaultUsername);
+            this.passwordRaw = settingsService.getEffectiveValue("credentials", "dahua.password", defaultPasswordRaw);
+            String sslStr = settingsService.getEffectiveValue("integration", "dahua.ssl_insecure", String.valueOf(defaultSslInsecure));
+            this.sslInsecure = "true".equalsIgnoreCase(sslStr);
+        } catch (Exception e) {
+            // 数据库表尚未就绪，使用默认值；CredentialsChangedEvent 触发后会重新加载
+        }
         this.restTemplate = createSecureRestTemplate();
         log.info("[大华鉴权] 凭证已从系统设置加载, baseUrl={}", baseUrl);
     }

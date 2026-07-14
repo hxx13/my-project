@@ -60,7 +60,12 @@ public class DebugToggleService {
 
     @PostConstruct
     public void init() {
-        refreshAll();
+        try {
+            refreshAll();
+        } catch (Exception e) {
+            // 数据库表尚未就绪（StartupRunner 建表晚于 @PostConstruct）
+            // CredentialsChangedEvent 触发后会重新从 DB 加载
+        }
     }
 
     // ---------- Public getters (read on every call, no cache staleness) ----------

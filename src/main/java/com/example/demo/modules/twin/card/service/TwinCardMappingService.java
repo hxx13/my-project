@@ -64,20 +64,24 @@ public class TwinCardMappingService {
      */
     @PostConstruct
     public synchronized void reloadCache() {
-        log.info("[Cache] 正在初始化物理卡片映射环境...");
+        try {
+            log.info("[Cache] 正在初始化物理卡片映射环境...");
 
-        cardNoCache.clear();
-        userIdCache.clear();
-        dahuaPersonCodeCache.clear();
+            cardNoCache.clear();
+            userIdCache.clear();
+            dahuaPersonCodeCache.clear();
 
-        // 现在查库绝对安全了
-        List<TwinCardMapping> allMappings = mappingMapper.findAll();
-        if (allMappings != null) {
-            for (TwinCardMapping mapping : allMappings) {
-                indexMappingInCache(mapping);
+            List<TwinCardMapping> allMappings = mappingMapper.findAll();
+            if (allMappings != null) {
+                for (TwinCardMapping mapping : allMappings) {
+                    indexMappingInCache(mapping);
+                }
             }
+            log.info("[Cache] 缓存加载完成！共载入 {} 条映射记录。O(1) 极速寻址已就绪。", cardNoCache.size());
+        } catch (Exception e) {
+            // 数据库表尚未就绪（StartupRunner 建表晚于 @PostConstruct），稍后自动重载
+            log.warn("[Cache] 缓存初始化暂缓：{}", e.getMessage());
         }
-        log.info("[Cache] 缓存加载完成！共载入 {} 条映射记录。O(1) 极速寻址已就绪。", cardNoCache.size());
     }
 
     // ================== 1. O(1) 极速读取 (专供刷卡网关调用，绝对禁止查库) ==================

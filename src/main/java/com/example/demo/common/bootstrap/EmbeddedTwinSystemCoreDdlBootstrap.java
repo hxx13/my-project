@@ -5,6 +5,7 @@ import com.example.demo.common.logging.model.StartupContext;
 import com.example.demo.common.logging.model.StartupResult;
 import com.example.demo.common.logging.model.StartupRunner;
 import com.example.demo.modules.twin.dashboard.service.TwinStudentViolationService;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.init.DatabasePopulatorUtils;
@@ -15,6 +16,9 @@ import javax.sql.DataSource;
 
 /**
  * 启动阶段：幂等执行 classpath:db/bootstrap-*.sql。
+ * 同时实现 {@link InitializingBean} 在 bean 初始化早期先建表，
+ * 避免其他 bean 的 {@code @PostConstruct} 因表不存在而失败；
+ * {@link StartupRunner#run} 作为二次保障（幂等，无副作用）。
  * 关闭方式：{@code app.schema.auto-ensure-embedded-core-ddl=false}
  */
 @StartupPhase(
@@ -30,7 +34,7 @@ import javax.sql.DataSource;
         havingValue = "true",
         matchIfMissing = true
 )
-public class EmbeddedTwinSystemCoreDdlBootstrap implements StartupRunner {
+public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, StartupRunner {
 
     private final DataSource dataSource;
     private final TwinStudentViolationService twinStudentViolationService;
@@ -41,16 +45,32 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements StartupRunner {
         this.twinStudentViolationService = twinStudentViolationService;
     }
 
+    /**
+     * 在 bean 初始化早期执行（早于所有常规 bean 的 {@code @PostConstruct}），
+     * 确保表结构在业务代码查询前已就绪。幂等——所有脚本使用 {@code CREATE TABLE IF NOT EXISTS}。
+     */
+    @Override
+    public void afterPropertiesSet() {
+        // 不使用 StartupContext tracing，此时日志体系尚未完全初始化
+        runAllScripts(null);
+    }
+
     @Override
     public StartupResult run(StartupContext ctx) {
+        return runAllScripts(ctx);
+    }
+
+    /** 执行全部 DDL 脚本，返回统计结果。传入 null 时跳过 progress tracing。 */
+    private StartupResult runAllScripts(StartupContext ctx) {
         int success = 0, total = 0;
 
         // --- 核心表 ---
+        total++; if (runScript("db/bootstrap-system-config.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-login-branding-invite-chat.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-admin-file-template.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-twin-student-violation.sql", ctx)) {
             success++;
-            twinStudentViolationService.markSchemaReady();
+            if (ctx != null) twinStudentViolationService.markSchemaReady();
         }
 
         // --- 违规模块 ---
@@ -86,6 +106,9 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements StartupRunner {
         total++; if (runScript("db/migration/V20260703__llm_conversation.sql", ctx)) success++;
         total++; if (runScript("db/bootstrap-password-plain.sql", ctx)) success++;
 
+        if (ctx == null) {
+            return StartupResult.success(success + "/" + total + " (early pass)");
+        }
         if (success == total) {
             return StartupResult.success(total + "/" + total + " 就绪");
         }
@@ -95,11 +118,28 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements StartupRunner {
 
     /** 执行单个脚本，通过 subtask 追踪进度。返回是否成功。 */
     private boolean runScript(String classpath, StartupContext ctx) {
+        if (ctx == null) {
+            return doRunSilently(classpath);
+        }
         final boolean[] ok = {false};
         ctx.subtask(scriptLabel(classpath), () -> {
             ok[0] = doRun(classpath, ctx);
         });
         return ok[0];
+    }
+
+    /** 不带 StartupContext 的执行（afterPropertiesSet 早期用）。 */
+    private boolean doRunSilently(String classpath) {
+        try {
+            ResourceDatabasePopulator populator = new ResourceDatabasePopulator();
+            populator.addScript(new ClassPathResource(classpath));
+            populator.setSeparator(";");
+            populator.setContinueOnError(false);
+            DatabasePopulatorUtils.execute(populator, dataSource);
+            return true;
+        } catch (Exception ex) {
+            return isBenignInChain(ex); // 幂等——表/列/索引已存在不算失败
+        }
     }
 
     private boolean doRun(String classpath, StartupContext ctx) {
