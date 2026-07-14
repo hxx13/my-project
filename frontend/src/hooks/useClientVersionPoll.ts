@@ -66,7 +66,7 @@ export function useClientVersionPoll(
 
             // ── 触发检查 ──
             // 1. buildId 不匹配（新部署）
-            if (response.buildId !== APP_BUILD_ID && response.buildId !== 'unknown') {
+            if (APP_BUILD_ID !== 'dev' && response.buildId !== APP_BUILD_ID && response.buildId !== 'unknown') {
                 if (!sessionStorage.getItem('__version_mismatch_triggered')) {
                     sessionStorage.setItem('__version_mismatch_triggered', '1');
                     onReloadNeeded({ reason: 'version-mismatch', payload: response });

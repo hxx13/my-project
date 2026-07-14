@@ -257,8 +257,9 @@ function GlobalSocketListener() {
             const pageLoadAt = sessionStorage.getItem('__page_load_at');
             if (pageLoadAt && Date.now() - parseInt(pageLoadAt, 10) < 8000) return;
 
-            // 情况 1：版本不匹配（来自 FrontendVersionGuard，连接时单发）
-            if (payload.expectedBuildId && payload.expectedBuildId !== APP_BUILD_ID) {
+            // 情况 1：版本不匹配（来自 SocketRoomAssigner，连接时单发）
+            // 开发模式跳过——APP_BUILD_ID='dev' 永远不匹配后端 build-meta.json 时间戳
+            if (APP_BUILD_ID !== 'dev' && payload.expectedBuildId && payload.expectedBuildId !== APP_BUILD_ID) {
                 if (payload.reloadId != null) {
                     sessionStorage.setItem('__last_reload_id', String(payload.reloadId));
                 }
