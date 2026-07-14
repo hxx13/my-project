@@ -150,8 +150,8 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 statusLine = CyberColor.RED + "✗" + CyberColor.RESET
                         + " " + entry.name + "  " + CyberColor.RED + summary + CyberColor.RESET;
             }
-            // 输出到 stdout（带颜色）
-            System.out.println("  " + statusLine);
+            // 输出完成行（stderr，与进度同一流保证光标同步）
+            System.err.println("  " + statusLine);
             completed.add(statusLine);
         }
 
