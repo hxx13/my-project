@@ -230,11 +230,14 @@ public class StartupPhaseRunner implements ApplicationRunner {
     }
 
     private Spinner.SpinnerStyle parseSpinnerStyle(String config) {
-        if (config == null) return Spinner.SpinnerStyle.DOTS;
+        if (config == null) return Spinner.SpinnerStyle.SHUTTLE;
         return switch (config.trim().toLowerCase()) {
+            case "shuttle" -> Spinner.SpinnerStyle.SHUTTLE;
+            case "pulse"   -> Spinner.SpinnerStyle.PULSE;
             case "classic" -> Spinner.SpinnerStyle.CLASSIC;
-            case "arc"    -> Spinner.SpinnerStyle.ARC;
-            default       -> Spinner.SpinnerStyle.DOTS;
+            case "dots"    -> Spinner.SpinnerStyle.DOTS;
+            case "arc"     -> Spinner.SpinnerStyle.ARC;
+            default        -> Spinner.SpinnerStyle.SHUTTLE;
         };
     }
 

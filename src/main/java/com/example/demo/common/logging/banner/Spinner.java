@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * 旋转指示器 —— 多套帧方案，Unicode/ASCII 自动适配。
  *
- * <p>默认 {@link SpinnerStyle#CLASSIC}（Braille ⠋-⠏），与旧版行为兼容。
+ * <p>默认 {@link SpinnerStyle#SHUTTLE}（穿梭条 ▏→█→▏），视觉厚重显眼。
  * 线程安全：使用 {@link AtomicInteger} 替代 volatile int 保证并发 tick 正确性。
  */
 public class Spinner {
@@ -17,12 +17,16 @@ public class Spinner {
      * 旋转指示器帧方案。
      */
     public enum SpinnerStyle {
-        /** 默认 Braille 方案（⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏） */
-        CLASSIC(new String[]{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}),
-        /** Claude Code 风格（⣾⣽⣻⢿⡿⣟⣯⣷） */
-        DOTS(new String[]{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}),
-        /** 简洁弧形（◜◝◞◟） */
-        ARC(new String[]{"◜", "◝", "◞", "◟"});
+        /** 穿梭条 ▏▎▍▌▋▊▉█▉▊▋▌▍▎▏（厚重显眼，推荐默认） */
+        SHUTTLE(new String[]{"▏","▎","▍","▌","▋","▊","▉","█","▉","▊","▋","▌","▍","▎"}),
+        /** 脉冲圆点 ● ◉ ◎ ◉（简洁醒目） */
+        PULSE  (new String[]{"●","◉","◎","◉"}),
+        /** 经典 Braille ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ */
+        CLASSIC(new String[]{"⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"}),
+        /** 圆点阵 ⣾⣽⣻⢿⡿⣟⣯⣷ (Claude Code 风格) */
+        DOTS   (new String[]{"⣾","⣽","⣻","⢿","⡿","⣟","⣯","⣷"}),
+        /** 弧形 ◜◝◞◟（极简） */
+        ARC    (new String[]{"◜","◝","◞","◟"});
 
         final String[] frames;
 
@@ -31,9 +35,9 @@ public class Spinner {
         }
     }
 
-    /** 默认构造：CLASSIC 方案，非 Unicode 终端自动回退 ASCII */
+    /** 默认构造：SHUTTLE 方案，非 Unicode 终端自动回退 ASCII */
     public Spinner() {
-        this(SpinnerStyle.CLASSIC);
+        this(SpinnerStyle.SHUTTLE);
     }
 
     /** 指定帧方案构造。非 Unicode 终端自动回退 ASCII 等效帧。 */

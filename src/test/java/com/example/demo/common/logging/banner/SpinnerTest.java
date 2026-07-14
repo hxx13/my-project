@@ -16,9 +16,26 @@ import static org.junit.jupiter.api.Assertions.*;
 class SpinnerTest {
 
     @Test
+    @DisplayName("SHUTTLE: tick 14 次遍历多帧")
+    void shuttleTickIteratesMultipleFrames() {
+        Spinner spinner = new Spinner(Spinner.SpinnerStyle.SHUTTLE);
+        Set<String> seen = new HashSet<>();
+        for (int i = 0; i < 14; i++) seen.add(spinner.tick());
+        assertTrue(seen.size() >= 7, "至少 7 个不同帧，实际: " + seen.size());
+    }
+
+    @Test
+    @DisplayName("PULSE: tick 返回厚重字符")
+    void pulseTickReturnsThickChars() {
+        Spinner spinner = new Spinner(Spinner.SpinnerStyle.PULSE);
+        for (int i = 0; i < 10; i++)
+            assertFalse(spinner.tick().isEmpty());
+    }
+
+    @Test
     @DisplayName("CLASSIC: tick 10 次遍历多帧")
     void classicTickIteratesMultipleFrames() {
-        Spinner spinner = new Spinner();
+        Spinner spinner = new Spinner(Spinner.SpinnerStyle.CLASSIC);
         Set<String> seen = new HashSet<>();
         for (int i = 0; i < 10; i++) seen.add(spinner.tick());
         assertTrue(seen.size() >= 4, "至少 4 个不同帧");
@@ -76,8 +93,8 @@ class SpinnerTest {
     }
 
     @Test
-    @DisplayName("默认构造 = CLASSIC")
-    void defaultConstructorIsClassic() {
+    @DisplayName("默认构造 = SHUTTLE")
+    void defaultConstructorIsShuttle() {
         assertNotNull(new Spinner().tick());
     }
 }
