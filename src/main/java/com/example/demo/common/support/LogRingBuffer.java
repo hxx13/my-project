@@ -1,5 +1,6 @@
 package com.example.demo.common.support;
 
+import java.util.Arrays;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -15,7 +16,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 public final class LogRingBuffer {
 
-    private static final int DEFAULT_CAPACITY = 1000;
+    private static final int DEFAULT_CAPACITY = 5000;
     private static final DateTimeFormatter TS_FMT =
             DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
 
@@ -23,7 +24,7 @@ public final class LogRingBuffer {
 
     private final LogEntry[] buffer;
     private final int capacity;
-    private volatile int writeIndex;
+    private volatile long writeIndex;  // 2^63 写入 @10k/s ≈ 2900万年，永不溢出
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     private LogRingBuffer(int capacity) {
@@ -50,7 +51,7 @@ public final class LogRingBuffer {
     private void put(LogEntry entry) {
         lock.writeLock().lock();
         try {
-            buffer[writeIndex % capacity] = entry;
+            buffer[(int) (writeIndex % capacity)] = entry;
             writeIndex++;
         } finally {
             lock.writeLock().unlock();
@@ -64,13 +65,13 @@ public final class LogRingBuffer {
     public List<Map<String, Object>> recent(int count, String minLevel) {
         lock.readLock().lock();
         try {
-            int total = Math.min(writeIndex, capacity);
+            int total = (int) Math.min(writeIndex, capacity);
             int start = Math.max(0, total - count);
             List<Map<String, Object>> result = new ArrayList<>();
-            int baseIdx = writeIndex - total;
+            long baseIdx = writeIndex - total;  // long, 避免 baseIdx 溢出
 
             for (int i = start; i < total; i++) {
-                LogEntry entry = buffer[(baseIdx + i) % capacity];
+                LogEntry entry = buffer[(int) ((baseIdx + i) % capacity)];
                 if (entry == null) continue;
                 if (minLevel != null && !minLevel.isEmpty() && !entry.passesMinLevel(minLevel)) {
                     continue;
@@ -90,13 +91,14 @@ public final class LogRingBuffer {
     }
 
     public int size() {
-        return Math.min(writeIndex, capacity);
+        return (int) Math.min(writeIndex, capacity);
     }
 
     public void clear() {
         lock.writeLock().lock();
         try {
             writeIndex = 0;
+            Arrays.fill(buffer, null);  // 释放 GC 引用，防止 40MB 泄漏
         } finally {
             lock.writeLock().unlock();
         }
