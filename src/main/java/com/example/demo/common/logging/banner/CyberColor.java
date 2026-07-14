@@ -1,70 +1,33 @@
 package com.example.demo.common.logging.banner;
 
-import java.nio.charset.Charset;
-
 /**
- * 赛博朋克霓虹色板 + 终端能力检测。
+ * 赛博朋克霓虹色板。
  *
- * <p>自动检测：① TTY ② ANSI 颜色支持 ③ Unicode box-drawing 支持。
- * Windows CMD/GBK 终端自动回退 ASCII 字符。
+ * <p>终端能力检测已提取至 {@link TerminalCapability}。
+ * 本类委托 TerminalCapability 提供向后兼容的查询方法。
  */
 public final class CyberColor {
 
-    // ── 终端能力检测 ──
+    private static final boolean ANSI = TerminalCapability.hasAnsi();
 
-    /** 是否为交互式终端 */
-    private static final boolean TTY = System.console() != null
-            && !"dumb".equals(System.getenv("TERM"));
-
-    /** 终端编码是否支持 UTF-8 / Unicode box-drawing */
-    private static final boolean UNICODE;
-
-    /** 终端是否支持 ANSI 颜色 (Windows 10+ 1703+ 原生支持) */
-    private static final boolean ANSI;
-
-    static {
-        boolean uni = false;
-        boolean ansi = TTY;
-        try {
-            String enc = System.getProperty("sun.stdout.encoding");
-            if (enc == null) enc = Charset.defaultCharset().name();
-            if (enc != null) {
-                uni = enc.toUpperCase().contains("UTF");
-                // Windows 10+ 终端即使 GBK 也支持 ANSI，但 box-drawing 需要 UTF-8
-            }
-            // Windows Terminal / new Windows Console: check via env
-            String wt = System.getenv("WT_SESSION");
-            if (wt != null) { uni = true; ansi = true; }
-            // IDE consoles (IntelliJ, VSCode) usually support both
-            String term = System.getenv("TERM");
-            if (term != null && (term.contains("xterm") || term.contains("screen"))) {
-                uni = true; ansi = true;
-            }
-        } catch (Exception ignored) {}
-        UNICODE = uni;
-        ANSI = ansi;
-    }
-
-    // ── 颜色码 (ANSI True-Color) ──
-
-    public static final String RESET  = ANSI ? "[0m"    : "";
-    public static final String BOLD   = ANSI ? "[1m"    : "";
-    public static final String GREEN   = ANSI ? "[38;2;0;255;65m"   : "";
-    public static final String CYAN    = ANSI ? "[38;2;0;255;255m"  : "";
-    public static final String MAGENTA = ANSI ? "[38;2;255;0;255m"  : "";
-    public static final String RED     = ANSI ? "[38;2;255;0;64m"   : "";
-    public static final String AMBER   = ANSI ? "[38;2;255;176;0m"  : "";
-    public static final String PURPLE  = ANSI ? "[38;2;120;0;180m"  : "";
-    public static final String GRAY    = ANSI ? "[38;2;128;128;128m" : "";
-    public static final String WHITE   = ANSI ? "[38;2;220;220;220m" : "";
+    public static final String RESET   = ANSI ? "\033[0m"    : "";
+    public static final String BOLD    = ANSI ? "\033[1m"    : "";
+    public static final String GREEN   = ANSI ? "\033[38;2;0;255;65m"   : "";
+    public static final String CYAN    = ANSI ? "\033[38;2;0;255;255m"  : "";
+    public static final String MAGENTA = ANSI ? "\033[38;2;255;0;255m"  : "";
+    public static final String RED     = ANSI ? "\033[38;2;255;0;64m"   : "";
+    public static final String AMBER   = ANSI ? "\033[38;2;255;176;0m"  : "";
+    public static final String PURPLE  = ANSI ? "\033[38;2;120;0;180m"  : "";
+    public static final String GRAY    = ANSI ? "\033[38;2;128;128;128m" : "";
+    public static final String WHITE   = ANSI ? "\033[38;2;220;220;220m" : "";
 
     private CyberColor() {}
 
-    // ── 公共能力查询 ──
+    // ── 公共能力查询（委托 TerminalCapability，向后兼容） ──
 
-    public static boolean isTty()     { return TTY; }
-    public static boolean hasAnsi()   { return ANSI; }
-    public static boolean hasUnicode(){ return UNICODE; }
+    public static boolean isTty()      { return TerminalCapability.isTty(); }
+    public static boolean hasAnsi()    { return TerminalCapability.hasAnsi(); }
+    public static boolean hasUnicode() { return TerminalCapability.hasUnicode(); }
 
     // ── 修饰方法 ──
 

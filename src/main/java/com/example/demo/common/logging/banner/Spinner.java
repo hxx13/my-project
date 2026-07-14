@@ -1,28 +1,62 @@
 package com.example.demo.common.logging.banner;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 /**
- * 旋转指示器 —— Unicode 盲文 ⠋⠙⠹⠸ 或 ASCII |/-\。
+ * 旋转指示器 —— 多套帧方案，Unicode/ASCII 自动适配。
+ *
+ * <p>默认 {@link SpinnerStyle#CLASSIC}（Braille ⠋-⠏），与旧版行为兼容。
+ * 线程安全：使用 {@link AtomicInteger} 替代 volatile int 保证并发 tick 正确性。
  */
 public class Spinner {
 
-    private static final String[] UNICODE_FRAMES = {
-        "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"
-    };
-    private static final String[] ASCII_FRAMES = { "|", "/", "-", "\\" };
-
     private final String[] frames;
-    private volatile int index = 0;
+    private final AtomicInteger index = new AtomicInteger(0);
 
+    /**
+     * 旋转指示器帧方案。
+     */
+    public enum SpinnerStyle {
+        /** 默认 Braille 方案（⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏） */
+        CLASSIC(new String[]{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}),
+        /** Claude Code 风格（⣾⣽⣻⢿⡿⣟⣯⣷） */
+        DOTS(new String[]{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}),
+        /** 简洁弧形（◜◝◞◟） */
+        ARC(new String[]{"◜", "◝", "◞", "◟"});
+
+        final String[] frames;
+
+        SpinnerStyle(String[] frames) {
+            this.frames = frames;
+        }
+    }
+
+    /** 默认构造：CLASSIC 方案，非 Unicode 终端自动回退 ASCII */
     public Spinner() {
-        this.frames = CyberColor.hasUnicode() ? UNICODE_FRAMES : ASCII_FRAMES;
+        this(SpinnerStyle.CLASSIC);
     }
 
+    /** 指定帧方案构造。非 Unicode 终端自动回退 ASCII 等效帧。 */
+    public Spinner(SpinnerStyle style) {
+        if (CyberColor.hasUnicode()) {
+            this.frames = style.frames;
+        } else {
+            this.frames = new String[]{"|", "/", "-", "\\"};
+        }
+    }
+
+    /** 推进一帧并返回当前帧字符。线程安全。 */
     public String tick() {
-        String frame = frames[index];
-        index = (index + 1) % frames.length;
-        return frame;
+        return frames[index.getAndUpdate(i -> (i + 1) % frames.length)];
     }
 
-    public String current() { return frames[index]; }
-    public void reset() { index = 0; }
+    /** 返回当前帧字符（不推进）。 */
+    public String current() {
+        return frames[index.get()];
+    }
+
+    /** 重置到第 0 帧。 */
+    public void reset() {
+        index.set(0);
+    }
 }

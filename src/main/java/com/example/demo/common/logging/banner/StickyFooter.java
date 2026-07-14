@@ -8,10 +8,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>用法：
  * <pre>{@code
- * StickyFooter footer = StickyFooter.install(System.out);
- * footer.update("⠋ 数据库迁移 [████░░░░░░] 40% (12/30)");
- * // ... 正常 log 输出（自动推到状态栏上方）...
- * footer.update("⠹ 数据库迁移 [████████░░] 80% (24/30)");
+ * StickyFooter footer = StickyFooter.install(System.out, SpinnerStyle.DOTS);
+ * footer.tick("数据库迁移 (" + done + "/" + total + ")");
  * footer.shutdown("✓ 全部就绪 (2.3s)");
  * }</pre>
  *
@@ -20,33 +18,33 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class StickyFooter {
 
-    private static final String CSI = "["; // ESC [
+    private static final String CSI = "\033[";
 
     private final PrintStream originalOut;
     private final AtomicReference<String> content = new AtomicReference<>("");
-    private final AtomicReference<Spinner> spinner = new AtomicReference<>(new Spinner());
+    private final AtomicReference<Spinner> spinner;
     private volatile boolean active = true;
     private volatile boolean installed = false;
 
-    private StickyFooter(PrintStream originalOut) {
+    private StickyFooter(PrintStream originalOut, Spinner spinner) {
         this.originalOut = originalOut;
+        this.spinner = new AtomicReference<>(spinner);
     }
 
-    /**
-     * 安装粘性底部栏，拦截 System.out。
-     * 返回的实例用于更新内容和最终关闭。
-     */
+    /** 安装粘性底部栏（默认 CLASSIC spinner）。 */
     public static StickyFooter install(PrintStream realOut) {
+        return install(realOut, Spinner.SpinnerStyle.CLASSIC);
+    }
+
+    /** 安装粘性底部栏（指定 spinner 方案）。 */
+    public static StickyFooter install(PrintStream realOut, Spinner.SpinnerStyle spinnerStyle) {
         if (!CyberColor.isTty()) {
-            // 非 TTY：不拦截，用简易模式
-            StickyFooter f = new StickyFooter(realOut);
+            StickyFooter f = new StickyFooter(realOut, new Spinner(spinnerStyle));
             f.installed = false;
             return f;
         }
-        StickyFooter footer = new StickyFooter(realOut);
-        // 预留底部 1 行
+        StickyFooter footer = new StickyFooter(realOut, new Spinner(spinnerStyle));
         realOut.println();
-        // 包装 System.out
         PrintStream wrapper = new PrintStream(realOut) {
             private StringBuilder buf = new StringBuilder();
 
@@ -71,13 +69,10 @@ public class StickyFooter {
             }
 
             private void flushLine(String line) {
-                // 擦除当前底部栏
-                realOut.print(CSI + "1G"); // 移到行首
-                realOut.print(CSI + "K");  // 清除到行尾
-                // 输出日志行
+                realOut.print(CSI + "1G");
+                realOut.print(CSI + "K");
                 realOut.print(line);
                 realOut.print('\n');
-                // 重绘底部栏
                 footer.render();
             }
 
@@ -89,7 +84,6 @@ public class StickyFooter {
         System.setOut(wrapper);
         footer.installed = true;
 
-        // 后台刷新线程：更新旋转指示器
         Thread refresher = new Thread(() -> {
             while (footer.active) {
                 footer.render();
@@ -102,30 +96,23 @@ public class StickyFooter {
         return footer;
     }
 
-    /** 更新底部栏内容。 */
     public void update(String text) {
         content.set(text);
         if (!installed) {
-            // 非 TTY 简易模式：直接 \r 刷新
             originalOut.print("\r" + text);
             originalOut.flush();
         }
     }
 
-    /** 更新底部栏内容（含旋转指示器）。 */
     public void tick(String text) {
         Spinner s = spinner.get();
         update(s.tick() + " " + text);
     }
 
-    /** 关闭底部栏，输出最终状态。 */
     public void shutdown(String finalText) {
         active = false;
         if (installed) {
-            // 恢复原始 System.out
-            // 擦除底部栏
             originalOut.print(CSI + "1G" + CSI + "K");
-            // 打印最终状态
             originalOut.println(finalText);
         } else {
             originalOut.print("\r" + " ".repeat(120) + "\r");
@@ -137,12 +124,11 @@ public class StickyFooter {
         if (!active || !installed) return;
         String text = content.get();
         if (text.isEmpty()) return;
-        // ANSI: 保存光标 → 移到底部行首 → 清行 → 打印 → 恢复光标
-        originalOut.print(CSI + "s");           // save cursor
-        originalOut.print(CSI + "1G");          // column 1
-        originalOut.print(CSI + "K");           // clear line
+        originalOut.print(CSI + "s");
+        originalOut.print(CSI + "1G");
+        originalOut.print(CSI + "K");
         originalOut.print(CyberColor.MAGENTA + text + CyberColor.RESET);
-        originalOut.print(CSI + "u");           // restore cursor
+        originalOut.print(CSI + "u");
         originalOut.flush();
     }
 }

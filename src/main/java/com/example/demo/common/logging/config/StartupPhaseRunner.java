@@ -4,6 +4,7 @@ import com.example.demo.common.logging.annotation.LogCategoryAnno;
 import com.example.demo.common.logging.annotation.StartupPhase;
 import com.example.demo.common.logging.banner.*;
 import com.example.demo.common.logging.model.StartupContext;
+import com.example.demo.common.text.FigletRenderer;
 import com.example.demo.common.logging.model.StartupResult;
 import com.example.demo.common.logging.model.StartupRunner;
 import ch.qos.logback.classic.Level;
@@ -48,6 +49,12 @@ public class StartupPhaseRunner implements ApplicationRunner {
     @Value("${twin.app.version:2.0}")
     private String appVersion;
 
+    @Value("${twin.banner.style:figlet}")
+    private String bannerStyle;
+
+    @Value("${twin.banner.spinner-style:dots}")
+    private String spinnerStyleConfig;
+
     public StartupPhaseRunner(ApplicationContext ctx) {
         this.ctx = ctx;
     }
@@ -70,8 +77,11 @@ public class StartupPhaseRunner implements ApplicationRunner {
         }
         entries.sort(Comparator.comparingInt(PhaseEntry::order));
 
+        // ── 解析 Spinner 方案 ──
+        Spinner.SpinnerStyle spinnerStyle = parseSpinnerStyle(spinnerStyleConfig);
+
         // ── 安装粘性底部状态栏 ──
-        StickyFooter footer = StickyFooter.install(System.out);
+        StickyFooter footer = StickyFooter.install(System.out, spinnerStyle);
         List<String> completed = new ArrayList<>();
 
         for (PhaseEntry entry : entries) {
@@ -152,9 +162,13 @@ public class StartupPhaseRunner implements ApplicationRunner {
 
         // 打印标题横幅 + 已完成列表
         System.out.println();
-        System.out.println(PhaseFrame.banner(
-                "🧬 TWIN SYSTEM v" + appVersion,
-                "Neuro-Synced Infrastructure"));
+        if ("classic".equalsIgnoreCase(bannerStyle)) {
+            System.out.println(PhaseFrame.banner(
+                    "🧬 TWIN SYSTEM v" + appVersion,
+                    "Neuro-Synced Infrastructure"));
+        } else {
+            renderFigletBanner();
+        }
         System.out.println();
 
         for (String line : completed) {
@@ -172,7 +186,59 @@ public class StartupPhaseRunner implements ApplicationRunner {
         System.out.println();
     }
 
-    // ── 日志分类扫描 (unchanged) ──
+    // ── FIGlet 大字标题 + Spinner 配置解析 ──
+
+    private void renderFigletBanner() {
+        java.util.List<String> figletLines = FigletRenderer.render("TWIN");
+        int maxWidth = Math.max(FigletRenderer.widthOf("TWIN"), 30);
+        String slogan = "🧬 v" + appVersion + " · Neuro-Synced Infrastructure";
+        String c = CyberColor.CYAN;
+
+        if (CyberColor.hasUnicode()) {
+            System.out.println("  " + c + "╔" + "═".repeat(maxWidth + 4) + "╗" + CyberColor.RESET);
+        } else {
+            System.out.println("  " + c + "+" + "-".repeat(maxWidth + 4) + "+" + CyberColor.RESET);
+        }
+
+        for (String line : figletLines) {
+            int padLeft = (maxWidth - line.length()) / 2;
+            int padRight = maxWidth - line.length() - padLeft;
+            String edge = CyberColor.hasUnicode()
+                    ? c + "║" + CyberColor.RESET : c + "|" + CyberColor.RESET;
+            System.out.println("  " + edge + "  "
+                    + " ".repeat(Math.max(0, padLeft))
+                    + CyberColor.CYAN + line + CyberColor.RESET
+                    + " ".repeat(Math.max(0, padRight))
+                    + "  " + edge);
+        }
+
+        int sloganPad = (maxWidth - slogan.length() + "🧬".length()) / 2;
+        if (sloganPad < 0) sloganPad = 0;
+        String sedge = CyberColor.hasUnicode()
+                ? c + "║" + CyberColor.RESET : c + "|" + CyberColor.RESET;
+        System.out.println("  " + sedge + "  "
+                + " ".repeat(Math.max(0, sloganPad))
+                + CyberColor.GRAY + slogan + CyberColor.RESET
+                + " ".repeat(Math.max(0, maxWidth - slogan.length() - sloganPad + "🧬".length()))
+                + "  " + sedge);
+
+        if (CyberColor.hasUnicode()) {
+            System.out.println("  " + c + "╚" + "═".repeat(maxWidth + 4) + "╝" + CyberColor.RESET);
+        } else {
+            System.out.println("  " + c + "+" + "-".repeat(maxWidth + 4) + "+" + CyberColor.RESET);
+        }
+    }
+
+    private Spinner.SpinnerStyle parseSpinnerStyle(String config) {
+        if (config == null) return Spinner.SpinnerStyle.DOTS;
+        return switch (config.trim().toLowerCase()) {
+            case "classic" -> Spinner.SpinnerStyle.CLASSIC;
+            case "arc"    -> Spinner.SpinnerStyle.ARC;
+            default       -> Spinner.SpinnerStyle.DOTS;
+        };
+    }
+
+    // ── 日志分类扫描 ──
 
     private void scanLogCategories() {
         Map<String, Object> beans = ctx.getBeansWithAnnotation(LogCategoryAnno.class);
