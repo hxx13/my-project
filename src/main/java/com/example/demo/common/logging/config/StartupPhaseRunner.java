@@ -97,7 +97,7 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 private void renderProgress() {
                     String frame = spinner.tick();
                     String bar = ProgressBar.render(done.get(), Math.max(total.get(), done.get()), null);
-                    String line = "  " + frame + " " + entry.name + " " + bar;
+                    String line = "  " + frame + " " + padRightTo(entry.name, 10) + " " + bar;
                     System.err.print("\r" + padRight(line));
                 }
 
@@ -129,7 +129,7 @@ public class StartupPhaseRunner implements ApplicationRunner {
             };
 
             // 执行阶段
-            System.err.print("\r  " + spinner.tick() + " " + entry.name + " …");
+            System.err.print("\r  " + spinner.tick() + " " + padRightTo(entry.name, 10) + " …");
             StartupResult result;
             try {
                 result = entry.runner.run(phaseCtx);
@@ -148,9 +148,9 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 String statusLine;
                 if (finalTotal > 0) {
                     String bar = ProgressBar.render(done.get(), finalTotal, null);
-                    statusLine = mark + " " + entry.name + " " + bar + "  " + summary;
+                    statusLine = mark + " " + padRightTo(entry.name, 10) + " " + bar + "  " + summary;
                 } else {
-                    statusLine = mark + " " + entry.name + "  " + summary;
+                    statusLine = mark + " " + padRightTo(entry.name, 10) + "  " + summary;
                 }
                 System.err.print("\r" + padRight("  " + statusLine));
                 System.err.println();
@@ -238,6 +238,11 @@ public class StartupPhaseRunner implements ApplicationRunner {
             case "arc"     -> Spinner.SpinnerStyle.ARC;
             default        -> Spinner.SpinnerStyle.SHUTTLE;
         };
+    }
+
+    private static String padRightTo(String s, int width) {
+        if (s.length() >= width) return s;
+        return s + " ".repeat(width - s.length());
     }
 
     /** 补齐到 120 字符宽度，防止 \r 残留旧内容 */
