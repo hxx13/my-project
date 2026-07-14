@@ -79,10 +79,11 @@ export function GracefulReloadBanner({ reason, onDismiss }: Props) {
 
     const handleSnooze = () => {
         setSnoozed(true);
+        setVisible(false); // 卡片消失
         snoozeTimerRef.current = setTimeout(() => {
             setSnoozed(false);
             setCountdown(COUNTDOWN_SECONDS);
-            setVisible(false);
+            // visible 已为 false，RAF 后设 true 触发入场动画
             requestAnimationFrame(() => setVisible(true));
         }, SNOOZE_SECONDS * 1000);
     };
