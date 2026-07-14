@@ -100,13 +100,12 @@ public class StartupPhaseRunner implements ApplicationRunner {
                     String bar = ProgressBar.render(done.get(), Math.max(total.get(), done.get()), null);
                     String line = String.format("  %s %-" + NAME_W + "s %s",
                             spinner.tick(), entry.name, bar);
-                    System.out.print("\r" + padRight(line));
+                    System.err.print("\r" + line);
                 }
 
                 @Override
                 public void subtask(String label, Runnable task) {
                     total.incrementAndGet();
-                    renderProgress();
                     try { task.run(); } finally { done.incrementAndGet(); renderProgress(); }
                 }
 
@@ -117,13 +116,14 @@ public class StartupPhaseRunner implements ApplicationRunner {
 
                 @Override
                 public void warn(String message) {
-                    System.out.println();
-                    System.out.println("  ! " + entry.name + ": " + message);
+                    // 换行输出 → 重新渲染进度条
+                    System.err.println();
+                    System.err.println("  ! " + entry.name + ": " + message);
                     renderProgress();
                 }
             };
 
-            System.out.print("\r  " + spinner.tick() + " "
+            System.err.print("\r  " + spinner.tick() + " "
                     + String.format("%-" + NAME_W + "s", entry.name) + " …");
             StartupResult result;
             try {
@@ -147,10 +147,9 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 }
                 String statusLine = String.format("%s %-" + NAME_W + "s %s  %s",
                         mark, entry.name, barPart, summary);
-                System.out.print("\r" + padRight("  " + statusLine));
-                System.out.println();
+                System.out.println("  " + statusLine);
             } else {
-                System.out.print("\r" + " ".repeat(120) + "\r");
+                System.err.print("\r" + " ".repeat(80) + "\r");
             }
 
             if (!result.success()) anyFailed = true;
