@@ -3,6 +3,7 @@ package com.example.demo.modules.admin.controller;
 import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.example.demo.common.config.JwtTokenService;
+import com.example.demo.common.config.RequestMetricsInterceptor;
 import com.example.demo.common.dto.Result;
 import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
@@ -60,6 +61,7 @@ public class MonitorController {
     private final UserDisplayNameService userDisplayNameService;
     private final TwinAutomationLogService twinAutomationLogService;
     private final ClientVersionService clientVersionService;
+    private final RequestMetricsInterceptor requestMetricsInterceptor;
 
     @Autowired(required = false)
     private SocketIOServer socketIOServer;
@@ -89,7 +91,8 @@ public class MonitorController {
             JwtTokenService jwtTokenService,
             UserDisplayNameService userDisplayNameService,
             TwinAutomationLogService twinAutomationLogService,
-            ClientVersionService clientVersionService) {
+            ClientVersionService clientVersionService,
+            RequestMetricsInterceptor requestMetricsInterceptor) {
         this.jobSchedulerService = jobSchedulerService;
         this.jobExecutionRegistry = jobExecutionRegistry;
         this.jdbcTemplate = jdbcTemplate;
@@ -103,6 +106,7 @@ public class MonitorController {
         this.userDisplayNameService = userDisplayNameService;
         this.twinAutomationLogService = twinAutomationLogService;
         this.clientVersionService = clientVersionService;
+        this.requestMetricsInterceptor = requestMetricsInterceptor;
     }
 
     // ═══════════════════════════════════════════════════════
@@ -846,6 +850,28 @@ public class MonitorController {
         }
 
         return Result.success(items);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // 访问分析
+    // ═══════════════════════════════════════════════════════
+
+    @GetMapping("/analytics")
+    public Result<Map<String, Object>> analytics(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        Result<?> denied = requireAdmin(authorization);
+        if (denied != null) return (Result<Map<String, Object>>) denied;
+
+        RequestMetricsInterceptor.Snapshot s = requestMetricsInterceptor.getSnapshot();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("totalRequests", s.totalRequests());
+        data.put("uniqueVisitors", s.uniqueVisitors());
+        data.put("statusDistribution", s.statusDistribution());
+        data.put("responseTimeBuckets", s.responseTimeBuckets());
+        data.put("topUrls", s.topUrls());
+        data.put("top404Urls", s.top404Urls());
+        data.put("topUserAgents", s.topUserAgents());
+        return Result.success(data);
     }
 
     // ═══════════════════════════════════════════════════════

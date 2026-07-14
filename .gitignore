@@ -96,6 +96,22 @@ deploy/cosyvoice/
 # ===== Local IDE settings =====
 .claude/settings.local.json
 
+# ===== Frontend build output (copied to static for Spring Boot) =====
+src/main/resources/static/
+
+# ===== VitePress build artifacts =====
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
+# ===== AI assistant session state (brainstorm temp files) =====
+.superpowers/
+
+# ===== IDE temporary plans =====
+.cursor/plans/
+
+# ===== Local Claude Code config =====
+.claude/settings.json
+
 # ===== Misc =====
 *.pdf
 *.zip

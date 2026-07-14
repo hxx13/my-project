@@ -10,16 +10,20 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     private final AdminAuthInterceptor adminAuthInterceptor;
     private final ApiAuthInterceptor apiAuthInterceptor;
+    private final RequestMetricsInterceptor requestMetricsInterceptor;
 
-    public WebMvcConfig(AdminAuthInterceptor adminAuthInterceptor, ApiAuthInterceptor apiAuthInterceptor) {
+    public WebMvcConfig(AdminAuthInterceptor adminAuthInterceptor,
+                        ApiAuthInterceptor apiAuthInterceptor,
+                        RequestMetricsInterceptor requestMetricsInterceptor) {
         this.adminAuthInterceptor = adminAuthInterceptor;
         this.apiAuthInterceptor = apiAuthInterceptor;
+        this.requestMetricsInterceptor = requestMetricsInterceptor;
     }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
-                .allowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*", "http://10.*:*")
+                .allowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*", "http://10.*:*", "https://aroultra.shsmu.edu.cn")
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .allowCredentials(false)
@@ -47,5 +51,13 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/v1/twin/dashboard/proxy/**",
                         "/api/v1/twin/speech/file/**",
                         "/api/v1/twin/speech/scan-auto-play");
+
+        registry.addInterceptor(requestMetricsInterceptor)
+                .addPathPatterns("/api/**")
+                .excludePathPatterns(
+                    "/api/v1/monitor/**",
+                    "/api/auth/**",
+                    "/api/public/**"
+                );
     }
 }

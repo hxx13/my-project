@@ -14,6 +14,7 @@ import type {
   TimerSnapshot,
   TimerHistoryEntry,
   SessionSnapshot,
+  AnalyticsSnapshot,
 } from "@/api/domains/monitor.api";
 import {
   fetchMonitorHealth,
@@ -23,6 +24,7 @@ import {
   fetchTimers as fetchTimersApi,
   fetchTimerHistory as fetchTimerHistoryApi,
   fetchMonitorSessions,
+  fetchMonitorAnalytics,
   triggerMonitorJob,
 } from "@/api/domains/monitor.api";
 
@@ -64,6 +66,11 @@ interface MonitorState {
   sessions: SessionSnapshot | null;
   sessionsLoading: boolean;
 
+  // ── 访问分析 (HTTP 5min 轮询) ──
+  analytics: AnalyticsSnapshot | null;
+  analyticsLoading: boolean;
+  analyticsError: string | null;
+
   // ── Actions ──
   setSocketConnected: (connected: boolean) => void;
   updateJob: (jobKey: string, patch: Partial<JobSnapshot>) => void;
@@ -72,6 +79,7 @@ interface MonitorState {
   fetchTimers: () => Promise<void>;
   fetchTimerHistory: () => Promise<void>;
   fetchSessions: () => Promise<void>;
+  fetchAnalytics: () => Promise<void>;
   runJobNow: (jobKey: string) => Promise<{ ok: boolean; message: string }>;
 }
 
@@ -104,6 +112,10 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
 
   sessions: null,
   sessionsLoading: true,
+
+  analytics: null,
+  analyticsLoading: true,
+  analyticsError: null,
 
   // ── Actions ──
 
@@ -185,6 +197,19 @@ export const useMonitorStore = create<MonitorState>((set, get) => ({
       set({ sessions: data, sessionsLoading: false });
     } catch {
       set({ sessionsLoading: false });
+    }
+  },
+
+  fetchAnalytics: async () => {
+    set({ analyticsLoading: true, analyticsError: null });
+    try {
+      const analytics = await fetchMonitorAnalytics();
+      set({ analytics, analyticsLoading: false });
+    } catch (e: any) {
+      set({
+        analyticsError: e?.message || "加载分析数据失败",
+        analyticsLoading: false,
+      });
     }
   },
 

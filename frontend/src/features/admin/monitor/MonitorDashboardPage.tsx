@@ -18,6 +18,7 @@ import { MonitorStatusBar } from "@/features/admin/monitor/MonitorStatusBar";
 import { MonitorHealthCards, ActiveSessionsSection } from "@/features/admin/monitor/MonitorHealthCards";
 import { MonitorResourceGauges } from "@/features/admin/monitor/MonitorResourceGauges";
 import { ClientVersionCard } from "@/features/admin/monitor/ClientVersionCard";
+import MonitorAnalyticsCards from "./MonitorAnalyticsCards";
 import { MonitorJobToolbar, MonitorJobTable, useJobFilter } from "@/features/admin/monitor/MonitorJobTable";
 import { MonitorActiveTimers } from "@/features/admin/monitor/MonitorActiveTimers";
 import { MonitorRecentLogFeed } from "@/features/admin/monitor/MonitorRecentLogFeed";
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 const POLL_MAIN_MS = 15_000;
 const POLL_TIMERS_MS = 10_000;
 const POLL_SESSIONS_MS = 30_000;
+const POLL_ANALYTICS_MS = 300_000;
 
 type TabId = "overview" | "jobs" | "timers" | "logs";
 
@@ -67,6 +69,7 @@ function OverviewTab() {
       <MonitorHealthCards />
       <ClientVersionCard />
       <MonitorResourceGauges />
+      <MonitorAnalyticsCards />
       {/* 活跃连接列表 — 自然高度，由外层统一滚动 */}
       {sessions ? <ActiveSessionsSection sessions={sessions} /> : null}
     </div>
@@ -93,12 +96,14 @@ export function MonitorDashboardPage() {
 
   const fetchSessions = useMonitorStore((s) => s.fetchSessions);
   const fetchTimerHistory = useMonitorStore((s) => s.fetchTimerHistory);
+  const fetchAnalytics = useMonitorStore((s) => s.fetchAnalytics);
 
   useEffect(() => { const t = setInterval(() => fetchAll(), POLL_MAIN_MS); return () => clearInterval(t); }, [fetchAll]);
   useEffect(() => { const t = setInterval(() => { fetchTimers(); fetchTimerHistory(); }, POLL_TIMERS_MS); return () => clearInterval(t); }, [fetchTimers, fetchTimerHistory]);
   useEffect(() => { const t = setInterval(() => fetchSessions(), POLL_SESSIONS_MS); return () => clearInterval(t); }, [fetchSessions]);
+  useEffect(() => { fetchAnalytics(); const t = setInterval(() => fetchAnalytics(), POLL_ANALYTICS_MS); return () => clearInterval(t); }, [fetchAnalytics]);
 
-  const refreshAll = () => { fetchAll(); fetchTimers(); fetchTimerHistory(); fetchSessions(); };
+  const refreshAll = () => { fetchAll(); fetchTimers(); fetchTimerHistory(); fetchSessions(); fetchAnalytics(); };
   const isInitialLoading = jobsLoading;
 
   return (

@@ -8,8 +8,8 @@
 
 **无论用户第一句话说什么，AI 的首次响应必须：**
 
-1. 读 `docs/superpowers/handoff/MANIFEST.json` → 有 active 任务则展示接手选项
-2. 读 `docs/superpowers/ai-secretary.md` → 按 `@menu` 区块展示工作流菜单
+1. 读 `docs/05-任务交接/MANIFEST.json` → 有 active 任务则展示接手选项
+2. 读 `docs/08-AI秘书台/ai-secretary.md` → 按 `@menu` 区块展示工作流菜单
 3. 菜单之后，再处理用户说的话
 
 **唯一的例外**：如果用户在首条消息中明确说了要做什么（如"修bug: 弹窗关不掉"），则直接归类到对应工作流并开始，跳过菜单。
@@ -21,7 +21,7 @@
 - 用户说"加功能"→ AI 同时派前端 agent + 后端 agent，并行推进
 - 用户明确说"只做前端/后端"→ 尊重意图，单独处理
 - 后端工作流 ④⑩⑪ 已完备，前端工作流 ③ 已完备，① 是全栈默认入口
-- 详细调度规则见 `docs/superpowers/ai-secretary.md` § 前后端联动原则
+- 详细调度规则见 `docs/08-AI秘书台/ai-secretary.md` § 前后端联动原则
 
 ## 📁 项目概要
 
@@ -33,9 +33,9 @@
 
 | 用途 | 路径 |
 |------|------|
-| **工作流定义（必读）** | `docs/superpowers/ai-secretary.md` |
-| 手交任务 | `docs/superpowers/handoff/` |
-| 设计资源目录 | `docs/superpowers/specs/previews/design-catalog.md` |
+| **工作流定义（必读）** | `docs/08-AI秘书台/ai-secretary.md` |
+| 手交任务 | `docs/05-任务交接/` |
+| 设计资源目录 | `docs/02-设计存档/design-catalog.md` |
 | 当前设计系统 | 🍱 Bento `.claude/skills/bento/` |
 | 设计品质系统 | 🎯 Impeccable `~/.claude/skills/impeccable/`（全局） |
 | 架构规范 | `docs/架构设计规范.md` |

@@ -67,9 +67,9 @@ public class ClientVersionService {
 
     private String readBuildIdFromMetaFile() {
         try {
-            ClassPathResource resource = new ClassPathResource("build-meta.json");
+            ClassPathResource resource = new ClassPathResource("static/build-meta.json");
             if (!resource.exists()) {
-                log.warn("[client-version] build-meta.json 不存在于 classpath，使用 'unknown'");
+                log.warn("[client-version] static/build-meta.json 不存在于 classpath，使用 'unknown'");
                 return "unknown";
             }
             try (InputStream is = resource.getInputStream()) {

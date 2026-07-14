@@ -127,6 +127,16 @@ export interface SessionSnapshot {
   studentCount: number;
 }
 
+export interface AnalyticsSnapshot {
+  totalRequests: number;
+  uniqueVisitors: number;
+  statusDistribution: Record<string, number>;
+  responseTimeBuckets: Record<string, number>;
+  topUrls: Array<{ path: string; count: number }>;
+  top404Urls: Array<{ path: string; count: number }>;
+  topUserAgents: Array<{ ua: string; count: number }>;
+}
+
 // ═══════════════════════════════════════════
 // 工具
 // ═══════════════════════════════════════════
@@ -189,6 +199,12 @@ export async function fetchTimerHistory(): Promise<TimerHistoryEntry[]> {
 /** 获取当前 Socket.IO 客户端会话列表 */
 export async function fetchMonitorSessions(): Promise<SessionSnapshot> {
   const res = await authHttp.get<{ data: SessionSnapshot }>("/v1/monitor/sessions");
+  return unwrap(res);
+}
+
+/** 获取访问分析快照 */
+export async function fetchMonitorAnalytics(): Promise<AnalyticsSnapshot> {
+  const res = await authHttp.get<{ data: AnalyticsSnapshot }>("/v1/monitor/analytics");
   return unwrap(res);
 }
 
