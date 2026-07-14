@@ -104,6 +104,7 @@ public final class LogRingBuffer {
         try {
             writeIndex = 0;
             Arrays.fill(buffer, null);  // 释放 GC 引用，防止 40MB 泄漏
+            // wrapCount 不清零 — 作为 JVM 生命周期计数器供监控使用
         } finally {
             lock.writeLock().unlock();
         }
