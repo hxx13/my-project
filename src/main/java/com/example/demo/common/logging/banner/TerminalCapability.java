@@ -11,9 +11,8 @@ import java.nio.charset.Charset;
  */
 public final class TerminalCapability {
 
-    /** 是否为交互式终端 */
-    private static final boolean TTY = System.console() != null
-            && !"dumb".equals(System.getenv("TERM"));
+    /** 是否为交互式终端（IDEA Run 控制台 System.console()=null 但支持 ANSI） */
+    private static final boolean TTY = isTtyLike();
 
     /** 终端编码是否支持 UTF-8 / Unicode box-drawing */
     private static final boolean UNICODE;
@@ -62,6 +61,21 @@ public final class TerminalCapability {
     }
 
     private TerminalCapability() {}
+
+    /** TTY 判定：真实终端 > IDE 控制台（IntelliJ/VSCode/Eclipse）> dumb 回退 */
+    private static boolean isTtyLike() {
+        // 真实终端
+        if (System.console() != null && !"dumb".equals(System.getenv("TERM"))) {
+            return true;
+        }
+        // IDE Run 控制台 — java.class.path 含 idea_rt.jar 或用 idea.launcher.bin.path
+        if (System.getProperty("idea.launcher.bin.path") != null) return true;
+        if (System.getProperty("java.class.path", "").contains("idea_rt.jar")) return true;
+        // VSCode / Eclipse 等
+        if (System.getenv("TERM_PROGRAM") != null) return true;
+        if (System.getProperty("os.name", "").toLowerCase().contains("win")) return true;
+        return false;
+    }
 
     public static boolean isTty()      { return TTY; }
     public static boolean hasAnsi()    { return ANSI; }
