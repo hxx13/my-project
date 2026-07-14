@@ -208,7 +208,11 @@ public class LlmConfigSeed implements ApplicationRunner {
             seedArchivePromptDefault();
             migrateProviderDefaultIfMissing();
         } catch (Exception e) {
-            log.warn("[llm] 配置定义初始化跳过: {}", e.getMessage());
+            if (e instanceof java.sql.SQLSyntaxErrorException || e.getMessage().contains("doesn't exist")) {
+                log.debug("[llm] 配置定义初始化跳过（表未就绪）: {}", e.getMessage());
+            } else {
+                log.error("[llm] 配置定义初始化失败", e);
+            }
         }
     }
 
@@ -377,13 +381,13 @@ public class LlmConfigSeed implements ApplicationRunner {
                 jdbcTemplate.update(
                         "INSERT INTO sys_system_config (module, config_key, config_value, update_time) VALUES ('llm', ?, ?, NOW())",
                         key, defaultPrompt);
-                log.warn("[llm] 已写入持久画像提示词默认值 key={}", key);
+                log.info("[llm] 已写入持久画像提示词默认值 key={}", key);
             } else {
                 String fromVer = isV1 ? "v1（短期内不会变化的稳定信息）" : "v2（数据字段说明）";
                 jdbcTemplate.update(
                         "UPDATE sys_system_config SET config_value = ?, update_time = NOW() WHERE module = 'llm' AND config_key = ?",
                         defaultPrompt, key);
-                log.warn("[llm] 已升级持久画像提示词 {} → v3（数据分为两类）key={}", fromVer, key);
+                log.info("[llm] 已升级持久画像提示词 {} → v3（数据分为两类）key={}", fromVer, key);
             }
         }
     }
