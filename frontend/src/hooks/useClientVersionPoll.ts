@@ -67,21 +67,31 @@ export function useClientVersionPoll(
             // ── 触发检查 ──
             // 1. buildId 不匹配（新部署）
             if (response.buildId !== APP_BUILD_ID && response.buildId !== 'unknown') {
-                onReloadNeeded({ reason: 'version-mismatch', payload: response });
+                if (!sessionStorage.getItem('__version_mismatch_triggered')) {
+                    sessionStorage.setItem('__version_mismatch_triggered', '1');
+                    onReloadNeeded({ reason: 'version-mismatch', payload: response });
+                }
+                schedule(POLL_NORMAL);
                 return;
             }
 
-            // 2. reloadId 检查
+            // 2. reloadId 检查（含下行修正）
             const stored = sessionStorage.getItem('__last_reload_id');
+            const currentReloadId = response.reloadId;
 
             if (stored === null) {
                 // 首次轮询：记录基线，不触发
-                sessionStorage.setItem('__last_reload_id', String(response.reloadId));
-            } else if (response.reloadId > parseInt(stored, 10)) {
-                // 新的管理员指令
-                sessionStorage.setItem('__last_reload_id', String(response.reloadId));
-                onReloadNeeded({ reason: 'admin-command', payload: response });
-                return;
+                sessionStorage.setItem('__last_reload_id', String(currentReloadId));
+            } else {
+                const prevReloadId = parseInt(stored, 10);
+                // 始终同步到服务端当前值——这是重启恢复的关键
+                sessionStorage.setItem('__last_reload_id', String(currentReloadId));
+                // 仅在严格增长时触发（NaN 安全）
+                if (!isNaN(prevReloadId) && currentReloadId > prevReloadId) {
+                    onReloadNeeded({ reason: 'admin-command', payload: response });
+                    schedule(POLL_NORMAL);
+                    return;
+                }
             }
 
         } catch (_err) {
