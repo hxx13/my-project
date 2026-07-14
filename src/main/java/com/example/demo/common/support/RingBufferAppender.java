@@ -82,7 +82,7 @@ public class RingBufferAppender extends AppenderBase<ILoggingEvent> {
                     sb.append(indent).append("    [... 堆栈截断，剩余 ").append(steps.length - frameCount).append(" 帧]\n");
                     break;
                 }
-                sb.append(indent).append("    at ").append(ste.getSTE().toString()).append("\n");
+                sb.append(indent).append("    at ").append(ste.toString()).append("\n");
                 frameCount++;
             }
         }
