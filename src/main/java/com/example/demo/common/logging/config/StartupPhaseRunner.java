@@ -83,7 +83,10 @@ public class StartupPhaseRunner implements ApplicationRunner {
         }
         entries.sort(Comparator.comparingInt(PhaseEntry::order));
 
-        // ── Spinner 复用（跨阶段，帧自然递增） ──
+        // ── 列对齐常量 ──
+        final int NAME_W = 12;   // 阶段名宽度
+        final int BAR_W  = 27;   // ProgressBar 输出宽度 "[████████████████████] 100%"
+
         Spinner spinner = new Spinner(parseSpinnerStyle(spinnerStyleConfig));
         boolean anyFailed = false;
 
@@ -92,12 +95,11 @@ public class StartupPhaseRunner implements ApplicationRunner {
             AtomicInteger total = new AtomicInteger(0);
             long phaseStart = System.nanoTime();
 
-            // 构建上下文 — \r 原地刷新进度条到 stderr
             StartupContext phaseCtx = new StartupContext() {
                 private void renderProgress() {
-                    String frame = spinner.tick();
                     String bar = ProgressBar.render(done.get(), Math.max(total.get(), done.get()), null);
-                    String line = "  " + frame + " " + padRightTo(entry.name, 10) + " " + bar;
+                    String line = String.format("  %s %-" + NAME_W + "s %s",
+                            spinner.tick(), entry.name, bar);
                     System.err.print("\r" + padRight(line));
                 }
 
@@ -105,19 +107,12 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 public void subtask(String label, Runnable task) {
                     total.incrementAndGet();
                     renderProgress();
-                    try {
-                        task.run();
-                    } finally {
-                        done.incrementAndGet();
-                        renderProgress();
-                    }
+                    try { task.run(); } finally { done.incrementAndGet(); renderProgress(); }
                 }
 
                 @Override
                 public void progress(int current, int totalVal, String detail) {
-                    done.set(current);
-                    total.set(totalVal);
-                    renderProgress();
+                    done.set(current); total.set(totalVal); renderProgress();
                 }
 
                 @Override
@@ -128,8 +123,8 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 }
             };
 
-            // 执行阶段
-            System.err.print("\r  " + spinner.tick() + " " + padRightTo(entry.name, 10) + " …");
+            System.err.print("\r  " + spinner.tick() + " "
+                    + String.format("%-" + NAME_W + "s", entry.name) + " …");
             StartupResult result;
             try {
                 result = entry.runner.run(phaseCtx);
@@ -138,24 +133,23 @@ public class StartupPhaseRunner implements ApplicationRunner {
             }
 
             double elapsed = (System.nanoTime() - phaseStart) / 1_000_000_000.0;
-            // 无 subtask 且 < 50ms → 静默跳过，不输出
             int finalTotal = total.get();
             if (finalTotal > 0 || elapsed >= 0.05) {
                 String summary = result.summary() != null ? result.summary() : "";
                 if (elapsed >= 0.05) summary += " (" + String.format("%.1f", elapsed) + "s)";
-
                 String mark = result.success() ? "✓" : "✗";
-                String statusLine;
+
+                String barPart;
                 if (finalTotal > 0) {
-                    String bar = ProgressBar.render(done.get(), finalTotal, null);
-                    statusLine = mark + " " + padRightTo(entry.name, 10) + " " + bar + "  " + summary;
+                    barPart = ProgressBar.render(done.get(), finalTotal, null);
                 } else {
-                    statusLine = mark + " " + padRightTo(entry.name, 10) + "  " + summary;
+                    barPart = " ".repeat(BAR_W);  // 占位对齐
                 }
+                String statusLine = String.format("%s %-" + NAME_W + "s %s  %s",
+                        mark, entry.name, barPart, summary);
                 System.err.print("\r" + padRight("  " + statusLine));
                 System.err.println();
             } else {
-                // 清掉初始的 "…" 行
                 System.err.print("\r" + " ".repeat(120) + "\r");
             }
 
