@@ -58,7 +58,7 @@ public class DashScopeChatClient {
         String baseUrl = llmConfigService.getBaseUrl();
         String apiKey = llmConfigService.getApiKey();
         String maskedKey = maskKey(apiKey);
-        log.warn("[llm] baseUrl={} models={} apiKey={}", baseUrl, models, maskedKey);
+        log.info("[llm] baseUrl={} models={} apiKey={}", baseUrl, models, maskedKey);
         IllegalStateException lastError = null;
         for (String model : models) {
             try {
@@ -88,7 +88,7 @@ public class DashScopeChatClient {
         body.put("max_tokens", llmConfigService.getMaxTokens());
         body.put("temperature", llmConfigService.getTemperature());
 
-        log.warn("[llm] → REQ model={} max_tokens={} temp={} msgs={} preview={}",
+        log.info("[llm] → REQ model={} max_tokens={} temp={} msgs={} preview={}",
                 model, llmConfigService.getMaxTokens(), llmConfigService.getTemperature(),
                 messages.size(), summarizeMessages(messages));
 
@@ -101,7 +101,7 @@ public class DashScopeChatClient {
         try {
             ResponseEntity<String> resp = restTemplate.postForEntity(url, new HttpEntity<>(body, headers), String.class);
             ChatResult parsed = parseResponse(resp.getBody());
-            log.warn("[llm] ← RESP model={} tokens(in={} out={}) content={}",
+            log.info("[llm] ← RESP model={} tokens(in={} out={}) content={}",
                     model, parsed.promptTokens(), parsed.completionTokens(),
                     truncate(parsed.content(), 200));
             return new ChatResult(parsed.content(), parsed.promptTokens(), parsed.completionTokens(), model);
@@ -137,7 +137,7 @@ public class DashScopeChatClient {
             double temperature) {
         llmConfigService.assertReady();
         List<String> models = llmConfigService.getModelCandidates();
-        log.warn("[llm] stream baseUrl={} models={} apiKey={}",
+        log.info("[llm] stream baseUrl={} models={} apiKey={}",
                 llmConfigService.getBaseUrl(), models, maskKey(llmConfigService.getApiKey()));
         IllegalStateException lastError = null;
         for (String model : models) {
@@ -171,7 +171,7 @@ public class DashScopeChatClient {
             int maxTokens,
             double temperature) {
         String url = llmConfigService.getBaseUrl() + "/chat/completions";
-        log.warn("[llm] → SSE model={} max_tokens={} temp={} msgs={} preview={}",
+        log.info("[llm] → SSE model={} max_tokens={} temp={} msgs={} preview={}",
                 model, maxTokens, temperature, messages.size(), summarizeMessages(messages));
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
