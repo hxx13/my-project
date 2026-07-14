@@ -14,6 +14,7 @@ import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingStatsPullService;
 import com.example.demo.modules.twin.dashboard.service.TwinPredictionEngineService;
 import com.example.demo.modules.twin.rpg.service.RpgEngineService;
+import com.example.demo.common.component.SocketRoomAssigner;
 import com.example.demo.modules.telemetry.service.TelemetryArchiveService;
 import com.example.demo.modules.telemetry.service.TelemetrySnapshotService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -420,7 +421,7 @@ public class JobExecutionRegistry {
                 case JOB_DASHBOARD_RANKING_ACTIVITY -> {
                     int baselineCreated = rankingSnapshotService.captureAllActivityBaselinesIfAbsent();
                     if (socketServer != null) {
-                        socketServer.getBroadcastOperations().sendEvent("DASHBOARD_RANKING_REFRESH",
+                        socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("DASHBOARD_RANKING_REFRESH",
                                 Map.of("jobKey", jobKey, "at", java.time.LocalDateTime.now().toString()));
                     }
                     yield JobRunOutcome.ok(jobKey,
@@ -428,7 +429,7 @@ public class JobExecutionRegistry {
                 }
                 case JOB_DASHBOARD_RANKING_ANIMAL -> {
                     if (socketServer != null) {
-                        socketServer.getBroadcastOperations().sendEvent("DASHBOARD_RANKING_REFRESH",
+                        socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("DASHBOARD_RANKING_REFRESH",
                                 Map.of("jobKey", jobKey, "at", java.time.LocalDateTime.now().toString()));
                     }
                     yield JobRunOutcome.ok(jobKey, "动物消耗排行榜刷新信号已广播");

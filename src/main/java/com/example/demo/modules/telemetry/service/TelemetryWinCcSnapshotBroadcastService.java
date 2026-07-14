@@ -1,6 +1,7 @@
 package com.example.demo.modules.telemetry.service;
 
 import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.common.component.SocketRoomAssigner;
 import com.example.demo.modules.telemetry.dto.TelemetryTagItemDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,7 +38,7 @@ public class TelemetryWinCcSnapshotBroadcastService {
             return;
         }
         try {
-            socketIOServer.getBroadcastOperations().sendEvent(EVENT_TAG_DELTA, Map.of("items", items));
+            socketIOServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent(EVENT_TAG_DELTA, Map.of("items", items));
         } catch (Exception e) {
             log.warn("[WinCC遥测] Socket 广播 TAG_DELTA 失败: {}", e.getMessage());
         }
@@ -45,7 +46,7 @@ public class TelemetryWinCcSnapshotBroadcastService {
 
     public void broadcastFullSnapshotRefreshed() {
         try {
-            socketIOServer.getBroadcastOperations().sendEvent(EVENT_SNAPSHOT_FULL, Collections.emptyMap());
+            socketIOServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent(EVENT_SNAPSHOT_FULL, Collections.emptyMap());
         } catch (Exception e) {
             log.warn("[WinCC遥测] Socket 广播 SNAPSHOT_FULL 失败: {}", e.getMessage());
         }

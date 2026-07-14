@@ -1,6 +1,7 @@
 package com.example.demo.modules.aro.task;
 
 import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.common.component.SocketRoomAssigner;
 import com.example.demo.common.dto.UniversalEvent;
 import com.example.demo.modules.aro.dto.AroIncrementalSyncResult;
 import com.example.demo.modules.aro.dto.AroPersonnel;
@@ -457,7 +458,7 @@ public class AroSyncTask {
         try {
             log.info("[大屏推送] 正在计算最新饼图数据...");
             Map<String, Object> newPieData = dashboardService.getTodayRoomStats();
-            socketServer.getBroadcastOperations().sendEvent("TWIN_PIE_UPDATE", newPieData);
+            socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("TWIN_PIE_UPDATE", newPieData);
         } catch (Exception e) {
             log.error("饼图推送失败", e);
         }
@@ -507,7 +508,7 @@ public class AroSyncTask {
             event.setOriginalData(original);
             event.setFeedProvenance(AccessLogFeedProvenanceBuilder.fromAroRecord(record));
 
-            socketServer.getBroadcastOperations().sendEvent("TWIN_GLOBAL_EVENT", event);
+            socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("TWIN_GLOBAL_EVENT", event);
         }
     }
 }

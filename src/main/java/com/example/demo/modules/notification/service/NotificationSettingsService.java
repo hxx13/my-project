@@ -1,6 +1,7 @@
 package com.example.demo.modules.notification.service;
 
 import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.common.component.SocketRoomAssigner;
 import com.example.demo.common.event.CredentialsChangedEvent;
 import com.example.demo.modules.notification.dto.UpdateNotifyRuleRequest;
 import com.example.demo.modules.notification.dto.UpdateNotifyTemplateRequest;
@@ -146,7 +147,7 @@ public class NotificationSettingsService {
             if (item.getConfigKey() != null && item.getConfigKey().startsWith("dashboard.codex.")) {
                 try {
                     if (socketServer != null) {
-                        socketServer.getBroadcastOperations().sendEvent("DASHBOARD_CODEX_REFRESH",
+                        socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("DASHBOARD_CODEX_REFRESH",
                                 java.util.Map.of("key", item.getConfigKey(), "at", java.time.LocalDateTime.now().toString()));
                     }
                 } catch (Exception ignored) {

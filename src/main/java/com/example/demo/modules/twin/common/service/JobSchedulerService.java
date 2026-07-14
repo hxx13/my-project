@@ -1,5 +1,6 @@
 package com.example.demo.modules.twin.common.service;
 
+import com.example.demo.common.component.SocketRoomAssigner;
 import com.example.demo.modules.telemetry.dto.TelemetryWinccDockPollConfigDto;
 import com.example.demo.modules.twin.common.dto.JobRunOutcome;
 import com.example.demo.modules.twin.common.entity.TwinJobScheduleConfig;
@@ -719,7 +720,7 @@ public class JobSchedulerService {
     private void broadcastJobEvent(String event, Map<String, Object> payload) {
         if (socketIOServer == null) return;
         try {
-            socketIOServer.getBroadcastOperations().sendEvent(event, payload);
+            socketIOServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent(event, payload);
         } catch (Exception ignored) {
             // 广播失败不影响任务执行
         }

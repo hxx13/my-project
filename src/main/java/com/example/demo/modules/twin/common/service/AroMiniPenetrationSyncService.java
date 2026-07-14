@@ -1,6 +1,7 @@
 package com.example.demo.modules.twin.common.service;
 
 import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.common.component.SocketRoomAssigner;
 import com.example.demo.common.dto.UniversalEvent;
 import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.service.AroDatabaseService;
@@ -49,12 +50,12 @@ public class AroMiniPenetrationSyncService {
         if (target != null && target.getId() != null) {
             String recordId = String.valueOf(target.getId());
             if (!realtimeEventDedupService.shouldSkipSyncPush(recordId)) {
-                socketIOServer.getBroadcastOperations().sendEvent("TWIN_GLOBAL_EVENT", toEvent(target));
+                socketIOServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("TWIN_GLOBAL_EVENT", toEvent(target));
             }
         }
         if (pushPie) {
             try {
-                socketIOServer.getBroadcastOperations().sendEvent("TWIN_PIE_UPDATE", twinDashboardService.getTodayRoomStats());
+                socketIOServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("TWIN_PIE_UPDATE", twinDashboardService.getTodayRoomStats());
             } catch (Exception e) {
                 log.warn("[mini-penetration] pie-push failed userId={} err={}", userId, e.getMessage());
             }

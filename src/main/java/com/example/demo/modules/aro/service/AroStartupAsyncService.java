@@ -1,6 +1,7 @@
 package com.example.demo.modules.aro.service;
 
 import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.common.component.SocketRoomAssigner;
 import com.example.demo.modules.aro.dto.AroPersonnel;
 import com.example.demo.modules.aro.dto.AroRecord;
 import com.example.demo.modules.aro.mapper.AroDatabaseMapper;
@@ -75,7 +76,7 @@ public class AroStartupAsyncService {
         try {
             log.info("[大屏推送] 正在计算最新饼图数据...");
             Map<String, Object> newPieData = dashboardService.getTodayRoomStats();
-            socketServer.getBroadcastOperations().sendEvent("TWIN_PIE_UPDATE", newPieData);
+            socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("TWIN_PIE_UPDATE", newPieData);
         } catch (Exception e) {
             log.error("饼图推送失败: {}", e.getMessage());
         }

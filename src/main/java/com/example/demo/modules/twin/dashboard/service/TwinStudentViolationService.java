@@ -4,6 +4,7 @@ import com.example.demo.modules.auth.service.UserDisplayNameService;
 import com.example.demo.modules.notification.entity.StudentNotification;
 import com.example.demo.modules.notification.mapper.StudentNotificationMapper;
 import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.common.component.SocketRoomAssigner;
 import com.example.demo.modules.student.service.MobileUserSocketPushService;
 import com.example.demo.modules.twin.common.mapper.TwinDashboardMapper;
 import com.example.demo.modules.twin.dashboard.dto.DashboardViolationBoardItemDTO;
@@ -871,7 +872,7 @@ public class TwinStudentViolationService {
                     : "";
             alert.put("body", plainBody.length() > 80 ? plainBody.substring(0, 80) + "…" : plainBody);
             alert.put("createdAt", row.getCreatedAt() != null ? row.getCreatedAt().toString() : "");
-            socketServer.getBroadcastOperations().sendEvent("CAGE_NOTICE_ALERT", alert);
+            socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("CAGE_NOTICE_ALERT", alert);
         } catch (Exception e) {
             log.warn("[cage-notice] 广播灵动岛失败 violationId={}: {}", row.getId(), e.getMessage());
         }

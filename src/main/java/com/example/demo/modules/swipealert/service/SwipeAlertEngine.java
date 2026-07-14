@@ -4,6 +4,7 @@ import com.example.demo.modules.swipealert.entity.SwipeAlertRule;
 import com.example.demo.modules.swipealert.mapper.SwipeAlertRuleMapper;
 import com.example.demo.modules.dahua.dto.DahuaRecordDTO;
 import com.corundumstudio.socketio.SocketIOServer;
+import com.example.demo.common.component.SocketRoomAssigner;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -121,7 +122,7 @@ public class SwipeAlertEngine {
                         Map<String, Object> dismiss = new LinkedHashMap<>();
                         dismiss.put("alertId", alertId);
                         dismiss.put("dismissedBy", userId);
-                        socketServer.getBroadcastOperations().sendEvent(
+                        socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent(
                                 "SWIPE_FAILURE_ALERT_DISMISS", dismiss);
                         log.info("[swipe-alert] ack received alertId={} userId={}, broadcast dismiss",
                                 alertId, userId);
@@ -426,7 +427,7 @@ public class SwipeAlertEngine {
     private void fireAlert(Map<String, Object> alert) {
         if (socketServer != null) {
             try {
-                socketServer.getBroadcastOperations().sendEvent("SWIPE_FAILURE_ALERT", alert);
+                socketServer.getRoomOperations(SocketRoomAssigner.ROOM_CONSOLE_LIVE).sendEvent("SWIPE_FAILURE_ALERT", alert);
                 log.info("[swipe-alert] fired alertId={} ruleId={} ruleName={} count={}",
                         alert.get("alertId"), alert.get("ruleId"),
                         alert.get("ruleName"), alert.get("count"));
