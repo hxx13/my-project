@@ -8,13 +8,13 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
+import java.io.IOException;
 import java.io.InputStream;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Supplier;
 
 @Service
 public class ClientVersionService {
@@ -60,27 +60,49 @@ public class ClientVersionService {
     @PostConstruct
     public void init() {
         expectedBuildId = readBuildIdFromMetaFile();
-        // 向 ClientReloadBroadcastService 注入 reloadId 查询器，打破循环依赖
-        broadcastService.setReloadIdSupplier(reloadIdCounter::get);
         log.info("[client-version] 初始化完成 expectedBuildId={} reloadId={}", expectedBuildId, reloadIdCounter.get());
     }
 
     private String readBuildIdFromMetaFile() {
+        // 1. build-meta.json（首选）
         try {
-            ClassPathResource resource = new ClassPathResource("static/build-meta.json");
-            if (!resource.exists()) {
-                log.warn("[client-version] static/build-meta.json 不存在于 classpath，使用 'unknown'");
-                return "unknown";
-            }
-            try (InputStream is = resource.getInputStream()) {
-                Map<String, Object> meta = objectMapper.readValue(is, Map.class);
-                Object buildId = meta.get("buildId");
-                return buildId != null ? buildId.toString() : "unknown";
+            ClassPathResource meta = new ClassPathResource("static/build-meta.json");
+            if (meta.exists()) {
+                try (InputStream is = meta.getInputStream()) {
+                    Map<String, Object> obj = objectMapper.readValue(is, Map.class);
+                    Object buildId = obj.get("buildId");
+                    if (buildId != null && !buildId.toString().isBlank()) {
+                        return buildId.toString();
+                    }
+                }
             }
         } catch (Exception e) {
-            log.error("[client-version] 读取 build-meta.json 失败", e);
-            return "unknown";
+            log.warn("[client-version] build-meta.json 读取失败，尝试 index.html fallback: {}", e.getMessage());
         }
+
+        // 2. index.html lastModified（JAR 部署 fallback）
+        try {
+            ClassPathResource index = new ClassPathResource("static/index.html");
+            if (index.exists()) {
+                // 优先 getFile()（exploded 部署）
+                try {
+                    return String.valueOf(index.getFile().lastModified());
+                } catch (IOException fileEx) {
+                    // JAR 内：通过 URLConnection
+                    java.net.URL url = index.getURL();
+                    java.net.URLConnection conn = url.openConnection();
+                    long lastMod = conn.getLastModified();
+                    if (lastMod > 0) {
+                        return String.valueOf(lastMod);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[client-version] index.html lastModified 读取失败: {}", e.getMessage());
+        }
+
+        log.warn("[client-version] 无法读取 buildId，使用 'unknown'");
+        return "unknown";
     }
 
     /** GET /api/client-version 调用 */
@@ -177,6 +199,20 @@ public class ClientVersionService {
         int removed = before - clientStats.size();
         if (removed > 0) {
             log.debug("[client-version] 清理 {} 个过期客户端记录，剩余 {}", removed, clientStats.size());
+        }
+    }
+
+    @Scheduled(fixedRate = 60_000)
+    public void refreshExpectedBuildId() {
+        try {
+            String fresh = readBuildIdFromMetaFile();
+            if (fresh != null && !fresh.isBlank() && !"unknown".equals(fresh)
+                    && !fresh.equals(expectedBuildId)) {
+                expectedBuildId = fresh;
+                log.info("[client-version] expectedBuildId 已更新: {}", fresh);
+            }
+        } catch (Throwable t) {
+            log.warn("[client-version] 刷新 expectedBuildId 失败", t);
         }
     }
 
