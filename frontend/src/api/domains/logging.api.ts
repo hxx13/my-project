@@ -27,6 +27,7 @@ export interface LogEntry {
   level: string;
   logger: string;
   message: string;
+  seq?: number;
 }
 
 export interface LogRecentResponse {

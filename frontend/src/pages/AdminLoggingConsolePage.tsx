@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowLeft, ChevronDown, ChevronRight, Database, Pause, Play, RotateCcw, Settings2, Trash2 } from "lucide-react";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
@@ -25,10 +25,27 @@ const selectCls = "text-xs bg-gray-800 text-gray-100 border border-gray-500 roun
 const btnBase = "text-xs text-gray-300 hover:text-white font-mono flex items-center gap-1 transition disabled:opacity-30";
 const btnGhost = "text-xs text-gray-400 hover:text-white font-mono flex items-center gap-1 transition";
 
+function LogMessage({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const TRUNCATE_AT = 300;
+  if (text.length <= TRUNCATE_AT) return <span className="text-gray-200 whitespace-pre-wrap">{text}</span>;
+  return (
+    <span className="text-gray-200 whitespace-pre-wrap">
+      {expanded ? text : text.slice(0, TRUNCATE_AT) + '…'}
+      <button onClick={() => setExpanded(!expanded)}
+              className="text-blue-400 hover:text-blue-300 ml-1 text-xs">
+        {expanded ? '[收起]' : `[展开 ${(text.length / 1024).toFixed(1)}KB]`}
+      </button>
+    </span>
+  );
+}
+
 function LogStream({ paused, onTogglePaused }: { paused: boolean; onTogglePaused: () => void }) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [minLevel, setMinLevel] = useState("");
   const [search, setSearch] = useState("");
+  const [apiError, setApiError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
@@ -39,13 +56,13 @@ function LogStream({ paused, onTogglePaused }: { paused: boolean; onTogglePaused
       if (paused) return;
       try {
         const res = await fetchRecentLogs(500, minLevel);
-        if (active) setEntries(res.entries);
-      } catch { /* ignore */ }
+        if (active) { setEntries(res.entries); setApiError(false); }
+      } catch { setApiError(true); }
     };
     poll();
     const id = setInterval(poll, 2000);
     return () => { active = false; clearInterval(id); };
-  }, [minLevel, paused]);
+  }, [minLevel, paused, retryCount]);
 
   const isNearBottom = () => {
     const el = containerRef.current;
@@ -74,11 +91,18 @@ function LogStream({ paused, onTogglePaused }: { paused: boolean; onTogglePaused
     setShowScrollBtn(!near);
   }, []);
 
-  const filtered = search
-    ? entries.filter((e) =>
-        e.message.toLowerCase().includes(search.toLowerCase()) ||
-        e.logger.toLowerCase().includes(search.toLowerCase()))
-    : entries;
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const filtered = useMemo(() =>
+    debouncedSearch
+      ? entries.filter(e => e.message.toLowerCase().includes(debouncedSearch.toLowerCase())
+                         || e.logger.toLowerCase().includes(debouncedSearch.toLowerCase()))
+      : entries,
+    [entries, debouncedSearch]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -121,15 +145,35 @@ function LogStream({ paused, onTogglePaused }: { paused: boolean; onTogglePaused
           onScroll={handleScroll}
           className="absolute inset-0 overflow-y-auto px-3 py-2 font-mono text-[13px] leading-[1.7]"
         >
-          {filtered.length === 0 ? (
-            <div className="text-gray-600 text-center mt-8 select-none">no output</div>
+          {apiError ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400 font-mono text-sm">
+              <span className="text-red-400">连接失败</span>
+              <span>无法获取日志数据，请检查后端是否正常运行</span>
+              <button onClick={() => { setApiError(false); setRetryCount(c => c + 1); }}
+                      className="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 text-gray-200 text-xs">
+                重试
+              </button>
+            </div>
+          ) : filtered.length === 0 && entries.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-500 font-mono text-sm select-none">
+              <span className="text-gray-400">日志缓冲区为空</span>
+              <span className="text-xs">启动应用模块或触发操作以生成日志，或将最低级别调整为 DEBUG</span>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400 font-mono text-sm">
+              <span>无匹配 "{search}" 的日志条目</span>
+              <button onClick={() => setSearch("")}
+                      className="px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 text-gray-200 text-xs">
+                清除搜索
+              </button>
+            </div>
           ) : (
-            filtered.map((e, i) => (
-              <div key={`${e.tsEpochMs}-${i}`} className="flex gap-2.5 hover:bg-white/[0.04] min-w-0">
+            filtered.map((e) => (
+              <div key={e.seq} className="flex gap-2.5 hover:bg-white/[0.04] min-w-0">
                 <span className="text-gray-500 shrink-0 select-none">{e.ts}</span>
                 <span className={`shrink-0 w-[56px] font-semibold ${LEVEL_COLORS[e.level] || "text-gray-400"}`}>{e.level}</span>
                 <span className="text-gray-500 shrink-0 max-w-[180px] truncate select-none">{e.logger.split(".").pop()}</span>
-                <span className="text-gray-200 break-all">{e.message}</span>
+                <LogMessage text={e.message} />
               </div>
             ))
           )}

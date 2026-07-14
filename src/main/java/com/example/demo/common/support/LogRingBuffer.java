@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
@@ -19,6 +20,9 @@ public final class LogRingBuffer {
     private static final int DEFAULT_CAPACITY = 5000;
     private static final DateTimeFormatter TS_FMT =
             DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
+
+    /** 全局日志条目序列号，JVM 重启后从 0 开始（sessionStorage 同时清空，不会冲突） */
+    private static final AtomicLong SEQUENCE = new AtomicLong(0);
 
     private static volatile LogRingBuffer INSTANCE;
 
@@ -87,6 +91,7 @@ public final class LogRingBuffer {
                 map.put("level", entry.level);
                 map.put("logger", entry.loggerName);
                 map.put("message", entry.message);
+                map.put("seq", entry.sequenceNumber);
                 result.add(map);
             }
             return result;
@@ -137,12 +142,14 @@ public final class LogRingBuffer {
         final String loggerName;
         final String message;
         final long timestampMs;
+        final long sequenceNumber;
 
         LogEntry(String level, String loggerName, String message, long timestampMs) {
             this.level = level;
             this.loggerName = loggerName;
             this.message = message;
             this.timestampMs = timestampMs;
+            this.sequenceNumber = SEQUENCE.getAndIncrement();
         }
 
         boolean passesMinLevel(String minLevel) {
