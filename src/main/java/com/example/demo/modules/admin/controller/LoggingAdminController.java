@@ -4,9 +4,14 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import com.example.demo.common.config.DebugToggleService;
+import com.example.demo.common.dto.Result;
+import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.logging.registry.LogCategory;
 import com.example.demo.common.logging.registry.LogCategoryRegistry;
+import com.example.demo.common.service.AuthContextService;
 import com.example.demo.common.support.LogRingBuffer;
+import com.example.demo.modules.auth.entity.User;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,13 +24,21 @@ public class LoggingAdminController {
     private static final List<String> LEVEL_OPTIONS = List.of("OFF", "ERROR", "WARN", "INFO", "DEBUG");
 
     private final DebugToggleService debugToggleService;
+    private final AuthContextService authContextService;
+    private final HttpServletRequest request;
 
-    public LoggingAdminController(DebugToggleService debugToggleService) {
+    public LoggingAdminController(DebugToggleService debugToggleService,
+                                   AuthContextService authContextService,
+                                   HttpServletRequest request) {
         this.debugToggleService = debugToggleService;
+        this.authContextService = authContextService;
+        this.request = request;
     }
 
     @GetMapping("/levels")
-    public Map<String, Object> getLevels() {
+    public Object getLevels() {
+        Result<?> denied = requireAdmin();
+        if (denied != null) return denied;
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("root", getRootLevel());
         result.put("levelOptions", LEVEL_OPTIONS);
@@ -43,7 +56,9 @@ public class LoggingAdminController {
     }
 
     @PostMapping("/level")
-    public Map<String, Object> setLevel(@RequestBody Map<String, String> body) {
+    public Object setLevel(@RequestBody Map<String, String> body) {
+        Result<?> denied = requireAdmin();
+        if (denied != null) return denied;
         String loggerName = body.get("loggerName");
         String levelStr = body.get("level");
         if (loggerName == null || levelStr == null) {
@@ -66,7 +81,9 @@ public class LoggingAdminController {
     }
 
     @PostMapping("/reset")
-    public Map<String, Object> reset() {
+    public Object reset() {
+        Result<?> denied = requireAdmin();
+        if (denied != null) return denied;
         LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
         ctx.getLogger(Logger.ROOT_LOGGER_NAME).setLevel(Level.INFO);
         for (LogCategory cat : LogCategoryRegistry.getInstance().all()) {
@@ -77,14 +94,18 @@ public class LoggingAdminController {
 
     /** 从 DB 同步日志级别与 debug 开关（等同于重启后的状态） */
     @PostMapping("/sync-from-db")
-    public Map<String, Object> syncFromDb() {
+    public Object syncFromDb() {
+        Result<?> denied = requireAdmin();
+        if (denied != null) return denied;
         debugToggleService.refreshAll();
         return Map.of("ok", true, "message", "已从 sys_system_config 同步所有日志级别与 debug 开关");
     }
 
     /** 返回 integration debug 开关当前状态 */
     @GetMapping("/toggles")
-    public Map<String, Object> getToggles() {
+    public Object getToggles() {
+        Result<?> denied = requireAdmin();
+        if (denied != null) return denied;
         Map<String, Object> toggles = new LinkedHashMap<>();
         toggles.put("scanTimingConsoleEnabled", debugToggleService.isScanTimingConsoleEnabled());
         toggles.put("scanTimingConsoleMinMs", debugToggleService.getScanTimingConsoleMinMs());
@@ -100,6 +121,20 @@ public class LoggingAdminController {
         return toggles;
     }
 
+    /**
+     * 认证 + 角色鉴权，参照 MonitorController.java:881-891 的 requireAdmin 模式。
+     * 仅 ADMIN（level>=4）及以上角色可访问日志管理端点。
+     * 返回 null 表示通过；返回 Result 表示被拒绝（调用方直接 return）。
+     */
+    private Result<?> requireAdmin() {
+        User user = authContextService.resolveUserFromBearer(request.getHeader("Authorization"));
+        if (user == null) return Result.fail(401, "未登录或令牌无效");
+        if (user.getStatus() != null && user.getStatus() == 0) return Result.fail(401, "账号已禁用");
+        RoleEnum role = user.getRole() != null ? user.getRole() : RoleEnum.MEMBER;
+        if (role.getLevel() < RoleEnum.ADMIN.getLevel()) return Result.fail(403, "需要管理员权限");
+        return null;
+    }
+
     private String getRootLevel() {
         LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
         return ctx.getLogger(Logger.ROOT_LOGGER_NAME).getEffectiveLevel().toString();
@@ -107,9 +142,11 @@ public class LoggingAdminController {
 
     /** 从环形缓冲区拉取最近日志 */
     @GetMapping("/recent")
-    public Map<String, Object> getRecent(
+    public Object getRecent(
             @RequestParam(defaultValue = "200") int count,
             @RequestParam(defaultValue = "") String minLevel) {
+        Result<?> denied = requireAdmin();
+        if (denied != null) return denied;
         LogRingBuffer buffer = LogRingBuffer.getInstance();
         List<Map<String, Object>> entries = buffer.recent(count, minLevel);
         Map<String, Object> result = new LinkedHashMap<>();
@@ -120,7 +157,9 @@ public class LoggingAdminController {
 
     /** 清空环形缓冲区 */
     @PostMapping("/clear-buffer")
-    public Map<String, Object> clearBuffer() {
+    public Object clearBuffer() {
+        Result<?> denied = requireAdmin();
+        if (denied != null) return denied;
         LogRingBuffer.getInstance().clear();
         return Map.of("ok", true, "message", "日志缓冲区已清空");
     }
