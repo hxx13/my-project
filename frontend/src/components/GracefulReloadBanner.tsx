@@ -23,6 +23,16 @@ export function GracefulReloadBanner({ reason, onDismiss }: Props) {
         };
     }, []);
 
+    // reason 变化时重置 snooze 状态
+    useEffect(() => {
+        setSnoozed(false);
+        setCountdown(COUNTDOWN_SECONDS);
+        if (snoozeTimerRef.current) {
+            clearTimeout(snoozeTimerRef.current);
+            snoozeTimerRef.current = undefined;
+        }
+    }, [reason]);
+
     const doReload = useCallback(() => {
         if (hasReloadedRef.current) return;
         hasReloadedRef.current = true;
