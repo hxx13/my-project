@@ -1,4 +1,6 @@
-import type { ManagerOptions } from "socket.io-client";
+import type { ManagerOptions, Socket } from "socket.io-client";
+import { io } from "socket.io-client";
+import { authStorage } from "@/features/auth/authStorage";
 
 /** Socket.IO 与 Spring HTTP 分端口时，默认把 API 端口换为 9092 */
 const DEFAULT_SOCKET_PORT = 9092;
@@ -49,3 +51,35 @@ export function resolveSocketUrl(): string {
 
     return `http://localhost:${DEFAULT_SOCKET_PORT}`;
 }
+
+// ── 共享 Socket 单例 ──
+// 模块级同步创建——在 React 渲染之前，消除初始化顺序问题。
+// Socket 实例永不替换，避免监听器重新绑定问题。
+// Token 刷新通过 reconnect_attempt 钩子更新 query 参数。
+
+function initSharedSocket(): Socket {
+    const token = authStorage.getToken();
+    return io(resolveSocketUrl(), {
+        ...SOCKET_IO_CLIENT_OPTIONS,
+        query: { token: token || '', v: APP_BUILD_ID },
+    });
+}
+
+const sharedSocket: Socket = initSharedSocket();
+
+/** 获取全局共享 Socket 实例。永不返回 null——socket 在模块加载时即创建。 */
+export function getSharedSocket(): Socket {
+    return sharedSocket;
+}
+
+// ── 重连时预刷新 token ──
+sharedSocket.on('reconnect_attempt', (attempt) => {
+    console.log(`[SharedSocket] 第 ${attempt} 次重连尝试…`);
+    const currentToken = authStorage.getToken();
+    if (currentToken) {
+        (sharedSocket as any).io.opts.query = {
+            token: currentToken,
+            v: APP_BUILD_ID,
+        };
+    }
+});
