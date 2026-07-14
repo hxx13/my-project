@@ -164,6 +164,14 @@ public class LoggingAdminController {
         return Map.of("ok", true, "message", "日志缓冲区已清空");
     }
 
+    /** 返回环形缓冲区运行时统计信息 */
+    @GetMapping("/stats")
+    public Object getStats() {
+        Result<?> denied = requireAdmin();
+        if (denied != null) return denied;
+        return LogRingBuffer.getInstance().stats();
+    }
+
     private String getLoggerLevel(String loggerName) {
         LoggerContext ctx = (LoggerContext) LoggerFactory.getILoggerFactory();
         Level effective = ctx.getLogger(loggerName).getEffectiveLevel();

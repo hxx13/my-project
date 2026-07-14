@@ -25,6 +25,8 @@ public final class LogRingBuffer {
     private final LogEntry[] buffer;
     private final int capacity;
     private volatile long writeIndex;  // 2^63 写入 @10k/s ≈ 2900万年，永不溢出
+    /** 环形缓冲区覆盖次数（每次写入覆盖一条旧条目时 +1） */
+    private volatile long wrapCount;
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     private LogRingBuffer(int capacity) {
@@ -51,6 +53,9 @@ public final class LogRingBuffer {
     private void put(LogEntry entry) {
         lock.writeLock().lock();
         try {
+            if (writeIndex >= capacity && buffer[(int) (writeIndex % capacity)] != null) {
+                wrapCount++;  // 该位置有旧数据即将被覆盖
+            }
             buffer[(int) (writeIndex % capacity)] = entry;
             writeIndex++;
         } finally {
@@ -101,6 +106,28 @@ public final class LogRingBuffer {
             Arrays.fill(buffer, null);  // 释放 GC 引用，防止 40MB 泄漏
         } finally {
             lock.writeLock().unlock();
+        }
+    }
+
+    /** 返回缓冲区运行时统计信息 */
+    public Map<String, Object> stats() {
+        lock.readLock().lock();
+        try {
+            Map<String, Object> s = new LinkedHashMap<>();
+            s.put("capacity", capacity);
+            s.put("currentSize", size());
+            s.put("wraps", wrapCount);
+            int total = (int) Math.min(writeIndex, capacity);
+            if (total > 0) {
+                long baseIdx = writeIndex - total;
+                LogEntry oldest = buffer[(int) (baseIdx % capacity)];
+                LogEntry newest = buffer[(int) ((writeIndex - 1) % capacity)];
+                if (oldest != null) s.put("oldestEntryEpochMs", oldest.timestampMs);
+                if (newest != null) s.put("youngestEntryEpochMs", newest.timestampMs);
+            }
+            return s;
+        } finally {
+            lock.readLock().unlock();
         }
     }
 
