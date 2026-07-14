@@ -12,6 +12,9 @@ import org.springframework.jdbc.datasource.init.DatabasePopulatorUtils;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.stereotype.Component;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import javax.sql.DataSource;
 
 /**
@@ -35,6 +38,8 @@ import javax.sql.DataSource;
         matchIfMissing = true
 )
 public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, StartupRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(EmbeddedTwinSystemCoreDdlBootstrap.class);
 
     private final DataSource dataSource;
     private final TwinStudentViolationService twinStudentViolationService;
@@ -155,7 +160,8 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
                 return true; // 幂等：列/表/索引已存在
             }
             String msg = ex.getMessage() != null ? ex.getMessage() : "";
-            ctx.warn(scriptLabel(classpath) + ": " + truncate(msg, 120));
+            log.debug("DDL script failed: {} — {}", classpath, msg);
+            ctx.warn(scriptLabel(classpath) + ": " + truncate(msg, 200));
             return false;
         }
     }
@@ -185,6 +191,7 @@ public class EmbeddedTwinSystemCoreDdlBootstrap implements InitializingBean, Sta
                     || lower.contains("command denied")     // DDL 权限不足但表已存在
                     || lower.contains("access denied")      // DDL 权限不足
                     || lower.contains("insufficient privileges")
+                    || lower.contains("can't have a default value") // TEXT/BLOB/JSON DEFAULT
                     || (lower.contains("syntax") && lower.contains("near ''"))  // PREPARE with NULL @sql
                     || (lower.contains("syntax") && lower.contains("near 'declare"))
             ) {
