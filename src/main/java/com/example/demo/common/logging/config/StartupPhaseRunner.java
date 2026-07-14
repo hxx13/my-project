@@ -55,6 +55,12 @@ public class StartupPhaseRunner implements ApplicationRunner {
     @Value("${twin.banner.spinner-style:dots}")
     private String spinnerStyleConfig;
 
+    @Value("${app.socketio.port:9092}")
+    private int socketioPort;
+
+    @Value("${spring.datasource.url:}")
+    private String dbUrl;
+
     public StartupPhaseRunner(ApplicationContext ctx) {
         this.ctx = ctx;
     }
@@ -156,53 +162,63 @@ public class StartupPhaseRunner implements ApplicationRunner {
             if (!result.success()) anyFailed = true;
         }
 
-        // 打印标题横幅
+        // ── 启动信息面板 ──
         System.out.println();
-        if ("classic".equalsIgnoreCase(bannerStyle)) {
-            System.out.println(PhaseFrame.banner(
-                    "🧬 TWIN SYSTEM v" + appVersion,
-                    "Neuro-Synced Infrastructure"));
-        } else {
-            renderFigletBanner();
-        }
-
-        // 结果框
-        System.out.println();
-        String line1 = (anyFailed ? "DEGRADED" : "READY")
-                + "   :" + port + "  ·  " + profile;
-        String line2 = "http://localhost:5173";
-        printResultBox(!anyFailed, line1, line2);
+        renderStartupPanel(anyFailed);
         System.out.println();
     }
 
     // ── 标题横幅 + 结果框 + Spinner 配置解析 ──
 
-    private void renderFigletBanner() {
-        String title = "TWIN SYSTEM  v" + appVersion;
-        // 尝试 FIGlet 大字，未装字体则回退为等宽居中文本
+    private void renderStartupPanel(boolean degraded) {
+        String javaVer = System.getProperty("java.version", "?");
+        String osName  = System.getProperty("os.name", "?");
+
+        // 从 JDBC URL 中提取数据库类型
+        String dbType = "MySQL";
+        if (dbUrl.contains(":mysql:")) dbType = "MySQL";
+        else if (dbUrl.contains(":mariadb:")) dbType = "MariaDB";
+        else if (dbUrl.contains(":postgresql:")) dbType = "PostgreSQL";
+        else if (dbUrl.contains(":h2:")) dbType = "H2";
+
         java.util.List<String> figletLines = FigletRenderer.render("TWIN");
-        String subtitle = "🧬 Neuro-Synced Infrastructure";
-        int contentWidth = FigletRenderer.widthOf("TWIN");
-        if (contentWidth < title.length()) contentWidth = title.length();
-        if (contentWidth < subtitle.length()) contentWidth = subtitle.length();
-        int innerW = contentWidth + 4;
+        boolean hasFiglet = figletLines.size() > 1;
 
-        String bar = "═".repeat(innerW);
-        System.out.println("  ╔" + bar + "╗");
-        for (String line : figletLines) {
-            System.out.println("  ║  " + center(line, contentWidth) + "  ║");
+        // 信息行
+        List<String> infoLines = new ArrayList<>();
+        infoLines.add("Java " + javaVer + "  |  " + dbType + "  |  " + osName);
+        infoLines.add(":" + port + "  |  http://localhost:5173  |  Socket.IO :" + socketioPort);
+        infoLines.add("profile: " + profile + "  |  v" + appVersion);
+        String statusLine = (degraded ? "DEGRADED" : "READY")
+                + "  ·  startup complete";
+
+        // 计算面板宽度
+        int w = statusLine.length();
+        for (String l : infoLines) if (l.length() > w) w = l.length();
+        for (String l : figletLines) if (l.length() > w) w = l.length();
+        w = Math.max(w, 44) + 4;
+        String barH = "═".repeat(w);
+        String barS = "─".repeat(w);
+
+        // ── 面板 ──
+        System.out.println("  ╔" + barH + "╗");
+
+        if (hasFiglet) {
+            for (String line : figletLines) {
+                System.out.println("  ║  " + center(line, w - 4) + "  ║");
+            }
+        } else {
+            System.out.println("  ║  " + center("🧬  TWIN  SYSTEM  v" + appVersion, w - 4) + "  ║");
+            System.out.println("  ║  " + center("Neuro-Synced Infrastructure", w - 4) + "  ║");
         }
-        System.out.println("  ║  " + center(subtitle, contentWidth) + "  ║");
-        System.out.println("  ╚" + bar + "╝");
-    }
 
-    private void printResultBox(boolean ok, String line1, String line2) {
-        int w = Math.max(line1.length(), line2.length()) + 4;
-        String bar = "─".repeat(w);
-        System.out.println("  ┌" + bar + "┐");
-        System.out.println("  │  " + padRightTo(line1, w - 4) + "  │");
-        System.out.println("  │  " + padRightTo(line2, w - 4) + "  │");
-        System.out.println("  └" + bar + "┘");
+        System.out.println("  ╟" + barS + "╢");
+        for (String line : infoLines) {
+            System.out.println("  ║  " + line + " ".repeat(w - 4 - line.length()) + "  ║");
+        }
+        System.out.println("  ╟" + barS + "╢");
+        System.out.println("  ║  " + statusLine + " ".repeat(w - 4 - statusLine.length()) + "  ║");
+        System.out.println("  ╚" + barH + "╝");
     }
 
     private static String center(String s, int width) {
@@ -210,10 +226,6 @@ public class StartupPhaseRunner implements ApplicationRunner {
         if (pad <= 0) return s;
         int left = pad / 2;
         return " ".repeat(left) + s + " ".repeat(pad - left);
-    }
-
-    private static String padRightTo(String s, int width) {
-        return s.length() >= width ? s : s + " ".repeat(width - s.length());
     }
 
     private Spinner.SpinnerStyle parseSpinnerStyle(String config) {
