@@ -79,7 +79,7 @@ public class StartupPhaseRunner implements ApplicationRunner {
 
         // ── Spinner 复用（跨阶段，帧自然递增） ──
         Spinner spinner = new Spinner(parseSpinnerStyle(spinnerStyleConfig));
-        List<String> completed = new ArrayList<>();
+        boolean anyFailed = false;
 
         for (PhaseEntry entry : entries) {
             AtomicInteger done = new AtomicInteger(0);
@@ -91,8 +91,7 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 private void renderProgress() {
                     String frame = spinner.tick();
                     String bar = ProgressBar.render(done.get(), Math.max(total.get(), done.get()), null);
-                    String line = "  " + CyberColor.AMBER + frame + CyberColor.RESET
-                            + " " + entry.name + " " + bar;
+                    String line = "  " + frame + " " + entry.name + " " + bar;
                     System.err.print("\r" + padRight(line));
                 }
 
@@ -117,17 +116,14 @@ public class StartupPhaseRunner implements ApplicationRunner {
 
                 @Override
                 public void warn(String message) {
-                    // 换行输出警告 → 下一行重新渲染进度条
                     System.err.println();
-                    System.err.println(CyberColor.AMBER + "  ! " + entry.name + ": "
-                            + message + CyberColor.RESET);
+                    System.err.println("  ! " + entry.name + ": " + message);
                     renderProgress();
                 }
             };
 
             // 执行阶段
-            System.err.print("\r  " + CyberColor.AMBER + spinner.tick() + CyberColor.RESET
-                    + " " + entry.name + " …");
+            System.err.print("\r  " + spinner.tick() + " " + entry.name + " …");
             StartupResult result;
             try {
                 result = entry.runner.run(phaseCtx);
@@ -139,21 +135,24 @@ public class StartupPhaseRunner implements ApplicationRunner {
             String summary = result.summary() != null ? result.summary() : "";
             if (elapsed >= 0.05) summary += " (" + String.format("%.1f", elapsed) + "s)";
 
-            // 进度条 100% 定格 — \r 覆盖同一行，不擦除
+            // \r 定格完成行（有 subtask 才显示进度条）
             int finalDone = done.get();
-            int finalTotal = Math.max(total.get(), finalDone);
-            String bar = ProgressBar.render(finalDone, finalTotal, null);
-            String mark = result.success()
-                    ? CyberColor.GREEN + "✓" + CyberColor.RESET
-                    : CyberColor.RED + "✗" + CyberColor.RESET;
-            String statusLine = mark + " " + entry.name + " " + bar
-                    + "  " + CyberColor.GRAY + summary + CyberColor.RESET;
+            int finalTotal = total.get();
+            String mark = result.success() ? "✓" : "✗";
+            String statusLine;
+            if (finalTotal > 0) {
+                String bar = ProgressBar.render(finalDone, finalTotal, null);
+                statusLine = mark + " " + entry.name + " " + bar + "  " + summary;
+            } else {
+                statusLine = mark + " " + entry.name + "  " + summary;
+            }
             System.err.print("\r" + padRight("  " + statusLine));
             System.err.println();
-            completed.add(statusLine);
+
+            if (!result.success()) anyFailed = true;
         }
 
-        // 打印标题横幅 + 已完成列表
+        // 打印标题横幅
         System.out.println();
         if ("classic".equalsIgnoreCase(bannerStyle)) {
             System.out.println(PhaseFrame.banner(
@@ -162,20 +161,13 @@ public class StartupPhaseRunner implements ApplicationRunner {
         } else {
             renderFigletBanner();
         }
-        System.out.println();
 
-        for (String line : completed) {
-            System.out.println("  " + line);
-        }
-
-        double totalElapsed = 0;
-        // (elapsed tracked per phase, we just use the last phase's relative time)
+        // 结果框
         System.out.println();
-        boolean allOk = completed.stream().noneMatch(l -> l.contains(CyberColor.RED));
-        String line1 = "TWIN SYSTEM " + (allOk ? "READY" : "DEGRADED")
+        String line1 = "TWIN SYSTEM " + (anyFailed ? "DEGRADED" : "READY")
                 + "  ·  :" + port + "  ·  startup complete";
         String line2 = "http://localhost:5173  ·  profile: " + profile;
-        System.out.println(PhaseFrame.resultBox(allOk, line1, line2));
+        System.out.println(PhaseFrame.resultBox(!anyFailed, line1, line2));
         System.out.println();
     }
 
