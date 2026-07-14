@@ -132,22 +132,26 @@ public class StartupPhaseRunner implements ApplicationRunner {
             }
 
             double elapsed = (System.nanoTime() - phaseStart) / 1_000_000_000.0;
-            String summary = result.summary() != null ? result.summary() : "";
-            if (elapsed >= 0.05) summary += " (" + String.format("%.1f", elapsed) + "s)";
-
-            // \r 定格完成行（有 subtask 才显示进度条）
-            int finalDone = done.get();
+            // 无 subtask 且 < 50ms → 静默跳过，不输出
             int finalTotal = total.get();
-            String mark = result.success() ? "✓" : "✗";
-            String statusLine;
-            if (finalTotal > 0) {
-                String bar = ProgressBar.render(finalDone, finalTotal, null);
-                statusLine = mark + " " + entry.name + " " + bar + "  " + summary;
+            if (finalTotal > 0 || elapsed >= 0.05) {
+                String summary = result.summary() != null ? result.summary() : "";
+                if (elapsed >= 0.05) summary += " (" + String.format("%.1f", elapsed) + "s)";
+
+                String mark = result.success() ? "✓" : "✗";
+                String statusLine;
+                if (finalTotal > 0) {
+                    String bar = ProgressBar.render(done.get(), finalTotal, null);
+                    statusLine = mark + " " + entry.name + " " + bar + "  " + summary;
+                } else {
+                    statusLine = mark + " " + entry.name + "  " + summary;
+                }
+                System.err.print("\r" + padRight("  " + statusLine));
+                System.err.println();
             } else {
-                statusLine = mark + " " + entry.name + "  " + summary;
+                // 清掉初始的 "…" 行
+                System.err.print("\r" + " ".repeat(120) + "\r");
             }
-            System.err.print("\r" + padRight("  " + statusLine));
-            System.err.println();
 
             if (!result.success()) anyFailed = true;
         }
