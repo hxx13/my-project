@@ -103,7 +103,7 @@ public final class FigletRenderer {
             try {
                 loadedFont = loadFont();
             } catch (Exception e) {
-                log.warn("FIGlet font load failed ({}): {} — fallback to plain text", FONT_PATH, e.getMessage());
+                log.debug("FIGlet font load failed ({}): {} — fallback to plain text", FONT_PATH, e.getMessage());
                 loadedFont = null;
             }
             return loadedFont;

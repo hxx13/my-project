@@ -97,16 +97,14 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 public void subtask(String label, Runnable task) {
                     total.incrementAndGet();
                     if (label != null) {
-                        footer.tick(entry.name + "  ·  " + label
-                                + (total.get() > 0 ? "  (" + done.get() + "/" + total.get() + ")" : ""));
+                        footer.progress(entry.name, done.get(), total.get());
                     }
                     try {
                         task.run();
                     } finally {
                         done.incrementAndGet();
                         if (label != null) {
-                            footer.tick(entry.name + "  ·  " + label
-                                    + "  (" + done.get() + "/" + total.get() + ")");
+                            footer.progress(entry.name, done.get(), total.get());
                         }
                     }
                 }
@@ -115,16 +113,13 @@ public class StartupPhaseRunner implements ApplicationRunner {
                 public void progress(int current, int totalVal, String detail) {
                     done.set(current);
                     total.set(totalVal);
-                    if (detail != null) {
-                        footer.tick(entry.name + "  ·  " + detail
-                                + "  (" + current + "/" + totalVal + ")");
-                    }
+                    footer.progress(entry.name, current, totalVal);
                 }
 
                 @Override
                 public void warn(String message) {
-                    // warn 不中断 sticky footer — footer 自动保持在底部
-                    System.out.println(CyberColor.AMBER + "  ! " + entry.name + ": "
+                    // 绕开 StickyFooter 包装器，直接写 System.err 防 GBK 乱码
+                    System.err.println(CyberColor.AMBER + "  ! " + entry.name + ": "
                             + message + CyberColor.RESET);
                 }
             };

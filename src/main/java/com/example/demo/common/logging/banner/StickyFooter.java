@@ -22,17 +22,11 @@ public class StickyFooter {
 
     private static final String CSI = "\033[";
 
-    /** 颜色循环表（与 spinner 帧无关，按时间轮转） */
-    private static final String[] COLOR_CYCLE = {
-        CyberColor.CYAN, CyberColor.MAGENTA, CyberColor.AMBER, CyberColor.GREEN
-    };
-
     private final PrintStream originalOut;
     private final AtomicReference<String> content = new AtomicReference<>("");
     private final AtomicReference<Spinner> spinner;
     private volatile boolean active = true;
     private volatile boolean installed = false;
-    private volatile int colorTick = 0;
 
     private StickyFooter(PrintStream originalOut, Spinner spinner) {
         this.originalOut = originalOut;
@@ -94,7 +88,6 @@ public class StickyFooter {
 
         Thread refresher = new Thread(() -> {
             while (footer.active) {
-                footer.colorTick++;
                 footer.render();
                 try { Thread.sleep(80); } catch (InterruptedException e) { break; }
             }
@@ -118,6 +111,13 @@ public class StickyFooter {
         update(s.tick() + " " + text);
     }
 
+    /** 更新底部栏（含旋转指示器 + 进度条）。 */
+    public void progress(String label, int current, int total) {
+        Spinner s = spinner.get();
+        String bar = ProgressBar.render(current, total, null);
+        update(s.tick() + " " + label + " " + bar);
+    }
+
     /** 关闭底部栏，清空残留帧，输出最终状态。 */
     public void shutdown(String finalText) {
         active = false;
@@ -137,12 +137,11 @@ public class StickyFooter {
         if (!active || !installed) return;
         String text = content.get();
         if (text.isEmpty()) return;
-        // 颜色循环：每 6 个刷新节拍切换一次颜色
-        String spinnerColor = COLOR_CYCLE[(colorTick / 6) % COLOR_CYCLE.length];
+        // Claude Code 风格：固定琥珀/橙色
         originalOut.print(CSI + "s");
         originalOut.print(CSI + "1G");
         originalOut.print(CSI + "K");
-        originalOut.print(spinnerColor + text + CyberColor.RESET);
+        originalOut.print(CyberColor.AMBER + text + CyberColor.RESET);
         originalOut.print(CSI + "u");
         originalOut.flush();
     }

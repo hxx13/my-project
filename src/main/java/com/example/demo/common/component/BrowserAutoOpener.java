@@ -31,12 +31,13 @@ public class BrowserAutoOpener implements StartupRunner {
 
     @Override
     public StartupResult run(StartupContext ctx) {
-        // 给服务一点时间完全就绪
-        try {
-            Thread.sleep(1500);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return StartupResult.success("已跳过");
+        // 等待服务就绪（带进度提示）
+        long start = System.currentTimeMillis();
+        int waitMs = 1500;
+        while (System.currentTimeMillis() - start < waitMs) {
+            int elapsed = (int) (System.currentTimeMillis() - start);
+            ctx.progress(elapsed, waitMs, "打开 " + url + " 中…");
+            try { Thread.sleep(100); } catch (InterruptedException e) { break; }
         }
 
         try {
