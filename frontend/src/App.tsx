@@ -1,12 +1,12 @@
-import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from "react";
 import { RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { router } from "@/router";
-import { io, Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import { useEventStore } from "@/store/useEventStore"; // 引入你刚改好的 Store
 import toast, { Toaster } from "react-hot-toast";
 import { Z_INDEX } from "@/constants/zIndex";
-import { resolveSocketUrl, SOCKET_IO_CLIENT_OPTIONS, APP_BUILD_ID } from "@/config/socketUrl";
+import { APP_BUILD_ID, getSharedSocket } from "@/config/socketUrl";
 import { SOCKET_CLIENT_FORCE_RELOAD, SOCKET_SWIPE_FAILURE_ALERT, SOCKET_SWIPE_FAILURE_ALERT_DISMISS, SOCKET_CAGE_NOTICE_ALERT } from "@/config/socketEvents";
 import { useClientVersionPoll, type ReloadTrigger } from "@/hooks/useClientVersionPoll";
 import { GracefulReloadBanner } from "@/components/GracefulReloadBanner";
@@ -78,7 +78,7 @@ function useStaffConsoleSocketGate(): boolean {
         };
     }, []);
 
-    return hasToken && routeHash.startsWith("#/console");
+    return hasToken;
 }
 
 // 💥 隐形的全局监听基站 (无渲染组件)
@@ -99,7 +99,9 @@ function GlobalSocketListener() {
 
     // ── 客户端版本轮询 + 优雅刷新横幅 ──
     const [reloadBanner, setReloadBanner] = useState<ReloadTrigger | null>(null);
-    const handleReloadNeeded = (trigger: ReloadTrigger) => { setReloadBanner(prev => prev ?? trigger); };
+    const handleReloadNeeded = useCallback((trigger: ReloadTrigger) => {
+        setReloadBanner(prev => prev ?? trigger);
+    }, []);
     useClientVersionPoll(handleReloadNeeded);
 
     useEffect(() => {
@@ -117,11 +119,7 @@ function GlobalSocketListener() {
         const token = authStorage.getToken();
         if (!token) return; // 未登录不建立连接，避免服务端拒绝
 
-        const socketUrl = resolveSocketUrl();
-        const socket = io(socketUrl, {
-            ...SOCKET_IO_CLIENT_OPTIONS,
-            query: { token, v: APP_BUILD_ID },
-        });
+        const socket = getSharedSocket();
         socketRef.current = socket;
 
         socket.on("connect", () => {
@@ -163,20 +161,6 @@ function GlobalSocketListener() {
                         { id: "socket-disconnect", duration: 6000 },
                     );
                 }, 30_000);
-            }
-        });
-
-        // ── 每次重连前预刷新 token ──
-        // 断线超过 token 有效期后，重连时携带过期 token 会被服务端拒绝。
-        // 此处预刷新确保每次重连都携带有效 token。
-        socket.on("reconnect_attempt", (attempt) => {
-            console.log(`[数字孪生基站] 第 ${attempt} 次重连尝试…`);
-            const currentToken = authStorage.getToken();
-            if (currentToken) {
-                (socket as any).io.opts.query = {
-                    token: currentToken,
-                    v: APP_BUILD_ID,
-                };
             }
         });
 
@@ -275,7 +259,7 @@ function GlobalSocketListener() {
 
             // 情况 1：版本不匹配（来自 FrontendVersionGuard，连接时单发）
             if (payload.expectedBuildId && payload.expectedBuildId !== APP_BUILD_ID) {
-                if (payload.reloadId) {
+                if (payload.reloadId != null) {
                     sessionStorage.setItem('__last_reload_id', String(payload.reloadId));
                 }
                 setReloadBanner({ reason: 'version-mismatch', payload });
@@ -284,8 +268,12 @@ function GlobalSocketListener() {
 
             // 情况 2：管理员指令（来自 ClientReloadBroadcastService 广播/pending reload）
             const lastReloadId = parseInt(sessionStorage.getItem('__last_reload_id') || '0', 10);
-            if (payload.reloadId && payload.reloadId > lastReloadId) {
+            // 始终同步到服务端当前值——这是重启恢复的关键（与 HTTP 轮询保持一致）
+            if (payload.reloadId != null) {
                 sessionStorage.setItem('__last_reload_id', String(payload.reloadId));
+            }
+            // 仅在严格增长时触发
+            if (payload.reloadId != null && payload.reloadId > lastReloadId) {
                 setReloadBanner({ reason: 'admin-command', payload });
                 return;
             }
