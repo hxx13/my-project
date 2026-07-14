@@ -137,7 +137,7 @@
       WARN → 控制台只输出 WARN/ERROR。INFO/DEBUG 全部进 RingBuffer 供 Web 管理端查看。
       想临时看 INFO：POST /api/admin/logging/level {loggerName:"com.example.demo", level:"INFO"}
     -->
-    <logger name="com.example.demo" level="WARN"/>
+    <logger name="com.example.demo" level="DEBUG"/>
 
     <!-- ============================== ROOT ============================== -->
     <!--
