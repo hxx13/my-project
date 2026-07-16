@@ -633,7 +633,7 @@ export default function AdminScheduleManagerPage() {
                 <div className="mb-1 text-sm font-semibold text-[var(--twin-body)]">审计拉取任务（按策略参与对应定时 Job）</div>
                 <p className="mb-2 text-xs text-[var(--twin-mute)]">
                   <strong>回溯</strong>不在此配置，仅在{" "}
-                  <a href="#/admin/dahua-swing-tasks?tab=audit" className="text-[var(--twin-link-deep)] underline">
+                  <a href="#/console/admin/dahua-swing-tasks?tab=audit" className="text-[var(--twin-link-deep)] underline">
                     门禁数据工作台 · 审计拉取
                   </a>{" "}
                   手动执行。

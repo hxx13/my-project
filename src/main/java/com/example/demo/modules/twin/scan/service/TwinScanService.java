@@ -147,10 +147,22 @@ public class TwinScanService {
         } else if (!noLeaveRooms.isEmpty() && !bypassNoLeave) {
             long tTranslate = System.currentTimeMillis();
             List<Map<String, Object>> finalPending = translateAndFilterRooms(noLeaveRooms);
-            analyzeTimingTrace.step("mysql.translateAndFilterRooms(pending)",
-                    System.currentTimeMillis() - tTranslate, "rows=" + finalPending.size());
+            List<Map<String, Object>> finalAllowed = translateAndFilterRooms(allowedRooms);
+            analyzeTimingTrace.step("mysql.translateAndFilterRooms(pending+allowed)",
+                    System.currentTimeMillis() - tTranslate,
+                    "pending=" + finalPending.size() + " allowed=" + finalAllowed.size());
+
+            try {
+                String todayStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+                applyDayTrajectoryRoomLocks(userId, todayStr + "%", finalAllowed, traceId);
+                applyCampusEnterAdminLocks(finalAllowed, traceId);
+            } catch (Exception e) {
+                log.warn("[scan-status] day-trajectory-lock failed userId={} err={}", userId, e.getMessage());
+            }
+
             response.put("currentState", "INSIDE");
             response.put("pendingRooms", finalPending);
+            response.put("allowedRooms", finalAllowed);
         } else {
             long tTranslate = System.currentTimeMillis();
             List<Map<String, Object>> finalAllowed = translateAndFilterRooms(allowedRooms);

@@ -630,7 +630,7 @@ function FormRow({
               <MenuItem icon={Eye} label="预览（需先发布）" disabled onClick={() => setMenuOpen(false)} />
             )}
             <MenuItem icon={Link} label="复制链接" onClick={() => {
-              navigator.clipboard.writeText(`${window.location.origin}/admin/report-form/${form.id}/design`);
+              navigator.clipboard.writeText(`${window.location.origin}/console/admin/report-form/${form.id}/design`);
               toast.success('链接已复制');
               setMenuOpen(false);
             }} />

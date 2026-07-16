@@ -48,12 +48,12 @@ export function StudentHeader({ onMenuClick }: StudentHeaderProps) {
 
   const handleReturnToStaff = () => {
     returnToStaffView();
-    navigate("/admin");
+    navigate("/console/admin");
   };
 
   const handleExitMirrorMode = () => {
     authStorage.exitMirrorMode();
-    navigate("/admin", { replace: true });
+    navigate("/console/admin", { replace: true });
   };
 
   const handleLogout = () => {

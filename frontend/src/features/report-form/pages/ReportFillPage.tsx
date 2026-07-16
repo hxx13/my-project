@@ -57,7 +57,7 @@ export default function ReportFillPage() {
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <button
           type="button"
-          onClick={() => navigate('/admin/report-fill', { state: { returnTo: '/admin/report-fill' } })}
+          onClick={() => navigate('/console/admin/report-fill', { state: { returnTo: '/console/admin/report-fill' } })}
           className="px-3 py-1.5 rounded-[var(--app-radius-container)] text-[12px] font-medium
                      border border-[var(--app-color-border-default)] text-[var(--app-color-text-secondary)]
                      hover:bg-[var(--app-color-surface-hover)] flex items-center gap-1"

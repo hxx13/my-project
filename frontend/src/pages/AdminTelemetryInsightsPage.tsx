@@ -289,7 +289,7 @@ export default function AdminTelemetryInsightsPage() {
         </span>
         <div className="flex flex-wrap gap-2 ml-auto">
           <Link
-            to="/admin/telemetry-insights-config"
+            to="/console/admin/telemetry-insights-config"
             className="inline-flex items-center rounded-[length:var(--admin-radius-md,0.375rem)] border-2 border-[var(--app-color-border-strong)] bg-[var(--app-color-surface-container)] px-3 py-1.5 text-sm font-medium text-[var(--app-color-text-primary)] shadow-sm hover:bg-[var(--app-color-surface-hover)]"
           >
             <Settings2 className="mr-1 h-4 w-4" />
@@ -443,7 +443,7 @@ export default function AdminTelemetryInsightsPage() {
             <div className="rounded-[var(--app-radius-container)] border border-dashed border-[var(--app-color-border-default)] p-4 text-sm text-[var(--app-color-text-muted)]">
               <p>尚未配置对比组。</p>
               <Link
-                to="/admin/telemetry-insights-config"
+                to="/console/admin/telemetry-insights-config"
                 className="mt-2 inline-flex text-[var(--app-color-accent-primary)] hover:underline"
               >
                 前往对比组配置 →

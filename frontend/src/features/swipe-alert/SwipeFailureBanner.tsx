@@ -68,7 +68,7 @@ function SwipeAlertItem({ alert }: { alert: SwipeAlertPayload }) {
   }, [leaving, acked, alert.alertId, alert.ruleId, startDismiss]);
 
   const handleGoToRecords = useCallback(() => {
-    window.location.hash = "#/admin/dahua-swing-tasks?tab=records";
+    window.location.hash = "#/console/admin/dahua-swing-tasks?tab=records";
   }, []);
 
   const rec = alert.matchedRecords?.[0];

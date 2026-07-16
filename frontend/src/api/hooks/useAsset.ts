@@ -16,6 +16,10 @@ import {
   purgeRecycleAsset,
   importAssetExcel,
   lockAsset,
+  batchDeleteAssets,
+  batchUpdateAssets,
+  searchReplaceAssets,
+  deleteByBatchId,
 } from "@/api/domains/asset.api";
 import { toast } from "react-hot-toast";
 
@@ -181,5 +185,53 @@ export function usePurgeAssetRecycle() {
       toast.success("已永久清除");
     },
     onError: (e: Error) => toast.error(e.message || "清除失败"),
+  });
+}
+
+export function useBatchDeleteAssets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: batchDeleteAssets,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+      toast.success(`已删除 ${data.deletedCount} 条资产`);
+    },
+    onError: (e: Error) => toast.error(e.message || "批量删除失败"),
+  });
+}
+
+export function useBatchUpdateAssets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: batchUpdateAssets,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+      toast.success(`已更新 ${data.updatedCount} 条资产`);
+    },
+    onError: (e: Error) => toast.error(e.message || "批量更新失败"),
+  });
+}
+
+export function useSearchReplaceAssets() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: searchReplaceAssets,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+      toast.success(`已替换 ${data.replacedCount} 条`);
+    },
+    onError: (e: Error) => toast.error(e.message || "替换失败"),
+  });
+}
+
+export function useDeleteByBatchId() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteByBatchId,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+      toast.success(`已删除 ${data.deletedCount} 条资产`);
+    },
+    onError: (e: Error) => toast.error(e.message || "按批次删除失败"),
   });
 }

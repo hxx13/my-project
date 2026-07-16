@@ -437,7 +437,7 @@ export function IsolationUsageReportPanel() {
           </p>
           <p className="mt-1 text-[10px] text-neutral-600">
             数据前置：各通道须已在{" "}
-            <a href="#/admin/dahua-swing-tasks?tab=audit" className="text-indigo-700 underline">
+            <a href="#/console/admin/dahua-swing-tasks?tab=audit" className="text-indigo-700 underline">
               定时审计拉取
             </a>{" "}
             完成拉取并清洗入库；总库按通道合并，与「门禁统计清洗」按任务查看维度不同。

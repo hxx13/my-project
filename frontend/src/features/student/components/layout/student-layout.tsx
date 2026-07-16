@@ -24,12 +24,12 @@ export default function StudentLayout() {
       // Mirror mode timeout: exit mirror mode, return to staff view
       if (authStorage.isMirrorMode()) {
         authStorage.exitMirrorMode();
-        navigate("/admin", { replace: true });
+        navigate("/console/admin", { replace: true });
         return;
       }
       if (getImpersonationState()?.isImpersonating) {
         returnToStaffView();
-        navigate("/admin", { replace: true });
+        navigate("/console/admin", { replace: true });
         return;
       }
       // 扫码特殊通道：恢复终端操作员会话；普通学生则清空

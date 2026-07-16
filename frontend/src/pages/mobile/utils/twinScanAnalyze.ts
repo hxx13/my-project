@@ -108,12 +108,14 @@ function overviewMatchesScanRoom(overviewRoom: OverviewRoomRaw, scanRoom: ScanTa
 
 export function pickScanTargetRooms(dto: ScanAnalyzeDto | null | undefined): ScanTargetRoom[] {
   if (!dto || dto.success !== true) return [];
-  const inside = dto.currentState === "INSIDE";
-  if (inside) {
-    return Array.isArray(dto.pendingRooms) ? dto.pendingRooms : [];
+  const allowed = (Array.isArray(dto.allowedRooms) ? dto.allowedRooms : [])
+    .filter((r) => r && r.isDisabled !== true);
+  if (dto.currentState === "INSIDE") {
+    const pending = Array.isArray(dto.pendingRooms) ? dto.pendingRooms : [];
+    // INSIDE 时合并 allowedRooms + pendingRooms，"我的"分区展示全部可进入房间
+    return [...allowed, ...pending];
   }
-  const raw = Array.isArray(dto.allowedRooms) ? dto.allowedRooms : [];
-  return raw.filter((r) => r && r.isDisabled !== true);
+  return allowed;
 }
 
 export function mergeMyRooms(overviewRows: OverviewRoomRaw[], dto: ScanAnalyzeDto | null): OverviewRoomRaw[] {

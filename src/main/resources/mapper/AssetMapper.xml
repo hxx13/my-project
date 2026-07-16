@@ -22,6 +22,7 @@
         <result property="deletedBy" column="deleted_by"/>
         <result property="purgeAfterTime" column="purge_after_time"/>
         <result property="photoUrls" column="photo_urls"/>
+        <result property="createdByBatchId" column="created_by_batch_id"/>
     </resultMap>
 
     <resultMap id="AssetColumnDefResultMap" type="com.example.demo.modules.asset.entity.AssetColumnDef">
@@ -69,6 +70,18 @@
         <result property="createdTime" column="created_time"/>
     </resultMap>
 
+    <resultMap id="AssetImportBatchResultMap" type="com.example.demo.modules.asset.entity.AssetImportBatch">
+        <id property="id" column="id"/>
+        <result property="fileName" column="file_name"/>
+        <result property="importedBy" column="imported_by"/>
+        <result property="importedAt" column="imported_at"/>
+        <result property="createdCount" column="created_count"/>
+        <result property="updatedCount" column="updated_count"/>
+        <result property="skippedCount" column="skipped_count"/>
+        <result property="errorDetail" column="error_detail"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
     <select id="listColumnDefs" resultMap="AssetColumnDefResultMap">
         SELECT *
         FROM asset_column_def
@@ -113,9 +126,9 @@
 
     <insert id="insertAsset" parameterType="com.example.demo.modules.asset.entity.AssetRecord">
         INSERT INTO asset_record(
-            id, asset_code, asset_name, status, location, locked, note, photo_urls, create_by, update_by
+            id, asset_code, asset_name, status, location, locked, note, photo_urls, create_by, update_by, created_by_batch_id
         ) VALUES (
-            #{id}, #{assetCode}, #{assetName}, #{status}, #{location}, #{locked}, #{note}, #{photoUrls}, #{createBy}, #{updateBy}
+            #{id}, #{assetCode}, #{assetName}, #{status}, #{location}, #{locked}, #{note}, #{photoUrls}, #{createBy}, #{updateBy}, #{createdByBatchId}
         )
     </insert>
 
@@ -127,7 +140,7 @@
             note = #{note},
             update_by = #{updateBy},
             update_time = NOW()
-        WHERE id = #{id}
+        WHERE id = #{id} AND deleted = 0
     </update>
 
     <update id="updateAssetNote">
@@ -593,6 +606,122 @@
                 OR location LIKE CONCAT('%', #{keyword}, '%')
             )
         </if>
+    </select>
+
+    <!-- ==================== 批量操作 ==================== -->
+
+    <update id="batchSoftDelete">
+        UPDATE asset_record
+        SET deleted = 1,
+            deleted_by = #{operatorId},
+            deleted_time = #{deletedTime},
+            purge_after_time = #{purgeAfterTime}
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+        AND deleted = 0
+    </update>
+
+    <insert id="batchUpdateAssetValues">
+        INSERT INTO asset_record_value(asset_id, column_key, column_value)
+        VALUES
+        <foreach collection="assetIds" item="assetId" separator=",">
+            (#{assetId}, #{columnKey}, #{columnValue})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            column_value = VALUES(column_value),
+            update_time = NOW()
+    </insert>
+
+    <update id="batchUpdateAssetFields">
+        UPDATE asset_record
+        SET update_time = NOW()
+            , update_by = #{operatorId}
+        <if test="status != null">, status = #{status}</if>
+        <if test="location != null">, location = #{location}</if>
+        <if test="note != null">, note = #{note}</if>
+        WHERE id IN
+        <foreach collection="assetIds" item="id" open="(" close=")" separator=",">
+            #{id}
+        </foreach>
+        AND deleted = 0
+    </update>
+
+    <!-- ==================== 导入批次 ==================== -->
+
+    <insert id="insertImportBatch" parameterType="com.example.demo.modules.asset.entity.AssetImportBatch">
+        INSERT INTO asset_import_batch(
+            id, file_name, imported_by, imported_at, created_count, updated_count, skipped_count, error_detail, create_time
+        ) VALUES (
+            #{id}, #{fileName}, #{importedBy}, #{importedAt}, #{createdCount}, #{updatedCount}, #{skippedCount}, #{errorDetail}, #{createTime}
+        )
+        ON DUPLICATE KEY UPDATE
+            created_count = VALUES(created_count),
+            updated_count = VALUES(updated_count),
+            skipped_count = VALUES(skipped_count),
+            error_detail = VALUES(error_detail)
+    </insert>
+
+    <select id="listImportBatches" resultMap="AssetImportBatchResultMap">
+        SELECT *
+        FROM asset_import_batch
+        ORDER BY imported_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countImportBatches" resultType="int">
+        SELECT COUNT(1)
+        FROM asset_import_batch
+    </select>
+
+    <update id="deleteByCreatedBatchId">
+        UPDATE asset_record
+        SET deleted = 1,
+            deleted_by = #{operatorId},
+            deleted_time = #{deletedTime},
+            purge_after_time = #{purgeAfterTime}
+        WHERE created_by_batch_id = #{batchId}
+          AND deleted = 0
+    </update>
+
+    <!-- ==================== 查找替换 ==================== -->
+
+    <update id="searchReplaceValues">
+        UPDATE asset_record_value
+        SET column_value =
+        <choose>
+            <when test="matchMode == 'exact'">
+                #{replace}
+            </when>
+            <when test="matchMode == 'startsWith'">
+                CONCAT(#{replace}, SUBSTRING(column_value, CHAR_LENGTH(#{search}) + 1))
+            </when>
+            <otherwise>
+                REPLACE(column_value, #{search}, #{replace})
+            </otherwise>
+        </choose>
+        WHERE column_key = #{columnKey}
+        <choose>
+            <when test="matchMode == 'exact'">
+                AND column_value = #{search}
+            </when>
+            <when test="matchMode == 'startsWith'">
+                AND column_value LIKE CONCAT(#{search}, '%') ESCAPE '\\'
+            </when>
+            <otherwise>
+                AND column_value LIKE CONCAT('%', #{search}, '%') ESCAPE '\\'
+            </otherwise>
+        </choose>
+    </update>
+
+    <!-- ==================== 按 label 查找列定义 ==================== -->
+
+    <select id="findColumnDefByLabel" resultMap="AssetColumnDefResultMap">
+        SELECT *
+        FROM asset_column_def
+        WHERE LOWER(column_label) = LOWER(#{columnLabel})
+        LIMIT 1
     </select>
 
 </mapper>

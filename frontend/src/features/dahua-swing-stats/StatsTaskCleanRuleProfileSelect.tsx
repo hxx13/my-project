@@ -38,7 +38,7 @@ export function StatsTaskCleanRuleProfileSelect({ value, onChange }: Props) {
       <p className="text-[10px] text-slate-500 leading-relaxed">
         选择去抖、映射、进出方向等<strong>规则参数</strong>。是否自动入库由下方「拉取后自动清洗」任务开关控制。
         <Link
-          to="/admin/dahua-swing-tasks?tab=clean&profiles=1"
+          to="/console/admin/dahua-swing-tasks?tab=clean&profiles=1"
           className="ml-1 text-indigo-700 underline"
         >
           管理方案

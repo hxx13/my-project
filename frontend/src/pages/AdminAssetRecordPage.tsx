@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Archive, Download, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
+import { Archive, Download, EyeOff, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 import { AutoImage } from "@/components/ui/AutoImage";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -8,8 +8,17 @@ import {
   createAssetColumn,
   exportAssetExcel,
   fetchAssetFacets,
+  fetchImportBatches,
   patchAssetRecord,
+  previewImportAssets,
+  confirmImportAssets,
+  batchDeleteAssets,
+  batchUpdateAssets,
+  searchReplaceAssets,
+  deleteByBatchId,
   searchAssets,
+  type ImportPreview,
+  type ImportBatch,
   type AssetRecycleRow,
   type AssetColumnDef,
   type AssetFacets,
@@ -23,6 +32,10 @@ import {
   useAssetRecycle,
   useRestoreAssetRecycle,
   usePurgeAssetRecycle,
+  useBatchDeleteAssets,
+  useBatchUpdateAssets,
+  useSearchReplaceAssets,
+  useDeleteByBatchId,
 } from "@/api/hooks/useAsset";
 import { queryKeys } from "@/api/hooks/queryKeys";
 import AssetTransferApplyModal from "@/components/asset/AssetTransferApplyModal";
@@ -67,8 +80,7 @@ function calcColumnWidth(header: string, samples: Array<string | number | undefi
 
 function normalizeColumnLabel(label: string) {
   const text = String(label || "").trim();
-  if (/^存放地点\d+$/i.test(text)) return "当前存放地点";
-  return text;
+  return text; // 不再把"存放地点N"映射为"当前存放地点"
 }
 
 function parseTransferPhotoUrls(v: unknown): string[] {
@@ -132,6 +144,23 @@ export default function AdminAssetRecordPage() {
   } | null>(null);
   const [tableEditMode, setTableEditMode] = useState(false);
   const [columnWidthOverrides, setColumnWidthOverrides] = useState<Record<string, string>>({});
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [batchEditOpen, setBatchEditOpen] = useState(false);
+  const [searchReplaceOpen, setSearchReplaceOpen] = useState(false);
+  const [batchHistoryOpen, setBatchHistoryOpen] = useState(false);
+  const [importPreviewOpen, setImportPreviewOpen] = useState(false);
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+  const [importPreviewData, setImportPreviewData] = useState<ImportPreview | null>(null);
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
+  const [batchEditColumnKey, setBatchEditColumnKey] = useState("");
+  const [batchEditValue, setBatchEditValue] = useState("");
+  const [searchReplaceColumnKey, setSearchReplaceColumnKey] = useState("");
+  const [searchReplaceSearch, setSearchReplaceSearch] = useState("");
+  const [searchReplaceReplace, setSearchReplaceReplace] = useState("");
+  const [searchReplaceMode, setSearchReplaceMode] = useState<"exact" | "contains" | "startsWith">("exact");
+  const [batchHistoryPage, setBatchHistoryPage] = useState(1);
+  const [batchHistoryData, setBatchHistoryData] = useState<{ rows: ImportBatch[]; total: number }>({ rows: [], total: 0 });
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // --- 表头拖拽调节列宽 ---
@@ -171,6 +200,18 @@ export default function AdminAssetRecordPage() {
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
   };
+
+  // 组件卸载时清理拖拽监听器，防止内存泄漏
+  useEffect(() => {
+    return () => {
+      if (resizeState.current) {
+        document.removeEventListener("mousemove", onResizeMouseMove);
+        document.removeEventListener("mouseup", onResizeMouseUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    };
+  }, []);
 
   const resolveColWidth = (columnKey: string, defaultCh: string) =>
     columnWidthOverrides[columnKey] ?? defaultCh;
@@ -218,6 +259,10 @@ export default function AdminAssetRecordPage() {
   const importAssetMut = useImportAssetExcel();
   const restoreRecycleMut = useRestoreAssetRecycle();
   const purgeRecycleMut = usePurgeAssetRecycle();
+  const batchDeleteMut = useBatchDeleteAssets();
+  const batchUpdateMut = useBatchUpdateAssets();
+  const searchReplaceMut = useSearchReplaceAssets();
+  const deleteByBatchMut = useDeleteByBatchId();
 
   useEffect(() => {
     const names = facets.assetNames || [];
@@ -355,9 +400,31 @@ export default function AdminAssetRecordPage() {
   const onImport = async (file?: File) => {
     if (!file) return;
     try {
-      await importAssetMut.mutateAsync(file);
+      const preview = await previewImportAssets(file);
+      setImportPreviewData(preview);
+      setPendingImportFile(file);
+      setImportPreviewOpen(true);
     } catch {
-      // error handled by mutation
+      // error handled by mutation — fallback to direct import
+      try {
+        await importAssetMut.mutateAsync(file);
+      } catch {
+        // error handled by mutation
+      }
+    }
+  };
+
+  const doConfirmImport = async () => {
+    if (!importPreviewData) return;
+    try {
+      await confirmImportAssets(importPreviewData.previewId);
+      toast.success("导入完成");
+      setImportPreviewOpen(false);
+      setImportPreviewData(null);
+      setPendingImportFile(null);
+      qc.invalidateQueries({ queryKey: queryKeys.asset.all });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "导入确认失败");
     }
   };
 
@@ -485,6 +552,105 @@ export default function AdminAssetRecordPage() {
     }
   };
 
+  // ── 批量操作 ──
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === rows.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(rows.map((r) => r.id)));
+    }
+  };
+
+  const toggleSelectRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const doBatchDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    try {
+      await batchDeleteMut.mutateAsync(ids);
+      setSelectedIds(new Set());
+      setBatchDeleteOpen(false);
+    } catch {
+      // error handled by mutation
+    }
+  };
+
+  const doBatchEdit = async () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length || !batchEditColumnKey) return;
+    try {
+      await batchUpdateMut.mutateAsync({
+        ids,
+        columnKey: batchEditColumnKey,
+        dynamicValues: { [batchEditColumnKey]: batchEditValue },
+      });
+      setSelectedIds(new Set());
+      setBatchEditOpen(false);
+    } catch {
+      // error handled by mutation
+    }
+  };
+
+  const doSearchReplace = async () => {
+    if (!searchReplaceColumnKey || !searchReplaceSearch) return;
+    try {
+      await searchReplaceMut.mutateAsync({
+        columnKey: searchReplaceColumnKey,
+        search: searchReplaceSearch,
+        replace: searchReplaceReplace,
+        matchMode: searchReplaceMode,
+      });
+      setSearchReplaceOpen(false);
+    } catch {
+      // error handled by mutation
+    }
+  };
+
+  const doDeleteByBatch = async (batchId: string) => {
+    try {
+      await deleteByBatchMut.mutateAsync(batchId);
+      loadBatchHistory(batchHistoryPage);
+    } catch {
+      // error handled by mutation
+    }
+  };
+
+  const loadBatchHistory = async (page: number) => {
+    try {
+      const data = await fetchImportBatches(page, 20);
+      setBatchHistoryData(data);
+      setBatchHistoryPage(page);
+    } catch {
+      // silent
+    }
+  };
+
+  const openBatchHistory = () => {
+    setBatchHistoryOpen(true);
+    loadBatchHistory(1);
+  };
+
+  // ── 列显隐 ──
+
+  const toggleColumnHidden = (columnKey: string) => {
+    setHiddenColumns((prev) => {
+      const next = new Set(prev);
+      if (next.has(columnKey)) next.delete(columnKey); else next.add(columnKey);
+      return next;
+    });
+  };
+
+  const showAllColumns = () => setHiddenColumns(new Set());
+
   const finishEditing = async () => {
     // Collect all rows with pending unsaved edits
     const pendingByRow = new Map<string, { row: AssetRow; dynamicValues: Record<string, string> }>();
@@ -509,16 +675,22 @@ export default function AdminAssetRecordPage() {
       return;
     }
 
+    const patches = Array.from(pendingByRow.entries()).map(([, { row, dynamicValues }]) => [row.id, { dynamicValues }] as const);
+    const results = await Promise.allSettled(
+      patches.map(([id, body]) => patchAssetRecord(id, body))
+    );
+
     let saved = 0;
     const errors: string[] = [];
-    for (const [, { row, dynamicValues }] of pendingByRow) {
-      try {
-        await patchAssetRecord(row.id, { dynamicValues });
+    patches.forEach(([id], idx) => {
+      const result = results[idx];
+      const row = rows.find((r) => r.id === id);
+      if (result.status === "fulfilled") {
         saved++;
-      } catch (e) {
-        errors.push(`${row.assetCode}: ${e instanceof Error ? e.message : "未知错误"}`);
+      } else {
+        errors.push(`${row?.assetCode || id}: ${result.reason instanceof Error ? result.reason.message : "未知错误"}`);
       }
-    }
+    });
 
     if (saved > 0) {
       toast.success(`已保存 ${saved} 条记录`);
@@ -621,6 +793,18 @@ export default function AdminAssetRecordPage() {
                     <Trash2 className="mr-2 inline h-4 w-4" />
                     删除资产
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setSearchReplaceColumnKey("");
+                      setSearchReplaceSearch("");
+                      setSearchReplaceReplace("");
+                      setSearchReplaceMode("exact");
+                      setSearchReplaceOpen(true);
+                    }}
+                  >
+                    查找替换
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => openBatchHistory()}>按批次删除</DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => openRecycleModal()}>回收站</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -685,6 +869,23 @@ export default function AdminAssetRecordPage() {
           </div>
         </AdminFormCard>
 
+        {selectedIds.size > 0 && (
+          <div className="shrink-0 mb-2 flex flex-wrap items-center gap-2 rounded-twin-md border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] px-3 py-2 text-sm">
+            <span className="text-[var(--app-color-text-secondary)]">已选 <strong className="text-[var(--app-color-text-primary)]">{selectedIds.size}</strong> 项</span>
+            <AdminButton type="button" tone="secondary" size="sm" onClick={() => setBatchDeleteOpen(true)}>
+              <Trash2 className="mr-1 inline h-3.5 w-3.5" />
+              批量删除
+            </AdminButton>
+            <AdminButton type="button" tone="secondary" size="sm" onClick={() => { setBatchEditOpen(true); setBatchEditColumnKey(""); setBatchEditValue(""); }}>
+              <Pencil className="mr-1 inline h-3.5 w-3.5" />
+              批量填入
+            </AdminButton>
+            <AdminButton type="button" tone="secondary" size="sm" onClick={clearSelection}>
+              取消选择
+            </AdminButton>
+          </div>
+        )}
+
       <div className="flex-1 min-h-0 flex flex-col rounded-xl border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-container)] shadow-sm overflow-hidden">
         <div className="flex-1 min-h-0 overflow-auto">
         {isLoading ? (
@@ -695,16 +896,21 @@ export default function AdminAssetRecordPage() {
           <div>
           <table className="w-max min-w-full border-collapse text-sm">
             <colgroup>
+              <col style={{ width: "3ch" }} />
               <col style={{ width: widths.assetCode }} />
               <col style={{ width: widths.assetName }} />
-              {editableColumns.map((c) => (
+              {editableColumns.filter((c) => !hiddenColumns.has(c.columnKey)).map((c) => (
                 <col key={c.columnKey} style={{ width: widths.dynamic[c.columnKey] }} />
               ))}
+              {hiddenColumns.size > 0 && <col style={{ width: "10ch" }} />}
               <col style={{ width: widths.actions }} />
             </colgroup>
             <thead>
-              <tr className="sticky top-0 z-[2] bg-[var(--app-color-surface-container)] shadow-sm">
-                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ position: "relative" }}>
+              <tr className="sticky top-0 z-[var(--z-dropdown)] bg-[var(--app-color-surface-container)] shadow-sm">
+                <th className="sticky left-0 z-[1] border-b px-1 py-1.5 text-center bg-[var(--app-color-surface-container)]" style={{ width: "3ch" }}>
+                  <input type="checkbox" checked={selectedIds.size === rows.length && rows.length > 0} onChange={toggleSelectAll} className="h-3.5 w-3.5" />
+                </th>
+                <th className="sticky left-[3ch] z-[1] border-b px-2 py-1.5 text-left whitespace-nowrap bg-[var(--app-color-surface-container)]" style={{ width: widths.assetCode, minWidth: widths.assetCode }}>
                   资产编码
                   <span
                     onMouseDown={(e) => onResizeMouseDown(e, "assetCode", parseCh(widths.assetCode))}
@@ -718,7 +924,7 @@ export default function AdminAssetRecordPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.borderRightColor = "transparent")}
                   />
                 </th>
-                <th className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ position: "relative" }}>
+                <th className="sticky left-[calc(3ch+var(--col-assetCode-w,14ch))] z-[1] border-b px-2 py-1.5 text-left whitespace-nowrap bg-[var(--app-color-surface-container)]" style={{ width: widths.assetName, minWidth: widths.assetName, "--col-assetCode-w": widths.assetCode } as React.CSSProperties}>
                   资产名称
                   <span
                     onMouseDown={(e) => onResizeMouseDown(e, "assetName", parseCh(widths.assetName))}
@@ -732,9 +938,16 @@ export default function AdminAssetRecordPage() {
                     onMouseLeave={(e) => (e.currentTarget.style.borderRightColor = "transparent")}
                   />
                 </th>
-                {editableColumns.map((c: AssetColumnDef) => (
-                  <th key={c.columnKey} className="border-b px-2 py-1.5 text-left whitespace-nowrap" style={{ position: "relative" }}>
+                {editableColumns.filter((c) => !hiddenColumns.has(c.columnKey)).map((c: AssetColumnDef) => (
+                  <th key={c.columnKey} className="relative z-[var(--z-dropdown)] border-b px-2 py-1.5 text-left whitespace-nowrap bg-[var(--app-color-surface-container)]">
                     <button className="underline decoration-dotted" onClick={() => toggleSort(c.columnKey)}>{normalizeColumnLabel(c.columnLabel)}</button>
+                    <button
+                      className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-[var(--app-color-text-tertiary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-secondary)]"
+                      onClick={() => toggleColumnHidden(c.columnKey)}
+                      title="隐藏此列"
+                    >
+                      <EyeOff className="h-3 w-3" />
+                    </button>
                     <span
                       onMouseDown={(e) => onResizeMouseDown(e, c.columnKey, parseCh(widths.dynamic[c.columnKey] ?? "14ch"))}
                       style={{
@@ -748,15 +961,25 @@ export default function AdminAssetRecordPage() {
                     />
                   </th>
                 ))}
+                {hiddenColumns.size > 0 && (
+                  <th className="border-b px-2 py-1.5 text-left whitespace-nowrap">
+                    <button className="text-xs text-[var(--app-color-text-tertiary)] underline" onClick={showAllColumns}>
+                      显示全部列
+                    </button>
+                  </th>
+                )}
                 <th className="border-b px-2 py-1.5 text-left whitespace-nowrap">操作</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="hover:bg-[var(--twin-canvas-soft)]">
-                  <td className="border-b px-2 py-1.5 font-mono text-xs">{r.assetCode}</td>
-                  <td className="border-b px-2 py-1.5">{r.assetName}</td>
-                  {editableColumns.map((c) => {
+                  <td className="sticky left-0 border-b px-1 py-1.5 text-center bg-[var(--app-color-surface-page)]" style={{ width: "3ch", minWidth: "3ch" }}>
+                    <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelectRow(r.id)} className="h-3.5 w-3.5" />
+                  </td>
+                  <td className="sticky left-[3ch] border-b px-2 py-1.5 font-mono text-xs bg-[var(--app-color-surface-page)]" style={{ width: widths.assetCode, minWidth: widths.assetCode }}>{r.assetCode}</td>
+                  <td className="sticky left-[calc(3ch+var(--col-assetCode-w,14ch))] border-b px-2 py-1.5 bg-[var(--app-color-surface-page)]" style={{ width: widths.assetName, minWidth: widths.assetName, "--col-assetCode-w": widths.assetCode } as React.CSSProperties}>{r.assetName}</td>
+                  {editableColumns.filter((c) => !hiddenColumns.has(c.columnKey)).map((c) => {
                     const key = `${r.id}::${c.columnKey}`;
                     const display = editing[key] ?? r.dynamicValues?.[c.columnKey] ?? "";
                     return (
@@ -776,6 +999,7 @@ export default function AdminAssetRecordPage() {
                       </td>
                     );
                   })}
+                  {hiddenColumns.size > 0 && <td className="border-b" />}
                   <td className="border-b px-2 py-1.5">
                     <div className="flex items-center gap-2">
                       <AdminButton
@@ -846,16 +1070,27 @@ export default function AdminAssetRecordPage() {
                     placeholder="请输入资产名称"
                   />
                 </label>
-                {editableColumns.map((c) => (
+                {editableColumns.map((c) => {
+                  const isCampusColumn = c.columnKey === "col_校区" || c.columnLabel?.includes("校区");
+                  return (
                   <label key={`create-${c.columnKey}`} className="flex flex-col gap-1 text-xs text-[var(--twin-body)]">
                     {normalizeColumnLabel(c.columnLabel)}
                     <input
                       value={addForm[c.columnKey] || ""}
                       onChange={(e) => setAddForm((prev) => ({ ...prev, [c.columnKey]: e.target.value }))}
                       className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]"
+                      list={isCampusColumn ? "campus-suggestions" : undefined}
                     />
+                    {isCampusColumn && facets.campuses.length > 0 && (
+                      <datalist id="campus-suggestions">
+                        {facets.campuses.map((v) => (
+                          <option key={v} value={v} />
+                        ))}
+                      </datalist>
+                    )}
                   </label>
-                ))}
+                  );
+                })}
               </div>
               <div className="mt-4 flex justify-end gap-2">
                 <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setAddOpen(false)}>
@@ -908,7 +1143,7 @@ export default function AdminAssetRecordPage() {
                 <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setDeleteOpen(false)}>
                   取消
                 </button>
-                <button className="rounded-twin-sm bg-red-600 px-3 py-2 text-sm font-medium text-white" onClick={() => void confirmDeleteAsset()}>
+                <button className="rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-danger)] px-3 py-2 text-sm font-medium text-[var(--app-color-text-on-danger)] hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--app-color-ring)]" onClick={() => void confirmDeleteAsset()}>
                   确认删除
                 </button>
               </div>
@@ -1119,6 +1354,248 @@ export default function AdminAssetRecordPage() {
             >
               <AutoImage src={detailImagePreview} alt="" className="max-h-[90vh] max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
             </button>
+          </Portal>
+        )}
+
+        {/* ── 导入预览对话框 (4e) ── */}
+        {importPreviewOpen && importPreviewData && (
+          <Portal>
+            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-h-[85vh] max-w-4xl overflow-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">导入预览</h3>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => { setImportPreviewOpen(false); setImportPreviewData(null); setPendingImportFile(null); }}>
+                  关闭
+                </button>
+              </div>
+              {importPreviewData.warnings.length > 0 && (
+                <div className="mb-3 rounded-twin-sm border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                  <p className="font-semibold mb-1">警告</p>
+                  {importPreviewData.warnings.map((w, i) => (
+                    <p key={i}>{w.header}: {w.reason}</p>
+                  ))}
+                </div>
+              )}
+              <p className="mb-2 text-xs text-[var(--twin-mute)]">列匹配情况</p>
+              <div className="mb-3 max-h-48 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)]">
+                <table className="w-full text-xs">
+                  <thead className="bg-[var(--twin-canvas-soft)]">
+                    <tr>
+                      <th className="px-2 py-1 text-left">文件列</th>
+                      <th className="px-2 py-1 text-left">匹配系统字段</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreviewData.columns.map((col, i) => (
+                      <tr key={i} className="border-t border-[var(--twin-hairline)]">
+                        <td className="px-2 py-1">{col.header}</td>
+                        <td className="px-2 py-1 text-[var(--twin-body)]">{col.matchedLabel || <span className="text-[var(--twin-mute)]">未匹配</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {importPreviewData.sample.length > 0 && (
+                <div className="mb-3">
+                  <p className="mb-1 text-xs text-[var(--twin-mute)]">示例数据（前3行）</p>
+                  <div className="max-h-48 overflow-auto rounded-twin-sm border border-[var(--twin-hairline)] text-xs">
+                    <table className="w-full border-collapse">
+                      <thead className="bg-[var(--twin-canvas-soft)]">
+                        <tr>{Object.keys(importPreviewData.sample[0]).map((k) => (<th key={k} className="px-2 py-1 text-left whitespace-nowrap">{k}</th>))}</tr>
+                      </thead>
+                      <tbody>
+                        {importPreviewData.sample.slice(0, 3).map((row, ri) => (
+                          <tr key={ri} className="border-t border-[var(--twin-hairline)]">
+                            {Object.values(row).map((v, vi) => (<td key={vi} className="px-2 py-1 whitespace-nowrap">{v}</td>))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => { setImportPreviewOpen(false); setImportPreviewData(null); setPendingImportFile(null); }}>
+                  取消
+                </button>
+                <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" onClick={() => void doConfirmImport()}>
+                  确认导入
+                </button>
+              </div>
+            </div>
+            </div>
+          </Portal>
+        )}
+
+        {/* ── 批量删除确认对话框 (4f) ── */}
+        {batchDeleteOpen && (
+          <Portal>
+            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">批量删除</h3>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setBatchDeleteOpen(false)}>
+                  关闭
+                </button>
+              </div>
+              <p className="mb-2 text-sm text-[var(--twin-body)]">
+                确定删除选中的 <strong>{selectedIds.size}</strong> 条资产？删除后将移入回收站。
+              </p>
+              <p className="mb-3 text-xs text-[var(--twin-mute)]">
+                前5条: {rows.filter((r) => selectedIds.has(r.id)).slice(0, 5).map((r) => r.assetCode).join(", ") || "—"}{selectedIds.size > 5 ? "…等" : ""}
+              </p>
+              <div className="flex justify-end gap-2">
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchDeleteOpen(false)}>
+                  取消
+                </button>
+                <button className="rounded-[var(--app-radius-container)] bg-[var(--app-color-surface-danger)] px-3 py-2 text-sm font-medium text-[var(--app-color-text-on-danger)] hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--app-color-ring)]" onClick={() => void doBatchDelete()}>
+                  确认删除
+                </button>
+              </div>
+            </div>
+            </div>
+          </Portal>
+        )}
+
+        {/* ── 批量填入对话框 (4g) ── */}
+        {batchEditOpen && (
+          <Portal>
+            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">批量填入 ({selectedIds.size} 条)</h3>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setBatchEditOpen(false)}>
+                  关闭
+                </button>
+              </div>
+              <label className="mb-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                选择目标列
+                <select value={batchEditColumnKey} onChange={(e) => setBatchEditColumnKey(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]">
+                  <option value="">-- 请选择 --</option>
+                  {editableColumns.map((c) => (
+                    <option key={c.columnKey} value={c.columnKey}>{normalizeColumnLabel(c.columnLabel)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="mb-3 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                填入值
+                <input value={batchEditValue} onChange={(e) => setBatchEditValue(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]" placeholder="留空表示清空" />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setBatchEditOpen(false)}>
+                  取消
+                </button>
+                <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" disabled={!batchEditColumnKey} onClick={() => void doBatchEdit()}>
+                  确认填入
+                </button>
+              </div>
+            </div>
+            </div>
+          </Portal>
+        )}
+
+        {/* ── 查找替换对话框 (4h) ── */}
+        {searchReplaceOpen && (
+          <Portal>
+            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">查找替换</h3>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setSearchReplaceOpen(false)}>
+                  关闭
+                </button>
+              </div>
+              <label className="mb-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                目标列
+                <select value={searchReplaceColumnKey} onChange={(e) => setSearchReplaceColumnKey(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]">
+                  <option value="">-- 请选择 --</option>
+                  {editableColumns.map((c) => (
+                    <option key={c.columnKey} value={c.columnKey}>{normalizeColumnLabel(c.columnLabel)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="mb-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                搜索文本
+                <input value={searchReplaceSearch} onChange={(e) => setSearchReplaceSearch(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]" placeholder="要查找的内容" />
+              </label>
+              <label className="mb-2 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                替换为
+                <input value={searchReplaceReplace} onChange={(e) => setSearchReplaceReplace(e.target.value)} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]" placeholder="替换后的内容（留空表示删除）" />
+              </label>
+              <label className="mb-3 flex flex-col gap-1 text-xs text-[var(--twin-body)]">
+                匹配模式
+                <select value={searchReplaceMode} onChange={(e) => setSearchReplaceMode(e.target.value as "exact" | "contains" | "startsWith")} className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-ink)]">
+                  <option value="exact">完全匹配</option>
+                  <option value="contains">包含</option>
+                  <option value="startsWith">以…开头</option>
+                </select>
+              </label>
+              <div className="flex justify-end gap-2">
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-2 text-sm text-[var(--twin-body)]" onClick={() => setSearchReplaceOpen(false)}>
+                  取消
+                </button>
+                <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-2 text-sm font-medium text-[var(--twin-on-primary)]" disabled={!searchReplaceColumnKey || !searchReplaceSearch} onClick={() => void doSearchReplace()}>
+                  全部替换
+                </button>
+              </div>
+            </div>
+            </div>
+          </Portal>
+        )}
+
+        {/* ── 按批次删除对话框 (4i) ── */}
+        {batchHistoryOpen && (
+          <Portal>
+            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-h-[85vh] max-w-3xl overflow-auto rounded-twin-xl bg-[var(--twin-canvas)] p-5 shadow-twin-level-3">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-[var(--twin-ink)]">导入批次历史</h3>
+                <button className="rounded-twin-sm border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-3 py-1 text-sm text-[var(--twin-body)]" onClick={() => setBatchHistoryOpen(false)}>
+                  关闭
+                </button>
+              </div>
+              <div className="overflow-hidden rounded-twin-sm border border-[var(--twin-hairline)]">
+                <table className="w-full text-sm">
+                  <thead className="bg-[var(--twin-canvas-soft)]">
+                    <tr>
+                      <th className="px-3 py-2 text-left">文件名</th>
+                      <th className="px-3 py-2 text-left">导入时间</th>
+                      <th className="px-3 py-2 text-left">导入人</th>
+                      <th className="px-3 py-2 text-center">新增</th>
+                      <th className="px-3 py-2 text-center">更新</th>
+                      <th className="px-3 py-2 text-center">跳过</th>
+                      <th className="px-3 py-2 text-left">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {batchHistoryData.rows.map((batch) => (
+                      <tr key={batch.id} className="border-t border-[var(--twin-hairline)]">
+                        <td className="px-3 py-2">{batch.fileName}</td>
+                        <td className="px-3 py-2 text-xs text-[var(--twin-body)]">{batch.importedAt?.replace("T", " ").slice(0, 19) || "-"}</td>
+                        <td className="px-3 py-2 text-xs">{batch.importedBy || "-"}</td>
+                        <td className="px-3 py-2 text-center text-emerald-700">{batch.createdCount}</td>
+                        <td className="px-3 py-2 text-center text-sky-700">{batch.updatedCount}</td>
+                        <td className="px-3 py-2 text-center text-[var(--twin-mute)]">{batch.skippedCount}</td>
+                        <td className="px-3 py-2">
+                          <button className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100" onClick={() => void doDeleteByBatch(batch.id)}>
+                            删除
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!batchHistoryData.rows.length && (
+                      <tr><td className="px-3 py-8 text-center text-[var(--twin-mute)]" colSpan={7}>暂无导入记录</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="mt-3 flex items-center justify-end gap-3 text-sm text-[var(--twin-body)]">
+                <button disabled={batchHistoryPage <= 1} onClick={() => loadBatchHistory(batchHistoryPage - 1)} className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40">上一页</button>
+                <span>第 {batchHistoryPage} 页，共 {batchHistoryData.total} 条</span>
+                <button disabled={batchHistoryPage * 20 >= batchHistoryData.total} onClick={() => loadBatchHistory(batchHistoryPage + 1)} className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40">下一页</button>
+              </div>
+            </div>
+            </div>
           </Portal>
         )}
       </div>

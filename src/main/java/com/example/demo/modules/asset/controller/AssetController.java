@@ -8,6 +8,7 @@ import com.example.demo.modules.asset.dto.AssetColumnCreateRequest;
 import com.example.demo.modules.asset.dto.AssetTransferApplyRequest;
 import com.example.demo.modules.asset.service.AssetService;
 import com.example.demo.modules.auth.entity.User;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpHeaders;
@@ -477,6 +478,135 @@ public class AssetController {
                     .build();
         } catch (Exception e) {
             return ResponseEntity.badRequest().contentType(MediaType.TEXT_PLAIN).body(e.getMessage().getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    // ==================== 批量操作 ====================
+
+    @DeleteMapping("/assets/batch")
+    @Operation(summary = "批量删除资产（进入回收站）")
+    public Result<?> batchDelete(@RequestHeader(value = "Authorization", required = false) String auth,
+                                 @RequestBody Map<String, Object> body) {
+        User user = resolveUser(auth);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            @SuppressWarnings("unchecked")
+            List<String> ids = (List<String>) body.get("ids");
+            if (ids == null || ids.isEmpty()) return Result.success(Map.of("deletedCount", 0));
+            if (ids.size() > 500) return Result.error("单次批量删除不得超过500条");
+            return Result.success(assetService.batchDelete(ids, user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PatchMapping("/assets/batch")
+    @Operation(summary = "批量更新资产字段")
+    public Result<?> batchUpdate(@RequestHeader(value = "Authorization", required = false) String auth,
+                                 @RequestBody Map<String, Object> body) {
+        User user = resolveUser(auth);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            @SuppressWarnings("unchecked")
+            List<String> ids = (List<String>) body.get("ids");
+            if (ids == null || ids.isEmpty()) return Result.success(Map.of("updatedCount", 0));
+            if (ids.size() > 500) return Result.error("单次批量更新不得超过500条");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> fixedFields = body.get("fixedFields") instanceof Map
+                    ? (Map<String, Object>) body.get("fixedFields") : null;
+            @SuppressWarnings("unchecked")
+            Map<String, String> dynamicValues = body.get("dynamicValues") instanceof Map
+                    ? (Map<String, String>) body.get("dynamicValues") : null;
+            String columnKey = body.get("columnKey") instanceof String ? (String) body.get("columnKey") : null;
+            return Result.success(assetService.batchUpdate(ids, fixedFields, dynamicValues, columnKey, user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    // ==================== 导入预览与确认 ====================
+
+    @PostMapping("/assets/import/preview")
+    @Operation(summary = "预览导入文件（解析表头，不写入数据库）")
+    public Result<?> previewImport(@RequestHeader(value = "Authorization", required = false) String auth,
+                                   @RequestParam("file") MultipartFile file) {
+        User user = resolveUser(auth);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            return Result.success(assetService.previewImport(file));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @PostMapping("/assets/import/confirm")
+    @Operation(summary = "确认导入（根据预览结果创建新列并执行导入）")
+    public Result<?> confirmImport(@RequestHeader(value = "Authorization", required = false) String auth,
+                                   @RequestBody Map<String, Object> body) {
+        User user = resolveUser(auth);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            String previewId = body.get("previewId") instanceof String ? (String) body.get("previewId") : null;
+            @SuppressWarnings("unchecked")
+            List<String> createNewColumns = body.get("createNewColumns") instanceof List
+                    ? (List<String>) body.get("createNewColumns") : new ArrayList<>();
+            if (previewId == null || previewId.isBlank()) {
+                return Result.error("缺少 previewId 参数");
+            }
+            return Result.success(assetService.confirmImport(previewId, createNewColumns, user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    // ==================== 导入批次管理 ====================
+
+    @GetMapping("/assets/import-batches")
+    @Operation(summary = "分页获取导入批次列表")
+    public Result<?> listImportBatches(@RequestHeader(value = "Authorization", required = false) String auth,
+                                       @RequestParam(defaultValue = "1") int page,
+                                       @RequestParam(defaultValue = "20") int size) {
+        User user = resolveUser(auth);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        return Result.success(assetService.listImportBatches(page, size));
+    }
+
+    @DeleteMapping("/assets/by-batch/{batchId}")
+    @Operation(summary = "按批次ID删除该批次创建的所有资产")
+    public Result<?> deleteByBatch(@RequestHeader(value = "Authorization", required = false) String auth,
+                                   @PathVariable String batchId) {
+        User user = resolveUser(auth);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            return Result.success(assetService.deleteByCreatedBatchId(batchId, user.getId()));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    // ==================== 查找替换 ====================
+
+    @PostMapping("/assets/search-replace")
+    @Operation(summary = "查找替换动态列值")
+    public Result<?> searchReplace(@RequestHeader(value = "Authorization", required = false) String auth,
+                                   @RequestBody Map<String, Object> body) {
+        User user = resolveUser(auth);
+        Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
+        if (denied != null) return denied;
+        try {
+            String columnKey = body.get("columnKey") instanceof String ? (String) body.get("columnKey") : null;
+            String search = body.get("search") instanceof String ? (String) body.get("search") : null;
+            String replace = body.get("replace") instanceof String ? (String) body.get("replace") : "";
+            String matchMode = body.get("matchMode") instanceof String ? (String) body.get("matchMode") : "fuzzy";
+            return Result.success(assetService.searchReplace(columnKey, search, replace, matchMode));
+        } catch (Exception e) {
+            return Result.error(e.getMessage());
         }
     }
 

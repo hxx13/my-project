@@ -136,6 +136,8 @@ export async function fetchAssetRecords(params: {
   return res.data.data;
 }
 
+const IMPORT_TIMEOUT = 300_000;
+
 export async function importAssetExcel(file: File) {
   const form = new FormData();
   form.append("file", file);
@@ -143,7 +145,78 @@ export async function importAssetExcel(file: File) {
     headers: {
       "Content-Type": "multipart/form-data",
     },
+    timeout: IMPORT_TIMEOUT,
   });
+  return res.data.data;
+}
+
+export interface ImportPreview {
+  previewId: string;
+  columns: { header: string; matchedKey: string | null; matchedLabel: string | null }[];
+  sample: Record<string, string>[];
+  warnings: { header: string; reason: string }[];
+}
+
+export interface ImportBatch {
+  id: string;
+  fileName: string;
+  importedBy: string;
+  importedAt: string;
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+}
+
+export async function batchDeleteAssets(ids: string[]) {
+  const res = await authHttp.delete<Result<{ deletedCount: number }>>("/v1/assets/batch", { data: { ids } });
+  return res.data.data;
+}
+
+export async function batchUpdateAssets(payload: {
+  ids: string[];
+  fixedFields?: { status?: string; location?: string; note?: string };
+  dynamicValues?: Record<string, string>;
+  columnKey?: string;
+}) {
+  const res = await authHttp.patch<Result<{ updatedCount: number }>>("/v1/assets/batch", payload);
+  return res.data.data;
+}
+
+export async function previewImportAssets(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await authHttp.post<Result<ImportPreview>>("/v1/assets/import/preview", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: IMPORT_TIMEOUT,
+  });
+  return res.data.data;
+}
+
+export async function confirmImportAssets(previewId: string, createNewColumns?: string[]) {
+  const res = await authHttp.post<Result<{ created: number; updated: number; skipped: number }>>("/v1/assets/import/confirm", {
+    previewId,
+    createNewColumns: createNewColumns || [],
+  }, { timeout: IMPORT_TIMEOUT });
+  return res.data.data;
+}
+
+export async function fetchImportBatches(page: number, size: number) {
+  const res = await authHttp.get<Result<{ rows: ImportBatch[]; total: number; page: number; size: number }>>("/v1/assets/import-batches", { params: { page, size } });
+  return res.data.data;
+}
+
+export async function deleteByBatchId(batchId: string) {
+  const res = await authHttp.delete<Result<{ deletedCount: number }>>(`/v1/assets/by-batch/${encodeURIComponent(batchId)}`);
+  return res.data.data;
+}
+
+export async function searchReplaceAssets(payload: {
+  columnKey: string;
+  search: string;
+  replace: string;
+  matchMode: "exact" | "contains" | "startsWith";
+}) {
+  const res = await authHttp.post<Result<{ replacedCount: number }>>("/v1/assets/search-replace", payload);
   return res.data.data;
 }
 

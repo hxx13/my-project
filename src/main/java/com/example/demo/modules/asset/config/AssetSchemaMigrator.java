@@ -8,6 +8,9 @@ import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+import java.util.Map;
+
 @Component
 @Order(110)
 public class AssetSchemaMigrator implements ApplicationRunner {
@@ -20,7 +23,13 @@ public class AssetSchemaMigrator implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        try {
+        // === 关键列定义：优先执行，独立容错，确保基本列始终存在 ===
+        safeRun("ensure-col-校区", () -> ensureAssetColumnDef("col_校区", "校区"));
+        safeRun("ensure-col-管理部门", () -> ensureAssetColumnDef("col_管理部门", "管理部门"));
+
+        // === 核心表结构 ===
+        safeRun("ddl-asset", () -> {
+            try {
             jdbcTemplate.execute("""
                     CREATE TABLE IF NOT EXISTS asset_record (
                         id VARCHAR(64) PRIMARY KEY,
@@ -135,10 +144,43 @@ public class AssetSchemaMigrator implements ApplicationRunner {
                     "ALTER TABLE asset_record ADD COLUMN photo_urls TEXT NULL COMMENT '资产照片URL JSON数组(转移前参考照片)'");
             ensureColumnExists("asset_transfer_request", "from_user_name",
                     "ALTER TABLE asset_transfer_request ADD COLUMN from_user_name VARCHAR(100) NULL COMMENT '转移前使用人姓名(用于对比展示)'");
-            ensureAssetColumnDef("col_校区", "校区");
+
+            // 1a. 资产导入批次表
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS asset_import_batch (
+                        id VARCHAR(64) PRIMARY KEY,
+                        file_name VARCHAR(255) NOT NULL,
+                        imported_by VARCHAR(64),
+                        imported_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        created_count INT DEFAULT 0,
+                        updated_count INT DEFAULT 0,
+                        skipped_count INT DEFAULT 0,
+                        error_detail TEXT,
+                        create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资产导入批次'
+                    """);
+
+            // 1b. created_by_batch_id 列 + 索引
+            ensureColumnExists("asset_record", "created_by_batch_id",
+                    "ALTER TABLE asset_record ADD COLUMN created_by_batch_id VARCHAR(64) DEFAULT NULL COMMENT '创建该资产的导入批次ID'");
+            ensureIndexExists("asset_record", "idx_asset_record_batch",
+                    "CREATE INDEX idx_asset_record_batch ON asset_record(created_by_batch_id)");
+
             log.info("[asset-schema] 资产相关表已就绪");
         } catch (Exception e) {
             log.error("[asset-schema] 表结构迁移失败: {}", e.getMessage());
+        }
+        });
+        // 以下操作独立容错，一个失败不影响其他
+        safeRun("cleanup-dup-col", this::ensureColumnDefCleanup);
+        safeRun("fix-bad-label", () -> ensureColumnDefFixBadLabel("存放地点2411033", "存放地点"));
+    }
+
+    private void safeRun(String name, Runnable task) {
+        try {
+            task.run();
+        } catch (Exception e) {
+            log.warn("[asset-schema] 步骤 [{}] 失败(已跳过): {}", name, e.getMessage());
         }
     }
 
@@ -156,6 +198,99 @@ public class AssetSchemaMigrator implements ApplicationRunner {
         );
         if (count != null && count == 0) {
             jdbcTemplate.execute(alterSql);
+        }
+    }
+
+    private void ensureIndexExists(String tableName, String indexName, String createIndexSql) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(1) FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = ?
+                  AND INDEX_NAME = ?
+                """,
+                Integer.class,
+                tableName,
+                indexName
+        );
+        if (count != null && count == 0) {
+            jdbcTemplate.execute(createIndexSql);
+        }
+    }
+
+    /** 清理"当前存放地点"重复列定义：保留第一条，将第二条数据迁移到第一条后删除 */
+    private void ensureColumnDefCleanup() {
+        try {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT column_key FROM asset_column_def WHERE column_label LIKE '%存放地点%' ORDER BY sort_order ASC, id ASC"
+            );
+            if (rows == null || rows.size() < 2) {
+                return;
+            }
+            String keyKeep = String.valueOf(rows.get(0).get("column_key"));
+            String keyDelete = String.valueOf(rows.get(1).get("column_key"));
+            if (keyKeep.equals(keyDelete)) {
+                return;
+            }
+            // 将 keyDelete 的数据迁移到 keyKeep（跳过已存在 keyKeep 值的资产）
+            jdbcTemplate.update(
+                    "INSERT INTO asset_record_value (asset_id, column_key, column_value) " +
+                    "SELECT v.asset_id, ?, v.column_value FROM asset_record_value v " +
+                    "WHERE v.column_key = ? " +
+                    "AND NOT EXISTS (SELECT 1 FROM asset_record_value v2 WHERE v2.asset_id = v.asset_id AND v2.column_key = ?)",
+                    keyKeep, keyDelete, keyKeep
+            );
+            jdbcTemplate.update("DELETE FROM asset_record_value WHERE column_key = ?", keyDelete);
+            jdbcTemplate.update("DELETE FROM asset_column_def WHERE column_key = ?", keyDelete);
+            log.info("[asset-schema] 已合并重复列定义: {} → {}, 删除 {}", keyDelete, keyKeep, keyDelete);
+        } catch (Exception e) {
+            log.warn("[asset-schema] 清理重复列定义失败(可忽略): {}", e.getMessage());
+        }
+    }
+
+    /** 修复错误表头：将 badLabel 重命名为 correctLabel，若目标已存在则迁移数据后删除 */
+    private void ensureColumnDefFixBadLabel(String badLabel, String correctLabel) {
+        try {
+            String badKey = "col_" + badLabel.trim().toLowerCase(java.util.Locale.ROOT)
+                    .replaceAll("[^a-z0-9\\u4e00-\\u9fa5]+", "_")
+                    .replaceAll("^_+|_+$", "");
+            String goodKey = "col_" + correctLabel.trim().toLowerCase(java.util.Locale.ROOT)
+                    .replaceAll("[^a-z0-9\\u4e00-\\u9fa5]+", "_")
+                    .replaceAll("^_+|_+$", "");
+            if (badKey.equals(goodKey)) return;
+
+            // 查找错误列
+            Integer badCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM asset_column_def WHERE column_key = ?", Integer.class, badKey);
+            if (badCount == null || badCount == 0) return;
+
+            // 检查正确列是否已存在
+            Integer goodCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM asset_column_def WHERE column_key = ?", Integer.class, goodKey);
+
+            if (goodCount != null && goodCount > 0) {
+                // 目标已存在 → 迁移数据后删除错误列
+                jdbcTemplate.update(
+                        "INSERT INTO asset_record_value (asset_id, column_key, column_value) " +
+                        "SELECT v.asset_id, ?, v.column_value FROM asset_record_value v " +
+                        "WHERE v.column_key = ? " +
+                        "AND NOT EXISTS (SELECT 1 FROM asset_record_value v2 WHERE v2.asset_id = v.asset_id AND v2.column_key = ?)",
+                        goodKey, badKey, goodKey);
+                jdbcTemplate.update("DELETE FROM asset_record_value WHERE column_key = ?", badKey);
+                jdbcTemplate.update("DELETE FROM asset_column_def WHERE column_key = ?", badKey);
+                log.info("[asset-schema] 已合并错误列 {} → {} 并删除 {}", badLabel, correctLabel, badKey);
+            } else {
+                // 目标不存在 → 直接重命名
+                jdbcTemplate.update(
+                        "UPDATE asset_column_def SET column_label = ?, column_key = ? WHERE column_key = ?",
+                        correctLabel, goodKey, badKey);
+                jdbcTemplate.update(
+                        "UPDATE asset_record_value SET column_key = ? WHERE column_key = ?",
+                        goodKey, badKey);
+                log.info("[asset-schema] 已重命名错误列 {} → {}", badLabel, correctLabel);
+            }
+        } catch (Exception e) {
+            log.warn("[asset-schema] 修复错误表头失败(可忽略): {}", e.getMessage());
         }
     }
 

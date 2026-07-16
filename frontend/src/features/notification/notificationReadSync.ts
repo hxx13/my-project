@@ -59,11 +59,11 @@ export function bizKeyFromWorkKind(workKind: "claim" | "repair" | "purchase" | "
 /** 学生审核页：物资申领 / 延迟免冻结通知跳转 */
 export function navigateStudentReviewFromBiz(bizType?: string | null): boolean {
   if (bizType === "SCAN_DELAY") {
-    window.location.hash = "#/admin/material/review?tab=scanDelay";
+    window.location.hash = "#/console/admin/material/review?tab=scanDelay";
     return true;
   }
   if (bizType === "MATERIAL_REQUEST") {
-    window.location.hash = "#/admin/material/review";
+    window.location.hash = "#/console/admin/material/review";
     return true;
   }
   return false;

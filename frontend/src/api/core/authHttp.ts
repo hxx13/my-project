@@ -28,7 +28,7 @@ authHttp.interceptors.request.use((config) => {
     }
     // Mirror token missing but mirror mode active — exit gracefully
     authStorage.exitMirrorMode();
-    window.location.href = "/#/admin";
+    window.location.href = "/#/console/admin";
     return config;
   }
 
@@ -91,8 +91,8 @@ authHttp.interceptors.response.use(
       // Mirror token expired or invalid — exit mirror mode gracefully
       authStorage.exitMirrorMode();
       // Avoid redirect loops
-      if (window.location.hash !== "#/admin") {
-        window.location.href = "/#/admin";
+      if (window.location.hash !== "#/console/admin") {
+        window.location.href = "/#/console/admin";
       }
       return Promise.reject(error);
     }

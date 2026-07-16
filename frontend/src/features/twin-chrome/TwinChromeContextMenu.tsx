@@ -403,7 +403,7 @@ export function TwinChromeContextMenu({
                         icon={LayoutDashboard}
                         label="仪表盘预览"
                         onClick={() => {
-                          navigate("/dashboard-preview");
+                          navigate("/console/dashboard-preview");
                           onClose();
                         }}
                       />

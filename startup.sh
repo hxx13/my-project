@@ -12,7 +12,7 @@ JAVA_OPTS="$JAVA_OPTS -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.enc
 JAVA_OPTS="$JAVA_OPTS -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8"
 
 # 查找 JAR
-JAR=$(ls target/demo-*.jar 2>/dev/null | head -1)
+JAR=$(ls deploy/demo-*.jar 2>/dev/null | head -1)
 
 if [ -n "$JAR" ]; then
     echo "→ Starting: java -jar $JAR"

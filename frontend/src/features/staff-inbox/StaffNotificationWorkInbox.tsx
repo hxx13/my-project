@@ -536,8 +536,8 @@ export const StaffNotificationWorkInbox = forwardRef<StaffNotificationWorkInboxH
     }
     if (item.workKind === "material" || item.workKind === "scanDelay") {
       window.location.hash = item.workKind === "scanDelay"
-        ? "#/admin/material/review?tab=scanDelay"
-        : "#/admin/material/review";
+        ? "#/console/admin/material/review?tab=scanDelay"
+        : "#/console/admin/material/review";
     }
   };
 

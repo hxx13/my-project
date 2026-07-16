@@ -23,5 +23,6 @@ public class AssetRecord {
     private LocalDateTime deletedTime;
     private String deletedBy;
     private LocalDateTime purgeAfterTime;
+    private String createdByBatchId;
 }
 

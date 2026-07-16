@@ -21,7 +21,7 @@ export function BackfillAutoGlobalBanner() {
         <div className="inline-flex items-center gap-2 font-medium">
           {progress.running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           历史回溯进行中：
-          <Link to="/admin/dahua-swing-stats-backfill" className="underline text-emerald-800">
+          <Link to="/console/admin/dahua-swing-stats-backfill" className="underline text-emerald-800">
             {progress.taskName}
           </Link>
         </div>

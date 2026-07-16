@@ -90,8 +90,7 @@ function GlobalSocketListener() {
     const socketRef = useRef<Socket | null>(null);
     const shouldConnect = useStaffConsoleSocketGate();
 
-    // 🔑 Token 过期恢复：connect_error 时刷新 token 并触发 socket 重建
-    const [socketEpoch, setSocketEpoch] = useState(0);
+    // 🔑 Token 过期恢复：connect_error 时刷新 token
     const recoveryInProgressRef = useRef(false);
     const recoveryAttemptRef = useRef(0);
     const MAX_RECOVERY_ATTEMPTS = 3;
@@ -355,7 +354,7 @@ function GlobalSocketListener() {
             delete (window as any).__swipeAlertSocket;
             socket.disconnect();
         };
-    }, [shouldConnect, socketEpoch, addEvent, setConnected, setPieStats, queryClient]);
+    }, [shouldConnect, addEvent, setConnected, setPieStats, queryClient]);
 
     return (
         <>

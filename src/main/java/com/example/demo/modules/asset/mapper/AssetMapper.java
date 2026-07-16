@@ -1,6 +1,7 @@
 package com.example.demo.modules.asset.mapper;
 
 import com.example.demo.modules.asset.entity.AssetColumnDef;
+import com.example.demo.modules.asset.entity.AssetImportBatch;
 import com.example.demo.modules.asset.entity.AssetRecord;
 import com.example.demo.modules.asset.entity.AssetTransferExportFile;
 import com.example.demo.modules.asset.entity.AssetTransferRequest;
@@ -169,5 +170,24 @@ public interface AssetMapper {
     List<String> listDistinctLocationValues();
 
     int updateAssetPhotoUrls(@Param("id") String id, @Param("photoUrls") String photoUrls);
+
+    // 批量操作
+    int batchSoftDelete(@Param("ids") List<String> ids, @Param("operatorId") String operatorId,
+                        @Param("deletedTime") LocalDateTime deletedTime, @Param("purgeAfterTime") LocalDateTime purgeAfterTime);
+    int batchUpdateAssetValues(@Param("assetIds") List<String> assetIds, @Param("columnKey") String columnKey, @Param("columnValue") String columnValue);
+    int batchUpdateAssetFields(@Param("assetIds") List<String> assetIds, @Param("status") String status, @Param("location") String location, @Param("note") String note, @Param("operatorId") String operatorId);
+
+    // 导入批次
+    int insertImportBatch(AssetImportBatch batch);
+    List<AssetImportBatch> listImportBatches(@Param("limit") int limit, @Param("offset") int offset);
+    int countImportBatches();
+    int deleteByCreatedBatchId(@Param("batchId") String batchId, @Param("operatorId") String operatorId,
+                               @Param("deletedTime") LocalDateTime deletedTime, @Param("purgeAfterTime") LocalDateTime purgeAfterTime);
+
+    // 查找替换
+    int searchReplaceValues(@Param("columnKey") String columnKey, @Param("search") String search, @Param("replace") String replace, @Param("matchMode") String matchMode);
+
+    // 按 label 查找列定义
+    AssetColumnDef findColumnDefByLabel(@Param("columnLabel") String columnLabel);
 }
 

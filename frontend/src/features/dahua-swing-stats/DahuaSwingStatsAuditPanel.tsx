@@ -133,7 +133,7 @@ export function DahuaSwingStatsAuditPanel() {
     <div className="space-y-3">
       <p className="text-sm text-slate-500">
         <strong>日批</strong>：在{" "}
-        <a href="#/admin/schedule-manager" className="text-indigo-700 underline">
+        <a href="#/console/admin/schedule-manager" className="text-indigo-700 underline">
           定时管理
         </a>{" "}
         配置「审计门禁·每日到点」后，每天自动拉取<strong>上一自然日</strong>在任务内配置的刷卡时刻段。

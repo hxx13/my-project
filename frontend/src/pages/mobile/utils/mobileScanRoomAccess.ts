@@ -27,6 +27,7 @@ export interface NormalizedMobileScanAnalyze {
   currentState: "INSIDE" | "OUTSIDE" | "UNKNOWN";
   globalUserState: number;
   allowedRooms: RoomInfo[];
+  pendingRooms: RoomInfo[];
   scanPopupEntryWindowEnabled: boolean;
   scanPopupEntryAllowedNow: boolean;
   scanPopupExemptRoomIds: string[];
@@ -124,6 +125,11 @@ export function normalizeMobileScanAnalyze(
       ? safe.allowedRooms.map(normalizeScanRoomInfo)
       : Array.isArray(safe.allowed_rooms)
         ? (safe.allowed_rooms as unknown[]).map(normalizeScanRoomInfo)
+        : []).filter((r) => !r.isDisabled),
+    pendingRooms: (Array.isArray(safe.pendingRooms)
+      ? safe.pendingRooms.map(normalizeScanRoomInfo)
+      : Array.isArray(safe.pending_rooms)
+        ? (safe.pending_rooms as unknown[]).map(normalizeScanRoomInfo)
         : []).filter((r) => !r.isDisabled),
     scanPopupEntryWindowEnabled:
       asBool(safe.scanPopupEntryWindowEnabled) ??
@@ -391,7 +397,11 @@ export function evaluateMobileRoomAccess(
   }
 
   const overview = resolveOverviewRow(item, overviewIndex);
-  const scanRoom = findAllowedScanRoom(item, overview, analyze.allowedRooms);
+  const searchRooms =
+    analyze.currentState === "INSIDE" && analyze.pendingRooms.length > 0
+      ? [...analyze.allowedRooms, ...analyze.pendingRooms]
+      : analyze.allowedRooms;
+  const scanRoom = findAllowedScanRoom(item, overview, searchRooms);
 
   if (!scanRoom) {
     return {

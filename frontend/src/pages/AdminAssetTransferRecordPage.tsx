@@ -81,8 +81,7 @@ function normalizeTransferRecord(r: AssetTransferRecord): AssetTransferRecord {
 
 function normalizeColumnLabel(label: string) {
   const text = label.trim();
-  if (/^存放地点\d+$/i.test(text)) return "当前存放地点";
-  return text;
+  return text; // 不再把"存放地点N"映射为"当前存放地点"
 }
 
 function pickCurrentLocationColumn(columns: AssetColumnDef[]) {

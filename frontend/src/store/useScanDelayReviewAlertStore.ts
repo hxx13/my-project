@@ -210,7 +210,7 @@ async function showOsNotification(payload: ScanDelayReviewAlertPayload): Promise
 }
 
 export function scanDelayReviewHash(requestId?: string): string {
-  const base = "#/admin/material/review?tab=scanDelay";
+  const base = "#/console/admin/material/review?tab=scanDelay";
   if (!requestId) return base;
   return `${base}&requestId=${encodeURIComponent(requestId)}`;
 }

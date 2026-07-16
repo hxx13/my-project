@@ -485,17 +485,17 @@ export default function DebugNav() {
     } else {
         links = [
             { key: 'home', name: '主大屏', path: '/console/dashboard', icon: LayoutDashboard },
-            { key: 'debug', name: '流水线', path: '/debug', icon: ScrollText },
-            { key: 'personnel', name: '档案库', path: '/debug-personnel', icon: Users },
-            { key: 'ai', name: 'AI推演', path: '/debug-prediction', icon: BrainCircuit },
-            { key: 'heatmap', name: '空间雷达', path: '/debug-heatmap', icon: MapIcon },
+            { key: 'debug', name: '流水线', path: '/console/debug', icon: ScrollText },
+            { key: 'personnel', name: '档案库', path: '/console/debug-personnel', icon: Users },
+            { key: 'ai', name: 'AI推演', path: '/console/debug-prediction', icon: BrainCircuit },
+            { key: 'heatmap', name: '空间雷达', path: '/console/debug-heatmap', icon: MapIcon },
         ];
         if (hasMinRole(role || 'STUDENT', 'STAFF')) {
-            links.splice(3, 0, { key: 'cards', name: '房卡调度', path: '/debug-cards', icon: CreditCard });
-            links.splice(5, 0, { key: 'order', name: '订单库', path: '/debug-order', icon: ShoppingCart });
+            links.splice(3, 0, { key: 'cards', name: '房卡调度', path: '/console/debug-cards', icon: CreditCard });
+            links.splice(5, 0, { key: 'order', name: '订单库', path: '/console/debug-order', icon: ShoppingCart });
         }
         if (hasMinRole(role || 'STUDENT', 'STAFF')) {
-            links.push({ key: 'admin', name: '后台管理', path: '/admin', icon: Sparkles });
+            links.push({ key: 'admin', name: '后台管理', path: '/console/admin', icon: Sparkles });
         }
     }
 
