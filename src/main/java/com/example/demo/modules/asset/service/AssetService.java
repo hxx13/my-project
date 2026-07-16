@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.demo.modules.asset.dto.AssetTransferApplyRequest;
 import com.example.demo.modules.asset.entity.AssetColumnDef;
+import com.example.demo.modules.asset.entity.AssetImportBatch;
 import com.example.demo.modules.asset.entity.AssetRecord;
 import com.example.demo.modules.asset.entity.AssetTransferExportFile;
 import com.example.demo.modules.asset.entity.AssetTransferRequest;
@@ -41,14 +42,36 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class AssetService {
-    private static final Set<String> RESERVED_HEADERS = Set.of("资产编码", "资产编号", "资产名称", "状态", "当前位置", "存放地点", "标注", "备注");
+    private static final Set<String> RESERVED_HEADERS = Set.of("资产编码", "资产编号", "资产名称", "状态", "当前位置", "存放地点", "当前存放地点", "标注", "备注");
     private static final Set<String> RESERVED_KEYS = Set.of("assetCode", "assetName", "status", "location", "note", "locked");
     private static final DateTimeFormatter EXPORT_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int TRANSFER_EXPORT_LINK_LIMIT = 10;
+
+    /** 导入预览缓存：key=previewId, value=预览数据，30分钟过期 */
+    private final ConcurrentHashMap<String, PreviewCacheEntry> previewCache = new ConcurrentHashMap<>();
+
+    private static class PreviewCacheEntry {
+        final Map<String, Object> data;
+        final byte[] fileBytes;
+        final String originalFilename;
+        final long createdAt;
+
+        PreviewCacheEntry(Map<String, Object> data, byte[] fileBytes, String originalFilename) {
+            this.data = data;
+            this.fileBytes = fileBytes;
+            this.originalFilename = originalFilename;
+            this.createdAt = System.currentTimeMillis();
+        }
+
+        boolean isExpired() {
+            return System.currentTimeMillis() - createdAt > 30 * 60 * 1000;
+        }
+    }
 
     private final AssetMapper assetMapper;
     private final UploadFileService uploadFileService;
@@ -245,16 +268,50 @@ public class AssetService {
         if (fileName.endsWith(".csv")) {
             return importAssetsFromCsv(operatorId, file);
         }
+        String batchId = "BATCH_" + UUID.randomUUID().toString().replace("-", "");
+        return importAssetsFromExcelInternal(operatorId, file, batchId, null);
+    }
+
+    private Map<String, Object> importAssetsFromExcelInternal(String operatorId, MultipartFile file, String batchId, List<String> createNewColumns) {
         int created = 0;
         int updated = 0;
         int skipped = 0;
+        List<Map<String, String>> warnings = new ArrayList<>();
         List<AssetColumnDef> defs = assetMapper.listColumnDefs();
         Map<String, AssetColumnDef> defByKey = new HashMap<>();
         for (AssetColumnDef d : defs) {
             defByKey.put(d.getColumnKey(), d);
         }
 
-        try (Workbook workbook = WorkbookFactory.create(new ByteArrayInputStream(file.getBytes()))) {
+        // 如果传入了 createNewColumns，先创建这些列定义
+        if (createNewColumns != null) {
+            for (String label : createNewColumns) {
+                String key = buildColumnKey(label);
+                if (!defByKey.containsKey(key)) {
+                    AssetColumnDef def = new AssetColumnDef();
+                    def.setColumnKey(key);
+                    def.setColumnLabel(label);
+                    def.setValueType("TEXT");
+                    def.setSortable(1);
+                    def.setSearchable(1);
+                    def.setSortOrder(defByKey.size() + 1);
+                    def.setCreateBy(operatorId);
+                    assetMapper.insertColumnDef(def);
+                    defByKey.put(key, def);
+                }
+            }
+        }
+
+        // 插入导入批次记录
+        AssetImportBatch batch = new AssetImportBatch();
+        batch.setId(batchId);
+        batch.setFileName(file.getOriginalFilename() == null ? "" : file.getOriginalFilename());
+        batch.setImportedBy(operatorId);
+        batch.setImportedAt(LocalDateTime.now());
+        batch.setCreateTime(LocalDateTime.now());
+        assetMapper.insertImportBatch(batch);
+
+        try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
             if (sheet == null) {
                 throw new IllegalArgumentException("Excel 工作表为空");
@@ -284,20 +341,19 @@ public class AssetService {
                 if (!StringUtils.hasText(header) || RESERVED_HEADERS.contains(header)) {
                     continue;
                 }
-                String key = buildColumnKey(header);
-                if (!defByKey.containsKey(key)) {
-                    AssetColumnDef def = new AssetColumnDef();
-                    def.setColumnKey(key);
-                    def.setColumnLabel(header);
-                    def.setValueType("TEXT");
-                    def.setSortable(1);
-                    def.setSearchable(1);
-                    def.setSortOrder(defByKey.size() + 1);
-                    def.setCreateBy(operatorId);
-                    assetMapper.insertColumnDef(def);
-                    defByKey.put(key, def);
+                // 先查找已有列定义（按 label 匹配）
+                AssetColumnDef existingDef = assetMapper.findColumnDefByLabel(header);
+                if (existingDef != null) {
+                    dynamicColumnByIndex.put(i, existingDef.getColumnKey());
+                } else {
+                    String key = buildColumnKey(header);
+                    if (defByKey.containsKey(key)) {
+                        dynamicColumnByIndex.put(i, key);
+                    } else {
+                        // 未找到列定义，记录警告
+                        warnings.add(Map.of("header", header, "reason", "未找到对应列定义，跳过该列"));
+                    }
                 }
-                dynamicColumnByIndex.put(i, key);
             }
 
             for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
@@ -327,6 +383,7 @@ public class AssetService {
                     record.setNote(StringUtils.hasText(note) ? note.trim() : "");
                     record.setCreateBy(operatorId);
                     record.setUpdateBy(operatorId);
+                    record.setCreatedByBatchId(batchId);
                     assetMapper.insertAsset(record);
                     created++;
                 } else {
@@ -344,24 +401,52 @@ public class AssetService {
                 }
             }
         } catch (Exception e) {
+            // 更新批次错误信息
+            batch.setErrorDetail(e.getMessage());
+            batch.setCreatedCount(created);
+            batch.setUpdatedCount(updated);
+            batch.setSkippedCount(skipped);
+            assetMapper.insertImportBatch(batch);
             throw new IllegalArgumentException("Excel 解析失败: " + e.getMessage());
         }
+
+        // 更新批次计数
+        batch.setCreatedCount(created);
+        batch.setUpdatedCount(updated);
+        batch.setSkippedCount(skipped);
+        assetMapper.insertImportBatch(batch);
+
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("batchId", batchId);
         result.put("created", created);
         result.put("updated", updated);
         result.put("skipped", skipped);
+        if (!warnings.isEmpty()) {
+            result.put("warnings", warnings);
+        }
         return result;
     }
 
     private Map<String, Object> importAssetsFromCsv(String operatorId, MultipartFile file) {
+        String batchId = "BATCH_" + UUID.randomUUID().toString().replace("-", "");
+        AssetImportBatch batch = new AssetImportBatch();
+        batch.setId(batchId);
+        batch.setFileName(file.getOriginalFilename());
+        batch.setImportedBy(operatorId);
+        batch.setImportedAt(LocalDateTime.now());
         int created = 0;
         int updated = 0;
         int skipped = 0;
+        List<Map<String, String>> warnings = new ArrayList<>();
         List<AssetColumnDef> defs = assetMapper.listColumnDefs();
         Map<String, AssetColumnDef> defByKey = new HashMap<>();
         for (AssetColumnDef d : defs) {
             defByKey.put(d.getColumnKey(), d);
         }
+
+        // 插入导入批次记录（待导入完成后更新计数）
+        assetMapper.insertImportBatch(batch);
+
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
             String headerLine = reader.readLine();
             if (!StringUtils.hasText(headerLine)) {
@@ -385,20 +470,18 @@ public class AssetService {
                 if (!StringUtils.hasText(header) || RESERVED_HEADERS.contains(header)) {
                     continue;
                 }
-                String key = buildColumnKey(header);
-                if (!defByKey.containsKey(key)) {
-                    AssetColumnDef def = new AssetColumnDef();
-                    def.setColumnKey(key);
-                    def.setColumnLabel(header);
-                    def.setValueType("TEXT");
-                    def.setSortable(1);
-                    def.setSearchable(1);
-                    def.setSortOrder(defByKey.size() + 1);
-                    def.setCreateBy(operatorId);
-                    assetMapper.insertColumnDef(def);
-                    defByKey.put(key, def);
+                // 先查找已有列定义（按 label 匹配）
+                AssetColumnDef existingDef = assetMapper.findColumnDefByLabel(header);
+                if (existingDef != null) {
+                    dynamicColumnByIndex.put(i, existingDef.getColumnKey());
+                } else {
+                    String key = buildColumnKey(header);
+                    if (defByKey.containsKey(key)) {
+                        dynamicColumnByIndex.put(i, key);
+                    } else {
+                        warnings.add(Map.of("header", header, "reason", "未找到对应列定义，跳过该列"));
+                    }
                 }
-                dynamicColumnByIndex.put(i, key);
             }
 
             String line;
@@ -429,6 +512,7 @@ public class AssetService {
                     record.setNote(StringUtils.hasText(note) ? note.trim() : "");
                     record.setCreateBy(operatorId);
                     record.setUpdateBy(operatorId);
+                    record.setCreatedByBatchId(batchId);
                     assetMapper.insertAsset(record);
                     created++;
                 } else {
@@ -446,14 +530,34 @@ public class AssetService {
                 }
             }
         } catch (IllegalArgumentException e) {
+            batch.setErrorDetail(e.getMessage());
+            batch.setCreatedCount(created);
+            batch.setUpdatedCount(updated);
+            batch.setSkippedCount(skipped);
+            assetMapper.insertImportBatch(batch);
             throw e;
         } catch (Exception e) {
+            batch.setErrorDetail(e.getMessage());
+            batch.setCreatedCount(created);
+            batch.setUpdatedCount(updated);
+            batch.setSkippedCount(skipped);
+            assetMapper.insertImportBatch(batch);
             throw new IllegalArgumentException("CSV 解析失败: " + e.getMessage());
         }
+
+        batch.setCreatedCount(created);
+        batch.setUpdatedCount(updated);
+        batch.setSkippedCount(skipped);
+        assetMapper.insertImportBatch(batch);
+
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("batchId", batchId);
         result.put("created", created);
         result.put("updated", updated);
         result.put("skipped", skipped);
+        if (!warnings.isEmpty()) {
+            result.put("warnings", warnings);
+        }
         return result;
     }
 
@@ -573,7 +677,10 @@ public class AssetService {
             record.setPhotoUrls(photoUrls.trim());
         }
         record.setUpdateBy("system");
-        assetMapper.updateAssetBase(record);
+        int affected = assetMapper.updateAssetBase(record);
+        if (affected <= 0) {
+            throw new IllegalArgumentException("资产不存在或已被删除");
+        }
         if (photoUrls != null) {
             assetMapper.updateAssetPhotoUrls(id, photoUrls.trim());
         }
@@ -1456,6 +1563,289 @@ public class AssetService {
             }
         }
         return new ArrayList<>(set);
+    }
+
+    // ==================== 批量操作 ====================
+
+    /** 2b. 批量软删除资产（分批500条） */
+    public Map<String, Object> batchDelete(List<String> ids, String operatorId) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of("deletedCount", 0);
+        }
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime purgeAfter = now.plusDays(30);
+        int total = 0;
+        int batchSize = 500;
+        for (int i = 0; i < ids.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, ids.size());
+            List<String> batch = ids.subList(i, end);
+            total += assetMapper.batchSoftDelete(batch, operatorId, now, purgeAfter);
+        }
+        return Map.of("deletedCount", total);
+    }
+
+    /** 2c. 批量更新资产字段 */
+    public Map<String, Object> batchUpdate(List<String> ids, Map<String, Object> fixedFields, Map<String, String> dynamicValues, String columnKey, String operatorId) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of("updatedCount", 0);
+        }
+        if (ids.size() > 500) {
+            throw new IllegalArgumentException("单次批量更新不得超过500条");
+        }
+        int updated = 0;
+
+        // 校验 columnKey 有效性
+        List<AssetColumnDef> defs = assetMapper.listColumnDefs();
+        Set<String> validKeys = new HashSet<>();
+        for (AssetColumnDef d : defs) {
+            validKeys.add(d.getColumnKey());
+        }
+
+        // 固定字段更新
+        if (fixedFields != null && !fixedFields.isEmpty()) {
+            String status = fixedFields.get("status") instanceof String ? (String) fixedFields.get("status") : null;
+            String location = fixedFields.get("location") instanceof String ? (String) fixedFields.get("location") : null;
+            String note = fixedFields.get("note") instanceof String ? (String) fixedFields.get("note") : null;
+            if (status != null || location != null || note != null) {
+                updated += assetMapper.batchUpdateAssetFields(ids, status, location, note, operatorId);
+            }
+        }
+
+        // 动态列值更新（支持单列 columnKey 或多列遍历）
+        if (dynamicValues != null && !dynamicValues.isEmpty()) {
+            if (StringUtils.hasText(columnKey) && validKeys.contains(columnKey)) {
+                // 单列模式（兼容旧调用）
+                String columnValue = dynamicValues.get(columnKey);
+                if (columnValue != null) {
+                    updated += assetMapper.batchUpdateAssetValues(ids, columnKey, columnValue);
+                }
+            } else {
+                // 多列模式：遍历所有 key，逐个校验并更新
+                for (Map.Entry<String, String> entry : dynamicValues.entrySet()) {
+                    String key = entry.getKey();
+                    String value = entry.getValue();
+                    if (StringUtils.hasText(key) && validKeys.contains(key) && value != null) {
+                        updated += assetMapper.batchUpdateAssetValues(ids, key, value);
+                    }
+                }
+            }
+        }
+
+        return Map.of("updatedCount", updated);
+    }
+
+    // ==================== 导入预览与确认 ====================
+
+    /** 2d. 预览导入：解析表头不写数据库，返回预览数据缓存到内存 */
+    public Map<String, Object> previewImport(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("上传文件不能为空");
+        }
+        String previewId = "PREVIEW_" + UUID.randomUUID().toString().replace("-", "");
+        List<Map<String, Object>> columns = new ArrayList<>();
+        List<Map<String, Object>> sample = new ArrayList<>();
+        List<Map<String, String>> warnings = new ArrayList<>();
+
+        String fileName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase(Locale.ROOT);
+        boolean isCsv = fileName.endsWith(".csv");
+
+        try {
+            if (isCsv) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
+                    String headerLine = reader.readLine();
+                    if (!StringUtils.hasText(headerLine)) {
+                        throw new IllegalArgumentException("CSV 缺少表头");
+                    }
+                    if (headerLine.startsWith("﻿")) {
+                        headerLine = headerLine.substring(1);
+                    }
+                    List<String> headers = parseCsvLine(headerLine);
+                    columns = buildPreviewColumns(headers, warnings);
+
+                    // 读取最多5行样本
+                    String line;
+                    int sampleCount = 0;
+                    while ((line = reader.readLine()) != null && sampleCount < 5) {
+                        if (!StringUtils.hasText(line)) continue;
+                        List<String> cells = parseCsvLine(line);
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        for (int i = 0; i < headers.size() && i < cells.size(); i++) {
+                            row.put(headers.get(i), cells.get(i));
+                        }
+                        sample.add(row);
+                        sampleCount++;
+                    }
+                }
+            } else {
+                try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
+                    Sheet sheet = workbook.getNumberOfSheets() > 0 ? workbook.getSheetAt(0) : null;
+                    if (sheet == null) throw new IllegalArgumentException("Excel 工作表为空");
+                    DataFormatter formatter = new DataFormatter();
+                    Row headerRow = sheet.getRow(0);
+                    if (headerRow == null) throw new IllegalArgumentException("Excel 缺少表头");
+                    int last = Math.max(headerRow.getLastCellNum(), 0);
+                    List<String> headers = new ArrayList<>();
+                    for (int i = 0; i < last; i++) {
+                        headers.add(formatter.formatCellValue(headerRow.getCell(i)).trim());
+                    }
+                    columns = buildPreviewColumns(headers, warnings);
+
+                    // 读取最多5行样本
+                    for (int rowIndex = 1; rowIndex <= Math.min(sheet.getLastRowNum(), 5); rowIndex++) {
+                        Row row = sheet.getRow(rowIndex);
+                        if (row == null) continue;
+                        Map<String, Object> rowData = new LinkedHashMap<>();
+                        for (int i = 0; i < headers.size(); i++) {
+                            rowData.put(headers.get(i), i < last ? formatter.formatCellValue(row.getCell(i)).trim() : "");
+                        }
+                        sample.add(rowData);
+                    }
+                }
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("预览解析失败: " + e.getMessage());
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("previewId", previewId);
+        result.put("columns", columns);
+        result.put("sample", sample);
+        if (!warnings.isEmpty()) {
+            result.put("warnings", warnings);
+        }
+
+        // 缓存到内存（30分钟过期），同时缓存文件字节供 confirm 阶段重放
+        byte[] fileBytes;
+        try { fileBytes = file.getBytes(); } catch (Exception e) { fileBytes = new byte[0]; }
+        previewCache.put(previewId, new PreviewCacheEntry(result, fileBytes, file.getOriginalFilename()));
+        // 清理过期缓存
+        previewCache.entrySet().removeIf(e -> e.getValue().isExpired());
+
+        return result;
+    }
+
+    private List<Map<String, Object>> buildPreviewColumns(List<String> headers, List<Map<String, String>> warnings) {
+        List<Map<String, Object>> columns = new ArrayList<>();
+        for (String header : headers) {
+            if (!StringUtils.hasText(header)) continue;
+            Map<String, Object> col = new LinkedHashMap<>();
+            col.put("header", header);
+            if (RESERVED_HEADERS.contains(header)) {
+                col.put("type", "reserved");
+                col.put("matched", true);
+                col.put("matchedKey", header);
+                col.put("matchedLabel", header);
+            } else {
+                AssetColumnDef existingDef = assetMapper.findColumnDefByLabel(header);
+                if (existingDef != null) {
+                    col.put("type", "dynamic");
+                    col.put("matched", true);
+                    col.put("columnKey", existingDef.getColumnKey());
+                    col.put("matchedKey", existingDef.getColumnKey());
+                    col.put("matchedLabel", existingDef.getColumnLabel());
+                } else {
+                    col.put("type", "dynamic");
+                    col.put("matched", false);
+                    col.put("suggestedKey", buildColumnKey(header));
+                    col.put("matchedKey", null);
+                    col.put("matchedLabel", null);
+                    warnings.add(Map.of("header", header, "reason", "未找到对应列定义，需确认后创建"));
+                }
+            }
+            columns.add(col);
+        }
+        return columns;
+    }
+
+    /** 2e. 确认导入：根据用户勾选的列创建定义后执行实际导入 */
+    public Map<String, Object> confirmImport(String previewId, List<String> createNewColumns, String operatorId) {
+        if (!StringUtils.hasText(previewId)) {
+            throw new IllegalArgumentException("previewId 不能为空");
+        }
+        PreviewCacheEntry entry = previewCache.get(previewId);
+        if (entry == null || entry.isExpired()) {
+            throw new IllegalArgumentException("预览已过期，请重新上传预览");
+        }
+        // 从缓存重建 MultipartFile
+        final byte[] cachedBytes = entry.fileBytes;
+        final String cachedName = entry.originalFilename;
+        MultipartFile file = new MultipartFile() {
+            @Override public String getName() { return "file"; }
+            @Override public String getOriginalFilename() { return cachedName; }
+            @Override public String getContentType() { return null; }
+            @Override public boolean isEmpty() { return cachedBytes == null || cachedBytes.length == 0; }
+            @Override public long getSize() { return cachedBytes == null ? 0 : cachedBytes.length; }
+            @Override public byte[] getBytes() { return cachedBytes; }
+            @Override public InputStream getInputStream() { return new java.io.ByteArrayInputStream(cachedBytes); }
+            @Override public void transferTo(java.io.File dest) throws IOException { java.nio.file.Files.write(dest.toPath(), cachedBytes); }
+        };
+        String batchId = "BATCH_" + UUID.randomUUID().toString().replace("-", "");
+        Map<String, Object> result = importAssetsFromExcelInternal(operatorId, file, batchId, createNewColumns);
+        // 清理缓存
+        previewCache.remove(previewId);
+        return result;
+    }
+
+    // ==================== 查找替换 ====================
+
+    /** 2f. 查找替换动态列值 */
+    public Map<String, Object> searchReplace(String columnKey, String search, String replace, String matchMode) {
+        if (!StringUtils.hasText(columnKey)) {
+            throw new IllegalArgumentException("columnKey 不能为空");
+        }
+        if (!StringUtils.hasText(search)) {
+            throw new IllegalArgumentException("search 不能为空");
+        }
+        // 校验 columnKey 在 asset_column_def 中存在
+        AssetColumnDef def = assetMapper.findColumnDefByKey(columnKey);
+        if (def == null) {
+            throw new IllegalArgumentException("列定义不存在: " + columnKey);
+        }
+        String mode;
+        if ("exact".equalsIgnoreCase(matchMode)) {
+            mode = "exact";
+        } else if ("startsWith".equalsIgnoreCase(matchMode)) {
+            mode = "startsWith";
+        } else {
+            mode = "fuzzy"; // contains
+        }
+        // 转义 LIKE 通配符，防止 % 和 _ 被误解释
+        String escapedSearch = ("exact".equals(mode)) ? search : search
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+        int count = assetMapper.searchReplaceValues(columnKey, escapedSearch, replace == null ? "" : replace, mode);
+        return Map.of("replacedCount", count);
+    }
+
+    // ==================== 导入批次管理 ====================
+
+    /** 2g. 分页获取导入批次列表 */
+    public Map<String, Object> listImportBatches(int page, int size) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(Math.max(1, size), 200);
+        int offset = (safePage - 1) * safeSize;
+        List<AssetImportBatch> rows = assetMapper.listImportBatches(safeSize, offset);
+        int total = assetMapper.countImportBatches();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("rows", rows);
+        data.put("total", total);
+        data.put("page", safePage);
+        data.put("size", safeSize);
+        return data;
+    }
+
+    /** 2h. 按批次ID删除该批次创建的所有资产 */
+    public Map<String, Object> deleteByCreatedBatchId(String batchId, String operatorId) {
+        if (!StringUtils.hasText(batchId)) {
+            throw new IllegalArgumentException("batchId 不能为空");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime purgeAfter = now.plusDays(30);
+        int count = assetMapper.deleteByCreatedBatchId(batchId, operatorId, now, purgeAfter);
+        return Map.of("deletedCount", count);
     }
 
     @Transactional(rollbackFor = Exception.class)
