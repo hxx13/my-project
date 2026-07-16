@@ -437,7 +437,7 @@ export default function AdminAssetRecordPage() {
     const m: Record<string, boolean> = {};
     fixedExportLabels.forEach((l) => { m[l] = true; });
     (columns || []).forEach((c) => {
-      const label = c.displayLabel || c.columnLabel || "";
+      const label = c.columnLabel || "";
       if (label && !fixedExportLabels.includes(label)) m[label] = true;
     });
     return m;
