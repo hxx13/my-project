@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toAdminRoutePath } from "@/features/admin/buildAdminNavModel";
 import { useQuery } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { AdminPageShell } from "@/components/admin/AdminPageShell";
 import { AdminButton } from "@/components/admin/AdminButton";
 import {
   fetchSpecialStatusOverview,
+  fetchSnapshotBatches,
   type SpecialStatusCage,
   type SpecialStatusGroup,
 } from "@/api/domains/cageShelf.api";
@@ -175,10 +176,26 @@ export default function AdminSpecialStatusOverviewPage() {
   const [detailCage, setDetailCage] = useState<MergedCage | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  // 快照批次选择
+  const { data: batchList = [] } = useQuery({
+    queryKey: ["snapshotBatches"],
+    queryFn: fetchSnapshotBatches,
+    staleTime: 60_000,
+  });
+  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
+
+  // 自动选择最新快照
+  useEffect(() => {
+    if (!selectedBatchId && batchList.length > 0) {
+      setSelectedBatchId(batchList[0].scanBatchId);
+    }
+  }, [batchList, selectedBatchId]);
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["specialStatusOverview"],
-    queryFn: fetchSpecialStatusOverview,
+    queryKey: ["specialStatusOverview", selectedBatchId],
+    queryFn: () => fetchSpecialStatusOverview(selectedBatchId || undefined),
     refetchInterval: 120_000,
+    enabled: !!selectedBatchId,
   });
 
   // Merge and deduplicate
@@ -214,7 +231,7 @@ export default function AdminSpecialStatusOverviewPage() {
       <div className="space-y-4">
         {/* Meta bar */}
         {data && (
-          <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-4 py-3 text-sm">
+          <div className="rounded-twin-lg border border-[var(--twin-hairline)] bg-[var(--twin-canvas)] px-4 py-3 text-sm flex flex-wrap items-center gap-3">
             <span className="text-[var(--twin-body)]">
               上次扫描: <span className="font-semibold text-[var(--twin-ink)]">{data.scannedAt || "未知"}</span>
               <span className="mx-2">·</span>
@@ -222,6 +239,20 @@ export default function AdminSpecialStatusOverviewPage() {
               <span className="mx-2">·</span>
               去重后笼位: <span className="font-semibold text-[var(--twin-ink)]">{allMerged.length}</span>
             </span>
+            {/* 快照数据源选择器 */}
+            {batchList.length > 0 && (
+              <select
+                className={`rounded-twin-md border px-2 py-1 text-[11px] font-semibold transition ml-auto ${selectedBatchId ? 'bg-amber-100 border-amber-400 text-amber-900' : 'bg-[var(--twin-canvas)] border-[var(--twin-hairline)] text-[var(--twin-ink)]'}`}
+                value={selectedBatchId}
+                onChange={(e) => setSelectedBatchId(e.target.value)}
+              >
+                {batchList.map((b) => (
+                  <option key={b.scanBatchId} value={b.scanBatchId}>
+                    {b.scannedAt?.substring(0, 16)?.replace("T", " ")} · {b.abnormalRows}异常/{b.shelfCount}架
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         )}
 

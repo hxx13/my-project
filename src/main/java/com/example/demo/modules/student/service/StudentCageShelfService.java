@@ -985,7 +985,7 @@ public class StudentCageShelfService {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> getSpecialStatusOverview(User user, boolean mobileHtml5PrivilegeBypass) {
-        Map<String, Object> adminOverview = cageShelfService.getSpecialStatusOverview();
+        Map<String, Object> adminOverview = cageShelfService.getSpecialStatusOverview(null);
 
         if (shouldUseFullSpecialStatusOverview(user, mobileHtml5PrivilegeBypass)) {
             return adminOverview;

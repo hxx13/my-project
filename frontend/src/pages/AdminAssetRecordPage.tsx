@@ -156,6 +156,9 @@ export default function AdminAssetRecordPage() {
   const [batchEditColumnKey, setBatchEditColumnKey] = useState("");
   const [batchEditValue, setBatchEditValue] = useState("");
   const [searchReplaceColumnKey, setSearchReplaceColumnKey] = useState("");
+  const [exportPickerOpen, setExportPickerOpen] = useState(false);
+  const [exportColumnsChecked, setExportColumnsChecked] = useState<Record<string, boolean>>({});
+  const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
   const [searchReplaceSearch, setSearchReplaceSearch] = useState("");
   const [searchReplaceReplace, setSearchReplaceReplace] = useState("");
   const [searchReplaceMode, setSearchReplaceMode] = useState<"exact" | "contains" | "startsWith">("exact");
@@ -428,19 +431,62 @@ export default function AdminAssetRecordPage() {
     }
   };
 
-  const onExport = async () => {
+  const fixedExportLabels = ["资产编码", "资产名称", "状态", "存放地点", "标注", "是否锁定", "申请转移时间", "申请转移地点", "申请人", "申请备注"];
+
+  const buildExportCols = (): Record<string, boolean> => {
+    const m: Record<string, boolean> = {};
+    fixedExportLabels.forEach((l) => { m[l] = true; });
+    (columns || []).forEach((c) => {
+      const label = c.displayLabel || c.columnLabel || "";
+      if (label && !fixedExportLabels.includes(label)) m[label] = true;
+    });
+    return m;
+  };
+
+  const getSavedExportCols = (): string[] | null => {
+    try { const s = localStorage.getItem("assetExportCols"); return s ? JSON.parse(s) as string[] : null; } catch { return null; }
+  };
+
+  const saveExportCols = (cols: string[]) => { try { localStorage.setItem("assetExportCols", JSON.stringify(cols)); } catch { /* ignore */ } };
+
+  const runExport = async (cols: string[]) => {
     try {
       const blob = await exportAssetExcel({
-        keyword: appliedKeyword || undefined,
-        campus: appliedCampus || undefined,
-        assetName: appliedAssetName || undefined,
-        user: appliedUser || undefined,
-        model: appliedModel || undefined,
+        keyword: appliedKeyword || undefined, campus: appliedCampus || undefined,
+        assetName: appliedAssetName || undefined, user: appliedUser || undefined,
+        model: appliedModel || undefined, columns: cols.join(","),
       });
       downloadBlob(blob, `asset-records-${Date.now()}.xlsx`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "导出失败");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "导出失败"); }
+  };
+
+  const openExportPicker = () => { setExportConfirmOpen(true); };
+
+  const onConfirmExport = () => {
+    setExportConfirmOpen(false);
+    const saved = getSavedExportCols();
+    if (saved) { runExport(saved); } else { runExport(Object.keys(buildExportCols())); }
+  };
+
+  const onOpenConfig = () => {
+    setExportConfirmOpen(false);
+    const saved = getSavedExportCols();
+    if (saved) {
+      const m = buildExportCols();
+      Object.keys(m).forEach((k) => { m[k] = saved.includes(k); });
+      setExportColumnsChecked(m);
+    } else {
+      setExportColumnsChecked(buildExportCols());
     }
+    setExportPickerOpen(true);
+  };
+
+  const onSaveConfig = () => {
+    const selected = Object.entries(exportColumnsChecked).filter(([, v]) => v).map(([k]) => k);
+    if (!selected.length) { toast.error("请至少选择一列"); return; }
+    saveExportCols(selected);
+    setExportPickerOpen(false);
+    toast.success("导出配置已保存");
   };
 
   const onAddColumn = async () => {
@@ -768,9 +814,9 @@ export default function AdminAssetRecordPage() {
                     <Upload className="mr-2 inline h-4 w-4" />
                     导入文件
                   </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => void onExport()}>
+                  <DropdownMenuItem onSelect={() => openExportPicker()}>
                     <Download className="mr-2 inline h-4 w-4" />
-                    导出 Excel
+                    选择导出列…
                   </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => void onAddColumn()}>
                     <Plus className="mr-2 inline h-4 w-4" />
@@ -1595,6 +1641,68 @@ export default function AdminAssetRecordPage() {
                 <button disabled={batchHistoryPage * 20 >= batchHistoryData.total} onClick={() => loadBatchHistory(batchHistoryPage + 1)} className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1 disabled:opacity-40">下一页</button>
               </div>
             </div>
+            </div>
+          </Portal>
+        )}
+
+        {/* 导出确认对话框 */}
+        {exportConfirmOpen && (
+          <Portal>
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40" onClick={() => setExportConfirmOpen(false)}>
+              <div className="w-[380px] rounded-twin-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <p className="mb-2 text-sm font-semibold">确认导出 Excel</p>
+                <p className="mb-4 text-xs text-[var(--twin-mute)]">
+                  {getSavedExportCols() ? `当前默认导出 ${getSavedExportCols()!.length} 列。` : '尚未配置导出列，将导出全部列。'}
+                </p>
+                <div className="flex items-center justify-between">
+                  <span className="cursor-pointer text-xs text-[var(--twin-mute)] underline hover:text-[var(--twin-primary)]" onClick={onOpenConfig}>配置列</span>
+                  <div className="flex gap-3">
+                    <button className="rounded-twin-sm border border-[var(--twin-hairline)] px-3 py-1.5 text-xs" onClick={() => setExportConfirmOpen(false)}>取消</button>
+                    <button className="rounded-twin-sm bg-[var(--twin-primary)] px-4 py-1.5 text-xs text-white" onClick={onConfirmExport}>导出</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Portal>
+        )}
+
+        {/* 导出列选择对话框 */}
+        {exportPickerOpen && (
+          <Portal>
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40" onClick={() => setExportPickerOpen(false)}>
+              <div className="w-[420px] max-h-[70vh] flex flex-col overflow-hidden rounded-twin-lg bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between border-b border-[var(--twin-hairline)] px-5 py-3">
+                  <span className="font-semibold text-sm">配置导出列</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="text-xs text-[var(--twin-mute)] hover:text-[var(--twin-primary)]"
+                      onClick={() => {
+                        const allChecked = Object.values(exportColumnsChecked).every(Boolean);
+                        const next: Record<string, boolean> = {};
+                        Object.keys(exportColumnsChecked).forEach((k) => { next[k] = !allChecked; });
+                        setExportColumnsChecked(next);
+                      }}
+                    >
+                      {Object.values(exportColumnsChecked).every(Boolean) ? "取消全选" : "全选"}
+                    </button>
+                    <button className="rounded-twin-sm bg-[var(--twin-primary)] px-3 py-1 text-xs text-white" onClick={onSaveConfig}>保存</button>
+                    <button className="text-xs text-[var(--twin-mute)]" onClick={() => setExportPickerOpen(false)}>关闭</button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3">
+                  {Object.entries(exportColumnsChecked).map(([label, checked]) => (
+                    <label key={label} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 hover:bg-[var(--twin-surface)]">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => setExportColumnsChecked((prev) => ({ ...prev, [label]: !prev[label] }))}
+                        className="h-4 w-4 accent-[var(--twin-primary)]"
+                      />
+                      <span className="text-sm text-[var(--twin-text)]">{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           </Portal>
         )}

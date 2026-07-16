@@ -228,6 +228,7 @@ export async function exportAssetExcel(params: {
   model?: string;
   lockStatus?: number;
   status?: string;
+  columns?: string;
 }) {
   const res = await authHttp.get<Blob>("/v1/assets/export", {
     params,

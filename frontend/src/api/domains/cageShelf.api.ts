@@ -181,8 +181,10 @@ export interface SpecialStatusOverview {
   scannedAt: string;
 }
 
-export async function fetchSpecialStatusOverview() {
-  const res = await authHttp.get<Result<SpecialStatusOverview>>("/v1/cage-shelves/special-status-overview");
+export async function fetchSpecialStatusOverview(batchId?: string) {
+  const res = await authHttp.get<Result<SpecialStatusOverview>>("/v1/cage-shelves/special-status-overview", {
+    params: batchId ? { batchId } : {},
+  });
   if (!res.data?.success) {
     throw new Error(res.data?.message || "获取特殊状态总览失败");
   }

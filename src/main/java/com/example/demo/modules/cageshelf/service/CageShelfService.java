@@ -796,18 +796,32 @@ public class CageShelfService {
     /**
      * 特殊状态总览：从最新扫描快照中按状态分组返回。
      */
-    public Map<String, Object> getSpecialStatusOverview() {
+    public Map<String, Object> getSpecialStatusOverview(String batchId) {
         // 确保表及 campus_name 列存在（存量 DB 可能缺列）
         specialStatusSnapshotMapper.ensureTable();
         try { specialStatusSnapshotMapper.addCampusColumnIfMissing(); } catch (Exception ignored) {}
         try { specialStatusSnapshotMapper.addCageBoxJsonColumnIfMissing(); } catch (Exception ignored) {}
 
-        Map<String, Object> batchInfo = specialStatusSnapshotMapper.selectLatestBatchInfo();
-        if (batchInfo == null || batchInfo.isEmpty()) {
-            return Map.of("groups", List.of(), "totalAbnormal", 0, "scannedAt", "");
+        String scanBatchId;
+        String scannedAt;
+
+        if (batchId != null && !batchId.isBlank()) {
+            scanBatchId = batchId;
+            // 从批次列表中查找对应的扫描时间
+            List<Map<String, Object>> batches = specialStatusSnapshotMapper.selectBatchList();
+            scannedAt = batches.stream()
+                    .filter(b -> scanBatchId.equals(String.valueOf(b.get("scanBatchId"))))
+                    .findFirst()
+                    .map(b -> String.valueOf(b.getOrDefault("scannedAt", "")))
+                    .orElse("");
+        } else {
+            Map<String, Object> batchInfo = specialStatusSnapshotMapper.selectLatestBatchInfo();
+            if (batchInfo == null || batchInfo.isEmpty()) {
+                return Map.of("groups", List.of(), "totalAbnormal", 0, "scannedAt", "");
+            }
+            scanBatchId = String.valueOf(batchInfo.getOrDefault("scanBatchId", ""));
+            scannedAt = String.valueOf(batchInfo.getOrDefault("scannedAt", ""));
         }
-        String scanBatchId = String.valueOf(batchInfo.getOrDefault("scanBatchId", ""));
-        String scannedAt = String.valueOf(batchInfo.getOrDefault("scannedAt", ""));
 
         List<Map<String, Object>> grouped = specialStatusSnapshotMapper.selectGroupedByStatus(scanBatchId);
         List<Map<String, Object>> groups = new ArrayList<>();

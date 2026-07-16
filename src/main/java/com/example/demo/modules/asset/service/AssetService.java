@@ -561,7 +561,7 @@ public class AssetService {
         return result;
     }
 
-    public byte[] exportAssetsAsExcel(String keyword, String assetName, String campus, String user, String model, Integer lockStatus, String status) {
+    public byte[] exportAssetsAsExcel(String keyword, String assetName, String campus, String user, String model, Integer lockStatus, String status, java.util.List<String> selectedColumns) {
         String keywordVal = trimOrNull(keyword);
         String assetNameVal = trimOrNull(assetName);
         String campusVal = trimOrNull(campus);
@@ -611,35 +611,83 @@ public class AssetService {
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Sheet sheet = workbook.createSheet("资产记录");
-            List<String> headers = new ArrayList<>(List.of(
+            // 构建全量表头（硬编码 + 去重动态列）
+            List<String> allHeaders = new ArrayList<>(List.of(
                     "资产编码", "资产名称", "状态", "存放地点", "标注", "是否锁定", "申请转移时间", "申请转移地点", "申请人", "申请备注"
             ));
             for (AssetColumnDef d : columnDefs) {
-                headers.add(d.getColumnLabel());
+                if (!RESERVED_HEADERS.contains(d.getColumnLabel())) {
+                    allHeaders.add(d.getColumnLabel());
+                }
+            }
+            // 若指定了导出列，仅保留选中的
+            List<String> headers;
+            if (selectedColumns != null && !selectedColumns.isEmpty()) {
+                headers = new ArrayList<>();
+                for (String h : allHeaders) {
+                    if (selectedColumns.contains(h)) headers.add(h);
+                }
+            } else {
+                headers = allHeaders;
             }
             Row header = sheet.createRow(0);
             for (int i = 0; i < headers.size(); i++) {
                 header.createCell(i).setCellValue(headers.get(i));
             }
+            // 存放地点：与 web/小程序显示一致（优先动态列，兜底固定字段）
+            final String storageLocKey = pickStorageLocationColumnKey(columnDefs);
+            // 建立"硬编码列名 → 数据提取函数"的映射
+            Map<String, java.util.function.Function<Map<String, Object>, String>> fixedExtractors = new LinkedHashMap<>();
+            fixedExtractors.put("资产编码", rw -> str(rw.get("assetCode")));
+            fixedExtractors.put("资产名称", rw -> str(rw.get("assetName")));
+            fixedExtractors.put("状态", rw -> str(rw.get("status")));
+            fixedExtractors.put("存放地点", rw -> {
+                @SuppressWarnings("unchecked")
+                Map<String, String> dv = (Map<String, String>) rw.getOrDefault("dynamicValues", Map.of());
+                if (storageLocKey != null && dv != null) {
+                    String dynLoc = dv.getOrDefault(storageLocKey, "").trim();
+                    if (!dynLoc.isEmpty()) return dynLoc;
+                }
+                return str(rw.get("location"));
+            });
+            fixedExtractors.put("标注", rw -> str(rw.get("note")));
+            fixedExtractors.put("是否锁定", rw -> Objects.equals(rw.get("locked"), 1) ? "是" : "否");
+            fixedExtractors.put("申请转移时间", rw -> {
+                AssetTransferRequest r = latestByAssetId.get(str(rw.get("id")));
+                return r != null && r.getTransferTime() != null ? r.getTransferTime().format(EXPORT_TIME) : "";
+            });
+            fixedExtractors.put("申请转移地点", rw -> {
+                AssetTransferRequest r = latestByAssetId.get(str(rw.get("id")));
+                return r != null ? str(r.getTransferLocation()) : "";
+            });
+            fixedExtractors.put("申请人", rw -> {
+                AssetTransferRequest r = latestByAssetId.get(str(rw.get("id")));
+                return r != null ? str(r.getApplicantName()) : "";
+            });
+            fixedExtractors.put("申请备注", rw -> {
+                AssetTransferRequest r = latestByAssetId.get(str(rw.get("id")));
+                return r != null ? str(r.getRemark()) : "";
+            });
             int r = 1;
             for (Map<String, Object> row : rows) {
                 Row line = sheet.createRow(r++);
                 int c = 0;
-                line.createCell(c++).setCellValue(str(row.get("assetCode")));
-                line.createCell(c++).setCellValue(str(row.get("assetName")));
-                line.createCell(c++).setCellValue(str(row.get("status")));
-                line.createCell(c++).setCellValue(str(row.get("location")));
-                line.createCell(c++).setCellValue(str(row.get("note")));
-                line.createCell(c++).setCellValue(Objects.equals(row.get("locked"), 1) ? "是" : "否");
-                AssetTransferRequest req = latestByAssetId.get(str(row.get("id")));
-                line.createCell(c++).setCellValue(req != null && req.getTransferTime() != null ? req.getTransferTime().format(EXPORT_TIME) : "");
-                line.createCell(c++).setCellValue(req != null ? str(req.getTransferLocation()) : "");
-                line.createCell(c++).setCellValue(req != null ? str(req.getApplicantName()) : "");
-                line.createCell(c++).setCellValue(req != null ? str(req.getRemark()) : "");
                 @SuppressWarnings("unchecked")
                 Map<String, String> dynamicValues = (Map<String, String>) row.getOrDefault("dynamicValues", Map.of());
-                for (AssetColumnDef d : columnDefs) {
-                    line.createCell(c++).setCellValue(dynamicValues.getOrDefault(d.getColumnKey(), ""));
+                for (String h : headers) {
+                    String val = "";
+                    if (fixedExtractors.containsKey(h)) {
+                        val = fixedExtractors.get(h).apply(row);
+                    } else {
+                        // 动态列：找到对应的 columnDef
+                        for (AssetColumnDef d : columnDefs) {
+                            if (d.getColumnLabel().equals(h)) {
+                                val = dynamicValues.getOrDefault(d.getColumnKey(), "");
+                                break;
+                            }
+                        }
+                    }
+                    line.createCell(c++).setCellValue(val);
                 }
             }
             ExcelExportColumnAutosizer.autoSizeByContentWithHeaderFloorRow0(sheet, 0, headers.size() - 1);
@@ -1608,6 +1656,13 @@ public class AssetService {
             String note = fixedFields.get("note") instanceof String ? (String) fixedFields.get("note") : null;
             if (status != null || location != null || note != null) {
                 updated += assetMapper.batchUpdateAssetFields(ids, status, location, note, operatorId);
+            }
+            // EAV 同步：batchUpdateAssetFields 只写固定字段，需额外同步到动态存储列
+            if (location != null) {
+                String storageColKey = pickStorageLocationColumnKey(defs);
+                if (StringUtils.hasText(storageColKey) && validKeys.contains(storageColKey)) {
+                    updated += assetMapper.batchUpdateAssetValues(ids, storageColKey, location);
+                }
             }
         }
 

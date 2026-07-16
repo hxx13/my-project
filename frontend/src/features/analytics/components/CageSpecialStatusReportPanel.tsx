@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Building2, Users, MapPin } from "lucide-react";
 import {
   fetchSpecialStatusOverview,
+  fetchSnapshotBatches,
   computeSpecialStatusStats,
   type SpecialStatusCage,
 } from "@/api/domains/cageShelf.api";
@@ -29,10 +30,26 @@ const STATS_LIST_MAX = 10;
 /* ------------------------------------------------------------------ */
 
 export default function CageSpecialStatusReportPanel() {
+  // 快照批次选择
+  const { data: batchList = [] } = useQuery({
+    queryKey: ["snapshotBatches"],
+    queryFn: fetchSnapshotBatches,
+    staleTime: 60_000,
+  });
+  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
+
+  // 自动选择最新快照
+  useEffect(() => {
+    if (!selectedBatchId && batchList.length > 0) {
+      setSelectedBatchId(batchList[0].scanBatchId);
+    }
+  }, [batchList, selectedBatchId]);
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["specialStatusOverview"],
-    queryFn: fetchSpecialStatusOverview,
+    queryKey: ["specialStatusOverview", selectedBatchId],
+    queryFn: () => fetchSpecialStatusOverview(selectedBatchId || undefined),
     refetchInterval: 120_000,
+    enabled: !!selectedBatchId,
   });
 
   const stats = useMemo(() => (data ? computeSpecialStatusStats(data) : null), [data]);
@@ -174,6 +191,20 @@ export default function CageSpecialStatusReportPanel() {
         </select>
         <input type="text" className="rounded-twin-md border border-[var(--twin-hairline-strong)] bg-[var(--twin-canvas)] px-2 py-1 text-xs flex-1 min-w-[200px]" placeholder="搜索房间 / PI / 课题组 / 位置…" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
         <span className="text-[10px] text-[var(--twin-mute)]">显示 {uniqueCageCount(filteredCages)} 笼位 / {uniqueTotal} 总计</span>
+        {/* 快照数据源选择器 */}
+        {batchList.length > 0 && (
+          <select
+            className="rounded-twin-md border px-2 py-1 text-[11px] font-semibold transition bg-amber-100 border-amber-400 text-amber-900"
+            value={selectedBatchId}
+            onChange={(e) => setSelectedBatchId(e.target.value)}
+          >
+            {batchList.map((b) => (
+              <option key={b.scanBatchId} value={b.scanBatchId}>
+                {b.scannedAt?.substring(0, 16)?.replace("T", " ")} · {b.abnormalRows}异常/{b.shelfCount}架
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* ---- Grouped Table: two campuses side by side ---- */}

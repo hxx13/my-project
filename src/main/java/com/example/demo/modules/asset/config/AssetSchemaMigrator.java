@@ -171,9 +171,9 @@ public class AssetSchemaMigrator implements ApplicationRunner {
             log.error("[asset-schema] 表结构迁移失败: {}", e.getMessage());
         }
         });
-        // 以下操作独立容错，一个失败不影响其他
-        safeRun("cleanup-dup-col", this::ensureColumnDefCleanup);
+        // 以下操作独立容错，顺序：先修错误标签，再合并重复
         safeRun("fix-bad-label", () -> ensureColumnDefFixBadLabel("存放地点2411033", "存放地点"));
+        safeRun("cleanup-dup-col", this::ensureColumnDefCleanup);
     }
 
     private void safeRun(String name, Runnable task) {
@@ -218,31 +218,31 @@ public class AssetSchemaMigrator implements ApplicationRunner {
         }
     }
 
-    /** 清理"当前存放地点"重复列定义：保留第一条，将第二条数据迁移到第一条后删除 */
+    /** 清理重复列定义：保留 sort_order 最小的那条，其余全部迁移后删除 */
     private void ensureColumnDefCleanup() {
         try {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                    "SELECT column_key FROM asset_column_def WHERE column_label LIKE '%存放地点%' ORDER BY sort_order ASC, id ASC"
+                    "SELECT column_key FROM asset_column_def WHERE column_label = '存放地点' ORDER BY sort_order ASC, id ASC"
             );
             if (rows == null || rows.size() < 2) {
                 return;
             }
             String keyKeep = String.valueOf(rows.get(0).get("column_key"));
-            String keyDelete = String.valueOf(rows.get(1).get("column_key"));
-            if (keyKeep.equals(keyDelete)) {
-                return;
+            for (int i = 1; i < rows.size(); i++) {
+                String keyDelete = String.valueOf(rows.get(i).get("column_key"));
+                if (keyKeep.equals(keyDelete)) continue;
+                // 迁移数据：覆盖写入，确保正确数据不丢失
+                jdbcTemplate.update(
+                        "INSERT INTO asset_record_value (asset_id, column_key, column_value) " +
+                        "SELECT v.asset_id, ?, v.column_value FROM asset_record_value v " +
+                        "WHERE v.column_key = ? " +
+                        "ON DUPLICATE KEY UPDATE column_value = VALUES(column_value)",
+                        keyKeep, keyDelete
+                );
+                jdbcTemplate.update("DELETE FROM asset_record_value WHERE column_key = ?", keyDelete);
+                jdbcTemplate.update("DELETE FROM asset_column_def WHERE column_key = ?", keyDelete);
+                log.info("[asset-schema] 已合并重复列定义: {} → {}, 删除 {}", keyDelete, keyKeep, keyDelete);
             }
-            // 将 keyDelete 的数据迁移到 keyKeep（跳过已存在 keyKeep 值的资产）
-            jdbcTemplate.update(
-                    "INSERT INTO asset_record_value (asset_id, column_key, column_value) " +
-                    "SELECT v.asset_id, ?, v.column_value FROM asset_record_value v " +
-                    "WHERE v.column_key = ? " +
-                    "AND NOT EXISTS (SELECT 1 FROM asset_record_value v2 WHERE v2.asset_id = v.asset_id AND v2.column_key = ?)",
-                    keyKeep, keyDelete, keyKeep
-            );
-            jdbcTemplate.update("DELETE FROM asset_record_value WHERE column_key = ?", keyDelete);
-            jdbcTemplate.update("DELETE FROM asset_column_def WHERE column_key = ?", keyDelete);
-            log.info("[asset-schema] 已合并重复列定义: {} → {}, 删除 {}", keyDelete, keyKeep, keyDelete);
         } catch (Exception e) {
             log.warn("[asset-schema] 清理重复列定义失败(可忽略): {}", e.getMessage());
         }

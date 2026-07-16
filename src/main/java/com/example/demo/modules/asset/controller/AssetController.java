@@ -8,6 +8,8 @@ import com.example.demo.modules.asset.dto.AssetColumnCreateRequest;
 import com.example.demo.modules.asset.dto.AssetTransferApplyRequest;
 import com.example.demo.modules.asset.service.AssetService;
 import com.example.demo.modules.auth.entity.User;
+
+import java.util.Arrays;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -75,7 +77,7 @@ public class AssetController {
     }
 
     @GetMapping("/assets/export")
-    @Operation(summary = "导出资产Excel（含申请记录）")
+    @Operation(summary = "导出资产Excel（可选指定列）")
     public ResponseEntity<byte[]> exportAssets(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                @RequestParam(required = false) String keyword,
                                                @RequestParam(required = false) String assetName,
@@ -83,12 +85,15 @@ public class AssetController {
                                                @RequestParam(required = false, name = "user") String userFilter,
                                                @RequestParam(required = false) String model,
                                                @RequestParam(required = false) Integer lockStatus,
-                                               @RequestParam(required = false) String status) {
+                                               @RequestParam(required = false) String status,
+                                               @RequestParam(required = false) String columns) {
         User user = resolveUser(authorization);
         if (requireMinRole(user, RoleEnum.STAFF) != null) {
             return ResponseEntity.status(401).body("无权限".getBytes(StandardCharsets.UTF_8));
         }
-        byte[] file = assetService.exportAssetsAsExcel(keyword, assetName, campus, userFilter, model, lockStatus, status);
+        List<String> selectedColumns = columns != null && !columns.isBlank()
+                ? Arrays.asList(columns.split(",")) : null;
+        byte[] file = assetService.exportAssetsAsExcel(keyword, assetName, campus, userFilter, model, lockStatus, status, selectedColumns);
         String name = "asset-records-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + ".xlsx";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")

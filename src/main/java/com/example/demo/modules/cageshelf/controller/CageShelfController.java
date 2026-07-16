@@ -158,15 +158,16 @@ public class CageShelfController {
     }
 
     @GetMapping("/special-status-overview")
-    @Operation(summary = "特殊状态总览（从最新扫描快照按状态分组）")
-    public Result<?> specialStatusOverview(@RequestHeader(value = "Authorization", required = false) String authorization) {
+    @Operation(summary = "特殊状态总览（支持指定快照批次，默认最新）")
+    public Result<?> specialStatusOverview(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @RequestParam(required = false) String batchId) {
         User user = resolveUser(authorization);
         Result<?> denied = requireMinRole(user, RoleEnum.STAFF);
         if (denied != null) {
             return denied;
         }
         try {
-            return Result.success(cageShelfService.getSpecialStatusOverview());
+            return Result.success(cageShelfService.getSpecialStatusOverview(batchId));
         } catch (Exception e) {
             return Result.error(e.getMessage());
         }
