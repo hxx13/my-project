@@ -565,8 +565,21 @@ public class TwinCardMappingService {
                 .append("，房间=").append(nullToDash(roomIds));
         if (before != null && before.getFreezeExemptFlag() != null && before.getFreezeExemptFlag() == 1) {
             sb.append("，覆盖旧豁免(原到期=").append(nullToDash(before.getFreezeExemptExpireAt())).append(")");
+            if (isCountQuotaReset(before)) {
+                sb.append("，次数配额重置(已用=").append(before.getFreezeExemptUsedCount()).append(")");
+            }
         }
         return sb.toString();
+    }
+
+    /** 变更前为 COUNT/BOTH 模式且已消耗过次数：重授予会清零 used_count，属配额重置。 */
+    private static boolean isCountQuotaReset(TwinCardMapping before) {
+        if (before == null) {
+            return false;
+        }
+        String beforeMode = normalizeForCompare(before.getFreezeExemptMode());
+        boolean countQuota = "COUNT".equals(beforeMode) || "BOTH".equals(beforeMode);
+        return countQuota && before.getFreezeExemptUsedCount() != null && before.getFreezeExemptUsedCount() > 0;
     }
 
     /**
@@ -580,6 +593,10 @@ public class TwinCardMappingService {
             return true;
         }
         if (before.getFreezeExemptFlag() == null || before.getFreezeExemptFlag() != 1) {
+            return true;
+        }
+        // COUNT/BOTH 等值重授予仍会把 used_count 清零（配额真实回满），视为实质变化须记账
+        if (isCountQuotaReset(before)) {
             return true;
         }
         return !Objects.equals(normalizeForCompare(expireAt), normalizeForCompare(before.getFreezeExemptExpireAt()))
@@ -614,6 +631,7 @@ public class TwinCardMappingService {
         snap.setFreezeExemptExpireAt(src.getFreezeExemptExpireAt());
         snap.setFreezeExemptMode(src.getFreezeExemptMode());
         snap.setFreezeExemptMaxCount(src.getFreezeExemptMaxCount());
+        snap.setFreezeExemptUsedCount(src.getFreezeExemptUsedCount());
         snap.setFreezeExemptRoomIds(src.getFreezeExemptRoomIds());
         snap.setFreezeExemptGrantDate(src.getFreezeExemptGrantDate());
         snap.setExemptGrantedAt(src.getExemptGrantedAt());
