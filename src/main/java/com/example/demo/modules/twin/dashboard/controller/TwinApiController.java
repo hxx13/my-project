@@ -284,10 +284,54 @@ public class TwinApiController {
         return Result.success(new PagedDataResponseDTO<>(list, total));
     }
 
-    // 🌀 接口 4：获取混合实时流 (前端大屏初始化专用)
+    // 🌀 接口 4：获取混合实时流（含待签退中间态 PENDING_EXIT 注入）
     @GetMapping("/realtime-feed")
-    public Result<ListMapDataResponseDTO> getRealtimeFeed(@RequestParam(defaultValue = "15") int limit) {
-        return Result.success(new ListMapDataResponseDTO(dashboardMapper.getRealtimeFeed(limit)));
+    public Result<ListMapDataResponseDTO> getRealtimeFeed(@RequestParam(defaultValue = "50") int limit) {
+        List<Map<String, Object>> feed = new ArrayList<>(dashboardMapper.getRealtimeFeed(limit));
+
+        // 注入 PENDING_EXIT 中间态：待签退倒计时中但尚未实际签退的人员
+        try {
+            List<Map<String, Object>> countdowns = dashboardMapper.getActiveSignoutCountdowns();
+            if (countdowns != null && !countdowns.isEmpty()) {
+                LocalDateTime now = LocalDateTime.now();
+                DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+                for (Map<String, Object> cd : countdowns) {
+                    String userId = String.valueOf(cd.getOrDefault("userId", ""));
+                    if (userId.isBlank()) continue;
+
+                    // 计算剩余秒数
+                    String scheduledStr = String.valueOf(cd.getOrDefault("scheduledExitAt", ""));
+                    long remainingSeconds = 0;
+                    try {
+                        String normalized = scheduledStr.length() >= 19 ? scheduledStr.substring(0, 19) : scheduledStr;
+                        LocalDateTime scheduled = LocalDateTime.parse(normalized, dtf);
+                        remainingSeconds = Duration.between(now, scheduled).getSeconds();
+                    } catch (Exception ignored) {
+                        // 日期解析失败则剩余秒数为 0
+                    }
+
+                    Map<String, Object> entry = new java.util.LinkedHashMap<>();
+                    entry.put("eventId", "pending-" + userId);
+                    entry.put("action", "PENDING_EXIT");
+                    entry.put("userId", userId);
+                    entry.put("userName", cd.getOrDefault("userName", ""));
+                    entry.put("groupName", cd.getOrDefault("groupName", ""));
+                    entry.put("areaName", cd.getOrDefault("areaName", ""));
+                    entry.put("roomName", cd.getOrDefault("roomName", ""));
+                    entry.put("roomId", cd.getOrDefault("roomId", ""));
+                    entry.put("scheduledExitAt", scheduledStr);
+                    entry.put("countdownSeconds", Math.max(0, (int) remainingSeconds));
+                    entry.put("timestamp", "");
+                    entry.put("create_time", "");
+
+                    feed.add(0, entry);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("注入待签退中间态条目失败: {}", e.getMessage());
+        }
+
+        return Result.success(new ListMapDataResponseDTO(feed));
     }
 
     private static final DateTimeFormatter ANCHOR_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
