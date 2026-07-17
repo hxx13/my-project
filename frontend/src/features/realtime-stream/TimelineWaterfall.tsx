@@ -4,9 +4,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEventStore, type FeedProvenance, type UniversalEvent } from "@/store/useEventStore";
 import { fetchRealtimeFeed, fetchAutomationLogsNear, type AutomationLogRow } from "@/api/twinApi";
 import { PersonnelSearchDropdown } from "@/components/ui/PersonnelSearchDropdown"; // 💥 引入独立的人员预检组件
-import { Info, LogIn, LogOut, Activity } from "lucide-react"; // 💥 引入 Activity 图标作为标题Icon
+import { Info, LogIn, LogOut, Activity, Clock } from "lucide-react"; // 💥 引入 Activity 图标作为标题Icon, Clock 为待签退倒计时
 import { detailTextToLines } from "@/utils/detailTextToLines";
 import { dashTone, useDashboardVisual } from "@/features/dashboard-scifi-theme/DashboardSciFiVisualContext";
+import { formatCountdown } from "@/utils/formatCountdown";
 import { DASH_NIGHT_CLASS } from "@/features/dashboard-scifi-theme/dashboardNightTokens";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
@@ -291,6 +292,13 @@ export function TimelineWaterfall() {
     /** 学生首页仅浏览流水；人员预检与单条「溯源详情」仅员工及以上 */
     const showStaffFeedTools = hasMinRole(authStorage.getRole() || "MEMBER", "STAFF");
 
+    // 每秒 tick 驱动 PENDING_EXIT 倒计时重渲染（不写 store，渲染时按 scheduledExitAt 实时计算）
+    const [tick, setTick] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => setTick(t => t + 1), 1000);
+        return () => clearInterval(id);
+    }, []);
+
     const openProvenance = useCallback((evt: UniversalEvent, el: HTMLElement | null) => {
         if (!el) return;
         const rect = el.getBoundingClientRect();
@@ -304,13 +312,39 @@ export function TimelineWaterfall() {
                 const dbLogs = await fetchRealtimeFeed(50);
                 const safeDbLogs = Array.isArray(dbLogs) ? dbLogs : [];
                 const formattedLogs: UniversalEvent[] = safeDbLogs.map((item: Record<string, unknown>) => {
+                    const actionStr = String(item.action ?? "");
+                    // PENDING_EXIT 中间态：后端注入的虚拟条目
+                    if (actionStr === "PENDING_EXIT") {
+                        return {
+                            action: "PENDING_EXIT" as UniversalEvent["action"],
+                            eventId: String(item.eventId ?? ""),
+                            source: "DB",
+                            category: "ACCESS",
+                            timestamp: "",
+                            person: {
+                                name: String(item.userName ?? "未知"),
+                                role: "",
+                                group: String(item.groupName ?? "未知课题组"),
+                                userId: String(item.userId ?? ""),
+                            },
+                            location: {
+                                campus: String(item.areaName ?? ""),
+                                floor: "",
+                                room: String(item.roomName ?? ""),
+                                roomId: String(item.roomId ?? "").trim() || undefined,
+                            },
+                            scheduledExitAt: String(item.scheduledExitAt ?? ""),
+                            countdownSeconds: Number(item.countdownSeconds) || 0,
+                        } satisfies UniversalEvent;
+                    }
+                    // 原有 ENTER/EXIT 映射
                     const rawId = item.id ?? item.eventId ?? "";
                     const eventId = typeof rawId === "string" ? rawId : String(rawId);
                     const rawTs = item.create_time ?? item.timestamp ?? "";
                     const timestamp = typeof rawTs === "string" ? rawTs : String(rawTs);
-                    const nameRaw = item.name ?? "未知";
+                    const nameRaw = item.name ?? item.userName ?? "未知";
                     const roleRaw = item.user_type_names ?? "UNKNOWN";
-                    const groupRaw = item.project_group_names ?? "未知课题组";
+                    const groupRaw = item.project_group_names ?? item.groupName ?? "未知课题组";
                     return {
                         action: ((item.accessType === 1 || item.access_type === 1) ? "ENTER" : "EXIT") as UniversalEvent["action"],
                         eventId,
@@ -324,9 +358,9 @@ export function TimelineWaterfall() {
                             userId: String(item.user_id ?? item.userId ?? "").trim() || undefined,
                         },
                         location: {
-                            campus: String(item.area_name ?? ""),
+                            campus: String(item.area_name ?? item.areaName ?? ""),
                             floor: String(item.floor_name ?? ""),
-                            room: String(item.room_name ?? ""),
+                            room: String(item.room_name ?? item.roomName ?? ""),
                             roomId: String(item.room_id ?? item.roomId ?? "").trim() || undefined,
                         },
                         feedProvenance: feedProvenanceFromDbRow(item),
@@ -339,6 +373,75 @@ export function TimelineWaterfall() {
             }
         };
         loadInitialFeed();
+    }, [setEvents]);
+
+    // 每 60s 重新拉取，刷新倒计时状态 + 获取最新 PENDING_EXIT 条目
+    useEffect(() => {
+        const intervalId = setInterval(async () => {
+            try {
+                const dbLogs = await fetchRealtimeFeed(50);
+                const safeDbLogs = Array.isArray(dbLogs) ? dbLogs : [];
+                const formattedLogs: UniversalEvent[] = safeDbLogs.map((item: Record<string, unknown>) => {
+                    const actionStr = String(item.action ?? "");
+                    // PENDING_EXIT 中间态：后端注入的虚拟条目
+                    if (actionStr === "PENDING_EXIT") {
+                        return {
+                            action: "PENDING_EXIT" as UniversalEvent["action"],
+                            eventId: String(item.eventId ?? ""),
+                            source: "DB",
+                            category: "ACCESS",
+                            timestamp: "",
+                            person: {
+                                name: String(item.userName ?? "未知"),
+                                role: "",
+                                group: String(item.groupName ?? "未知课题组"),
+                                userId: String(item.userId ?? ""),
+                            },
+                            location: {
+                                campus: String(item.areaName ?? ""),
+                                floor: "",
+                                room: String(item.roomName ?? ""),
+                                roomId: String(item.roomId ?? "").trim() || undefined,
+                            },
+                            scheduledExitAt: String(item.scheduledExitAt ?? ""),
+                            countdownSeconds: Number(item.countdownSeconds) || 0,
+                        } satisfies UniversalEvent;
+                    }
+                    // 原有 ENTER/EXIT 映射
+                    const rawId = item.id ?? item.eventId ?? "";
+                    const eventId = typeof rawId === "string" ? rawId : String(rawId);
+                    const rawTs = item.create_time ?? item.timestamp ?? "";
+                    const timestamp = typeof rawTs === "string" ? rawTs : String(rawTs);
+                    const nameRaw = item.name ?? item.userName ?? "未知";
+                    const roleRaw = item.user_type_names ?? "UNKNOWN";
+                    const groupRaw = item.project_group_names ?? item.groupName ?? "未知课题组";
+                    return {
+                        action: ((item.accessType === 1 || item.access_type === 1) ? "ENTER" : "EXIT") as UniversalEvent["action"],
+                        eventId,
+                        source: "DB",
+                        category: "ACCESS",
+                        timestamp,
+                        person: {
+                            name: typeof nameRaw === "string" ? nameRaw : String(nameRaw),
+                            role: typeof roleRaw === "string" ? roleRaw : String(roleRaw),
+                            group: typeof groupRaw === "string" ? groupRaw : String(groupRaw),
+                            userId: String(item.user_id ?? item.userId ?? "").trim() || undefined,
+                        },
+                        location: {
+                            campus: String(item.area_name ?? item.areaName ?? ""),
+                            floor: String(item.floor_name ?? ""),
+                            room: String(item.room_name ?? item.roomName ?? ""),
+                            roomId: String(item.room_id ?? item.roomId ?? "").trim() || undefined,
+                        },
+                        feedProvenance: feedProvenanceFromDbRow(item),
+                    };
+                });
+                setEvents(formattedLogs);
+            } catch (error) {
+                console.error("❌ 流水轮询失败:", error);
+            }
+        }, 60_000);
+        return () => clearInterval(intervalId);
     }, [setEvents]);
 
     return (
@@ -392,13 +495,22 @@ export function TimelineWaterfall() {
             <div className="flex-1 w-full overflow-y-auto pr-1 pb-4 [&::-webkit-scrollbar]:hidden">
                 <AnimatePresence initial={false}>
                     {events.map((evt: UniversalEvent) => {
-                        const isEnter = evt.action === "ENTER";
-                        const isBootRecord = evt.source === "DB";
+                        const isEnter = evt.action === “ENTER”;
+                        const isPending = evt.action === “PENDING_EXIT”;
+                        const isBootRecord = evt.source === “DB”;
 
-                        const timeStr = evt.timestamp ? evt.timestamp.split(" ")[1].substring(0, 5) : "--:--";
+                        const timeStr = evt.timestamp ? evt.timestamp.split(“ “)[1].substring(0, 5) : “--:--”;
 
-                        // 💥 新增：将时间拆分为小时和分钟，供给“遥测胶囊”使用
-                        const [hour, minute] = timeStr.split(":");
+                        // PENDING_EXIT 实时倒计时（基于 scheduledExitAt 每秒重算）
+                        const pendingCountdown = isPending && evt.scheduledExitAt
+                            ? Math.max(0, Math.floor((new Date(evt.scheduledExitAt).getTime() - Date.now()) / 1000))
+                            : 0;
+                        const pendingCountdownLabel = isPending ? formatCountdown(pendingCountdown) : “”;
+                        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                        void tick; // 引用 tick 确保每秒重渲染
+
+                        // 💥 新增：将时间拆分为小时和分钟，供给”遥测胶囊”使用
+                        const [hour, minute] = timeStr.split(“:”);
 
                         return (
                             <motion.div
@@ -415,6 +527,33 @@ export function TimelineWaterfall() {
                                     ======================================= */}
                                 {/* 💥 修复 2：去掉 pt-2，加入 items-center justify-center 保证绝对垂直居中 */}
                                 <div className="w-[52px] shrink-0 flex flex-col justify-center items-end pr-1">
+                                    {isPending ? (
+                                        <div
+                                            className={`flex items-center rounded-[4px] overflow-hidden border transition-all duration-300 ${
+                                                dashTone(
+                                                    visual,
+                                                    "border-amber-400/35 shadow-sm group-hover:shadow-md group-hover:scale-105 shadow-[0_0_12px_rgba(251,191,36,0.2)]",
+                                                    "border-amber-500/30 bg-amber-950/30 shadow-sm group-hover:shadow-md group-hover:scale-105",
+                                                    "border-amber-200/60 shadow-sm group-hover:shadow-md group-hover:scale-105",
+                                                )
+                                            }`}
+                                        >
+                                            <span
+                                                className={`backdrop-blur-md text-[10px] font-black px-1.5 py-[2px] leading-none ${
+                                                    dashTone(visual, "bg-amber-500/30 text-amber-100", "bg-amber-500/20 text-amber-200", "bg-amber-100 text-amber-700")
+                                                }`}
+                                            >
+                                                ⏳
+                                            </span>
+                                            <span
+                                                className={`backdrop-blur-md text-[10px] font-black px-1 py-[2px] leading-none ${
+                                                    dashTone(visual, "bg-slate-900/90 text-amber-300", "bg-amber-950/70 text-amber-300", "bg-white text-amber-500")
+                                                }`}
+                                            >
+                                                待签退
+                                            </span>
+                                        </div>
+                                    ) : (
                                     <div
                                         className={`flex items-center rounded-[4px] overflow-hidden border transition-all duration-300 ${
                                             dashTone(
@@ -441,6 +580,7 @@ export function TimelineWaterfall() {
                                             {minute}
                                         </span>
                                     </div>
+                                    )}
                                 </div>
 
                                 {/* =======================================
@@ -457,14 +597,20 @@ export function TimelineWaterfall() {
 
                                     <div
                                         className={`absolute top-[50%] left-[50%] -translate-x-[50%] -translate-y-[50%] z-10 w-7 h-7 rounded-full flex items-center justify-center border-[2px] shadow-sm transition-all duration-300 group-hover:scale-110 group-hover:shadow-md ${
-                                            visual.night
-                                                ? isEnter
-                                                    ? DASH_NIGHT_CLASS.hubEnter
-                                                    : DASH_NIGHT_CLASS.hubExit
-                                                : `${isEnter ? "border-white bg-gradient-to-br from-blue-500 to-cyan-400 shadow-blue-400/30" : "border-white bg-gradient-to-br from-orange-400 to-rose-400 shadow-orange-400/30"}`
-                                        } ${!visual.night && sf ? "border-slate-900 shadow-cyan-500/30" : ""}`}
+                                            isPending
+                                                ? visual.night
+                                                    ? "border-amber-400/40 bg-amber-500/30 shadow-amber-400/30"
+                                                    : "border-white bg-gradient-to-br from-amber-400 to-orange-500 shadow-amber-400/30"
+                                                : visual.night
+                                                    ? isEnter
+                                                        ? DASH_NIGHT_CLASS.hubEnter
+                                                        : DASH_NIGHT_CLASS.hubExit
+                                                    : `${isEnter ? "border-white bg-gradient-to-br from-blue-500 to-cyan-400 shadow-blue-400/30" : "border-white bg-gradient-to-br from-orange-400 to-rose-400 shadow-orange-400/30"}`
+                                        } ${!visual.night && sf && !isPending ? "border-slate-900 shadow-cyan-500/30" : ""}`}
                                     >
-                                        {isEnter ? (
+                                        {isPending ? (
+                                            <Clock className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+                                        ) : isEnter ? (
                                             <LogIn className="w-3.5 h-3.5 text-white ml-0.5" strokeWidth={3} />
                                         ) : (
                                             <LogOut className="w-3.5 h-3.5 text-white mr-0.5" strokeWidth={3} />
@@ -477,22 +623,29 @@ export function TimelineWaterfall() {
                                     ======================================= */}
                                 <div
                                     className={`flex-1 min-w-0 relative border rounded-[12px] p-2 flex items-center gap-1.5 group-hover:-translate-y-0.5 transition-all overflow-hidden cursor-default ${
-                                        isEnter
+                                        isPending
                                             ? dashTone(
                                                   visual,
-                                                  "bg-cyan-950/35 border-cyan-500/25 shadow-[0_0_24px_rgba(34,211,238,0.12)] group-hover:bg-cyan-950/50 group-hover:shadow-[0_0_28px_rgba(34,211,238,0.2)]",
-                                                  `${DASH_NIGHT_CLASS.rowEnter} group-hover:-translate-y-0.5`,
-                                                  "bg-blue-50/40 border-blue-100/50 shadow-[0_2px_10px_rgba(59,130,246,0.03)] group-hover:bg-blue-50/70 group-hover:shadow-[0_6px_20px_rgba(59,130,246,0.08)]",
+                                                  "bg-amber-950/35 border-amber-400/35 shadow-[0_0_24px_rgba(251,191,36,0.15)] group-hover:bg-amber-950/50 group-hover:shadow-[0_0_28px_rgba(251,191,36,0.25)]",
+                                                  "bg-amber-950/30 border-amber-500/25 shadow-[0_0_24px_rgba(245,158,11,0.12)] group-hover:bg-amber-950/45 group-hover:shadow-[0_0_28px_rgba(245,158,11,0.18)]",
+                                                  "bg-amber-50/40 border-amber-200/60 shadow-[0_2px_10px_rgba(245,158,11,0.06)] group-hover:bg-amber-50/70 group-hover:shadow-[0_6px_20px_rgba(245,158,11,0.1)]",
                                               )
-                                            : dashTone(
-                                                  visual,
-                                                  "bg-rose-950/30 border-rose-500/25 shadow-[0_0_24px_rgba(244,63,94,0.12)] group-hover:bg-rose-950/45 group-hover:shadow-[0_0_28px_rgba(244,63,94,0.18)]",
-                                                  `${DASH_NIGHT_CLASS.rowExit} group-hover:-translate-y-0.5`,
-                                                  "bg-orange-50/40 border-orange-100/50 shadow-[0_2px_10px_rgba(249,115,22,0.03)] group-hover:bg-orange-50/70 group-hover:shadow-[0_6px_20px_rgba(249,115,22,0.08)]",
-                                              )
+                                            : isEnter
+                                                ? dashTone(
+                                                      visual,
+                                                      "bg-cyan-950/35 border-cyan-500/25 shadow-[0_0_24px_rgba(34,211,238,0.12)] group-hover:bg-cyan-950/50 group-hover:shadow-[0_0_28px_rgba(34,211,238,0.2)]",
+                                                      `${DASH_NIGHT_CLASS.rowEnter} group-hover:-translate-y-0.5`,
+                                                      "bg-blue-50/40 border-blue-100/50 shadow-[0_2px_10px_rgba(59,130,246,0.03)] group-hover:bg-blue-50/70 group-hover:shadow-[0_6px_20px_rgba(59,130,246,0.08)]",
+                                                  )
+                                                : dashTone(
+                                                      visual,
+                                                      "bg-rose-950/30 border-rose-500/25 shadow-[0_0_24px_rgba(244,63,94,0.12)] group-hover:bg-rose-950/45 group-hover:shadow-[0_0_28px_rgba(244,63,94,0.18)]",
+                                                      `${DASH_NIGHT_CLASS.rowExit} group-hover:-translate-y-0.5`,
+                                                      "bg-orange-50/40 border-orange-100/50 shadow-[0_2px_10px_rgba(249,115,22,0.03)] group-hover:bg-orange-50/70 group-hover:shadow-[0_6px_20px_rgba(249,115,22,0.08)]",
+                                                  )
                                     }`}
                                 >
-                                    {!visual.night ? (
+                                    {!visual.night && !isPending ? (
                                         <>
                                             <div
                                                 className={`absolute inset-y-0 left-0 w-12 bg-gradient-to-r to-transparent opacity-40 pointer-events-none ${
@@ -576,7 +729,31 @@ export function TimelineWaterfall() {
                                         </span>
                                     )}
 
-                                    {showStaffFeedTools ? (
+                                    {/* ⏳ PENDING_EXIT 倒计时条 */}
+                                    {isPending && (
+                                        <div className={`relative z-10 ml-auto shrink-0 flex items-center gap-1 rounded-[4px] overflow-hidden border ${
+                                            dashTone(
+                                                visual,
+                                                "border-amber-400/30 bg-amber-950/40",
+                                                "border-amber-500/20 bg-amber-950/30",
+                                                "border-amber-200/60 bg-amber-100/50",
+                                            )
+                                        }`}>
+                                            <span className={`text-[9px] font-bold px-1.5 py-[2px] leading-none ${
+                                                dashTone(visual, "text-amber-300", "text-amber-300", "text-amber-700")
+                                            }`}>
+                                                倒计时
+                                            </span>
+                                            <span className={`text-[11px] font-black px-1 py-[2px] leading-none tabular-nums ${
+                                                pendingCountdown < 60
+                                                    ? dashTone(visual, "text-amber-200", "text-amber-200", "text-red-600")
+                                                    : dashTone(visual, "text-amber-100", "text-amber-100", "text-amber-800")
+                                            }`}>
+                                                {pendingCountdownLabel}
+                                            </span>
+                                        </div>
+                                    )}
+                                    {showStaffFeedTools && !isPending ? (
                                         <button
                                             type="button"
                                             className={`relative z-10 ml-auto shrink-0 rounded-full p-1 transition-colors ${
