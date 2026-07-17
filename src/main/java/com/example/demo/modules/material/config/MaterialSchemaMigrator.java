@@ -180,6 +180,9 @@ public class MaterialSchemaMigrator implements ApplicationRunner {
             // spec_snapshot 申领行规格快照
             ensureColumnExists("material_request_line", "spec_snapshot",
                     "ALTER TABLE material_request_line ADD COLUMN spec_snapshot VARCHAR(500) NULL COMMENT '规格快照'");
+            // independent_order 独立成单
+            ensureColumnExists("material_item", "independent_order",
+                    "ALTER TABLE material_item ADD COLUMN independent_order TINYINT NOT NULL DEFAULT 0 COMMENT '是否独立成单:1是,0否'");
 
             int backfilled = materialService.backfillRequestApplicantMetadata();
             if (backfilled > 0) {

@@ -384,6 +384,7 @@ export interface MobileMaterialItem {
   thumbnailUrl?: string;
   specSchema?: string;
   specRequired?: number;
+  independentOrder?: number; // 0=可合并下单 1=必须独立下单
 }
 
 export interface MobileMaterialsData {

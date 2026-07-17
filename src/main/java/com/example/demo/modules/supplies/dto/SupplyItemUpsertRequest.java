@@ -13,4 +13,5 @@ public class SupplyItemUpsertRequest {
     private Integer stockQty;
     private String specSchema;
     private Integer specRequired;
+    private Integer independentOrder;
 }

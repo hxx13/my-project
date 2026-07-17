@@ -9,6 +9,7 @@ import com.example.demo.modules.supplies.dto.SupplyClaimApplicantOption;
 import com.example.demo.modules.supplies.dto.SupplyClaimOrderView;
 import com.example.demo.modules.supplies.dto.SupplyCategoryView;
 import com.example.demo.modules.supplies.dto.SupplyItemView;
+import com.example.demo.modules.supplies.dto.SupplyMergeSubmitRequest;
 import com.example.demo.modules.policy.BizDomains;
 import com.example.demo.modules.policy.service.CapabilityPolicyService;
 import com.example.demo.modules.supplies.service.SuppliesService;
@@ -119,6 +120,16 @@ public class SuppliesController {
         return suppliesService.createClaim(user, request);
     }
 
+    @PostMapping("/claims/merge-submit")
+    @Operation(summary = "智能合并提交：按独立下单规则将各组并入指定待处理单，未指定目标的组新建工单")
+    public Result<Map<String, Object>> mergeSubmit(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                   @RequestBody SupplyMergeSubmitRequest request) {
+        User user = resolveUser(authorization);
+        Result<?> denied = capabilityPolicyService.requireSubmit(user, BizDomains.SUPPLIES_CLAIM);
+        if (denied != null) return Result.error(denied.getMessage());
+        return suppliesService.mergeSubmit(user, request);
+    }
+
     @PostMapping("/claims/{id}/withdraw")
     @Operation(summary = "撤回领用单")
     public Result<?> withdraw(@RequestHeader(value = "Authorization", required = false) String authorization,
@@ -173,15 +184,16 @@ public class SuppliesController {
     }
 
     @GetMapping("/claims/mine")
-    @Operation(summary = "我的领用记录")
+    @Operation(summary = "我的领用记录（withLines=true 时附带明细行，供合并弹窗展示各单物品）")
     public Result<Map<String, Object>> mine(@RequestHeader(value = "Authorization", required = false) String authorization,
                                             @RequestParam(required = false) String status,
                                             @RequestParam(defaultValue = "1") int page,
-                                            @RequestParam(defaultValue = "20") int size) {
+                                            @RequestParam(defaultValue = "20") int size,
+                                            @RequestParam(defaultValue = "false") boolean withLines) {
         User user = resolveUser(authorization);
         Result<?> denied = capabilityPolicyService.requireSubmit(user, BizDomains.SUPPLIES_CLAIM);
         if (denied != null) return Result.error(denied.getMessage());
-        return Result.success(suppliesService.listMine(user, status, page, size));
+        return Result.success(suppliesService.listMine(user, status, page, size, withLines));
     }
 
     @GetMapping("/claims/applicant-options")

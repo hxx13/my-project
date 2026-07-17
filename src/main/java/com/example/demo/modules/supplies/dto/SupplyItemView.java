@@ -12,6 +12,10 @@ public class SupplyItemView {
     private String shelfStatus;
     private String stockMode;
     private Integer stockQty;
+    /** 待处理领用单锁定数量 */
+    private Integer lockedQty;
+    /** 可用库存：QUANTIFIED = max(0, stockQty - lockedQty)；FLAG = stockQty */
+    private Integer availableQty;
     private Integer deleted;
     private java.time.LocalDateTime deletedTime;
     private String deletedBy;
@@ -20,6 +24,7 @@ public class SupplyItemView {
     private java.time.LocalDateTime lastInboundAt;
     private String specSchema;
     private Integer specRequired;
+    private Integer independentOrder;
     private Boolean isNewItem;
     private Boolean isNewInbound;
     private String noveltyTag;

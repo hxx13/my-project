@@ -34,4 +34,6 @@ public class MaterialItem {
     private String specSchema;
     /** 是否强制选规格：0=可选 1=必选 */
     private Integer specRequired;
+    /** 是否独立成单：1=必须单独成单，不与其他物品混合申领；0=可合并 */
+    private Integer independentOrder;
 }

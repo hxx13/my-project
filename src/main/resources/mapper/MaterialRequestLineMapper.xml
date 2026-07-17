@@ -13,6 +13,9 @@
     <update id="updateFulfilledQty">
         UPDATE material_request_line SET fulfilled_qty = #{qty} WHERE id = #{id}
     </update>
+    <update id="updateQty">
+        UPDATE material_request_line SET qty = #{qty} WHERE id = #{id}
+    </update>
     <delete id="deleteByItemId">
         DELETE FROM material_request_line WHERE item_id = #{itemId}
     </delete>

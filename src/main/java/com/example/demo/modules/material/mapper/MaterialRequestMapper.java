@@ -9,6 +9,8 @@ import java.util.Map;
 @Mapper
 public interface MaterialRequestMapper {
     MaterialRequest selectById(@Param("id") String id);
+    /** 同 selectById，但加 FOR UPDATE 行锁：合并等需要挡住并发审核的场景使用 */
+    MaterialRequest selectByIdForUpdate(@Param("id") String id);
     List<MaterialRequest> selectByUserId(@Param("userId") String userId, @Param("status") String status,
                                           @Param("offset") int offset, @Param("size") int size);
     int countByUserId(@Param("userId") String userId, @Param("status") String status);
@@ -23,6 +25,8 @@ public interface MaterialRequestMapper {
     int countFinished(@Param("applicantUserId") String applicantUserId, @Param("applicantGroup") String applicantGroup);
     int insert(MaterialRequest request);
     int updateStatus(@Param("id") String id, @Param("status") String status, @Param("updatedAt") java.time.LocalDateTime updatedAt);
+    /** 仅当仍为 PENDING 时刷新 updated_at；返回 0 表示状态已被并发变更 */
+    int touchUpdatedAtIfPending(@Param("id") String id, @Param("now") java.time.LocalDateTime now);
     int updateReview(@Param("id") String id, @Param("reviewerId") String reviewerId, @Param("status") String status,
                      @Param("reviewTime") java.time.LocalDateTime reviewTime);
     int updateFulfill(@Param("id") String id, @Param("fulfilledBy") String fulfilledBy,

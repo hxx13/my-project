@@ -36,6 +36,7 @@ export interface MaterialItem {
   lastInboundAt?: string;
   specSchema?: string;   // JSON: {"dimensions":[{"name":"尺码","options":["S","M","L"]}]}
   specRequired?: number; // 0=可选 1=必选
+  independentOrder?: number; // 0=可合并下单 1=必须独立下单
 }
 
 export interface MaterialRequestLine {

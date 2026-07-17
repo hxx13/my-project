@@ -17,4 +17,5 @@ public class MaterialItemUpsertReq {
     private Integer showStockQty;
     private String specSchema;
     private Integer specRequired;
+    private Integer independentOrder;
 }

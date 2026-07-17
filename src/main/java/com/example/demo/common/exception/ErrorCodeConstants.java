@@ -73,4 +73,5 @@ public final class ErrorCodeConstants {
     /** 物资 material 1-006-xxx */
     public static final int MATERIAL_SPEC_REQUIRED = 1_006_001;
     public static final int MATERIAL_SPEC_INVALID_JSON = 1_006_002;
+    public static final int MATERIAL_MERGE_STATUS_CONFLICT = 1_006_003;  // "申领单状态已变更，合并失败"
 }

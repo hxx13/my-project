@@ -23,4 +23,5 @@ public class MaterialItemView {
     private String lastInboundAt;
     private String specSchema;
     private Integer specRequired;
+    private Integer independentOrder;
 }

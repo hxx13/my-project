@@ -32,6 +32,8 @@ import java.util.stream.Collectors;
 public class MaterialService {
     private static final Logger log = LoggerFactory.getLogger(MaterialService.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    /** 独立成单：一次提交中最多允许拆出的独立申领单数量（防滥用） */
+    private static final int MAX_INDEPENDENT_SPLITS = 10;
 
     private final MaterialCategoryMapper categoryMapper;
     private final MaterialItemMapper itemMapper;
@@ -156,6 +158,7 @@ public class MaterialService {
         item.setSecondReviewerIds(req.getSecondReviewerIds());
         item.setSpecSchema(req.getSpecSchema() != null && !req.getSpecSchema().isBlank() ? req.getSpecSchema() : null);
         item.setSpecRequired(req.getSpecRequired() != null ? req.getSpecRequired() : 0);
+        item.setIndependentOrder(req.getIndependentOrder() != null ? req.getIndependentOrder() : 0);
         itemMapper.insert(item);
         // 初始入库创建库存流水
         if (initQty > 0) {
@@ -194,6 +197,7 @@ public class MaterialService {
         if (req.getShowStockQty() != null) item.setShowStockQty(req.getShowStockQty());
         if (req.getSpecSchema() != null) item.setSpecSchema(req.getSpecSchema().isBlank() ? null : req.getSpecSchema());
         if (req.getSpecRequired() != null) item.setSpecRequired(req.getSpecRequired());
+        if (req.getIndependentOrder() != null) item.setIndependentOrder(req.getIndependentOrder());
         itemMapper.updateById(item);
         logOp("ITEM", String.valueOf(id), "UPDATE", null);
         return Result.success(toItemView(itemMapper.selectById(id)));
@@ -350,17 +354,272 @@ public class MaterialService {
     public Result<List<MaterialRequestView>> createRequest(User user, CreateMaterialRequestReq req) {
         if (req.getLines() == null || req.getLines().isEmpty()) return Result.error("申领物品不能为空");
 
-        // 按审核流程 + 审核人（及双审复审人）分组，不同审核人生成独立申领单
-        Map<String, List<CreateMaterialRequestReq.LineItem>> grouped = new LinkedHashMap<>();
-        for (var lr : req.getLines()) {
-            MaterialItem item = itemMapper.selectById(lr.getItemId());
-            if (item == null) return Result.error("物品不存在: " + lr.getItemId());
-            String groupKey = materialRequestGroupKey(item);
-            grouped.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(lr);
+        // 按审核流程 + 审核人（及双审复审人）分组，不同审核人生成独立申领单；物品缓存供后续校验与写入复用
+        Map<Long, MaterialItem> itemById = new LinkedHashMap<>();
+        Result<Map<String, List<CreateMaterialRequestReq.LineItem>>> groupedRes = groupRequestLines(req.getLines(), itemById);
+        if (!Boolean.TRUE.equals(groupedRes.getSuccess())) {
+            return Result.error(groupedRes.getMessage());
+        }
+        Map<String, List<CreateMaterialRequestReq.LineItem>> grouped = groupedRes.getData();
+        long independentGroupCount = grouped.keySet().stream().filter(k -> k.contains("|IND:")).count();
+        if (independentGroupCount > MAX_INDEPENDENT_SPLITS) {
+            return Result.error("独立下单物资最多 " + MAX_INDEPENDENT_SPLITS + " 种，请分批提交");
+        }
+
+        // 预校验：所有分组全部通过后才开始写库，避免前面分组已入库（含免审自动出库）而后续分组校验失败造成部分提交
+        Result<?> preCheck = preValidateGroupedLines(grouped, itemById);
+        if (!Boolean.TRUE.equals(preCheck.getSuccess())) {
+            return Result.error(preCheck.getMessage());
         }
 
         String applicantName = userDisplayNameService.resolveDisplayName(user.getId());
         String applicantGroup = resolveApplicantGroup(user.getId(), req.getApplicantGroup());
+        return Result.success(insertGroupedRequests(user, grouped, itemById, applicantName, applicantGroup));
+    }
+
+    /**
+     * 合并新明细到本人待审申领单：与目标单同审核组的行并入（同物品同规格数量累加），
+     * 其余分组走正常建单流程自动另立新单。全部校验通过后才写库，事务内任一失败整体回滚。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Result<List<MaterialRequestView>> mergeIntoRequest(User user, String requestId, CreateMaterialRequestReq req) {
+        if (req == null || req.getLines() == null || req.getLines().isEmpty()) return Result.error("申领物品不能为空");
+        // FOR UPDATE 锁定目标单行：并发 approve/reject 会被挡在行锁后，或先提交后被下方
+        // PENDING 校验/条件更新拦下，避免把刚审结的单拉回 PENDING（丢失更新 → 负锁定/重复出库）
+        MaterialRequest target = requestMapper.selectByIdForUpdate(requestId);
+        if (target == null || (target.getDeleted() != null && target.getDeleted() == 1)) {
+            return Result.error("申领单不存在");
+        }
+        if (user == null || user.getId() == null || !user.getId().equals(target.getUserId())) {
+            return Result.error("仅本人待审申领单可合并");
+        }
+        if (!"PENDING".equals(target.getStatus())) {
+            return Result.error("仅待审核状态的申领单可合并");
+        }
+
+        // 目标单分组键：由现有明细行物品重建（一单一组，按建单口径）
+        List<MaterialRequestLine> targetLines = requestLineMapper.selectByRequestId(target.getId());
+        if (targetLines.isEmpty()) {
+            return Result.error("目标申领单数据异常");
+        }
+        MaterialItem targetItem = itemMapper.selectById(targetLines.get(0).getItemId());
+        if (targetItem == null) {
+            return Result.error("目标申领单数据异常");
+        }
+        String targetKey = requestGroupKeyWithIndependent(targetItem);
+        // 提交后管理员可能改过物品配置：逐行重建分组键，任一行与首行不一致即视为配置漂移，
+        // 拒绝合并（最坏情况：漂移成 SKIP_REVIEW 的键会让合并后的目标单无人可审）
+        for (MaterialRequestLine tl : targetLines) {
+            MaterialItem lineItem = itemMapper.selectById(tl.getItemId());
+            if (lineItem == null || !targetKey.equals(requestGroupKeyWithIndependent(lineItem))) {
+                return Result.error("目标申领单包含配置已变更的物资，无法合并，请直接新建申领单");
+            }
+        }
+        // 目标键的流程段漂移为免审：PENDING 单挂着 SKIP_REVIEW 键同属配置漂移，同样拒绝
+        String targetWorkflowSegment = targetKey.contains("|")
+                ? targetKey.substring(0, targetKey.indexOf('|')) : targetKey;
+        if ("SKIP_REVIEW".equals(targetWorkflowSegment)) {
+            return Result.error("目标申领单包含配置已变更的物资，无法合并，请直接新建申领单");
+        }
+
+        Map<Long, MaterialItem> itemById = new LinkedHashMap<>();
+        Result<Map<String, List<CreateMaterialRequestReq.LineItem>>> groupedRes = groupRequestLines(req.getLines(), itemById);
+        if (!Boolean.TRUE.equals(groupedRes.getSuccess())) {
+            return Result.error(groupedRes.getMessage());
+        }
+        Map<String, List<CreateMaterialRequestReq.LineItem>> grouped = groupedRes.getData();
+
+        // 拆分：同审核组并入目标单，其余自动另立新单
+        List<CreateMaterialRequestReq.LineItem> matching = grouped.remove(targetKey);
+        Map<String, List<CreateMaterialRequestReq.LineItem>> others = grouped;
+        long independentGroupCount = others.keySet().stream().filter(k -> k.contains("|IND:")).count();
+        if (independentGroupCount > MAX_INDEPENDENT_SPLITS) {
+            return Result.error("独立下单物资最多 " + MAX_INDEPENDENT_SPLITS + " 种，请分批提交");
+        }
+
+        // 预校验全部分组（含并入组），通过后才写库
+        Map<String, List<CreateMaterialRequestReq.LineItem>> allGroups = new LinkedHashMap<>(others);
+        if (matching != null && !matching.isEmpty()) {
+            allGroups.put(targetKey, matching);
+        }
+        Result<?> preCheck = preValidateGroupedLines(allGroups, itemById);
+        if (!Boolean.TRUE.equals(preCheck.getSuccess())) {
+            return Result.error(preCheck.getMessage());
+        }
+
+        int mergedLineCount = 0;
+        if (matching != null && !matching.isEmpty()) {
+            mergedLineCount = mergeLinesIntoTarget(target, targetLines, matching, itemById);
+        }
+
+        List<MaterialRequestView> results = new ArrayList<>();
+        results.add(toRequestView(requestMapper.selectById(target.getId())));
+        if (!others.isEmpty()) {
+            String applicantName = userDisplayNameService.resolveDisplayName(user.getId());
+            String applicantGroup = resolveApplicantGroup(user.getId(), req.getApplicantGroup());
+            results.addAll(insertGroupedRequests(user, others, itemById, applicantName, applicantGroup));
+        }
+        Map<String, Object> detail = new HashMap<>();
+        detail.put("mergedLines", mergedLineCount);
+        detail.put("spawnedGroups", others.size());
+        logOp("REQUEST", target.getId(), "REQUEST_MERGE", detail);
+        return Result.success(results);
+    }
+
+    /** 将同组新明细并入目标单：同（物品+规格）行数量累加，否则新增行；新增数量按建单口径预占库存 */
+    private int mergeLinesIntoTarget(MaterialRequest target, List<MaterialRequestLine> targetLines,
+                                     List<CreateMaterialRequestReq.LineItem> incoming,
+                                     Map<Long, MaterialItem> itemById) {
+        Map<String, Integer> addedQtyByKey = new LinkedHashMap<>();
+        Map<String, CreateMaterialRequestReq.LineItem> sampleByKey = new LinkedHashMap<>();
+        for (var lr : incoming) {
+            String key = lineMergeKey(lr.getItemId(), lr.getSpecSnapshot());
+            addedQtyByKey.merge(key, lr.getQty() != null ? lr.getQty() : 0, Integer::sum);
+            sampleByKey.putIfAbsent(key, lr);
+        }
+        Map<String, MaterialRequestLine> existingByKey = new LinkedHashMap<>();
+        for (MaterialRequestLine line : targetLines) {
+            existingByKey.putIfAbsent(lineMergeKey(line.getItemId(), line.getSpecSnapshot()), line);
+        }
+        List<MaterialRequestLine> toInsert = new ArrayList<>();
+        int mergedCount = 0;
+        for (var e : addedQtyByKey.entrySet()) {
+            int added = e.getValue();
+            if (added <= 0) continue;
+            CreateMaterialRequestReq.LineItem sample = sampleByKey.get(e.getKey());
+            MaterialRequestLine existing = existingByKey.get(e.getKey());
+            if (existing != null) {
+                int newQty = (existing.getQty() != null ? existing.getQty() : 0) + added;
+                requestLineMapper.updateQty(existing.getId(), newQty);
+            } else {
+                MaterialItem item = itemById.get(sample.getItemId());
+                MaterialRequestLine line = new MaterialRequestLine();
+                line.setRequestId(target.getId());
+                line.setItemId(sample.getItemId());
+                line.setQty(added);
+                line.setSnapshotName(item != null ? item.getName() : "未知物品");
+                line.setFulfilledQty(0);
+                // 落库存规范化后的规格快照，保证后续合并键比较口径一致
+                line.setSpecSnapshot(canonicalizeSpecSnapshot(sample.getSpecSnapshot()));
+                toInsert.add(line);
+            }
+            mergedCount++;
+            // 预占新增数量库存（与建单一致：库存不足时按剩余库存部分锁定）
+            MaterialItem stockItem = itemMapper.selectById(sample.getItemId());
+            if (stockItem != null && ("LIMITED".equals(stockItem.getStockMode()) || "QUANTIFIED".equals(stockItem.getStockMode()))) {
+                int lockQty = Math.min(added, stockItem.getStockQty() != null ? stockItem.getStockQty() : 0);
+                if (lockQty > 0) itemMapper.lockStock(sample.getItemId(), lockQty);
+            }
+        }
+        if (!toInsert.isEmpty()) {
+            requestLineMapper.insertBatch(toInsert);
+        }
+        // 状态不变，仅刷新 updated_at；带 status='PENDING' 条件守卫：若并发 approve/reject 抢先
+        // 改了状态，0 行更新 → 抛异常整体回滚，绝不把已审结单拉回 PENDING
+        int touched = requestMapper.touchUpdatedAtIfPending(target.getId(), LocalDateTime.now());
+        if (touched == 0) {
+            throw new TwinBusinessException(ErrorCodeConstants.MATERIAL_MERGE_STATUS_CONFLICT,
+                    "申领单状态已变更，合并失败，请刷新后重试");
+        }
+        return mergedCount;
+    }
+
+    /**
+     * 明细合并键：物品 + 规格快照（空白规格视为同一变体）。
+     * 规格快照先规范化（键排序）再比较：Web 按 schema 维度顺序、小程序按键序序列化，
+     * 双方（新提交行与库中已存行）都经此方法取键，历史非规范化存量也能在比较时对齐。
+     */
+    private static String lineMergeKey(Long itemId, String specSnapshot) {
+        String spec = specSnapshot != null && !specSnapshot.isBlank() ? canonicalizeSpecSnapshot(specSnapshot) : "";
+        return itemId + "||" + spec;
+    }
+
+    /**
+     * 规格快照规范化：JSON 对象按键名字典序重排后重新序列化；解析失败退回 trim 后原文。
+     */
+    private static String canonicalizeSpecSnapshot(String raw) {
+        if (raw == null) return null;
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) return trimmed;
+        try {
+            Map<String, Object> parsed = objectMapper.readValue(trimmed, new TypeReference<Map<String, Object>>() {});
+            return objectMapper.writeValueAsString(new TreeMap<>(parsed));
+        } catch (Exception e) {
+            return trimmed;
+        }
+    }
+
+    /** 分组键（含独立成单后缀），与建单/合并共用口径 */
+    private String requestGroupKeyWithIndependent(MaterialItem item) {
+        String groupKey = materialRequestGroupKey(item);
+        // 独立成单：independentOrder=1 的物品不与其他物品混单，按物品各自成组
+        if (item != null && item.getIndependentOrder() != null && item.getIndependentOrder() == 1) {
+            groupKey = groupKey + "|IND:" + item.getId();
+        }
+        return groupKey;
+    }
+
+    /** 按审核流程 + 审核人分组（独立成单物品单独成组）；校验物品存在，itemById 缓存供后续复用 */
+    private Result<Map<String, List<CreateMaterialRequestReq.LineItem>>> groupRequestLines(
+            List<CreateMaterialRequestReq.LineItem> lines, Map<Long, MaterialItem> itemById) {
+        Map<String, List<CreateMaterialRequestReq.LineItem>> grouped = new LinkedHashMap<>();
+        for (var lr : lines) {
+            if (lr == null || lr.getItemId() == null || lr.getQty() == null || lr.getQty() <= 0) {
+                return Result.error("申领行参数无效");
+            }
+            MaterialItem item = itemById.get(lr.getItemId());
+            if (item == null) {
+                item = itemMapper.selectById(lr.getItemId());
+                if (item == null) return Result.error("物品不存在: " + lr.getItemId());
+                itemById.put(lr.getItemId(), item);
+            }
+            grouped.computeIfAbsent(requestGroupKeyWithIndependent(item), k -> new ArrayList<>()).add(lr);
+        }
+        return Result.success(grouped);
+    }
+
+    /** 预校验：审核人配置 + 规格必选/格式，全部分组通过后才允许写库 */
+    private Result<?> preValidateGroupedLines(Map<String, List<CreateMaterialRequestReq.LineItem>> grouped,
+                                              Map<Long, MaterialItem> itemById) {
+        for (var entry : grouped.entrySet()) {
+            String workflowType = workflowTypeFromGroupKey(entry.getKey(), entry.getValue());
+            for (var lineReq : entry.getValue()) {
+                MaterialItem item = itemById.get(lineReq.getItemId());
+                if (item == null) return Result.error("物品不存在");
+                if (!"SKIP_REVIEW".equals(workflowType)) {
+                    Result<?> check = validateItemReviewers(workflowType, item.getReviewerIds(),
+                            "DUAL_REVIEW".equals(workflowType) ? item.getSecondReviewerIds() : null);
+                    if (!Boolean.TRUE.equals(check.getSuccess())) {
+                        return Result.error(check.getMessage());
+                    }
+                }
+                // 规格校验
+                if (item.getSpecRequired() != null && item.getSpecRequired() == 1) {
+                    if (lineReq.getSpecSnapshot() == null || lineReq.getSpecSnapshot().isBlank()) {
+                        throw new TwinBusinessException(
+                                ErrorCodeConstants.MATERIAL_SPEC_REQUIRED,
+                                "该物品需要选择完整规格");
+                    }
+                }
+                if (lineReq.getSpecSnapshot() != null && !lineReq.getSpecSnapshot().isBlank()) {
+                    try {
+                        objectMapper.readTree(lineReq.getSpecSnapshot());
+                    } catch (Exception e) {
+                        throw new TwinBusinessException(
+                                ErrorCodeConstants.MATERIAL_SPEC_INVALID_JSON,
+                                "规格数据格式错误");
+                    }
+                }
+            }
+        }
+        return Result.success(null);
+    }
+
+    /** 按分组写入申领单（含预占库存、免审自动出库、日志、通知、自动审批），返回各单视图 */
+    private List<MaterialRequestView> insertGroupedRequests(User user,
+                                                            Map<String, List<CreateMaterialRequestReq.LineItem>> grouped,
+                                                            Map<Long, MaterialItem> itemById,
+                                                            String applicantName, String applicantGroup) {
         List<MaterialRequestView> results = new ArrayList<>();
         long baseTs = System.currentTimeMillis();
 
@@ -389,39 +648,15 @@ public class MaterialService {
 
             List<MaterialRequestLine> lines = new ArrayList<>();
             for (var lineReq : groupLines) {
-                MaterialItem item = itemMapper.selectById(lineReq.getItemId());
-                if (item == null) return Result.error("物品不存在");
-                if (!"SKIP_REVIEW".equals(workflowType)) {
-                    Result<?> check = validateItemReviewers(workflowType, item.getReviewerIds(),
-                            "DUAL_REVIEW".equals(workflowType) ? item.getSecondReviewerIds() : null);
-                    if (!Boolean.TRUE.equals(check.getSuccess())) {
-                        return Result.error(check.getMessage());
-                    }
-                }
-                // 规格校验
-                if (item.getSpecRequired() != null && item.getSpecRequired() == 1) {
-                    if (lineReq.getSpecSnapshot() == null || lineReq.getSpecSnapshot().isBlank()) {
-                        throw new TwinBusinessException(
-                                ErrorCodeConstants.MATERIAL_SPEC_REQUIRED,
-                                "该物品需要选择完整规格");
-                    }
-                }
-                if (lineReq.getSpecSnapshot() != null && !lineReq.getSpecSnapshot().isBlank()) {
-                    try {
-                        objectMapper.readTree(lineReq.getSpecSnapshot());
-                    } catch (Exception e) {
-                        throw new TwinBusinessException(
-                                ErrorCodeConstants.MATERIAL_SPEC_INVALID_JSON,
-                                "规格数据格式错误");
-                    }
-                }
+                MaterialItem item = itemById.get(lineReq.getItemId());
                 MaterialRequestLine line = new MaterialRequestLine();
                 line.setRequestId(id);
                 line.setItemId(lineReq.getItemId());
                 line.setQty(lineReq.getQty());
                 line.setSnapshotName(item != null ? item.getName() : "未知物品");
                 line.setFulfilledQty(0);
-                line.setSpecSnapshot(lineReq.getSpecSnapshot());
+                // 落库存规范化后的规格快照，保证跨端合并键口径一致
+                line.setSpecSnapshot(canonicalizeSpecSnapshot(lineReq.getSpecSnapshot()));
                 lines.add(line);
             }
             requestLineMapper.insertBatch(lines);
@@ -459,7 +694,7 @@ public class MaterialService {
             }
             results.add(toRequestView(requestMapper.selectById(id)));
         }
-        return Result.success(results);
+        return results;
     }
 
     public Result<Map<String, Object>> listMine(User user, String status, int page, int size) {
@@ -1833,6 +2068,7 @@ public class MaterialService {
         if (item.getLastInboundAt() != null) v.setLastInboundAt(toDisplayTime(item.getLastInboundAt()));
         v.setSpecSchema(item.getSpecSchema());
         v.setSpecRequired(item.getSpecRequired());
+        v.setIndependentOrder(item.getIndependentOrder());
         return v;
     }
 

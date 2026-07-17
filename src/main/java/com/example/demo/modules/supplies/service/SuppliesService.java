@@ -16,6 +16,7 @@ import com.example.demo.modules.notification.service.NotificationService;
 import com.example.demo.modules.supplies.dto.*;
 import com.example.demo.modules.supplies.entity.*;
 import com.example.demo.modules.supplies.mapper.*;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.fontbox.ttf.TrueTypeCollection;
 import org.apache.fontbox.ttf.TrueTypeFont;
@@ -51,6 +52,8 @@ public class SuppliesService {
     private static final String SHELF_ON = "ON_SHELF";
     private static final String MODE_QUANTIFIED = "QUANTIFIED";
     private static final String MODE_FLAG = "FLAG";
+    /** 独立成单：一次提交中最多允许拆出的独立领用单数量（防滥用） */
+    private static final int MAX_INDEPENDENT_SPLITS = 10;
     private static final int NOVELTY_KEEP_DAYS = 7;
     /** 个人领用「按申请日期区间」聚合：最多订单数（列表与导出共用上限） */
     private static final int CLAIM_RANGE_LIST_MAX_ORDERS = 500;
@@ -220,7 +223,30 @@ public class SuppliesService {
         return Result.success(data);
     }
 
-    /** 领用购物车：PUT /api/supplies/cart，body.lines 为 itemId -> qty */
+    /**
+     * 校验购物车行键：纯数字 itemId（"42"）或规格组合键（"42::尺寸=M|颜色=红"）。
+     * 合法时返回去除首尾空白的原键（保留规格后缀），非法返回 null。
+     */
+    private static String normalizeCartLineKey(Object rawKey) {
+        String k = rawKey == null ? "" : String.valueOf(rawKey).trim();
+        if (k.isEmpty()) {
+            return null;
+        }
+        int sep = k.indexOf("::");
+        String idPart = sep >= 0 ? k.substring(0, sep) : k;
+        long itemId;
+        try {
+            itemId = Long.parseLong(idPart.trim());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        if (itemId <= 0) {
+            return null;
+        }
+        return k;
+    }
+
+    /** 领用购物车：PUT /api/supplies/cart，body.lines 为 cartKey(itemId 或 itemId::规格) -> qty */
     public Result<?> saveShoppingCart(User user, Map<String, Object> body) {
         if (user == null || !StringUtils.hasText(user.getId())) {
             return Result.error("未登录");
@@ -233,21 +259,15 @@ public class SuppliesService {
                 if (count >= MAX_SUPPLY_CART_LINES) {
                     break;
                 }
-                String k = String.valueOf(e.getKey()).trim();
-                long itemId;
-                try {
-                    itemId = Long.parseLong(k);
-                } catch (NumberFormatException ex) {
-                    continue;
-                }
-                if (itemId <= 0) {
+                String key = normalizeCartLineKey(e.getKey());
+                if (key == null) {
                     continue;
                 }
                 int qty = parseNonNegativeInt(e.getValue());
                 if (qty <= 0) {
                     continue;
                 }
-                normalized.put(String.valueOf(itemId), Math.min(qty, 999));
+                normalized.put(key, Math.min(qty, 999));
                 count++;
             }
         }
@@ -269,19 +289,13 @@ public class SuppliesService {
             @SuppressWarnings("unchecked")
             Map<String, Object> raw = objectMapper.readValue(json.trim(), Map.class);
             for (Map.Entry<String, Object> e : raw.entrySet()) {
-                String key = e.getKey() == null ? "" : e.getKey().trim();
-                long itemId;
-                try {
-                    itemId = Long.parseLong(key);
-                } catch (NumberFormatException ex) {
-                    continue;
-                }
-                if (itemId <= 0) {
+                String key = normalizeCartLineKey(e.getKey());
+                if (key == null) {
                     continue;
                 }
                 int qty = parseNonNegativeInt(e.getValue());
                 if (qty > 0) {
-                    out.put(String.valueOf(itemId), Math.min(qty, 999));
+                    out.put(key, Math.min(qty, 999));
                 }
             }
         } catch (Exception ignored) {
@@ -337,15 +351,23 @@ public class SuppliesService {
         if (req.getCategoryId() != null) {
             if (categoryMapper.findById(req.getCategoryId()) == null) return Result.error("分类不存在");
         }
+        String beforeMode = existing.getStockMode();
         SupplyItem it = fromUpsert(req, existing);
         it.setId(id);
         Integer beforeStock = existing.getStockQty();
         Integer nextStock = it.getStockQty();
         boolean stockChanged = req.getStockQty() != null && !Objects.equals(beforeStock, nextStock);
+        boolean modeFlippedToFlag = MODE_QUANTIFIED.equals(beforeMode) && MODE_FLAG.equals(it.getStockMode());
         itemMapper.update(it);
         // 已存在物资仅在库存数量变更时记为“进货/补货”
         if (stockChanged) {
             itemMapper.touchInboundAt(id);
+        }
+        // QUANTIFIED → FLAG 切换必须清零 locked_qty：所有加锁/释放 SQL 均带 stock_mode='QUANTIFIED'
+        // 自守卫，切走后残留的 locked_qty 无法被任何路径释放；一旦再切回 QUANTIFIED，这些“幽灵锁定”
+        // 会永久压低可用库存。切到 FLAG 后待处理领用不再跟踪锁定，属可接受行为（FLAG 无数量语义）。
+        if (modeFlippedToFlag) {
+            itemMapper.resetLockedQty(id);
         }
         logOp("ITEM_UPSERT", "ITEM", String.valueOf(id), null, Map.of("action", "UPDATE", "itemId", id));
         return Result.success(toItemView(itemMapper.findById(id)));
@@ -454,30 +476,66 @@ public class SuppliesService {
         return Result.success(toItemView(itemMapper.findById(itemId)));
     }
 
+    /** 校验通过的领用行 + 涉及物品缓存（供独立成单拆分复用，避免重复查询） */
+    private static final class ValidatedClaimLines {
+        final List<SupplyClaimLine> lines;
+        final Map<Long, SupplyItem> itemById;
+
+        ValidatedClaimLines(List<SupplyClaimLine> lines, Map<Long, SupplyItem> itemById) {
+            this.lines = lines;
+            this.itemById = itemById;
+        }
+    }
+
     /**
      * 校验并合并领用行（与新建领用单一致），返回待写入的明细（未含 orderId）。
+     * 合并键为「物品 + 规格快照（规范化）」：同一物品的不同规格变体各自独立成行，不再合并覆盖。
      */
-    private Result<List<SupplyClaimLine>> validateAndBuildClaimLines(CreateSupplyClaimRequest req) {
+    private Result<ValidatedClaimLines> validateAndBuildClaimLines(CreateSupplyClaimRequest req) {
+        // 新建领用：无既有锁定可抵扣，空 credit 与旧行为完全一致
+        return validateAndBuildClaimLines(req, Map.of());
+    }
+
+    /**
+     * @param lockCredit 当前操作单自身已持有的锁定量（itemId → 数量，仅 QUANTIFIED）。
+     *                   修订/合并场景下 locked_qty 里包含本单旧行的预占，预检可用量时需抵扣回来，
+     *                   否则持有末位库存的单会误报「库存不足」。真正的强制校验仍由释放旧锁后的
+     *                   lockStockIfAvailable 原子守卫完成，此处仅消除预检的自我重复计数。
+     */
+    private Result<ValidatedClaimLines> validateAndBuildClaimLines(CreateSupplyClaimRequest req,
+                                                                   Map<Long, Integer> lockCredit) {
         if (req == null || req.getLines() == null || req.getLines().isEmpty()) {
             return Result.error("请选择至少一件物资");
         }
-        Map<Long, Integer> merged = new LinkedHashMap<>();
-        Map<Long, String> remarkByItem = new LinkedHashMap<>();
-        Map<Long, String> specSnapshotByItem = new LinkedHashMap<>();
+        Map<String, Integer> mergedQtyByKey = new LinkedHashMap<>();
+        Map<String, Long> itemIdByKey = new LinkedHashMap<>();
+        Map<String, String> remarkByKey = new LinkedHashMap<>();
+        Map<String, String> specSnapshotByKey = new LinkedHashMap<>();
         for (CreateSupplyClaimRequest.Line line : req.getLines()) {
             if (line == null || line.getItemId() == null || line.getQty() == null || line.getQty() <= 0) {
                 return Result.error("领用行参数无效");
             }
-            merged.merge(line.getItemId(), line.getQty(), Integer::sum);
-            if (line.getRemark() != null && !line.getRemark().trim().isEmpty()) {
-                remarkByItem.put(line.getItemId(), line.getRemark().trim());
+            // 规格快照先规范化（键排序）再参与合并键与落库：Web 端按 schema 维度顺序、小程序按键序
+            // 序列化，同一逻辑规格才不会因字符串不同而拆成两行
+            String spec = line.getSpecSnapshot() != null && !line.getSpecSnapshot().trim().isEmpty()
+                    ? canonicalizeSpecSnapshot(line.getSpecSnapshot()) : "";
+            String key = line.getItemId() + "||" + spec;
+            mergedQtyByKey.merge(key, line.getQty(), Integer::sum);
+            itemIdByKey.put(key, line.getItemId());
+            if (!spec.isEmpty()) {
+                specSnapshotByKey.put(key, spec);
             }
-            if (line.getSpecSnapshot() != null && !line.getSpecSnapshot().trim().isEmpty()) {
-                specSnapshotByItem.put(line.getItemId(), line.getSpecSnapshot().trim());
+            if (line.getRemark() != null && !line.getRemark().trim().isEmpty()) {
+                remarkByKey.put(key, line.getRemark().trim());
             }
         }
-        List<SupplyClaimLine> toInsert = new ArrayList<>();
-        for (Map.Entry<Long, Integer> e : merged.entrySet()) {
+        // 库存校验按物品聚合全部规格变体的申请总量
+        Map<Long, Integer> totalQtyByItem = new LinkedHashMap<>();
+        for (Map.Entry<String, Integer> e : mergedQtyByKey.entrySet()) {
+            totalQtyByItem.merge(itemIdByKey.get(e.getKey()), e.getValue(), Integer::sum);
+        }
+        Map<Long, SupplyItem> itemById = new LinkedHashMap<>();
+        for (Map.Entry<Long, Integer> e : totalQtyByItem.entrySet()) {
             SupplyItem it = itemMapper.findById(e.getKey());
             if (it == null) return Result.error("物资不存在: " + e.getKey());
             if (!SHELF_ON.equals(it.getShelfStatus())) {
@@ -485,7 +543,10 @@ public class SuppliesService {
             }
             if (MODE_QUANTIFIED.equals(it.getStockMode())) {
                 int stock = it.getStockQty() == null ? 0 : it.getStockQty();
-                if (stock < e.getValue()) {
+                int locked = it.getLockedQty() == null ? 0 : it.getLockedQty();
+                int credit = lockCredit.getOrDefault(e.getKey(), 0);
+                int available = Math.max(0, stock - locked + credit);
+                if (available < e.getValue()) {
                     return Result.error("库存不足: " + it.getName());
                 }
             } else if (MODE_FLAG.equals(it.getStockMode())) {
@@ -496,60 +557,112 @@ public class SuppliesService {
             } else {
                 return Result.error("未知库存模式");
             }
-            String specSnapshot = specSnapshotByItem.get(e.getKey());
+            itemById.put(e.getKey(), it);
+        }
+        List<SupplyClaimLine> toInsert = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : mergedQtyByKey.entrySet()) {
+            Long itemId = itemIdByKey.get(e.getKey());
+            SupplyItem it = itemById.get(itemId);
+            String specSnapshot = specSnapshotByKey.get(e.getKey());
             if (it.getSpecRequired() != null && it.getSpecRequired() == 1) {
                 if (specSnapshot == null || specSnapshot.isBlank()) {
                     throw new TwinBusinessException(ErrorCodeConstants.MATERIAL_SPEC_REQUIRED, "该物品需要选择完整规格");
                 }
             }
             SupplyClaimLine cl = new SupplyClaimLine();
-            cl.setItemId(e.getKey());
+            cl.setItemId(itemId);
             cl.setQty(e.getValue());
             cl.setSnapshotName(it.getName());
             cl.setFulfilledQty(0);
-            cl.setRemark(remarkByItem.get(e.getKey()));
+            cl.setRemark(remarkByKey.get(e.getKey()));
             cl.setSpecSnapshot(specSnapshot);
             toInsert.add(cl);
         }
-        return Result.success(toInsert);
+        return Result.success(new ValidatedClaimLines(toInsert, itemById));
+    }
+
+    /**
+     * 独立成单拆分：independentOrder=1 的物品必须单独成单。
+     * 返回按单分组的明细：常规物品合为第一组（如有），每个独立成单物品各自一组
+     * （同一独立物品的多个规格变体行保持在同一单内）。
+     */
+    private Result<List<List<SupplyClaimLine>>> splitLinesByIndependentOrder(List<SupplyClaimLine> lines,
+                                                                             Map<Long, SupplyItem> itemById) {
+        List<SupplyClaimLine> regular = new ArrayList<>();
+        Map<Long, List<SupplyClaimLine>> independentByItem = new LinkedHashMap<>();
+        for (SupplyClaimLine cl : lines) {
+            SupplyItem it = itemById.get(cl.getItemId());
+            if (it != null && it.getIndependentOrder() != null && it.getIndependentOrder() == 1) {
+                independentByItem.computeIfAbsent(cl.getItemId(), k -> new ArrayList<>()).add(cl);
+            } else {
+                regular.add(cl);
+            }
+        }
+        if (independentByItem.size() > MAX_INDEPENDENT_SPLITS) {
+            return Result.error("独立下单物资最多 " + MAX_INDEPENDENT_SPLITS + " 种，请分批提交");
+        }
+        List<List<SupplyClaimLine>> groups = new ArrayList<>();
+        if (!regular.isEmpty()) {
+            groups.add(regular);
+        }
+        groups.addAll(independentByItem.values());
+        return Result.success(groups);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public Result<SupplyClaimOrderView> createClaim(User user, CreateSupplyClaimRequest req) {
         if (user == null) return Result.error("未登录");
-        Result<List<SupplyClaimLine>> vr = validateAndBuildClaimLines(req);
+        Result<ValidatedClaimLines> vr = validateAndBuildClaimLines(req);
         if (!Boolean.TRUE.equals(vr.getSuccess())) {
             return Result.error(vr.getMessage());
         }
-        List<SupplyClaimLine> toInsert = vr.getData();
-        String orderId = "SC_" + UUID.randomUUID().toString().replace("-", "");
-        SupplyClaimOrder order = new SupplyClaimOrder();
-        order.setId(orderId);
-        order.setUserId(user.getId());
-        order.setApplicantName(resolveDisplayName(user.getId()));
-        order.setStatus("PENDING");
-        order.setCreatedAt(LocalDateTime.now());
-        claimOrderMapper.insert(order);
-        for (SupplyClaimLine cl : toInsert) {
-            cl.setOrderId(orderId);
-            claimLineMapper.insert(cl);
+        Result<List<List<SupplyClaimLine>>> sr = splitLinesByIndependentOrder(vr.getData().lines, vr.getData().itemById);
+        if (!Boolean.TRUE.equals(sr.getSuccess())) {
+            return Result.error(sr.getMessage());
         }
-        logOp("ORDER_CREATE", "CLAIM_ORDER", orderId, user.getId(), Map.of("lineCount", toInsert.size()));
-        publishClaimCreated(user, orderId, toInsert.size());
-        return Result.success(toOrderView(claimOrderMapper.findById(orderId), true));
+        List<List<SupplyClaimLine>> groups = sr.getData();
+        List<String> orderIds = new ArrayList<>();
+        List<Integer> lineCounts = new ArrayList<>();
+        for (List<SupplyClaimLine> group : groups) {
+            String orderId = "SC_" + UUID.randomUUID().toString().replace("-", "");
+            SupplyClaimOrder order = new SupplyClaimOrder();
+            order.setId(orderId);
+            order.setUserId(user.getId());
+            order.setApplicantName(resolveDisplayName(user.getId()));
+            order.setStatus("PENDING");
+            order.setCreatedAt(LocalDateTime.now());
+            claimOrderMapper.insert(order);
+            for (SupplyClaimLine cl : group) {
+                cl.setOrderId(orderId);
+                claimLineMapper.insert(cl);
+                lockClaimLineStockOrThrow(vr.getData().itemById, cl);
+            }
+            logOp("ORDER_CREATE", "CLAIM_ORDER", orderId, user.getId(),
+                    Map.of("lineCount", group.size(), "splitCount", groups.size()));
+            orderIds.add(orderId);
+            lineCounts.add(group.size());
+        }
+        // 全部写入完成后再统一发通知，避免中途失败回滚时已推送通知
+        for (int i = 0; i < orderIds.size(); i++) {
+            publishClaimCreated(user, orderIds.get(i), lineCounts.get(i));
+        }
+        SupplyClaimOrderView view = toOrderView(claimOrderMapper.findById(orderIds.get(0)), true);
+        if (orderIds.size() > 1) {
+            view.setSplitCount(orderIds.size());
+            view.setSplitOrderIds(new ArrayList<>(orderIds.subList(1, orderIds.size())));
+        }
+        return Result.success(view);
     }
 
     /**
      * 修订待出库领用单明细（覆盖行）：处理端可与申请人本人修订，校验与新建领用一致。
+     * 独立成单物品同样拆分：常规行（或第一组）覆盖当前单，其余独立成单物品各自新建领用单。
      */
     @Transactional(rollbackFor = Exception.class)
     public Result<SupplyClaimOrderView> revisePendingClaimLines(User actor, String orderId, CreateSupplyClaimRequest req) {
         if (actor == null) return Result.error("未登录");
-        Result<List<SupplyClaimLine>> vr = validateAndBuildClaimLines(req);
-        if (!Boolean.TRUE.equals(vr.getSuccess())) {
-            return Result.error(vr.getMessage());
-        }
-        List<SupplyClaimLine> toInsert = vr.getData();
+        // 先锁单行再校验：credit 抵扣依赖本单旧行快照，必须在行锁保护下读取，
+        // 避免校验期间旧行被并发出库/撤回释放导致抵扣口径失真
         SupplyClaimOrder locked = claimOrderMapper.findByIdForUpdate(orderId);
         if (locked == null) {
             return Result.error("领用单不存在");
@@ -562,15 +675,318 @@ public class SuppliesService {
         if (!processor && !owner) {
             return Result.error("无权限操作");
         }
-        claimLineMapper.deleteByOrderId(orderId);
-        for (SupplyClaimLine cl : toInsert) {
-            cl.setOrderId(orderId);
-            claimLineMapper.insert(cl);
+        // 本单旧行仍占着 locked_qty，预检可用量时把自己占用的部分抵扣回来（仅 QUANTIFIED），
+        // 否则持有末位库存的单修订/合并会被自己的锁定误判为「库存不足」
+        List<SupplyClaimLine> oldLines = claimLineMapper.listByOrderId(orderId);
+        Map<Long, Integer> lockCredit = new LinkedHashMap<>();
+        for (SupplyClaimLine oldLine : oldLines) {
+            if (oldLine == null || oldLine.getItemId() == null) continue;
+            int qty = oldLine.getQty() == null ? 0 : oldLine.getQty();
+            if (qty <= 0) continue;
+            SupplyItem oldItem = itemMapper.findById(oldLine.getItemId());
+            if (oldItem != null && MODE_QUANTIFIED.equals(oldItem.getStockMode())) {
+                lockCredit.merge(oldLine.getItemId(), qty, Integer::sum);
+            }
         }
-        logOp("ORDER_REVISE", "CLAIM_ORDER", orderId, actor.getId(), Map.of("lineCount", toInsert.size()));
-        return Result.success(toOrderView(claimOrderMapper.findById(orderId), true));
+        Result<ValidatedClaimLines> vr = validateAndBuildClaimLines(req, lockCredit);
+        if (!Boolean.TRUE.equals(vr.getSuccess())) {
+            return Result.error(vr.getMessage());
+        }
+        Result<List<List<SupplyClaimLine>>> sr = splitLinesByIndependentOrder(vr.getData().lines, vr.getData().itemById);
+        if (!Boolean.TRUE.equals(sr.getSuccess())) {
+            return Result.error(sr.getMessage());
+        }
+        List<List<SupplyClaimLine>> groups = sr.getData();
+        // 覆盖写阶段（释放旧锁 → 删旧行 → 插新行并原子锁定）由修订与智能合并共用
+        List<SupplyClaimLine> keepLines = groups.get(0);
+        applyOrderLinesRewrite(locked, oldLines, keepLines, vr.getData().itemById);
+        logOp("ORDER_REVISE", "CLAIM_ORDER", orderId, actor.getId(),
+                Map.of("lineCount", keepLines.size(), "splitCount", groups.size()));
+        List<String> spawnedOrderIds = new ArrayList<>();
+        List<Integer> spawnedLineCounts = new ArrayList<>();
+        for (int i = 1; i < groups.size(); i++) {
+            List<SupplyClaimLine> group = groups.get(i);
+            String newOrderId = "SC_" + UUID.randomUUID().toString().replace("-", "");
+            SupplyClaimOrder newOrder = new SupplyClaimOrder();
+            newOrder.setId(newOrderId);
+            newOrder.setUserId(locked.getUserId());
+            newOrder.setApplicantName(resolveDisplayName(locked.getUserId()));
+            newOrder.setStatus("PENDING");
+            newOrder.setCreatedAt(LocalDateTime.now());
+            claimOrderMapper.insert(newOrder);
+            for (SupplyClaimLine cl : group) {
+                cl.setOrderId(newOrderId);
+                claimLineMapper.insert(cl);
+                lockClaimLineStockOrThrow(vr.getData().itemById, cl);
+            }
+            logOp("ORDER_CREATE", "CLAIM_ORDER", newOrderId, actor.getId(),
+                    Map.of("lineCount", group.size(), "splitFrom", orderId));
+            spawnedOrderIds.add(newOrderId);
+            spawnedLineCounts.add(group.size());
+        }
+        // 全部写入完成后再统一发通知；拆分新单的申请人为原单归属人（locked.userId），发送人为操作者
+        for (int i = 0; i < spawnedOrderIds.size(); i++) {
+            publishClaimCreated(actor.getId(), locked.getUserId(), spawnedOrderIds.get(i), spawnedLineCounts.get(i));
+        }
+        SupplyClaimOrderView view = toOrderView(claimOrderMapper.findById(orderId), true);
+        if (!spawnedOrderIds.isEmpty()) {
+            view.setSplitCount(spawnedOrderIds.size() + 1);
+            view.setSplitOrderIds(spawnedOrderIds);
+        }
+        return Result.success(view);
     }
 
+    /**
+     * 修订/智能合并共用的行覆盖写阶段：释放旧行锁定 → 删除旧行 → 插入新行并逐行原子锁定
+     * （lockStockIfAvailable 失败抛异常触发整个事务回滚）。
+     * 调用前必须已通过 findByIdForUpdate 持有该单行锁，且 newLines 已经过校验与组合键合并。
+     */
+    private void applyOrderLinesRewrite(SupplyClaimOrder locked,
+                                        List<SupplyClaimLine> oldLines,
+                                        List<SupplyClaimLine> newLines,
+                                        Map<Long, SupplyItem> itemById) {
+        // 覆盖前先释放原明细行的锁定（同事务内，失败回滚可恢复）
+        for (SupplyClaimLine oldLine : oldLines) {
+            releaseClaimLineLock(oldLine);
+        }
+        claimLineMapper.deleteByOrderId(locked.getId());
+        for (SupplyClaimLine cl : newLines) {
+            cl.setOrderId(locked.getId());
+            claimLineMapper.insert(cl);
+            lockClaimLineStockOrThrow(itemById, cl);
+        }
+    }
+
+    /** 既有明细行转回购物车行输入，供合并时与新行一起走同一套校验/组合键求和逻辑 */
+    private CreateSupplyClaimRequest.Line toLineInput(SupplyClaimLine l) {
+        CreateSupplyClaimRequest.Line line = new CreateSupplyClaimRequest.Line();
+        line.setItemId(l.getItemId());
+        line.setQty(l.getQty());
+        line.setRemark(l.getRemark());
+        line.setSpecSnapshot(l.getSpecSnapshot());
+        return line;
+    }
+
+    /**
+     * 智能合并提交：购物车行按独立下单规则拆组后，指定了目标的组并入本人对应的待处理单
+     * （同物品同规格快照的行数量求和为一行），未指定目标的组各自新建工单。
+     * 目标匹配规则：常规组只能并入不含独立下单物资的待处理单；独立物资 X 只能并入
+     * 「全部行均为 X 且 X 为独立下单」的待处理单。全部校验通过后才开始写入。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Map<String, Object>> mergeSubmit(User user, SupplyMergeSubmitRequest req) {
+        if (user == null || !StringUtils.hasText(user.getId())) {
+            return Result.error("未登录");
+        }
+        if (req == null || req.getLines() == null || req.getLines().isEmpty()) {
+            return Result.error("请选择至少一件物资");
+        }
+        String regularTargetId = trimOrNull(req.getRegularTargetOrderId());
+        Map<Long, String> independentTargets = new LinkedHashMap<>();
+        if (req.getIndependentTargets() != null) {
+            for (Map.Entry<Long, String> e : req.getIndependentTargets().entrySet()) {
+                String oid = e.getValue() == null ? null : e.getValue().trim();
+                if (e.getKey() != null && StringUtils.hasText(oid)) {
+                    independentTargets.put(e.getKey(), oid);
+                }
+            }
+        }
+        // —— 阶段一：按单号排序逐一行锁全部目标单（固定加锁顺序避免并发合并互相死锁），
+        //    findByIdForUpdate 自带 deleted=0 过滤，再校验状态与归属
+        SortedSet<String> targetIds = new TreeSet<>();
+        if (regularTargetId != null) {
+            targetIds.add(regularTargetId);
+        }
+        targetIds.addAll(independentTargets.values());
+        Map<String, SupplyClaimOrder> lockedOrderById = new LinkedHashMap<>();
+        Map<String, List<SupplyClaimLine>> existingLinesByOrder = new LinkedHashMap<>();
+        for (String oid : targetIds) {
+            SupplyClaimOrder locked = claimOrderMapper.findByIdForUpdate(oid);
+            if (locked == null) {
+                return Result.error("目标工单不存在或已删除: " + oid);
+            }
+            if (!"PENDING".equals(locked.getStatus())) {
+                return Result.error("目标工单已被处理，无法合并: " + oid);
+            }
+            if (!user.getId().equals(locked.getUserId())) {
+                return Result.error("仅本人的待处理工单可合并: " + oid);
+            }
+            lockedOrderById.put(oid, locked);
+            existingLinesByOrder.put(oid, claimLineMapper.listByOrderId(oid));
+        }
+        // —— 阶段二：目标单按独立下单规则分类，并与请求声明比对（不匹配即拒绝，尚未写入）
+        Map<Long, SupplyItem> targetItemCache = new HashMap<>();
+        Map<String, Boolean> targetHasIndependent = new LinkedHashMap<>();
+        Map<String, Long> targetSoleIndependentItem = new LinkedHashMap<>();
+        for (String oid : targetIds) {
+            boolean hasIndependent = false;
+            Set<Long> distinctItemIds = new LinkedHashSet<>();
+            for (SupplyClaimLine l : existingLinesByOrder.get(oid)) {
+                if (l == null || l.getItemId() == null) continue;
+                distinctItemIds.add(l.getItemId());
+                SupplyItem it = targetItemCache.computeIfAbsent(l.getItemId(), itemMapper::findById);
+                if (it != null && it.getIndependentOrder() != null && it.getIndependentOrder() == 1) {
+                    hasIndependent = true;
+                }
+            }
+            targetHasIndependent.put(oid, hasIndependent);
+            // 独立单判定：全部行为同一物品且该物品独立下单（混合遗留单两者皆非，不可作目标）
+            targetSoleIndependentItem.put(oid,
+                    hasIndependent && distinctItemIds.size() == 1 ? distinctItemIds.iterator().next() : null);
+        }
+        if (regularTargetId != null && Boolean.TRUE.equals(targetHasIndependent.get(regularTargetId))) {
+            return Result.error("目标工单包含独立下单物资，无法作为常规合并目标");
+        }
+        for (Map.Entry<Long, String> e : independentTargets.entrySet()) {
+            Long sole = targetSoleIndependentItem.get(e.getValue());
+            if (sole == null || !sole.equals(e.getKey())) {
+                return Result.error("目标工单不是该物资的独立下单工单，无法合并: " + e.getValue());
+            }
+        }
+        // —— 阶段三：整车预检。credit = 全部目标单既有行（QUANTIFIED），这些锁定在各自
+        //    合并重写时会先释放再连同新行重锁，预检抵扣回来避免自我重复计数；
+        //    真正的强制校验由重写阶段的 lockStockIfAvailable 原子守卫完成
+        Map<Long, Integer> lockCredit = new LinkedHashMap<>();
+        for (String oid : targetIds) {
+            for (SupplyClaimLine l : existingLinesByOrder.get(oid)) {
+                if (l == null || l.getItemId() == null) continue;
+                int qty = l.getQty() == null ? 0 : l.getQty();
+                if (qty <= 0) continue;
+                SupplyItem it = targetItemCache.computeIfAbsent(l.getItemId(), itemMapper::findById);
+                if (it != null && MODE_QUANTIFIED.equals(it.getStockMode())) {
+                    lockCredit.merge(l.getItemId(), qty, Integer::sum);
+                }
+            }
+        }
+        CreateSupplyClaimRequest cartReq = new CreateSupplyClaimRequest();
+        cartReq.setLines(req.getLines());
+        Result<ValidatedClaimLines> vr = validateAndBuildClaimLines(cartReq, lockCredit);
+        if (!Boolean.TRUE.equals(vr.getSuccess())) {
+            return Result.error(vr.getMessage());
+        }
+        Result<List<List<SupplyClaimLine>>> sr = splitLinesByIndependentOrder(vr.getData().lines, vr.getData().itemById);
+        if (!Boolean.TRUE.equals(sr.getSuccess())) {
+            return Result.error(sr.getMessage());
+        }
+        // —— 阶段四：分组归位（常规组 / 独立组按 itemId），并校验声明的目标与实际分组一致
+        List<SupplyClaimLine> regularGroup = null;
+        Map<Long, List<SupplyClaimLine>> independentGroups = new LinkedHashMap<>();
+        for (List<SupplyClaimLine> group : sr.getData()) {
+            SupplyItem first = vr.getData().itemById.get(group.get(0).getItemId());
+            if (first != null && first.getIndependentOrder() != null && first.getIndependentOrder() == 1) {
+                independentGroups.put(first.getId(), group);
+            } else {
+                regularGroup = group;
+            }
+        }
+        if (regularTargetId != null && regularGroup == null) {
+            return Result.error("本次提交不包含常规物资，无法执行常规合并");
+        }
+        for (Long itemId : independentTargets.keySet()) {
+            if (!independentGroups.containsKey(itemId)) {
+                return Result.error("本次提交不包含该独立下单物资，无法合并: " + itemId);
+            }
+        }
+        LinkedHashMap<String, List<SupplyClaimLine>> mergeGroupByTarget = new LinkedHashMap<>();
+        List<List<SupplyClaimLine>> createGroups = new ArrayList<>();
+        if (regularGroup != null) {
+            if (regularTargetId != null) {
+                mergeGroupByTarget.put(regularTargetId, regularGroup);
+            } else {
+                createGroups.add(regularGroup);
+            }
+        }
+        for (Map.Entry<Long, List<SupplyClaimLine>> e : independentGroups.entrySet()) {
+            String tid = independentTargets.get(e.getKey());
+            if (tid != null) {
+                mergeGroupByTarget.put(tid, e.getValue());
+            } else {
+                createGroups.add(e.getValue());
+            }
+        }
+        // —— 阶段五：写前完成每个合并目标「既有行 + 本组行」的重合并校验：
+        //    同 (itemId, 规范化规格) 组合键求和为一行（与新建/修订同一套逻辑）；
+        //    credit 仅抵扣该单自身既有行（与修订同口径，等价于校验 库存-他单锁定 ≥ 新增量）
+        Map<String, ValidatedClaimLines> combinedByTarget = new LinkedHashMap<>();
+        for (Map.Entry<String, List<SupplyClaimLine>> e : mergeGroupByTarget.entrySet()) {
+            String oid = e.getKey();
+            List<SupplyClaimLine> existing = existingLinesByOrder.get(oid);
+            List<CreateSupplyClaimRequest.Line> combinedLines = new ArrayList<>();
+            for (SupplyClaimLine l : existing) {
+                combinedLines.add(toLineInput(l));
+            }
+            for (SupplyClaimLine l : e.getValue()) {
+                combinedLines.add(toLineInput(l));
+            }
+            CreateSupplyClaimRequest combinedReq = new CreateSupplyClaimRequest();
+            combinedReq.setLines(combinedLines);
+            Map<Long, Integer> ownCredit = new LinkedHashMap<>();
+            for (SupplyClaimLine l : existing) {
+                if (l == null || l.getItemId() == null) continue;
+                int qty = l.getQty() == null ? 0 : l.getQty();
+                if (qty <= 0) continue;
+                SupplyItem it = targetItemCache.computeIfAbsent(l.getItemId(), itemMapper::findById);
+                if (it != null && MODE_QUANTIFIED.equals(it.getStockMode())) {
+                    ownCredit.merge(l.getItemId(), qty, Integer::sum);
+                }
+            }
+            Result<ValidatedClaimLines> cvr = validateAndBuildClaimLines(combinedReq, ownCredit);
+            if (!Boolean.TRUE.equals(cvr.getSuccess())) {
+                return Result.error(cvr.getMessage());
+            }
+            combinedByTarget.put(oid, cvr.getData());
+        }
+        // —— 阶段六：写入。合并单走修订同款覆盖写阶段（释放旧锁 → 删旧行 → 插合并行并原子锁定）
+        List<String> mergedOrderIds = new ArrayList<>();
+        for (Map.Entry<String, List<SupplyClaimLine>> e : mergeGroupByTarget.entrySet()) {
+            String oid = e.getKey();
+            ValidatedClaimLines combined = combinedByTarget.get(oid);
+            applyOrderLinesRewrite(lockedOrderById.get(oid), existingLinesByOrder.get(oid),
+                    combined.lines, combined.itemById);
+            logOp("ORDER_MERGE_APPEND", "CLAIM_ORDER", oid, user.getId(),
+                    Map.of("appendedLineCount", e.getValue().size(), "lineCount", combined.lines.size()));
+            mergedOrderIds.add(oid);
+        }
+        List<String> createdOrderIds = new ArrayList<>();
+        List<Integer> createdLineCounts = new ArrayList<>();
+        for (List<SupplyClaimLine> group : createGroups) {
+            String orderId = "SC_" + UUID.randomUUID().toString().replace("-", "");
+            SupplyClaimOrder order = new SupplyClaimOrder();
+            order.setId(orderId);
+            order.setUserId(user.getId());
+            order.setApplicantName(resolveDisplayName(user.getId()));
+            order.setStatus("PENDING");
+            order.setCreatedAt(LocalDateTime.now());
+            claimOrderMapper.insert(order);
+            for (SupplyClaimLine cl : group) {
+                cl.setOrderId(orderId);
+                claimLineMapper.insert(cl);
+                lockClaimLineStockOrThrow(vr.getData().itemById, cl);
+            }
+            logOp("ORDER_CREATE", "CLAIM_ORDER", orderId, user.getId(),
+                    Map.of("lineCount", group.size(), "splitCount", createGroups.size(), "mergeSubmit", true));
+            createdOrderIds.add(orderId);
+            createdLineCounts.add(group.size());
+        }
+        // 全部写入完成后再统一发通知：仅新建单发 CREATED；合并单创建时已通知过，不重复推送
+        for (int i = 0; i < createdOrderIds.size(); i++) {
+            publishClaimCreated(user, createdOrderIds.get(i), createdLineCounts.get(i));
+        }
+        List<SupplyClaimOrderView> views = new ArrayList<>();
+        for (String oid : mergedOrderIds) {
+            views.add(toOrderView(claimOrderMapper.findById(oid), true));
+        }
+        for (String oid : createdOrderIds) {
+            views.add(toOrderView(claimOrderMapper.findById(oid), true));
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("orders", views);
+        data.put("mergedOrderIds", mergedOrderIds);
+        data.put("createdOrderIds", createdOrderIds);
+        return Result.success(data);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
     public Result<?> withdraw(User user, String orderId) {
         if (user == null) return Result.error("未登录");
         SupplyClaimOrder o = claimOrderMapper.findById(orderId);
@@ -578,11 +994,13 @@ public class SuppliesService {
         if (!user.getId().equals(o.getUserId())) return Result.error("仅本人可撤回");
         int n = claimOrderMapper.updateWithdrawn(orderId, user.getId());
         if (n == 0) return Result.error("仅待处理状态可撤回");
+        // 撤回成功后释放本单全部行的锁定
+        releaseClaimOrderLocks(orderId);
         logOp("ORDER_WITHDRAW", "CLAIM_ORDER", orderId, user.getId(), Map.of());
         return Result.success();
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Result<?> deleteClaimOrder(User user, String orderId) {
         if (user == null) return Result.error("未登录");
         String oid = trimOrNull(orderId);
@@ -595,7 +1013,20 @@ public class SuppliesService {
         if (!canAdminDelete && !canSelfDelete) return Result.error("无权限操作");
         int deleted = claimOrderMapper.deleteById(oid, user.getId(), LocalDateTime.now().plusDays(7));
         if (deleted <= 0) return Result.error("删除工单失败");
-        logOp("ORDER_DELETE", "CLAIM_ORDER", oid, user.getId(), Map.of("status", str(order.getStatus())));
+        // 释放锁定必须以 deleteById 之后重读的“新鲜”状态为准，而非上方无锁快照：
+        // 并发撤回/出库（updateWithdrawn/updateFulfilled，均带 status='PENDING' AND deleted=0 守卫）
+        // 可能在快照读取后、deleteById 前已提交并释放过锁，若按过期快照再放一次会吃掉其他单的预占。
+        // deleteById 是 UPDATE，已对该行加了行锁且不修改 status：
+        // - 若撤回/出库先提交：此处重读看到 WITHDRAWN/FULFILLED → 不再释放（对方已释放过）；
+        // - 若撤回/出库被我们的行锁阻塞：我们提交后 deleted=1 使其守卫失配 → 对方 0 行更新、不释放。
+        // 两个方向都恰好释放一次，锁定量不会被双重扣减。
+        SupplyClaimOrder fresh = claimOrderMapper.findByIdAny(oid);
+        String freshStatus = fresh != null ? fresh.getStatus() : null;
+        // 待处理单进回收站需释放锁定（恢复时再重新锁定）
+        if ("PENDING".equals(freshStatus)) {
+            releaseClaimOrderLocks(oid);
+        }
+        logOp("ORDER_DELETE", "CLAIM_ORDER", oid, user.getId(), Map.of("status", str(freshStatus)));
         return Result.success();
     }
 
@@ -613,6 +1044,7 @@ public class SuppliesService {
         return data;
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public Result<?> restoreMyClaimOrder(User user, String orderId) {
         if (user == null) return Result.error("未登录");
         String oid = trimOrNull(orderId);
@@ -621,6 +1053,10 @@ public class SuppliesService {
         if (row == null) return Result.error("回收站工单不存在或无权限");
         int restored = claimOrderMapper.restoreById(oid);
         if (restored <= 0) return Result.error("恢复失败");
+        // 恢复的待处理单重新锁定库存（允许超锁）
+        if ("PENDING".equals(row.getStatus())) {
+            forceLockClaimOrderLocks(oid);
+        }
         return Result.success();
     }
 
@@ -635,11 +1071,17 @@ public class SuppliesService {
         return data;
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public Result<?> restoreClaimOrder(String orderId) {
         String oid = trimOrNull(orderId);
         if (!StringUtils.hasText(oid)) return Result.error("领用单号不能为空");
+        SupplyClaimOrder row = claimOrderMapper.findByIdAny(oid);
         int restored = claimOrderMapper.restoreById(oid);
         if (restored <= 0) return Result.error("恢复失败或工单不在回收站");
+        // 恢复的待处理单重新锁定库存（允许超锁）
+        if (row != null && "PENDING".equals(row.getStatus())) {
+            forceLockClaimOrderLocks(oid);
+        }
         return Result.success();
     }
 
@@ -711,12 +1153,17 @@ public class SuppliesService {
     }
 
     public Map<String, Object> listMine(User user, String status, int page, int size) {
+        return listMine(user, status, page, size, false);
+    }
+
+    /** @param withLines true 时逐单附带明细行（合并弹窗需要展示各待处理单包含的物品） */
+    public Map<String, Object> listMine(User user, String status, int page, int size, boolean withLines) {
         int p = Math.max(page, 1);
         int s = Math.min(Math.max(size, 1), 100);
         int offset = (p - 1) * s;
         String st = StringUtils.hasText(status) ? status.trim().toUpperCase() : null;
         List<SupplyClaimOrderView> rows = claimOrderMapper.listMine(user.getId(), st, s, offset).stream()
-                .map(o -> toOrderView(o, false))
+                .map(o -> toOrderView(o, withLines))
                 .toList();
         int total = claimOrderMapper.countMine(user.getId(), st);
         Map<String, Object> data = new HashMap<>();
@@ -972,6 +1419,10 @@ public class SuppliesService {
         if (!anyGrant) {
             return Result.error("请至少勾选一行同意发放");
         }
+        // 出库处理即终结本单：释放全部行的申请锁定（无论是否同意发放）
+        for (SupplyClaimLine dl : dbLines) {
+            releaseClaimLineLock(dl);
+        }
         List<String> grantedItemNames = new ArrayList<>();
         for (SupplyClaimLine dl : dbLines) {
             Integer out = outQtyByLine.get(dl.getId());
@@ -1223,6 +1674,23 @@ public class SuppliesService {
         return value.trim();
     }
 
+    /**
+     * 规格快照规范化：JSON 对象按键名字典序重排后重新序列化，保证 Web（schema 维度顺序）与
+     * 小程序（键排序）产出的同一逻辑规格得到同一字符串，合并键与落库口径一致。
+     * 解析失败（非 JSON 对象等）时退回 trim 后的原文。
+     */
+    private String canonicalizeSpecSnapshot(String raw) {
+        if (raw == null) return null;
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) return trimmed;
+        try {
+            Map<String, Object> parsed = objectMapper.readValue(trimmed, new TypeReference<Map<String, Object>>() {});
+            return objectMapper.writeValueAsString(new TreeMap<>(parsed));
+        } catch (Exception e) {
+            return trimmed;
+        }
+    }
+
     private String str(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
@@ -1232,17 +1700,22 @@ public class SuppliesService {
     }
 
     private void publishClaimCreated(User user, String orderId, int lineCount) {
+        publishClaimCreated(user.getId(), user.getId(), orderId, lineCount);
+    }
+
+    /** 新建领用通知；拆分/代提交场景下发送人（senderId）与申请人（applicantUserId）可不同 */
+    private void publishClaimCreated(String senderId, String applicantUserId, String orderId, int lineCount) {
         PublishNotificationEvent event = new PublishNotificationEvent();
         event.setEventType("CREATED");
         event.setBizType("SUPPLIES_CLAIM");
         event.setBizId(orderId);
-        event.setSenderId(user.getId());
-        event.setApplicantId(user.getId());
+        event.setSenderId(senderId);
+        event.setApplicantId(applicantUserId);
         event.setRelatedUserIds(validatedNotifyReceiverUserIds());
         Map<String, String> vars = new HashMap<>();
         vars.put("orderId", orderId);
         vars.put("bizId", orderId);
-        vars.put("applicantName", resolveDisplayName(user.getId()));
+        vars.put("applicantName", resolveDisplayName(applicantUserId));
         vars.put("summary", "共 " + lineCount + " 项物资");
         event.setVariables(vars);
         notificationService.publish(event);
@@ -1342,6 +1815,14 @@ public class SuppliesService {
         v.setShelfStatus(it.getShelfStatus());
         v.setStockMode(it.getStockMode());
         v.setStockQty(it.getStockQty());
+        int locked = it.getLockedQty() == null ? 0 : it.getLockedQty();
+        v.setLockedQty(locked);
+        if (MODE_QUANTIFIED.equals(it.getStockMode())) {
+            int stock = it.getStockQty() == null ? 0 : it.getStockQty();
+            v.setAvailableQty(Math.max(0, stock - locked));
+        } else {
+            v.setAvailableQty(it.getStockQty());
+        }
         v.setDeleted(it.getDeleted());
         v.setDeletedTime(it.getDeletedTime());
         v.setDeletedBy(it.getDeletedBy());
@@ -1350,6 +1831,7 @@ public class SuppliesService {
         v.setLastInboundAt(it.getLastInboundAt());
         v.setSpecSchema(it.getSpecSchema());
         v.setSpecRequired(it.getSpecRequired());
+        v.setIndependentOrder(it.getIndependentOrder());
         return v;
     }
 
@@ -1393,6 +1875,48 @@ public class SuppliesService {
         if (Boolean.TRUE.equals(v.getIsNewInbound())) return v.getLastInboundAt();
         if (Boolean.TRUE.equals(v.getIsNewItem())) return v.getCreatedAt();
         return null;
+    }
+
+    // ==================== 库存锁定（待处理领用预占） ====================
+
+    /** 领用行提交锁定（仅 QUANTIFIED）：可用库存不足时抛异常触发事务回滚 */
+    private void lockClaimLineStockOrThrow(Map<Long, SupplyItem> itemById, SupplyClaimLine cl) {
+        if (cl == null || cl.getItemId() == null) return;
+        SupplyItem it = itemById.get(cl.getItemId());
+        if (it == null || !MODE_QUANTIFIED.equals(it.getStockMode())) return;
+        int qty = cl.getQty() == null ? 0 : cl.getQty();
+        if (qty <= 0) return;
+        int n = itemMapper.lockStockIfAvailable(cl.getItemId(), qty);
+        if (n == 0) {
+            throw new IllegalStateException("库存不足(已被其他待处理订单锁定): " + it.getName());
+        }
+    }
+
+    /** 释放单行锁定（SQL 侧仅作用于 QUANTIFIED，下限 0） */
+    private void releaseClaimLineLock(SupplyClaimLine line) {
+        if (line == null || line.getItemId() == null) return;
+        int qty = line.getQty() == null ? 0 : line.getQty();
+        if (qty > 0) {
+            itemMapper.releaseLockedStock(line.getItemId(), qty);
+        }
+    }
+
+    /** 释放订单全部明细行的锁定 */
+    private void releaseClaimOrderLocks(String orderId) {
+        for (SupplyClaimLine line : claimLineMapper.listByOrderId(orderId)) {
+            releaseClaimLineLock(line);
+        }
+    }
+
+    /** 回收站恢复待处理单：强制重新锁定全部明细行（允许超锁） */
+    private void forceLockClaimOrderLocks(String orderId) {
+        for (SupplyClaimLine line : claimLineMapper.listByOrderId(orderId)) {
+            if (line == null || line.getItemId() == null) continue;
+            int qty = line.getQty() == null ? 0 : line.getQty();
+            if (qty > 0) {
+                itemMapper.lockStockForce(line.getItemId(), qty);
+            }
+        }
     }
 
     private void recordInventoryMovement(String movementType, long itemId, int qty, int stockAfter,
@@ -1553,6 +2077,8 @@ public class SuppliesService {
             SupplyItem it = itemMapper.findById(l.getItemId());
             if (it != null) {
                 v.setCoverUrl(it.getCoverUrl());
+                // 物品已删除时保持 null，前端据此把工单按独立下单规则分类
+                v.setIndependentOrder(it.getIndependentOrder());
             }
         }
         return v;
@@ -1585,10 +2111,12 @@ public class SuppliesService {
             it.setSpecSchema(req.getSpecSchema().isBlank() ? null : req.getSpecSchema());
         }
         if (req.getSpecRequired() != null) it.setSpecRequired(req.getSpecRequired());
+        if (req.getIndependentOrder() != null) it.setIndependentOrder(req.getIndependentOrder());
         if (existing == null) {
             if (!StringUtils.hasText(it.getShelfStatus())) it.setShelfStatus(SHELF_ON);
             if (!StringUtils.hasText(it.getStockMode())) it.setStockMode(MODE_QUANTIFIED);
             if (it.getStockQty() == null) it.setStockQty(0);
+            if (it.getIndependentOrder() == null) it.setIndependentOrder(0);
         }
         return it;
     }

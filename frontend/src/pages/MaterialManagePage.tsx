@@ -63,6 +63,10 @@ export default function MaterialManagePage() {
   const [editSpecDimensions, setEditSpecDimensions] = useState<{ name: string; options: string[] }[]>([]);
   const [editSpecRequired, setEditSpecRequired] = useState(false);
 
+  /* ── 独立下单 ── */
+  const [createIndependentOrder, setCreateIndependentOrder] = useState(false);
+  const [editIndependentOrder, setEditIndependentOrder] = useState(false);
+
   /* ── 面板 ── */
   const [cardPanel, setCardPanel] = useState<CardPanel>(null);
   const [panelQty, setPanelQty] = useState("1");
@@ -133,7 +137,8 @@ export default function MaterialManagePage() {
         ? JSON.stringify({ dimensions: createSpecDimensions.filter(d => d.name.trim() && d.options.filter(o => o.trim()).length >= 2) })
         : undefined,
       specRequired: createSpecEnabled && createSpecRequired ? 1 : 0,
-    }, { onSuccess: () => { setCreateName(""); setCreateSubtitle(""); setCreateCoverUrl(""); setCreateInitialQty("0"); setCreateSpecEnabled(false); setCreateSpecDimensions([]); setCreateSpecRequired(false); } });
+      independentOrder: createIndependentOrder ? 1 : 0,
+    }, { onSuccess: () => { setCreateName(""); setCreateSubtitle(""); setCreateCoverUrl(""); setCreateInitialQty("0"); setCreateSpecEnabled(false); setCreateSpecDimensions([]); setCreateSpecRequired(false); setCreateIndependentOrder(false); } });
   };
 
   /* ── 内联编辑保存 ── */
@@ -153,6 +158,7 @@ export default function MaterialManagePage() {
           ? JSON.stringify({ dimensions: editSpecDimensions.filter(d => d.name.trim() && d.options.filter(o => o.trim()).length >= 2) })
           : undefined,
         specRequired: editSpecEnabled && editSpecRequired ? 1 : 0,
+        independentOrder: editIndependentOrder ? 1 : 0,
         reviewerIds: editReviewerIds !== "[]" ? editReviewerIds : "[]",
         secondReviewerIds: editingItem.workflowType === "DUAL_REVIEW" && editSecondReviewerIds !== "[]" ? editSecondReviewerIds : "[]",
       },
@@ -262,6 +268,10 @@ export default function MaterialManagePage() {
                   }}>+ 添加规格维度</button>
                 </div>
               )}
+              <label className="flex items-center gap-2 col-span-2 pt-2">
+                <AdminSwitchScaled size="3.5" checked={createIndependentOrder} onChange={(checked) => setCreateIndependentOrder(checked)} />
+                <span className="text-xs text-[var(--twin-body)]">独立下单（该物品不能与其他物品合并下单）</span>
+              </label>
               <label className="flex flex-col gap-1 col-span-2"><span className="text-xs text-[var(--twin-mute)]">审核人</span>
                 <StaffReviewerPicker value={createReviewerIds} onChange={setCreateReviewerIds} placeholder="选择审核人..." />
               </label>
@@ -379,7 +389,7 @@ export default function MaterialManagePage() {
                         </div>
                         <div className="text-[9px] text-[var(--twin-mute)]">{it.workflowType === "DUAL_REVIEW" ? "复核" : it.workflowType === "SKIP_REVIEW" ? "免审" : "简单"}{it.reviewerIds && it.reviewerIds !== "[]" ? " · 已指定审核人" : ""}</div>
                         <div className="flex items-center gap-0.5 text-[10px]">
-                          <button className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => { setEditingItem(it); setEditCoverUrl(it.coverUrl || ""); setEditShowStockQty(it.showStockQty !== 0); setEditReviewerIds(it.reviewerIds || "[]"); setEditSecondReviewerIds(it.secondReviewerIds || "[]"); if (it.specSchema) { try { const parsed = JSON.parse(it.specSchema); setEditSpecEnabled(true); setEditSpecDimensions(parsed.dimensions || []); setEditSpecRequired(it.specRequired === 1); } catch { setEditSpecEnabled(false); setEditSpecDimensions([]); setEditSpecRequired(false); } } else { setEditSpecEnabled(false); setEditSpecDimensions([]); setEditSpecRequired(false); } }}>编辑</button>
+                          <button className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)]" onClick={() => { setEditingItem(it); setEditCoverUrl(it.coverUrl || ""); setEditShowStockQty(it.showStockQty !== 0); setEditIndependentOrder(it.independentOrder === 1); setEditReviewerIds(it.reviewerIds || "[]"); setEditSecondReviewerIds(it.secondReviewerIds || "[]"); if (it.specSchema) { try { const parsed = JSON.parse(it.specSchema); setEditSpecEnabled(true); setEditSpecDimensions(parsed.dimensions || []); setEditSpecRequired(it.specRequired === 1); } catch { setEditSpecEnabled(false); setEditSpecDimensions([]); setEditSpecRequired(false); } } else { setEditSpecEnabled(false); setEditSpecDimensions([]); setEditSpecRequired(false); } }}>编辑</button>
                           <label className="rounded-twin-sm px-1.5 py-0.5 text-[var(--twin-link-deep)] hover:bg-[var(--twin-canvas-soft)] cursor-pointer">图片<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadAndSet(f, (url) => { updateItemMut.mutate({ id: it.id, body: { coverUrl: url } }); }, setEditUploading); }} /></label>
                           <button className="rounded-twin-sm px-1.5 py-0.5 text-red-500 hover:bg-red-50" onClick={() => { if (!window.confirm("删除？")) return; deleteItemMut.mutate(it.id); }}>删</button>
                         </div>
@@ -482,6 +492,7 @@ export default function MaterialManagePage() {
                 </label>
               )}
               <label className="flex items-center gap-2 col-span-2"><AdminSwitchScaled size="3.5" checked={editShowStockQty} onChange={(checked) => setEditShowStockQty(checked)} /><span className="text-xs text-[var(--twin-body)]">学生端显示具体库存数字</span></label>
+              <label className="flex items-center gap-2 col-span-2"><AdminSwitchScaled size="3.5" checked={editIndependentOrder} onChange={(checked) => setEditIndependentOrder(checked)} /><span className="text-xs text-[var(--twin-body)]">独立下单（该物品不能与其他物品合并下单）</span></label>
               {/* ── 规格配置 ── */}
               <label className="flex items-center gap-2 col-span-2 pt-2">
                 <AdminSwitchScaled size="3.5" checked={editSpecEnabled} onChange={(checked) => setEditSpecEnabled(checked)} />

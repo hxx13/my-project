@@ -54,6 +54,8 @@ export default function StudentMaterialPage() {
     initialCat ? Number(initialCat) : undefined,
   );
   const { data: items, isLoading: itemsLoading } = useMaterialItems(activeCategoryId);
+  /** 全量物品（跨分类）：申领栏可能含非当前分类的物品，拆单提示需要完整查找表 */
+  const { data: allItems } = useMaterialItems(undefined);
   const { data: cart } = useMaterialCart();
   const saveCart = useSaveMaterialCart();
   const createRequest = useCreateMaterialRequest();
@@ -128,6 +130,25 @@ export default function StudentMaterialPage() {
       ),
     [cartItems],
   );
+
+  /** 独立下单拆分提示：按 itemId 去重（同物品的规格键属于同一物品） */
+  const { willSplit, multiIndependent } = useMemo(() => {
+    const lookup = allItems && allItems.length > 0 ? allItems : items || [];
+    const independentIds = new Set<number>();
+    const regularIds = new Set<number>();
+    for (const [key, qty] of Object.entries(cart || {})) {
+      if (qty <= 0) continue;
+      const { itemId } = parseCartKey(key);
+      const item = lookup.find((it) => it.id === itemId);
+      if (!item) continue;
+      if (item.independentOrder === 1) independentIds.add(itemId);
+      else regularIds.add(itemId);
+    }
+    return {
+      willSplit: independentIds.size > 0 && regularIds.size > 0,
+      multiIndependent: independentIds.size > 1,
+    };
+  }, [cart, items, allItems]);
 
   function updateCartQty(key: string, delta: number, maxStock?: number) {
     if (!cart) return;
@@ -435,6 +456,11 @@ export default function StudentMaterialPage() {
         <DialogHeader>
           <DialogTitle>确认提交申领</DialogTitle>
           <DialogDescription>请核对以下物品，提交后将进入审核流程</DialogDescription>
+          {(willSplit || multiIndependent) && (
+            <p className="text-[12px] text-[var(--student-warning,#d97706)]">
+              {willSplit ? "含独立下单物资，将拆分为多份申领单" : "多个独立下单物资将分别生成申领单"}
+            </p>
+          )}
         </DialogHeader>
 
         <div className="min-h-0 max-h-[40vh] overflow-y-auto overscroll-y-contain space-y-2">

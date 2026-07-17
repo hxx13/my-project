@@ -78,6 +78,16 @@ public class MaterialController {
         return materialService.createRequest(user, req);
     }
 
+    @PostMapping("/requests/{id}/merge")
+    @Operation(summary = "合并新明细到本人待审申领单（同审核组追加，其余自动另立新单）")
+    public Result<List<MaterialRequestView>> mergeIntoRequest(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                              @PathVariable String id,
+                                                              @RequestBody CreateMaterialRequestReq body) {
+        User user = resolveUser(authorization);
+        if (user == null) return Result.error("未登录");
+        return materialService.mergeIntoRequest(user, id, body);
+    }
+
     @GetMapping("/requests/mine")
     @Operation(summary = "我的申领记录")
     public Result<Map<String, Object>> mine(@RequestHeader(value = "Authorization", required = false) String auth,

@@ -23,6 +23,10 @@ export interface SupplyItem {
   shelfStatus: string;
   stockMode: string;
   stockQty: number;
+  /** 待处理领用单锁定量（后端计算） */
+  lockedQty?: number;
+  /** 可用库存 = stockQty − lockedQty（FLAG 模式等于 stockQty）；缺失时回落 stockQty */
+  availableQty?: number;
   deleted?: number;
   deletedTime?: string;
   deletedBy?: string;
@@ -34,6 +38,7 @@ export interface SupplyItem {
   noveltyTag?: string;
   specSchema?: string;
   specRequired?: number;
+  independentOrder?: number; // 0=可合并下单 1=必须独立下单
 }
 
 export interface SupplyClaimLine {
@@ -45,6 +50,8 @@ export interface SupplyClaimLine {
   coverUrl?: string;
   remark?: string;
   specSnapshot?: string;
+  /** 0=可合并下单 1=独立下单（mine?withLines=true 时返回，用于合并目标匹配） */
+  independentOrder?: number;
 }
 
 export interface SupplyClaimOrder {
@@ -89,31 +96,37 @@ export async function fetchSupplyItems(categoryId?: number) {
   return res.data.data;
 }
 
-/** GET /supplies/cart：当前登录用户云端购物车（与小程序同源）。 */
-export async function fetchSupplyCart(): Promise<Record<number, number>> {
-  const res = await authHttp.get<Result<{ lines?: Record<string, number> }>>("/supplies/cart");
-  const lines = res.data.data?.lines ?? {};
-  const cart: Record<number, number> = {};
-  for (const [k, v] of Object.entries(lines)) {
-    const id = Number(k);
-    const qty = Number(v);
-    if (Number.isFinite(id) && id > 0 && Number.isFinite(qty) && qty > 0) {
-      cart[id] = Math.min(Math.floor(qty), 999);
-    }
-  }
-  return cart;
+/**
+ * 购物车 key 校验：支持纯 itemId（"42"）与规格组合键（"42::尺寸=M"，与小程序同构）。
+ * 仅要求首段 itemId 解析为正数，key 本身原样透传，避免丢弃规格条目。
+ */
+function isValidCartKey(key: string): boolean {
+  if (!key) return false;
+  const idPart = key.includes("::") ? key.slice(0, key.indexOf("::")) : key;
+  return Number(idPart) > 0;
 }
 
-/** PUT /supplies/cart：保存云端购物车。 */
-export async function saveSupplyCart(cart: Record<number, number>): Promise<void> {
-  const lines: Record<string, number> = {};
-  for (const [k, v] of Object.entries(cart)) {
-    const id = Number(k);
+/** 数量清洗：有限、>0、取整、封顶 999；key 原样保留。 */
+function sanitizeCartLines(lines: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(lines)) {
     const qty = Number(v);
-    if (Number.isFinite(id) && id > 0 && Number.isFinite(qty) && qty > 0) {
-      lines[String(id)] = Math.min(Math.floor(qty), 999);
+    if (isValidCartKey(k) && Number.isFinite(qty) && qty > 0) {
+      out[k] = Math.min(Math.floor(qty), 999);
     }
   }
+  return out;
+}
+
+/** GET /supplies/cart：当前登录用户云端购物车（与小程序同源，key 可能含规格段）。 */
+export async function fetchSupplyCart(): Promise<Record<string, number>> {
+  const res = await authHttp.get<Result<{ lines?: Record<string, number> }>>("/supplies/cart");
+  return sanitizeCartLines(res.data.data?.lines ?? {});
+}
+
+/** PUT /supplies/cart：保存云端购物车（规格键原样保存，避免覆盖小程序侧规格条目）。 */
+export async function saveSupplyCart(cart: Record<string, number>): Promise<void> {
+  const lines = sanitizeCartLines(cart);
   const res = await authHttp.put<Result<unknown>>("/supplies/cart", { lines });
   if (!res.data.success) {
     throw new Error(res.data.message || "保存购物车失败");
@@ -131,6 +144,26 @@ export async function markSupplyItemsViewed() {
 
 export async function createSupplyClaim(lines: { itemId: number; qty: number; remark?: string; specSnapshot?: string }[]) {
   const res = await authHttp.post<Result<SupplyClaimOrder>>("/supplies/claims", { lines });
+  return res.data.data;
+}
+
+export interface SupplyMergeSubmitResult {
+  orders: SupplyClaimOrder[];
+  mergedOrderIds: string[];
+  createdOrderIds: string[];
+}
+
+/**
+ * POST /supplies/claims/merge-submit：按方案提交购物车——常规物资并入 regularTargetOrderId，
+ * 独立物资按 independentTargets（itemId → orderId）各自并入；缺省目标的分组新建订单。
+ * 重复 (itemId, spec) 行由后端归并累加，目标单状态由后端行锁校验。
+ */
+export async function mergeSubmitSupplyClaims(body: {
+  lines: { itemId: number; qty: number; remark?: string; specSnapshot?: string }[];
+  regularTargetOrderId?: string;
+  independentTargets?: Record<string, string>;
+}): Promise<SupplyMergeSubmitResult> {
+  const res = await authHttp.post<Result<SupplyMergeSubmitResult>>("/supplies/claims/merge-submit", body);
   return res.data.data;
 }
 
@@ -177,9 +210,10 @@ export async function fetchSupplyRecentClosedClaims(limit = 40) {
   return res.data.data;
 }
 
-export async function fetchSupplyMine(params: { page: number; size: number; status?: string }) {
+export async function fetchSupplyMine(params: { page: number; size: number; status?: string; withLines?: boolean }) {
+  const { withLines, ...rest } = params;
   const res = await authHttp.get<Result<{ data: SupplyClaimOrder[]; total: number }>>("/supplies/claims/mine", {
-    params,
+    params: { ...rest, ...(withLines ? { withLines: true } : {}) },
   });
   return res.data.data;
 }

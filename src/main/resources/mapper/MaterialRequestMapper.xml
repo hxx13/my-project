@@ -4,6 +4,9 @@
     <select id="selectById" resultType="com.example.demo.modules.material.entity.MaterialRequest">
         SELECT * FROM material_request WHERE id = #{id}
     </select>
+    <select id="selectByIdForUpdate" resultType="com.example.demo.modules.material.entity.MaterialRequest">
+        SELECT * FROM material_request WHERE id = #{id} FOR UPDATE
+    </select>
     <select id="selectByUserId" resultType="com.example.demo.modules.material.entity.MaterialRequest">
         SELECT * FROM material_request WHERE user_id = #{userId} AND deleted = 0
         <if test="status != null and status != ''">AND status = #{status}</if>
@@ -45,6 +48,9 @@
     </insert>
     <update id="updateStatus">
         UPDATE material_request SET status = #{status}, updated_at = #{updatedAt} WHERE id = #{id}
+    </update>
+    <update id="touchUpdatedAtIfPending">
+        UPDATE material_request SET updated_at = #{now} WHERE id = #{id} AND status = 'PENDING'
     </update>
     <update id="updateReview">
         UPDATE material_request SET status = #{status}, updated_at = #{reviewTime}

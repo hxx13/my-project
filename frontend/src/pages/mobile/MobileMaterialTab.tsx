@@ -159,6 +159,24 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
     [cart, allDecorated],
   );
 
+  /** 独立下单拆分提示：按 itemId 去重（同物资的规格键属于同一物资） */
+  const { willSplit, multiIndependent } = useMemo(() => {
+    const independentIds = new Set<number>();
+    const regularIds = new Set<number>();
+    for (const [key, qty] of Object.entries(cart)) {
+      if (!(qty > 0)) continue;
+      const parsed = parseSpecCartKey(key);
+      const item = allDecorated.find((x) => x.id === parsed.itemId);
+      if (!item) continue;
+      if (item.independentOrder === 1) independentIds.add(parsed.itemId);
+      else regularIds.add(parsed.itemId);
+    }
+    return {
+      willSplit: independentIds.size > 0 && regularIds.size > 0,
+      multiIndependent: independentIds.size > 1,
+    };
+  }, [cart, allDecorated]);
+
   const myRequestsRaw = (matData?.myRequests ?? []) as MaterialRequest[];
   const requestRows = useMemo(() => {
     let rows = myRequestsRaw.map(mapRequestRow);
@@ -683,6 +701,11 @@ export default function MobileMaterialTab({ token, jwtMode }: { token: string; j
                 确认提交申领
               </p>
               <p className="mt-1 text-xs text-[var(--student-mute)]">请核对以下物品</p>
+              {(willSplit || multiIndependent) && (
+                <p className="mt-1 text-xs text-[var(--student-warning)]">
+                  {willSplit ? "含独立下单物资，将拆分为多份申领单" : "多个独立下单物资将分别生成申领单"}
+                </p>
+              )}
             </div>
             <div className="max-h-[48vh] overflow-y-auto overscroll-y-contain px-4">
               {confirmLines.map((line) => (

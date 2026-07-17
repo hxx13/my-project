@@ -105,13 +105,37 @@ public class SuppliesSchemaMigrator implements ApplicationRunner {
                     "ALTER TABLE supply_item ADD COLUMN spec_required TINYINT NOT NULL DEFAULT 0 COMMENT '是否强制选规格'");
             ensureColumnExists("supply_claim_line", "spec_snapshot",
                     "ALTER TABLE supply_claim_line ADD COLUMN spec_snapshot VARCHAR(500) NULL COMMENT '规格快照'");
+            ensureColumnExists("supply_item", "independent_order",
+                    "ALTER TABLE supply_item ADD COLUMN independent_order TINYINT NOT NULL DEFAULT 0 COMMENT '是否独立成单:1是,0否'");
+            boolean lockedQtyCreated = ensureColumnExists("supply_item", "locked_qty",
+                    "ALTER TABLE supply_item ADD COLUMN locked_qty INT NOT NULL DEFAULT 0 COMMENT '待处理领用锁定数量'");
+            if (lockedQtyCreated) {
+                // 仅在列首次创建时回填：现存未删除 PENDING 领用单的行数量计入锁定。
+                // 单独 try/catch：ALTER 已成功而回填失败时，下次启动看到列已存在不会再回填，
+                // 必须显式把恢复 SQL 打进 ERROR 日志供运维手工执行，同时保持启动不中断。
+                String backfillSql = """
+                        UPDATE supply_item si SET locked_qty = COALESCE((
+                            SELECT SUM(l.qty) FROM supply_claim_line l
+                            JOIN supply_claim_order o ON l.order_id = o.id
+                            WHERE l.item_id = si.id AND o.status = 'PENDING' AND (o.deleted IS NULL OR o.deleted = 0)
+                        ), 0) WHERE si.stock_mode = 'QUANTIFIED'
+                        """;
+                try {
+                    jdbcTemplate.execute(backfillSql);
+                    log.info("[supplies-schema] supply_item.locked_qty 已创建并回填 PENDING 锁定量");
+                } catch (Exception e) {
+                    log.error("[supplies-schema] locked_qty 列已创建但回填失败，该回填不会自动重试！"
+                            + "请手工执行以下恢复 SQL：\n{}\n失败原因: {}", backfillSql, e.getMessage(), e);
+                }
+            }
             log.info("[supplies-schema] 物资表结构已就绪");
         } catch (Exception e) {
             log.error("[supplies-schema] 表结构迁移失败: {}", e.getMessage());
         }
     }
 
-    private void ensureColumnExists(String tableName, String columnName, String alterSql) {
+    /** 列不存在则创建；返回是否本次新建（供一次性回填判断） */
+    private boolean ensureColumnExists(String tableName, String columnName, String alterSql) {
         Integer count = jdbcTemplate.queryForObject(
                 """
                 SELECT COUNT(1) FROM information_schema.COLUMNS
@@ -125,7 +149,9 @@ public class SuppliesSchemaMigrator implements ApplicationRunner {
         );
         if (count != null && count == 0) {
             jdbcTemplate.execute(alterSql);
+            return true;
         }
+        return false;
     }
 }
 

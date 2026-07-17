@@ -11,6 +11,7 @@
         <result property="shelfStatus" column="shelf_status"/>
         <result property="stockMode" column="stock_mode"/>
         <result property="stockQty" column="stock_qty"/>
+        <result property="lockedQty" column="locked_qty"/>
         <result property="deleted" column="deleted"/>
         <result property="deletedTime" column="deleted_time"/>
         <result property="deletedBy" column="deleted_by"/>
@@ -20,11 +21,12 @@
         <result property="lastInboundAt" column="last_inbound_at"/>
         <result property="specSchema" column="spec_schema"/>
         <result property="specRequired" column="spec_required"/>
+        <result property="independentOrder" column="independent_order"/>
     </resultMap>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO supply_item(category_id, name, subtitle, cover_url, shelf_status, stock_mode, stock_qty, last_inbound_at, spec_schema, spec_required)
-        VALUES (#{categoryId}, #{name}, #{subtitle}, #{coverUrl}, #{shelfStatus}, #{stockMode}, #{stockQty}, NOW(), #{specSchema}, #{specRequired})
+        INSERT INTO supply_item(category_id, name, subtitle, cover_url, shelf_status, stock_mode, stock_qty, last_inbound_at, spec_schema, spec_required, independent_order)
+        VALUES (#{categoryId}, #{name}, #{subtitle}, #{coverUrl}, #{shelfStatus}, #{stockMode}, #{stockQty}, NOW(), #{specSchema}, #{specRequired}, #{independentOrder})
     </insert>
 
     <update id="update">
@@ -38,6 +40,7 @@
             stock_qty = #{stockQty}
             <if test="specSchema != null">, spec_schema = #{specSchema}</if>
             <if test="specRequired != null">, spec_required = #{specRequired}</if>
+            <if test="independentOrder != null">, independent_order = #{independentOrder}</if>
         WHERE id = #{id}
     </update>
 
@@ -126,6 +129,30 @@
         WHERE id = #{id}
           AND stock_mode = 'QUANTIFIED'
           AND stock_qty &gt;= #{qty}
+    </update>
+
+    <!-- 锁定库存：仅当可用库存足够时成功，返回受影响行数 -->
+    <update id="lockStockIfAvailable">
+        UPDATE supply_item SET locked_qty = locked_qty + #{qty}
+        WHERE id = #{id} AND stock_mode = 'QUANTIFIED' AND deleted = 0
+          AND (stock_qty - locked_qty) &gt;= #{qty}
+    </update>
+
+    <!-- 强制锁定（回收站恢复用，允许超锁） -->
+    <update id="lockStockForce">
+        UPDATE supply_item SET locked_qty = locked_qty + #{qty}
+        WHERE id = #{id} AND stock_mode = 'QUANTIFIED'
+    </update>
+
+    <!-- 释放锁定，下限 0 -->
+    <update id="releaseLockedStock">
+        UPDATE supply_item SET locked_qty = GREATEST(0, locked_qty - #{qty})
+        WHERE id = #{id} AND stock_mode = 'QUANTIFIED'
+    </update>
+
+    <!-- 清零锁定量（QUANTIFIED → FLAG 模式切换专用，不带 stock_mode 守卫） -->
+    <update id="resetLockedQty">
+        UPDATE supply_item SET locked_qty = 0 WHERE id = #{id}
     </update>
 
     <update id="increaseStock">

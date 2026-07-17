@@ -52,6 +52,10 @@ export default function AdminSuppliesManagePage() {
   const [editSpecDimensions, setEditSpecDimensions] = useState<SpecDimension[]>([]);
   const [editSpecRequired, setEditSpecRequired] = useState(false);
 
+  /* ── 独立下单 ── */
+  const [createIndependentOrder, setCreateIndependentOrder] = useState(false);
+  const [editIndependentOrder, setEditIndependentOrder] = useState(false);
+
   /* ── 内联编辑 ── */
   const [editingItem, setEditingItem] = useState<SupplyItem | null>(null);
   const [editCoverUrl, setEditCoverUrl] = useState("");
@@ -242,6 +246,10 @@ export default function AdminSuppliesManagePage() {
               <AdminSwitchScaled size="3.5" checked={createSpecEnabled} onChange={(checked) => setCreateSpecEnabled(checked)} />
               <span className="text-xs text-[var(--twin-body)]">启用规格</span>
             </label>
+            <label className="flex items-center gap-2 pt-2">
+              <AdminSwitchScaled size="3.5" checked={createIndependentOrder} onChange={(checked) => setCreateIndependentOrder(checked)} />
+              <span className="text-xs text-[var(--twin-body)]">独立下单（不能与其他物资合并下单）</span>
+            </label>
             {createSpecEnabled && (
               <div className="col-span-full w-full space-y-2 border border-[var(--twin-hairline)] rounded-twin-md p-3 bg-[var(--twin-canvas)]">
                 <label className="flex items-center gap-2">
@@ -352,6 +360,7 @@ export default function AdminSuppliesManagePage() {
                       ? JSON.stringify({ dimensions: createSpecDimensions.filter(d => d.name.trim() && d.options.filter(o => o.trim()).length >= 2) })
                       : undefined,
                     specRequired: createSpecEnabled && createSpecRequired ? 1 : 0,
+                    independentOrder: createIndependentOrder ? 1 : 0,
                   },
                   {
                     onSuccess: () => {
@@ -361,6 +370,7 @@ export default function AdminSuppliesManagePage() {
                       setCreateSpecEnabled(false);
                       setCreateSpecDimensions([]);
                       setCreateSpecRequired(false);
+                      setCreateIndependentOrder(false);
                     },
                   },
                 );
@@ -437,6 +447,7 @@ export default function AdminSuppliesManagePage() {
                     onClick={() => {
                       setEditingItem(it);
                       setEditCoverUrl(it.coverUrl || "");
+                      setEditIndependentOrder(it.independentOrder === 1);
                       if (it.specSchema) {
                         try {
                           const parsed = JSON.parse(it.specSchema);
@@ -700,6 +711,10 @@ export default function AdminSuppliesManagePage() {
                 <AdminSwitchScaled size="3.5" checked={editSpecEnabled} onChange={(checked) => setEditSpecEnabled(checked)} />
                 <span className="text-xs text-[var(--twin-body)]">启用规格</span>
               </label>
+              <label className="flex items-center gap-2 col-span-2 pt-2">
+                <AdminSwitchScaled size="3.5" checked={editIndependentOrder} onChange={(checked) => setEditIndependentOrder(checked)} />
+                <span className="text-xs text-[var(--twin-body)]">独立下单（不能与其他物资合并下单）</span>
+              </label>
               {editSpecEnabled && (
                 <div className="col-span-2 space-y-2 border border-[var(--twin-hairline)] rounded-twin-md p-3 bg-[var(--twin-canvas)]">
                   <label className="flex items-center gap-2">
@@ -762,6 +777,7 @@ export default function AdminSuppliesManagePage() {
                         ? JSON.stringify({ dimensions: editSpecDimensions.filter(d => d.name.trim() && d.options.filter(o => o.trim()).length >= 2) })
                         : undefined,
                       specRequired: editSpecEnabled && editSpecRequired ? 1 : 0,
+                      independentOrder: editIndependentOrder ? 1 : 0,
                     },
                   }, { onSuccess: () => setEditingItem(null) });
                 }}

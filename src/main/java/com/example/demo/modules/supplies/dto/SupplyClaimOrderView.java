@@ -21,4 +21,8 @@ public class SupplyClaimOrderView {
     private String deletedBy;
     private LocalDateTime purgeAfterTime;
     private List<SupplyClaimLineView> lines;
+    /** 独立下单拆分：本次提交共生成的工单数（含本单）；未拆分为 null */
+    private Integer splitCount;
+    /** 独立下单拆分：其余拆分出的工单号 */
+    private java.util.List<String> splitOrderIds;
 }
