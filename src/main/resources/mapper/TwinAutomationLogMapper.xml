@@ -125,7 +125,9 @@
         <include refid="FilterWhere"/>
     </select>
 
-    <!-- 豁免轨迹：按人（user_id）或卡（target_id）反查 EXEMPTION 记账，时间倒序。
+    <!-- 豁免轨迹：按人（user_id）或卡（target_id）反查豁免授予/收回记账，时间倒序。
+         event_key 白名单收窄纯轨迹语义：排除同 EXEMPTION 类型的非轨迹事件（如 ARO_LOCAL_EXIT_RECONCILE），
+         也彻底排除旧 SCAN_DELAY_GRANTED 行（target_id 为 roomId，存在与 cardNo 撞值风险）。
          userId / cardNo 至少一个非空（两者全空由 Service 层拦截，不会走到这里）。 -->
     <select id="selectExemptHistory" resultMap="BaseMap">
         SELECT l.id, l.automation_type, l.event_key, l.trigger_type, l.trigger_reason,
@@ -134,6 +136,7 @@
         FROM twin_automation_log l
         LEFT JOIN aro_personnel p ON l.user_id = p.user_id
         WHERE l.automation_type = 'EXEMPTION'
+          AND l.event_key IN ('EXEMPT_GRANTED', 'EXEMPT_REVOKED')
         <choose>
             <when test="userId != null and userId != '' and cardNo != null and cardNo != ''">
                 AND (l.user_id = #{userId} OR l.target_id = #{cardNo})
