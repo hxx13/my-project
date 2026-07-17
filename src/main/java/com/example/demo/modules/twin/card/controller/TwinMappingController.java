@@ -272,8 +272,17 @@ public class TwinMappingController {
                 maxCount = Integer.parseInt(payload.get("maxCount").toString());
             }
             String roomIds = payload.get("roomIds") != null ? payload.get("roomIds").toString() : null;
-            // 可选客户端标识（记账用，不校验）
+            // 可选客户端标识（记账用，不校验业务含义）：剔除中英文逗号/换行等分隔符并限长 32，防伪造 detail 字段段落
             String client = payload.get("client") != null ? payload.get("client").toString() : null;
+            if (client != null) {
+                client = client.replaceAll("[，,\\r\\n]", "").trim();
+                if (client.length() > 32) {
+                    client = client.substring(0, 32);
+                }
+                if (client.isEmpty()) {
+                    client = null;
+                }
+            }
 
             if (flag == 1) {
                 boolean hasUntil = extendUntilTime != null && !extendUntilTime.isBlank();

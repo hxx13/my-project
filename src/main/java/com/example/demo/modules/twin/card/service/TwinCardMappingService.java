@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -425,8 +426,13 @@ public class TwinCardMappingService {
                 throw new IllegalArgumentException("时长限制模式须指定 extendUntilTime 或 durationMinutes");
             }
         }
-        // 变更前快照：缓存刷新会放入新对象，本引用保留变更前字段值，供记账取「原到期/原模式」
+        // 变更前快照：缓存未命中回退 DB（避免缓存冷启动漏记账）；随即复制关键字段，防缓存对象在记账前被就地清空
         TwinCardMapping cacheItem = resolveMappingByCardNo(cardNo);
+        TwinCardMapping before = cacheItem;
+        if (before == null && cardNo != null && !cardNo.isBlank()) {
+            before = mappingMapper.findByCardNo(cardNo.trim());
+        }
+        before = copyLedgerSnapshot(before);
         String dbCardNo = cacheItem != null ? cacheItem.getCardNo() : (cardNo == null ? "" : cardNo.trim());
         String updateTime = getCurrentTime();
         String expireAt = null;
@@ -436,11 +442,13 @@ public class TwinCardMappingService {
         mappingMapper.updateExemptFlag(dbCardNo, flag, expireAt, updateTime, mode, maxCount, roomIds);
         // 写库后以 DB 刷新缓存，避免滞留/跑批仍读到旧 flag；post-save-no-full-refresh.mdc 不适用缓存层
         refreshMappingCacheAfterExemptWrite(cacheItem != null ? cacheItem.getAroUserId() : null, dbCardNo);
-        // 统一记账：写库+刷缓存成功后落台账（write 内部吞异常，不阻断主业务）
+        // 统一记账：写库+刷缓存成功后落台账（write 内部吞异常，不阻断主业务）；门槛以真实状态迁移为准
         if (flag == 1) {
-            writeExemptLedger(true, cacheItem, ctx, buildGrantLedgerExtra(cacheItem, mode, expireAt, roomIds));
+            if (shouldWriteGrantLedger(before, mode, expireAt, maxCount, roomIds)) {
+                writeExemptLedger(true, before, ctx, buildGrantLedgerExtra(before, mode, expireAt, roomIds));
+            }
         } else {
-            writeExemptLedger(false, cacheItem, ctx, null);
+            writeExemptLedger(false, before, ctx, null);
         }
         Map<String, Object> out = new HashMap<>();
         out.put("cardNo", dbCardNo);
@@ -469,8 +477,12 @@ public class TwinCardMappingService {
             return;
         }
         try {
-            // 变更前快照：缓存刷新会放入新对象，本引用保留递增前字段值，供次数耗尽记账
+            // 变更前快照：缓存未命中回退 DB；随即复制关键字段，防缓存对象在记账前被就地清空
             TwinCardMapping before = getByAroUserId(userId.trim());
+            if (before == null) {
+                before = mappingMapper.findByAroUserId(userId.trim());
+            }
+            before = copyLedgerSnapshot(before);
             int affected = mappingMapper.incrementExemptUsedCount(userId.trim(), roomId);
             if (affected > 0) {
                 refreshMappingCacheAfterExemptWrite(userId.trim(), null);
@@ -488,15 +500,24 @@ public class TwinCardMappingService {
     }
 
     /**
-     * 统一记账（唯一写入点）：豁免授予/收回落 twin_automation_log 台账。
+     * 统一记账（<b>目标</b>唯一记账点）：豁免授予/收回落 twin_automation_log 台账。
+     * <p>注意：批量收回路径（revokeExpiredTimedExemptions / runDailyExemptMaintenance / resetDailyExemptions /
+     * clearAllExemptFlagsAfterFirstFreeze / reconcileExemptionsByLogs / deleteMapping 及
+     * {@link #writeScheduledExemptRevokeLog}）将在后续任务合并到本方法，合并前上述路径仍有旁路记账或不记账。</p>
+     * <p>记账门槛：收回仅在变更前确有豁免（flag=1）时落账，避免未曾豁免的用户每次扫码离开都产生虚假「收回」记录。</p>
      *
      * @param granted     true=授予（EXEMPT_GRANTED）；false=收回（EXEMPT_REVOKED）
-     * @param snapshot    <b>变更前</b>快照；映射不存在时不记账直接返回
+     * @param snapshot    <b>变更前</b>快照（须为 {@link #copyLedgerSnapshot} 的复制件）；映射不存在时不记账直接返回
      * @param ctx         变更来源上下文（触发方式/渠道码/操作人/关联单号）
      * @param extraDetail 变更点附加说明（如授予后的模式/到期/房间、覆盖旧豁免检测），可空
      */
     private void writeExemptLedger(boolean granted, TwinCardMapping snapshot, ExemptChangeContext ctx, String extraDetail) {
         if (snapshot == null || ctx == null) {
+            return;
+        }
+        boolean wasExempt = snapshot.getFreezeExemptFlag() != null && snapshot.getFreezeExemptFlag() == 1;
+        if (!granted && !wasExempt) {
+            // 变更前本就无豁免：无真实状态迁移，不落「收回」台账
             return;
         }
         String userId = snapshot.getAroUserId() != null ? snapshot.getAroUserId().trim() : null;
@@ -546,6 +567,57 @@ public class TwinCardMappingService {
             sb.append("，覆盖旧豁免(原到期=").append(nullToDash(before.getFreezeExemptExpireAt())).append(")");
         }
         return sb.toString();
+    }
+
+    /**
+     * GRANTED 记账门槛：变更前非豁免，或到期/模式/次数上限/房间任一有实质变化才记账；
+     * 完全等值的重复授予（如保管卡用户当日反复扫码）不记账，DB 更新行为不受影响。
+     */
+    private static boolean shouldWriteGrantLedger(
+            TwinCardMapping before, String mode, String expireAt, Integer maxCount, String roomIds) {
+        if (before == null) {
+            // 映射不存在时 writeExemptLedger 亦会跳过，此处放行以保持单一职责
+            return true;
+        }
+        if (before.getFreezeExemptFlag() == null || before.getFreezeExemptFlag() != 1) {
+            return true;
+        }
+        return !Objects.equals(normalizeForCompare(expireAt), normalizeForCompare(before.getFreezeExemptExpireAt()))
+                || !Objects.equals(normalizeForCompare(mode), normalizeForCompare(before.getFreezeExemptMode()))
+                || !Objects.equals(maxCount, before.getFreezeExemptMaxCount())
+                || !Objects.equals(normalizeForCompare(roomIds), normalizeForCompare(before.getFreezeExemptRoomIds()));
+    }
+
+    /** 比较用归一化：null/空白视为 null，其余 trim 后比较。 */
+    private static String normalizeForCompare(String v) {
+        if (v == null) {
+            return null;
+        }
+        String t = v.trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    /**
+     * 复制记账所需关键字段为轻量快照：缓存对象可能在快照捕获与记账之间被
+     * {@link #clearExemptFieldsInCache} / {@link #syncCacheClearedExemptFlags} 等就地清空，
+     * 记账 detail 必须使用复制件而非缓存原引用。
+     */
+    private static TwinCardMapping copyLedgerSnapshot(TwinCardMapping src) {
+        if (src == null) {
+            return null;
+        }
+        TwinCardMapping snap = new TwinCardMapping();
+        snap.setAroUserId(src.getAroUserId());
+        snap.setCardNo(src.getCardNo());
+        snap.setUserName(src.getUserName());
+        snap.setFreezeExemptFlag(src.getFreezeExemptFlag());
+        snap.setFreezeExemptExpireAt(src.getFreezeExemptExpireAt());
+        snap.setFreezeExemptMode(src.getFreezeExemptMode());
+        snap.setFreezeExemptMaxCount(src.getFreezeExemptMaxCount());
+        snap.setFreezeExemptRoomIds(src.getFreezeExemptRoomIds());
+        snap.setFreezeExemptGrantDate(src.getFreezeExemptGrantDate());
+        snap.setExemptGrantedAt(src.getExemptGrantedAt());
+        return snap;
     }
 
     /**
@@ -790,15 +862,21 @@ public class TwinCardMappingService {
             if (flag == 1 && (mode.equals("TIME") || mode.equals("BOTH"))) {
                 expireAt = computeExemptExpireAt(durationMinutes != null ? durationMinutes : -1);
             }
-            // 变更前快照（UPDATE 前取）：缓存刷新会放入新对象，本引用保留变更前字段值
+            // 变更前快照（UPDATE 前取）：缓存未命中回退 DB；随即复制关键字段，防缓存对象在记账前被就地清空
             TwinCardMapping before = getByAroUserId(aroUserId);
+            if (before == null && aroUserId != null && !aroUserId.isBlank()) {
+                before = mappingMapper.findByAroUserId(aroUserId.trim());
+            }
+            before = copyLedgerSnapshot(before);
             int affected = mappingMapper.updateExemptFlagByUserId(aroUserId, flag, expireAt, mode, maxCount, roomIds);
             if (affected > 0) {
                 refreshMappingCacheAfterExemptWrite(aroUserId.trim(), null);
                 log.info("[映射底盘] 人员 {} 豁免={} mode={} maxCount={}", aroUserId, flag == 1 ? "开" : "关", mode, maxCount);
-                // 统一记账：写库+刷缓存成功后落台账
+                // 统一记账：写库+刷缓存成功后落台账；门槛以真实状态迁移为准（未曾豁免的收回、等值重复授予不记账）
                 if (flag == 1) {
-                    writeExemptLedger(true, before, ctx, buildGrantLedgerExtra(before, mode, expireAt, roomIds));
+                    if (shouldWriteGrantLedger(before, mode, expireAt, maxCount, roomIds)) {
+                        writeExemptLedger(true, before, ctx, buildGrantLedgerExtra(before, mode, expireAt, roomIds));
+                    }
                 } else {
                     writeExemptLedger(false, before, ctx, null);
                 }
