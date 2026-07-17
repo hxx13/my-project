@@ -16,6 +16,8 @@ export interface ClientVersionResponse {
     buildId: string;
     reloadId: number;
     forceReloadAt: string | null;
+    /** 服务端进程启动标识；与 ROOM_ACK 的 bootId 比对可发现"服务端已重启但 socket 未感知" */
+    bootId?: string;
 }
 
 export interface ClientVersionStats {

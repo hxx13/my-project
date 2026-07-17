@@ -43,6 +43,10 @@ public class ClientVersionService {
     // 从 build-meta.json 读取的期望版本
     private volatile String expectedBuildId = "unknown";
 
+    // bootId：本次进程启动的唯一标识（启动时间戳）。
+    // 客户端用它检测"服务端已重启但 WebSocket 连接未感知"（room 成员资格可能已丢失）。
+    private final String bootId = String.valueOf(Instant.now().toEpochMilli());
+
     // reloadId：单调递增序列号，每次 triggerForceReload 时 +1
     private final AtomicLong reloadIdCounter = new AtomicLong(0);
 
@@ -115,6 +119,7 @@ public class ClientVersionService {
         result.put("buildId", expectedBuildId);
         result.put("reloadId", reloadIdCounter.get());
         result.put("forceReloadAt", forceReloadAt != null ? forceReloadAt.toString() : null);
+        result.put("bootId", bootId);
         return result;
     }
 
@@ -189,6 +194,11 @@ public class ClientVersionService {
     /** 获取期望版本 */
     public String getExpectedBuildId() {
         return expectedBuildId;
+    }
+
+    /** 获取本次进程启动标识（用于 ROOM_ACK 与 /api/client-version 一致性比对） */
+    public String getBootId() {
+        return bootId;
     }
 
     @Scheduled(fixedRate = 60_000)

@@ -83,3 +83,81 @@ sharedSocket.on('reconnect_attempt', (attempt) => {
         };
     }
 });
+
+// ── ROOM_ACK 看门狗：room 成员资格自愈 ──
+// 服务端在 room 分配完成后推送 ROOM_ACK。若连接建立后迟迟收不到 ACK
+// （例如服务端重启窗口期内握手、room 分配被跳过），主动发 ROOM_RESYNC
+// 请求重新分配；重试仍无响应则强制重建连接。稳态开销为零（每次连接一帧）。
+
+const ROOM_ACK_TIMEOUT_MS = 5000;
+const ROOM_RESYNC_MAX_RETRY = 2;
+
+/** 最近一次 ROOM_ACK 携带的服务端 bootId；null 表示尚未收到过 ACK */
+let lastAckBootId: string | null = null;
+let ackWatchdogTimer: ReturnType<typeof setTimeout> | null = null;
+let resyncRetryCount = 0;
+let ackReceivedForThisConnection = false;
+/** 强制重连冷却：防止 bootId 误判（如多实例误配）导致重连风暴 */
+let lastForceReconnectAt = 0;
+const FORCE_RECONNECT_COOLDOWN_MS = 60000;
+
+export function getLastAckBootId(): string | null {
+    return lastAckBootId;
+}
+
+/** 强制重建 Socket.IO 连接（重新握手 → 重新分配 room）。供轮询兜底调用。 */
+export function forceSocketReconnect(reason: string): void {
+    const now = Date.now();
+    if (now - lastForceReconnectAt < FORCE_RECONNECT_COOLDOWN_MS) {
+        console.warn(`[SharedSocket] 强制重连请求被冷却期拦截（${reason}）`);
+        return;
+    }
+    lastForceReconnectAt = now;
+    console.warn(`[SharedSocket] 强制重连：${reason}`);
+    clearAckWatchdog();
+    resyncRetryCount = 0;
+    sharedSocket.disconnect();
+    sharedSocket.connect();
+}
+
+function clearAckWatchdog(): void {
+    if (ackWatchdogTimer) {
+        clearTimeout(ackWatchdogTimer);
+        ackWatchdogTimer = null;
+    }
+}
+
+function startAckWatchdog(): void {
+    clearAckWatchdog();
+    ackWatchdogTimer = setTimeout(() => {
+        if (ackReceivedForThisConnection || !sharedSocket.connected) return;
+        if (resyncRetryCount < ROOM_RESYNC_MAX_RETRY) {
+            resyncRetryCount++;
+            console.warn(`[SharedSocket] ${ROOM_ACK_TIMEOUT_MS}ms 未收到 ROOM_ACK，发送 ROOM_RESYNC（第 ${resyncRetryCount} 次）`);
+            sharedSocket.emit('ROOM_RESYNC', {});
+            startAckWatchdog();
+        } else {
+            forceSocketReconnect(`ROOM_RESYNC 重试 ${ROOM_RESYNC_MAX_RETRY} 次后仍未收到 ROOM_ACK`);
+        }
+    }, ROOM_ACK_TIMEOUT_MS);
+}
+
+sharedSocket.on('connect', () => {
+    ackReceivedForThisConnection = false;
+    resyncRetryCount = 0;
+    startAckWatchdog();
+});
+
+sharedSocket.on('ROOM_ACK', (payload: { bootId?: string; rooms?: string[] }) => {
+    ackReceivedForThisConnection = true;
+    resyncRetryCount = 0;
+    clearAckWatchdog();
+    if (payload?.bootId) {
+        lastAckBootId = String(payload.bootId);
+    }
+    console.log(`[SharedSocket] ROOM_ACK bootId=${payload?.bootId} rooms=${payload?.rooms?.join(',')}`);
+});
+
+sharedSocket.on('disconnect', () => {
+    clearAckWatchdog();
+});

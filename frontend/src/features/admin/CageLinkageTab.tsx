@@ -166,7 +166,7 @@ export function CageLinkageTab({ subPanel = "rules" }: { subPanel?: "rules" | "s
 
   const { data: specialStatus, isLoading: specialStatusLoading } = useQuery({
     queryKey: ["specialStatusOverview"],
-    queryFn: fetchSpecialStatusOverview,
+    queryFn: () => fetchSpecialStatusOverview(),
     staleTime: 60_000,
   });
 

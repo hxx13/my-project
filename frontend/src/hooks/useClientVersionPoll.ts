@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { fetchClientVersion, type ClientVersionResponse } from '@/api/domains/clientVersion.api';
-import { APP_BUILD_ID } from '@/config/socketUrl';
+import { APP_BUILD_ID, getSharedSocket, getLastAckBootId, forceSocketReconnect } from '@/config/socketUrl';
 
 const POLL_NORMAL = parseInt(import.meta.env.VITE_POLL_INTERVAL_NORMAL || '15000', 10);
 const POLL_BACKOFF_1 = parseInt(import.meta.env.VITE_POLL_INTERVAL_BACKOFF_1 || '90000', 10);
@@ -53,6 +53,16 @@ export function useClientVersionPoll(
 
             lastSuccessRef.current = Date.now();
             failCountRef.current = 0;
+
+            // ── bootId 一致性守卫（room 成员资格兜底）──
+            // socket 自认为连接正常，但轮询返回的服务端 bootId 与最近一次
+            // ROOM_ACK 的 bootId 不一致 → 服务端已重启而连接未感知（room 已丢失），
+            // 强制重连触发重新握手 + 重新分配 room。
+            const socket = getSharedSocket();
+            const ackBootId = getLastAckBootId();
+            if (response.bootId && ackBootId && socket.connected && response.bootId !== ackBootId) {
+                forceSocketReconnect(`bootId 不一致：poll=${response.bootId} ack=${ackBootId}`);
+            }
 
             // ── 冷却守卫 ──
             const pageLoadAt = sessionStorage.getItem('__page_load_at');
