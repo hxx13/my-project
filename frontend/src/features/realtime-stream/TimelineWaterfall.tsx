@@ -495,22 +495,22 @@ export function TimelineWaterfall() {
             <div className="flex-1 w-full overflow-y-auto pr-1 pb-4 [&::-webkit-scrollbar]:hidden">
                 <AnimatePresence initial={false}>
                     {events.map((evt: UniversalEvent) => {
-                        const isEnter = evt.action === “ENTER”;
-                        const isPending = evt.action === “PENDING_EXIT”;
-                        const isBootRecord = evt.source === “DB”;
+                        const isEnter = evt.action === "ENTER";
+                        const isPending = evt.action === "PENDING_EXIT";
+                        const isBootRecord = evt.source === "DB";
 
-                        const timeStr = evt.timestamp ? evt.timestamp.split(“ “)[1].substring(0, 5) : “--:--”;
+                        const timeStr = evt.timestamp ? evt.timestamp.split(" ")[1].substring(0, 5) : "--:--";
 
                         // PENDING_EXIT 实时倒计时（基于 scheduledExitAt 每秒重算）
                         const pendingCountdown = isPending && evt.scheduledExitAt
                             ? Math.max(0, Math.floor((new Date(evt.scheduledExitAt).getTime() - Date.now()) / 1000))
                             : 0;
-                        const pendingCountdownLabel = isPending ? formatCountdown(pendingCountdown) : “”;
+                        const pendingCountdownLabel = isPending ? formatCountdown(pendingCountdown) : "";
                         // eslint-disable-next-line @typescript-eslint/no-unused-vars
                         void tick; // 引用 tick 确保每秒重渲染
 
                         // 💥 新增：将时间拆分为小时和分钟，供给”遥测胶囊”使用
-                        const [hour, minute] = timeStr.split(“:”);
+                        const [hour, minute] = timeStr.split(":");
 
                         return (
                             <motion.div
