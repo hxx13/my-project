@@ -5,7 +5,7 @@ import {motion, AnimatePresence} from 'framer-motion';
 // 💥 加上 Map as MapIcon
 import {
     LayoutDashboard, ScrollText, Users, BrainCircuit, Sparkles, ScanFace, Loader2, X, ShoppingCart, Map as MapIcon,
-    Eraser
+    Eraser, RotateCw
 } from 'lucide-react';
 import { useAnalyzeScanMutation, useExecuteAccessMutation } from '@/api/hooks/useScanner';
 import type { AnalyzeResponse, RoomInfo } from '@/api/types/scanner';
@@ -789,6 +789,19 @@ export default function DebugNav() {
                             <Sparkles className="w-4 h-4 text-white"/>
                         </div>
                     </button>
+
+                    {/* 刷新按钮：单击刷新当前页面，hover 时图标旋转 */}
+                    <motion.button
+                        type="button"
+                        title="刷新页面"
+                        aria-label="刷新当前页面"
+                        onClick={() => window.location.reload()}
+                        whileHover={{ scale: 1.15, y: -2 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="relative w-10 h-10 rounded-full flex items-center justify-center transition-colors duration-300 hover:bg-white/5 text-slate-400 hover:text-white group"
+                    >
+                        <RotateCw className="w-5 h-5 transition-transform duration-300 ease-out group-hover:rotate-180 motion-reduce:transition-none" />
+                    </motion.button>
 
                     {links.map((link) => {
                         const isActive =
