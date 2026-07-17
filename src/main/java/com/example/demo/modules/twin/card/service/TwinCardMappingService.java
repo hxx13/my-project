@@ -857,7 +857,9 @@ public class TwinCardMappingService {
         String canonical = mapping.getCardNo();
         // 1. 豁免随行消失：删除前记统一台账（writeExemptLedger 内部复制快照并吞异常，不阻断解绑）
         if (mapping.getFreezeExemptFlag() != null && mapping.getFreezeExemptFlag() == 1) {
-            writeExemptLedger(false, mapping, ctx, "解绑卡映射，豁免随行删除");
+            // 记账快照 DB 直读带姓名（缓存对象无 userName 且多实例下可能陈旧），查不到时回退缓存对象
+            TwinCardMapping ledgerSnapshot = mappingMapper.findLedgerSnapshotByCardNo(canonical);
+            writeExemptLedger(false, ledgerSnapshot != null ? ledgerSnapshot : mapping, ctx, "解绑卡映射，豁免随行删除");
         }
         // 2. 物理删除数据库记录
         mappingMapper.deleteMapping(canonical);
