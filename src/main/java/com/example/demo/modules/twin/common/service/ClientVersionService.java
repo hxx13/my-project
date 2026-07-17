@@ -125,8 +125,16 @@ public class ClientVersionService {
 
     /** 管理员触发"同步在线页" — 完整执行 ①→⑦ 操作顺序 */
     public Map<String, Object> triggerForceReload(String operatorUserId) {
-        // ① 先递增 reloadId
-        long newReloadId = reloadIdCounter.incrementAndGet();
+        // ① 递增 reloadId，并跳变到不小于当前秒级时间戳的值。
+        // 为什么跳变：存量旧版本客户端（无下行修正逻辑）的 sessionStorage 中可能残留
+        // 任意历史 reloadId 高值，重启后计数器归零导致 "新值 > 存储值" 永远不成立，
+        // 这些客户端对同步指令完全免疫。跳到当前时间戳保证显式触发时必然大于
+        // 任何机器上的任何历史存储值。
+        // 与 C1 审计不冲突：C1 反对的是时间戳做"种子"（重启后自然增长引发误刷全站）；
+        // 此处仅在管理员显式点击时跳变——语义上就是要求刷新。重启后计数器仍归零，
+        // 新客户端靠下行修正恢复基线。
+        long newReloadId = reloadIdCounter.updateAndGet(prev ->
+                Math.max(prev + 1, Instant.now().getEpochSecond()));
         // ② 记录触发时间
         forceReloadAt = Instant.now();
         // ③④ WebSocket 广播快速通道

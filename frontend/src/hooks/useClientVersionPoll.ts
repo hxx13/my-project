@@ -76,13 +76,20 @@ export function useClientVersionPoll(
 
             // ── 触发检查 ──
             // 1. buildId 不匹配（新部署）
+            // 去重标记存"已提示过的目标版本"而非布尔值：每出现一个新版本都要重新提示一次。
+            // （历史 bug：布尔标记 + sessionStorage 跨刷新存活 → 一个 tab 一生只提示一次，
+            //   之后所有新部署全部静默跳过）
             if (APP_BUILD_ID !== 'dev' && response.buildId !== APP_BUILD_ID && response.buildId !== 'unknown') {
-                if (!sessionStorage.getItem('__version_mismatch_triggered')) {
-                    sessionStorage.setItem('__version_mismatch_triggered', '1');
+                if (sessionStorage.getItem('__version_mismatch_triggered') !== response.buildId) {
+                    sessionStorage.setItem('__version_mismatch_triggered', response.buildId);
                     onReloadNeeded({ reason: 'version-mismatch', payload: response });
+                    schedule(POLL_NORMAL);
+                    return;
                 }
-                schedule(POLL_NORMAL);
-                return;
+                // 已对同一目标版本提示过：不重复弹横幅，但**不能 return**——
+                // 必须继续走下面的 reloadId 检查，否则版本过期的客户端
+                // 永远收不到"同步在线页"指令（历史 bug：此处 return 导致
+                // 过期机器对管理员同步完全免疫）。
             }
 
             // 2. reloadId 检查（含下行修正）

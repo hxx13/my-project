@@ -99,7 +99,9 @@ function GlobalSocketListener() {
     // ── 客户端版本轮询 + 优雅刷新横幅 ──
     const [reloadBanner, setReloadBanner] = useState<ReloadTrigger | null>(null);
     const handleReloadNeeded = useCallback((trigger: ReloadTrigger) => {
-        setReloadBanner(prev => prev ?? trigger);
+        // reason 不同则替换（触发 Banner 的 snooze 重置）——否则被"稍后提醒"
+        // 雪藏的旧横幅会永久吞掉后续的管理员同步指令
+        setReloadBanner(prev => (prev && prev.reason === trigger.reason) ? prev : trigger);
     }, []);
     useClientVersionPoll(handleReloadNeeded);
 
