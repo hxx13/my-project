@@ -426,14 +426,11 @@ public class TwinCardMappingService {
                 throw new IllegalArgumentException("时长限制模式须指定 extendUntilTime 或 durationMinutes");
             }
         }
-        // 变更前快照：缓存未命中回退 DB（避免缓存冷启动漏记账）；随即复制关键字段，防缓存对象在记账前被就地清空
+        // 变更前快照：DB 直读带姓名（多实例部署下缓存可能陈旧，记账以库内真实状态为准；缓存仍用于解析 dbCardNo / WebSocket userId）
         TwinCardMapping cacheItem = resolveMappingByCardNo(cardNo);
-        TwinCardMapping before = cacheItem;
-        if (before == null && cardNo != null && !cardNo.isBlank()) {
-            before = mappingMapper.findByCardNo(cardNo.trim());
-        }
-        before = copyLedgerSnapshot(before);
         String dbCardNo = cacheItem != null ? cacheItem.getCardNo() : (cardNo == null ? "" : cardNo.trim());
+        TwinCardMapping before = (dbCardNo == null || dbCardNo.isBlank())
+                ? null : mappingMapper.findLedgerSnapshotByCardNo(dbCardNo);
         String updateTime = getCurrentTime();
         String expireAt = null;
         if (flag == 1 && (mode.equals("TIME") || mode.equals("BOTH"))) {
@@ -477,12 +474,8 @@ public class TwinCardMappingService {
             return;
         }
         try {
-            // 变更前快照：缓存未命中回退 DB；随即复制关键字段，防缓存对象在记账前被就地清空
-            TwinCardMapping before = getByAroUserId(userId.trim());
-            if (before == null) {
-                before = mappingMapper.findByAroUserId(userId.trim());
-            }
-            before = copyLedgerSnapshot(before);
+            // 变更前快照：DB 直读带姓名（多实例缓存可能陈旧，记账以库内真实状态为准）
+            TwinCardMapping before = mappingMapper.findLedgerSnapshotByUserId(userId.trim());
             int affected = mappingMapper.incrementExemptUsedCount(userId.trim(), roomId);
             if (affected > 0) {
                 refreshMappingCacheAfterExemptWrite(userId.trim(), null);
@@ -500,14 +493,15 @@ public class TwinCardMappingService {
     }
 
     /**
-     * 统一记账（<b>目标</b>唯一记账点）：豁免授予/收回落 twin_automation_log 台账。
-     * <p>注意：批量收回路径（revokeExpiredTimedExemptions / runDailyExemptMaintenance / resetDailyExemptions /
-     * clearAllExemptFlagsAfterFirstFreeze / reconcileExemptionsByLogs / deleteMapping 及
-     * {@link #writeScheduledExemptRevokeLog}）将在后续任务合并到本方法，合并前上述路径仍有旁路记账或不记账。</p>
+     * 统一记账（唯一记账点）：豁免授予/收回落 twin_automation_log 台账。
+     * <p>单人路径（updateExemptFlag / updateExemptFlagByUserId / incrementExemptUsedCount）与批量收回路径
+     * （revokeExpiredTimedExemptions / runDailyExemptMaintenance / resetDailyExemptions /
+     * clearAllExemptFlagsAfterFirstFreeze / reconcileExemptionsByLogs / deleteMapping）均已接入本方法，
+     * 批量路径按「UPDATE 前取快照 → 执行 UPDATE → 逐人记账」模式调用。</p>
      * <p>记账门槛：收回仅在变更前确有豁免（flag=1）时落账，避免未曾豁免的用户每次扫码离开都产生虚假「收回」记录。</p>
      *
      * @param granted     true=授予（EXEMPT_GRANTED）；false=收回（EXEMPT_REVOKED）
-     * @param snapshot    <b>变更前</b>快照（须为 {@link #copyLedgerSnapshot} 的复制件）；映射不存在时不记账直接返回
+     * @param snapshot    <b>变更前</b>快照（方法内部会经 {@link #copyLedgerSnapshot} 防御性复制，调用方可直接传缓存/查询原对象）；映射不存在时不记账直接返回
      * @param ctx         变更来源上下文（触发方式/渠道码/操作人/关联单号）
      * @param extraDetail 变更点附加说明（如授予后的模式/到期/房间、覆盖旧豁免检测），可空
      */
@@ -515,6 +509,8 @@ public class TwinCardMappingService {
         if (snapshot == null || ctx == null) {
             return;
         }
+        // 防御性复制：缓存对象可能在记账前被 clearExemptFieldsInCache 等就地清空，统一在入口复制关键字段
+        snapshot = copyLedgerSnapshot(snapshot);
         boolean wasExempt = snapshot.getFreezeExemptFlag() != null && snapshot.getFreezeExemptFlag() == 1;
         if (!granted && !wasExempt) {
             // 变更前本就无豁免：无真实状态迁移，不落「收回」台账
@@ -555,6 +551,21 @@ public class TwinCardMappingService {
                 true,
                 detail.toString(),
                 "exempt-ledger");
+    }
+
+    /**
+     * 批量收回前取快照（先查快照后更新）：快照查询失败不阻断收回主流程，
+     * 仅本批缺记账/推送（返回空列表并告警），收回 UPDATE 照常执行。
+     */
+    private List<TwinCardMapping> safeLoadRevokeSnapshots(
+            java.util.function.Supplier<List<TwinCardMapping>> loader, String tag) {
+        try {
+            List<TwinCardMapping> list = loader.get();
+            return list != null ? list : List.of();
+        } catch (Exception e) {
+            log.warn("[豁免记账] {} 收回前快照查询失败（收回照常执行，本批不记账）: {}", tag, e.getMessage());
+            return List.of();
+        }
     }
 
     /** granted 记账附加说明：变更后的 模式/到期/房间 + 覆盖旧豁免检测（before 为变更前快照，可空）。 */
@@ -833,12 +844,21 @@ public class TwinCardMappingService {
     }
 
     // 在 TwinCardMappingService 类中补充
-    public synchronized void deleteMapping(String cardNo) {
+    /**
+     * 解绑卡映射（豁免状态变更点之一）：若被删映射豁免仍生效，删除前记「豁免随行删除」台账。
+     *
+     * @param ctx 变更来源上下文（记账用），见 {@link ExemptChangeContext#mappingDeleted(String)}
+     */
+    public synchronized void deleteMapping(String cardNo, ExemptChangeContext ctx) {
         TwinCardMapping mapping = resolveMappingByCardNo(cardNo);
         if (mapping == null) {
             return;
         }
         String canonical = mapping.getCardNo();
+        // 1. 豁免随行消失：删除前记统一台账（writeExemptLedger 内部复制快照并吞异常，不阻断解绑）
+        if (mapping.getFreezeExemptFlag() != null && mapping.getFreezeExemptFlag() == 1) {
+            writeExemptLedger(false, mapping, ctx, "解绑卡映射，豁免随行删除");
+        }
         // 2. 物理删除数据库记录
         mappingMapper.deleteMapping(canonical);
 
@@ -880,12 +900,9 @@ public class TwinCardMappingService {
             if (flag == 1 && (mode.equals("TIME") || mode.equals("BOTH"))) {
                 expireAt = computeExemptExpireAt(durationMinutes != null ? durationMinutes : -1);
             }
-            // 变更前快照（UPDATE 前取）：缓存未命中回退 DB；随即复制关键字段，防缓存对象在记账前被就地清空
-            TwinCardMapping before = getByAroUserId(aroUserId);
-            if (before == null && aroUserId != null && !aroUserId.isBlank()) {
-                before = mappingMapper.findByAroUserId(aroUserId.trim());
-            }
-            before = copyLedgerSnapshot(before);
+            // 变更前快照（UPDATE 前取）：DB 直读带姓名，消除多实例缓存陈旧误判 + 台账姓名缺失
+            TwinCardMapping before = (aroUserId == null || aroUserId.isBlank())
+                    ? null : mappingMapper.findLedgerSnapshotByUserId(aroUserId.trim());
             int affected = mappingMapper.updateExemptFlagByUserId(aroUserId, flag, expireAt, mode, maxCount, roomIds);
             if (affected > 0) {
                 refreshMappingCacheAfterExemptWrite(aroUserId.trim(), null);
@@ -907,25 +924,42 @@ public class TwinCardMappingService {
     @Scheduled(fixedDelay = 60_000, initialDelay = 45_000)
     public void revokeExpiredTimedExemptions() {
         try {
-            // 收前快照：查询即将被收回的用户，推送 WebSocket 通知
-            List<String> expiredUserIds = mappingMapper.findExpiredExemptUserIds();
+            // 收回前快照（WHERE 与 UPDATE 逐字镜像）：既供逐人记账，也供 WebSocket 推送
+            List<TwinCardMapping> expiredSnapshots = safeLoadRevokeSnapshots(
+                    mappingMapper::findExpiredExemptSnapshots, "时效到期");
             int rows = mappingMapper.revokeExpiredExemptionsByExpireAt();
             if (rows > 0) {
                 syncCacheClearedExemptFlags();
                 log.info("[豁免时效] 已自动收回 {} 份到期豁免", rows);
-                if (expiredUserIds != null) {
-                    for (String uid : expiredUserIds) {
-                        if (uid != null && !uid.isBlank()) {
-                            mobilePresenceNotifyService.notifyPresenceChanged(uid.trim(), "exempt_expired");
-                        }
+                for (TwinCardMapping snap : expiredSnapshots) {
+                    if (snap == null) {
+                        continue;
+                    }
+                    writeExemptLedger(false, snap, ExemptChangeContext.expireTimer(), "时效到期自动收回");
+                    String uid = snap.getAroUserId();
+                    if (uid != null && !uid.isBlank()) {
+                        mobilePresenceNotifyService.notifyPresenceChanged(uid.trim(), "exempt_expired");
                     }
                 }
             }
             // 免冻结增强：同时收回次数已耗尽的 COUNT/BOTH 豁免（兜底，主路径在 incrementExemptUsedCount 中已处理）
+            List<TwinCardMapping> exhaustedSnapshots = safeLoadRevokeSnapshots(
+                    mappingMapper::findExhaustedCountExemptSnapshots, "次数耗尽");
             int countExhausted = mappingMapper.revokeExhaustedCountExemptions();
             if (countExhausted > 0) {
                 syncCacheClearedExemptFlags();
                 log.info("[豁免时效] 已自动收回 {} 份次数耗尽豁免", countExhausted);
+                for (TwinCardMapping snap : exhaustedSnapshots) {
+                    if (snap == null) {
+                        continue;
+                    }
+                    writeExemptLedger(false, snap, ExemptChangeContext.countExhausted(true), "次数耗尽定时兜底收回");
+                    // 对齐即时路径（incrementExemptUsedCount）行为：耗尽收回同样推送 H5 实时通知
+                    String uid = snap.getAroUserId();
+                    if (uid != null && !uid.isBlank()) {
+                        mobilePresenceNotifyService.notifyPresenceChanged(uid.trim(), "exempt_exhausted");
+                    }
+                }
             }
         } catch (Exception e) {
             log.warn("[豁免时效] 到期收回失败: {}", e.getMessage());
@@ -977,7 +1011,13 @@ public class TwinCardMappingService {
             }
             syncCacheAfterForceRevoke(activeBefore);
             for (TwinCardMapping snap : activeBefore) {
-                writeScheduledExemptRevokeLog(snap);
+                if (snap == null) {
+                    continue;
+                }
+                // 统一记账：授予日/授予时间并入附加说明，detail 信息量不低于旧的独立拼装（原到期/原模式由记账点自动拼）
+                writeExemptLedger(false, snap, ExemptChangeContext.dailyResetFallback(),
+                        "定时兜底收回（无视时效/流水规则），授予日=" + nullToDash(snap.getFreezeExemptGrantDate())
+                                + "，授予时间=" + nullToDash(snap.getExemptGrantedAt()));
             }
         } else {
             log.info("[豁免回收] 库中无 freeze_exempt_flag=1，无需收回");
@@ -1043,27 +1083,6 @@ public class TwinCardMappingService {
                 revoked, exemptedToday.size(), stillInside.size(), signoutOk, signoutFail,
                 signoutSkippedNoUser, signoutSkippedNotInside);
         return new int[] {revoked, signoutOk};
-    }
-
-    private void writeScheduledExemptRevokeLog(TwinCardMapping snap) {
-        String userId = snap.getAroUserId() != null ? snap.getAroUserId().trim() : null;
-        String name = snap.getUserName() != null ? snap.getUserName().trim() : "";
-        String detail = "定时兜底收回冻结豁免（无视豁免时效、授予日与流水规则）。"
-                + "姓名=" + (name.isEmpty() ? "-" : name)
-                + "，卡号=" + nullToDash(snap.getCardNo())
-                + "，授予日=" + nullToDash(snap.getFreezeExemptGrantDate())
-                + "，授予时间=" + nullToDash(snap.getExemptGrantedAt())
-                + "，原到期=" + nullToDash(snap.getFreezeExemptExpireAt());
-        twinAutomationLogService.write(
-                TwinAutomationLogService.TYPE_EXEMPTION,
-                TwinAutomationLogService.EVENT_EXEMPT_REVOKED,
-                "TIMER",
-                TwinAutomationLogService.TRIGGER_DAILY_EXEMPT_RESET_FALLBACK,
-                userId,
-                snap.getCardNo(),
-                true,
-                detail,
-                "job-daily-exempt-reset");
     }
 
     private static String buildExemptRevokeSignoutDetail(TwinCardMapping snap) {
@@ -1169,9 +1188,15 @@ public class TwinCardMappingService {
     @Transactional(rollbackFor = Exception.class)
     public int resetDailyExemptions() {
         try {
+            // 收回前快照（WHERE 与 resetDailyExemptions UPDATE 逐字镜像）：供逐人记账
+            List<TwinCardMapping> snapshots = safeLoadRevokeSnapshots(
+                    mappingMapper::findStartupResetExemptSnapshots, "开机洗刷");
             int rows = mappingMapper.resetDailyExemptions();
             if (rows > 0) {
                 syncCacheClearedExemptFlags();
+                for (TwinCardMapping snap : snapshots) {
+                    writeExemptLedger(false, snap, ExemptChangeContext.startupReset(), "开机洗刷隔日过期豁免");
+                }
             }
             log.info("[系统自检] 每日豁免权洗刷完成，共收回 {} 份过期特权。", rows);
             return rows;
@@ -1188,6 +1213,9 @@ public class TwinCardMappingService {
     @Transactional(rollbackFor = Exception.class)
     public int clearAllExemptFlagsAfterFirstFreeze() {
         try {
+            // 收回前快照：clearAllExemptFlagsKeepGrantTrace 的 WHERE 就是 flag=1，findAllActiveExemptions 正好镜像
+            List<TwinCardMapping> snapshots = safeLoadRevokeSnapshots(
+                    mappingMapper::findAllActiveExemptions, "首次冻结清空");
             int rows = mappingMapper.clearAllExemptFlagsKeepGrantTrace();
             if (rows > 0) {
                 for (TwinCardMapping m : userIdCache.values()) {
@@ -1196,6 +1224,10 @@ public class TwinCardMappingService {
                         m.setFreezeExemptExpireAt(null);
                         m.setLastModifiedTime(getCurrentTime());
                     }
+                }
+                for (TwinCardMapping snap : snapshots) {
+                    writeExemptLedger(false, snap, ExemptChangeContext.firstFreezeClear(),
+                            "首次冻结结束后清空当日豁免（保留授予轨迹供二次冻结补偿识别）");
                 }
             }
             log.info("[第一次冻结] 冻结完成后已回收豁免权，共处理 {} 人。", rows);
@@ -1217,9 +1249,16 @@ public class TwinCardMappingService {
         // 💥 核心核对 SQL：
         // 剥夺豁免权的条件：当前拥有豁免权 (flag=1)，但在今天的 aro_access_log 中找不到他申请不还卡的记录
         try {
+            // 收回前快照（WHERE 与 revokeExpiredExemptionsByTodayKeepCard 逐字镜像）：供逐人记账
+            List<TwinCardMapping> snapshots = safeLoadRevokeSnapshots(
+                    mappingMapper::findReconcileRevokeSnapshots, "事件溯源纠偏");
             int revokedCount = mappingMapper.revokeExpiredExemptionsByTodayKeepCard();
             if (revokedCount > 0) {
                 syncCacheClearedExemptFlags();
+                for (TwinCardMapping snap : snapshots) {
+                    writeExemptLedger(false, snap, ExemptChangeContext.reconcile(),
+                            "核对今日流水后褫夺过期豁免（无今日保管卡记录）");
+                }
                 log.warn("[风控纠偏] 发现并褫夺了 {} 份昨天的过期豁免权！系统状态已绝对对齐。", revokedCount);
             } else {
                 log.info("[风控纠偏] 当前系统中所有豁免权均合法有效，无过期特权泄漏。");

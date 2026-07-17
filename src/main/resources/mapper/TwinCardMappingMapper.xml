@@ -22,6 +22,27 @@
         last_modified_time AS lastModifiedTime
     </sql>
 
+    <!-- 豁免记账快照列（与 findAllActiveExemptions 列清单一致，含人员姓名）：供收回前快照 / 单人记账快照复用 -->
+    <sql id="ledgerSnapshotColumns">
+        m.id,
+        m.card_no AS cardNo,
+        m.dahua_seq AS dahuaSeq,
+        m.dahua_person_code AS dahuaPersonCode,
+        m.aro_user_id AS aroUserId,
+        m.card_status AS cardStatus,
+        m.freeze_exempt_flag AS freezeExemptFlag,
+        m.freeze_exempt_grant_date AS freezeExemptGrantDate,
+        m.exempt_granted_at AS exemptGrantedAt,
+        m.freeze_exempt_expire_at AS freezeExemptExpireAt,
+        m.freeze_exempt_room_ids AS freezeExemptRoomIds,
+        m.freeze_exempt_mode AS freezeExemptMode,
+        m.freeze_exempt_max_count AS freezeExemptMaxCount,
+        m.freeze_exempt_used_count AS freezeExemptUsedCount,
+        m.last_modified_time AS lastModifiedTime,
+        p.name AS userName,
+        p.job_number AS jobNumber
+    </sql>
+
     <select id="findByCardNo" resultType="com.example.demo.modules.twin.card.entity.TwinCardMapping">
         SELECT <include refid="mappingColumns"/>
         FROM twin_card_mapping
@@ -307,11 +328,68 @@
           AND freeze_exempt_used_count >= freeze_exempt_max_count
     </update>
 
-    <select id="findExpiredExemptUserIds" resultType="string">
-        SELECT aro_user_id FROM twin_card_mapping
-        WHERE freeze_exempt_flag = 1
-          AND freeze_exempt_expire_at IS NOT NULL
-          AND freeze_exempt_expire_at &lt;= NOW()
+    <!-- ========== 豁免收回前快照（先查快照后更新，逐人记 EXEMPT_REVOKED 台账） ==========
+         WHERE 与对应 UPDATE 逐字镜像（仅补表别名 m.），保证「查到的就是即将被更的」 -->
+
+    <!-- 镜像 revokeExpiredExemptionsByExpireAt：时效到期定时收回 -->
+    <select id="findExpiredExemptSnapshots" resultType="com.example.demo.modules.twin.card.entity.TwinCardMapping">
+        SELECT <include refid="ledgerSnapshotColumns"/>
+        FROM twin_card_mapping m
+        LEFT JOIN aro_personnel p ON m.aro_user_id = p.user_id
+        WHERE m.freeze_exempt_flag = 1
+          AND m.freeze_exempt_expire_at IS NOT NULL
+          AND m.freeze_exempt_expire_at &lt;= NOW()
+    </select>
+
+    <!-- 镜像 revokeExhaustedCountExemptions：次数耗尽定时兜底收回 -->
+    <select id="findExhaustedCountExemptSnapshots" resultType="com.example.demo.modules.twin.card.entity.TwinCardMapping">
+        SELECT <include refid="ledgerSnapshotColumns"/>
+        FROM twin_card_mapping m
+        LEFT JOIN aro_personnel p ON m.aro_user_id = p.user_id
+        WHERE m.freeze_exempt_flag = 1
+          AND m.freeze_exempt_mode IN ('COUNT', 'BOTH')
+          AND m.freeze_exempt_max_count IS NOT NULL
+          AND m.freeze_exempt_used_count >= m.freeze_exempt_max_count
+    </select>
+
+    <!-- 镜像 resetDailyExemptions：开机洗刷过期豁免 -->
+    <select id="findStartupResetExemptSnapshots" resultType="com.example.demo.modules.twin.card.entity.TwinCardMapping">
+        SELECT <include refid="ledgerSnapshotColumns"/>
+        FROM twin_card_mapping m
+        LEFT JOIN aro_personnel p ON m.aro_user_id = p.user_id
+        WHERE m.freeze_exempt_flag = 1
+          AND (m.freeze_exempt_grant_date IS NULL OR m.freeze_exempt_grant_date &lt; CURDATE())
+    </select>
+
+    <!-- 镜像 revokeExpiredExemptionsByTodayKeepCard：事件溯源纠偏收回（今日 keep_card 子查询逐字照抄） -->
+    <select id="findReconcileRevokeSnapshots" resultType="com.example.demo.modules.twin.card.entity.TwinCardMapping">
+        SELECT <include refid="ledgerSnapshotColumns"/>
+        FROM twin_card_mapping m
+        LEFT JOIN aro_personnel p ON m.aro_user_id = p.user_id
+        WHERE m.freeze_exempt_flag = 1
+          AND (m.freeze_exempt_grant_date IS NULL OR m.freeze_exempt_grant_date &lt; CURDATE())
+          AND m.aro_user_id NOT IN (
+            SELECT DISTINCT user_id
+            FROM aro_access_log
+            WHERE DATE(create_time) = CURDATE()
+              AND is_keep_card = 1
+        )
+    </select>
+
+    <!-- ========== 单人记账快照：DB 直读带姓名（多实例缓存可能陈旧，记账以库内真实状态为准） ========== -->
+
+    <select id="findLedgerSnapshotByCardNo" resultType="com.example.demo.modules.twin.card.entity.TwinCardMapping">
+        SELECT <include refid="ledgerSnapshotColumns"/>
+        FROM twin_card_mapping m
+        LEFT JOIN aro_personnel p ON m.aro_user_id = p.user_id
+        WHERE m.card_no = #{cardNo}
+    </select>
+
+    <select id="findLedgerSnapshotByUserId" resultType="com.example.demo.modules.twin.card.entity.TwinCardMapping">
+        SELECT <include refid="ledgerSnapshotColumns"/>
+        FROM twin_card_mapping m
+        LEFT JOIN aro_personnel p ON m.aro_user_id = p.user_id
+        WHERE m.aro_user_id = #{aroUserId}
     </select>
 
 </mapper>

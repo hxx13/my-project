@@ -51,7 +51,7 @@ public interface TwinCardMappingMapper {
     /** 收回 freeze_exempt_expire_at 已到的豁免 */
     int revokeExpiredExemptionsByExpireAt();
 
-    /** 当前库中 freeze_exempt_flag=1 的全部映射（定时兜底回收前快照） */
+    /** 当前库中 freeze_exempt_flag=1 的全部映射（定时兜底回收 / 首次冻结清空前快照，含姓名） */
     List<TwinCardMapping> findAllActiveExemptions();
 
     /** 定时兜底：收回全部生效豁免，无视授予日/到期/流水规则 */
@@ -73,6 +73,23 @@ public interface TwinCardMappingMapper {
     /** 收回次数已耗尽的 COUNT/BOTH 豁免（定时兜底） */
     int revokeExhaustedCountExemptions();
 
-    /** 查询即将被定时任务收回的到期豁免用户 ID（用于 WebSocket 推送） */
-    List<String> findExpiredExemptUserIds();
+    // ========== 豁免收回前快照（WHERE 与对应 UPDATE 逐字镜像，供逐人记 EXEMPT_REVOKED 台账） ==========
+
+    /** 时效到期收回前快照（镜像 {@link #revokeExpiredExemptionsByExpireAt}，含姓名） */
+    List<TwinCardMapping> findExpiredExemptSnapshots();
+
+    /** 次数耗尽收回前快照（镜像 {@link #revokeExhaustedCountExemptions}，含姓名） */
+    List<TwinCardMapping> findExhaustedCountExemptSnapshots();
+
+    /** 开机洗刷收回前快照（镜像 {@link #resetDailyExemptions}，含姓名） */
+    List<TwinCardMapping> findStartupResetExemptSnapshots();
+
+    /** 事件溯源纠偏收回前快照（镜像 {@link #revokeExpiredExemptionsByTodayKeepCard}，含姓名） */
+    List<TwinCardMapping> findReconcileRevokeSnapshots();
+
+    /** 单卡记账快照：DB 直读带姓名，供单人豁免路径（授予/收回）记账 */
+    TwinCardMapping findLedgerSnapshotByCardNo(@Param("cardNo") String cardNo);
+
+    /** 单人记账快照：DB 直读带姓名，供单人豁免路径（授予/收回/次数递增）记账 */
+    TwinCardMapping findLedgerSnapshotByUserId(@Param("aroUserId") String aroUserId);
 }

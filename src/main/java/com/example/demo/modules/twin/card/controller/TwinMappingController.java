@@ -360,7 +360,8 @@ public class TwinMappingController {
             return denied;
         }
         try {
-            mappingService.deleteMapping(cardNo);
+            // 解绑随行收回豁免的记账来源：操作人为当前登录用户
+            mappingService.deleteMapping(cardNo, ExemptChangeContext.mappingDeleted(user.getId()));
             log.info("[twin] mapping delete cardNo={} by userId={}", cardNo, user.getId());
             return Result.success("映射解绑成功！");
         } catch (Exception e) {
