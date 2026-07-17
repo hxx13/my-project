@@ -27,6 +27,8 @@ public final class TwinAutomationLogDetailHumanizer {
 
     private static final Pattern CHANNEL = Pattern.compile("channel=([^,\\s|）)]+)");
     private static final Pattern ROOM_ID = Pattern.compile("roomId=([0-9]{6,32})");
+    private static final Pattern OPERATOR = Pattern.compile("操作人=([^，]+)");
+    private static final Pattern ROOM_NAME_JSON = Pattern.compile("\"roomName\"\\s*:\\s*\"([^\"]+)\"");
     private static final Pattern SECONDS = Pattern.compile("(\\d+)\\s*秒");
     private static final Pattern DATETIME = Pattern.compile("(\\d{4}-\\d{2}-\\d{2}\\s*T?\\d{2}:\\d{2}:\\d{2})");
     private static final Pattern BRACKETED = Pattern.compile("[「]([^」]+)[」]");
@@ -41,9 +43,17 @@ public final class TwinAutomationLogDetailHumanizer {
     public static void applyDetailDisplayZh(List<TwinAutomationLog> rows,
                                             Map<String, String> channelNameByCode,
                                             Map<String, String> roomNameById) {
+        applyDetailDisplayZh(rows, channelNameByCode, roomNameById, Map.of());
+    }
+
+    public static void applyDetailDisplayZh(List<TwinAutomationLog> rows,
+                                            Map<String, String> channelNameByCode,
+                                            Map<String, String> roomNameById,
+                                            Map<String, String> operatorNameById) {
         if (rows == null || rows.isEmpty()) return;
         Map<String, String> ch = channelNameByCode != null ? channelNameByCode : Map.of();
         Map<String, String> rm = roomNameById != null ? roomNameById : Map.of();
+        Map<String, String> op = operatorNameById != null ? operatorNameById : Map.of();
         for (TwinAutomationLog row : rows) {
             if (row == null || "face".equals(row.getLogSource())) continue;
             String raw = row.getDetail();
@@ -51,8 +61,20 @@ public final class TwinAutomationLogDetailHumanizer {
                 row.setDetailDisplayZh("");
                 continue;
             }
-            row.setDetailDisplayZh(toStructuredLines(raw, ch, rm));
+            row.setDetailDisplayZh(toStructuredLines(raw, ch, rm, op));
         }
+    }
+
+    /** 从 detail 中提取 "操作人=xxx" 的操作人 ID（供批量解析成用户名后回填展示） */
+    public static List<String> extractOperatorIds(String detail) {
+        List<String> out = new ArrayList<>();
+        if (detail == null || detail.isBlank()) return out;
+        Matcher m = OPERATOR.matcher(detail);
+        while (m.find()) {
+            String id = m.group(1).trim();
+            if (!id.isEmpty() && !id.equals("-") && !out.contains(id)) out.add(id);
+        }
+        return out;
     }
 
     public static List<String> extractChannelCodes(String detail) {
@@ -81,7 +103,8 @@ public final class TwinAutomationLogDetailHumanizer {
     // 结构化格式化
     // ═══════════════════════════════════════════════════
 
-    private static String toStructuredLines(String raw, Map<String, String> chMap, Map<String, String> rmMap) {
+    private static String toStructuredLines(String raw, Map<String, String> chMap, Map<String, String> rmMap,
+                                            Map<String, String> operatorNameById) {
         String d = raw;
 
         // ── 提取通用字段 ──
@@ -184,6 +207,11 @@ public final class TwinAutomationLogDetailHumanizer {
             return join(lines);
         }
 
+        // ── 5. 豁免统一台账（exempt-ledger 新格式：明述全部字段，不做摘要压缩） ──
+        if (d.startsWith("授予冻结豁免") || d.startsWith("收回冻结豁免")) {
+            return renderExemptLedgerLines(d, operatorNameById);
+        }
+
         if (d.contains("豁免") || d.contains("EXEMPT")) {
             if (d.contains("回收") || d.contains("收回") || d.contains("RESET")) lines.add("当前状态：豁免回收");
             else lines.add("当前状态：豁免操作");
@@ -199,6 +227,96 @@ public final class TwinAutomationLogDetailHumanizer {
 
         // ── 降级：旧版 humanize + compact ──
         return compactForUi(legacyHumanize(d, chMap, rmMap));
+    }
+
+    // ═══════════════════════════════════════════════════
+    // 豁免统一台账（exempt-ledger）明述渲染
+    // ═══════════════════════════════════════════════════
+
+    /**
+     * 渲染豁免统一台账详情：按写入顺序逐字段明述（姓名/卡号/模式/到期/房间/操作人/关联单号/操作端等），
+     * 不做摘要压缩；带括号的补充说明（覆盖旧豁免、次数配额重置）与无键说明归入「说明」行。
+     */
+    private static String renderExemptLedgerLines(String d, Map<String, String> operatorNameById) {
+        List<String> lines = new ArrayList<>();
+        boolean grant = d.startsWith("授予冻结豁免");
+        lines.add("当前状态：" + (grant ? "豁免授予" : "豁免收回"));
+        int dot = d.indexOf('。');
+        String body = dot >= 0 ? d.substring(dot + 1) : d;
+        List<String> notes = new ArrayList<>();
+        for (String token : body.split("，")) {
+            String t = token.trim();
+            if (t.isEmpty()) continue;
+            int eq = t.indexOf('=');
+            int paren = firstParenIndex(t);
+            if (eq < 0 || (paren >= 0 && paren < eq)) {
+                // 无键说明（如"次数耗尽自动收回"）或括号补充（如"覆盖旧豁免(原到期=…)"）
+                notes.add(t);
+                continue;
+            }
+            String key = t.substring(0, eq).trim();
+            String val = t.substring(eq + 1).trim();
+            if (val.isEmpty()) continue;
+            switch (key) {
+                case "姓名" -> { if (!val.equals("-")) lines.add("姓名：" + val); }
+                case "卡号" -> lines.add("卡号：" + val);
+                case "模式" -> { if (!val.equals("-")) lines.add("豁免模式：" + labelExemptMode(val)); }
+                case "到期" -> { if (!val.equals("-")) lines.add("到期时间：" + val); }
+                case "次数上限" -> lines.add("次数上限：" + val + " 次");
+                case "房间" -> lines.add("房间：" + renderExemptRooms(val));
+                case "原到期" -> { if (!val.equals("-")) lines.add("原到期时间：" + val); }
+                case "原模式" -> { if (!val.equals("-")) lines.add("原豁免模式：" + labelExemptMode(val)); }
+                case "操作人" -> {
+                    String name = operatorNameById.get(val);
+                    lines.add("操作人：" + (name != null && !name.isBlank() ? name : val));
+                }
+                case "关联单号" -> lines.add("关联单号：" + val);
+                case "客户端" -> lines.add("操作端：" + labelClientHint(val));
+                case "授予日", "授予时间", "延迟选项", "时长" -> lines.add(key + "：" + val);
+                default -> lines.add(key + "：" + val);
+            }
+        }
+        if (!notes.isEmpty()) lines.add("说明：" + String.join("；", notes));
+        return join(lines);
+    }
+
+    private static int firstParenIndex(String t) {
+        int a = t.indexOf('(');
+        int b = t.indexOf('（');
+        if (a < 0) return b;
+        if (b < 0) return a;
+        return Math.min(a, b);
+    }
+
+    private static String labelExemptMode(String mode) {
+        return switch (mode.trim().toUpperCase(Locale.ROOT)) {
+            case "TIME" -> "按时长";
+            case "COUNT" -> "按次数";
+            case "BOTH" -> "时长+次数";
+            default -> mode;
+        };
+    }
+
+    private static String labelClientHint(String client) {
+        return switch (client.trim().toLowerCase(Locale.ROOT)) {
+            case "web" -> "网页管理台";
+            case "miniapp" -> "小程序";
+            case "room-audit-web" -> "网页在馆稽查";
+            case "room-audit-miniapp" -> "小程序在馆稽查";
+            default -> client;
+        };
+    }
+
+    /** 房间字段：JSON 形如 [{"roomId":"…","roomName":"401"}] → "401"；"-" → 不限 */
+    private static String renderExemptRooms(String val) {
+        if (val.equals("-") || val.equals("[]")) return "不限（全部授权房间）";
+        List<String> names = new ArrayList<>();
+        Matcher m = ROOM_NAME_JSON.matcher(val);
+        while (m.find()) {
+            String n = m.group(1).trim();
+            if (!n.isEmpty() && !names.contains(n)) names.add(n);
+        }
+        return names.isEmpty() ? val : String.join("、", names);
     }
 
     // ═══════════════════════════════════════════════════

@@ -93,6 +93,8 @@ public class TwinAutomationLogService {
     private final DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper;
     private final AroDatabaseMapper aroDatabaseMapper;
     private final com.example.demo.modules.facerecognition.service.FaceVerifyAuditAdminService faceVerifyAuditAdminService;
+    /** 解析台账 detail 中"操作人=<用户ID>"为用户名展示 */
+    private final com.example.demo.modules.auth.mapper.UserMapper userMapper;
 
     public TwinAutomationLogService(
             TwinAutomationLogMapper mapper,
@@ -100,7 +102,8 @@ public class TwinAutomationLogService {
             TwinAutomationDisplayMapMapper displayMapMapper,
             DahuaDeviceChannelCacheMapper dahuaDeviceChannelCacheMapper,
             AroDatabaseMapper aroDatabaseMapper,
-            com.example.demo.modules.facerecognition.service.FaceVerifyAuditAdminService faceVerifyAuditAdminService
+            com.example.demo.modules.facerecognition.service.FaceVerifyAuditAdminService faceVerifyAuditAdminService,
+            com.example.demo.modules.auth.mapper.UserMapper userMapper
     ) {
         this.mapper = mapper;
         this.jobExecutionRegistry = jobExecutionRegistry;
@@ -108,6 +111,7 @@ public class TwinAutomationLogService {
         this.dahuaDeviceChannelCacheMapper = dahuaDeviceChannelCacheMapper;
         this.aroDatabaseMapper = aroDatabaseMapper;
         this.faceVerifyAuditAdminService = faceVerifyAuditAdminService;
+        this.userMapper = userMapper;
     }
 
     /**
@@ -376,6 +380,7 @@ public class TwinAutomationLogService {
         }
         Set<String> channelCodes = new LinkedHashSet<>();
         Set<String> roomIds = new LinkedHashSet<>();
+        Set<String> operatorIds = new LinkedHashSet<>();
         for (TwinAutomationLog row : list) {
             if (row == null) {
                 continue;
@@ -386,6 +391,7 @@ public class TwinAutomationLogService {
             }
             channelCodes.addAll(TwinAutomationLogDetailHumanizer.extractChannelCodes(d));
             roomIds.addAll(TwinAutomationLogDetailHumanizer.extractRoomIds(d));
+            operatorIds.addAll(TwinAutomationLogDetailHumanizer.extractOperatorIds(d));
         }
         Map<String, String> channelMap = new HashMap<>();
         if (!channelCodes.isEmpty()) {
@@ -422,7 +428,19 @@ public class TwinAutomationLogService {
                 }
             }
         }
-        TwinAutomationLogDetailHumanizer.applyDetailDisplayZh(list, channelMap, roomMap);
+        // 操作人 ID → 用户名（豁免台账等 detail 含"操作人="时展示人名；解析失败降级显示原 ID，不阻断列表）
+        Map<String, String> operatorMap = new HashMap<>();
+        for (String opId : operatorIds) {
+            try {
+                com.example.demo.modules.auth.entity.User u = userMapper.findById(opId);
+                if (u != null && u.getUsername() != null && !u.getUsername().isBlank()) {
+                    operatorMap.put(opId, u.getUsername().trim());
+                }
+            } catch (Exception ignored) {
+                // 单个操作人解析失败不影响其余展示
+            }
+        }
+        TwinAutomationLogDetailHumanizer.applyDetailDisplayZh(list, channelMap, roomMap, operatorMap);
     }
 
     private List<TwinAutomationDisplayMap> safeListDisplayMaps() {

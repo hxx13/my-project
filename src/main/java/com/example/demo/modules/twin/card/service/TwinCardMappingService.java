@@ -444,7 +444,7 @@ public class TwinCardMappingService {
         // 统一记账：写库+刷缓存成功后落台账（write 内部吞异常，不阻断主业务）；门槛以真实状态迁移为准
         if (flag == 1) {
             if (shouldWriteGrantLedger(before, mode, expireAt, maxCount, roomIds)) {
-                writeExemptLedger(true, before, ctx, buildGrantLedgerExtra(before, mode, expireAt, roomIds));
+                writeExemptLedger(true, before, ctx, buildGrantLedgerExtra(before, mode, expireAt, maxCount, roomIds));
             }
         } else {
             writeExemptLedger(false, before, ctx, null);
@@ -571,11 +571,14 @@ public class TwinCardMappingService {
     }
 
     /** granted 记账附加说明：变更后的 模式/到期/房间 + 覆盖旧豁免检测（before 为变更前快照，可空）。 */
-    private static String buildGrantLedgerExtra(TwinCardMapping before, String mode, String expireAt, String roomIds) {
+    private static String buildGrantLedgerExtra(TwinCardMapping before, String mode, String expireAt, Integer maxCount, String roomIds) {
         StringBuilder sb = new StringBuilder();
         sb.append("模式=").append(nullToDash(mode))
-                .append("，到期=").append(nullToDash(expireAt))
-                .append("，房间=").append(nullToDash(roomIds));
+                .append("，到期=").append(nullToDash(expireAt));
+        if (maxCount != null) {
+            sb.append("，次数上限=").append(maxCount);
+        }
+        sb.append("，房间=").append(nullToDash(roomIds));
         if (before != null && before.getFreezeExemptFlag() != null && before.getFreezeExemptFlag() == 1) {
             sb.append("，覆盖旧豁免(原到期=").append(nullToDash(before.getFreezeExemptExpireAt())).append(")");
             if (isCountQuotaReset(before)) {
@@ -914,7 +917,7 @@ public class TwinCardMappingService {
                 // 统一记账：写库+刷缓存成功后落台账；门槛以真实状态迁移为准（未曾豁免的收回、等值重复授予不记账）
                 if (flag == 1) {
                     if (shouldWriteGrantLedger(before, mode, expireAt, maxCount, roomIds)) {
-                        writeExemptLedger(true, before, ctx, buildGrantLedgerExtra(before, mode, expireAt, roomIds));
+                        writeExemptLedger(true, before, ctx, buildGrantLedgerExtra(before, mode, expireAt, maxCount, roomIds));
                     }
                 } else {
                     writeExemptLedger(false, before, ctx, null);
