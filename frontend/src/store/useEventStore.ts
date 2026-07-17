@@ -16,7 +16,7 @@ export interface UniversalEvent {
     source: string;
     category: string;
     timestamp: string;
-    action: "ENTER" | "EXIT" | "WARN" | "UNKNOWN";
+    action: "ENTER" | "EXIT" | "WARN" | "UNKNOWN" | "PENDING_EXIT";
     person: {
         name: string;
         role: string;
@@ -29,6 +29,10 @@ export interface UniversalEvent {
         room: string;
         roomId?: string;
     };
+    /** 待签退倒计时截止时间（仅 PENDING_EXIT 条目） */
+    scheduledExitAt?: string;
+    /** 待签退倒计时剩余秒数（仅 PENDING_EXIT 条目，初始值来自后端，前端每秒递减） */
+    countdownSeconds?: number;
     originalData?: {
         rawStatusCode: string;
         message: string;
@@ -56,7 +60,7 @@ export const useEventStore = create<EventState>((set) => ({
 
     setConnected: (status) => set({ isConnected: status }),
 
-    // 💥 修复核心：装甲级防抖与去重！
+    // 💥 装甲级防抖与去重 + PENDING_EXIT → EXIT 原地替换
     addEvent: (event) => set((state) => {
         // 1. 查重雷达：如果这个 eventId 已经存在于列表里，直接抛弃本次推送！
         const isDuplicate = state.realtimeEvents.some(evt => evt.eventId === event.eventId);
@@ -65,7 +69,18 @@ export const useEventStore = create<EventState>((set) => ({
             return state; // 保持原状态不变
         }
 
-        // 2. 如果是新的，再放行并保持最多 50 条
+        // 2. PENDING_EXIT → EXIT 合并：真实 EXIT 到达时原地替换对应 PENDING_EXIT 条目
+        if (event.action === "EXIT" && event.person?.userId) {
+            const pendingId = "pending-" + event.person.userId;
+            const pendingIdx = state.realtimeEvents.findIndex(evt => evt.eventId === pendingId);
+            if (pendingIdx !== -1) {
+                const updated = [...state.realtimeEvents];
+                updated[pendingIdx] = event;
+                return { realtimeEvents: updated };
+            }
+        }
+
+        // 3. 如果是新的，再放行并保持最多 50 条
         return {
             realtimeEvents: [event, ...state.realtimeEvents].slice(0, 50),
         };
