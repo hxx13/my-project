@@ -1222,4 +1222,21 @@
         ORDER BY totalQty DESC
     </select>
 
+    <select id="getActiveSignoutCountdowns" resultType="map">
+        SELECT das.user_id AS userId,
+               das.scheduled_exit_at AS scheduledExitAt,
+               log.name AS userName,
+               log.project_group_names AS groupName,
+               log.area_name AS areaName,
+               log.room_name AS roomName,
+               log.room_id AS roomId
+        FROM twin_dahua_activation_state das
+        LEFT JOIN aro_access_log log ON log.user_id = das.user_id
+          AND log.accessType = 1
+          AND DATE(log.create_time) = CURDATE()
+        WHERE das.state = 'AUTO_EXIT_SCHEDULED'
+          AND das.scheduled_exit_at > NOW()
+        ORDER BY das.scheduled_exit_at ASC
+    </select>
+
 </mapper>

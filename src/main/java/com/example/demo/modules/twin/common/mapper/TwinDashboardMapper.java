@@ -92,6 +92,9 @@ public interface TwinDashboardMapper {
             @Param("todayStart") String todayStart,
             @Param("todayEnd") String todayEnd);
 
+    /** 当前处于 AUTO_EXIT_SCHEDULED 倒计时中的人员列表（含当日 ENTER 位置信息） */
+    List<Map<String, Object>> getActiveSignoutCountdowns();
+
     List<Map<String, Object>> getRoomCardStatusList(
             @Param("roomId") String roomId,
             @Param("todayStart") String todayStart,
