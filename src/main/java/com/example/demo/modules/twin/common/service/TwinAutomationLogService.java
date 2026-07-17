@@ -32,7 +32,7 @@ public class TwinAutomationLogService {
 
     /** 统一记账：授予单人冻结豁免（与 {@link #EVENT_EXEMPT_REVOKED} 成对，唯一写入点在 TwinCardMappingService） */
     public static final String EVENT_EXEMPT_GRANTED = "EXEMPT_GRANTED";
-    /** 定时兜底收回单人豁免（无视时效/流水） */
+    /** 统一记账：豁免消失（与 {@link #EVENT_EXEMPT_GRANTED} 成对，12 条渠道共用，渠道见 trigger_reason） */
     public static final String EVENT_EXEMPT_REVOKED = "EXEMPT_REVOKED";
     public static final String TRIGGER_DAILY_EXEMPT_RESET_FALLBACK = "DAILY_EXEMPT_RESET_FALLBACK";
     /** 管理员在映射管理台手动设置/收回豁免 */

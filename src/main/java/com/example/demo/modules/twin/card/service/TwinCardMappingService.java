@@ -379,6 +379,8 @@ public class TwinCardMappingService {
 
     public synchronized void addMapping(TwinCardMapping mapping) {
         mapping.setLastModifiedTime(getCurrentTime());
+        // 新录入映射一律无豁免，豁免只能经统一记账入口授予
+        mapping.setFreezeExemptFlag(0);
         // 1. 持久化落盘
         mappingMapper.insertMapping(mapping);
         // 2. 刷入缓存 (保持双写一致)
