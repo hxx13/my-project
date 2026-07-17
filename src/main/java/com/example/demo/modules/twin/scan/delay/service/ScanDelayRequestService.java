@@ -15,6 +15,7 @@ import com.example.demo.modules.twin.common.service.RoomDictionaryManager;
 import com.example.demo.modules.twin.common.util.PersonnelProjectGroupUtil;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
+import com.example.demo.modules.twin.card.support.ExemptChangeContext;
 import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayOption;
 import com.example.demo.modules.twin.scan.delay.entity.TwinScanDelayRequest;
 import com.example.demo.modules.twin.scan.delay.mapper.TwinScanDelayRequestMapper;
@@ -77,9 +78,6 @@ public class ScanDelayRequestService {
 
     @Autowired
     private MobilePresenceNotifyService mobilePresenceNotifyService;
-
-    @Autowired
-    private com.example.demo.modules.twin.common.service.TwinAutomationLogService automationLogService;
 
     @Transactional
     public Map<String, Object> submitRequest(
@@ -149,7 +147,8 @@ public class ScanDelayRequestService {
             out.put("message", "已提交审核，等待教职工确认");
             return out;
         }
-        Map<String, Object> granted = grantExempt(cardNo, opt, roomId.trim(), "DIRECT");
+        // 免审直批：无申请单据，requestId 传 null，操作人记申请提交人
+        Map<String, Object> granted = grantExempt(cardNo, opt, roomId.trim(), "DIRECT", operatorUserId, null);
         granted.put("optionLabel", opt.getOptionLabel());
         if (mobilePresenceNotifyService != null) {
             mobilePresenceNotifyService.notifyPresenceChanged(subjectUserId.trim(), "scan_delay_granted");
@@ -186,7 +185,8 @@ public class ScanDelayRequestService {
         if (!configService.isOptionBoundToRoom(req.getRoomId(), req.getOptionId())) {
             throw new IllegalArgumentException("该房间未配置此延迟选项");
         }
-        Map<String, Object> granted = grantExempt(req.getCardNo(), opt, req.getRoomId(), "APPROVED");
+        Map<String, Object> granted = grantExempt(req.getCardNo(), opt, req.getRoomId(), "APPROVED",
+                reviewerUserId.trim(), requestId);
         granted.put("optionLabel", opt.getOptionLabel());
         requestMapper.updateStatus(requestId, "APPROVED", reviewerUserId.trim(), null, reviewedAt);
         notifySubjectOnReview(req, opt, true, null, reviewerUserId.trim());
@@ -484,52 +484,36 @@ public class ScanDelayRequestService {
         return trimmed;
     }
 
-    private Map<String, Object> grantExempt(String cardNo, TwinScanDelayOption opt, String roomId, String source) {
+    /**
+     * 授予延迟免冻结豁免。
+     * <p>豁免授予/覆盖记账由 {@code TwinCardMappingService.updateExemptFlag} 统一落
+     * EXEMPT_GRANTED 台账（含「覆盖旧豁免」检测），此处仅声明来源上下文，不再自行写日志。</p>
+     *
+     * @param source         APPROVED=审核通过；DIRECT=免审直批
+     * @param reviewerUserId 审核人（直批时为申请操作人）
+     * @param requestId      申请单号，直批无单据时为 null
+     */
+    private Map<String, Object> grantExempt(String cardNo, TwinScanDelayOption opt, String roomId, String source,
+                                            String reviewerUserId, Long requestId) {
         String roomIdsJson = enrichExemptRoomIdsWithNames(configService.resolveExemptRoomIdsJson(opt, roomId));
         String mode = StringUtils.hasText(opt.getExemptMode()) ? opt.getExemptMode() : "TIME";
         Integer duration = opt.getDurationMinutes();
         String extendUntil = StringUtils.hasText(opt.getExtendUntilTime()) ? opt.getExtendUntilTime().trim() : null;
         Integer maxCount = opt.getMaxCount();
+        String optionLabel = StringUtils.hasText(opt.getOptionLabel()) ? opt.getOptionLabel().trim() : "-";
+        String durationLabel = duration != null ? duration + "分钟"
+                : (extendUntil != null ? "至" + extendUntil : "未设");
+        ExemptChangeContext ctx = ExemptChangeContext.scanDelay(source, reviewerUserId, requestId)
+                .withExtraDetail("延迟选项=" + optionLabel + "，时长=" + durationLabel);
         Map<String, Object> updated = cardMappingService.updateExemptFlag(
-                cardNo, 1, duration, mode, maxCount, roomIdsJson, extendUntil
+                cardNo, 1, duration, mode, maxCount, roomIdsJson, extendUntil, ctx
         );
         log.info("[scan-delay] grant exempt cardNo={} roomId={} optionId={} source={}",
                 cardNo, roomId, opt.getId(), source);
-        // 写入自动化日志：记录豁免状态
-        try {
-            String exemptInfo = buildExemptSnapshot(cardNo, opt, roomId, source);
-            automationLogService.write(
-                    com.example.demo.modules.twin.common.service.TwinAutomationLogService.TYPE_EXEMPTION,
-                    "SCAN_DELAY_GRANTED",
-                    "USER",
-                    source,
-                    null,
-                    roomId,
-                    true,
-                    exemptInfo,
-                    "scan-delay-grant"
-            );
-        } catch (Exception e) {
-            log.warn("[scan-delay] automation log write failed: {}", e.getMessage());
-        }
         Map<String, Object> out = new HashMap<>(updated);
         out.put("status", "GRANTED");
         out.put("message", "已授予系统特权免冻结");
         return out;
-    }
-
-    /** 构建豁免状态快照字符串，写入自动化日志 */
-    private String buildExemptSnapshot(String cardNo, TwinScanDelayOption opt, String roomId, String source) {
-        TwinCardMapping m = cardMappingService.getByCardNo(cardNo);
-        String exemptFlag = m != null && m.getFreezeExemptFlag() != null && m.getFreezeExemptFlag() == 1 ? "是" : "否";
-        String mode = StringUtils.hasText(opt.getExemptMode()) ? opt.getExemptMode() : "TIME";
-        String expireInfo = "";
-        if (m != null && m.getFreezeExemptExpireAt() != null) {
-            expireInfo = "，到期=" + m.getFreezeExemptExpireAt().toString();
-        }
-        return "来源=" + source + "，房间=" + roomId + "，模式=" + mode
-                + "，时长=" + (opt.getDurationMinutes() != null ? opt.getDurationMinutes() + "分钟" : "未设")
-                + "，申请前已豁免=" + exemptFlag + expireInfo;
     }
 
     /**

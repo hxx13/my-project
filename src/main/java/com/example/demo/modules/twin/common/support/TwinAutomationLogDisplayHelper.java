@@ -127,6 +127,17 @@ public final class TwinAutomationLogDisplayHelper {
             case "DAILY_EXEMPT_RESET_TIMER" -> "每日豁免回收（凌晨定时）";
             case "DAILY_EXEMPT_RESET_FALLBACK" -> "定时兜底收回豁免（无视时效与流水规则）";
             case "DAILY_EXEMPT_REVOKE_AUTO_SIGNOUT" -> "豁免收回后自动签离";
+            case "MANUAL_ADMIN" -> "管理员手动设置";
+            case "SCAN_DELAY_APPROVED" -> "延迟申请审核通过";
+            case "SCAN_DELAY_DIRECT" -> "延迟申请免审直批";
+            case "KEEP_CARD_GRANT" -> "长期保管卡登记";
+            case "SCAN_EXIT_REVOKE" -> "扫码离开自动收回";
+            case "EXEMPT_EXPIRE_TIMER" -> "豁免时效到期";
+            case "EXEMPT_COUNT_EXHAUSTED" -> "豁免次数耗尽";
+            case "EXEMPT_RECONCILE_REVOKE" -> "事件溯源纠偏收回";
+            case "STARTUP_EXEMPT_RESET" -> "开机洗刷过期豁免";
+            case "MAPPING_DELETED_REVOKE" -> "解绑映射随行收回";
+            case "SCAN_DELAY_REQUEST_DELETED" -> "删除已批申请撤回豁免";
             case "BOOTSTRAP_CATCHUP" -> "启动补跑（错过窗的定时任务）";
             case "SCHEDULE_TICK" -> "定时调度心跳";
             case "MANUAL_RUN" -> "管理员手动执行";
@@ -167,6 +178,8 @@ public final class TwinAutomationLogDisplayHelper {
             case "DAILY_EXEMPT_RESET" -> "每日豁免重置";
             case "DAILY_EXEMPT_RESET_TIMER" -> "每日豁免重置（定时）";
             case "EXEMPT_REVOKED" -> "收回冻结豁免";
+            case "EXEMPT_GRANTED" -> "授予冻结豁免";
+            case "SCAN_DELAY_GRANTED" -> "延迟申请授予豁免（历史码）";
             case "GATE" -> "门禁闸机验证";
             case "PERSONAL" -> "个人中心验证";
             case "PIP" -> "画中画持续监测";

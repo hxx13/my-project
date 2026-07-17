@@ -3,6 +3,7 @@ package com.example.demo.modules.twin.scan.service;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchResult;
 import com.example.demo.modules.accessrule.service.AccessRuleDispatchService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
+import com.example.demo.modules.twin.card.support.ExemptChangeContext;
 import com.example.demo.modules.twin.dahua.service.DahuaSwingRuleConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -170,7 +171,7 @@ public class WebScanExitDahuaLinkageService {
         }
         if (!isKeepCard) {
             try {
-                twinCardMappingService.updateExemptFlagByUserId(userId, 0);
+                twinCardMappingService.updateExemptFlagByUserId(userId, 0, ExemptChangeContext.scanExit());
             } catch (Exception e) {
                 log.warn("[scan-exit-dahua] update exempt failed userId={} err={}", userId, e.getMessage());
             }

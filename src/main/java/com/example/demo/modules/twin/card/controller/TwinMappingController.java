@@ -11,6 +11,7 @@ import com.example.demo.modules.twin.scan.service.DahuaIssueCardOrchestratorServ
 import com.example.demo.modules.twin.common.service.JobExecutionRegistry;
 import com.example.demo.modules.twin.common.service.JobSchedulerService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
+import com.example.demo.modules.twin.card.support.ExemptChangeContext;
 import com.example.demo.modules.twin.scan.service.DahuaIssueAccessRulePrefillService;
 import com.example.demo.modules.twin.scan.service.TwinAccessRuleScanConfigService;
 import com.example.demo.modules.twin.card.service.TwinFreezeConfigService;
@@ -271,6 +272,8 @@ public class TwinMappingController {
                 maxCount = Integer.parseInt(payload.get("maxCount").toString());
             }
             String roomIds = payload.get("roomIds") != null ? payload.get("roomIds").toString() : null;
+            // 可选客户端标识（记账用，不校验）
+            String client = payload.get("client") != null ? payload.get("client").toString() : null;
 
             if (flag == 1) {
                 boolean hasUntil = extendUntilTime != null && !extendUntilTime.isBlank();
@@ -282,7 +285,8 @@ public class TwinMappingController {
                 }
             }
             Map<String, Object> updated = mappingService.updateExemptFlag(
-                    cardNo, flag, durationMinutes, mode, maxCount, roomIds, extendUntilTime);
+                    cardNo, flag, durationMinutes, mode, maxCount, roomIds, extendUntilTime,
+                    ExemptChangeContext.manualAdmin(user.getId(), client));
             log.info("[twin] exempt cardNo={} flag={} mode={} maxCount={} by userId={}",
                     cardNo, flag, mode, maxCount, user.getId());
             return Result.success(updated);

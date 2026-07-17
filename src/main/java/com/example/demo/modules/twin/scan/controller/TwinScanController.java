@@ -28,6 +28,7 @@ import com.example.demo.modules.twin.scan.dto.DahuaIssueAccessPrefillVO;
 import com.example.demo.modules.twin.scan.dto.DahuaIssueCardRequest;
 import com.example.demo.modules.twin.scan.service.DahuaIssueException;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
+import com.example.demo.modules.twin.card.support.ExemptChangeContext;
 import com.example.demo.modules.twin.scan.support.ScanPopupEntryWindowEvaluator;
 import com.example.demo.modules.twin.scan.support.ScanPopupFlowLog;
 import com.example.demo.common.time.BusinessTimeWindow;
@@ -341,7 +342,7 @@ public class TwinScanController {
             }
             // 长期保管卡豁免必须先于门禁派发/待激活计时：否则先起算待激活再写豁免，会出现「库里有待激活行但人已是豁免」的短暂不一致
             if (isKeepCard && physicalCardNo != null) {
-                twinCardMappingService.updateExemptFlagByUserId(userId, 1);
+                twinCardMappingService.updateExemptFlagByUserId(userId, 1, ExemptChangeContext.keepCard());
             }
 
             int deferSec = 0;

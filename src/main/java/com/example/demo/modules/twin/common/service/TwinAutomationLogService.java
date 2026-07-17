@@ -27,10 +27,38 @@ public class TwinAutomationLogService {
     /** 门禁人脸 1:1 验证（face_verify_audit） */
     public static final String TYPE_FACE_VERIFY = "FACE_VERIFY";
     public static final String TRIGGER_USER = "USER";
+    public static final String TRIGGER_TIMER = "TIMER";
+    public static final String TRIGGER_SYSTEM = "SYSTEM";
 
+    /** 统一记账：授予单人冻结豁免（与 {@link #EVENT_EXEMPT_REVOKED} 成对，唯一写入点在 TwinCardMappingService） */
+    public static final String EVENT_EXEMPT_GRANTED = "EXEMPT_GRANTED";
     /** 定时兜底收回单人豁免（无视时效/流水） */
     public static final String EVENT_EXEMPT_REVOKED = "EXEMPT_REVOKED";
     public static final String TRIGGER_DAILY_EXEMPT_RESET_FALLBACK = "DAILY_EXEMPT_RESET_FALLBACK";
+    /** 管理员在映射管理台手动设置/收回豁免 */
+    public static final String TRIGGER_MANUAL_ADMIN = "MANUAL_ADMIN";
+    /** 延迟申请审核通过后授予豁免 */
+    public static final String TRIGGER_SCAN_DELAY_APPROVED = "SCAN_DELAY_APPROVED";
+    /** 延迟申请免审直批授予豁免 */
+    public static final String TRIGGER_SCAN_DELAY_DIRECT = "SCAN_DELAY_DIRECT";
+    /** 长期保管卡登记授予豁免 */
+    public static final String TRIGGER_KEEP_CARD_GRANT = "KEEP_CARD_GRANT";
+    /** 扫码离开联动自动收回豁免 */
+    public static final String TRIGGER_SCAN_EXIT_REVOKE = "SCAN_EXIT_REVOKE";
+    /** 豁免时效到期，定时自动收回 */
+    public static final String TRIGGER_EXEMPT_EXPIRE_TIMER = "EXEMPT_EXPIRE_TIMER";
+    /** 豁免次数耗尽（COUNT/BOTH 模式）自动收回 */
+    public static final String TRIGGER_EXEMPT_COUNT_EXHAUSTED = "EXEMPT_COUNT_EXHAUSTED";
+    /** 事件溯源纠偏：核对流水后褫夺过期豁免 */
+    public static final String TRIGGER_EXEMPT_RECONCILE_REVOKE = "EXEMPT_RECONCILE_REVOKE";
+    /** 开机洗刷过期豁免 */
+    public static final String TRIGGER_STARTUP_EXEMPT_RESET = "STARTUP_EXEMPT_RESET";
+    /** 解绑卡映射随行收回豁免 */
+    public static final String TRIGGER_MAPPING_DELETED_REVOKE = "MAPPING_DELETED_REVOKE";
+    /** 删除已批延迟申请撤回豁免 */
+    public static final String TRIGGER_SCAN_DELAY_REQUEST_DELETED = "SCAN_DELAY_REQUEST_DELETED";
+    /** 首次冻结结束后清空全员当日豁免 */
+    public static final String TRIGGER_FIRST_FREEZE_FINISHED_CLEAR_ALL_EXEMPT = "FIRST_FREEZE_FINISHED_CLEAR_ALL_EXEMPT";
     /** 豁免收回后联动自动签离 */
     public static final String TRIGGER_DAILY_EXEMPT_REVOKE_AUTO_SIGNOUT = "DAILY_EXEMPT_REVOKE_AUTO_SIGNOUT";
     /** 扫码/大华联动关键步骤（便于溯源，不写高频 analyze） */

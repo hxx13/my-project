@@ -3,6 +3,7 @@ package com.example.demo.modules.twin.card.service;
 import com.example.demo.common.time.BusinessTimeWindow;
 import com.example.demo.modules.twin.card.entity.TwinCardMapping;
 import com.example.demo.modules.twin.card.mapper.TwinCardMappingMapper;
+import com.example.demo.modules.twin.card.support.ExemptChangeContext;
 import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.common.support.FreezeReaperAuditContext;
 import com.example.demo.modules.twin.dahua.service.DahuaAutoSignoutService;
@@ -397,15 +398,15 @@ public class TwinCardMappingService {
         }
     }
 
+    /**
+     * 设置/收回单卡冻结豁免（豁免状态唯一变更点之一，统一记 EXEMPT_GRANTED / EXEMPT_REVOKED 台账）。
+     *
+     * @param ctx 变更来源上下文（记账用）——所有调用方必须显式声明来源，见 {@link ExemptChangeContext} 静态工厂
+     */
     public synchronized Map<String, Object> updateExemptFlag(
             String cardNo, Integer flag, Integer durationMinutes,
-            String mode, Integer maxCount, String roomIds) {
-        return updateExemptFlag(cardNo, flag, durationMinutes, mode, maxCount, roomIds, null);
-    }
-
-    public synchronized Map<String, Object> updateExemptFlag(
-            String cardNo, Integer flag, Integer durationMinutes,
-            String mode, Integer maxCount, String roomIds, String extendUntilTime) {
+            String mode, Integer maxCount, String roomIds, String extendUntilTime,
+            ExemptChangeContext ctx) {
         if (flag == null || (flag != 0 && flag != 1)) {
             throw new IllegalArgumentException("flag 须为 0 或 1");
         }
@@ -424,6 +425,7 @@ public class TwinCardMappingService {
                 throw new IllegalArgumentException("时长限制模式须指定 extendUntilTime 或 durationMinutes");
             }
         }
+        // 变更前快照：缓存刷新会放入新对象，本引用保留变更前字段值，供记账取「原到期/原模式」
         TwinCardMapping cacheItem = resolveMappingByCardNo(cardNo);
         String dbCardNo = cacheItem != null ? cacheItem.getCardNo() : (cardNo == null ? "" : cardNo.trim());
         String updateTime = getCurrentTime();
@@ -434,6 +436,12 @@ public class TwinCardMappingService {
         mappingMapper.updateExemptFlag(dbCardNo, flag, expireAt, updateTime, mode, maxCount, roomIds);
         // 写库后以 DB 刷新缓存，避免滞留/跑批仍读到旧 flag；post-save-no-full-refresh.mdc 不适用缓存层
         refreshMappingCacheAfterExemptWrite(cacheItem != null ? cacheItem.getAroUserId() : null, dbCardNo);
+        // 统一记账：写库+刷缓存成功后落台账（write 内部吞异常，不阻断主业务）
+        if (flag == 1) {
+            writeExemptLedger(true, cacheItem, ctx, buildGrantLedgerExtra(cacheItem, mode, expireAt, roomIds));
+        } else {
+            writeExemptLedger(false, cacheItem, ctx, null);
+        }
         Map<String, Object> out = new HashMap<>();
         out.put("cardNo", dbCardNo);
         out.put("freezeExemptFlag", flag);
@@ -461,18 +469,83 @@ public class TwinCardMappingService {
             return;
         }
         try {
+            // 变更前快照：缓存刷新会放入新对象，本引用保留递增前字段值，供次数耗尽记账
+            TwinCardMapping before = getByAroUserId(userId.trim());
             int affected = mappingMapper.incrementExemptUsedCount(userId.trim(), roomId);
             if (affected > 0) {
                 refreshMappingCacheAfterExemptWrite(userId.trim(), null);
                 // 检查次数是否已耗尽（COUNT/BOTH 模式）
                 TwinCardMapping mapping = getByAroUserId(userId.trim());
                 if (mapping != null && (mapping.getFreezeExemptFlag() == null || mapping.getFreezeExemptFlag() == 0)) {
+                    // flag 已翻转为 0：次数耗尽自动收回，补记统一台账
+                    writeExemptLedger(false, before, ExemptChangeContext.countExhausted(false), "次数耗尽自动收回");
                     mobilePresenceNotifyService.notifyPresenceChanged(userId.trim(), "exempt_exhausted");
                 }
             }
         } catch (Exception e) {
             log.warn("[豁免次数] incrementExemptUsedCount 失败 userId={} err={}", userId, e.getMessage());
         }
+    }
+
+    /**
+     * 统一记账（唯一写入点）：豁免授予/收回落 twin_automation_log 台账。
+     *
+     * @param granted     true=授予（EXEMPT_GRANTED）；false=收回（EXEMPT_REVOKED）
+     * @param snapshot    <b>变更前</b>快照；映射不存在时不记账直接返回
+     * @param ctx         变更来源上下文（触发方式/渠道码/操作人/关联单号）
+     * @param extraDetail 变更点附加说明（如授予后的模式/到期/房间、覆盖旧豁免检测），可空
+     */
+    private void writeExemptLedger(boolean granted, TwinCardMapping snapshot, ExemptChangeContext ctx, String extraDetail) {
+        if (snapshot == null || ctx == null) {
+            return;
+        }
+        String userId = snapshot.getAroUserId() != null ? snapshot.getAroUserId().trim() : null;
+        String name = snapshot.getUserName() != null ? snapshot.getUserName().trim() : "";
+        StringBuilder detail = new StringBuilder(granted ? "授予冻结豁免。" : "收回冻结豁免。");
+        detail.append("姓名=").append(name.isEmpty() ? "-" : name)
+                .append("，卡号=").append(nullToDash(snapshot.getCardNo()));
+        if (!granted) {
+            detail.append("，原到期=").append(nullToDash(snapshot.getFreezeExemptExpireAt()))
+                    .append("，原模式=").append(nullToDash(snapshot.getFreezeExemptMode()));
+        }
+        if (extraDetail != null && !extraDetail.isBlank()) {
+            detail.append("，").append(extraDetail.trim());
+        }
+        if (ctx.getOperatorUserId() != null && !ctx.getOperatorUserId().isBlank()) {
+            detail.append("，操作人=").append(ctx.getOperatorUserId().trim());
+        }
+        if (ctx.getRelatedId() != null && !ctx.getRelatedId().isBlank()) {
+            detail.append("，关联单号=").append(ctx.getRelatedId().trim());
+        }
+        if (ctx.getClientHint() != null && !ctx.getClientHint().isBlank()) {
+            detail.append("，客户端=").append(ctx.getClientHint().trim());
+        }
+        if (ctx.getExtraDetail() != null && !ctx.getExtraDetail().isBlank()) {
+            detail.append("，").append(ctx.getExtraDetail().trim());
+        }
+        // write 本身吞异常，不阻断主业务，无需再包 try
+        twinAutomationLogService.write(
+                TwinAutomationLogService.TYPE_EXEMPTION,
+                granted ? TwinAutomationLogService.EVENT_EXEMPT_GRANTED : TwinAutomationLogService.EVENT_EXEMPT_REVOKED,
+                ctx.getTriggerType(),
+                ctx.getReasonCode(),
+                userId,
+                snapshot.getCardNo(),
+                true,
+                detail.toString(),
+                "exempt-ledger");
+    }
+
+    /** granted 记账附加说明：变更后的 模式/到期/房间 + 覆盖旧豁免检测（before 为变更前快照，可空）。 */
+    private static String buildGrantLedgerExtra(TwinCardMapping before, String mode, String expireAt, String roomIds) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("模式=").append(nullToDash(mode))
+                .append("，到期=").append(nullToDash(expireAt))
+                .append("，房间=").append(nullToDash(roomIds));
+        if (before != null && before.getFreezeExemptFlag() != null && before.getFreezeExemptFlag() == 1) {
+            sb.append("，覆盖旧豁免(原到期=").append(nullToDash(before.getFreezeExemptExpireAt())).append(")");
+        }
+        return sb.toString();
     }
 
     /**
@@ -698,15 +771,17 @@ public class TwinCardMappingService {
 
     /**
      * 💥 专为打卡弹窗风控联动设计：通过 ARO 人员 ID 直接修改物理卡的冻结豁免权
+     *
+     * @param ctx 变更来源上下文（记账用），见 {@link ExemptChangeContext} 静态工厂
      */
     @Transactional(rollbackFor = Exception.class)
-    public synchronized void updateExemptFlagByUserId(String aroUserId, int flag) {
-        updateExemptFlagByUserId(aroUserId, flag, flag == 1 ? -1 : null, "TIME", null, null);
+    public synchronized void updateExemptFlagByUserId(String aroUserId, int flag, ExemptChangeContext ctx) {
+        updateExemptFlagByUserId(aroUserId, flag, flag == 1 ? -1 : null, "TIME", null, null, ctx);
     }
 
     public synchronized void updateExemptFlagByUserId(
             String aroUserId, int flag, Integer durationMinutes,
-            String mode, Integer maxCount, String roomIds) {
+            String mode, Integer maxCount, String roomIds, ExemptChangeContext ctx) {
         try {
             if (flag == 1 && mode == null) {
                 mode = "TIME";
@@ -715,10 +790,18 @@ public class TwinCardMappingService {
             if (flag == 1 && (mode.equals("TIME") || mode.equals("BOTH"))) {
                 expireAt = computeExemptExpireAt(durationMinutes != null ? durationMinutes : -1);
             }
+            // 变更前快照（UPDATE 前取）：缓存刷新会放入新对象，本引用保留变更前字段值
+            TwinCardMapping before = getByAroUserId(aroUserId);
             int affected = mappingMapper.updateExemptFlagByUserId(aroUserId, flag, expireAt, mode, maxCount, roomIds);
             if (affected > 0) {
                 refreshMappingCacheAfterExemptWrite(aroUserId.trim(), null);
                 log.info("[映射底盘] 人员 {} 豁免={} mode={} maxCount={}", aroUserId, flag == 1 ? "开" : "关", mode, maxCount);
+                // 统一记账：写库+刷缓存成功后落台账
+                if (flag == 1) {
+                    writeExemptLedger(true, before, ctx, buildGrantLedgerExtra(before, mode, expireAt, roomIds));
+                } else {
+                    writeExemptLedger(false, before, ctx, null);
+                }
             }
         } catch (Exception e) {
             log.error("[映射底盘] 修改豁免权失败 aroUserId={}: {}", aroUserId, e.getMessage());
