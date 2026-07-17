@@ -444,6 +444,13 @@
                 AND CAST(out_log.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
                 AND CAST(out_log.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)
           )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM twin_dahua_activation_state das
+              WHERE das.user_id = log.user_id
+                AND das.state = 'AUTO_EXIT_SCHEDULED'
+                AND das.scheduled_exit_at > NOW()
+          )
         ORDER BY log.create_time DESC
         LIMIT #{limit}
     </select>
