@@ -12,6 +12,8 @@ import com.example.demo.modules.twin.common.service.JobExecutionRegistry;
 import com.example.demo.modules.twin.common.service.JobSchedulerService;
 import com.example.demo.modules.twin.card.service.TwinCardMappingService;
 import com.example.demo.modules.twin.card.support.ExemptChangeContext;
+import com.example.demo.modules.twin.common.entity.TwinAutomationLog;
+import com.example.demo.modules.twin.common.service.TwinAutomationLogService;
 import com.example.demo.modules.twin.scan.service.DahuaIssueAccessRulePrefillService;
 import com.example.demo.modules.twin.scan.service.TwinAccessRuleScanConfigService;
 import com.example.demo.modules.twin.card.service.TwinFreezeConfigService;
@@ -40,6 +42,7 @@ public class TwinMappingController {
     private final AuthContextService authContextService;
     private final DahuaIssueCardOrchestratorService dahuaIssueCardOrchestratorService;
     private final JobSchedulerService jobSchedulerService;
+    private final TwinAutomationLogService automationLogService;
 
     public TwinMappingController(
             TwinCardMappingService mappingService,
@@ -48,7 +51,8 @@ public class TwinMappingController {
             DahuaIssueAccessRulePrefillService dahuaIssueAccessRulePrefillService,
             AuthContextService authContextService,
             DahuaIssueCardOrchestratorService dahuaIssueCardOrchestratorService,
-            JobSchedulerService jobSchedulerService) {
+            JobSchedulerService jobSchedulerService,
+            TwinAutomationLogService automationLogService) {
         this.mappingService = mappingService;
         this.freezeConfigService = freezeConfigService;
         this.accessRuleScanConfigService = accessRuleScanConfigService;
@@ -56,6 +60,7 @@ public class TwinMappingController {
         this.authContextService = authContextService;
         this.dahuaIssueCardOrchestratorService = dahuaIssueCardOrchestratorService;
         this.jobSchedulerService = jobSchedulerService;
+        this.automationLogService = automationLogService;
     }
 
     @GetMapping
@@ -303,6 +308,32 @@ public class TwinMappingController {
             return Result.error(e.getMessage());
         } catch (Exception e) {
             return Result.error("特权更新失败: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/exempt-history")
+    @Operation(summary = "按人反查豁免轨迹（EXEMPT_GRANTED/EXEMPT_REVOKED 产生与消失全记录）")
+    public Result<?> getExemptHistory(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(value = "cardNo", required = false) String cardNo,
+            @RequestParam(value = "limit", defaultValue = "50") int limit) {
+        User user = authContextService.resolveUserFromBearer(authorization);
+        Result<?> denied = requireAdmin(user);
+        if (denied != null) {
+            return denied;
+        }
+        if (cardNo == null || cardNo.isBlank()) {
+            return Result.error("cardNo 不能为空");
+        }
+        try {
+            String card = cardNo.trim();
+            // 卡号 → 映射 → aroUserId；映射不存在（如已解绑）时仅按 target_id=cardNo 查，历史记账仍可命中
+            TwinCardMapping mapping = mappingService.getByCardNo(card);
+            String aroUserId = mapping != null ? mapping.getAroUserId() : null;
+            List<TwinAutomationLog> list = automationLogService.listExemptHistory(aroUserId, card, limit);
+            return Result.success(list);
+        } catch (Exception e) {
+            return Result.error("豁免轨迹查询失败: " + e.getMessage());
         }
     }
 

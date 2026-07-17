@@ -344,6 +344,32 @@ public class TwinAutomationLogService {
         return list;
     }
 
+    /**
+     * 豁免轨迹：按人（user_id=aroUserId）或卡（target_id=cardNo）反查 EXEMPTION 记账，
+     * 覆盖 EXEMPT_GRANTED / EXEMPT_REVOKED 产生与消失全记录（已套中文标签与 detail 展开）。
+     * userId 与 cardNo 至少提供一个，两者全空返回空列表。
+     */
+    public List<TwinAutomationLog> listExemptHistory(String userId, String cardNo, int limit) {
+        String uid = blankToNull(userId);
+        String card = blankToNull(cardNo);
+        if (uid == null && card == null) {
+            return List.of();
+        }
+        int lim = Math.min(200, Math.max(1, limit));
+        List<TwinAutomationLog> list = mapper.selectExemptHistory(uid, card, lim);
+        if (list == null || list.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Map<String, String>> overrides = TwinAutomationLogDisplayHelper.toOverrideBucketsFromEntities(safeListDisplayMaps());
+        Map<String, String> jobNames = jobExecutionRegistry.jobNameMap();
+        for (TwinAutomationLog row : list) {
+            row.setLogSource("twin");
+            TwinAutomationLogDisplayHelper.applyLabels(row, jobNames, overrides);
+        }
+        enrichDetailDisplay(list);
+        return list;
+    }
+
     private void enrichDetailDisplay(List<TwinAutomationLog> list) {
         if (list == null || list.isEmpty()) {
             return;

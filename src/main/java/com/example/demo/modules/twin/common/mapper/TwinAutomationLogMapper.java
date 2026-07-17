@@ -42,6 +42,13 @@ public interface TwinAutomationLogMapper {
             @Param("excludePenetrationPoll") Boolean excludePenetrationPoll
     );
 
+    /** 豁免轨迹：按 user_id 或 target_id（卡号）反查 EXEMPTION 记账，时间倒序（userId/cardNo 至少一个非空） */
+    List<TwinAutomationLog> selectExemptHistory(
+            @Param("userId") String userId,
+            @Param("cardNo") String cardNo,
+            @Param("limit") int limit
+    );
+
     List<TwinAutomationLog> selectNearUserTime(
             @Param("userId") String userId,
             @Param("fromTime") LocalDateTime fromTime,

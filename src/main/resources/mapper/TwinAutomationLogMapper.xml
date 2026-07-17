@@ -125,6 +125,30 @@
         <include refid="FilterWhere"/>
     </select>
 
+    <!-- 豁免轨迹：按人（user_id）或卡（target_id）反查 EXEMPTION 记账，时间倒序。
+         userId / cardNo 至少一个非空（两者全空由 Service 层拦截，不会走到这里）。 -->
+    <select id="selectExemptHistory" resultMap="BaseMap">
+        SELECT l.id, l.automation_type, l.event_key, l.trigger_type, l.trigger_reason,
+               l.user_id, l.target_id, l.success, l.detail, l.event_time, l.created_by,
+               p.name AS user_name
+        FROM twin_automation_log l
+        LEFT JOIN aro_personnel p ON l.user_id = p.user_id
+        WHERE l.automation_type = 'EXEMPTION'
+        <choose>
+            <when test="userId != null and userId != '' and cardNo != null and cardNo != ''">
+                AND (l.user_id = #{userId} OR l.target_id = #{cardNo})
+            </when>
+            <when test="userId != null and userId != ''">
+                AND l.user_id = #{userId}
+            </when>
+            <otherwise>
+                AND l.target_id = #{cardNo}
+            </otherwise>
+        </choose>
+        ORDER BY l.event_time DESC, l.id DESC
+        LIMIT #{limit}
+    </select>
+
     <select id="selectNearUserTime" resultMap="BaseMap">
         SELECT l.id, l.automation_type, l.event_key, l.trigger_type, l.trigger_reason,
                l.user_id, l.target_id, l.success, l.detail, l.event_time, l.created_by,
