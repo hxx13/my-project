@@ -30,7 +30,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,6 +46,11 @@ import java.util.stream.Collectors;
 @Service
 public class ScanDelayRequestService {
     private static final Logger log = LoggerFactory.getLogger(ScanDelayRequestService.class);
+
+    /** twin_card_mapping.exempt_granted_at 落库格式（DB NOW() 写入，与 freeze_exempt_expire_at 同构） */
+    private static final DateTimeFormatter EXEMPT_GRANTED_AT_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    /** 时间守卫容差：审批授予时 grantExempt 与 updateStatus 秒级相邻，超出视为后续手动授予 */
+    private static final long GRANT_REVIEW_MATCH_TOLERANCE_SECONDS = 120;
 
     @Autowired
     private ScanDelayConfigService configService;
@@ -260,13 +267,78 @@ public class ScanDelayRequestService {
         return requestMapper.listTodayRejectedOptionIds(subjectUserId.trim(), roomId.trim());
     }
 
-    /** 软删除申请：标记 DELETED，后续所有判定（防重复、活跃状态）自动排除 */
+    /**
+     * 软删除申请：标记 DELETED，后续所有判定（防重复、活跃状态）自动排除。
+     * <p>若被删单据为 APPROVED，则守卫式撤回其审批授予的豁免（与软删同事务，要么都成要么都不成），
+     * 经 {@code TwinCardMappingService.updateExemptFlag} 统一落 EXEMPT_REVOKED 台账。</p>
+     *
+     * @param operatorUserId 操作人用户 ID（记账用）
+     */
     @Transactional
-    public void deleteRequest(Long id) {
+    public void deleteRequest(Long id, String operatorUserId) {
         if (id == null) throw new IllegalArgumentException("ID 不能为空");
+        TwinScanDelayRequest req = requestMapper.findById(id);
+        if (req == null) throw new IllegalArgumentException("申请不存在或已处理");
         int affected = requestMapper.softDeleteById(id);
         if (affected == 0) throw new IllegalArgumentException("申请不存在或已处理");
         log.info("[scan-delay] request id={} soft-deleted", id);
+        // 已批准单：豁免已下放，删除单据须随行撤回（守卫式，防误杀后续手动授予）
+        if ("APPROVED".equalsIgnoreCase(req.getStatus())) {
+            revokeExemptOnApprovedRequestDeleted(req, operatorUserId);
+        }
+    }
+
+    /**
+     * 删除已批准申请时守卫式撤回其豁免。
+     * <p>守卫条件（全部满足才撤回）：卡映射存在 && 当前豁免生效（flag=1）&&
+     * {@code exempt_granted_at} 与单据 {@code reviewed_at} 时间差绝对值 ≤ {@value #GRANT_REVIEW_MATCH_TOLERANCE_SECONDS} 秒
+     * （审批通过时 grantExempt 紧邻 updateStatus 执行，两者秒级相邻；若之后有人另行手动授予，
+     * exempt_granted_at 会被重写为更晚时刻——时间守卫防止误杀后来的手动豁免）。</p>
+     * <p>任一守卫不满足（含时间解析失败）→ 仅记日志跳过，不动豁免、不阻断删除。</p>
+     */
+    private void revokeExemptOnApprovedRequestDeleted(TwinScanDelayRequest req, String operatorUserId) {
+        String cardNo = req.getCardNo() != null ? req.getCardNo().trim() : "";
+        if (cardNo.isEmpty()) {
+            log.info("[scan-delay] delete approved request id={} skip revoke: 单据无卡号", req.getId());
+            return;
+        }
+        TwinCardMapping mapping = cardMappingService.getByCardNo(cardNo);
+        if (mapping == null) {
+            log.info("[scan-delay] delete approved request id={} skip revoke: 无卡映射 cardNo={}", req.getId(), cardNo);
+            return;
+        }
+        if (mapping.getFreezeExemptFlag() == null || mapping.getFreezeExemptFlag() != 1) {
+            log.info("[scan-delay] delete approved request id={} skip revoke: 当前无豁免（已到期回收或已手动撤回）cardNo={}",
+                    req.getId(), cardNo);
+            return;
+        }
+        if (!isExemptGrantedByThisApproval(mapping.getExemptGrantedAt(), req.getReviewedAt())) {
+            log.info("[scan-delay] delete approved request id={} skip revoke: 时间守卫不匹配（疑似后续手动授予）"
+                            + "cardNo={} exemptGrantedAt={} reviewedAt={}",
+                    req.getId(), cardNo, mapping.getExemptGrantedAt(), req.getReviewedAt());
+            return;
+        }
+        // 撤回参数按 flag=0 语义传 null（updateExemptFlag 的参数校验仅在 flag=1 时生效）
+        cardMappingService.updateExemptFlag(cardNo, 0, null, null, null, null, null,
+                ExemptChangeContext.requestDeleted(operatorUserId, req.getId()));
+        log.info("[scan-delay] delete approved request id={} revoked exempt cardNo={} operator={}",
+                req.getId(), cardNo, operatorUserId);
+    }
+
+    /**
+     * 时间守卫：豁免授予时刻与单据审批时刻差值绝对值 ≤ {@value #GRANT_REVIEW_MATCH_TOLERANCE_SECONDS} 秒
+     * 才视为同一次审批授予；字段缺失或格式异常一律视为不匹配（宁可漏撤不可误杀）。
+     */
+    private static boolean isExemptGrantedByThisApproval(String exemptGrantedAt, LocalDateTime reviewedAt) {
+        if (!StringUtils.hasText(exemptGrantedAt) || reviewedAt == null) {
+            return false;
+        }
+        try {
+            LocalDateTime grantedAt = LocalDateTime.parse(exemptGrantedAt.trim(), EXEMPT_GRANTED_AT_FMT);
+            return Duration.between(reviewedAt, grantedAt).abs().getSeconds() <= GRANT_REVIEW_MATCH_TOLERANCE_SECONDS;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /** 隔夜自动过期：PENDING 且创建日期非今天 → EXPIRED */

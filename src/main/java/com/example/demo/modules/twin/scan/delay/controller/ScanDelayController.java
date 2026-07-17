@@ -196,7 +196,7 @@ public class ScanDelayController {
     }
 
     @DeleteMapping("/request/{id}")
-    @Operation(summary = "教职工：删除延迟申请（软删除，标记 DELETED，后续判定自动排除）")
+    @Operation(summary = "教职工：删除延迟申请（软删除，标记 DELETED，后续判定自动排除；已批准单守卫式撤回豁免）")
     public Result<Void> deleteRequest(
             @RequestHeader(value = "Authorization", required = false) String authorization,
             @PathVariable Long id) {
@@ -205,7 +205,7 @@ public class ScanDelayController {
             return Result.error("需要教职工权限");
         }
         try {
-            requestService.deleteRequest(id);
+            requestService.deleteRequest(id, user.getId());
             return Result.success(null);
         } catch (IllegalArgumentException e) {
             return Result.error(e.getMessage());
