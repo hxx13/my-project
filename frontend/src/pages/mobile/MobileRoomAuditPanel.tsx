@@ -230,7 +230,7 @@ export default function MobileRoomAuditPanel({ onBack }: MobileRoomAuditPanelPro
     if (flag === 0) {
       if (!window.confirm(`取消卡号 ${person.cardNo} 的豁免？`)) return;
       try {
-        await updateExemptFlag(person.cardNo, 0);
+        await updateExemptFlag(person.cardNo, 0, undefined, undefined, undefined, undefined, undefined, "room-audit-web");
         toast.success("已取消豁免");
         await refresh({ silent: true });
       } catch (e) {
@@ -239,7 +239,7 @@ export default function MobileRoomAuditPanel({ onBack }: MobileRoomAuditPanelPro
       return;
     }
     try {
-      await updateExemptFlag(person.cardNo, 1, undefined, "TIME", undefined, undefined, DEFAULT_EXEMPT_UNTIL_TIME);
+      await updateExemptFlag(person.cardNo, 1, undefined, "TIME", undefined, undefined, DEFAULT_EXEMPT_UNTIL_TIME, "room-audit-web");
       toast.success("已设豁免");
       await refresh({ silent: true });
     } catch (e) {

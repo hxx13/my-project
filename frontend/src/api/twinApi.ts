@@ -569,6 +569,8 @@ export const updateExemptFlag = async (
     maxCount?: number,
     roomIds?: string,
     extendUntilTime?: string,
+    /** 客户端来源标记，写入豁免记账（如 web / room-audit-web / miniapp） */
+    client: string = "web",
 ): Promise<{
     freezeExemptFlag?: number;
     freezeExemptExpireAt?: string | null;
@@ -577,7 +579,7 @@ export const updateExemptFlag = async (
     freezeExemptRoomIds?: string | null;
     lastModifiedTime?: string;
 }> => {
-    const body: Record<string, unknown> = { cardNo, flag };
+    const body: Record<string, unknown> = { cardNo, flag, client };
     if (flag === 1) {
         if (mode) body.mode = mode;
         if (durationMinutes != null) body.durationMinutes = durationMinutes;
@@ -587,6 +589,36 @@ export const updateExemptFlag = async (
     }
     const res = await authHttp.post(`/v1/twin/mappings/exempt`, body);
     return res.data?.data ?? res.data;
+};
+
+/** 豁免轨迹条目 — 后端 TwinAutomationLog，EXEMPT_GRANTED=授予 / EXEMPT_REVOKED=收回，按 eventTime DESC */
+export interface ExemptHistoryEntry {
+    id: number;
+    eventTime?: string;
+    eventKey?: 'EXEMPT_GRANTED' | 'EXEMPT_REVOKED' | string;
+    /** 中文事件名："授予冻结豁免" / "收回冻结豁免" */
+    eventKeyLabel?: string;
+    triggerType?: string;
+    triggerTypeLabel?: string;
+    /** 渠道码 */
+    triggerReason?: string;
+    /** 中文来源，如"管理员手动设置" / "延迟申请审核通过" / "豁免时效到期" */
+    triggerReasonLabel?: string;
+    userId?: string;
+    userName?: string;
+    /** 卡号 */
+    targetId?: string;
+    success?: number;
+    detail?: string;
+    /** 人性化中文详情（含操作人/关联单号/客户端等） */
+    detailDisplayZh?: string;
+    createdBy?: string;
+}
+
+// 3b. 按人反查豁免轨迹（产生/消失全记录）
+export const fetchExemptHistory = async (cardNo: string, limit = 50): Promise<ExemptHistoryEntry[]> => {
+    const res = await authHttp.get(`/v1/twin/mappings/exempt-history`, { params: { cardNo, limit } });
+    return res.data?.data || [];
 };
 
 // 4. 强制冻结/解冻卡片 (NORMAL / FROZEN)

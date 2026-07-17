@@ -12,6 +12,7 @@ import {
     fetchDahuaIssueAccessPrefill,
     type DahuaIssueAccessPrefill,
     fetchDahuaDeviceChannels, fetchDahuaDeviceChannelRemarkCategories,
+    fetchExemptHistory, type ExemptHistoryEntry,
     type DahuaDepartmentRow, type DahuaDoorGroupRow,
     type DahuaDeviceChannelRow, type DahuaDeviceChannelRemarkCategory, type CardMappingRow,
 } from "@/api/twinApi";
@@ -33,7 +34,7 @@ import {
 import { authHttp } from "@/api/core/authHttp";
 import { authStorage } from "@/features/auth/authStorage";
 import { hasMinRole } from "@/features/auth/roleAccess";
-import {RefreshCw, ShieldCheck, Link, Ban, Plus, User, Check, Loader2, X, Trash2, Clock, MoreHorizontal, ShieldAlert, Camera, ImageUp} from "lucide-react";
+import {RefreshCw, ShieldCheck, Link, Ban, Plus, User, Check, Loader2, X, Trash2, Clock, MoreHorizontal, ShieldAlert, Camera, ImageUp, History} from "lucide-react";
 import {
     labelForChannelRow,
     normalizeChannelCode,
@@ -78,6 +79,9 @@ const FREEZE_TIME_OPTIONS: string[] = (() => {
     }
     return o;
 })();
+
+/** 轨迹时间统一为 yyyy-MM-dd HH:mm:ss（后端已按墙钟输出，这里仅防御 ISO 'T' 分隔） */
+const formatExemptHistoryTime = (v?: string) => (v ? v.replace("T", " ").slice(0, 19) : "—");
 
 export default function DebugCardMappingPage() {
     const location = useLocation();
@@ -135,6 +139,10 @@ export default function DebugCardMappingPage() {
     const [freezeSlotModal, setFreezeSlotModal] = useState<null | 1 | 2>(null);
     const [exemptModal, setExemptModal] = useState<{
         cardNo: string; userName?: string; aroUserId?: string;
+    } | null>(null);
+    /** 豁免轨迹弹窗：按卡号反查授予/收回全记录 */
+    const [exemptHistoryModal, setExemptHistoryModal] = useState<{
+        cardNo: string; userName?: string;
     } | null>(null);
     const [exemptRoomOptions, setExemptRoomOptions] = useState<
         { roomId: string; roomName: string; selected: boolean }[]
@@ -726,6 +734,12 @@ export default function DebugCardMappingPage() {
         onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "豁免更新失败"),
     });
 
+    const exemptHistoryQuery = useQuery({
+        queryKey: ["exempt-history", exemptHistoryModal?.cardNo],
+        queryFn: () => fetchExemptHistory(exemptHistoryModal?.cardNo ?? ""),
+        enabled: !!exemptHistoryModal?.cardNo,
+    });
+
     const runReaperMutation = useMutation({
         mutationFn: runManualReaper,
         onSuccess: (stats: { frozenCount?: number; exemptCount?: number; totalChecked?: number }) => {
@@ -1013,6 +1027,18 @@ export default function DebugCardMappingPage() {
                                                 至 {formatExemptExpireAt(row.freezeExemptExpireAt)}
                                             </div>
                                         ) : null}
+                                        {canGrantExempt ? (
+                                            <div className="mt-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setExemptHistoryModal({ cardNo: row.cardNo, userName: row.userName })}
+                                                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--app-color-text-secondary)] hover:text-[var(--app-color-accent)] transition-colors"
+                                                    title="查看该人员豁免授予/收回轨迹"
+                                                >
+                                                    <History className="w-3 h-3" aria-hidden /> 轨迹
+                                                </button>
+                                            </div>
+                                        ) : null}
                                     </td>
                                     <td className="p-3 text-right font-mono text-xs text-[var(--app-color-text-tertiary)]">
                                         {row.lastModifiedTime || '-'}
@@ -1281,6 +1307,111 @@ export default function DebugCardMappingPage() {
                             className="w-full px-4 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
                             onClick={() => submitExemptConfig(exemptUntilTime)}
                         >确认设置</button>
+                    </div>
+                </div></Portal>}
+
+            {exemptHistoryModal && <Portal><div
+                    className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                    onClick={() => setExemptHistoryModal(null)}
+                    role="presentation"
+                >
+                    <div
+                        className="bg-[var(--app-color-surface-container)] rounded-2xl shadow-xl border border-[var(--app-color-border-default)] w-full max-w-lg p-6 max-h-[80vh] flex flex-col"
+                        onClick={(e) => e.stopPropagation()}
+                        role="dialog" aria-modal="true" aria-label="豁免轨迹"
+                    >
+                        <div className="shrink-0 flex justify-between items-start mb-1">
+                            <h3 className="text-lg font-black text-[var(--app-color-text-primary)] flex items-center gap-2">
+                                <History className="w-5 h-5 shrink-0 text-[var(--app-color-accent)]" aria-hidden />
+                                豁免轨迹
+                            </h3>
+                            <button type="button" onClick={() => setExemptHistoryModal(null)} className="p-1 rounded-full hover:bg-[var(--app-color-surface-hover)]" aria-label="关闭">
+                                <X className="w-5 h-5 text-[var(--app-color-text-tertiary)]" />
+                            </button>
+                        </div>
+                        <p className="shrink-0 text-sm text-[var(--app-color-text-secondary)] mb-3">
+                            {exemptHistoryModal.userName ? `${exemptHistoryModal.userName} · ` : ""}
+                            卡号 <span className="font-mono font-bold text-[var(--app-color-text-primary)]">{exemptHistoryModal.cardNo}</span>
+                        </p>
+
+                        {exemptHistoryQuery.isLoading ? (
+                            <div className="space-y-4 py-2" aria-hidden>
+                                {[0, 1, 2, 3].map((i) => (
+                                    <div key={i} className="space-y-2">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="h-5 w-28 rounded-full bg-[var(--app-color-surface-hover)] animate-skeleton-pulse motion-reduce:animate-none" />
+                                            <div className="h-3.5 w-32 rounded-md bg-[var(--app-color-surface-hover)] animate-skeleton-pulse motion-reduce:animate-none" />
+                                        </div>
+                                        <div className="h-3.5 w-4/5 rounded-md bg-[var(--app-color-surface-hover)] animate-skeleton-pulse motion-reduce:animate-none" />
+                                    </div>
+                                ))}
+                            </div>
+                        ) : exemptHistoryQuery.isError ? (
+                            <div className="py-8 text-center">
+                                <p className="text-sm font-bold text-[var(--app-color-feedback-danger)]">轨迹加载失败</p>
+                                <p className="mt-1 text-xs text-[var(--app-color-text-secondary)]">
+                                    {exemptHistoryQuery.error instanceof Error ? exemptHistoryQuery.error.message : "网络或服务异常，请稍后再试"}
+                                </p>
+                                <div className="mt-3 flex justify-center">
+                                    <AdminButton type="button" tone="secondary" size="sm" onClick={() => exemptHistoryQuery.refetch()}>
+                                        重试
+                                    </AdminButton>
+                                </div>
+                            </div>
+                        ) : !exemptHistoryQuery.data || exemptHistoryQuery.data.length === 0 ? (
+                            <div className="py-10 text-center">
+                                <History className="mx-auto mb-3 h-8 w-8 text-[var(--app-color-text-tertiary)]" aria-hidden />
+                                <p className="text-sm font-bold text-[var(--app-color-text-primary)]">这个人还没有豁免变动记录</p>
+                                <p className="mx-auto mt-1.5 max-w-[36ch] text-xs leading-relaxed text-[var(--app-color-text-secondary)]">
+                                    管理员手动下放、延迟申请审核通过或豁免到期收回后，都会在这里按时间倒序留痕。
+                                </p>
+                            </div>
+                        ) : (
+                            <>
+                                <ul className="flex-1 min-h-0 overflow-y-auto divide-y divide-[var(--app-color-border-default)]">
+                                    {exemptHistoryQuery.data.map((entry: ExemptHistoryEntry) => {
+                                        const granted = entry.eventKey === "EXEMPT_GRANTED";
+                                        return (
+                                            <li key={entry.id} className="py-3 first:pt-0 last:pb-0">
+                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                    <span
+                                                        className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-bold text-[var(--app-color-text-primary)] ${
+                                                            granted
+                                                                ? "bg-[var(--app-color-feedback-success-soft)] border-[var(--app-color-feedback-success)]"
+                                                                : "bg-[var(--app-color-feedback-warning-soft)] border-[var(--app-color-feedback-warning)]"
+                                                        }`}
+                                                    >
+                                                        <span
+                                                            className={`h-1.5 w-1.5 rounded-full ${granted ? "bg-[var(--app-color-feedback-success)]" : "bg-[var(--app-color-feedback-warning)]"}`}
+                                                            aria-hidden
+                                                        />
+                                                        {entry.eventKeyLabel || (granted ? "授予冻结豁免" : "收回冻结豁免")}
+                                                    </span>
+                                                    {entry.success === 0 ? (
+                                                        <span className="text-xs font-bold text-[var(--app-color-feedback-danger)]">执行失败</span>
+                                                    ) : null}
+                                                    <span className="ml-auto font-mono text-xs text-[var(--app-color-text-secondary)]">
+                                                        {formatExemptHistoryTime(entry.eventTime)}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--app-color-text-secondary)]">
+                                                    {entry.triggerReasonLabel ? <span>来源：{entry.triggerReasonLabel}</span> : null}
+                                                    {entry.userName ? <span>{entry.userName}</span> : null}
+                                                </div>
+                                                {(entry.detailDisplayZh || entry.detail) ? (
+                                                    <p className="mt-1.5 text-xs leading-relaxed text-[var(--app-color-text-secondary)] whitespace-pre-wrap break-words">
+                                                        {entry.detailDisplayZh || entry.detail}
+                                                    </p>
+                                                ) : null}
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                                <p className="shrink-0 pt-3 mt-1 border-t border-[var(--app-color-border-default)] text-[11px] text-[var(--app-color-text-tertiary)]">
+                                    共 {exemptHistoryQuery.data.length} 条，按时间倒序，最多显示最近 50 条
+                                </p>
+                            </>
+                        )}
                     </div>
                 </div></Portal>}
 
