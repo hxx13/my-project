@@ -428,13 +428,19 @@ public class TwinAutomationLogService {
                 }
             }
         }
-        // 操作人 ID → 用户名（豁免台账等 detail 含"操作人="时展示人名；解析失败降级显示原 ID，不阻断列表）
+        // 操作人 ID → 昵称（豁免台账等 detail 含"操作人="时展示；无昵称退用户名，解析失败降级显示原 ID）
         Map<String, String> operatorMap = new HashMap<>();
         for (String opId : operatorIds) {
             try {
                 com.example.demo.modules.auth.entity.User u = userMapper.findById(opId);
-                if (u != null && u.getUsername() != null && !u.getUsername().isBlank()) {
-                    operatorMap.put(opId, u.getUsername().trim());
+                if (u == null) {
+                    continue;
+                }
+                String label = u.getDisplayNickname() != null && !u.getDisplayNickname().isBlank()
+                        ? u.getDisplayNickname().trim()
+                        : (u.getUsername() != null ? u.getUsername().trim() : "");
+                if (!label.isEmpty()) {
+                    operatorMap.put(opId, label);
                 }
             } catch (Exception ignored) {
                 // 单个操作人解析失败不影响其余展示
