@@ -95,6 +95,12 @@ public interface TwinDashboardMapper {
     /** 当前处于 AUTO_EXIT_SCHEDULED 倒计时中的人员列表（含当日 ENTER 位置信息） */
     List<Map<String, Object>> getActiveSignoutCountdowns();
 
+    /** 按 userId 列表获取今日仍在馆的 ENTER 快照（用于倒计时条目补全姓名/位置） */
+    List<Map<String, Object>> getTodayEnterSnapshotsByUserIds(
+            @Param("userIds") List<String> userIds,
+            @Param("todayStart") String todayStart,
+            @Param("todayEnd") String todayEnd);
+
     List<Map<String, Object>> getRoomCardStatusList(
             @Param("roomId") String roomId,
             @Param("todayStart") String todayStart,

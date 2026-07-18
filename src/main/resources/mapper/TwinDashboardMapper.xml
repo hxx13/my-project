@@ -1225,18 +1225,37 @@
     <select id="getActiveSignoutCountdowns" resultType="map">
         SELECT das.user_id AS userId,
                das.scheduled_exit_at AS scheduledExitAt,
+               das.state AS state,
+               das.channel_code AS channelCode
+        FROM twin_dahua_activation_state das
+        WHERE das.state = 'AUTO_EXIT_SCHEDULED'
+          AND das.scheduled_exit_at > NOW()
+        ORDER BY das.scheduled_exit_at ASC
+    </select>
+
+    <select id="getTodayEnterSnapshotsByUserIds" resultType="map">
+        SELECT log.user_id AS userId,
                log.name AS userName,
                log.project_group_names AS groupName,
                log.area_name AS areaName,
                log.room_name AS roomName,
                log.room_id AS roomId
-        FROM twin_dahua_activation_state das
-        LEFT JOIN aro_access_log log ON log.user_id = das.user_id
-          AND log.accessType = 1
-          AND DATE(log.create_time) = CURDATE()
-        WHERE das.state = 'AUTO_EXIT_SCHEDULED'
-          AND das.scheduled_exit_at > NOW()
-        ORDER BY das.scheduled_exit_at ASC
+        FROM aro_access_log log
+        WHERE log.accessType = 1
+          AND log.user_id IN
+          <foreach collection="userIds" item="uid" open="(" separator="," close=")">
+              #{uid}
+          </foreach>
+          AND CAST(log.create_time AS DATETIME) &gt;= CAST(#{todayStart} AS DATETIME)
+          AND CAST(log.create_time AS DATETIME) &lt; CAST(#{todayEnd} AS DATETIME)
+          AND NOT EXISTS (
+              SELECT 1 FROM aro_access_log out_log
+              WHERE out_log.user_id = log.user_id
+                AND out_log.room_id = log.room_id
+                AND out_log.accessType IN (2, 3)
+                AND CAST(out_log.create_time AS DATETIME) &gt; CAST(log.create_time AS DATETIME)
+          )
+        ORDER BY log.create_time DESC
     </select>
 
 </mapper>

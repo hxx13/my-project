@@ -36,6 +36,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -293,6 +294,27 @@ public class TwinApiController {
         try {
             List<Map<String, Object>> countdowns = dashboardMapper.getActiveSignoutCountdowns();
             if (countdowns != null && !countdowns.isEmpty()) {
+                // 构建今日 ENTER 快照 lookup（用 BusinessTimeWindow 对齐滞留监控口径）
+                List<String> userIds = new ArrayList<>();
+                for (Map<String, Object> cd : countdowns) {
+                    String uid = String.valueOf(cd.getOrDefault("userId", ""));
+                    if (!uid.isBlank()) userIds.add(uid);
+                }
+                Map<String, Map<String, Object>> snapshotByUser = new HashMap<>();
+                if (!userIds.isEmpty()) {
+                    BusinessTimeWindow.Window day = businessTimeWindow.todayWindow();
+                    List<Map<String, Object>> snaps = dashboardMapper.getTodayEnterSnapshotsByUserIds(
+                            userIds, day.startInclusive(), day.endExclusive());
+                    if (snaps != null) {
+                        for (Map<String, Object> snap : snaps) {
+                            String uid = String.valueOf(snap.getOrDefault("userId", ""));
+                            if (!uid.isBlank()) {
+                                snapshotByUser.putIfAbsent(uid, snap);
+                            }
+                        }
+                    }
+                }
+
                 LocalDateTime now = LocalDateTime.now();
                 DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
                 for (Map<String, Object> cd : countdowns) {
@@ -310,15 +332,17 @@ public class TwinApiController {
                         // 日期解析失败则剩余秒数为 0
                     }
 
-                    Map<String, Object> entry = new java.util.LinkedHashMap<>();
+                    Map<String, Object> snap = snapshotByUser.get(userId);
+
+                    Map<String, Object> entry = new LinkedHashMap<>();
                     entry.put("eventId", "pending-" + userId);
                     entry.put("action", "PENDING_EXIT");
                     entry.put("userId", userId);
-                    entry.put("userName", cd.getOrDefault("userName", ""));
-                    entry.put("groupName", cd.getOrDefault("groupName", ""));
-                    entry.put("areaName", cd.getOrDefault("areaName", ""));
-                    entry.put("roomName", cd.getOrDefault("roomName", ""));
-                    entry.put("roomId", cd.getOrDefault("roomId", ""));
+                    entry.put("userName", snap != null ? snap.getOrDefault("userName", "") : "");
+                    entry.put("groupName", snap != null ? snap.getOrDefault("groupName", "") : "");
+                    entry.put("areaName", snap != null ? snap.getOrDefault("areaName", "") : "");
+                    entry.put("roomName", snap != null ? snap.getOrDefault("roomName", "") : "");
+                    entry.put("roomId", snap != null ? snap.getOrDefault("roomId", "") : "");
                     entry.put("scheduledExitAt", scheduledStr);
                     entry.put("countdownSeconds", Math.max(0, (int) remainingSeconds));
                     entry.put("timestamp", "");
