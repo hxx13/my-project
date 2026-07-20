@@ -8,13 +8,20 @@ import {
 import { AdminFormCard } from "@/components/admin/AdminPageShell";
 import { LlmSettingsPanel } from "@/features/admin/settings/LlmSettingsPanel";
 import { CredentialsTestPanel } from "@/features/admin/settings/CredentialsTestPanel";
+import { TurnstileInlineSection } from "@/features/admin/settings/TurnstileInlineSection";
 
 /**
- * IntegrationsSettings sub-page for AdminSettingsLayout.
- * 1. AI / LLM
- * 2. External system credentials (Dahua + ARO)
- * 3. CosyVoice 语音播报
- * 4. WinCC integration
+ * 「集成与凭证」设置子页面（AdminSettingsLayout 路由）。
+ *
+ * 🔧 维护约定：新增外部集成/凭证类模块时，先写一个自包含的 InlineSection 组件
+ *（参考 TurnstileInlineSection），然后在此页面插入即可。InlineSection 自行调用
+ * fetchSystemConfigs + fetchConfigDefinitions，父组件无需传参。
+ *
+ * 当前模块：
+ *  1. AI / LLM (DeepSeek)
+ *  2. 外部系统凭证（大华 / ARO）
+ *  3. Turnstile 人机验证
+ *  4. 集成与语音播报 (WinCC / CosyVoice)
  */
 export default function IntegrationsSettings() {
   const [llmConfigs, setLlmConfigs] = useState<SystemConfigRecord[]>([]);
@@ -69,6 +76,9 @@ export default function IntegrationsSettings() {
           onConfigsChange={setCredConfigs}
         />
       </AdminFormCard>
+
+      {/* Turnstile 人机验证 — 内联渲染，不依赖侧栏导航 */}
+      <TurnstileInlineSection />
 
       <AdminFormCard
         title="集成与语音播报"

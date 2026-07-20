@@ -20,7 +20,9 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.AuthService;
 import com.example.demo.modules.auth.service.PasswordCredentialService;
+import com.example.demo.modules.auth.service.PasswordPolicyValidator;
 import com.example.demo.modules.auth.service.StaffRegistrationService;
+import com.example.demo.modules.auth.service.TurnstileVerificationService;
 import com.example.demo.modules.invite.RegistrationInviteService;
 import com.example.demo.common.util.QrCodeUtils;
 import com.google.zxing.NotFoundException;
@@ -46,11 +48,16 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @RestController
 @RequestMapping("/api/auth")
 
 @Tag(name = "认证模块", description = "Web与微信小程序统一认证接口")
 public class AuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     private final UserMapper userMapper;
     private final AuthService authService;
@@ -60,6 +67,7 @@ public class AuthController {
     private final StaffRegistrationService staffRegistrationService;
     private final JwtTokenService jwtTokenService;
     private final AroPersonnelMapper aroPersonnelMapper;
+    private final TurnstileVerificationService turnstileVerificationService;
 
     public AuthController(UserMapper userMapper,
                           AuthService authService,
@@ -68,7 +76,8 @@ public class AuthController {
                           RegistrationInviteService registrationInviteService,
                           StaffRegistrationService staffRegistrationService,
                           JwtTokenService jwtTokenService,
-                          AroPersonnelMapper aroPersonnelMapper) {
+                          AroPersonnelMapper aroPersonnelMapper,
+                          TurnstileVerificationService turnstileVerificationService) {
         this.userMapper = userMapper;
         this.authService = authService;
         this.authContextService = authContextService;
@@ -77,6 +86,7 @@ public class AuthController {
         this.staffRegistrationService = staffRegistrationService;
         this.jwtTokenService = jwtTokenService;
         this.aroPersonnelMapper = aroPersonnelMapper;
+        this.turnstileVerificationService = turnstileVerificationService;
     }
 
     @PostMapping("/login/web")
@@ -85,10 +95,63 @@ public class AuthController {
         if (request == null || !StringUtils.hasText(request.getUsername()) || !StringUtils.hasText(request.getPassword())) {
             return Result.error("账号或密码错误");
         }
-        User user = userMapper.findByUsername(request.getUsername().trim());
+
+        String username = request.getUsername().trim();
+        User user = userMapper.findByUsername(username);
+
+        // ---- 1. Turnstile 人机验证 ----
+        if (!turnstileVerificationService.verify(request.getTurnstileToken())) {
+            return Result.error("人机验证未通过，请刷新页面重试");
+        }
+
+        // ---- 2. 账号锁定检查 ----
+        if (user != null && user.getLoginLockedUntil() != null) {
+            log.debug("账号处于锁定状态，检查是否过期: userId={}", user.getId());
+            try {
+                java.time.LocalDateTime lockedUntil = java.time.LocalDateTime.parse(
+                        user.getLoginLockedUntil().replace(" ", "T"));
+                if (lockedUntil.isAfter(java.time.LocalDateTime.now())) {
+                    long remainSeconds = java.time.Duration.between(
+                            java.time.LocalDateTime.now(), lockedUntil).getSeconds();
+                    long remainMinutes = (long) Math.ceil(remainSeconds / 60.0);
+                    return Result.error("账号已被锁定，请 " + remainMinutes + " 分钟后重试");
+                }
+                // 锁定已过期，自动解除
+                log.info("账号锁定已过期，自动解除: userId={}", user.getId());
+                userMapper.clearLoginFailCount(user.getId());
+            } catch (Exception ignored) {
+                // 时间解析异常时清除锁定（安全侧：宁可放行不让用户永久锁死）
+                log.warn("登录锁定时间解析异常，强制清除: userId={}", user.getId());
+                userMapper.clearLoginFailCount(user.getId());
+            }
+        }
+
+        // ---- 3. 密码校验 ----
         if (user == null || !passwordCredentialService.verifyAndRehashIfLegacy(user, request.getPassword())) {
+            if (user != null && !isDisabled(user)) {
+                userMapper.incrementLoginFailCount(user.getId());
+                // 失败 ≥5 次 → 锁定 15 分钟
+                User afterFail = userMapper.findById(user.getId());
+                if (afterFail != null && afterFail.getLoginFailCount() != null
+                        && afterFail.getLoginFailCount() >= 5) {
+                    String lockedUntil = java.time.LocalDateTime.now()
+                            .plusMinutes(15).toString().replace("T", " ");
+                    userMapper.lockUserUntil(user.getId(), lockedUntil);
+                    log.warn("账号已锁定 15 分钟（连续5次密码错误）: userId={}, username={}",
+                            user.getId(), user.getUsername());
+                    return Result.error("密码错误次数过多，账号已锁定 15 分钟");
+                }
+            }
             return Result.error("账号或密码错误");
         }
+
+        // ---- 4. 成功登录：清除失败计数 ----
+        if (user.getLoginFailCount() != null && user.getLoginFailCount() > 0) {
+            log.info("登录成功，清除失败计数: userId={}, previousFailCount={}",
+                    user.getId(), user.getLoginFailCount());
+        }
+        userMapper.clearLoginFailCount(user.getId());
+
         if (isDisabled(user)) {
             return Result.error("账号已禁用");
         }
@@ -214,14 +277,10 @@ public class AuthController {
         if (user == null) {
             return Result.error("未登录或登录态失效");
         }
-        RoleEnum role = authService.normalizeRole(user.getRole());
-        if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
-            return Result.error("仅教职工账号支持该操作");
-        }
-        boolean required = user.getPasswordResetRequired() != null && user.getPasswordResetRequired() == 1;
+        boolean canChange = StringUtils.hasText(user.getPassword());
         return Result.success(Map.of(
-                "requiredReset", required,
-                "canChange", required
+                "requiredReset", false,
+                "canChange", canChange
         ));
     }
 
@@ -255,7 +314,7 @@ public class AuthController {
     }
 
     @PostMapping("/password/change")
-    @Operation(summary = "教职工在重置后修改个人密码")
+    @Operation(summary = "修改个人密码（所有已登录用户均可使用）")
     public Result<?> changePasswordAfterReset(@RequestBody ChangePasswordRequest requestBody, HttpServletRequest request) {
         if (requestBody == null
                 || !StringUtils.hasText(requestBody.getOldPassword())
@@ -264,8 +323,9 @@ public class AuthController {
         }
         String oldPassword = requestBody.getOldPassword().trim();
         String newPassword = requestBody.getNewPassword().trim();
-        if (newPassword.length() < 6 || newPassword.length() > 64) {
-            return Result.error("新密码长度需在6-64位之间");
+        String pwError = PasswordPolicyValidator.validate(newPassword);
+        if (pwError != null) {
+            return Result.error(pwError);
         }
         if (oldPassword.equals(newPassword)) {
             return Result.error("新密码不能与旧密码一致");
@@ -275,16 +335,12 @@ public class AuthController {
         if (currentUser == null) {
             return Result.error("未登录或登录态失效");
         }
-        RoleEnum role = authService.normalizeRole(currentUser.getRole());
-        if (role.getLevel() < RoleEnum.STAFF.getLevel()) {
-            return Result.error("仅教职工账号支持该操作");
-        }
-        if (currentUser.getPasswordResetRequired() == null || currentUser.getPasswordResetRequired() != 1) {
-            return Result.error("当前账号未处于重置后改密状态");
-        }
         User refreshed = userMapper.findById(currentUser.getId());
         if (refreshed == null) {
             return Result.error("用户不存在");
+        }
+        if (!StringUtils.hasText(refreshed.getPassword())) {
+            return Result.error("当前账号未设置密码，无法修改");
         }
         if (!passwordCredentialService.verifyAndRehashIfLegacy(refreshed, oldPassword)) {
             return Result.error("当前密码不正确");
@@ -362,8 +418,9 @@ public class AuthController {
         }
         String userId = request.getUserId().trim();
         String newPassword = request.getNewPassword().trim();
-        if (newPassword.length() < 6 || newPassword.length() > 64) {
-            return Result.error("新密码长度需在6-64位之间");
+        String pwError = PasswordPolicyValidator.validate(newPassword);
+        if (pwError != null) {
+            return Result.error(pwError);
         }
         AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId);
         if (personnel == null) {

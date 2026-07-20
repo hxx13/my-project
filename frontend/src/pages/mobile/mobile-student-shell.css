@@ -77,3 +77,11 @@
 .mobile-student-shell :where(input, textarea) {
   -webkit-text-fill-color: currentColor;
 }
+
+@keyframes marquee-scroll {
+  0%   { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+.animate-marquee {
+  animation: marquee-scroll 12s linear infinite;
+}

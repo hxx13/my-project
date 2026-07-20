@@ -184,6 +184,11 @@ public class UploadController {
         }
     }
 
+    /** 公开访问的图片/媒体扩展名 */
+    private static final Set<String> PUBLIC_EXTENSIONS = Set.of(
+            "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "ico"
+    );
+
     @GetMapping("/files/**")
     @Operation(summary = "按路径读取文件")
     public ResponseEntity<Resource> getFile(jakarta.servlet.http.HttpServletRequest request) {
@@ -196,16 +201,36 @@ public class UploadController {
         if (!StringUtils.hasText(relativePath) || relativePath.contains("..")) {
             return ResponseEntity.badRequest().build();
         }
+
+        // 非公开扩展名（文档/压缩包等）需要 JWT 认证
+        String ext = extractExtension(relativePath);
+        if (!PUBLIC_EXTENSIONS.contains(ext)) {
+            String authHeader = request.getHeader("Authorization");
+            User user = authContextService.resolveUserFromBearer(authHeader);
+            if (user == null) {
+                return ResponseEntity.status(401).build();
+            }
+        }
+
         File file = uploadFileService.resolveBaseDir().resolve(relativePath).toFile();
         if (!file.exists() || !file.isFile()) {
             return ResponseEntity.notFound().build();
         }
         Resource resource = new FileSystemResource(file);
         MediaType mediaType = resolveMediaType(file.toPath());
-        return ResponseEntity.ok()
+
+        var resp = ResponseEntity.ok()
                 .cacheControl(CacheControl.maxAge(7, java.util.concurrent.TimeUnit.DAYS).cachePublic())
                 .contentType(mediaType)
-                .body(resource);
+                .header("X-Content-Type-Options", "nosniff");
+
+        // 非图片/视频文件强制下载，防止浏览器执行脚本
+        if (!PUBLIC_EXTENSIONS.contains(ext)) {
+            String safeName = relativePath.substring(relativePath.lastIndexOf('/') + 1);
+            resp.header("Content-Disposition", "attachment; filename=\"" + safeName + "\"");
+        }
+
+        return resp.body(resource);
     }
 
     /**
@@ -217,6 +242,11 @@ public class UploadController {
     public Result<Map<String, Object>> resolveCloudMappings(
             @RequestHeader(value = "X-Sync-Secret", required = false) String secret,
             @RequestParam("urls") String urlsParam) {
+
+        // sync-secret 校验，与其他 sync 端点一致
+        if (syncSecret == null || syncSecret.isBlank() || !syncSecret.equals(secret)) {
+            return Result.fail(ErrorCodeConstants.UPLOAD_SYNC_SECRET_INVALID, "Sync Secret 无效");
+        }
 
         Map<String, Object> result = new HashMap<>();
         if (urlsParam == null || urlsParam.isBlank()) {
@@ -355,6 +385,10 @@ public class UploadController {
         if (file != null && !file.isEmpty()) {
             // 带文件：存盘
             String ext = extractExtension(file.getOriginalFilename());
+            // sync/register 也需通过扩展名白名单校验
+            if (ext.isEmpty() || !UploadFileStorageService.ALLOWED_EXTENSIONS.contains(ext)) {
+                return Result.error("不支持的文件类型: " + (ext.isEmpty() ? "未知" : "." + ext));
+            }
             fileName = UUID.randomUUID().toString().replace("-", "") + (ext.isEmpty() ? "" : "." + ext);
             Path baseDir = uploadFileService.resolveBaseDir();
             Path targetDir = baseDir.resolve(dateDir);

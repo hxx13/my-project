@@ -107,6 +107,15 @@ public class StudentViolationNoticeConfigSeed implements ApplicationRunner {
                     "[\"STUDENT\"]",
                     0
             );
+            ensureDef(
+                    "student.scan.enter.disabled.hint.text",
+                    "禁入按钮帮助提示",
+                    "当「进入房间」按钮因任何原因被禁用时，按钮左侧出现 ? 帮助图标；点击后展示此文案（用气泡弹窗 + 打字机动画呈现）。后续可按禁用原因细化颗粒配置。",
+                    "STRING",
+                    null,
+                    "您好，该房间暂时无法进入。可能的原因包括：未绑定校园卡、存在违规记录、房间已满员、当前时段不开放、或您所在校区无权限。如有疑问请联系管理员。",
+                    1
+            );
         } catch (Exception e) {
             log.warn("[student_violation] 未绑卡提示配置定义初始化跳过: {}", e.getMessage());
         }

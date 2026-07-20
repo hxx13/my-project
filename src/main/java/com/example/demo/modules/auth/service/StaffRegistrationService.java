@@ -37,8 +37,13 @@ public class StaffRegistrationService {
             return Result.error("账号或密码不合法");
         }
         String username = request.getUsername().trim();
-        if (username.length() < 3 || username.length() > 64 || request.getPassword().length() < 6) {
-            return Result.error("账号或密码不合法");
+        if (username.length() < 3 || username.length() > 64) {
+            return Result.error("账号不合法");
+        }
+        String rawPwd = request.getPassword().trim();
+        String pwError = PasswordPolicyValidator.validate(rawPwd);
+        if (pwError != null) {
+            return Result.error(pwError);
         }
         if (userMapper.findByUsername(username) != null) {
             return Result.error("账号已存在");
@@ -52,7 +57,6 @@ public class StaffRegistrationService {
             return Result.error(e.getMessage());
         }
 
-        String rawPwd = request.getPassword();
         String hash = passwordCredentialService.encodeForStorage(rawPwd);
         String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
         String id = "STAFF_" + UUID.randomUUID().toString().replace("-", "");

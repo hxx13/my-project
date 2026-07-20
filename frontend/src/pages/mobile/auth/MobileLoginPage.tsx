@@ -1,8 +1,19 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { loginWeb, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr } from "@/api/domains/auth.api";
+import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { authStorage } from "@/features/auth/authStorage";
 import { toast } from "react-hot-toast";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement, options: Record<string, unknown>) => string;
+      reset: (widgetId: string) => void;
+      remove: (widgetId: string) => void;
+    };
+  }
+}
 
 export default function MobileLoginPage() {
   const navigate = useNavigate();
@@ -11,6 +22,44 @@ export default function MobileLoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+
+  // Turnstile
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
+  const turnstileRef = useRef<HTMLDivElement>(null);
+  const turnstileId = useRef<string | null>(null);
+
+  useEffect(() => {
+    fetchPublicRuntimeConfig()
+      .then((cfg) => setTurnstileSiteKey(cfg["turnstile.site-key"] || ""))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!turnstileSiteKey) return;
+    const container = turnstileRef.current;
+    if (!container) return;
+    let cancelled = false;
+    let polls = 0;
+    const tryRender = () => {
+      if (cancelled) return;
+      if (!window.turnstile) { if (++polls < 50) setTimeout(tryRender, 300); return; }
+      try {
+        if (turnstileId.current) window.turnstile.remove(turnstileId.current);
+        container.innerHTML = "";
+        turnstileId.current = window.turnstile.render(container, {
+          sitekey: turnstileSiteKey,
+          theme: "light",
+          size: "normal",
+          callback: (token: string) => setTurnstileToken(token),
+          "expired-callback": () => setTurnstileToken(""),
+          "error-callback": () => setTurnstileToken(""),
+        });
+      } catch { /* ignore */ }
+    };
+    setTimeout(tryRender, 100);
+    return () => { cancelled = true; setTurnstileToken(""); };
+  }, [turnstileSiteKey]);
 
   // Forgot password state
   const [forgotMode, setForgotMode] = useState(false);
@@ -35,7 +84,7 @@ export default function MobileLoginPage() {
     try {
       setSubmitting(true);
       setError(null);
-      const data = await loginWeb(username.trim(), password);
+      const data = await loginWeb(username.trim(), password, turnstileToken || undefined);
       authStorage.setAuth(data.token, data.role, data.userInfo);
       authStorage.markLoginPortal("mobile");
       navigate("/m/home", { replace: true });
@@ -73,7 +122,7 @@ export default function MobileLoginPage() {
 
   const handleForgotVerify = async () => {
     if (!forgotUserId.trim() || !forgotPhone.trim()) {
-      toast.error("请上传二维码并输入手机号");
+      toast.error("请输入人员编号和手机号");
       return;
     }
     setForgotVerifying(true);
@@ -147,25 +196,39 @@ export default function MobileLoginPage() {
             <>
               <div className="flex flex-col items-center text-center">
                 <h1 className="text-2xl font-bold" style={{ color: primary }}>找回密码</h1>
-                <p className="mt-2 text-sm" style={{ color: secondary }}>上传你的个人二维码并输入登记手机号</p>
+                <p className="mt-2 text-sm" style={{ color: secondary }}>输入或上传二维码识别你的19位人员编号</p>
               </div>
               <div className="mt-6 space-y-4">
+                {/* 人员编号：手动输入 */}
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium" style={{ color: primary }}>人员编号（19 位）</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={19}
+                    value={forgotUserId}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/\D/g, "").slice(0, 19);
+                      setForgotUserId(v);
+                      if (!v) { setForgotPersonnelName(""); setQrDecoded(false); }
+                    }}
+                    placeholder="手动输入 19 位人员编号" autoComplete="off"
+                    className="w-full rounded-[var(--app-radius-element)] border px-3 py-2.5 text-base outline-none transition-colors"
+                    style={{ background: bg, borderColor: border, color: primary }} />
+                  {forgotPersonnelName ? (
+                    <p className="mt-1 text-xs" style={{ color: "#16a34a" }}>已识别：{forgotPersonnelName}</p>
+                  ) : null}
+                </div>
+
+                {/* 二维码上传（便捷填入） */}
                 <input ref={forgotQrRef} type="file" accept="image/*" onChange={handleQrUpload} className="hidden" />
-                {qrDecoded && forgotUserId ? (
-                  <div className="flex items-center gap-2 rounded-[var(--app-radius-element)] px-3 py-2.5 text-sm"
-                    style={{ background: "rgba(34,197,94,0.1)", color: "#16a34a" }}>
-                    <span>{forgotPersonnelName ? `${forgotPersonnelName} · ` : ""}{forgotUserId}</span>
-                    <button type="button" onClick={() => { setQrDecoded(false); setForgotUserId(""); setForgotPersonnelName(""); }}
-                      className="ml-auto text-xs underline" style={{ color: secondary }}>重新上传</button>
-                  </div>
-                ) : (
-                  <button type="button" disabled={qrUploading}
-                    onClick={() => forgotQrRef.current?.click()}
-                    className="w-full rounded-[var(--app-radius-element)] border-2 border-dashed px-4 py-8 text-sm transition-colors"
-                    style={{ background: bg, borderColor: border, color: secondary }}>
-                    {qrUploading ? "识别中..." : "点击上传二维码图片"}
-                  </button>
-                )}
+                <button type="button" disabled={qrUploading}
+                  onClick={() => forgotQrRef.current?.click()}
+                  className="w-full rounded-[var(--app-radius-element)] border-2 border-dashed px-4 py-3 text-sm transition-colors"
+                  style={{ background: bg, borderColor: border, color: secondary }}>
+                  {qrUploading ? "识别中..." : qrDecoded && forgotUserId ? "📷 重新上传二维码" : "📷 上传二维码自动填入"}
+                </button>
+
                 <div>
                   <label className="mb-1.5 block text-sm font-medium" style={{ color: primary }}>登记手机号</label>
                   <input type="text" value={forgotPhone}
@@ -175,7 +238,7 @@ export default function MobileLoginPage() {
                     className="w-full rounded-[var(--app-radius-element)] border px-3 py-2.5 text-base outline-none transition-colors"
                     style={{ background: bg, borderColor: border, color: primary }} />
                 </div>
-                <button onClick={handleForgotVerify} disabled={forgotVerifying || !qrDecoded}
+                <button onClick={handleForgotVerify} disabled={forgotVerifying || forgotUserId.trim().length === 0}
                   className="w-full rounded-[var(--app-radius-element)] py-3 text-base font-medium text-white transition active:scale-[0.98] disabled:opacity-60"
                   style={{ background: `linear-gradient(135deg, ${accent}, ${accent})` }}>
                   {forgotVerifying ? "验证中..." : "验证"}
@@ -245,6 +308,7 @@ export default function MobileLoginPage() {
                   className="w-full rounded-[var(--app-radius-element)] border px-3 py-2.5 text-base outline-none transition-colors"
                   style={{ background: bg, borderColor: border, color: primary }} />
               </div>
+              <div ref={turnstileRef} className="flex justify-center w-full min-h-[65px]" />
               {error && (
                 <p className="text-sm text-center rounded-[var(--app-radius-element)] px-3 py-2"
                   style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444" }}>{error}</p>

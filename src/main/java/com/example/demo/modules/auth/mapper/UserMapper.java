@@ -63,4 +63,10 @@ public interface UserMapper {
     List<User> listEnabledUsersByMinRoleLevel(@Param("minRoleLevel") Integer minRoleLevel);
 
     List<User> searchByKeyword(@Param("keyword") String keyword);
+
+    int incrementLoginFailCount(@Param("id") String id);
+
+    int lockUserUntil(@Param("id") String id, @Param("lockedUntil") String lockedUntil);
+
+    int clearLoginFailCount(@Param("id") String id);
 }

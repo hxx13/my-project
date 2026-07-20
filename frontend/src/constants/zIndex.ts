@@ -15,4 +15,5 @@ export const Z_INDEX = {
   faceScan: 10000,           // 人脸验证 Dynamic Island + 摄像头窗口（在 dahua-issue 画廊之上）
   facePhotoGallery: 10000,   // 底库照片管理（dahua-issue 等）
   faceEnrollment: 10001,     // 现场人脸录入（高于画廊 / 失败提示 Toast）
+  scannerHintBubble: 311,   // 扫码弹窗禁入帮助气泡（浮于 scannerPopup 300 / scanDelayMenu 310 之上，popupModal 320 之下）
 } as const;

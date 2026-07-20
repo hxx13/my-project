@@ -4,9 +4,20 @@ import { toast } from "react-hot-toast";
 import { ChevronLeft, ChevronRight, LogIn, X, ChevronDown, LogOut } from "lucide-react";
 import { SHSMU_LOGO_URL } from "@/constants/shsmuBranding";
 import { fetchLoginBranding, pickLoginHeroUrls, type LoginBranding } from "@/api/domains/publicSite.api";
+import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { useTheme } from "@/features/theme/ThemeProvider";
 import { ThemeSwitcher } from "@/features/theme/ThemeSwitcher";
 import { loginWeb, forgotPasswordVerify, forgotPasswordReset, forgotPasswordDecodeQr } from "@/api/domains/auth.api";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (container: HTMLElement, options: Record<string, unknown>) => string;
+      reset: (widgetId: string) => void;
+      remove: (widgetId: string) => void;
+    };
+  }
+}
 import { authStorage, AUTH_USERINFO_UPDATED_EVENT } from "@/features/auth/authStorage";
 import { resolvePostLoginTarget } from "@/features/auth/postLoginNavigation";
 import { cn } from "@/lib/utils";
@@ -68,6 +79,19 @@ export default function LoginPage() {
   const [forgotVerifying, setForgotVerifying] = useState(false);
   const [forgotSubmitting, setForgotSubmitting] = useState(false);
   const [qrUploading, setQrUploading] = useState(false);
+
+  // Turnstile — site key 从后端运行时配置下发，不硬编码
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
+  const turnstileWidgetId = useRef<string | null>(null);
+  const turnstileContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showLogin) return;
+    fetchPublicRuntimeConfig()
+      .then((cfg) => setTurnstileSiteKey(cfg["turnstile.site-key"] || ""))
+      .catch(() => setTurnstileSiteKey(""));
+  }, [showLogin]);
   const [qrDecoded, setQrDecoded] = useState(false);
   const forgotQrRef = useRef<HTMLInputElement>(null);
 
@@ -153,6 +177,58 @@ export default function LoginPage() {
     return () => window.clearInterval(t);
   }, [heroCarouselOn, heroUrlKey, heroUrls.length, branding?.intervalSec]);
 
+  // Turnstile widget: 登录抽屉打开 + 非忘记密码模式时渲染
+  const [turnstileLoadFailed, setTurnstileLoadFailed] = useState(false);
+  const turnstilePollCount = useRef(0);
+
+  useEffect(() => {
+    if (!showLogin || forgotMode || !turnstileSiteKey) return;
+    const container = turnstileContainerRef.current;
+    if (!container) return;
+
+    turnstilePollCount.current = 0;
+    setTurnstileLoadFailed(false);
+    let cancelled = false;
+
+    const tryRender = () => {
+      if (cancelled) return;
+      if (!window.turnstile) {
+        turnstilePollCount.current++;
+        if (turnstilePollCount.current > 50) { // ~15 秒超时
+          console.warn("Turnstile CDN 加载超时，降级跳过");
+          setTurnstileLoadFailed(true);
+          return;
+        }
+        setTimeout(tryRender, 300);
+        return;
+      }
+      try {
+        if (turnstileWidgetId.current) {
+          window.turnstile.remove(turnstileWidgetId.current);
+        }
+        container.innerHTML = "";
+        turnstileWidgetId.current = window.turnstile.render(container, {
+          sitekey: turnstileSiteKey,
+          theme: effectiveMode === "dark" ? "dark" : "light",
+          size: "normal",
+          callback: (token: string) => setTurnstileToken(token),
+          "expired-callback": () => setTurnstileToken(""),
+          "error-callback": () => setTurnstileToken(""),
+        });
+      } catch {
+        setTurnstileLoadFailed(true);
+      }
+    };
+
+    const timer = setTimeout(tryRender, 100);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      setTurnstileToken("");
+      setTurnstileLoadFailed(false);
+    };
+  }, [showLogin, forgotMode, effectiveMode]);
+
   const headerPrimaryLabel = useMemo(() => {
     const dn = (sessionUser?.displayName || "").trim();
     if (dn) return dn;
@@ -174,7 +250,8 @@ export default function LoginPage() {
     }
     try {
       setSubmitting(true);
-      const data = await loginWeb(username.trim(), password);
+      // Turnstile 未配置时允许空 token 降级登录
+      const data = await loginWeb(username.trim(), password, turnstileToken || undefined);
       authStorage.setAuth(data.token, data.role, data.userInfo);
 
       // 学生库账号（或 MEMBER 角色）不能进入教职工视角 → 自动跳转学生中心
@@ -281,6 +358,7 @@ export default function LoginPage() {
     setForgotNewUsername("");
     setForgotNewPassword("");
     setForgotPersonnelName("");
+    setQrDecoded(false);
   };
 
   const enterSite = useCallback(async () => {
@@ -439,14 +517,14 @@ export default function LoginPage() {
 
       {showLogin ? (
         <>
-          <button
-            type="button"
-            aria-label="关闭登录"
-            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-[2px]"
+          {/* 遮罩层：覆盖全视口包括顶部 logo/头像区域 */}
+          <div
+            aria-hidden="true"
+            className="fixed inset-0 z-[var(--z-overlay)] bg-black/60"
             onClick={() => setShowLogin(false)}
           />
           <aside
-            className="fixed right-0 top-0 z-[110] flex h-full w-full max-w-md flex-col border-l border-[#c9a227]/25 bg-[#050a14]/97 shadow-[-12px_0_48px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+            className="fixed right-0 top-0 z-[var(--z-modal)] flex h-full w-full max-w-md flex-col border-l border-[#c9a227]/25 bg-[#050a14]/97 shadow-[-12px_0_48px_rgba(0,0,0,0.5)] backdrop-blur-xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="login-drawer-title"
@@ -469,11 +547,38 @@ export default function LoginPage() {
                 !forgotVerified ? (
                   <>
                     <p className="mb-6 text-sm leading-relaxed text-[#b8a88c]">
-                      请上传您的个人二维码，并输入登记的手机号进行验证。
+                      请输入或上传二维码识别您的 19 位人员编号，并输入登记的手机号进行验证。
                     </p>
                     <div className="space-y-4">
+                      {/* 人员编号：手动输入 + 二维码自动填入 */}
                       <div>
-                        <label className="mb-2 block text-sm font-medium text-[#e8dcc4]">个人二维码</label>
+                        <label className="mb-2 block text-sm font-medium text-[#e8dcc4]" htmlFor="forgot-userid">
+                          人员编号（19 位）
+                        </label>
+                        <input
+                          id="forgot-userid"
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={19}
+                          value={forgotUserId}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\D/g, "").slice(0, 19);
+                            setForgotUserId(v);
+                            if (!v) { setForgotPersonnelName(""); setQrDecoded(false); }
+                          }}
+                          className="admin-login-input w-full border border-[#f5d76a]/30 bg-black/35 px-4 py-3 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
+                          placeholder="手动输入 19 位人员编号"
+                          autoComplete="off"
+                        />
+                        {forgotPersonnelName ? (
+                          <p className="mt-1.5 text-xs text-emerald-300/90">
+                            已识别：{forgotPersonnelName}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      {/* 二维码上传（便捷填入） */}
+                      <div>
                         <input
                           ref={forgotQrRef}
                           type="file"
@@ -481,33 +586,22 @@ export default function LoginPage() {
                           onChange={handleQrUpload}
                           className="hidden"
                         />
-                        {qrDecoded && forgotUserId ? (
-                          <div className="flex items-center gap-2 rounded border border-emerald-500/40 bg-emerald-500/10 px-4 py-3">
-                            <span className="text-sm text-emerald-300">
-                              {forgotPersonnelName ? `${forgotPersonnelName} · ` : ""}{forgotUserId}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => { setQrDecoded(false); setForgotUserId(""); setForgotPersonnelName(""); }}
-                              className="ml-auto text-xs text-[#d4c4a8] hover:text-white"
-                            >
-                              重新上传
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={qrUploading}
-                            onClick={() => forgotQrRef.current?.click()}
-                            className="w-full rounded border-2 border-dashed border-[#f5d76a]/30 bg-black/25 px-4 py-8 text-sm text-[#b8a89a] hover:border-[#f5d76a]/60 hover:text-[#e8dcc4] transition-colors disabled:opacity-50"
-                          >
-                            {qrUploading ? "识别中..." : "点击上传二维码图片"}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          disabled={qrUploading}
+                          onClick={() => forgotQrRef.current?.click()}
+                          className="w-full rounded border-2 border-dashed border-[#f5d76a]/30 bg-black/25 px-4 py-3 text-sm text-[#b8a89a] hover:border-[#f5d76a]/60 hover:text-[#e8dcc4] transition-colors disabled:opacity-50"
+                        >
+                          {qrUploading ? "识别中..." : qrDecoded && forgotUserId ? "📷 重新上传二维码" : "📷 上传二维码自动填入"}
+                        </button>
                       </div>
+
                       <div>
-                        <label className="mb-2 block text-sm font-medium text-[#e8dcc4]">登记手机号</label>
+                        <label className="mb-2 block text-sm font-medium text-[#e8dcc4]" htmlFor="forgot-phone">
+                          登记手机号
+                        </label>
                         <input
+                          id="forgot-phone"
                           type="text"
                           value={forgotPhone}
                           onChange={(e) => setForgotPhone(e.target.value)}
@@ -519,7 +613,7 @@ export default function LoginPage() {
                       </div>
                       <button
                         type="button"
-                        disabled={forgotVerifying || !qrDecoded}
+                        disabled={forgotVerifying || forgotUserId.trim().length === 0}
                         onClick={() => void handleForgotVerify()}
                         className="admin-login-button-primary w-full border border-[#b8860b]/50 bg-gradient-to-r from-[#8b4513]/90 to-[#c9a227]/90 py-3 text-sm font-semibold text-[#1a0a06] shadow-md hover:from-[#a0522d] hover:to-[#e8c547] disabled:cursor-not-allowed disabled:opacity-60"
                       >
@@ -629,6 +723,13 @@ export default function LoginPage() {
                         autoComplete="current-password"
                       />
                     </div>
+                    <div ref={turnstileContainerRef} className="flex justify-center">
+                      {turnstileLoadFailed && (
+                        <p className="text-xs text-amber-400/80">
+                          安全组件加载失败，请刷新页面或检查网络后重试
+                        </p>
+                      )}
+                    </div>
                     <button
                       type="button"
                       disabled={submitting}
@@ -674,7 +775,7 @@ export default function LoginPage() {
       ) : null}
 
       <Dialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
-        <DialogContent className="z-[var(--z-modal)] sm:max-w-sm">
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm" overlayClassName="top-0">
           <DialogHeader>
             <DialogTitle>退出登录</DialogTitle>
             <DialogDescription>确定要退出当前账号吗？</DialogDescription>
@@ -682,14 +783,14 @@ export default function LoginPage() {
           <DialogFooter className="gap-2 sm:gap-2">
             <button
               type="button"
-              className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              className="rounded-[var(--app-radius-element)] border border-[var(--app-color-border-default)] px-4 py-2 text-sm text-[var(--app-color-text-primary)] transition-colors hover:bg-[var(--app-color-surface-hover)]"
               onClick={() => setLogoutDialogOpen(false)}
             >
               取消
             </button>
             <button
               type="button"
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm text-white hover:bg-red-500"
+              className="rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-danger)] px-4 py-2 text-sm text-[var(--app-color-text-inverse)] transition-colors hover:bg-[var(--app-color-feedback-danger)]/85"
               onClick={() => {
                 authStorage.clear();
                 toast.success("已退出登录");

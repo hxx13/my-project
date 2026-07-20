@@ -12,6 +12,7 @@ import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.AuthService;
 import com.example.demo.modules.auth.service.PasswordCredentialService;
+import com.example.demo.modules.auth.service.PasswordPolicyValidator;
 import com.example.demo.modules.student.dto.StudentActivateRequest;
 import com.example.demo.modules.student.dto.StudentQrVerifyResponse;
 import com.example.demo.modules.student.dto.StudentRegisterRequest;
@@ -106,8 +107,10 @@ public class StudentRegistrationService {
         if (!StringUtils.hasText(req.getPassword())) {
             return Result.fail(400, "密码不能为空");
         }
-        if (req.getPassword().length() < 6) {
-            return Result.fail(400, "密码长度不能少于6位");
+        String rawPwd = req.getPassword().trim();
+        String pwError = PasswordPolicyValidator.validate(rawPwd);
+        if (pwError != null) {
+            return Result.fail(400, pwError);
         }
         String username = req.getUsername().trim();
         if (username.length() < 3 || username.length() > 64) {
@@ -128,7 +131,7 @@ public class StudentRegistrationService {
                 return Result.fail(409, "该账号已绑定但未设密码，请前往激活页面设置密码");
             }
         }
-        String rawPwd = req.getPassword();
+        // rawPwd already declared and validated above (trimmed)
         String hash = passwordCredentialService.encodeForStorage(rawPwd);
         String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
         User user = new User();
@@ -162,8 +165,10 @@ public class StudentRegistrationService {
         if (!StringUtils.hasText(req.getPassword())) {
             return Result.fail(400, "密码不能为空");
         }
-        if (req.getPassword().length() < 6) {
-            return Result.fail(400, "密码长度不能少于6位");
+        String rawPwd = req.getPassword().trim();
+        String pwError = PasswordPolicyValidator.validate(rawPwd);
+        if (pwError != null) {
+            return Result.fail(400, pwError);
         }
         String username = req.getUsername().trim();
         if (username.length() < 3 || username.length() > 64) {
@@ -184,7 +189,7 @@ public class StudentRegistrationService {
         if (byUsername != null && !byUsername.getId().equals(userId)) {
             return Result.fail(400, "用户名已被使用");
         }
-        String rawPwd = req.getPassword();
+        // rawPwd already declared and validated above (trimmed)
         String hash = passwordCredentialService.encodeForStorage(rawPwd);
         String encryptedPlain = passwordCredentialService.encryptPlaintext(rawPwd);
         existing.setUsername(username);
@@ -196,6 +201,28 @@ public class StudentRegistrationService {
         if (updated == null) return Result.error("激活失败，请稍后重试");
         updated.setRole(authService.normalizeRole(updated.getRole()));
         return authService.generateAuthResult(updated);
+    }
+
+    /**
+     * 按 19 位 userId 直接查找 ARO 人员库（无需 QR），返回与 verifyQr 相同的结构。
+     */
+    public StudentQrVerifyResponse verifyByUserId(String userId) {
+        if (!StringUtils.hasText(userId)) {
+            return StudentQrVerifyResponse.fail("请输入19位人员编号");
+        }
+        if (!DIGIT_19.matcher(userId.trim()).matches()) {
+            return StudentQrVerifyResponse.fail("人员编号必须为19位数字");
+        }
+        AroPersonnel personnel = aroPersonnelMapper.findByUserId(userId.trim());
+        if (personnel == null) {
+            return StudentQrVerifyResponse.fail("未找到匹配的人员信息，user_id: " + userId);
+        }
+        return StudentQrVerifyResponse.success(
+                userId.trim(),
+                personnel.getName(),
+                personnel.getDepartmentName(),
+                personnel.getResolvedProjectGroupNames()
+        );
     }
 
     public boolean isPersonnelExists(String userId) {

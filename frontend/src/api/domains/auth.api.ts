@@ -34,10 +34,11 @@ interface Result<T> {
   data: T;
 }
 
-export async function loginWeb(username: string, password: string): Promise<AuthData> {
+export async function loginWeb(username: string, password: string, turnstileToken?: string): Promise<AuthData> {
   const response = await axios.post<Result<AuthData>>("/api/auth/login/web", {
     username,
     password,
+    turnstileToken: turnstileToken || "",
   });
 
   if (!response.data?.success || !response.data?.data?.token) {

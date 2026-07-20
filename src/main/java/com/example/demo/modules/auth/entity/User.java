@@ -54,4 +54,14 @@ public class User {
     private String accountSource;
 
     private String createTime;
+
+    /**
+     * 连续登录失败次数（成功后清零）。
+     */
+    private Integer loginFailCount = 0;
+
+    /**
+     * 账号锁定截止时间（NULL 表示未锁定）。
+     */
+    private String loginLockedUntil;
 }

@@ -4,7 +4,7 @@ import { CheckCircle } from "lucide-react";
 import { QrUploader } from "../components/qr";
 import { StudentButton, StudentInput, StudentCard, showToast } from "../components/ui";
 import { authStorage } from "@/features/auth/authStorage";
-import { registerStudent } from "../api";
+import { registerStudent, verifyUserId } from "../api";
 import type { AuthUserInfo } from "@/api/domains/auth.api";
 
 type RegisterStep = "qr" | "confirm" | "credentials" | "success";
@@ -20,6 +20,11 @@ export default function StudentRegisterPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<RegisterStep>("qr");
   const [verifiedData, setVerifiedData] = useState<VerifiedData | null>(null);
+
+  // Manual ID input (alternative to QR)
+  const [manualUserId, setManualUserId] = useState("");
+  const [manualVerifying, setManualVerifying] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
 
   // Step 3 form fields
   const [username, setUsername] = useState("");
@@ -44,6 +49,34 @@ export default function StudentRegisterPage() {
   const handleVerified = (data: VerifiedData) => {
     setVerifiedData(data);
     setStep("confirm");
+  };
+
+  const handleManualVerify = async () => {
+    const id = manualUserId.trim();
+    if (!id || id.length !== 19) {
+      setManualError("请输入19位人员编号");
+      return;
+    }
+    setManualVerifying(true);
+    setManualError(null);
+    try {
+      const result = await verifyUserId(id);
+      if (result.verified && result.userId && result.name) {
+        setVerifiedData({
+          userId: result.userId,
+          name: result.name,
+          departmentName: result.departmentName || "",
+          projectGroupName: result.projectGroupName || "",
+        });
+        setStep("confirm");
+      } else {
+        setManualError(result.message || "验证失败，请确认编号正确");
+      }
+    } catch (err) {
+      setManualError(err instanceof Error ? err.message : "验证失败，请重试");
+    } finally {
+      setManualVerifying(false);
+    }
   };
 
   const handleBackToQr = () => {
@@ -104,10 +137,45 @@ export default function StudentRegisterPage() {
           <div className="flex flex-col items-center text-center">
             <h1 className="text-2xl font-bold text-[var(--student-ink)]">学生注册</h1>
             <p className="mt-2 text-sm text-[var(--student-mute)]">
-              上传你的身份 QR 码进行验证，开始注册账号
+              输入你的 19 位人员编号或上传 QR 码进行验证
             </p>
 
-            <div className="mt-8 w-full">
+            {/* 手动输入人员编号 */}
+            <div className="mt-8 w-full space-y-3">
+              <div className="text-left">
+                <label className="mb-1.5 block text-sm font-medium text-[var(--student-ink)]">
+                  人员编号（19 位）
+                </label>
+                <StudentInput
+                  value={manualUserId}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, "").slice(0, 19);
+                    setManualUserId(v);
+                    setManualError(null);
+                  }}
+                  placeholder="手动输入 19 位人员编号"
+                  error={manualError ?? undefined}
+                  autoComplete="off"
+                />
+              </div>
+              <StudentButton
+                onClick={handleManualVerify}
+                disabled={manualVerifying || manualUserId.trim().length !== 19}
+                className="w-full"
+              >
+                {manualVerifying ? "验证中..." : "验证"}
+              </StudentButton>
+            </div>
+
+            {/* 分割线 */}
+            <div className="my-6 flex w-full items-center gap-3">
+              <div className="flex-1 border-t border-[var(--student-hairline)]" />
+              <span className="text-xs text-[var(--student-mute)]">或</span>
+              <div className="flex-1 border-t border-[var(--student-hairline)]" />
+            </div>
+
+            {/* QR 上传 */}
+            <div className="w-full">
               <QrUploader onVerified={handleVerified} />
             </div>
 

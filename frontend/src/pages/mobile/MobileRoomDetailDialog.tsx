@@ -27,6 +27,8 @@ interface MobileRoomDetailDialogProps {
   }) => Promise<ScanDelayRequestResult>;
   /** 延迟申请成功后回调（status + optionLabel） */
   onDelaySuccess?: (status: string, optionLabel?: string) => void;
+  /** 当前房间的扫码系统 officialRoomId（已由父组件解析），用于延迟状态查询 */
+  scanRoomId?: string | null;
 }
 
 function formatDelayHint(option: ScanDelayOptionSummary): string {
@@ -46,6 +48,7 @@ export default function MobileRoomDetailDialog({
   subjectUserId,
   onSubmitDelay,
   onDelaySuccess,
+  scanRoomId,
 }: MobileRoomDetailDialogProps) {
   const [delayOpen, setDelayOpen] = useState(false);
   const [activeOptionId, setActiveOptionId] = useState<number | null>(null);
@@ -59,7 +62,7 @@ export default function MobileRoomDetailDialog({
   // 查询活跃申请状态
   useEffect(() => {
     if (!subjectUserId) return;
-    const rid = detail.roomId != null ? String(detail.roomId) : "";
+    const rid = scanRoomId || (detail.roomId != null ? String(detail.roomId) : "");
     if (!rid) return;
     fetchMyActiveDelayRequests(rid, subjectUserId).then((data) => {
       if (data.hasApproved) {
@@ -89,7 +92,7 @@ export default function MobileRoomDetailDialog({
       const submitFn = onSubmitDelay ?? submitScanDelayRequest;
       const res = await submitFn({
         subjectUserId,
-        roomId: String(detail.roomId),
+        roomId: scanRoomId || String(detail.roomId),
         optionId: opt.id,
       });
       toast.success(res.status === "PENDING" ? (res.message || "已提交申请，等待确认") : (res.message || "已授权"));

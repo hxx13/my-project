@@ -163,7 +163,8 @@ public class NotificationSettingsService {
         List<Map<String, String>> base = new ArrayList<>(List.of(
                 module("notification", "通知规则"),
                 module("template", "通知模板"),
-                module("capability", "业务能力策略")
+                module("capability", "业务能力策略"),
+                module("turnstile", "Turnstile 人机验证")
         ));
         Set<String> exists = new HashSet<>(base.stream().map(it -> it.get("key")).toList());
         Set<String> hiddenFromSettings = Set.of("twin_dahua_issue");
@@ -224,6 +225,7 @@ public class NotificationSettingsService {
         if ("llm".equals(module)) return "大模型（DeepSeek）";
         if ("logging".equals(module)) return "控制台日志管理";
         if ("face".equals(module)) return "人脸识别";
+        if ("turnstile".equals(module)) return "Turnstile 人机验证";
         return module;
     }
 

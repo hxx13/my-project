@@ -35,6 +35,10 @@ public class SysUserSchemaMigrator implements ApplicationRunner {
                     "ALTER TABLE sys_user ADD COLUMN display_nickname VARCHAR(64) NULL COMMENT '展示昵称（无人员库姓名时用于报修/采购/物资等申请人展示）'");
             ensureColumnExists("sys_user", "mini_bind_type",
                     "ALTER TABLE sys_user ADD COLUMN mini_bind_type VARCHAR(16) NULL COMMENT '微信小程序绑定方式:STUDENT|STAFF'");
+            ensureColumnExists("sys_user", "login_fail_count",
+                    "ALTER TABLE sys_user ADD COLUMN login_fail_count INT NOT NULL DEFAULT 0 COMMENT '连续登录失败次数'");
+            ensureColumnExists("sys_user", "login_locked_until",
+                    "ALTER TABLE sys_user ADD COLUMN login_locked_until DATETIME NULL COMMENT '账号锁定截止时间'");
             log.info("[auth-schema] sys_user 列已与 UserMapper 对齐");
         } catch (Exception e) {
             log.error("[auth-schema] sys_user 迁移失败（请检查 DB 账号是否有 ALTER 权限）: {}", e.getMessage(), e);

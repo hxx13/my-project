@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/public/runtime-config")
@@ -18,6 +19,19 @@ import java.util.Map;
 public class RuntimeConfigController {
     private final NotificationSettingsService settingsService;
     private final HttpsExtraPortRegistry httpsExtraPortRegistry;
+
+    /**
+     * 不对外返回的敏感 key 前缀集合。
+     * 即使数据库误将此类 key 标记为 is_public=1，也会在此过滤。
+     */
+    private static final Set<String> SENSITIVE_KEY_PREFIXES = Set.of(
+            "network.", "credentials.", "integration.", "llm.",
+            "dahua.", "aro.", "wincc.", "face.", "system."
+    );
+
+    private static final Set<String> SENSITIVE_EXACT_KEYS = Set.of(
+            "cameraHttpsPort"
+    );
 
     public RuntimeConfigController(
             NotificationSettingsService settingsService,
@@ -31,9 +45,15 @@ public class RuntimeConfigController {
     @Operation(summary = "获取运行时配置白名单")
     public Result<?> getRuntimeConfig() {
         Map<String, String> cfg = new LinkedHashMap<>(settingsService.getPublicRuntimeConfig());
-        if (httpsExtraPortRegistry.isEnabled()) {
-            cfg.put("cameraHttpsPort", String.valueOf(httpsExtraPortRegistry.getActivePort()));
-        }
+        // 过滤敏感 key：移除基础设施/凭证/集成类配置，防止泄露后端拓扑信息
+        cfg.keySet().removeIf(key -> {
+            if (SENSITIVE_EXACT_KEYS.contains(key)) return true;
+            for (String prefix : SENSITIVE_KEY_PREFIXES) {
+                if (key.startsWith(prefix)) return true;
+            }
+            return false;
+        });
+        // cameraHttpsPort 已移入 SENSITIVE_EXACT_KEYS，不再对外暴露
         return Result.success(cfg);
     }
 }

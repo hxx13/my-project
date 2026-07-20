@@ -186,13 +186,17 @@ export function resolveScanOfficialRoomId(
 ): string | null {
   if (!analyze?.success) return null;
   const rid = String(overviewRoomId);
+  const searchRooms =
+    analyze.currentState === "INSIDE" && analyze.pendingRooms.length > 0
+      ? [...analyze.allowedRooms, ...analyze.pendingRooms]
+      : analyze.allowedRooms;
   // 1) 直接命中
-  for (const r of analyze.allowedRooms) {
+  for (const r of searchRooms) {
     const oid = String(r.officialRoomId || r.id || "").trim();
     if (oid === rid) return oid;
   }
   // 2) 通过 overviewIndex 匹配
-  for (const r of analyze.allowedRooms) {
+  for (const r of searchRooms) {
     const oid = String(r.officialRoomId || r.id || "").trim();
     if (!oid) continue;
     // 2a) capacityBindRoomId
@@ -415,8 +419,18 @@ export function evaluateMobileRoomAccess(
   const locked = isScanEnterLocked(scanRoom, analyze, overviewRows);
   if (locked) {
     const reason = getEnterLockReason(scanRoom, analyze, overviewRows) || "不可进入";
+    // 满员时不阻止点击查看房间详情，仅禁止进入
+    const isOnlyFull =
+      isRoomFull(scanRoom, overviewRows) &&
+      !(analyze.currentState === "UNKNOWN" ||
+        scanRoom.enterBlocked ||
+        scanRoom.isDisabled ||
+        analyze.globalUserState === 3 ||
+        isEntryTimeBlockedForRoom(scanRoom, analyze) ||
+        analyze.violationEnterLocked ||
+        analyze.unboundEnterLocked);
     return {
-      canOpenDetail: false,
+      canOpenDetail: isOnlyFull,
       enterable: false,
       dimmed: true,
       reasonShort: reason,

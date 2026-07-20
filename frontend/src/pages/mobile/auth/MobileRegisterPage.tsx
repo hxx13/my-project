@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle } from "lucide-react";
 import { QrUploader } from "@/features/student/components/qr";
 import { authStorage } from "@/features/auth/authStorage";
-import { registerStudent } from "@/features/student/api";
+import { registerStudent, verifyUserId } from "@/features/student/api";
 import type { AuthUserInfo } from "@/api/domains/auth.api";
 
 type RegisterStep = "qr" | "confirm" | "credentials" | "success";
@@ -26,6 +26,31 @@ export default function MobileRegisterPage() {
   const [formErrors, setFormErrors] = useState<{ username?: string; password?: string; confirmPassword?: string }>({});
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [needsActivation, setNeedsActivation] = useState(false);
+
+  // Manual ID input (alternative to QR)
+  const [manualUserId, setManualUserId] = useState("");
+  const [manualVerifying, setManualVerifying] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
+
+  const handleManualVerify = async () => {
+    const id = manualUserId.trim();
+    if (!id || id.length !== 19) { setManualError("请输入19位人员编号"); return; }
+    setManualVerifying(true);
+    setManualError(null);
+    try {
+      const result = await verifyUserId(id);
+      if (result.verified && result.userId && result.name) {
+        setVerifiedData({ userId: result.userId, name: result.name, departmentName: result.departmentName || "", projectGroupName: result.projectGroupName || "" });
+        setStep("confirm");
+      } else {
+        setManualError(result.message || "验证失败");
+      }
+    } catch (err) {
+      setManualError(err instanceof Error ? err.message : "验证失败，请重试");
+    } finally {
+      setManualVerifying(false);
+    }
+  };
 
   // Auto-redirect after success
   useEffect(() => {
@@ -97,12 +122,43 @@ export default function MobileRegisterPage() {
       </button>
       <div className="w-full max-w-sm rounded-[var(--app-radius-container)] p-[var(--app-space-container-padding)]" style={{ background: cardBg }}>
 
-        {/* Step 1: QR Upload */}
+        {/* Step 1: QR Upload + Manual Input */}
         {step === "qr" && (
           <div className="flex flex-col items-center text-center">
             <h1 className="text-2xl font-bold" style={{ color: primary }}>学生注册</h1>
-            <p className="mt-2 text-sm" style={{ color: secondary }}>上传你的身份 QR 码进行验证，开始注册账号</p>
-            <div className="mt-8 w-full"><QrUploader onVerified={handleVerified} /></div>
+            <p className="mt-2 text-sm" style={{ color: secondary }}>输入你的19位人员编号或上传QR码进行验证</p>
+
+            {/* 手动输入 */}
+            <div className="mt-8 w-full space-y-3 text-left">
+              <label className="mb-0 block text-sm font-medium" style={{ color: primary }}>人员编号（19 位）</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={19}
+                value={manualUserId}
+                onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 19); setManualUserId(v); setManualError(null); }}
+                placeholder="手动输入 19 位人员编号"
+                autoComplete="off"
+                className="w-full rounded-[var(--app-radius-element)] border px-3 py-2.5 text-base outline-none"
+                style={{ background: bg, borderColor: manualError ? "#ef4444" : border, color: primary }} />
+              {manualError && <p className="mt-1 text-xs" style={{ color: "#ef4444" }}>{manualError}</p>}
+              <button onClick={handleManualVerify}
+                disabled={manualVerifying || manualUserId.trim().length !== 19}
+                className="w-full rounded-[var(--app-radius-element)] py-3 text-base font-medium text-white transition active:scale-[0.98] disabled:opacity-60"
+                style={{ background: `linear-gradient(135deg, ${accent}, ${accent})` }}>
+                {manualVerifying ? "验证中..." : "验证"}
+              </button>
+            </div>
+
+            <div className="my-6 flex w-full items-center gap-3">
+              <div className="flex-1 border-t" style={{ borderColor: border }} />
+              <span className="text-xs" style={{ color: secondary }}>或</span>
+              <div className="flex-1 border-t" style={{ borderColor: border }} />
+            </div>
+
+            {/* QR 上传 */}
+            <div className="w-full"><QrUploader onVerified={handleVerified} /></div>
+
             <p className="mt-6 text-sm" style={{ color: secondary }}>
               已有账号？<Link to="/m/login" className="ml-1 font-medium hover:underline" style={{ color: accent }}>去登录</Link>
             </p>

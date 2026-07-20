@@ -4,6 +4,7 @@ import com.example.demo.common.dto.Result;
 import com.example.demo.modules.student.dto.StudentRegisterRequest;
 import com.example.demo.modules.student.dto.StudentActivateRequest;
 import com.example.demo.modules.student.dto.StudentQrVerifyResponse;
+import com.example.demo.modules.student.dto.StudentVerifyUserIdRequest;
 import com.example.demo.modules.student.service.StudentRegistrationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,6 +29,16 @@ public class StudentAuthController {
             return Result.error("请上传二维码图片");
         }
         StudentQrVerifyResponse result = studentRegistrationService.verifyQrAndMatchPersonnel(file);
+        return Result.success(result);
+    }
+
+    @PostMapping("/verify-userid")
+    @Operation(summary = "手动输入19位人员编号，匹配ARO人员库")
+    public Result<StudentQrVerifyResponse> verifyUserId(@RequestBody StudentVerifyUserIdRequest request) {
+        if (request == null || !org.springframework.util.StringUtils.hasText(request.getUserId())) {
+            return Result.error("请输入19位人员编号");
+        }
+        StudentQrVerifyResponse result = studentRegistrationService.verifyByUserId(request.getUserId().trim());
         return Result.success(result);
     }
 

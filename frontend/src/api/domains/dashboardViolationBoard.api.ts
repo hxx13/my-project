@@ -1,5 +1,5 @@
 /**
- * 主页大屏「违规惩戒公示」公开接口，未登录可访问。
+ * 主页「违规惩戒公示」接口（需登录）。
  * 与后端 PublicDashboardViolationBoardController 对接。
  */
 
@@ -21,10 +21,18 @@ export type DashboardViolationBoardResponse = {
 type ApiResult<T> = { success?: boolean; message?: string; data?: T };
 
 export async function fetchDashboardViolationBoard(): Promise<DashboardViolationBoardResponse> {
+  const token = localStorage.getItem("auth_token") || "";
   const res = await fetch("/api/public/dashboard/violation-board", {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: {
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   });
+  // 未登录时不报错，静默返回空列表
+  if (res.status === 401) {
+    return { enabled: false, items: [] };
+  }
   if (!res.ok) {
     throw new Error(`大屏惩戒公示加载失败 (HTTP ${res.status})`);
   }

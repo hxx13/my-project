@@ -4,6 +4,7 @@ import { AdminSwitchScaled } from "@/components/admin/AdminSwitchScaled";
 import { AnimatedRoomButton } from "@/components/scanner/AnimatedRoomButton";
 import { ScanDelayButton, ScanDelayMenuPortal, type DelayButtonStatus } from "@/components/scanner/ScanDelayButtonMenu";
 import { RoomEnterConfirmDialog } from "@/components/scanner/RoomEnterConfirmDialog";
+import { DisabledEnterHintButton } from "@/components/scanner/DisabledEnterHintButton";
 import type { RoomInfo, ScanDelayOptionSummary } from "@/api/types/scanner";
 import { resolveRoomActionDensity } from "@/components/scanner/roomActionDensity";
 import { formatCountdown, resolveAutoSignoutCountdownCopy } from "@/utils/formatCountdown";
@@ -77,6 +78,8 @@ interface ActionButtonsProps {
     confirmingExitRoom?: RoomInfo | null;
     /** 当前扫码人 userId，用于离开确认弹窗中的 QR 码 */
     studentUserId?: string;
+    /** 「进入房间」按钮被禁用时，左侧 ? 帮助按钮的提示文案（来自后台配置） */
+    enterDisabledHintText?: string;
 }
 
 export const ActionButtons = (props: ActionButtonsProps) => {
@@ -99,6 +102,7 @@ export const ActionButtons = (props: ActionButtonsProps) => {
         onCancelExit,
         confirmingExitRoom,
         studentUserId,
+        enterDisabledHintText,
     } = props;
     const safeRooms = Array.isArray(targetRooms) ? targetRooms : [];
     const density = resolveRoomActionDensity(safeRooms.length);
@@ -265,6 +269,12 @@ export const ActionButtons = (props: ActionButtonsProps) => {
                                             </div>
                                         );
                                     })}
+                                </div>
+                            ) : null}
+                            {/* 禁入帮助提示按钮 — 仅当进入按钮被禁用且有文案时，显示在按钮左侧 */}
+                            {props.isEnterLocked(room) && enterDisabledHintText ? (
+                                <div className="shrink-0 flex items-center">
+                                    <DisabledEnterHintButton hintText={enterDisabledHintText} />
                                 </div>
                             ) : null}
                             <div className="flex-1 min-w-0 h-full">

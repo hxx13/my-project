@@ -848,11 +848,35 @@ function TimeGroup({ label, count, children, defaultOpen = true, className }: { 
   );
 }
 
-/** 按物品分组 + 按规格分子组，渲染请求卡片列表 */
+/** 按物品分组 + 按规格分子组，渲染请求卡片列表。物品名和规格均可折叠收纳。 */
 function MaterialRequestGroup({ items, dotColor, canDelete, approve, reject, revoke, deleteReq, handleExportPersonal, friendlyGroups }: { items: MaterialRequest[]; dotColor: string; canDelete: boolean; approve: ReturnType<typeof useApproveMaterialRequest>; reject: ReturnType<typeof useRejectMaterialRequest>; revoke: ReturnType<typeof useRevokeMaterialRequest>; deleteReq: ReturnType<typeof useDeleteMaterialRequest>; handleExportPersonal: (reqId: string) => void; friendlyGroups?: Set<string> }) {
   const hasFriendly = friendlyGroups && friendlyGroups.size > 0;
+
+  // ── 初始折叠状态：待处理物品→展开物品层/折叠规格层；已处理→全折叠 ──
+  const [collapsedItems, setCollapsedItems] = useState<Set<string>>(() => {
+    const collapsed = new Set<string>();
+    for (const [itemName, reqs] of groupByItem(items)) {
+      const hasPending = reqs.some(r => r.status === "PENDING" || r.status === "FIRST_OK");
+      if (!hasPending) collapsed.add(itemName);
+    }
+    return collapsed;
+  });
+  const [collapsedSpecs, setCollapsedSpecs] = useState<Set<string>>(() => {
+    // 所有规格默认折叠；单品规物品无需折叠（item 展开即直接看到卡片）
+    const collapsed = new Set<string>();
+    for (const [itemName, reqs] of groupByItem(items)) {
+      const specs = new Set(reqs.map(r => r.lines?.[0]?.specSnapshot || '__no_spec__'));
+      if (specs.size <= 1) continue; // 单品规不折叠
+      for (const specKey of specs) collapsed.add(`${itemName}::${specKey}`);
+    }
+    return collapsed;
+  });
+
+  const toggleItem = (name: string) => setCollapsedItems(prev => { const n = new Set(prev); if (n.has(name)) n.delete(name); else n.add(name); return n; });
+  const toggleSpec = (key: string) => setCollapsedSpecs(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {Array.from(groupByItem(items)).map(([itemName, reqs]) => {
         const specGroups = new Map<string, MaterialRequest[]>();
         for (const req of reqs) {
@@ -861,31 +885,62 @@ function MaterialRequestGroup({ items, dotColor, canDelete, approve, reject, rev
           if (!specGroups.has(key)) specGroups.set(key, []);
           specGroups.get(key)!.push(req);
         }
+        const isItemOpen = !collapsedItems.has(itemName);
+        const hasSingleSpec = specGroups.size <= 1;
         return (
-          <div key={itemName} className="space-y-2">
-            <div className="flex items-center gap-2 pl-1">
-              <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-              <span className="text-xs font-medium text-[var(--twin-body)]">{itemName}</span>
-              <span className="text-[11px] text-[var(--twin-mute)]">{reqs.length} 条</span>
-            </div>
-            {Array.from(specGroups.entries()).map(([specKey, specReqs]) => (
-              <div key={specKey}>
-                {specKey !== '__no_spec__' && (
-                  <div className="text-xs font-medium text-[var(--twin-mute)] px-3 py-1">
-                    {formatSpecLabel(specKey)}
-                  </div>
-                )}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {specReqs.map(req => {
-                    const g = (req as any).applicantGroup as string | undefined;
-                    const isFriendly = hasFriendly && g ? friendlyGroups.has(g) : undefined;
-                    return (
-                      <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} isFriendly={isFriendly} />
-                    );
-                  })}
-                </div>
+          <div key={itemName} className="space-y-1.5">
+            {/* ── 物品名行（可折叠） ── */}
+            <button
+              type="button"
+              onClick={() => toggleItem(itemName)}
+              className="flex items-center gap-2 pl-1 cursor-pointer hover:text-[var(--app-color-text-primary)] transition-colors text-left w-full"
+            >
+              <span className={`text-[10px] transition-transform shrink-0 ${isItemOpen ? "rotate-90" : ""}`}>▶</span>
+              <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
+              <span className="text-xs font-medium text-[var(--twin-body)] truncate">{itemName}</span>
+              <span className="text-[11px] text-[var(--twin-mute)] shrink-0">{reqs.length} 条</span>
+            </button>
+            {isItemOpen && (
+              <div className={hasSingleSpec ? "space-y-0" : "space-y-1.5"}>
+                {Array.from(specGroups.entries()).map(([specKey, specReqs]) => {
+                  const specCollapseKey = `${itemName}::${specKey}`;
+                  const isSpecOpen = !collapsedSpecs.has(specCollapseKey);
+                  const showSpecToggle = !hasSingleSpec && specKey !== '__no_spec__';
+                  return (
+                    <div key={specKey}>
+                      {/* ── 规格行（多规格时可折叠） ── */}
+                      {specKey !== '__no_spec__' && (
+                        <button
+                          type="button"
+                          onClick={() => toggleSpec(specCollapseKey)}
+                          className="flex items-center gap-1.5 px-4 py-0.5 w-full text-left cursor-pointer hover:text-[var(--app-color-text-primary)] transition-colors"
+                        >
+                          {showSpecToggle && (
+                            <span className={`text-[9px] transition-transform shrink-0 text-[var(--twin-mute)] ${isSpecOpen ? "rotate-90" : ""}`}>▶</span>
+                          )}
+                          {!showSpecToggle && <span className="w-2.5 shrink-0" />}
+                          <span className="text-xs font-medium text-[var(--twin-mute)]">
+                            {formatSpecLabel(specKey)}
+                          </span>
+                          {showSpecToggle && <span className="text-[10px] text-[var(--twin-mute)] shrink-0">{specReqs.length} 条</span>}
+                        </button>
+                      )}
+                      {(specKey === '__no_spec__' || isSpecOpen) && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          {specReqs.map(req => {
+                            const g = (req as any).applicantGroup as string | undefined;
+                            const isFriendly = hasFriendly && g ? friendlyGroups.has(g) : undefined;
+                            return (
+                              <MaterialRequestCard key={req.id} req={req} canDelete={canDelete} approve={approve} reject={reject} revoke={revoke} deleteReq={deleteReq} handleExportPersonal={handleExportPersonal} isFriendly={isFriendly} />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            )}
           </div>
         );
       })}

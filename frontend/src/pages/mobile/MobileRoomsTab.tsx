@@ -185,6 +185,12 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
     return getRoomDelayOptions(bundle.scanAnalyze, scanId) as ScanDelayOptionSummary[];
   }, [detailRoom, bundle?.scanAnalyze, bundle?.overviewIndex]);
 
+  // 当前选中房间的扫码系统 officialRoomId（供延迟状态查询等需要 scan ID 的场景使用）
+  const currentRoomScanId = useMemo<string | null>(() => {
+    if (!detailRoom || !bundle) return null;
+    return resolveScanOfficialRoomId(detailRoom.roomId, bundle.overviewIndex, bundle.scanAnalyze);
+  }, [detailRoom, bundle]);
+
   // 延迟申请提交：JWT 用 authHttp，token 用 publicHttp
   // 房间 ID 需转为官方扫描 ID（与 Web 端行为一致，否则后台校验 isOptionBoundToRoom 失败）
   const handleDelaySubmit = useCallback(
@@ -386,6 +392,22 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
             </span>
           </header>
 
+          {/* 滚动通知条幅 */}
+          <div
+            className="shrink-0 overflow-hidden whitespace-nowrap py-1.5 px-3"
+            style={{
+              background: "linear-gradient(90deg, #fef7ed 0%, #fdf0d5 50%, #fef7ed 100%)",
+              borderBottom: "1px solid #e8c47a",
+            }}
+          >
+            <span
+              className="inline-block text-[13px] font-bold animate-marquee"
+              style={{ color: "#1a1a1a" }}
+            >
+              如遇到无法申请延时，请刷新页面后尝试
+            </span>
+          </div>
+
           <div
             ref={roomScrollRef}
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 pt-1 pb-4"
@@ -443,6 +465,7 @@ export default function MobileRoomsTab({ token, jwtMode }: { token: string; jwtM
           scanDelayButtonLabel={bundle?.scanAnalyze?.scanDelayButtonLabel ?? "延迟"}
           delayOptions={currentRoomDelayOptions}
           subjectUserId={bundle?.userId}
+          scanRoomId={currentRoomScanId}
           onSubmitDelay={handleDelaySubmit}
           onDelaySuccess={handleDelaySuccess}
         />

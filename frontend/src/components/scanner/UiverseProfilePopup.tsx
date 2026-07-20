@@ -28,6 +28,7 @@ import { Z_INDEX } from "@/constants/zIndex";
 import { NumericKeypad } from "@/components/ui/NumericKeypad";
 import { BizOverlayShell } from "./BizOverlayShell";
 import type { ScanApplicantContext } from "./BizOverlayShell.types";
+import { fetchPublicRuntimeConfig } from "@/api/domains/notification.api";
 import { useBizRegistry } from "./useBizRegistry";
 import MaterialBizPanel from "./MaterialBizPanel";
 import { checkPinStatus } from "./specialChannel.api";
@@ -162,6 +163,20 @@ export function UiverseProfilePopup(props: PopupProps) {
     const [keypadUserId, setKeypadUserId] = useState("");
     const pendingPersonalFaceVerifyRef = useRef(false);
     const studentUserId = String(state.user?.userId || result?.userInfo?.userId || "");
+
+    // ──── 禁入帮助提示文案（从公开运行时配置读取） ────
+    const [enterDisabledHintText, setEnterDisabledHintText] = useState("");
+    useEffect(() => {
+        let cancelled = false;
+        fetchPublicRuntimeConfig()
+            .then((cfg) => {
+                if (!cancelled) {
+                    setEnterDisabledHintText(cfg["student.scan.enter.disabled.hint.text"] || "");
+                }
+            })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, []);
 
     const scanApplicant = useMemo((): ScanApplicantContext | undefined => {
       const u = state.user ?? result?.userInfo;
@@ -447,6 +462,7 @@ export function UiverseProfilePopup(props: PopupProps) {
                                         onCancelExit={actions.cancelExit}
                                         confirmingExitRoom={state.confirmingExitRoom}
                                         studentUserId={studentUserId}
+                                        enterDisabledHintText={enterDisabledHintText}
                                     />
                                 ) : (
                                     <div className="flex-1 min-h-[120px] w-full shrink-0" aria-hidden />

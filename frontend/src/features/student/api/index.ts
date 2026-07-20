@@ -1,6 +1,7 @@
 // 学生端 API 接口层
 export {
   verifyQrCode,
+  verifyUserId,
   registerStudent,
   activateStudent,
   fetchStudentProfile,

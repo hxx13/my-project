@@ -6,6 +6,7 @@ import com.example.demo.modules.admin.mapper.AdminMapper;
 import com.example.demo.modules.auth.entity.User;
 import com.example.demo.modules.auth.mapper.UserMapper;
 import com.example.demo.modules.auth.service.PasswordCredentialService;
+import com.example.demo.modules.auth.service.PasswordPolicyValidator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -65,8 +66,9 @@ public class AdminService {
             throw new IllegalArgumentException("账号长度须在 2～64 字符");
         }
         String rawPwd = request.getPassword();
-        if (rawPwd.length() < 6) {
-            throw new IllegalArgumentException("密码至少 6 位");
+        String pwError = PasswordPolicyValidator.validate(rawPwd);
+        if (pwError != null) {
+            throw new IllegalArgumentException(pwError);
         }
         if (userMapper.findByUsername(username) != null) {
             throw new IllegalArgumentException("该登录账号已存在");
@@ -182,7 +184,7 @@ public class AdminService {
         if (BUILTIN_SUPER_ADMIN_ID.equals(target.getId())) {
             throw new IllegalArgumentException("内置超级管理员不可重置密码");
         }
-        String defaultPassword = UUID.randomUUID().toString().substring(0, 8);
+        String defaultPassword = generateCompliantPassword();
         String hash = passwordCredentialService.encodeForStorage(defaultPassword);
         String encryptedPlain = passwordCredentialService.encryptPlaintext(defaultPassword);
         userMapper.updatePasswordWithPlainById(id, hash, encryptedPlain, 1);
@@ -261,7 +263,7 @@ public class AdminService {
         if (!StringUtils.hasText(personnelUserId)) {
             throw new IllegalArgumentException("用户ID不能为空");
         }
-        String defaultPassword = UUID.randomUUID().toString().substring(0, 8);
+        String defaultPassword = generateCompliantPassword();
         String hash = passwordCredentialService.encodeForStorage(defaultPassword);
         String encryptedPlain = passwordCredentialService.encryptPlaintext(defaultPassword);
         User target = userMapper.findById(personnelUserId);
@@ -284,6 +286,36 @@ public class AdminService {
         Map<String, Object> data = new HashMap<>();
         data.put("defaultPassword", defaultPassword);
         return data;
+    }
+
+    /**
+     * 生成符合密码强度规则的随机密码（≥8位，含大小写字母+数字+特殊字符至少三类）。
+     */
+    private String generateCompliantPassword() {
+        String upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        String lower = "abcdefghjkmnpqrstuvwxyz";
+        String digits = "23456789";
+        String special = "!@#$%&*";
+        String all = upper + lower + digits + special;
+
+        java.security.SecureRandom rng = new java.security.SecureRandom();
+        // 保证三类：大写 + 小写 + 数字 = 3 categories
+        char[] chars = new char[10];
+        chars[0] = upper.charAt(rng.nextInt(upper.length()));
+        chars[1] = lower.charAt(rng.nextInt(lower.length()));
+        chars[2] = digits.charAt(rng.nextInt(digits.length()));
+        chars[3] = special.charAt(rng.nextInt(special.length()));
+        for (int i = 4; i < chars.length; i++) {
+            chars[i] = all.charAt(rng.nextInt(all.length()));
+        }
+        // 打乱顺序
+        for (int i = chars.length - 1; i > 0; i--) {
+            int j = rng.nextInt(i + 1);
+            char tmp = chars[i];
+            chars[i] = chars[j];
+            chars[j] = tmp;
+        }
+        return new String(chars);
     }
 
     public void resetOpenId(String id) {

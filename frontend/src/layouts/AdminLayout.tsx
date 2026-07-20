@@ -1244,22 +1244,22 @@ export default function AdminLayout() {
       />
 
       <Dialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
-        <DialogContent className="z-[var(--z-modal)] sm:max-w-sm">
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>退出登录</DialogTitle>
             <DialogDescription>确定要退出当前账号吗？</DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button
-              variant="outline"
-              size="default"
+            <button
+              type="button"
+              className="rounded-[var(--app-radius-element)] bg-[var(--app-color-surface-hover)] px-4 py-2 text-sm font-medium text-[var(--app-color-text-primary)] transition-colors hover:bg-[var(--app-color-surface-active)]"
               onClick={() => setLogoutDialogOpen(false)}
             >
               取消
-            </Button>
-            <Button
-              variant="destructive"
-              size="default"
+            </button>
+            <button
+              type="button"
+              className="rounded-[var(--app-radius-element)] bg-[var(--app-color-feedback-danger)] px-4 py-2 text-sm font-medium text-[var(--app-color-text-inverse)] transition-colors hover:bg-[var(--app-color-feedback-danger)]/85"
               onClick={() => {
                 authStorage.clear();
                 toast.success("已退出登录");
@@ -1268,14 +1268,14 @@ export default function AdminLayout() {
               }}
             >
               退出登录
-            </Button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* ARO 绑定弹窗 */}
       <Dialog open={aroBindDialogOpen} onOpenChange={setAroBindDialogOpen}>
-        <DialogContent className="z-[var(--z-modal)] sm:max-w-sm">
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>绑定ARO账号</DialogTitle>
             <DialogDescription>输入要绑定的ARO用户ID</DialogDescription>
@@ -1382,7 +1382,7 @@ export default function AdminLayout() {
 
       {/* ARO 解绑确认弹窗 */}
       <Dialog open={aroUnbindDialogOpen} onOpenChange={setAroUnbindDialogOpen}>
-        <DialogContent className="z-[var(--z-modal)] sm:max-w-sm">
+        <DialogContent className="z-[var(--z-modal)] border-[var(--app-color-border-default)] bg-[var(--app-color-surface-elevated)] text-[var(--app-color-text-primary)] sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>解除ARO绑定</DialogTitle>
             <DialogDescription>

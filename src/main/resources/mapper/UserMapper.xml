@@ -18,10 +18,12 @@
         <result property="authProfile" column="auth_profile"/>
         <result property="accountSource" column="account_source"/>
         <result property="createTime" column="create_time"/>
+        <result property="loginFailCount" column="login_fail_count"/>
+        <result property="loginLockedUntil" column="login_locked_until"/>
     </resultMap>
 
     <sql id="User_Column_List">
-        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, account_source, create_time
+        id, username, password, open_id, role, status, password_reset_required, display_nickname, mini_bind_type, mini_preferences_json, auth_profile, account_source, create_time, login_fail_count, login_locked_until
     </sql>
 
     <select id="findByUsername" resultMap="UserResultMap">
@@ -205,5 +207,27 @@
           )
         LIMIT 20
     </select>
+
+    <update id="incrementLoginFailCount">
+        UPDATE sys_user
+        SET login_fail_count = login_fail_count + 1,
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="lockUserUntil">
+        UPDATE sys_user
+        SET login_locked_until = #{lockedUntil},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <update id="clearLoginFailCount">
+        UPDATE sys_user
+        SET login_fail_count = 0,
+            login_locked_until = NULL,
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
 
 </mapper>

@@ -82,7 +82,7 @@ import {
 import { normalizePersonnelRecord, type PersonnelRecordView } from "@/utils/personnelRecord";
 import { resolvePersonnelAvatarUrl } from "@/utils/personnelAvatarUrl";
 import { SystemConfigsPanel } from "@/features/admin/settings/SystemConfigsPanel";
-import { fetchSystemConfigs, fetchConfigDefinitions, type SystemConfigRecord, type SettingDefinitionRecord } from "@/api/domains/notification.api";
+import { fetchSystemConfigs, fetchConfigDefinitions, updateSystemConfig, type SystemConfigRecord, type SettingDefinitionRecord } from "@/api/domains/notification.api";
 
 type PickUser = { userId: string; name: string };
 type LockMode = "single" | "batch";
@@ -318,6 +318,94 @@ function HomepageContentTab() {
       title="主页文案与公告"
       description="管理主页还卡说明、惩戒公告等面向学生的文案与展示样式。修改后即时生效。"
     />
+  );
+}
+
+/** 「禁入按钮帮助提示」后台编辑器 — 复用 student_violation 模块的 sys_system_config */
+function HintTextEditor() {
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [configId, setConfigId] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchSystemConfigs("student_violation")
+      .then((items) => {
+        if (cancelled) return;
+        const hit = items.find(
+          (it) => it.configKey === "student.scan.enter.disabled.hint.text",
+        );
+        if (hit) {
+          setConfigId(hit.id);
+          setText(hit.configValue ?? "");
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleSave = async () => {
+    if (configId == null) {
+      toast.error("配置项未找到，请刷新页面后重试");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateSystemConfig(configId, { configValue: text });
+      toast.success("文案已保存，扫码端将在下次扫码时生效");
+    } catch (e: any) {
+      toast.error(e?.message || "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <AdminFormCard
+      title="禁入按钮帮助提示文案"
+      description="当扫码弹窗中「进入房间」按钮因任何原因被禁用（满员/未绑卡/违规/非开放时段等），按钮左侧会出现 ? 帮助图标，点击后以打字机动画展示此处配置的文案。目前为统一文案，后续可按禁用原因细化颗粒配置。"
+    >
+      <div className="admin-violation-form-body">
+        <div className="admin-form-field">
+          <label className="admin-form-field-label">提示文案</label>
+          <p className="admin-form-field-hint">
+            支持多行文本；将在气泡窗口中逐字打字展示。
+          </p>
+          {loading ? (
+            <div className="flex min-h-[120px] items-center justify-center text-sm text-[var(--app-color-text-tertiary)]">
+              加载中…
+            </div>
+          ) : (
+            <textarea
+              className="mt-2 w-full min-h-[160px] rounded-twin-lg border border-[var(--app-color-border-default)] bg-[var(--app-color-surface-page)] p-4 text-sm text-[var(--app-color-text-primary)] resize-y outline-none focus:border-[var(--app-color-accent)] placeholder:text-[var(--app-color-text-tertiary)]"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="请输入帮助提示文案…"
+            />
+          )}
+        </div>
+        <div className="mt-4 flex items-center justify-between">
+          <span className="text-xs text-[var(--app-color-text-tertiary)]">
+            当前共 {text.length} 个字符
+          </span>
+          <AdminButton
+            type="button"
+            tone="primary"
+            size="sm"
+            loading={saving}
+            disabled={loading || configId == null}
+            onClick={() => { void handleSave(); }}
+          >
+            <Save className="h-3.5 w-3.5 mr-1" />
+            保存文案
+          </AdminButton>
+        </div>
+      </div>
+    </AdminFormCard>
   );
 }
 
@@ -1014,7 +1102,7 @@ export default function AdminStudentViolationsPage() {
   // Create tab sub-panel
   const [createSubPanel, setCreateSubPanel] = useState<"manual" | "stranded">("manual");
   // Records tab sub-panel
-  const [recordsSubPanel, setRecordsSubPanel] = useState<"records" | "rules" | "cage-grouped">("records");
+  const [recordsSubPanel, setRecordsSubPanel] = useState<"records" | "rules" | "cage-grouped" | "hint-text">("records");
   const [recordSearch, setRecordSearch] = useState("");
   const [recordOnlyActive, setRecordOnlyActive] = useState(false);
 
@@ -1173,6 +1261,7 @@ export default function AdminStudentViolationsPage() {
                 <button type="button" onClick={() => setRecordsSubPanel("records")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${recordsSubPanel === "records" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"}`}>📋 违规记录</button>
                 <button type="button" onClick={() => setRecordsSubPanel("rules")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${recordsSubPanel === "rules" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"}`}>⚙ 触发规则</button>
                 <button type="button" onClick={() => setRecordsSubPanel("cage-grouped")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${recordsSubPanel === "cage-grouped" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"}`}>🧬 笼架联动</button>
+                <button type="button" onClick={() => setRecordsSubPanel("hint-text")} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${recordsSubPanel === "hint-text" ? "bg-[var(--app-color-accent)] text-white" : "text-[var(--app-color-text-secondary)] hover:bg-[var(--app-color-surface-hover)] hover:text-[var(--app-color-text-primary)]"}`}>💬 文案提示</button>
                 {recordsSubPanel === "records" && (
                   <>
                     <div className="relative flex-1 max-w-xs ml-3">
@@ -2384,6 +2473,9 @@ export default function AdminStudentViolationsPage() {
                 </table>
               </AdminTableShell>
             </div>
+          )}
+          {recordsSubPanel === "hint-text" && (
+            <HintTextEditor />
           )}
         </AdminTabPanel>
 

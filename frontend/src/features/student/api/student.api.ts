@@ -83,6 +83,21 @@ export async function verifyQrCode(file: File): Promise<StudentQrVerifyResponse>
 }
 
 /**
+ * 手动输入 19 位人员编号，匹配 ARO 人员库
+ * POST /api/auth/register/student/verify-userid
+ */
+export async function verifyUserId(userId: string): Promise<StudentQrVerifyResponse> {
+  const res = await authHttp.post<Result<StudentQrVerifyResponse>>(
+    "/auth/register/student/verify-userid",
+    { userId }
+  );
+  if (!res.data?.success) {
+    throw new Error(res.data?.message || "验证失败");
+  }
+  return res.data.data;
+}
+
+/**
  * 学生注册（免邀请码，以 user_id + QR 验证绑定）
  * POST /api/auth/register/student
  */

@@ -25,30 +25,65 @@ export const SOCKET_IO_CLIENT_OPTIONS: Partial<ManagerOptions> = {
 
 /**
  * 解析 Socket.IO 根地址（不含 path，socket.io-client 会加 /socket.io/）。
- * 优先级：VITE_SOCKET_URL → 由 VITE_API_BASE_URL 改端口 → 当前页 host:9092 → localhost:9092
+ *
+ * 优先级：VITE_SOCKET_URL → VITE_API_BASE_URL 推导 → 当前页同域 → localhost
+ *
+ * HTTPS 页面核心原则：浏览器禁止混合内容（Mixed Content），WebSocket 必须走 wss://。
+ * 如果 VITE_API_BASE_URL 指向的主机与当前页面不同（例如 API 走裸 IP 而页面走域名），
+ * 则跳过 API 推导，直接使用页面同域——由 nginx 按 /socket.io/ 路径统一代理。
  */
 export function resolveSocketUrl(): string {
+    const isHttpsPage =
+        typeof window !== "undefined" &&
+        window.location?.protocol === "https:";
+
+    // ① 显式指定 Socket 地址
     const explicit = import.meta.env.VITE_SOCKET_URL;
     if (typeof explicit === "string" && explicit.trim() !== "") {
-        return explicit.trim();
+        const url = explicit.trim();
+        if (isHttpsPage && url.startsWith("ws://")) {
+            return url.replace("ws://", "wss://");
+        }
+        if (isHttpsPage && url.startsWith("http://")) {
+            return url.replace("http://", "https://");
+        }
+        return url;
     }
 
+    // ② 从 API 地址推导（仅当 API 主机与页面主机相同、或非 HTTPS 时）
     const apiBase = import.meta.env.VITE_API_BASE_URL;
     if (typeof apiBase === "string" && apiBase.trim() !== "") {
         try {
-            const u = new URL(apiBase.trim());
-            u.port = String(DEFAULT_SOCKET_PORT);
-            return u.origin;
+            const apiUrl = new URL(apiBase.trim());
+            const pageHost =
+                typeof window !== "undefined" ? window.location?.hostname : null;
+
+            // HTTPS 页面且 API 主机 ≠ 页面主机 → 跳过，走同域 fallback
+            // 典型场景：API=http://47.101.61.184, 页面=https://aroultra.shsmu.edu.cn
+            if (isHttpsPage && pageHost && apiUrl.hostname !== pageHost) {
+                // 跳过，不从此推导
+            } else {
+                apiUrl.port = String(DEFAULT_SOCKET_PORT);
+                if (isHttpsPage) {
+                    apiUrl.protocol = "https:";
+                }
+                return apiUrl.origin;
+            }
         } catch {
             /* fall through */
         }
     }
 
+    // ③ 当前页同域
     if (typeof window !== "undefined" && window.location?.hostname) {
-        const { protocol, hostname } = window.location;
-        return `${protocol}//${hostname}:${DEFAULT_SOCKET_PORT}`;
+        if (isHttpsPage) {
+            // HTTPS：不设端口，nginx 按 /socket.io/ 路径代理
+            return `${window.location.protocol}//${window.location.hostname}`;
+        }
+        return `${window.location.protocol}//${window.location.hostname}:${DEFAULT_SOCKET_PORT}`;
     }
 
+    // ④ 开发环境 localhost
     return `http://localhost:${DEFAULT_SOCKET_PORT}`;
 }
 
