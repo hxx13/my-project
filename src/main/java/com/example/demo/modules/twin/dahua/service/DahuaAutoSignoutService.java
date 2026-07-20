@@ -153,7 +153,6 @@ public class DahuaAutoSignoutService {
             return false;
         }
         log.info("[auto-signout] aro signout success userId={} roomId={}", userId, roomId);
-        triggerMiniAroPenetrationRequest(userId, 2);
         clearSwingLinkageAfterAroLeaveResolved(userId);
 
         if (!postAutoLeaveLinkageEnabled()) {
@@ -169,6 +168,7 @@ public class DahuaAutoSignoutService {
             }
             Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
             registerSignoutCorrelation(userId, roomId, auditId, msg, triggerType);
+            triggerMiniAroPenetrationRequest(userId, 2);
             return true;
         }
 
@@ -197,6 +197,7 @@ public class DahuaAutoSignoutService {
         }
         Long auditId = writeAutoLogReturning(userId, triggerType, triggerReason, true, msg);
         registerSignoutCorrelation(userId, roomId, auditId, msg, triggerType);
+        triggerMiniAroPenetrationRequest(userId, 2);
         return true;
     }
 

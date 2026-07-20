@@ -142,7 +142,7 @@ public class DahuaSwingRuleEngineService {
     /**
      * 独立于拉取任务的节拍：避免仅依赖 15s 轮询尾部才处理到期签退。
      */
-    @Scheduled(fixedDelayString = "${app.dahua-swing.due-process-ms:5000}")
+    @Scheduled(fixedDelayString = "${app.dahua-swing.due-process-ms:5000}", scheduler = "twinSwingTaskScheduler")
     public void scheduledProcessDueStates() {
         processDueStates();
     }

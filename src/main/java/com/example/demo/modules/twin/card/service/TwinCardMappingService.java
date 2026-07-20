@@ -743,34 +743,93 @@ public class TwinCardMappingService {
         int frozenCount = 0;
         int exemptCount = 0;
         int failCount = 0;
+        int skippedNoCard = 0;
+        int skippedNotNormal = 0;
 
-        // 1. 查找当前所有“在馆”人员 (ENTER 次数 > EXIT 次数)
+        // 1. 查找当前所有"在馆"人员 (ENTER 次数 > EXIT 次数)
         String todayStr = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
         List<String> strandedUserIds = mappingMapper.findTodayStrandedUserIds(todayStr + "%");
 
         for (String userId : strandedUserIds) {
             TwinCardMapping mapping = loadMappingByAroUserIdFromDb(userId);
-            if (mapping != null && "NORMAL".equals(mapping.getCardStatus())) {
-                // 2. 豁免权判决（DB 为准，与滞留违规同源）
-                if (isFreezeExempt(mapping)) {
-                    exemptCount++;
-                } else {
-                    String cno = mapping.getCardNo();
-                    if (cno == null || cno.isBlank()) {
-                        log.warn("[freeze-reaper] skip no physical card mapping userId={}", userId);
-                    } else {
-                        // 3. 滞留跑批/手动触发跑批：强制冻结（豁免已在分支上排除）
-                        try {
-                            updateCardStatus(cno, "FROZEN");
-                            frozenCount++;
-                            writeReaperSingleUserFreezeAudit(userId, cno);
-                        } catch (Exception e) {
-                            failCount++;
-                            log.error("[freeze-reaper] 单用户冻结失败 userId={} cardNo={} err={}",
-                                    userId, cno, e.getMessage(), e);
-                        }
-                    }
-                }
+            if (mapping == null) {
+                skippedNotNormal++;
+                twinAutomationLogService.write(
+                        TwinAutomationLogService.TYPE_SCHEDULER,
+                        TwinAutomationLogService.EVENT_REAPER_USER_FROZEN,
+                        "TIMER",
+                        TwinAutomationLogService.TRIGGER_REAPER_USER_FROZEN,
+                        userId,
+                        null,
+                        false,
+                        "冻结跑批：无卡映射记录，无法冻结",
+                        "freeze-reaper-user");
+                continue;
+            }
+            if (!"NORMAL".equals(mapping.getCardStatus())) {
+                skippedNotNormal++;
+                twinAutomationLogService.write(
+                        TwinAutomationLogService.TYPE_SCHEDULER,
+                        TwinAutomationLogService.EVENT_REAPER_USER_FROZEN,
+                        "TIMER",
+                        TwinAutomationLogService.TRIGGER_REAPER_USER_FROZEN,
+                        userId,
+                        mapping.getCardNo(),
+                        true,
+                        "冻结跑批：卡片状态非 NORMAL（当前=" + mapping.getCardStatus() + "），无需冻结",
+                        "freeze-reaper-user");
+                continue;
+            }
+            // 2. 豁免权判决（DB 为准，与滞留违规同源）
+            if (isFreezeExempt(mapping)) {
+                exemptCount++;
+                twinAutomationLogService.write(
+                        TwinAutomationLogService.TYPE_SCHEDULER,
+                        TwinAutomationLogService.EVENT_REAPER_USER_FROZEN,
+                        "TIMER",
+                        TwinAutomationLogService.TRIGGER_REAPER_USER_FROZEN,
+                        userId,
+                        mapping.getCardNo(),
+                        true,
+                        "冻结跑批：用户享有免冻结豁免，已跳过",
+                        "freeze-reaper-user");
+                continue;
+            }
+            String cno = mapping.getCardNo();
+            if (cno == null || cno.isBlank()) {
+                skippedNoCard++;
+                log.warn("[freeze-reaper] skip no physical card mapping userId={}", userId);
+                twinAutomationLogService.write(
+                        TwinAutomationLogService.TYPE_SCHEDULER,
+                        TwinAutomationLogService.EVENT_REAPER_USER_FROZEN,
+                        "TIMER",
+                        TwinAutomationLogService.TRIGGER_REAPER_USER_FROZEN,
+                        userId,
+                        null,
+                        false,
+                        "冻结跑批：无物理卡号，无法冻结",
+                        "freeze-reaper-user");
+                continue;
+            }
+            // 3. 滞留跑批/手动触发跑批：强制冻结（豁免已在分支上排除）
+            try {
+                updateCardStatus(cno, "FROZEN");
+                frozenCount++;
+                writeReaperSingleUserFreezeAudit(userId, cno);
+            } catch (Exception e) {
+                failCount++;
+                log.error("[freeze-reaper] 单用户冻结失败 userId={} cardNo={} err={}",
+                        userId, cno, e.getMessage(), e);
+                twinAutomationLogService.write(
+                        TwinAutomationLogService.TYPE_SCHEDULER,
+                        TwinAutomationLogService.EVENT_REAPER_USER_FROZEN,
+                        "TIMER",
+                        TwinAutomationLogService.TRIGGER_REAPER_USER_FROZEN,
+                        userId,
+                        cno,
+                        false,
+                        "冻结跑批：冻结失败 — " + (e.getMessage() != null ? e.getMessage().substring(0, Math.min(e.getMessage().length(), 200)) : "未知错误"),
+                        "freeze-reaper-user");
             }
         }
 
@@ -778,6 +837,8 @@ public class TwinCardMappingService {
         stats.put("frozenCount", frozenCount);
         stats.put("exemptCount", exemptCount);
         stats.put("failCount", failCount);
+        stats.put("skippedNoCard", skippedNoCard);
+        stats.put("skippedNotNormal", skippedNotNormal);
         stats.put("totalChecked", strandedUserIds.size());
         return stats;
     }
@@ -1061,12 +1122,32 @@ public class TwinCardMappingService {
             if (userId == null || userId.isBlank()) {
                 signoutSkippedNoUser++;
                 log.warn("[豁免回收] 今日曾豁免但无法签离：aro_user_id 为空，卡号={}", nullToDash(snap.getCardNo()));
+                twinAutomationLogService.write(
+                        TwinAutomationLogService.TYPE_EXEMPTION,
+                        "DAILY_EXEMPT_SIGNOUT_SKIPPED",
+                        "TIMER",
+                        "DAILY_EXEMPT_RESET_TIMER",
+                        null,
+                        snap.getCardNo(),
+                        false,
+                        "豁免回收后自动签离·跳过：aro_user_id 为空，卡号=" + nullToDash(snap.getCardNo()),
+                        "daily-exempt-reset");
                 continue;
             }
             String uid = userId.trim();
             if (!stillInside.contains(uid)) {
                 signoutSkippedNotInside++;
                 log.info("[豁免回收] 跳过签离 userId={}：今日曾豁免但流水已离开或未进入（非滞留）", uid);
+                twinAutomationLogService.write(
+                        TwinAutomationLogService.TYPE_EXEMPTION,
+                        "DAILY_EXEMPT_SIGNOUT_SKIPPED",
+                        "TIMER",
+                        "DAILY_EXEMPT_RESET_TIMER",
+                        uid,
+                        snap.getCardNo(),
+                        true,
+                        "豁免回收后自动签离·跳过：今日曾豁免但流水已离开或未进入（非滞留）",
+                        "daily-exempt-reset");
                 continue;
             }
             try {

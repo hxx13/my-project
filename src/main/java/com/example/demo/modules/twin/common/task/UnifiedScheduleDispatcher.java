@@ -16,7 +16,7 @@ public class UnifiedScheduleDispatcher {
     }
 
     @Scheduled(cron = "0 * * * * ?")
-    public void dispatch() {
+    public synchronized void dispatch() {
         try {
             jobSchedulerService.tick();
         } catch (Throwable t) {

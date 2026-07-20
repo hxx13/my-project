@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 public class DahuaSwingPullService {
@@ -35,6 +36,7 @@ public class DahuaSwingPullService {
     private final com.example.demo.modules.accessfusion.service.AccessRawEventIngestService accessRawEventIngestService;
     private final DahuaSwingDepartmentSupport departmentSupport;
     private final com.example.demo.modules.swipealert.service.SwipeAlertEngine swipeAlertEngine;
+    private final AtomicBoolean pollInProgress = new AtomicBoolean(false);
 
     public DahuaSwingPullService(
             DahuaSwingMapper dahuaSwingMapper,
@@ -77,8 +79,12 @@ public class DahuaSwingPullService {
         return dahuaSwingMapper.updateTask(task) > 0;
     }
 
-    @Scheduled(fixedDelay = 15000)
+    @Scheduled(fixedDelay = 15000, scheduler = "twinSwingTaskScheduler")
     public void pollEnabledTasks() {
+        if (!pollInProgress.compareAndSet(false, true)) {
+            log.debug("[大华·拉取] 上一轮拉取尚未结束，跳过本次触发");
+            return;
+        }
         try {
             for (DahuaSwingPullTask task : dahuaSwingMapper.listEnabledTasks()) {
                 try {
@@ -103,6 +109,8 @@ public class DahuaSwingPullService {
             // 到期签退由 DahuaSwingRuleEngineService 独立定时节拍处理，避免与 @Scheduled 并发双跑
         } catch (Throwable t) {
             log.error("[大华·拉取] 定时轮询外层异常，已捕获防止调度线程终止", t);
+        } finally {
+            pollInProgress.set(false);
         }
     }
 
