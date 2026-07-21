@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import BuildingModel from './BuildingModel';
 import CameraController from './CameraController';
 import Lights from './Lights';
+import SceneOverlay from './SceneOverlay';
 import { useStore } from '../store/useStore';
 
 function CanvasFallback() {
@@ -39,6 +40,7 @@ function SceneContent() {
       <Suspense fallback={null}>
         <BuildingModel />
       </Suspense>
+      <SceneOverlay />
     </>
   );
 }
