@@ -11,12 +11,14 @@ const presets = [
 
 export default function ViewControls() {
   return (
-    <div className="absolute right-4 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2 pointer-events-auto">
-      {presets.map((p) => (
+    <div className="absolute right-4 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
+      <div className="flex flex-col gap-2 pointer-events-auto">
+        {presets.map((p) => (
         <button key={p.label} onClick={p.action}
           className="w-10 h-10 rounded-xl bg-white/85 backdrop-blur-lg border border-white/60 shadow-sm flex items-center justify-center text-lg hover:bg-white transition-colors"
           title={p.label} />
       ))}
+      </div>
     </div>
   );
 }

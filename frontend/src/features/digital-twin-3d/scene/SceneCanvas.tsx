@@ -97,7 +97,10 @@ export default function SceneCanvas() {
             });
             gl.domElement.addEventListener('webglcontextrestored', () => {
               if (restoreTimer) { clearTimeout(restoreTimer); restoreTimer = null; }
-              gl.renderer?.resetState?.();
+              // Three.js 自动恢复纹理（需要 needsUpdate=true），但强制标记所有纹理脏
+              try {
+                gl.renderer?.initTexture?.();
+              } catch {}
               console.log('[3D] WebGL context restored');
             });
           }}

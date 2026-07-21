@@ -71,7 +71,7 @@ export const useStore = create<Store>((set, get) => ({
 
   materialCache: new Map(),
   registerSharedMaterial: (name, mat) =>
-    set((s) => { s.materialCache.set(name, mat); return { materialCache: s.materialCache }; }),
+    set((s) => { const m = new Map(s.materialCache); m.set(name, mat); return { materialCache: m }; }),
 
   floorMode: 'stacked',
   setFloorMode: (mode) => set({ floorMode: mode, focusedFloor: null }),

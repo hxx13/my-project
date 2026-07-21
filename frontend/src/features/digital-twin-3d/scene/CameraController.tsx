@@ -5,15 +5,16 @@ import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import * as THREE from 'three';
 import { useStore } from '../store/useStore';
+import { useShallow } from 'zustand/react/shallow';
 
 export default function CameraController() {
   const { camera, gl } = useThree();
   const controlsRef = useRef<any>(null);
   const timelineRef = useRef<gsap.core.Timeline | null>(null);
-  const { fov } = useStore((s) => ({ fov: s.fov, floors: s.floors }));
-  // 每渲染一次刷新闭包（保证 __dt3d_* 始终读最新 store）
-  const floors = useStore((s) => s.floors);
-  const floorNames = useStore((s) => s.floorNames);
+  // 使用 useShallow 避免每次创建新对象导致重渲染
+  const { fov, floors, floorNames } = useStore(
+    useShallow((s) => ({ fov: s.fov, floors: s.floors, floorNames: s.floorNames })),
+  );
 
   // GSAP 运镜: fly-to preset
   const flyTo = (pos: [number, number, number], target: [number, number, number], duration = 1.2) => {
