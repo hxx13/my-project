@@ -768,7 +768,7 @@ public class UploadController {
             return Result.error("app.public-base-url 未配置，无法修复");
         }
 
-        String prefix = publicBaseUrl.replaceAll("/+$", ""); // http://47.101.61.184:8080
+        String prefix = publicBaseUrl.replaceAll("/+$", "");
         String oldPrefix = "/api/upload/files/";
 
         // 【新增图片列在此加一行】详见 docs/双端图片互通开发者指南.md

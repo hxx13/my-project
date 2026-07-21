@@ -1,6 +1,6 @@
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { Sky, ContactShadows, Stats } from '@react-three/drei';
+import { Sky, ContactShadows, Stats, useProgress } from '@react-three/drei';
 import { ErrorBoundary } from 'react-error-boundary';
 import * as THREE from 'three';
 import BuildingModel from './BuildingModel';
@@ -20,6 +20,29 @@ function CanvasFallback() {
         >
           点击重试
         </button>
+      </div>
+    </div>
+  );
+}
+
+/** 加载进度浮层 */
+function LoadOverlay() {
+  const { active, progress } = useProgress();
+  const [done, setDone] = useState(false);
+
+  if (!active && progress === 100 && !done) {
+    requestAnimationFrame(() => setDone(true));
+  }
+
+  if (done) return null;
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-100/80 backdrop-blur-sm pointer-events-none">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-[3px] border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm font-bold text-slate-500">
+          模型加载中 {Math.round(progress)}%
+        </span>
       </div>
     </div>
   );
@@ -82,6 +105,7 @@ export default function SceneCanvas() {
           <SceneContent />
           {import.meta.env.DEV && <Stats />}
         </Canvas>
+        <LoadOverlay />
       </div>
     </ErrorBoundary>
   );

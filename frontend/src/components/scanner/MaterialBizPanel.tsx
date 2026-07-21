@@ -204,7 +204,7 @@ export default function MaterialBizPanel({ userId, scanUser, onDone }: BizItemSl
                     item.stockMode === "QUANTIFIED"
                       ? Math.max(0, item.stockQty || 0)
                       : item.stockQty >= 1
-                        ? 99
+                        ? 9999
                         : 0;
                   return (
                     <MaterialItemCard

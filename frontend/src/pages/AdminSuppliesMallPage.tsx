@@ -350,7 +350,7 @@ export default function AdminSuppliesMallPage() {
     // 可用库存 = 总库存 − 待处理单锁定量；availableQty 缺失时回落 stockQty
     const effectiveQty = Number(item.availableQty ?? item.stockQty);
     if (item.stockMode === "QUANTIFIED") return Math.max(0, Number.isFinite(effectiveQty) ? effectiveQty : 0);
-    return effectiveQty >= 1 ? 99 : 0;
+    return effectiveQty >= 1 ? 9999 : 0;
   };
 
   const reconcileCartWithStock = useCallback(

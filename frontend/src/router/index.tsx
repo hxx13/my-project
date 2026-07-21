@@ -67,6 +67,7 @@ import AdminExpStatsPage from "@/pages/AdminExpStatsPage";
 import AnimalRoomTelemetryPage from "@/pages/AnimalRoomTelemetryPage";
 import AnimalRoomCockpitPage from "@/pages/AnimalRoomCockpitPage";
 import DigitalTwinScreenPage from "@/pages/DigitalTwinScreenPage";
+import DigitalTwin3DPage from "@/pages/DigitalTwin3DPage";
 import AdminTelemetryWatchlistsPage from "@/pages/AdminTelemetryWatchlistsPage";
 import AdminTelemetryArchivePage from "@/pages/AdminTelemetryArchivePage";
 import AdminTelemetryInsightsPage from "@/pages/AdminTelemetryInsightsPage";
@@ -151,6 +152,7 @@ const legacyRedirects = [
   { path: "/animal-room-telemetry", to: `${STAFF_NS}/animal-room-telemetry` },
   { path: "/animal-room-cockpit", to: `${STAFF_NS}/animal-room-cockpit` },
   { path: "/digital-twin-screen", to: `${STAFF_NS}/digital-twin-screen` },
+  { path: "/digital-twin-3d", to: `${STAFF_NS}/digital-twin-3d` },
 ].map((r) => ({
   path: r.path,
   element: <LegacyRedirect to={r.to} />,
@@ -222,6 +224,7 @@ export const router = createHashRouter([
           { path: "animal-room-telemetry", element: <AnimalRoomTelemetryPage /> },
           { path: "animal-room-cockpit", element: <AnimalRoomCockpitPage /> },
           { path: "digital-twin-screen", element: <DigitalTwinScreenPage /> },
+          { path: "digital-twin-3d", element: <DigitalTwin3DPage /> },
           { path: "profile-security", element: <Navigate to={`${STAFF_NS}/admin/profile-security`} replace /> },
           { path: "messages", element: <Navigate to={`${STAFF_NS}/admin/staff-messages`} replace /> },
         ],

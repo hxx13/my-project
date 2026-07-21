@@ -420,6 +420,15 @@ export const ADMIN_NAV_REGISTRY: AdminNavRegistryGroup[] = [
         telemetryReturnStorageKey: DIGITAL_TWIN_SCREEN_RETURN_TO_KEY,
         sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/digital-twin-screen", "ADMIN"),
       },
+      {
+        id: "digital-twin-3d",
+        path: "/digital-twin-3d",
+        label: "3D 楼盘",
+        icon: Monitor,
+        homeTone: "from-sky-400 to-violet-500",
+        fallbackMinRole: "ADMIN",
+        sidebarVisible: (ctx) => ctx.flags.canViewMetaStorage && show(ctx, "/digital-twin-3d", "ADMIN"),
+      },
     ],
   },
   {
@@ -741,7 +750,8 @@ export function inferHomeSectionTitleForUnknownPath(path: string): string {
     p.startsWith("/admin/telemetry-") ||
     p === "/animal-room-telemetry" ||
     p === "/animal-room-cockpit" ||
-    p === "/digital-twin-screen"
+    p === "/digital-twin-screen" ||
+    p === "/digital-twin-3d"
   ) {
     return "门禁、元数据与环境";
   }

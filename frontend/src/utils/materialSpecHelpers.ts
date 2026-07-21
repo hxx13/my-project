@@ -203,7 +203,7 @@ export function maxQtyForMaterialItem(item: MaterialSpecPickerItem | null | unde
   if (!item) return 0;
   if (item.stockMode === "UNLIMITED") return 999;
   if (item.stockMode === "QUANTIFIED") return Math.max(0, Number(item.stockQty) || 0);
-  return Number(item.stockQty) >= 1 ? 99 : 0;
+  return Number(item.stockQty) >= 1 ? 9999 : 0;
 }
 
 export function isMaterialOutOfStock(item: MaterialSpecPickerItem | null | undefined): boolean {

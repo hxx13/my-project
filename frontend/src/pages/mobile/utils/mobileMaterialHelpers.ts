@@ -64,7 +64,7 @@ export function maxQtyForItem(item: MobileMaterialItem | null | undefined): numb
   if (item.stockMode === "QUANTIFIED") {
     return Math.max(0, Number(item.stockQty ?? item.stockQuantity) || 0);
   }
-  return Number(item.stockQty ?? item.stockQuantity) >= 1 ? 99 : 0;
+  return Number(item.stockQty ?? item.stockQuantity) >= 1 ? 9999 : 0;
 }
 
 function isOutOfStock(item: MobileMaterialItem): boolean {
