@@ -6,8 +6,9 @@ import com.example.demo.common.enums.RoleEnum;
 import com.example.demo.common.service.AuthContextService;
 import com.example.demo.modules.aro.client.CasClient;
 import com.example.demo.modules.aro.dto.AroPersonnel;
-import com.example.demo.modules.aro.dto.CasUserInfo;
+import com.example.demo.modules.aro.dto.CasTokenInfo;
 import com.example.demo.modules.aro.mapper.AroPersonnelMapper;
+import com.example.demo.modules.aro.token.TokenStore;
 import com.example.demo.modules.auth.dto.CasLoginRequest;
 import com.example.demo.modules.auth.dto.ChangePasswordRequest;
 import com.example.demo.modules.auth.dto.ForgotPasswordResetRequest;
@@ -74,6 +75,7 @@ public class AuthController {
     private final AroPersonnelMapper aroPersonnelMapper;
     private final TurnstileVerificationService turnstileVerificationService;
     private final CasClient casClient;
+    private final TokenStore tokenStore;
 
     public AuthController(UserMapper userMapper,
                           AuthService authService,
@@ -84,7 +86,8 @@ public class AuthController {
                           JwtTokenService jwtTokenService,
                           AroPersonnelMapper aroPersonnelMapper,
                           TurnstileVerificationService turnstileVerificationService,
-                          CasClient casClient) {
+                          CasClient casClient,
+                          @Qualifier("cachedTokenStore") TokenStore tokenStore) {
         this.userMapper = userMapper;
         this.authService = authService;
         this.authContextService = authContextService;
@@ -95,6 +98,7 @@ public class AuthController {
         this.aroPersonnelMapper = aroPersonnelMapper;
         this.turnstileVerificationService = turnstileVerificationService;
         this.casClient = casClient;
+        this.tokenStore = tokenStore;
     }
 
     @PostMapping("/login/web")
@@ -175,15 +179,15 @@ public class AuthController {
     @PostMapping("/login/cas")
     @Operation(summary = "CAS 统一认证登录")
     public Result<?> loginCas(@RequestBody @Valid CasLoginRequest request) {
-        // ① Direct CAS serviceValidate — verify ticket against our own service URL
-        //    (NOT via ARO loginAuth which uses ARO's service URL and rejects our ticket)
-        CasUserInfo casUser = casClient.validateTicket(request.getTicket(), request.getServiceUrl());
-        if (casUser == null) {
-            return Result.fail(403, "CAS 认证失败：ticket 无效或已过期，请重新登录");
+        // ① Call ARO loginAuth — ARO internally validates ticket against its own CAS service URL.
+        //    CAS only whitelists ARO's service URL for serviceValidate, so we must go through ARO.
+        CasTokenInfo tokenInfo = casClient.exchangeTicket(request.getTicket());
+        if (tokenInfo == null) {
+            return Result.fail(403, "CAS 认证失败：无法验证 ticket，请重新登录");
         }
 
-        String casAccount = casUser.getAccount(); // YF0408
-        String casName = casUser.getUsername();   // 位亚磊
+        String casAccount = tokenInfo.getAccount(); // YF0408
+        String casName = tokenInfo.getUserKey();    // 位亚磊
 
         // ② Cross-match aro_personnel (name + jobNumber dual verification)
         AroPersonnel matched = aroPersonnelMapper.findByNameAndJobNumber(casName, casAccount);
@@ -207,12 +211,15 @@ public class AuthController {
                     "），但系统账号尚未开通。请联系管理员开通后再试。");
         }
 
-        // ④ R12: Check account status
+        // ④ Save ARO Token for this user
+        tokenStore.save(matchedUserId, tokenInfo);
+
+        // ⑤ R12: Check account status
         if (isDisabled(user)) {
             return Result.fail(403, "账号已被禁用，请联系管理员");
         }
 
-        // ⑤ R8: Ensure role is at least STAFF + persist
+        // ⑥ R8: Ensure role is at least STAFF + persist
         if (user.getRole() == null || user.getRole().getLevel() < RoleEnum.STAFF.getLevel()) {
             user.setRole(RoleEnum.STAFF);
             userMapper.updateRoleById(user.getId(), RoleEnum.STAFF.getCode());

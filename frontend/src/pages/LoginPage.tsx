@@ -242,8 +242,10 @@ export default function LoginPage() {
     // R6: try/catch + toast.error
     (async () => {
       try {
-        const serviceUrl = window.location.origin + "/";
-        const data = await loginCas(ticket, serviceUrl);
+        const data = await loginCas(ticket);
+        // Clean ticket from URL
+        const cleanUrl = window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "").replace(/#$/, "");
+        window.history.replaceState(null, "", cleanUrl);
         authStorage.setAuth(data.token, data.role, data.userInfo);
 
         const isStudentAccount = data.userInfo?.accountSource === "STUDENT"
@@ -793,7 +795,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => {
                         const origin = window.location.origin;
-                        const serviceUrl = encodeURIComponent(origin + "/");
+                        const serviceUrl = encodeURIComponent("https://aro.shsmu.edu.cn/#/jtu/api/loginAuth");
                         window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${serviceUrl}`;
                       }}
                       className="w-full rounded border border-[#f5d76a]/40 bg-transparent px-4 py-3 text-sm font-medium text-[#e8c547] transition hover:border-[#f5d76a]/70 hover:bg-[#f5d76a]/10"

@@ -35,12 +35,9 @@ export default function AdminAroBindingPage() {
     fetchStatus();
   }, [fetchStatus]);
 
-  // R9: CAS service URL points to admin binding page
+  // R9: CAS redirect uses ARO's service URL — ticket will be for ARO, validatable by loginAuth
   const handleCasLogin = () => {
-    const origin = window.location.origin;
-    const serviceUrl = encodeURIComponent(
-      origin + "/"
-    );
+    const serviceUrl = encodeURIComponent("https://aro.shsmu.edu.cn/#/jtu/api/loginAuth");
     window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${serviceUrl}`;
   };
 
@@ -56,12 +53,11 @@ export default function AdminAroBindingPage() {
     const bind = async () => {
       setBinding(true);
       try {
-        const serviceUrl = window.location.origin + "/";
-        await bindCasAccount(ticket, serviceUrl);
+        await bindCasAccount(ticket);
         toast.success("CAS 账号绑定成功");
-        window.location.href = window.location.href
-          .replace(/[?&]ticket=[^&#]+/, "")
-          .replace(/\?$/, "");
+        // Clean ticket from URL without navigation
+        const cleanUrl = window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "");
+        window.history.replaceState(null, "", cleanUrl);
         fetchStatus();
       } catch (e: any) {
         toast.error(e?.message || "绑定失败");

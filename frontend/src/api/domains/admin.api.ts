@@ -160,12 +160,11 @@ export async function fetchCasBindingStatus(): Promise<CasBindingStatus> {
 }
 
 export async function bindCasAccount(
-  ticket: string,
-  serviceUrl: string
+  ticket: string
 ): Promise<{ casAccount: string; bound: boolean }> {
   const res = await adminHttp.post<
     Result<{ casAccount: string; bound: boolean }>
-  >("/account/binding/cas-bind", { ticket, serviceUrl });
+  >("/account/binding/cas-bind", { ticket });
   if (!res.data?.success)
     throw new Error(res.data?.message || "绑定失败");
   return res.data.data;
