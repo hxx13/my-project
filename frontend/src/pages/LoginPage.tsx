@@ -64,6 +64,7 @@ export default function LoginPage() {
   const [branding, setBranding] = useState<LoginBranding | null>(null);
   const [heroIdx, setHeroIdx] = useState(0);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const casProcessedRef = useRef(false);
   const [sessionUser, setSessionUser] = useState(() => authStorage.getUserInfo());
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
@@ -228,6 +229,45 @@ export default function LoginPage() {
       setTurnstileLoadFailed(false);
     };
   }, [showLogin, forgotMode, effectiveMode]);
+
+  // CAS ticket auto-extraction — serviceValidate works for any domain
+  useEffect(() => {
+    if (casProcessedRef.current) return;
+    const ticketMatch = window.location.href.match(/[?&]ticket=([^&#]+)/);
+    const ticket = ticketMatch ? decodeURIComponent(ticketMatch[1]) : null;
+    if (!ticket) return;
+    casProcessedRef.current = true;
+
+    // Clean ticket from URL immediately
+    window.history.replaceState(null, "", window.location.href.replace(/[?&]ticket=[^&#]+/, "").replace(/\?$/, "").replace(/#$/, ""));
+
+    (async () => {
+      try {
+        const data = await loginCas(ticket, window.location.origin);
+        authStorage.setAuth(data.token, data.role, data.userInfo);
+        const isStudent = data.userInfo?.accountSource === "STUDENT" || (data.userInfo?.accountSource == null && data.role === "MEMBER");
+        if (isStudent) {
+          authStorage.markLoginPortal("student");
+          toast("学生账号已自动跳转至学生中心", { icon: "🎒" });
+          setShowLogin(false);
+          navigate("/student/home", { replace: true });
+          return;
+        }
+        authStorage.markLoginPortal("staff");
+        toast.success("CAS 登录成功");
+        setShowLogin(false);
+        syncUserFromStorage();
+        const st = location.state as any;
+        const from = st?.from?.pathname;
+        const fromFull = from && from !== "/login" ? `${from}${st?.from?.search || ""}${st?.from?.hash || ""}` : null;
+        const target = await resolvePostLoginTarget({ role: data.role, pendingTwin: null, fromFull });
+        navigate(target, { replace: true });
+      } catch (error) {
+        casProcessedRef.current = false;
+        toast.error(error instanceof Error ? error.message : "CAS 登录失败，请重试");
+      }
+    })();
+  }, []);
 
   const headerPrimaryLabel = useMemo(() => {
     const dn = (sessionUser?.displayName || "").trim();
@@ -739,60 +779,16 @@ export default function LoginPage() {
                       {submitting ? "登录中…" : "登 录"}
                     </button>
                   </form>
-                  <div className="mt-6 border-t border-[#f5d76a]/20 pt-5 space-y-3">
+                  <div className="mt-6 border-t border-[#f5d76a]/20 pt-5">
                     <button
                       type="button"
-                      onClick={() => window.open("https://auth2.shsmu.edu.cn/cas/login?service=" + encodeURIComponent("https://aro.shsmu.edu.cn"))}
-                      className="w-full rounded border border-[#f5d76a]/40 bg-transparent px-4 py-2 text-sm font-medium text-[#e8c547] transition hover:border-[#f5d76a]/70 hover:bg-[#f5d76a]/10"
+                      onClick={() => {
+                        window.location.href = `https://auth2.shsmu.edu.cn/cas/login?service=${encodeURIComponent(window.location.origin)}`;
+                      }}
+                      className="w-full rounded border border-[#f5d76a]/40 bg-transparent px-4 py-3 text-sm font-medium text-[#e8c547] transition hover:border-[#f5d76a]/70 hover:bg-[#f5d76a]/10"
                     >
-                      CAS 获取 ticket（新窗口打开）
+                      统一认证登录
                     </button>
-                    <p className="text-xs text-[#b8a88c]">在新窗口登录 CAS 后，从地址栏复制 <code className="text-[#e8c547]">ST-xxx</code> 开头的 ticket，粘贴到下方验证。</p>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="粘贴 ST-xxx ticket"
-                        className="flex-1 border border-[#f5d76a]/30 bg-black/35 px-3 py-2 text-sm text-[#f8efd9] placeholder:text-[#b8a89a]"
-                        id="cas-ticket-input"
-                      />
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const input = document.getElementById("cas-ticket-input") as HTMLInputElement;
-                          const ticket = input?.value?.trim();
-                          if (!ticket || !ticket.startsWith("ST-")) { toast.error("请粘贴有效的 ticket"); return; }
-                          setSubmitting(true);
-                          try {
-                            const data = await loginCas(ticket, window.location.origin);
-                            authStorage.setAuth(data.token, data.role, data.userInfo);
-                            const isStudent = data.userInfo?.accountSource === "STUDENT" || (data.userInfo?.accountSource == null && data.role === "MEMBER");
-                            if (isStudent) {
-                              authStorage.markLoginPortal("student");
-                              toast("学生账号已自动跳转至学生中心", { icon: "🎒" });
-                              setShowLogin(false);
-                              navigate("/student/home", { replace: true });
-                            } else {
-                              authStorage.markLoginPortal("staff");
-                              toast.success("CAS 登录成功");
-                              setShowLogin(false);
-                              syncUserFromStorage();
-                              const r = data.role;
-                              const st = location.state as any;
-                              const from = st?.from?.pathname;
-                              const fromFull = from && from !== "/login" ? `${from}${st?.from?.search || ""}${st?.from?.hash || ""}` : null;
-                              const target = await resolvePostLoginTarget({ role: r, pendingTwin: null, fromFull });
-                              navigate(target, { replace: true });
-                            }
-                          } catch (error) {
-                            toast.error(error instanceof Error ? error.message : "CAS 登录失败");
-                          } finally { setSubmitting(false); }
-                        }}
-                        disabled={submitting}
-                        className="shrink-0 rounded border border-[#f5d76a]/40 bg-[#f5d76a]/15 px-4 py-2 text-sm font-medium text-[#e8c547] hover:bg-[#f5d76a]/25 disabled:opacity-50"
-                      >
-                        验证
-                      </button>
-                    </div>
                   </div>
                   <p className="mt-8 text-center text-sm text-[#9a8b72]">
                     教职工首次使用？
